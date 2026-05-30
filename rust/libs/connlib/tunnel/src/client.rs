@@ -27,7 +27,7 @@ use crate::dns::{
 };
 use crate::filter_engine::FilterEngine;
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, SnownetCapabilities,
     client::{DevicePoolMember, FailReason},
 };
 use crate::peer_store::{Peer, PeerStore};
@@ -887,6 +887,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
+    #[allow(clippy::too_many_arguments)]
     pub fn handle_resource_access_authorized(
         &mut self,
         rid: ResourceId,
@@ -897,6 +898,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        capabilities: SnownetCapabilities,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -918,6 +920,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
+            capabilities.into(),
             now,
         ) {
             Ok(()) => {}
@@ -988,6 +991,7 @@ impl ClientState {
         Ok(Ok(()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn handle_client_device_access_authorized(
         &mut self,
         cid: ClientId,
@@ -997,6 +1001,7 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
+        capabilities: SnownetCapabilities,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -1013,6 +1018,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
+            capabilities.into(),
             now,
         )?;
 
@@ -2092,11 +2098,15 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(now); // Clear all network connections.
-        self.gateways.clear(); // Clear all state associated with Gateways.
-        self.clients.clear(); // Clear all state associated with Clients.
-
-        self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
+        // No explicit `self.gateways.clear()` / `self.clients.clear()` /
+        // `dns_resource_nat.clear()` here. The hard-reset path of
+        // `Node::reset` emits `ConnectionClosed` for every connection,
+        // and `drain_node_events` then runs `cleanup_connected_gateway`
+        // (per-gateway: remove from `self.gateways`, clear DNS-NAT, set
+        // site status to `Unknown`). The iceless soft-reset path keeps
+        // connections alive — that's exactly the state we want
+        // preserved here, including site status.
+        self.node.reset(now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

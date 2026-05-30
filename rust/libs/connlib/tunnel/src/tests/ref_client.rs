@@ -16,7 +16,7 @@ use crate::{
     dns,
     filter_engine::FilterEngine,
     malicious_behaviour::MaliciousBehaviour,
-    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
+    messages::{Filter, Interface, SnownetCapabilities, UpstreamDo53, UpstreamDoH},
 };
 
 use chrono::{DateTime, Utc};
@@ -46,6 +46,11 @@ pub struct RefClient {
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
+
+    /// Capabilities this client advertises during portal handshake. The
+    /// negotiated set passed to connlib at flow time is the boolean
+    /// intersection of this and the peer's value.
+    pub(crate) snownet_capabilities: SnownetCapabilities,
 
     /// The DNS resolvers configured on the client outside of connlib.
     #[debug(skip)]
@@ -1311,6 +1316,7 @@ fn ref_client(
         any::<bool>(),
         private_key(),
         malicious_behaviour(),
+        any::<bool>().prop_map(|iceless| SnownetCapabilities { iceless }),
     )
         .prop_map(
             move |(
@@ -1320,6 +1326,7 @@ fn ref_client(
                 internet_resource_active,
                 key,
                 malicious_behaviour,
+                snownet_capabilities,
             )| {
                 RefClient {
                     id,
@@ -1329,6 +1336,7 @@ fn ref_client(
                     system_dns_resolvers,
                     internet_resource_active,
                     malicious_behaviour,
+                    snownet_capabilities,
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),

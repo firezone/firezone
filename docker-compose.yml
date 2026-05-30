@@ -130,6 +130,7 @@ services:
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: 2606a54a327020a1285cc141aeceb5737a91625e5e1a85c234682266f45820bf
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
+      FZFF_ICELESS: "${FZFF_ICELESS:-false}"
     command:
       - sh
       - -c
@@ -273,6 +274,7 @@ services:
       FIREZONE_FLOW_LOGS: true
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: c9cc2a8a01f9d3d6b2c26719965709196ae2c79214a837e28f0a751af1e2f2ca
+      FZFF_ICELESS: "${FZFF_ICELESS:-false}"
     command:
       - sh
       - -c

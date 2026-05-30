@@ -15,11 +15,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
 use tokio::sync::mpsc;
-use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
     AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
     EgressMessages, IngressMessages, InitGateway, RejectAccess,
 };
+use tunnel::messages::{RelaysPresence, SnownetCapabilities};
 use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
@@ -289,6 +289,7 @@ impl Eventloop {
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
+                    msg.snownet_capabilities,
                     Instant::now(),
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
@@ -541,7 +542,14 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
+                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                ) {
+                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
+                }
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

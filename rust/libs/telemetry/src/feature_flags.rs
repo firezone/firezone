@@ -56,6 +56,14 @@ pub fn stream_metrics() -> bool {
     FEATURE_FLAGS.stream_metrics()
 }
 
+pub fn iceless() -> bool {
+    FEATURE_FLAGS.iceless()
+}
+
+pub fn export_metrics() -> bool {
+    false // Placeholder until we actually deploy an OTEL collector.
+}
+
 pub fn show_connected_devices() -> bool {
     FEATURE_FLAGS.show_connected_devices()
 }
@@ -177,6 +185,8 @@ struct FeatureFlagsResponse {
     #[serde(default)]
     stream_metrics: bool,
     #[serde(default)]
+    iceless: bool,
+    #[serde(default)]
     show_connected_devices: bool,
 }
 
@@ -194,6 +204,7 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: AtomicBool,
+    iceless: AtomicBool,
     show_connected_devices: AtomicBool,
 }
 
@@ -212,6 +223,7 @@ impl FeatureFlags {
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
+            iceless,
             show_connected_devices,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
@@ -226,6 +238,7 @@ impl FeatureFlags {
                 Ordering::Relaxed,
             );
         self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
+        self.iceless.store(iceless, Ordering::Relaxed);
         self.show_connected_devices
             .store(show_connected_devices, Ordering::Relaxed);
 
@@ -260,6 +273,10 @@ impl FeatureFlags {
         self.stream_metrics.load(Ordering::Relaxed)
     }
 
+    fn iceless(&self) -> bool {
+        self.iceless.load(Ordering::Relaxed)
+    }
+
     fn show_connected_devices(&self) -> bool {
         self.show_connected_devices.load(Ordering::Relaxed)
     }
@@ -281,6 +298,7 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
+        iceless: env_or("FZFF_ICELESS", flags.iceless),
         show_connected_devices: env_or("FZFF_SHOW_CONNECTED_DEVICES", flags.show_connected_devices),
     }
 }
@@ -301,6 +319,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         StreamLogs { result: bool },
         IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
         StreamMetrics { result: bool },
+        Iceless { result: bool },
         ShowConnectedDevices { result: bool },
     }
 
@@ -311,6 +330,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
+        iceless,
         show_connected_devices,
     } = flags;
 
@@ -323,6 +343,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::StreamLogs { result: stream_logs },
             SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
             SentryFlag::StreamMetrics { result: stream_metrics },
+            SentryFlag::Iceless { result: iceless },
             SentryFlag::ShowConnectedDevices { result: show_connected_devices },
         ]
     });

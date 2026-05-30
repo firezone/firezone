@@ -1797,6 +1797,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dimpl"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ffb781459bc33976be951aa31815deadcd74fb63781da5a4dc48f7001e567d3"
+dependencies = [
+ "arrayvec",
+ "log",
+ "nom 8.0.0",
+ "once_cell",
+ "rand 0.9.4",
+ "subtle",
+ "time",
+]
+
+[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3744,9 +3759,9 @@ dependencies = [
 
 [[package]]
 name = "is"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40cf23944e1280f3b2959321a1ef776c14503af8e1e5efca32147a9136a5f8dc"
+checksum = "e3b80bc4cf63564aa2f64c0bb16e03ddd67d7325007aa90d96520bd1eefc8dab"
 dependencies = [
  "crc",
  "hmac",
@@ -5123,6 +5138,15 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "path-agent"
+version = "0.1.0"
+dependencies = [
+ "boringtun",
+ "ip-packet",
+ "tracing",
+]
 
 [[package]]
 name = "pathdiff"
@@ -6748,10 +6772,12 @@ dependencies = [
  "itertools",
  "logging",
  "once_cell",
+ "path-agent",
  "rand 0.8.5",
  "ringbuffer",
  "sha2",
  "smallvec",
+ "str0m-proto",
  "stun_codec",
  "telemetry",
  "thiserror 2.0.18",
@@ -6908,6 +6934,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "222a6a5a946631a167c1b0282846bfa33b0f8098b8dd565237809735656ed63f"
 dependencies = [
  "base64ct",
+ "dimpl",
  "fastrand",
  "serde",
  "subtle",

@@ -94,7 +94,11 @@ defmodule PortalAPI.Gateway.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     # Initialize the cache
-    socket = assign(socket, cache: Cache.Gateway.hydrate(socket.assigns.gateway))
+    socket =
+      assign(socket,
+        cache: Cache.Gateway.hydrate(socket.assigns.gateway),
+        snownet_capabilities: %{}
+      )
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
@@ -287,7 +291,15 @@ defmodule PortalAPI.Gateway.Channel do
       preshared_key: preshared_key
     } = payload
 
+    client_snownet_capabilities = Map.get(payload, :client_snownet_capabilities, %{})
+
     rid_bytes = Ecto.UUID.dump!(resource.id)
+
+    snownet_capabilities =
+      Portal.Snownet.Capabilities.intersect(
+        socket.assigns.snownet_capabilities,
+        client_snownet_capabilities
+      )
 
     ref =
       encode_ref(socket, {
@@ -295,7 +307,8 @@ defmodule PortalAPI.Gateway.Channel do
         socket_ref,
         rid_bytes,
         preshared_key,
-        ice_credentials
+        ice_credentials,
+        snownet_capabilities
       })
 
     push(socket, "authorize_flow", %{
@@ -305,7 +318,8 @@ defmodule PortalAPI.Gateway.Channel do
       client: client,
       client_ice_credentials: ice_credentials.initiator,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
-      subject: subject
+      subject: subject,
+      snownet_capabilities: snownet_capabilities
     })
 
     cache =
@@ -545,14 +559,20 @@ defmodule PortalAPI.Gateway.Channel do
   @impl true
   def handle_in("flow_authorized", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
-      {:ok,
-       {
-         channel_pid,
-         socket_ref,
-         resource_id,
-         preshared_key,
-         ice_credentials
-       }} ->
+      {:ok, ref_tuple} when tuple_size(ref_tuple) in [5, 6] ->
+        # 5-tuple is the legacy shape from before snownet capabilities;
+        # 6-tuple is the current one. Default the new field to `%{}` so
+        # in-flight refs across a rolling deploy don't fail to decode.
+        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials,
+         snownet_capabilities} =
+          case ref_tuple do
+            {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials} ->
+              {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, %{}}
+
+            {_, _, _, _, _, _} = full ->
+              full
+          end
+
         send(
           channel_pid,
           {
@@ -565,7 +585,8 @@ defmodule PortalAPI.Gateway.Channel do
             socket.assigns.gateway.ipv4,
             socket.assigns.gateway.ipv6,
             preshared_key,
-            ice_credentials
+            ice_credentials,
+            snownet_capabilities
           }
         )
 
@@ -634,6 +655,12 @@ defmodule PortalAPI.Gateway.Channel do
     end)
 
     {:noreply, socket}
+  end
+
+  def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
+    capabilities = Portal.Snownet.Capabilities.normalize(payload)
+    socket = assign(socket, snownet_capabilities: capabilities)
+    {:noreply, track_presence(socket)}
   end
 
   def handle_in("no_relays", _payload, socket) do
@@ -1068,7 +1095,8 @@ defmodule PortalAPI.Gateway.Channel do
           version: session.version,
           remote_ip: session.remote_ip,
           remote_ip_location_lat: session.remote_ip_location_lat,
-          remote_ip_location_lon: session.remote_ip_location_lon
+          remote_ip_location_lon: session.remote_ip_location_lon,
+          snownet_capabilities: Map.get(socket.assigns, :snownet_capabilities, %{})
         }
 
         :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)

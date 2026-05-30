@@ -6,7 +6,6 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
@@ -684,7 +683,7 @@ impl TunnelTest {
             });
 
             if let Some((client_id, event)) = client_event {
-                match self.on_client_event(client_id, event, &ref_state.portal) {
+                match self.on_client_event(client_id, event, ref_state) {
                     Ok(()) => {}
                     Err(ClientEventError::Client { id, error: e }) => {
                         tracing::debug!("Failed to handle ClientEvent: {e}");
@@ -994,8 +993,9 @@ impl TunnelTest {
         &mut self,
         src: ClientId,
         event: ClientEvent,
-        portal: &StubPortal,
+        ref_state: &ReferenceState,
     ) -> Result<(), ClientEventError> {
+        let portal = &ref_state.portal;
         let now = self.flux_capacitor.now();
 
         match event {
@@ -1070,6 +1070,20 @@ impl TunnelTest {
                 let gateway_key = gateway.inner().sut.public_key();
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
+                let negotiated_capabilities = intersect_capabilities(
+                    ref_state
+                        .clients
+                        .get(&src)
+                        .unwrap()
+                        .inner()
+                        .snownet_capabilities,
+                    ref_state
+                        .gateways
+                        .get(&gateway_id)
+                        .unwrap()
+                        .inner()
+                        .snownet_capabilities,
+                );
 
                 gateway
                     .exec_mut(|g| {
@@ -1098,6 +1112,7 @@ impl TunnelTest {
                             gateway_ice.clone(),
                             None,
                             resource,
+                            negotiated_capabilities,
                             now,
                         )
                     })
@@ -1118,6 +1133,7 @@ impl TunnelTest {
                             preshared_key,
                             client_ice,
                             gateway_ice,
+                            negotiated_capabilities,
                             now,
                         )
                     })
@@ -1159,6 +1175,20 @@ impl TunnelTest {
 
                         let (preshared_key, local_client_ice, remote_client_ice) =
                             make_preshared_key_and_ice(src_key, remote_key);
+                        let negotiated_capabilities = intersect_capabilities(
+                            ref_state
+                                .clients
+                                .get(&src)
+                                .unwrap()
+                                .inner()
+                                .snownet_capabilities,
+                            ref_state
+                                .clients
+                                .get(&remote_id)
+                                .unwrap()
+                                .inner()
+                                .snownet_capabilities,
+                        );
 
                         let pool_filters = portal
                             .static_device_pool_filters(resource_id)
@@ -1179,6 +1209,7 @@ impl TunnelTest {
                                     remote_client_ice.clone(),
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
+                                    negotiated_capabilities,
                                     Some(remote_authorization),
                                     now,
                                 )
@@ -1203,6 +1234,7 @@ impl TunnelTest {
                                     local_client_ice,
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
+                                    negotiated_capabilities,
                                     None,
                                     now,
                                 )
@@ -1365,6 +1397,16 @@ fn address_from_destination(
             *resolved_ip.select(available_ips)
         }
         Destination::IpAddr(addr) => *addr,
+    }
+}
+
+/// Mirror of the portal's per-field boolean AND for negotiated capabilities.
+fn intersect_capabilities(
+    a: crate::messages::SnownetCapabilities,
+    b: crate::messages::SnownetCapabilities,
+) -> crate::messages::SnownetCapabilities {
+    crate::messages::SnownetCapabilities {
+        iceless: a.iceless && b.iceless,
     }
 }
 

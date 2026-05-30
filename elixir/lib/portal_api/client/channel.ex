@@ -96,7 +96,8 @@ defmodule PortalAPI.Client.Channel do
       |> assign(
         cache: cache,
         authorizations_cache: authorizations_cache,
-        pending_flows: %{}
+        pending_flows: %{},
+        snownet_capabilities: %{}
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -323,9 +324,23 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  # Backwards-compat: tolerate the pre-snownet-capabilities tuple from older
+  # gateway nodes during a rolling deploy. Default capabilities to `%{}`.
+  def handle_info(
+        {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
+         gateway_ipv6, preshared_key, ice_credentials},
+        socket
+      ) do
+    handle_info(
+      {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
+       gateway_ipv6, preshared_key, ice_credentials, %{}},
+      socket
+    )
+  end
+
   def handle_info(
         {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials},
+         gateway_ipv6, preshared_key, ice_credentials, snownet_capabilities},
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
@@ -347,7 +362,8 @@ defmodule PortalAPI.Client.Channel do
             gateway_public_key: gateway_public_key,
             gateway_ipv4: gateway_ipv4,
             gateway_ipv6: gateway_ipv6,
-            gateway_ice_credentials: ice_credentials.receiver
+            gateway_ice_credentials: ice_credentials.receiver,
+            snownet_capabilities: snownet_capabilities
           }
           |> put_site_id(site_id, socket.assigns.session)
 
@@ -1106,6 +1122,12 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
+    capabilities = Portal.Snownet.Capabilities.normalize(payload)
+    socket = assign(socket, snownet_capabilities: capabilities)
+    {:noreply, track_presence(socket)}
+  end
+
   def handle_in("no_relays", _payload, socket) do
     {:ok, relays} = select_relays(socket)
     socket = cache_relays(socket, relays)
@@ -1293,7 +1315,8 @@ defmodule PortalAPI.Client.Channel do
              policy_authorization_id: policy_authorization_id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
-             preshared_key: preshared_key
+             preshared_key: preshared_key,
+             client_snownet_capabilities: socket.assigns.snownet_capabilities
            }}
 
         attrs =
@@ -1622,6 +1645,12 @@ defmodule PortalAPI.Client.Channel do
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
+    snownet_capabilities =
+      Portal.Snownet.Capabilities.intersect(
+        socket.assigns.snownet_capabilities,
+        Map.get(target_meta, :snownet_capabilities, %{})
+      )
+
     receiver_message =
       {:client_device_access_authorized,
        %{
@@ -1636,7 +1665,8 @@ defmodule PortalAPI.Client.Channel do
          resource: rendered_resource,
          subject: rendered_subject,
          policy_authorization_id: policy_authorization_id,
-         authorization_expires_at: expires_at
+         authorization_expires_at: expires_at,
+         snownet_capabilities: snownet_capabilities
        }}
 
     initiator_payload = %{
@@ -1647,7 +1677,8 @@ defmodule PortalAPI.Client.Channel do
       preshared_key: preshared_key,
       local_ice_credentials: ice_credentials.initiator,
       remote_ice_credentials: ice_credentials.receiver,
-      ice_role: :controlling
+      ice_role: :controlling,
+      snownet_capabilities: snownet_capabilities
     }
 
     {receiver_message, initiator_payload}
@@ -2384,7 +2415,8 @@ defmodule PortalAPI.Client.Channel do
           psk_base: socket.assigns.client.psk_base,
           remote_ip: socket.assigns.session.remote_ip,
           version: socket.assigns.session.version,
-          user_agent: socket.assigns.session.user_agent
+          user_agent: socket.assigns.session.user_agent,
+          snownet_capabilities: Map.get(socket.assigns, :snownet_capabilities, %{})
         }
 
         :ok =
