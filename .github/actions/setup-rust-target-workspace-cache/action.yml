@@ -22,6 +22,6 @@ runs:
         workspaces: rust
         cache-targets: true
         cache-workspace-crates: true
-        key: ${{ inputs.key }}-${{ hashFiles('rust/**/*.rs') }}
+        key: ${{ inputs.key }}-${{ hashFiles('rust/.cargo/config.toml', 'rust/**/*.rs') }}
         prefix-key: v2-rust
         save-if: ${{ inputs.save-if }}

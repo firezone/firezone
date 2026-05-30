@@ -23,6 +23,6 @@ runs:
         # provides no speed-up while exposing CI to cache-restore corruption
         # of the rustup-managed cargo binary.
         cache-bin: false
-        key: ${{ inputs.key }}
+        key: ${{ inputs.key }}-${{ hashFiles('rust/.cargo/config.toml') }}
         prefix-key: v2-rust-deps
         save-if: ${{ inputs.save-if }}

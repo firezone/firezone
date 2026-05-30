@@ -55,6 +55,12 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'
         run: |
