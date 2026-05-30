@@ -6750,6 +6750,7 @@ dependencies = [
  "itertools",
  "logging",
  "once_cell",
+ "opentelemetry",
  "rand 0.8.5",
  "ringbuffer",
  "sha2",
