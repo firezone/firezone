@@ -61,42 +61,15 @@ jobs:
         shell: bash
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
+      # cargo-shear does not compile the workspace; it runs `cargo metadata` and
+      # parses sources, so it piggy-backs on the toolchain already set up here.
+      - run: cargo shear
+        name: cargo shear
+        shell: bash
 
   monitor-static-analysis:
     needs: [static-analysis]
     if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh run cancel ${{ github.run_id }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  unused-dependencies:
-    name: unused-dependencies-${{ matrix.runs-on }}
-    strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
-      matrix:
-        # TODO: https://github.com/rust-lang/cargo/issues/5220
-        runs-on: [ubuntu-24.04, macos-26, windows-2022]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      # cargo-shear does not compile the workspace; it runs `cargo metadata` and
-      # parses sources, so no nightly toolchain, build cache or Tauri system deps
-      # are needed here.
-      - uses: ./.github/actions/setup-rust-stable
-        id: setup-rust-stable
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd rust
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: cargo shear
-        name: cargo shear
-
-  monitor-unused-dependencies:
-    needs: [unused-dependencies]
-    if: "!cancelled() && needs.unused-dependencies.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
