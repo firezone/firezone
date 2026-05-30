@@ -47,6 +47,8 @@ pub struct Eventloop {
     sigint: signals::Terminate,
 
     logged_permission_denied: bool,
+
+    tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
 
 enum PortalCommand {
@@ -81,6 +83,7 @@ impl Eventloop {
                 1000,
             ),
             logged_permission_denied: false,
+            tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -244,6 +247,9 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
+            self.tunnel_errors
+                .add(1, &telemetry::otel::error_layers(&e));
+
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {

@@ -16,12 +16,14 @@ futures = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
+telemetry = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
