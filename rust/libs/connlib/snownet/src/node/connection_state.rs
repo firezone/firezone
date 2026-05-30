@@ -225,6 +225,14 @@ impl ConnectionState {
     pub(crate) fn has_nominated_socket(&self) -> bool {
         matches!(self, Self::Connected { .. } | Self::Idle { .. })
     }
+
+    /// The currently nominated socket, if any.
+    pub(crate) fn peer_socket(&self) -> Option<PeerSocket> {
+        match self {
+            Self::Connected { peer_socket, .. } | Self::Idle { peer_socket } => Some(*peer_socket),
+            Self::Connecting { .. } | Self::Failed => None,
+        }
+    }
 }
 
 impl fmt::Display for ConnectionState {
@@ -290,12 +298,22 @@ impl PeerSocket {
         }
     }
 
-    fn kind(&self) -> &'static str {
+    /// All possible values returned by [`PeerSocket::kind`], ordered by
+    /// [`PeerSocket::kind_index`].
+    pub(crate) const KINDS: [&'static str; 4] =
+        ["PeerToPeer", "PeerToRelay", "RelayToPeer", "RelayToRelay"];
+
+    pub(crate) fn kind(&self) -> &'static str {
+        Self::KINDS[self.kind_index()]
+    }
+
+    /// Index of this socket's kind into [`PeerSocket::KINDS`].
+    pub(crate) fn kind_index(&self) -> usize {
         match self {
-            PeerSocket::PeerToPeer { .. } => "PeerToPeer",
-            PeerSocket::PeerToRelay { .. } => "PeerToRelay",
-            PeerSocket::RelayToPeer { .. } => "RelayToPeer",
-            PeerSocket::RelayToRelay { .. } => "RelayToRelay",
+            PeerSocket::PeerToPeer { .. } => 0,
+            PeerSocket::PeerToRelay { .. } => 1,
+            PeerSocket::RelayToPeer { .. } => 2,
+            PeerSocket::RelayToRelay { .. } => 3,
         }
     }
 }

@@ -72,6 +72,11 @@ pub mod attr {
         KeyValue::new("network.io.direction", "transmit")
     }
 
+    /// The kind of socket a connection's path uses, e.g. `PeerToPeer` or `RelayToRelay`.
+    pub fn connection_socket(socket: &'static str) -> KeyValue {
+        KeyValue::new("connection.socket", socket)
+    }
+
     pub fn io_error_code(e: &io::Error) -> KeyValue {
         KeyValue::new("error.code", e.raw_os_error().unwrap_or_default() as i64)
     }
@@ -235,6 +240,14 @@ pub mod metrics {
             .u64_counter("tunnel.error")
             .with_description("Number of errors encountered while processing a packet batch.")
             .with_unit("{error}")
+            .build()
+    }
+
+    pub fn connection_count() -> Gauge<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_gauge("tunnel.connection.count")
+            .with_description("Number of connections by the network path in use.")
+            .with_unit("{connection}")
             .build()
     }
 
