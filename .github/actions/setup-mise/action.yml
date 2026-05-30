@@ -56,7 +56,7 @@ runs:
         cache_key_prefix: "mise-v2"
 
     # jdx/mise-action on Windows does not bundle `mise-shim.exe`, so cargo
-    # subcommand discovery (`cargo udeps` -> `cargo-udeps.exe`) silently fails
+    # subcommand discovery (`cargo shear` -> `cargo-shear.exe`) silently fails
     # because reshim has nothing to copy into the shims directory. Install mise
     # manually from the upstream release zip, which contains both `mise.exe`
     # and `mise-shim.exe`.
