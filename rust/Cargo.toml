@@ -77,7 +77,7 @@ clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
 difference = "2.0.0"
