@@ -179,7 +179,7 @@ smbios-lib = "0.9.2"
 smoltcp = { version = "0.13.1", default-features = false }
 snownet = { path = "libs/connlib/snownet" }
 socket-factory = { path = "libs/connlib/socket-factory" }
-socket2 = { version = "0.6.3" }
+socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
 strum = { version = "0.28.0", features = ["derive"] }
