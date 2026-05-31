@@ -326,20 +326,48 @@ defmodule PortalAPI.Client.ChannelTest do
       refute :sys.get_state(socket.channel_pid).assigns.session_durability
     end
 
-    test "channel crash takes down the transport", %{client: client, subject: subject} do
+    test "an abnormal channel exit drains the transport so connlib reconnects", %{
+      client: client,
+      subject: subject
+    } do
       Process.flag(:trap_exit, true)
 
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
 
-      # In tests, we (the test process) are the transport_pid
+      # In ChannelTest the test process is the transport_pid, so a drain message
+      # sent by terminate/2 lands in our mailbox.
       assert socket.transport_pid == self()
 
-      # Kill the channel - we receive EXIT because we're linked
-      Process.exit(socket.channel_pid, :kill)
+      # Terminate the channel with an abnormal reason. This runs terminate/2 and
+      # models an in-process crash (in production a Postgrex query raising on
+      # timeout inside a handler exits the channel the same way). The harness
+      # links the channel to us, hence the {:EXIT}.
+      capture_log(fn ->
+        GenServer.stop(socket.channel_pid, :boom)
+        assert_receive {:EXIT, _pid, :boom}
+      end)
 
-      assert_receive {:EXIT, pid, :killed}
-      assert pid == socket.channel_pid
+      # terminate/2 drained the transport, which closes the whole WebSocket and
+      # forces connlib through a full reconnect (new transport => new session).
+      assert_receive :socket_drain
+    end
+
+    test "a graceful channel stop does NOT drain the transport", %{
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      assert socket.transport_pid == self()
+
+      # A :shutdown stop already sends phx_close, which connlib treats as a clean
+      # reconnect, so terminate/2 must NOT additionally drain the transport.
+      GenServer.stop(socket.channel_pid, :shutdown)
+
+      refute_receive :socket_drain
     end
 
     test "does not crash when subject expiration is too large", %{
@@ -7491,6 +7519,122 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       refute_push "resource_filters_updated", _
+    end
+  end
+
+  describe "transport/channel teardown semantics" do
+    # These tests use a faithful transport: a separate process that traps exits
+    # like the production Bandit/Thousand Island handler, rather than the test
+    # process that `Phoenix.ChannelTest` uses by default. That lets us assert how
+    # the channel and transport bring each other down.
+
+    # Models the production transport: traps exits, and records every message it
+    # receives so tests can assert the channel drained it.
+    defp start_trapping_transport do
+      parent = self()
+
+      pid =
+        spawn(fn ->
+          Process.flag(:trap_exit, true)
+          send(parent, {:ready, self()})
+          trapping_loop(parent)
+        end)
+
+      assert_receive {:ready, ^pid}
+      on_exit(fn -> Process.exit(pid, :kill) end)
+      pid
+    end
+
+    defp trapping_loop(parent) do
+      receive do
+        msg ->
+          send(parent, {:transport_got, msg})
+          trapping_loop(parent)
+      end
+    end
+
+    # Joins the client channel with a custom transport pid instead of the test
+    # process. Mirrors `join_channel/3` otherwise.
+    defp join_channel_with_transport(client, subject, transport_pid) do
+      device = fetch_device!(client)
+      session_id = Ecto.UUID.generate()
+
+      session = %Portal.ClientSession{
+        id: session_id,
+        device_id: client.id,
+        account_id: client.account_id,
+        client_token_id: subject.credential.id,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        user_agent: subject.context.user_agent,
+        remote_ip: subject.context.remote_ip
+      }
+
+      base =
+        PortalAPI.Client.Socket
+        |> socket("client:#{client.id}", %{
+          client: device,
+          session: session,
+          subject: subject,
+          client_version: nil
+        })
+
+      {:ok, _reply, socket} =
+        %{base | transport_pid: transport_pid}
+        |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+
+      socket
+    end
+
+    test "an abnormal channel crash drains the trapping transport", %{
+      client: client,
+      subject: subject
+    } do
+      transport = start_trapping_transport()
+      socket = join_channel_with_transport(client, subject, transport)
+      channel_pid = socket.channel_pid
+
+      # The harness links the channel to the test process; drop that so the crash
+      # we trigger below doesn't also kill the test.
+      Process.unlink(channel_pid)
+      ref = Process.monitor(channel_pid)
+
+      # Terminate the channel with an abnormal reason. In production this is an
+      # in-process exception (typically a Postgrex query raising on timeout)
+      # bubbling out of a handler; that runs terminate/2 with the same kind of
+      # abnormal reason.
+      capture_log(fn ->
+        GenServer.stop(channel_pid, :boom)
+        assert_receive {:DOWN, ^ref, :process, ^channel_pid, :boom}
+      end)
+
+      # terminate/2 drained the transport, which closes the WebSocket and forces
+      # connlib through a full reconnect, minting a fresh session id. This is what
+      # keeps the transport:session relationship 1:1.
+      assert_receive {:transport_got, :socket_drain}
+    end
+
+    test "transport death takes the channel down with it (no orphan channel)", %{
+      client: client,
+      subject: subject
+    } do
+      transport = start_trapping_transport()
+      socket = join_channel_with_transport(client, subject, transport)
+      channel_pid = socket.channel_pid
+
+      Process.unlink(channel_pid)
+      ref = Process.monitor(channel_pid)
+
+      # :kill is the one signal a trapping process cannot trap, so the transport
+      # actually dies here (modeling a real WebSocket teardown).
+      capture_log(fn ->
+        Process.exit(transport, :kill)
+        assert_receive {:DOWN, ^ref, :process, ^channel_pid, _reason}
+      end)
+
+      # The channel does not outlive its transport. With the explicit link gone,
+      # this is enforced by `Phoenix.Channel.Server`, which monitors the transport
+      # pid on join and stops the channel on its :DOWN.
+      refute Process.alive?(channel_pid)
     end
   end
 end

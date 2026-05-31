@@ -80,11 +80,36 @@ defmodule PortalAPI.Gateway.Channel do
 
   @impl true
   def join("gateway", _payload, socket) do
-    # If we crash, take the transport process down with us since connlib expects the WebSocket to close on error
-    Process.link(socket.transport_pid)
-
     send(self(), :after_join)
     {:ok, socket}
+  end
+
+  # On an abnormal exit we must close the whole WebSocket, not just the channel.
+  # When only the channel dies, presence tracking and the PG registration die
+  # with it, so the portal can no longer push to this gateway. connlib does not
+  # notice: a `phx_error` is ignored, heartbeats still answer on the surviving
+  # transport, and connlib only re-joins reactively (on its next send), leaving
+  # an unbounded state-desync window. Worse, that re-join reuses the
+  # transport-scoped session id and collides with the row already persisted.
+  #
+  # Draining the transport forces connlib through its full reconnect path, which
+  # runs `Socket.connect/3` again and mints a fresh session id. This keeps the
+  # transport:session relationship 1:1, so every session id reaching the DB is
+  # unique by construction.
+  #
+  # Graceful stops (`:normal` / `:shutdown` / `{:shutdown, _}`) already send a
+  # `phx_close` that connlib treats as a clean reconnect, so we leave those
+  # alone and only intervene on an abnormal exit. The channel does not trap
+  # exits, so `terminate/2` runs for in-process crashes; an external `:kill`
+  # skips it, but that only happens on node shutdown where the transport is
+  # going down regardless.
+  @impl true
+  def terminate(reason, socket) do
+    if abnormal_exit?(reason) do
+      send(socket.transport_pid, :socket_drain)
+    end
+
+    :ok
   end
 
   ####################################
@@ -1091,6 +1116,11 @@ defmodule PortalAPI.Gateway.Channel do
     |> Map.from_struct()
     |> Map.drop([:__meta__, :account, :device, :gateway_token])
   end
+
+  defp abnormal_exit?(:normal), do: false
+  defp abnormal_exit?(:shutdown), do: false
+  defp abnormal_exit?({:shutdown, _reason}), do: false
+  defp abnormal_exit?(_reason), do: true
 
   defmodule Database do
     import Ecto.Query
