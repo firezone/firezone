@@ -131,7 +131,6 @@ jobs:
           git show "$base:rust/Cargo.lock" | grep -A1 '^name = "uniffi' > uniffi_base.txt || true
           grep -A1 '^name = "uniffi' rust/Cargo.lock > uniffi_head.txt || true
           if ! diff -q uniffi_base.txt uniffi_head.txt > /dev/null; then
-            echo "uniffi dependency changed; scheduling kotlin + swift builds"
             jobs="${jobs},kotlin,swift"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
