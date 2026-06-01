@@ -218,7 +218,7 @@ tracing-opentelemetry = "0.32.1"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
-uniffi = "0.31.0"
+uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.1"
 webpki-roots = "1.0.7"
