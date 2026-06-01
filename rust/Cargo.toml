@@ -279,6 +279,14 @@ codegen-units = 1
 debug = "full"
 split-debuginfo = "packed"
 
+[profile.release.package.client-ffi]
+# Preserve debug symbols for crash reporting and symbolication
+# This is needed for Android native crash reports in Firebase Crashlytics
+# and for Sentry crash analysis
+debug = "full"
+# Use "unpacked" for Android as it's the most compatible format
+split-debuginfo = "unpacked"
+
 [profile.release.package.ebpf-turn-router]
 debug = 2
 
