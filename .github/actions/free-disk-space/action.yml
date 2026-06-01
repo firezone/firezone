@@ -1,0 +1,20 @@
+---
+name: "Free disk space"
+description: "Reclaim disk space by removing pre-installed toolchains we don't use"
+runs:
+  using: "composite"
+  steps:
+    - name: Free up disk space
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        # Reclaim ~25 GB from pre-installed toolchains we don't use, so the
+        # instrumented coverage builds have headroom on leaner hosted runners.
+        sudo rm -rf \
+          /usr/local/lib/android \
+          /usr/share/dotnet \
+          /opt/ghc \
+          /usr/local/.ghcup \
+          /opt/hostedtoolcache/CodeQL \
+          /usr/local/share/boost
+        sudo docker image prune --all --force || true
