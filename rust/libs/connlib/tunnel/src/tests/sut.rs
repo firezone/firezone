@@ -736,6 +736,8 @@ impl TunnelTest {
                             transport,
                             local,
                             remote,
+                            started_at: now,
+                            recursion: dns::Recursion::Local,
                         },
                         now,
                     )
