@@ -207,7 +207,7 @@ defmodule Portal.Ops do
 
     def accounts_missing_deletion_jobs do
       delete_jobs_query =
-        [worker: Portal.Workers.DeleteAccount, state: [:scheduled, :available, :executing, :retryable]]
+        [worker: Portal.Workers.DeleteAccount, state: Oban.Job.unique_states(:incomplete)]
         |> Oban.Job.query()
         |> where([j], fragment("?->>'account_id' = ?::text", j.args, parent_as(:account).id))
         |> select([j], 1)

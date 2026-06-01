@@ -7,7 +7,7 @@ defmodule Portal.Workers.SweepAccountDeletions do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [period: 60, states: :incomplete]
+    unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Workers.DeleteAccount
   alias __MODULE__.Database
