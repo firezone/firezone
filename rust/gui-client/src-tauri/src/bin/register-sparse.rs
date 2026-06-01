@@ -292,8 +292,8 @@ mod imp {
     /// next time we try to stage at a different external location.
     ///
     /// Best-effort by design: a removal that fails (e.g. a
-    /// pre-existing per-user registration whose backing files are
-    /// gone, returning `PACKAGE_NOT_FOUND`) is logged and skipped
+    /// pre-existing per-user registration whose backing files have
+    /// been deleted out from under the kernel) is logged and skipped
     /// instead of aborting the rest. Used by both [`provision`] (so
     /// one broken stale registration doesn't block re-staging) and
     /// [`deprovision`] (so the uninstall CA never fails the MSI on
@@ -314,15 +314,23 @@ mod imp {
             "enumerated existing packages"
         );
 
+        let read_full_name = |pkg: &Package| -> Result<HSTRING> {
+            Ok(pkg
+                .Id()
+                .context("Package::Id failed")?
+                .FullName()
+                .context("PackageId::FullName failed")?)
+        };
+
         let mut failures = 0;
         for pkg in packages {
-            let full_name = match pkg.Id().and_then(|id| id.FullName()) {
+            let full_name = match read_full_name(&pkg) {
                 Ok(name) => name,
                 Err(e) => {
                     failures += 1;
                     tracing::warn!(
                         error = format!("{e:#}"),
-                        "couldn't read PackageId::FullName; skipping"
+                        "couldn't read full package name; skipping"
                     );
                     continue;
                 }
