@@ -296,6 +296,8 @@ skip = [
     "webpki-roots",
     "which",
     "windows-link",
+    "windows-result",
+    "windows-strings",
     "windows-sys",
     "windows-targets",
     "windows_x86_64_msvc",
