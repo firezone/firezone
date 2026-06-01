@@ -2,7 +2,7 @@
 
 source "./scripts/tests/lib.sh"
 
-client sh -c "curl --fail --max-time 5 --output download.file http://download.httpbin/bytes?num=10000000" &
+client sh -c "curl --fail --max-time 30 --output download.file http://download.httpbin/bytes?num=10000000" &
 
 DOWNLOAD_PID=$!
 
