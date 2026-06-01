@@ -34,6 +34,7 @@
     "framer-motion": "^12.40.0",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
+    "mermaid": "^11.15.0",
     "next": "^16.2.6",
     "next-hubspot": "^2.0.1",
     "next-sitemap": "^4.2.3",

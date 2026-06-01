@@ -11,6 +11,7 @@ export interface MdxFrontmatter {
   // Blog-specific fields. `postTitle` is the in-article H1 when it differs
   // from the metadata title; the rest feed the <Post> header.
   postTitle?: string;
+  subtitle?: string;
   authorName?: string;
   authorTitle?: string;
   authorEmail?: string;

@@ -5,6 +5,7 @@ export default function Post({
   authorTitle,
   authorAvatarSrc,
   title,
+  subtitle,
   date,
   children,
 }: {
@@ -12,13 +13,14 @@ export default function Post({
   authorTitle: string;
   authorAvatarSrc: string;
   title: string;
+  subtitle?: string;
   date: string;
   children: React.ReactNode;
 }) {
   return (
-    <main className="py-14 lg:pb-24 border border-b ">
+    <main className="py-14 lg:pb-24 border border-b bg-neutral-50">
       <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
-        <article className="mx-auto w-full max-w-3xl text-neutral-800 format format-sm md:format-md lg:format-lg format-firezone">
+        <article className="mx-auto w-full max-w-3xl format format-sm md:format-md lg:format-lg format-firezone">
           <header className="mb-4 lg:mb-6 not-format">
             <address className="flex items-center mb-6 not-italic">
               <div className="inline-flex items-center mr-3 text-sm ">
@@ -43,6 +45,11 @@ export default function Post({
             <h1 className="mb-4 text-3xl font-bold leading-none tracking-tight lg:mb-6 lg:text-5xl ">
               {title}
             </h1>
+            {subtitle && (
+              <p className="mb-4 text-lg text-neutral-700 lg:mb-6 lg:text-xl">
+                {subtitle}
+              </p>
+            )}
           </header>
           <div className="pt-4">{children}</div>
         </article>

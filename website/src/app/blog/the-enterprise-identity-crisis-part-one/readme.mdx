@@ -1,0 +1,223 @@
+---
+title: "Modeling multi-provider identity"
+subtitle: "Part I: Who's Alice?"
+description: "Modeling identity across providers in enterprise applications"
+postTitle: "The enterprise identity crisis"
+authorName: "Jamil Bou Kheir"
+authorTitle: Founder
+authorEmail: jamil@firezone.dev
+date: 2026-05-11
+---
+
+import Alert from "@/components/DocsAlert";
+import Image from "next/image";
+
+<Alert>
+
+_This is the first post in a two-part series about managing identity in modern enterprise apps. [Part one](/blog/multi-provider-identity-part-one) introduces the multi-provider identity problem and covers authentication, and part two discusses options for user / group provisioning and how they affect access rules._
+
+</Alert>
+
+I'm sure you've experienced some version of this before:
+
+1. Sign up for a service with email and password
+1. Come back a year later, forget whether you used email, Google, or GitHub
+1. Guess wrong
+1. Great, you've now landed in new-user onboarding instead of the account you wanted
+
+Annoying, but not the end of the world. Maybe you lost your settings, subscription history, or preferences.
+
+Now imagine the same failure mode in an application that decides who can access production, customer data, or internal infrastructure. Yes - what some might call, an ✨ _enterprise application_ ✨.
+
+## Meet the Alices
+
+Any identity problem you might face in a consumer app is amplified a thousand times when you translate that problem to a large organization.
+
+Don't believe me? Consider the following scenarios:
+
+1. **Your organization changes providers**
+
+   You start with Google for identity management but later switch to Okta. During the overlap period (this is always longer than you expect) both providers are connected.
+
+   Alice signs in with Google, then Okta. Which one got access to the production database?
+
+1. **Your company is merging**
+
+   You use GitHub for SSO, but you just got acquired and the parent company requires Entra. Two directories, two sets of users that need to merge.
+
+   When the migration completes, which Alice survives?
+
+1. **Alice leaves, another Alice joins**
+
+   Alice **A** leaves the company. Months (or years) later, Alice **B** joins with the same email.
+
+   Was Alice suddenly reincarnated with the same access to customer data?
+
+   <small>
+
+   (Aside: _please_ never reuse emails in your organization)
+
+   </small>
+
+1. **Alice leaves then returns**
+
+   Alice the engineer leaves the company, completes her M.B.A., and rejoins two years later as Alice the consultant.
+
+   Can she still push to production?
+
+## What actually breaks?
+
+We've hit enough of these with our customers to know they aren't really edge cases. Even small organizations are bound to hit one eventually.
+
+And when they do:
+
+1. Folks complain
+1. Billing seats are over or under-counted
+1. Audit trails become harder to assemble
+1. Access rules may get duplicated or under-provisioned, **leading to access creep or gaps**
+
+Secure access isn't possible without secure identity &mdash; if Alice has a Google identity and an Okta identity, we need to know whether those identities represent the same user. Sometimes access should follow Alice. Sometimes access should depend on the provider Alice used to authenticate.
+
+At Firezone we call this **the Alice Problem**, and solving it well is trickier than it seems.
+
+Here's what we've learned.
+
+### 1. Identities are external. Users aren't.
+
+<Image
+  src="/images/blog/the-enterprise-identity-crisis-part-one/1.png"
+  alt="Identities live in external providers; users live in your application"
+  width={1732}
+  height={904}
+  className="py-8 h-auto mx-auto max-w-[75%]"
+/>
+
+We've found it helps to separate _users_ from _identities_:
+
+- An _identity_ is a user record in an external provider. It usually contains attributes like name, email, and group membership. An _identity provider_ is therefore the source of truth for that record. Common providers are Okta, Google, Microsoft Entra, and GitHub.
+- A _user_ (or _actor_ in Firezone parlance) is the record of a person in your application. It has similar attributes to an identity, such as email, name, and preferences. In contrast to identities, _your application_ is the source of truth for that record.
+
+**Typically users, not identities, are what you attach access rules to.**
+
+So your application receives identities from these external systems, but your application owns its users. And modern standards lack a prescriptive way to link the two.
+
+### 2. Standards help, but only so much.
+
+If you've built or setup single sign-on (SSO) in the last decade, you probably used OpenID Connect (OIDC) or Security Assertion Markup Language (SAML).
+
+<small>
+
+(I won't cover SAML here because, well, (1) it's famously complex, and (2) is increasingly being replaced by OIDC. Just know that all of the identity problems that exist with OIDC also exist with SAML.)
+
+</small>
+
+OIDC helps your app answer one important question: which identity from this provider just authenticated?
+
+It does this by defining a set of attributes that providers are required to send your app when the user authenticates. The two relevant ones are:
+
+- the **issuer identifier** (`iss`): Identifies the provider that issued the token.
+- the **subject identifier** (`sub`): Identifies the authenticated user _within that issuer_.
+
+So if Alice signs in with Google, your app might see:
+
+```json
+{ "iss": "https://accounts.google.com", "sub": "1234567890" }
+```
+
+If Alice later signs in with Okta, your app might see:
+
+```json
+{ "iss": "https://company.okta.com", "sub": "00uabc123" }
+```
+
+Together, `(iss, sub)` form the stable key your app uses to locate the identity that just signed in (assuming it already exists &mdash; more on that in part two).
+
+But we're still left with: **Are they the same Alice?**
+
+### 3. Avoid the email trap.
+
+It turns out nearly all providers helpfully include the user's **email** in the attributes alongside the `(iss, sub)` pair. How convenient: do a lookup on `email` to find which Alice signed in. Problem solved, right?
+
+Many apps do exactly that. And yes, it does work, for a while. But anyone familiar with authentication on the web knows using email as an identifier is a dangerous trap. [Google's docs](https://developers.google.com/identity/openid-connect/reference) even warn against it:
+
+> Don't use email address as an identifier because a Google Account can have multiple email addresses at different points in time.
+
+Only a few examples are needed to show why this is a bad idea.
+
+##### A contractor is promoted to employee:
+
+<div className="px-12">
+  <Image
+    src="/images/blog/the-enterprise-identity-crisis-part-one/2.svg"
+    alt="alice.contractor@gmail.com becomes alice@company.com"
+    width={740}
+    height={68}
+    className="w-full h-auto"
+  />
+</div>
+
+##### Someone changes their name:
+
+<div className="px-12">
+  <Image
+    src="/images/blog/the-enterprise-identity-crisis-part-one/3.svg"
+    alt="alice.walker@company.com becomes alice.doe@company.com"
+    width={740}
+    height={68}
+    className="w-full h-auto"
+  />
+</div>
+
+##### A company changes domains:
+
+<div className="px-12">
+  <Image
+    src="/images/blog/the-enterprise-identity-crisis-part-one/4.svg"
+    alt="alice@oldcompany.com becomes alice@newcompany.com"
+    width={740}
+    height={68}
+    className="w-full h-auto"
+  />
+</div>
+
+In each case, the person is the same, the identity is the same, so the access rules should be the same. But if you used email alone to tell you that Alice just signed in, congratulations &mdash; you just broke her CRM access.
+
+### 4. Use email as a one-time link.
+
+A practical solution here is to treat email as a one-time link from identity to user. But (and this is the critical part) it's important to **verify** the email before doing so.
+
+OIDC has a specific attribute for exactly this purpose: `email_verified`. Unfortunately not every provider populates this consistently, so you can't trust it blindly. Instead, it's a good idea to verify ownership out-of-band (e.g. a one-time passcode) before trusting it fully.
+
+```text
+Before:
+
+User
+  email: alice@company.com
+  identities:
+    - (Google, sub=123)
+
+After first Okta login:
+
+User
+  email: alice@company.com
+  identities:
+    - (Google, sub=123)
+    - (Okta, sub=456)
+```
+
+Under this design, email gets one job: help attach a new provider identity to an existing user at a specific point in time. After that, future logins use `(iss, sub)` directly. Once the identity is linked, email can change without breaking future logins for that provider.
+
+### 5. Don't stop there.
+
+Email verification gets you most of the way there. Stack more checks for defense-in-depth:
+
+- Was this provider configured by a tenant admin?
+- Is the user active and accepting new identities?
+- Was the user provisioned by directory sync?
+- Does the user already have an identity from this provider?
+
+Surprises here are no fun. We built these (and more) into Firezone, so identity stays boring and you can focus on real problems.
+
+## What's next?
+
+We hinted at it above, but all of this only works assuming the users authenticating are _already_ in your app. If they're not, well, you need a robust way to do that. In part two of this series we'll be covering exactly that: provisioning, SCIM, and how access rules remain consistent throughout.

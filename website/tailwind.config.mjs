@@ -122,6 +122,25 @@ const tailwindConfig = {
             // "--tw-format-invert-th-borders": theme("colors.orange[600]"),
             // "--tw-format-invert-td-borders": theme("colors.orange[700]"),
             // "--tw-format-invert-th-bg": theme("colors.orange[700]"),
+
+            // Article font weights for /blog and /kb. Flowbite-typography's
+            // defaults read heavy against Roboto, so each element is stepped
+            // down one notch from the plugin defaults (800/700/700/600/700/600).
+            // This is the single source of truth for `.format` weights — do
+            // not override these in globals.css.
+            h1: { fontWeight: "700" },
+            h2: { fontWeight: "600" },
+            h3: { fontWeight: "600" },
+            h4: { fontWeight: "500" },
+            "h1 strong": { fontWeight: "800" },
+            "h2 strong": { fontWeight: "700" },
+            "h3 strong": { fontWeight: "700" },
+            "h4 strong": { fontWeight: "600" },
+            strong: { fontWeight: "600" },
+            blockquote: { fontWeight: "600" },
+            code: { fontWeight: "500" },
+            "thead th": { fontWeight: "500" },
+            "tbody th": { fontWeight: "500" },
           },
         },
       }),

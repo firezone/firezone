@@ -31,9 +31,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const timestamps = JSON.parse(timestampsData);
 
   return (
-    <div className="flex">
+    <div className="flex bg-neutral-50">
       <KbSidebar />
-      <main className="p-4 pt-32 pb-14 -ml-64 md:mx-auto max-w-full">
+      <main className="p-4 pt-32 pb-14 -ml-64 md:mx-auto max-w-full bg-neutral-50">
         <div className="px-4">
           <article className="kb-article max-w-full md:max-w-md lg:max-w-3xl xl:max-w-4xl format format-sm md:format-sm lg:format-base format-firezone">
             {children}
