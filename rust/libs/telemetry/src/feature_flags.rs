@@ -62,32 +62,22 @@ pub fn show_connected_devices() -> bool {
 
 /// The current value of every feature flag, by name.
 pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
-    // Exhaustive destruction so we don't forget to update this when we add a flag.
-    let FeatureFlagsResponse {
-        icmp_unreachable_instead_of_nat64,
-        drop_llmnr_nxdomain_responses,
-        stream_logs,
-        icmp_error_unreachable_prohibited_create_new_flow,
-        stream_metrics,
-        show_connected_devices,
-    } = FEATURE_FLAGS.snapshot();
-
     [
         (
             "icmp_unreachable_instead_of_nat64",
-            icmp_unreachable_instead_of_nat64,
+            icmp_unreachable_instead_of_nat64(),
         ),
         (
             "drop_llmnr_nxdomain_responses",
-            drop_llmnr_nxdomain_responses,
+            drop_llmnr_nxdomain_responses(),
         ),
-        ("stream_logs", stream_logs),
+        ("stream_logs", stream_logs_active()),
         (
             "icmp_error_unreachable_prohibited_create_new_flow",
-            icmp_error_unreachable_prohibited_create_new_flow,
+            icmp_error_unreachable_prohibited_create_new_flow(),
         ),
-        ("stream_metrics", stream_metrics),
-        ("show_connected_devices", show_connected_devices),
+        ("stream_metrics", stream_metrics()),
+        ("show_connected_devices", show_connected_devices()),
     ]
 }
 
@@ -289,18 +279,6 @@ impl FeatureFlags {
 
     fn show_connected_devices(&self) -> bool {
         self.show_connected_devices.load(Ordering::Relaxed)
-    }
-
-    fn snapshot(&self) -> FeatureFlagsResponse {
-        FeatureFlagsResponse {
-            icmp_unreachable_instead_of_nat64: self.icmp_unreachable_instead_of_nat64(),
-            drop_llmnr_nxdomain_responses: self.drop_llmnr_nxdomain_responses(),
-            stream_logs: !self.stream_logs.read().directives.is_empty(),
-            icmp_error_unreachable_prohibited_create_new_flow: self
-                .icmp_error_unreachable_prohibited_create_new_flow(),
-            stream_metrics: self.stream_metrics(),
-            show_connected_devices: self.show_connected_devices(),
-        }
     }
 }
 
