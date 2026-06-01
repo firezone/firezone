@@ -158,7 +158,7 @@ reqwest = { version = "0.13.3", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
-rpassword = "7.5.2"
+rpassword = "7.5.3"
 rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.14.1"
