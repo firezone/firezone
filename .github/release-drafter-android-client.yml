@@ -1,7 +1,17 @@
 tag-prefix: "android-client-"
-template: >
+include-paths:
+  - "kotlin/android"
+  - "rust/client-ffi"
+  - "rust/libs"
+change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
+no-changes-template: "- No code changes affecting this component since the last release."
+template: |
   README: HAVE YOU SENT THE CLIENT FOR REVIEW AND HAVE THEY BEEN ACCEPTED?
   DO NOT PUBLISH THIS RELEASE UNTIL THAT IS DONE.
+
+  ## What's changed
+
+  $CHANGES
 
   Please see our
   [changelog](https://www.firezone.dev/changelog?utm_source=github-releases)
