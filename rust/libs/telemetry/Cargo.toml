@@ -23,6 +23,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }
 
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+sentry-rust-minidump = { workspace = true }
+
 [dev-dependencies]
 rustls = { workspace = true, features = ["ring"] }
 thiserror = { workspace = true }

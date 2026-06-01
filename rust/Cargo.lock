@@ -704,7 +704,7 @@ dependencies = [
  "logging",
  "netlink-packet-core",
  "netlink-packet-route",
- "nix",
+ "nix 0.30.1",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -1424,6 +1424,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "crash-context"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "031ed29858d90cfdf27fe49fae28028a1f20466db97962fa2f4ea34809aeebf3"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "mach2",
+]
+
+[[package]]
+name = "crash-handler"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2066907075af649bcb8bcb1b9b986329b243677e6918b2d920aa64b0aac5ace3"
+dependencies = [
+ "cfg-if",
+ "crash-context",
+ "libc",
+ "mach2",
+ "parking_lot",
+]
+
+[[package]]
 name = "crc"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2109,6 +2133,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
 
 [[package]]
+name = "error-graph"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b920e777967421aa5f9bf34f842c0ab6ba19b3bdb4a082946093860f5858879"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "etc-hosts-dns-client"
 version = "0.1.0"
 dependencies = [
@@ -2160,6 +2193,12 @@ version = "0.1.0"
 dependencies = [
  "opentelemetry",
 ]
+
+[[package]]
+name = "failspot"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c942e64b20ecd39933d5ff938ca4fdb6ef0d298cc3855b231179a5ef0b24948d"
 
 [[package]]
 name = "fastrand"
@@ -2238,7 +2277,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow-ext",
  "clap",
- "nix",
+ "nix 0.30.1",
  "rpassword",
  "secrecy",
  "tracing",
@@ -2261,7 +2300,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "logging",
- "nix",
+ "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
@@ -2313,7 +2352,7 @@ dependencies = [
  "libc",
  "logging",
  "native-dialog",
- "nix",
+ "nix 0.30.1",
  "notify-rust",
  "output_vt100",
  "parking_lot",
@@ -2377,7 +2416,7 @@ dependencies = [
  "ip_network",
  "known-dirs",
  "logging",
- "nix",
+ "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
@@ -2945,6 +2984,17 @@ name = "goblin"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b363a30c165f666402fe6a3024d3bec7ebc898f96a4a23bd1c99f8dbf3f4f47"
+dependencies = [
+ "log",
+ "plain",
+ "scroll",
+]
+
+[[package]]
+name = "goblin"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daa0a64d21a7eb230583b4c5f4e23b7e4e57974f96620f42a7e75e08ae66d745"
 dependencies = [
  "log",
  "plain",
@@ -4241,6 +4291,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
+name = "memmap2"
+version = "0.9.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "memoffset"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4254,6 +4313,78 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "minidump-common"
+version = "0.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e16d10087ae9e375bad7a40e8ef5504bc08e808ccc6019067ff9de42a84570f"
+dependencies = [
+ "bitflags 2.10.0",
+ "debugid",
+ "num-derive",
+ "num-traits",
+ "range-map",
+ "scroll",
+ "smart-default",
+]
+
+[[package]]
+name = "minidump-writer"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e1fc14d6ded915b8e850801465e7096f77ed60bf87e4e85878d463720d9dc4d"
+dependencies = [
+ "bitflags 2.10.0",
+ "byteorder",
+ "cfg-if",
+ "crash-context",
+ "error-graph",
+ "failspot",
+ "goblin 0.9.3",
+ "libc",
+ "log",
+ "mach2",
+ "memmap2",
+ "memoffset",
+ "minidump-common",
+ "nix 0.29.0",
+ "procfs-core",
+ "scroll",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "minidumper"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10d9254e42a48098d045472a5c0cb892007a42e25342eddbf2642f6978bf381a"
+dependencies = [
+ "cfg-if",
+ "crash-context",
+ "libc",
+ "log",
+ "minidump-writer",
+ "parking_lot",
+ "polling",
+ "scroll",
+ "thiserror 2.0.18",
+ "uds",
+]
+
+[[package]]
+name = "minidumper-child"
+version = "0.2.2"
+source = "git+https://github.com/klochowicz/minidumper-child?branch=feat%2Fminidumper-0.9#e3a69336138aef16b4a25c0297c33c8f8cc42d37"
+dependencies = [
+ "crash-handler",
+ "minidumper",
+ "thiserror 2.0.18",
+ "uuid",
+]
 
 [[package]]
 name = "minimal-lexical"
@@ -4438,6 +4569,18 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
 
 [[package]]
 name = "nix"
@@ -5003,7 +5146,7 @@ checksum = "e4022a17595a00d6a369236fdae483f0de7f0a339960a53118b818238e132224"
 dependencies = [
  "android_system_properties",
  "log",
- "nix",
+ "nix 0.30.1",
  "objc2",
  "objc2-foundation",
  "objc2-ui-kit",
@@ -5501,6 +5644,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "procfs-core"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "239df02d8349b06fc07398a3a1697b06418223b1c7725085e801e7c0fc6a12ec"
+dependencies = [
+ "bitflags 2.10.0",
+ "hex",
+ "serde",
+]
+
+[[package]]
 name = "proptest"
 version = "1.9.0"
 source = "git+https://github.com/proptest-rs/proptest?branch=main#9b103797a9787378c55b1c2a79c9ffed13d26891"
@@ -5689,6 +5843,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "513962919efc330f829edb2535844d1b912b0fbe2ca165d613e4e8788bb05a5a"
 dependencies = [
  "rand_core 0.9.3",
+]
+
+[[package]]
+name = "range-map"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12a5a2d6c7039059af621472a4389be1215a816df61aa4d531cfe85264aee95f"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -5935,7 +6098,7 @@ dependencies = [
  "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
- "nix",
+ "nix 0.30.1",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -6354,6 +6517,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sentry-rust-minidump"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de99278305191a207c919dc9dd18f6a9d02d6048d07491a4ce26f7811b2ecbbb"
+dependencies = [
+ "minidumper-child",
+ "sentry",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "sentry-tracing"
 version = "0.48.1"
 source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813bc7108b0dec6c9491ac5ce778877fd"
@@ -6657,6 +6831,17 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "smart-default"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0eb01866308440fc64d6c44d9e86c5cc17adfe33c4d6eed55da9145044d0ffc1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
 
 [[package]]
 name = "smawk"
@@ -7514,6 +7699,7 @@ dependencies = [
  "reqwest 0.13.3",
  "rustls",
  "sentry",
+ "sentry-rust-minidump",
  "serde",
  "serde_json",
  "sha2",
@@ -8262,7 +8448,7 @@ dependencies = [
  "clap",
  "futures",
  "humantime",
- "nix",
+ "nix 0.30.1",
  "num_cpus",
  "tokio",
  "tokio-stream",
@@ -8285,6 +8471,15 @@ name = "typenum"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
+
+[[package]]
+name = "uds"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "885c31f06fce836457fe3ef09a59f83fe8db95d270b11cd78f40a4666c4d1661"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "uds_windows"
@@ -8412,7 +8607,7 @@ dependencies = [
  "cargo_metadata 0.19.2",
  "fs-err",
  "glob",
- "goblin",
+ "goblin 0.8.2",
  "heck 0.5.0",
  "indexmap 2.14.0",
  "once_cell",
