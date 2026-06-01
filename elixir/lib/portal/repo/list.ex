@@ -8,6 +8,14 @@ defmodule Portal.Repo.List do
     {filter, opts} = Keyword.pop(opts, :filter, [])
     {order_by, opts} = Keyword.pop(opts, :order_by, [])
     {paginator_opts, opts} = Keyword.pop(opts, :page, [])
+    {limit, opts} = Keyword.pop(opts, :limit)
+
+    paginator_opts =
+      if limit do
+        Keyword.put_new(paginator_opts, :limit, limit)
+      else
+        paginator_opts
+      end
 
     with {:ok, paginator_opts} <- Paginator.init(query_module, order_by, paginator_opts),
          {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do

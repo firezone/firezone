@@ -138,9 +138,9 @@ defmodule Portal.RepoTest do
       empty_metadata = %Portal.Repo.Paginator.Metadata{limit: 50, count: 0}
 
       assert list(queryable, query_module) == {:ok, [], empty_metadata}
-      assert list(queryable, query_module, limit: 1000) == {:ok, [], empty_metadata}
-      assert list(queryable, query_module, limit: 1) == {:ok, [], empty_metadata}
-      assert list(queryable, query_module, limit: -1) == {:ok, [], empty_metadata}
+      assert list(queryable, query_module, limit: 1000) == {:ok, [], %{empty_metadata | limit: 100}}
+      assert list(queryable, query_module, limit: 1) == {:ok, [], %{empty_metadata | limit: 1}}
+      assert list(queryable, query_module, limit: -1) == {:ok, [], %{empty_metadata | limit: 1}}
     end
 
     test "returns single result if only one record exists", %{
