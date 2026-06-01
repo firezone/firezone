@@ -7,7 +7,6 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
 pub use platform::{
