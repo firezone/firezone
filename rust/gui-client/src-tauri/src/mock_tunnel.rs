@@ -10,6 +10,7 @@
 use crate::{
     ipc,
     service::{ClientMsg, ServerMsg},
+    settings::{AdvancedSettings, MdmSettings},
 };
 use anyhow::Result;
 use connlib_model::{
@@ -69,6 +70,8 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
     ipc_tx
         .send(&ServerMsg::Hello {
             firezone_id: "00000000-0000-0000-0000-000000000000".to_owned(),
+            advanced_settings: AdvancedSettings::default(),
+            mdm_settings: MdmSettings::default(),
         })
         .await?;
 
@@ -86,10 +89,18 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
             ClientMsg::ClearLogs => {
                 ipc_tx.send(&ServerMsg::ClearedLogs(Ok(()))).await?;
             }
+            ClientMsg::ApplyAdvancedSettings(settings) => {
+                ipc_tx
+                    .send(&ServerMsg::AdvancedSettingsApplied(Ok(settings)))
+                    .await?;
+            }
+            ClientMsg::MigrateAdvancedSettings(_) => {
+                ipc_tx
+                    .send(&ServerMsg::AdvancedSettingsMigrated(Ok(())))
+                    .await?;
+            }
             // The real service has no reply for these either.
-            ClientMsg::ApplyLogFilter { .. }
-            | ClientMsg::SetInternetResourceState(_)
-            | ClientMsg::StartTelemetry { .. } => {}
+            ClientMsg::SetInternetResourceState(_) | ClientMsg::StartTelemetry { .. } => {}
             ClientMsg::Panic => panic!("Explicit panic"),
         }
     }
