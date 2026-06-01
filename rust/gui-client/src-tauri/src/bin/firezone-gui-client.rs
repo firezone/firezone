@@ -16,13 +16,26 @@ use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
+#[expect(
+    dead_code,
+    reason = "Variants are held only for their `Drop` side effects."
+)]
+enum LogGuard {
+    /// Pre-settings bootstrap logger: a thread-local default that must
+    /// be dropped before the global GUI logger is installed.
+    Bootstrap(DefaultGuard),
+    /// GUI file logger and log-cleanup thread.
+    Gui(logging::file::Handle, logging::CleanupHandle),
+}
+
 fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    let mut bootstrap_log_guard =
-        Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
+    let mut log_guard = Some(LogGuard::Bootstrap(
+        logging::setup_bootstrap().expect("Failed to setup bootstrap logger"),
+    ));
 
     let cli = Cli::parse();
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
@@ -43,7 +56,7 @@ fn main() -> ExitCode {
         telemetry::GUI_DSN,
     );
 
-    let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
+    let result = try_main(cli, &rt, &mut log_guard, &mut telemetry);
 
     rt.block_on(telemetry.stop());
 
@@ -60,7 +73,7 @@ fn main() -> ExitCode {
 fn try_main(
     cli: Cli,
     rt: &Runtime,
-    bootstrap_log_guard: &mut Option<DefaultGuard>,
+    log_guard: &mut Option<LogGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
@@ -121,13 +134,15 @@ fn try_main(
         .or(mdm_settings.log_filter.clone())
         .unwrap_or_else(|| advanced_settings.log_filter.clone());
 
-    drop(bootstrap_log_guard.take());
+    *log_guard = None;
 
     let logging::Handles {
-        logger: _logger,
+        logger,
         reloader,
-        cleanup: _cleanup,
+        cleanup,
     } = firezone_gui_client::logging::setup_gui(&log_filter)?;
+
+    *log_guard = Some(LogGuard::Gui(logger, cleanup));
 
     match cli.command {
         None if cli.check_elevation() => match elevation::gui_check() {
