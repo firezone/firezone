@@ -94,11 +94,6 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
                     .send(&ServerMsg::AdvancedSettingsApplied(Ok(settings)))
                     .await?;
             }
-            ClientMsg::MigrateAdvancedSettings(_) => {
-                ipc_tx
-                    .send(&ServerMsg::AdvancedSettingsMigrated(Ok(())))
-                    .await?;
-            }
             // The real service has no reply for these either.
             ClientMsg::SetInternetResourceState(_) | ClientMsg::StartTelemetry { .. } => {}
             ClientMsg::Panic => panic!("Explicit panic"),

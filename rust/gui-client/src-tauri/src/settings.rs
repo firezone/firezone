@@ -235,9 +235,11 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
 #[cfg(target_os = "linux")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
-    // Owner + `firezone-client` group rwx, others none. The group also owns
-    // the device-id file in the same directory, which the GUI reads directly.
-    let perms = std::fs::Permissions::from_mode(0o770);
+    // Owner rwx, `firezone-client` group rx, others none. The group also
+    // owns the device-id file in the same directory, which the GUI reads
+    // directly; group write would let any group member replace files
+    // under the dir, defeating the protected-storage goal.
+    let perms = std::fs::Permissions::from_mode(0o750);
     std::fs::set_permissions(dir, perms)?;
     Ok(())
 }
