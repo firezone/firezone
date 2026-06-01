@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!--
+  cargo-wix MSI template for the Firezone GUI client, replacing
+  tauri-bundler's WiX integration. This is the *minimal* first cut
+  brought up on CI: it installs the GUI binary (`Firezone.exe`) and the
+  tunnel binary (`firezone-client-tunnel.exe`) and registers the
+  `firezone-fd0020211111` deep-link scheme. The Windows service
+  install (`service.wxs`), sparse-package MSIX identity
+  (`sparse-package.wxs`), `register-sparse` custom action, and WebView2
+  bootstrapper are layered in across follow-up iterations.
+
+  cargo-wix passes these preprocessor variables to candle:
+    $(var.Version)            crate version
+    $(var.Platform)           x64 / x86 / arm64
+    $(var.Profile)            release / debug
+    $(var.CargoTargetBinDir)  dir holding the built binaries
+-->
+<?if $(var.Platform) = x64 ?>
+  <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?elseif $(var.Platform) = arm64 ?>
+  <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+  <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+      Id="*"
+      Name="Firezone"
+      UpgradeCode="E60F3A1B-7F2E-4C2A-9C4E-2F4B7A6D9E10"
+      Manufacturer="Firezone, Inc."
+      Language="1033"
+      Codepage="1252"
+      Version="$(var.Version)">
+
+    <Package Id="*"
+             Keywords="Installer"
+             Manufacturer="Firezone, Inc."
+             InstallerVersion="450"
+             Languages="1033"
+             Compressed="yes"
+             InstallScope="perMachine"
+             SummaryCodepage="1252" />
+
+    <MajorUpgrade
+        Schedule="afterInstallInitialize"
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
+
+    <Media Id="1" Cabinet="app.cab" EmbedCab="yes" />
+    <Property Id="DiskPrompt" Value="Firezone Installation" />
+
+    <Icon Id="ProductIcon" SourceFile="icons\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+    <Property Id="ARPNOREPAIR" Value="yes" Secure="yes" />
+    <Property Id="ARPURLINFOABOUT" Value="https://www.firezone.dev" />
+    <SetProperty Id="ARPNOMODIFY" Value="1" After="InstallValidate" Sequence="execute" />
+
+    <!-- Remember the install location across upgrades. -->
+    <Property Id="INSTALLDIR">
+      <RegistrySearch Id="PrevInstallDirReg" Root="HKLM"
+                      Key="Software\Firezone, Inc.\Firezone" Name="InstallDir" Type="raw" />
+    </Property>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="$(var.PlatformProgramFilesFolder)" Name="PFiles">
+        <Directory Id="INSTALLDIR" Name="Firezone" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Firezone" />
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <!-- GUI binary; KeyPath for the deep-link registration below.
+           `cargo build` emits `firezone-gui-client.exe`; we install it
+           as `Firezone.exe` to match the tauri-bundler layout. -->
+      <Component Id="GuiExe" Guid="*">
+        <File Id="GuiExe" Name="Firezone.exe"
+              Source="$(var.CargoTargetBinDir)\firezone-gui-client.exe" KeyPath="yes" Checksum="yes" />
+      </Component>
+
+      <!-- Tunnel service binary (service install added in a later iteration). -->
+      <Component Id="TunnelExe" Guid="*">
+        <File Id="TunnelExe" Name="firezone-client-tunnel.exe"
+              Source="$(var.CargoTargetBinDir)\firezone-client-tunnel.exe" KeyPath="yes" />
+      </Component>
+
+      <!-- firezone://-style deep-link scheme registration. -->
+      <Component Id="DeepLinkScheme" Guid="*">
+        <RegistryKey Root="HKLM" Key="Software\Classes\firezone-fd0020211111">
+          <RegistryValue Type="string" Name="URL Protocol" Value="" />
+          <RegistryValue Type="string" Value="URL:dev.firezone.client protocol" />
+          <RegistryKey Key="DefaultIcon">
+            <RegistryValue Type="string" Value="&quot;[!GuiExe]&quot;,0" />
+          </RegistryKey>
+          <RegistryKey Key="shell\open\command">
+            <RegistryValue Type="string" Value="&quot;[!GuiExe]&quot; &quot;%1&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+        <RegistryValue Root="HKLM" Key="Software\Firezone, Inc.\Firezone"
+                       Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+      </Component>
+
+      <Component Id="UninstallShortcut" Guid="*">
+        <Shortcut Id="UninstallShortcut" Name="Uninstall Firezone"
+                  Description="Uninstalls Firezone"
+                  Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]" />
+        <RemoveFolder Id="INSTALLDIR" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Firezone, Inc.\Firezone"
+                       Name="UninstallShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcut" Guid="*">
+        <Shortcut Id="StartMenuShortcut" Name="Firezone" Description="Runs Firezone"
+                  Target="[!GuiExe]" Icon="ProductIcon" WorkingDirectory="INSTALLDIR">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="dev.firezone.client" />
+        </Shortcut>
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Firezone, Inc.\Firezone"
+                       Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="*">
+        <Shortcut Id="DesktopShortcut" Name="Firezone" Description="Runs Firezone"
+                  Target="[!GuiExe]" Icon="ProductIcon" WorkingDirectory="INSTALLDIR" />
+        <RemoveFolder Id="DesktopFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Firezone, Inc.\Firezone"
+                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="MainProgram" Title="Firezone" Level="1" ConfigurableDirectory="INSTALLDIR"
+             Display="expand" AllowAdvertise="no" Absent="disallow">
+      <ComponentRef Id="GuiExe" />
+      <ComponentRef Id="TunnelExe" />
+      <ComponentRef Id="DeepLinkScheme" />
+      <ComponentRef Id="UninstallShortcut" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <UIRef Id="WixUI_InstallDir" />
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLDIR]" After="CostFinalize" />
+  </Product>
+</Wix>
