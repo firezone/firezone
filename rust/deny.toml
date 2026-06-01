@@ -276,6 +276,7 @@ skip = [
     "jni-sys",
     "libloading",
     "linux-raw-sys",
+    "nix",
     "nom",
     "object",
     "png",
