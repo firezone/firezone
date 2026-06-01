@@ -7,18 +7,9 @@
   "proseWrap": "preserve",
   "overrides": [
     {
-      "files": ["swift/apple/*.md", "website/**/*.md", "website/**/*.mdx"],
+      "files": ["swift/apple/*.md"],
       "options": {
         "proseWrap": "always"
-      }
-    },
-    {
-      "files": [
-        "website/src/app/blog/**/*.md",
-        "website/src/app/blog/**/*.mdx"
-      ],
-      "options": {
-        "proseWrap": "preserve"
       }
     }
   ]

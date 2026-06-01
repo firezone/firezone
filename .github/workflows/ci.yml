@@ -133,9 +133,6 @@ jobs:
           if grep -q '^swift/' changed_files.txt; then
             jobs="${jobs},swift"
           fi
-          if grep -q '^website/' changed_files.txt; then
-            jobs="${jobs},codeql"
-          fi
           if grep -q '^scripts/tests/' changed_files.txt; then
             jobs="${jobs},control-plane,data-plane"
           fi

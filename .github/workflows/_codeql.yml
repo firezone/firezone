@@ -19,8 +19,6 @@ jobs:
       matrix:
         include:
           - language: "javascript-typescript"
-            working-directory: "website/"
-          - language: "javascript-typescript"
             working-directory: "elixir/assets/"
           # TODO
           # - language: 'java-kotlin'

@@ -205,6 +205,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
+          # Token scoped to firezone/website (Contents: write + Pull requests:
+          # write), used to open the cross-repo changelog/version PR. If unset,
+          # create-publish-pr.sh falls back to GITHUB_TOKEN above.
+          FIREZONE_BOT_WEBSITE_TOKEN: ${{ secrets.FIREZONE_BOT_WEBSITE_TOKEN }}
 
   create-sentry-release:
     name: create_${{ matrix.component }}_sentry_release
