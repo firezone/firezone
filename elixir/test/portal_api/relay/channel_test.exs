@@ -34,21 +34,17 @@ defmodule PortalAPI.Relay.ChannelTest do
     test "an abnormal channel exit drains the transport so connlib reconnects", %{socket: socket} do
       Process.flag(:trap_exit, true)
 
-      # In ChannelTest the test process is the transport_pid, so a drain message
-      # sent by terminate/2 lands in our mailbox.
+      # In ChannelTest the test process is the transport_pid, so terminate/2's
+      # drain lands in our mailbox.
       assert socket.transport_pid == self()
 
-      # Terminate the channel with an abnormal reason. This runs terminate/2 and
-      # models an in-process crash (in production a Postgrex query raising on
-      # timeout inside a handler exits the channel the same way). The harness
-      # links the channel to us, hence the {:EXIT}.
+      # An abnormal stop runs terminate/2, modeling an in-process crash (e.g. a
+      # Postgrex query raising on timeout). The harness links us, hence {:EXIT}.
       capture_log(fn ->
         GenServer.stop(socket.channel_pid, :boom)
         assert_receive {:EXIT, _pid, :boom}
       end)
 
-      # terminate/2 drained the transport, which closes the whole WebSocket and
-      # forces connlib through a full reconnect.
       assert_receive :socket_drain
     end
 

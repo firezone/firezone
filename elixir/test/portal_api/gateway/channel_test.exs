@@ -218,10 +218,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute :sys.get_state(socket.channel_pid).assigns.session_durability
     end
 
-    # On an abnormal channel exit, terminate/2 drains the transport so connlib
-    # fully reconnects (new transport => new session). These tests inject a
-    # separate trapping process as the transport, because `Phoenix.ChannelTest`
-    # otherwise makes the test process the transport and links the channel to it.
+    # These tests inject a separate trapping process as the transport, because
+    # `Phoenix.ChannelTest` otherwise makes the test process the transport and
+    # links the channel to it.
 
     test "an abnormal channel crash drains the trapping transport", %{
       gateway: gateway,
@@ -232,23 +231,18 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel_with_transport(gateway, site, token, transport)
       channel_pid = socket.channel_pid
 
-      # The harness links the channel to the test process; drop that so the crash
-      # we trigger below doesn't also kill the test.
+      # Drop the harness link so the crash below doesn't kill the test.
       Process.unlink(channel_pid)
       ref = Process.monitor(channel_pid)
 
-      # Terminate the channel with an abnormal reason. In production this is an
-      # in-process exception (typically a Postgrex query raising on timeout)
-      # bubbling out of a handler; that runs terminate/2 with the same kind of
-      # abnormal reason.
+      # An abnormal stop runs terminate/2, modeling an in-process crash (e.g. a
+      # Postgrex query raising on timeout).
       capture_log(fn ->
         GenServer.stop(channel_pid, :boom)
         assert_receive {:DOWN, ^ref, :process, ^channel_pid, :boom}
       end)
 
-      # terminate/2 drained the transport, which closes the WebSocket and forces
-      # connlib through a full reconnect, minting a fresh session id. This is what
-      # keeps the transport:session relationship 1:1.
+      # The drain reaches the real trapping transport, closing the WebSocket.
       assert_receive {:transport_got, :socket_drain}
     end
 

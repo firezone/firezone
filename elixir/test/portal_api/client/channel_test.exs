@@ -335,21 +335,17 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
 
-      # In ChannelTest the test process is the transport_pid, so a drain message
-      # sent by terminate/2 lands in our mailbox.
+      # In ChannelTest the test process is the transport_pid, so terminate/2's
+      # drain lands in our mailbox.
       assert socket.transport_pid == self()
 
-      # Terminate the channel with an abnormal reason. This runs terminate/2 and
-      # models an in-process crash (in production a Postgrex query raising on
-      # timeout inside a handler exits the channel the same way). The harness
-      # links the channel to us, hence the {:EXIT}.
+      # An abnormal stop runs terminate/2, modeling an in-process crash (e.g. a
+      # Postgrex query raising on timeout). The harness links us, hence {:EXIT}.
       capture_log(fn ->
         GenServer.stop(socket.channel_pid, :boom)
         assert_receive {:EXIT, _pid, :boom}
       end)
 
-      # terminate/2 drained the transport, which closes the whole WebSocket and
-      # forces connlib through a full reconnect (new transport => new session).
       assert_receive :socket_drain
     end
 
@@ -7593,23 +7589,18 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel_with_transport(client, subject, transport)
       channel_pid = socket.channel_pid
 
-      # The harness links the channel to the test process; drop that so the crash
-      # we trigger below doesn't also kill the test.
+      # Drop the harness link so the crash below doesn't kill the test.
       Process.unlink(channel_pid)
       ref = Process.monitor(channel_pid)
 
-      # Terminate the channel with an abnormal reason. In production this is an
-      # in-process exception (typically a Postgrex query raising on timeout)
-      # bubbling out of a handler; that runs terminate/2 with the same kind of
-      # abnormal reason.
+      # An abnormal stop runs terminate/2, modeling an in-process crash (e.g. a
+      # Postgrex query raising on timeout).
       capture_log(fn ->
         GenServer.stop(channel_pid, :boom)
         assert_receive {:DOWN, ^ref, :process, ^channel_pid, :boom}
       end)
 
-      # terminate/2 drained the transport, which closes the WebSocket and forces
-      # connlib through a full reconnect, minting a fresh session id. This is what
-      # keeps the transport:session relationship 1:1.
+      # The drain reaches the real trapping transport, closing the WebSocket.
       assert_receive {:transport_got, :socket_drain}
     end
 

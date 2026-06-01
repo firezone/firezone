@@ -24,22 +24,11 @@ defmodule PortalAPI.Relay.Channel do
     end
   end
 
-  # On an abnormal exit we must close the whole WebSocket, not just the channel.
-  # When only the channel dies, presence tracking dies with it, so the portal can
-  # no longer push to this relay. connlib does not notice: a `phx_error` is
-  # ignored, heartbeats still answer on the surviving transport, and connlib only
-  # re-joins reactively (on its next send), leaving an unbounded state-desync
-  # window.
-  #
-  # Draining the transport forces connlib through its full reconnect path, which
-  # re-runs the join and re-establishes presence.
-  #
-  # Graceful stops (`:normal` / `:shutdown` / `{:shutdown, _}`) already send a
-  # `phx_close` that connlib treats as a clean reconnect, so we leave those
-  # alone and only intervene on an abnormal exit. The channel does not trap
-  # exits, so `terminate/2` runs for in-process crashes; an external `:kill`
-  # skips it, but that only happens on node shutdown where the transport is
-  # going down regardless.
+  # On an abnormal exit, drain the whole WebSocket instead of just letting the
+  # channel die. connlib ignores `phx_error` and would keep the transport alive,
+  # re-joining reactively while presence stays dead. Draining forces a full
+  # reconnect that re-runs the join and re-establishes presence. Graceful stops
+  # already send `phx_close`, so we only intervene here.
   @impl true
   def terminate(reason, socket) do
     if abnormal_exit?(reason) do
