@@ -291,9 +291,15 @@ mod imp {
     /// (`ERROR_INSTALL_PACKAGE_NOT_SUPPORTED_ON_FILESYSTEM`) the
     /// next time we try to stage at a different external location.
     ///
-    /// Used by both [`provision`] (to clear stale registrations
-    /// before re-staging at a new path) and [`deprovision`] (as the
-    /// actual uninstall step).
+    /// Best-effort by design: a removal that fails (e.g. a
+    /// pre-existing per-user registration whose backing files are
+    /// gone, returning `PACKAGE_NOT_FOUND`) is logged and skipped
+    /// instead of aborting the rest. Used by both [`provision`] (so
+    /// one broken stale registration doesn't block re-staging) and
+    /// [`deprovision`] (so the uninstall CA never fails the MSI on
+    /// a stale package the kernel can't fully tear down). Failures
+    /// land in `register-sparse.log` and Sentry via the
+    /// `tracing::warn!` → sentry layer.
     fn remove_existing_packages(pm: &PackageManager, pfn: &HSTRING) -> Result<()> {
         let packages: Vec<Package> = pm
             .FindPackagesByPackageFamilyName(pfn)
@@ -301,19 +307,27 @@ mod imp {
             .into_iter()
             .collect();
 
+        let count = packages.len();
         tracing::info!(
             pfn = %pfn.to_string_lossy(),
-            count = packages.len(),
+            count,
             "enumerated existing packages"
         );
 
+        let mut failures = 0;
         for pkg in packages {
-            let full_name = pkg
-                .Id()
-                .context("Package::Id failed")?
-                .FullName()
-                .context("PackageId::FullName failed")?;
-            run_deployment("remove", || {
+            let full_name = match pkg.Id().and_then(|id| id.FullName()) {
+                Ok(name) => name,
+                Err(e) => {
+                    failures += 1;
+                    tracing::warn!(
+                        error = format!("{e:#}"),
+                        "couldn't read PackageId::FullName; skipping"
+                    );
+                    continue;
+                }
+            };
+            let result = run_deployment("remove", || {
                 tracing::info!(
                     package = %full_name.to_string_lossy(),
                     "calling RemovePackageWithOptionsAsync(RemoveForAllUsers)"
@@ -321,9 +335,18 @@ mod imp {
                 Ok(pm
                     .RemovePackageWithOptionsAsync(&full_name, RemovalOptions::RemoveForAllUsers)?
                     .get()?)
-            })?;
+            });
+            if let Err(e) = result {
+                failures += 1;
+                tracing::warn!(
+                    package = %full_name.to_string_lossy(),
+                    error = format!("{e:#}"),
+                    "RemovePackageWithOptionsAsync failed; continuing"
+                );
+            }
         }
 
+        tracing::info!(count, failures, "remove_existing_packages finished");
         Ok(())
     }
 
