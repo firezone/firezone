@@ -96,6 +96,7 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash
         run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
@@ -127,6 +128,7 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/free-disk-space
       - name: Tunnel proptest
         id: proptest
         shell: bash
