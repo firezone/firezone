@@ -2,8 +2,7 @@ use crate::{
     ipc::{self, SocketId},
     logging,
     settings::{
-        AdvancedSettings, MdmSettings, advanced_settings_path, load_advanced_settings,
-        load_mdm_settings, save_advanced,
+        AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
     },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
@@ -67,10 +66,6 @@ pub enum ClientMsg {
     /// Persist new advanced settings to the protected on-disk file owned by
     /// the Tunnel service and reload the log filter.
     ApplyAdvancedSettings(AdvancedSettings),
-    /// One-shot migration of the legacy user-side `advanced_settings.json`
-    /// into the protected file. Refused if the protected file already exists.
-    // TODO: remove once all clients have migrated.
-    MigrateAdvancedSettings(AdvancedSettings),
     SetInternetResourceState(bool),
     StartTelemetry {
         environment: String,
@@ -91,12 +86,6 @@ where
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
-    /// First message sent on every IPC connection.
-    ///
-    /// Includes the Firezone ID, the current advanced settings, and the
-    /// machine-scope MDM settings so the GUI doesn't need to read the
-    /// protected on-disk files or the registry itself — those are owned
-    /// exclusively by the privileged Tunnel service.
     Hello {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
@@ -120,10 +109,6 @@ pub enum ServerMsg {
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
-    /// Result of a `MigrateAdvancedSettings`. The GUI uses this to decide
-    /// whether to delete the legacy user-side file.
-    // TODO: remove once all clients have migrated.
-    AdvancedSettingsMigrated(Result<(), String>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -377,7 +362,7 @@ impl<'a> Handler<'a> {
 
         let advanced_settings = load_advanced_settings()
             .inspect_err(|e| {
-                tracing::warn!("Failed to load advanced settings, using defaults: {e:#}")
+                tracing::debug!("Failed to load advanced settings, using defaults: {e:#}")
             })
             .ok()
             .unwrap_or_default();
@@ -664,31 +649,6 @@ impl<'a> Handler<'a> {
                     }
                 };
                 self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
-                    .await?;
-            }
-            ClientMsg::MigrateAdvancedSettings(legacy) => {
-                let path = advanced_settings_path()?;
-                let response = if path.exists() {
-                    Err("advanced_settings.json already present; skipping migration".to_string())
-                } else {
-                    match save_advanced(&legacy).await {
-                        Ok(()) => {
-                            if let Err(e) = self.log_filter_reloader.reload(&legacy.log_filter) {
-                                tracing::warn!(
-                                    log_filter = %legacy.log_filter,
-                                    "Failed to reload log filter after migration: {e:#}"
-                                );
-                            }
-                            self.advanced_settings = legacy;
-                            Ok(())
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to migrate advanced settings: {e:#}");
-                            Err(format!("{e:#}"))
-                        }
-                    }
-                };
-                self.send_ipc(ServerMsg::AdvancedSettingsMigrated(response))
                     .await?;
             }
             ClientMsg::SetInternetResourceState(state) => {

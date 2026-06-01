@@ -429,11 +429,6 @@ impl<I: GuiIntegration> Controller<I> {
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
-        self.telemetry
-            .lock()
-            .await
-            .start(&environment, crate::RELEASE, telemetry::GUI_DSN);
-
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
         }
@@ -441,6 +436,11 @@ impl<I: GuiIntegration> Controller<I> {
         if !self.telemetry_allowed {
             return Ok(());
         }
+
+        self.telemetry
+            .lock()
+            .await
+            .start(&environment, crate::RELEASE, telemetry::GUI_DSN);
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
             environment: environment.clone(),
@@ -475,9 +475,6 @@ impl<I: GuiIntegration> Controller<I> {
 
         match req {
             ApplyAdvancedSettings(settings) => {
-                // The Tunnel service owns the on-disk file. We send the new
-                // values and wait for `AdvancedSettingsApplied` to land in
-                // `handle_service_ipc_msg` before updating local state.
                 self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(*settings))
                     .await?;
             }
@@ -742,17 +739,7 @@ impl<I: GuiIntegration> Controller<I> {
                 {
                     tracing::warn!("Failed to reload GUI log filter: {e:#}");
                 }
-                // The protected store is now authoritative, so any stale legacy
-                // file in the user-writable settings dir can be removed.
-                if let Ok(path) = legacy_user_advanced_settings_path()
-                    && path.exists()
-                    && let Err(e) = std::fs::remove_file(&path)
-                {
-                    tracing::debug!(
-                        path = %path.display(),
-                        "Failed to delete legacy advanced_settings: {e:#}"
-                    );
-                }
+                maybe_delete_legacy_config();
                 self.notify_settings_changed()?;
                 self.refresh_ui_state();
                 let _ = self.integration.show_notification("Settings saved", "")?;
@@ -762,42 +749,6 @@ impl<I: GuiIntegration> Controller<I> {
                 let _ = self
                     .integration
                     .show_notification("Failed to save settings", &err)?;
-            }
-            service::ServerMsg::AdvancedSettingsMigrated(result) => {
-                let path = match legacy_user_advanced_settings_path() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        tracing::warn!("Cannot compute legacy advanced_settings path: {e:#}");
-                        return Ok(ControlFlow::Continue(()));
-                    }
-                };
-                match result {
-                    Ok(()) => {
-                        tracing::info!(
-                            "Migrated legacy advanced_settings.json into protected store"
-                        );
-                        if let Err(e) = std::fs::remove_file(&path) {
-                            tracing::warn!(
-                                path = %path.display(),
-                                "Failed to delete legacy advanced_settings.json after migration: {e}"
-                            );
-                        }
-                    }
-                    Err(msg) if msg.contains("already present") => {
-                        // Protected file wins. Drop the dead legacy file.
-                        if let Err(e) = std::fs::remove_file(&path) {
-                            tracing::warn!(
-                                path = %path.display(),
-                                "Failed to delete redundant legacy advanced_settings.json: {e}"
-                            );
-                        }
-                    }
-                    Err(msg) => {
-                        tracing::warn!(
-                            "Tunnel service refused to migrate advanced_settings: {msg}"
-                        );
-                    }
-                }
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
@@ -1136,6 +1087,25 @@ fn legacy_user_advanced_settings_path() -> Result<PathBuf> {
         .join("advanced_settings.json"))
 }
 
+/// Best-effort cleanup of the legacy user-writable `advanced_settings.json`.
+/// The protected service-side file is the authoritative source once any
+/// settings have been applied.
+// TODO: remove once all clients have migrated.
+fn maybe_delete_legacy_config() {
+    let Ok(path) = legacy_user_advanced_settings_path() else {
+        return;
+    };
+    if !path.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::remove_file(&path) {
+        tracing::debug!(
+            path = %path.display(),
+            "Failed to delete legacy advanced_settings: {e:#}"
+        );
+    }
+}
+
 /// If the legacy user-side `advanced_settings.json` exists, ask the Tunnel
 /// service to import it. The GUI deletes the legacy file once it gets a
 /// successful (or "already present") reply.
@@ -1167,7 +1137,7 @@ async fn request_legacy_advanced_settings_migration(
         }
     };
     if let Err(e) = ipc_client
-        .send(&service::ClientMsg::MigrateAdvancedSettings(legacy))
+        .send(&service::ClientMsg::ApplyAdvancedSettings(legacy))
         .await
     {
         tracing::warn!("Failed to send legacy advanced_settings migration: {e:#}");
@@ -1326,9 +1296,7 @@ mod tests {
         resources: Vec<ResourceView>,
     ) {
         mock_tunnel.send_hello().await;
-        mock_tunnel.rx_start_telemetry().await;
         test_controller.sign_in().await;
-        mock_tunnel.rx_start_telemetry().await;
         mock_tunnel.start_ok().await;
         mock_tunnel.send_resources(resources).await;
     }
@@ -1542,14 +1510,6 @@ mod tests {
                 .unwrap();
         }
 
-        async fn rx_start_telemetry(&mut self) {
-            let msg = self.rx.next().await.unwrap().unwrap();
-            assert!(
-                matches!(msg, service::ClientMsg::StartTelemetry { .. }),
-                "expected `StartTelemetry` but got {msg:?}"
-            );
-        }
-
         async fn start_ok(&mut self) {
             let msg = self.rx.next().await.unwrap().unwrap();
             assert!(
@@ -1588,22 +1548,8 @@ mod tests {
         }
     }
 
-    /// Install rustls' crypto provider exactly once. `main` does this in
-    /// production; tests need their own setup before the controller's
-    /// `update_telemetry_context` triggers `sentry::init`, which builds a
-    /// `reqwest` client that panics without a provider.
-    fn install_crypto_provider() {
-        use std::sync::Once;
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
-
     impl Controller<Arc<Mutex<MockIntegration>>> {
         fn start_for_test() -> TestController {
-            install_crypto_provider();
-
             let tunnel_id = rand::random::<u32>();
             let gui_id = rand::random::<u32>();
 
@@ -1622,7 +1568,7 @@ mod tests {
                 ctrl_rx,
                 GeneralSettings::default(),
                 log_filter_reloader,
-                true,
+                false,
                 Arc::new(tokio::sync::Mutex::new(Telemetry::disabled())),
                 updates_rx,
                 gui_ipc_server,
