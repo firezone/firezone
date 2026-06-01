@@ -4,7 +4,10 @@
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 use url::Url;
 
 #[cfg(target_os = "linux")]
@@ -160,10 +163,38 @@ impl Default for AdvancedSettings {
     }
 }
 
+pub fn advanced_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::tunnel_service_config()
+        .context("`known_dirs::tunnel_service_config` failed")?
+        .join("advanced_settings.json"))
+}
+
 pub fn general_settings_path() -> Result<PathBuf> {
     Ok(known_dirs::settings()
         .context("`known_dirs::settings` failed")?
         .join("general_settings.json"))
+}
+
+/// Saves the advanced settings to disk
+///
+/// Owned exclusively by the privileged Tunnel service. The file lives in
+/// `tunnel_service_config()` with restrictive permissions so that other
+/// processes running as the same desktop user cannot rewrite values like
+/// `auth_url` to redirect the next sign-in to an attacker-controlled backend.
+pub async fn save_advanced(settings: &AdvancedSettings) -> Result<()> {
+    let path = advanced_settings_path()?;
+    let dir = path
+        .parent()
+        .context("settings path should have a parent")?;
+
+    tokio::fs::create_dir_all(dir).await?;
+    set_dir_permissions(dir)?;
+    tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
+    set_file_permissions(&path)?;
+
+    tracing::debug!(?path, "Saved settings");
+
+    Ok(())
 }
 
 /// Saves the general settings to disk
@@ -181,6 +212,16 @@ pub async fn save_general(settings: &GeneralSettings) -> Result<()> {
     Ok(())
 }
 
+/// Return advanced settings if they're stored on disk
+///
+/// Uses std::fs, so stick it in `spawn_blocking` for async contexts
+pub fn load_advanced_settings() -> Result<AdvancedSettings> {
+    let path = advanced_settings_path()?;
+    let text = std::fs::read_to_string(path)?;
+    let settings = serde_json::from_str(&text)?;
+    Ok(settings)
+}
+
 /// Return general settings if they're stored on disk
 ///
 /// Uses std::fs, so stick it in `spawn_blocking` for async contexts
@@ -189,4 +230,65 @@ pub fn load_general_settings() -> Result<GeneralSettings> {
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
+}
+
+#[cfg(target_os = "linux")]
+fn set_dir_permissions(dir: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    // Owner + `firezone-client` group rwx, others none. The group also owns
+    // the device-id file in the same directory, which the GUI reads directly.
+    let perms = std::fs::Permissions::from_mode(0o770);
+    std::fs::set_permissions(dir, perms)?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn set_dir_permissions(dir: &Path) -> Result<()> {
+    windows_security::SecurityDescriptor::from_sddl(DIR_SDDL)?.apply_to_path(dir)
+}
+
+/// SDDL for the Tunnel service config directory.
+///
+/// Mirrors `bin_shared::device_id`. `D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`:
+/// - `D:P` — protected DACL (don't inherit ACEs from the parent).
+/// - `A;OICI;FA;;;SY` — Allow Full Access to LocalSystem with Object +
+///   Container inheritance.
+/// - `A;OICI;FA;;;BA` — Allow Full Access to BUILTIN\Administrators with
+///   the same inheritance.
+#[cfg(target_os = "windows")]
+const DIR_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[expect(clippy::unnecessary_wraps)]
+fn set_dir_permissions(_: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn set_file_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    // Owner rw, group nothing, others nothing. Stricter than `firezone-id.json`
+    // (`0o640`) because the GUI never reads this file -- it receives the values
+    // over IPC.
+    let perms = std::fs::Permissions::from_mode(0o600);
+    std::fs::set_permissions(path, perms)?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn set_file_permissions(path: &Path) -> Result<()> {
+    windows_security::SecurityDescriptor::from_sddl(FILE_SDDL)?.apply_to_path(path)
+}
+
+/// SDDL for the on-disk `advanced_settings.json` file.
+///
+/// `D:P(A;;FA;;;SY)(A;;FA;;;BA)` -- protected DACL, Full Access to
+/// LocalSystem and BUILTIN\Administrators only.
+#[cfg(target_os = "windows")]
+const FILE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[expect(clippy::unnecessary_wraps)]
+fn set_file_permissions(_: &Path) -> Result<()> {
+    Ok(())
 }

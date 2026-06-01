@@ -1,8 +1,10 @@
 use crate::{
-    advanced_settings,
     ipc::{self, SocketId},
     logging,
-    settings::{AdvancedSettings, MdmSettings, load_mdm_settings},
+    settings::{
+        AdvancedSettings, MdmSettings, advanced_settings_path, load_advanced_settings,
+        load_mdm_settings, save_advanced,
+    },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use backoff::ExponentialBackoffBuilder;
@@ -172,7 +174,7 @@ async fn ipc_listen(
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
     }
 
-    if let Ok(Some(stored)) = advanced_settings::load()
+    if let Ok(stored) = load_advanced_settings()
         && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
     {
         tracing::warn!("Failed to apply stored log filter: {e:#}");
@@ -373,12 +375,11 @@ impl<'a> Handler<'a> {
             .context("Failed to initialize network change monitor")?
             .boxed();
 
-        let advanced_settings = advanced_settings::load()
+        let advanced_settings = load_advanced_settings()
             .inspect_err(|e| {
                 tracing::warn!("Failed to load advanced settings, using defaults: {e:#}")
             })
             .ok()
-            .flatten()
             .unwrap_or_default();
 
         // Migrate any per-user MDM policy into the machine-scope location before
@@ -651,38 +652,26 @@ impl<'a> Handler<'a> {
                 // Validate the log filter before persisting so we never write an
                 // unparsable value to disk or report a misleading "saved" to the GUI.
                 let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
-                    tracing::warn!(
-                        log_filter = %new.log_filter,
-                        "Rejected advanced settings with invalid log filter: {e:#}"
-                    );
                     Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
                 } else {
-                    match advanced_settings::save(&new) {
+                    match save_advanced(&new).await {
                         Ok(()) => {
-                            if let Err(e) = self.log_filter_reloader.reload(&new.log_filter) {
-                                tracing::warn!(
-                                    log_filter = %new.log_filter,
-                                    "Failed to reload log filter: {e:#}"
-                                );
-                            }
+                            let _ = self.log_filter_reloader.reload(&new.log_filter);
                             self.advanced_settings = new.clone();
                             Ok(new)
                         }
-                        Err(e) => {
-                            tracing::warn!("Failed to save advanced settings: {e:#}");
-                            Err(format!("{e:#}"))
-                        }
+                        Err(e) => Err(format!("{e:#}")),
                     }
                 };
                 self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
                     .await?;
             }
             ClientMsg::MigrateAdvancedSettings(legacy) => {
-                let path = advanced_settings::path()?;
+                let path = advanced_settings_path()?;
                 let response = if path.exists() {
                     Err("advanced_settings.json already present; skipping migration".to_string())
                 } else {
-                    match advanced_settings::save(&legacy) {
+                    match save_advanced(&legacy).await {
                         Ok(()) => {
                             if let Err(e) = self.log_filter_reloader.reload(&legacy.log_filter) {
                                 tracing::warn!(

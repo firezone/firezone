@@ -33,12 +33,6 @@ pub mod platform;
 /// deep link registration, etc.
 const BUNDLE_ID: &str = "dev.firezone.client";
 
-pub fn tunnel_advanced_settings() -> Result<PathBuf> {
-    Ok(tunnel_service_config()
-        .context("Failed to compute `tunnel_service_config` directory")?
-        .join("advanced_settings.json"))
-}
-
 /// Returns the default path for storing the authentication token
 ///
 /// This is used by the headless client to store tokens persistently on disk.
