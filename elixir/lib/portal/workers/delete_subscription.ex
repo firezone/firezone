@@ -9,7 +9,7 @@ defmodule Portal.Workers.DeleteSubscription do
     max_attempts: 5,
     unique: [
       period: :infinity,
-      states: [:available, :executing, :retryable],
+      states: :incomplete,
       keys: [:customer_id]
     ]
 

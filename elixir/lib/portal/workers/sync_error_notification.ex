@@ -13,7 +13,7 @@ defmodule Portal.Workers.SyncErrorNotification do
   use Oban.Worker,
     queue: :sync_error_notifications,
     max_attempts: 3,
-    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
+    unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Entra
   alias Portal.Google

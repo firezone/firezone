@@ -10,7 +10,7 @@ defmodule Portal.Workers.CheckAccountLimits do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
+    unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Account
   alias Portal.Billing
