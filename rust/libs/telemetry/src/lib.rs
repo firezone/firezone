@@ -18,6 +18,7 @@ use sentry::{
     transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
+use smallvec::SmallVec;
 
 pub mod analytics;
 pub mod feature_flags;
@@ -479,17 +480,11 @@ fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
 fn insert_feature_flags_into_event(mut event: Event<'static>) -> Event<'static> {
     // Re-emit the current flag state as Sentry's standard "flags" context shape
     // so issue pages surface the flags that were active when the event was sent.
-    #[derive(serde::Serialize)]
-    struct SentryFlag {
-        flag: &'static str,
-        result: bool,
-    }
-
-    let values = feature_flags::current()
+    let values: SmallVec<[serde_json::Value; 16]> = feature_flags::current()
         .into_iter()
-        .map(|(flag, result)| SentryFlag { flag, result })
-        .collect::<Vec<_>>();
-    let value = serde_json::json!({ "values": values });
+        .map(|(flag, result)| serde_json::json!({ "flag": flag, "result": result }))
+        .collect();
+    let value = serde_json::json!({ "values": values.as_slice() });
     let context = sentry::protocol::Context::Other(
         serde_json::from_value(value).expect("to and from json works"),
     );

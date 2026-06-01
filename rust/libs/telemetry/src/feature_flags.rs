@@ -61,8 +61,34 @@ pub fn show_connected_devices() -> bool {
 }
 
 /// The current value of every feature flag, by name.
-pub(crate) fn current() -> [(&'static str, bool); 6] {
-    flag_pairs(FEATURE_FLAGS.snapshot())
+pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
+    // Exhaustive destruction so we don't forget to update this when we add a flag.
+    let FeatureFlagsResponse {
+        icmp_unreachable_instead_of_nat64,
+        drop_llmnr_nxdomain_responses,
+        stream_logs,
+        icmp_error_unreachable_prohibited_create_new_flow,
+        stream_metrics,
+        show_connected_devices,
+    } = FEATURE_FLAGS.snapshot();
+
+    [
+        (
+            "icmp_unreachable_instead_of_nat64",
+            icmp_unreachable_instead_of_nat64,
+        ),
+        (
+            "drop_llmnr_nxdomain_responses",
+            drop_llmnr_nxdomain_responses,
+        ),
+        ("stream_logs", stream_logs),
+        (
+            "icmp_error_unreachable_prohibited_create_new_flow",
+            icmp_error_unreachable_prohibited_create_new_flow,
+        ),
+        ("stream_metrics", stream_metrics),
+        ("show_connected_devices", show_connected_devices),
+    ]
 }
 
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
@@ -305,36 +331,6 @@ fn env_or(key: &str, fallback: bool) -> bool {
         .unwrap_or(fallback)
 }
 
-fn flag_pairs(flags: FeatureFlagsResponse) -> [(&'static str, bool); 6] {
-    // Exhaustive destruction so we don't forget to update this when we add a flag.
-    let FeatureFlagsResponse {
-        icmp_unreachable_instead_of_nat64,
-        drop_llmnr_nxdomain_responses,
-        stream_logs,
-        icmp_error_unreachable_prohibited_create_new_flow,
-        stream_metrics,
-        show_connected_devices,
-    } = flags;
-
-    [
-        (
-            "icmp_unreachable_instead_of_nat64",
-            icmp_unreachable_instead_of_nat64,
-        ),
-        (
-            "drop_llmnr_nxdomain_responses",
-            drop_llmnr_nxdomain_responses,
-        ),
-        ("stream_logs", stream_logs),
-        (
-            "icmp_error_unreachable_prohibited_create_new_flow",
-            icmp_error_unreachable_prohibited_create_new_flow,
-        ),
-        ("stream_metrics", stream_metrics),
-        ("show_connected_devices", show_connected_devices),
-    ]
-}
-
 struct LogFilter {
     directives: String,
     targets: Targets,
@@ -392,20 +388,5 @@ mod tests {
         let filter = LogFilter::parse("\"debug,is::ice_::pair=trace\"".to_owned());
 
         assert_eq!(filter.directives, "debug,is::ice_::pair=trace");
-    }
-
-    #[test]
-    fn flag_pairs_reflect_state() {
-        let flags = FeatureFlagsResponse {
-            stream_metrics: true,
-            show_connected_devices: true,
-            ..Default::default()
-        };
-
-        let pairs = flag_pairs(flags);
-
-        assert!(pairs.contains(&("stream_metrics", true)));
-        assert!(pairs.contains(&("show_connected_devices", true)));
-        assert!(pairs.contains(&("drop_llmnr_nxdomain_responses", false)));
     }
 }
