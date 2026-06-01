@@ -3,7 +3,8 @@ defmodule Portal.Telemetry.Sentry do
     # This happens when libcluster loses connection to a node, which is normal during deploys.
     ~r/Node ~p not responding \*\*~n\*\* Removing \(timedout\) connection/,
     ~r/\[libcluster:default\] unable to connect to/,
-    ~r/^'global' at node '.+' disconnected node '.+' in order to prevent overlapping partitions$/
+    ~r/^'global' at node '.+' disconnected node '.+' in order to prevent overlapping partitions$/,
+    ~r/^'global' at node '.+' requested disconnect from node '.+' in order to prevent overlapping partitions$/
   ]
 
   def before_send(%{original_exception: %{skip_sentry: skip_sentry}}) when skip_sentry do
