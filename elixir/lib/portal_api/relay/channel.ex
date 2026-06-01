@@ -6,9 +6,6 @@ defmodule PortalAPI.Relay.Channel do
 
   @impl true
   def join("relay", %{"stamp_secret" => stamp_secret}, socket) do
-    # If we crash, take the transport process down with us since connlib expects the WebSocket to close on error
-    Process.link(socket.transport_pid)
-
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
@@ -25,6 +22,20 @@ defmodule PortalAPI.Relay.Channel do
 
       {:ok, socket}
     end
+  end
+
+  # On an abnormal exit, drain the whole WebSocket instead of just letting the
+  # channel die. connlib ignores `phx_error` and would keep the transport alive,
+  # re-joining reactively while presence stays dead. Draining forces a full
+  # reconnect that re-runs the join and re-establishes presence. Graceful stops
+  # already send `phx_close`, so we only intervene here.
+  @impl true
+  def terminate(reason, socket) do
+    if abnormal_exit?(reason) do
+      send(socket.transport_pid, :socket_drain)
+    end
+
+    :ok
   end
 
   @impl true
@@ -54,4 +65,9 @@ defmodule PortalAPI.Relay.Channel do
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
+
+  defp abnormal_exit?(:normal), do: false
+  defp abnormal_exit?(:shutdown), do: false
+  defp abnormal_exit?({:shutdown, _reason}), do: false
+  defp abnormal_exit?(_reason), do: true
 end

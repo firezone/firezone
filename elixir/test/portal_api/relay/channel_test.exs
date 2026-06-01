@@ -1,6 +1,7 @@
 defmodule PortalAPI.Relay.ChannelTest do
   use PortalAPI.ChannelCase, async: true
 
+  import ExUnit.CaptureLog
   import Portal.RelayFixtures
   import Portal.TokenFixtures
 
@@ -30,17 +31,32 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert %{metas: [%{ipv4: _, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
     end
 
-    test "channel crash takes down the transport", %{socket: socket} do
+    test "an abnormal channel exit drains the transport so connlib reconnects", %{socket: socket} do
       Process.flag(:trap_exit, true)
 
-      # In tests, we (the test process) are the transport_pid
+      # In ChannelTest the test process is the transport_pid, so terminate/2's
+      # drain lands in our mailbox.
       assert socket.transport_pid == self()
 
-      # Kill the channel - we receive EXIT because we're linked
-      Process.exit(socket.channel_pid, :shutdown)
+      # An abnormal stop runs terminate/2, modeling an in-process crash (e.g. a
+      # Postgrex query raising on timeout). The harness links us, hence {:EXIT}.
+      capture_log(fn ->
+        GenServer.stop(socket.channel_pid, :boom)
+        assert_receive {:EXIT, _pid, :boom}
+      end)
 
-      assert_receive {:EXIT, pid, :shutdown}
-      assert pid == socket.channel_pid
+      assert_receive :socket_drain
+    end
+
+    test "a graceful channel stop does NOT drain the transport", %{socket: socket} do
+      Process.flag(:trap_exit, true)
+      assert socket.transport_pid == self()
+
+      # A :shutdown stop already sends phx_close, which connlib treats as a clean
+      # reconnect, so terminate/2 must NOT additionally drain the transport.
+      GenServer.stop(socket.channel_pid, :shutdown)
+
+      refute_receive :socket_drain
     end
 
     test "sends init message after join" do
