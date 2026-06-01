@@ -40,7 +40,7 @@ fn main() -> Result<()> {
         println!("cargo:rerun-if-changed=win_files/Firezone.exe.manifest.rc");
     }
 
-    println!("cargo:rerun-if-changed=../website/public/policy-templates/windows/firezone.admx");
+    println!("cargo:rerun-if-changed=../policy-templates/windows/firezone.admx");
 
     let pfn = format!("{PACKAGE_NAME}_{}", publisher_id(PUBLISHER_DN));
     println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");

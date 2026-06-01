@@ -6,9 +6,6 @@ kotlin/android/app/build
 kotlin/android/.gradle
 kotlin/android/.kotlin
 kotlin/android/build
-website/node_modules
-website/.next
-website/timestamps.json
 **/*.sh
 **/*.ex
 **/*.rs

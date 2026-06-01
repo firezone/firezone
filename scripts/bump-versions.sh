@@ -13,6 +13,26 @@ else
     SEDARG=(-i)
 fi
 
+# Path to a `firezone/website` checkout. Only needed for `bump_website`, which
+# updates the changelog and displayed version markers that live in the website
+# repo (the website was split out of this monorepo). The release pipeline clones
+# the website and points this at it; see scripts/create-publish-pr.sh.
+WEBSITE_DIR="${WEBSITE_DIR:-}"
+
+# Version source of truth. These are managed by `update_version_variables`
+# (invoked from scripts/create-publish-pr.sh during a release) and consumed by
+# both the monorepo bump (`version`) and the website bump (`bump_website`).
+current_apple_client_version="1.5.15"
+next_apple_client_version="1.5.16"
+current_android_client_version="1.5.10"
+next_android_client_version="1.5.11"
+current_gui_client_version="1.5.12"
+next_gui_client_version="1.5.13"
+current_headless_client_version="1.5.8"
+next_headless_client_version="1.5.9"
+current_gateway_version="1.5.2"
+next_gateway_version="1.5.3"
+
 function cargo_update_workspace() {
     pushd rust >/dev/null
     cargo update --workspace
@@ -43,14 +63,20 @@ function update_changelog() {
     " "$changelog_file"
 }
 
-function update_version_marker() {
-    local marker="$1"
-    local new_version="$2"
+# Update a `mark:`-annotated version, searching tracked files under $root.
+function update_marker_in() {
+    local root="$1"
+    local marker="$2"
+    local new_version="$3"
 
     # Use git grep to find files containing the marker (much faster and git-aware)
-    git grep -l "$marker" 2>/dev/null | while IFS= read -r file; do
-        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/g;}" "$file"
+    git -C "$root" grep -l "$marker" 2>/dev/null | while IFS= read -r file; do
+        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/g;}" "$root/$file"
     done
+}
+
+function update_version_marker() {
+    update_marker_in "." "$1" "$2"
 }
 
 function update_gateway_checksum_marker() {
@@ -123,14 +149,12 @@ function update_version_variables() {
 #    DISABLED.
 # 3. Once *both* are approved, publish them in the app stores.
 # 4. Publish the macOS standalone drafted release on GitHub.
-# 5. Come back here and bump the current and next versions.
+# 5. Bump current_apple_client_version / next_apple_client_version at the top
+#    of this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.15"
-    next_apple_client_version="1.5.16"
-
-    update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     update_version_marker "mark:current-apple-version" "$current_apple_client_version"
     update_version_marker "mark:next-apple-version" "$next_apple_client_version"
 
@@ -157,14 +181,12 @@ function apple() {
 #    release.
 # 4. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
-# 5. Come back here and bump the current and next versions.
+# 5. Bump current_android_client_version / next_android_client_version at the
+#    top of this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.10"
-    next_android_client_version="1.5.11"
-
-    update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
     update_version_marker "mark:current-android-version" "$current_android_client_version"
     update_version_marker "mark:next-android-version" "$next_android_client_version"
 
@@ -180,14 +202,12 @@ function android() {
 #    the drafted release on GitHub.
 # 2. Perform any final QA testing on the new release assets, then publish the
 #    release.
-# 3. Come back here and bump the current and next versions.
+# 3. Bump current_gui_client_version / next_gui_client_version at the top of
+#    this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.12"
-    next_gui_client_version="1.5.13"
-
-    update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     update_version_marker "mark:current-gui-version" "$current_gui_client_version"
     update_version_marker "mark:next-gui-version" "$next_gui_client_version"
 
@@ -202,14 +222,12 @@ function gui() {
 # Instructions:
 # 1. Perform any final QA testing on the new release assets, then publish the
 #    drafted release.
-# 2. Come back here and bump the current and next versions.
+# 2. Bump current_headless_client_version / next_headless_client_version at the
+#    top of this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.8"
-    next_headless_client_version="1.5.9"
-
-    update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     update_version_marker "mark:current-headless-version" "$current_headless_client_version"
     update_version_marker "mark:next-headless-version" "$next_headless_client_version"
 
@@ -224,26 +242,52 @@ function headless() {
 # Instructions:
 # 1. Perform any final QA testing on the new release assets, then publish the
 #    drafted release.
-# 2. Come back here and bump the current and next versions.
+# 2. Bump current_gateway_version / next_gateway_version at the top of this
+#    script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.5.2"
-    next_gateway_version="1.5.3"
-
-    update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     update_version_marker "mark:current-gateway-version" "$current_gateway_version"
     update_version_marker "mark:next-gateway-version" "$next_gateway_version"
 
     cargo_update_workspace
 }
 
+# Bump versions across the monorepo (product version markers + Cargo.lock).
 function version() {
     apple
     android
     gui
     headless
     gateway
+}
+
+# Bump the changelog entries and displayed version markers that live in the
+# `firezone/website` repo. Operates on the checkout pointed to by $WEBSITE_DIR.
+# Run from scripts/create-publish-pr.sh, which opens the resulting PR.
+function bump_website() {
+    if [ -z "$WEBSITE_DIR" ]; then
+        echo "WEBSITE_DIR must point to a firezone/website checkout" >&2
+        exit 1
+    fi
+
+    update_changelog "$WEBSITE_DIR/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
+    update_changelog "$WEBSITE_DIR/src/components/Changelog/Android.tsx" "$current_android_client_version"
+    update_changelog "$WEBSITE_DIR/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
+    update_changelog "$WEBSITE_DIR/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
+    update_changelog "$WEBSITE_DIR/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
+
+    update_marker_in "$WEBSITE_DIR" "mark:current-apple-version" "$current_apple_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:next-apple-version" "$next_apple_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:current-android-version" "$current_android_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:next-android-version" "$next_android_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:current-gui-version" "$current_gui_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:next-gui-version" "$next_gui_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:current-headless-version" "$current_headless_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:next-headless-version" "$next_headless_client_version"
+    update_marker_in "$WEBSITE_DIR" "mark:current-gateway-version" "$current_gateway_version"
+    update_marker_in "$WEBSITE_DIR" "mark:next-gateway-version" "$next_gateway_version"
 }
 
 if [ "$#" -eq 0 ]; then

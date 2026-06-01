@@ -1,7 +1,9 @@
 # Maintainer's Guide
 
 This document contains instructions for maintaining the code in this repo
-including the product, website, and documentation.
+including the product and its documentation. The marketing website and product
+docs live in the separate [firezone/website](https://github.com/firezone/website)
+repository.
 
 Table of Contents:
 
@@ -30,15 +32,12 @@ Given that `main` is tested:
 1. Double-check that the assets attached are from a recent CI and include the
    correct changes.
 1. Publish the release. Tags and release name should be auto generated. This will trigger pushing Docker images to `ghcr.io`.
-1. Open a PR and make the following changes:
-1. Update [scripts/bump-versions.sh](../scripts/bump-versions.sh) with the new version number(s). Run `scripts/bump-versions.sh` to propagate the versions all components.
-1. Update the Changelog (e.g. `../website/src/components/Changelog/GUI.tsx`) with:
-   1. New version numbers
-   1. Release notes
-   1. Release date
-   1. Empty draft entry
-1. Update the known issues in `website/src/app/kb/client-apps/*`
-1. When the PR merges, the website will now redirect to the new version(s).
+1. Publishing the release triggers the `Publish release` workflow ([.github/workflows/publish-release.yml](../.github/workflows/publish-release.yml)), which opens two version-bump PRs automatically:
+   1. In this repo: propagates the new version across the product via `scripts/bump-versions.sh`.
+   1. In [firezone/website](https://github.com/firezone/website): converts the component's `<Unreleased>` changelog section into a dated entry and updates the displayed version markers (`src/app/api/releases/route.ts`, `redirects.js`).
+1. Review and merge both PRs. Edit the release notes in the website PR's changelog entry if the drafted notes need changes.
+1. Update the known issues in `firezone/website` under `src/app/kb/client-apps/*` as needed.
+1. When the website PR merges and deploys, the site redirects to the new version(s).
 
 This results in a gap where GitHub knows about the release but nobody else does.
 This is okay because we can undo the GitHub release, and it prevents any queued PRs

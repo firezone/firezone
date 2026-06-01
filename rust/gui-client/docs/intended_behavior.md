@@ -4,7 +4,7 @@ A less exhaustive version of [Manual Testing](manual_testing.md)
 
 ## Smoke test checklist (Ubuntu)
 
-Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/client-apps/linux-gui-client`
+Keep this synchronized with the Linux GUI docs in firezone/website at `src/app/kb/client-apps/linux-gui-client`
 
 Best performed on a clean VM
 
@@ -45,7 +45,7 @@ Best performed on a clean VM
 
 ## Smoke test checklist (Windows)
 
-Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-gui-client`
+Keep this synchronized with the Windows GUI docs in firezone/website at `src/app/kb/client-apps/windows-gui-client`
 
 x86_64 only, see issue #2992. Best performed on a clean VM.
 
