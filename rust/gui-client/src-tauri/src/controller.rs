@@ -16,7 +16,7 @@ use futures::{
 };
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{ops::ControlFlow, path::PathBuf, sync::Arc, task::Poll, time::Duration};
 use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -62,6 +62,7 @@ pub struct Controller<I: GuiIntegration> {
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
     telemetry_allowed: bool,
+    telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
@@ -97,10 +98,6 @@ pub trait GuiIntegration {
 
     fn save_general_settings(&self, settings: &GeneralSettings)
     -> impl Future<Output = Result<()>>;
-    fn save_advanced_settings(
-        &self,
-        settings: &AdvancedSettings,
-    ) -> impl Future<Output = Result<()>>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
     fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
@@ -201,22 +198,40 @@ impl<I: GuiIntegration> Controller<I> {
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
-        mdm_settings: MdmSettings,
-        advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
+        telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (mut ipc_rx, ipc_client) = ipc::connect(socket, ipc::ConnectOptions::default()).await?;
+        let (mut ipc_rx, mut ipc_client) =
+            ipc::connect(socket, ipc::ConnectOptions::default()).await?;
 
-        let firezone_id = receive_hello(&mut ipc_rx)
+        let (firezone_id, advanced_settings, mdm_settings) = receive_hello(&mut ipc_rx)
             .await
             .map_err(FailedToReceiveHello)?;
 
+        // The GUI bootstraps logging with a default filter before connecting;
+        // now that the authoritative settings have arrived, apply the effective
+        // filter (MDM policy wins over the stored value; `RUST_LOG` wins overall).
+        let effective_log_filter = std::env::var("RUST_LOG")
+            .ok()
+            .or_else(|| mdm_settings.log_filter.clone())
+            .unwrap_or_else(|| advanced_settings.log_filter.clone());
+        if let Err(e) = log_filter_reloader.reload(&effective_log_filter) {
+            tracing::warn!("Failed to apply log filter after `Hello`: {e:#}");
+        }
+
         Telemetry::set_firezone_id(firezone_id).await;
+
+        // Best-effort migration of the legacy user-side advanced_settings.json
+        // into the protected service-side file. The service refuses to
+        // overwrite an existing protected file; the GUI deletes the legacy
+        // file when it gets `Ok` back (handled in `handle_service_ipc_msg`).
+        // TODO: remove once all clients have migrated.
+        request_legacy_advanced_settings_migration(&mut ipc_client).await;
 
         let controller = Controller {
             general_settings,
@@ -233,6 +248,7 @@ impl<I: GuiIntegration> Controller<I> {
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
             telemetry_allowed,
+            telemetry,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -383,11 +399,9 @@ impl<I: GuiIntegration> Controller<I> {
             ))?,
         }
 
-        let api_url = self.api_url().clone();
-        tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
+        tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
         self.send_ipc(&service::ClientMsg::Connect {
-            api_url: api_url.to_string(),
             token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
         })
@@ -420,6 +434,11 @@ impl<I: GuiIntegration> Controller<I> {
         if !self.telemetry_allowed {
             return Ok(());
         }
+
+        self.telemetry
+            .lock()
+            .await
+            .start(&environment, crate::RELEASE, telemetry::GUI_DSN);
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
             environment: environment.clone(),
@@ -454,32 +473,8 @@ impl<I: GuiIntegration> Controller<I> {
 
         match req {
             ApplyAdvancedSettings(settings) => {
-                self.log_filter_reloader
-                    .reload(&settings.log_filter)
-                    .context("Couldn't reload log filter")?;
-
-                self.advanced_settings = *settings;
-
-                // Save to disk
-                self.integration
-                    .save_advanced_settings(&self.advanced_settings)
+                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(*settings))
                     .await?;
-
-                // Tell tunnel about new log level
-                self.send_ipc(&service::ClientMsg::ApplyLogFilter {
-                    directives: self.advanced_settings.log_filter.clone(),
-                })
-                .await?;
-
-                // Notify GUI that settings have changed
-                self.notify_settings_changed()?;
-
-                tracing::debug!("Applied new settings. Log level will take effect immediately.");
-
-                // Refresh the menu in case the favorites were reset.
-                self.refresh_ui_state();
-
-                let _ = self.integration.show_notification("Settings saved", "")?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -734,6 +729,25 @@ impl<I: GuiIntegration> Controller<I> {
                 return Ok(ControlFlow::Break(()));
             }
             service::ServerMsg::Hello { .. } => {}
+            service::ServerMsg::AdvancedSettingsApplied(Ok(new)) => {
+                self.advanced_settings = new;
+                if let Err(e) = self
+                    .log_filter_reloader
+                    .reload(&self.advanced_settings.log_filter)
+                {
+                    tracing::warn!("Failed to reload GUI log filter: {e:#}");
+                }
+                maybe_delete_legacy_config();
+                self.notify_settings_changed()?;
+                self.refresh_ui_state();
+                let _ = self.integration.show_notification("Settings saved", "")?;
+            }
+            service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
+                tracing::error!("Tunnel service failed to save advanced settings: {err}");
+                let _ = self
+                    .integration
+                    .show_notification("Failed to save settings", &err)?;
+            }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
                 let (resource, site) = self.resource_by_id(resource_id)?;
 
@@ -816,6 +830,11 @@ impl<I: GuiIntegration> Controller<I> {
         &mut self,
         notification: Option<updates::Notification>,
     ) -> Result<()> {
+        // Honor the `checkForUpdates` MDM policy. The checker always runs, but
+        // when the policy disables updates we never surface them to the user.
+        let notification =
+            notification.filter(|_| self.mdm_settings.check_for_updates.unwrap_or(true));
+
         let Some(notification) = notification else {
             self.release = None;
             self.refresh_ui_state();
@@ -1032,7 +1051,9 @@ impl<I: GuiIntegration> Controller<I> {
     }
 }
 
-async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<String> {
+async fn receive_hello(
+    ipc_rx: &mut ipc::ClientRead<service::ServerMsg>,
+) -> Result<(String, AdvancedSettings, MdmSettings)> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
     let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
@@ -1043,11 +1064,82 @@ async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Resu
         .context("No message received from tunnel service")?
         .context("Failed to receive message from tunnel service")?;
 
-    let service::ServerMsg::Hello { firezone_id } = server_msg else {
+    let service::ServerMsg::Hello {
+        firezone_id,
+        advanced_settings,
+        mdm_settings,
+    } = server_msg
+    else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
     };
 
-    Ok(firezone_id)
+    Ok((firezone_id, advanced_settings, mdm_settings))
+}
+
+/// Path of the legacy user-writable `advanced_settings.json`. Used only by
+/// the migration step that moves it into the protected service-side file.
+// TODO: remove once all clients have migrated.
+fn legacy_user_advanced_settings_path() -> Result<PathBuf> {
+    Ok(known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("advanced_settings.json"))
+}
+
+/// Best-effort cleanup of the legacy user-writable `advanced_settings.json`.
+/// The protected service-side file is the authoritative source once any
+/// settings have been applied.
+// TODO: remove once all clients have migrated.
+fn maybe_delete_legacy_config() {
+    let Ok(path) = legacy_user_advanced_settings_path() else {
+        return;
+    };
+    if !path.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::remove_file(&path) {
+        tracing::debug!(
+            path = %path.display(),
+            "Failed to delete legacy advanced_settings: {e:#}"
+        );
+    }
+}
+
+/// If the legacy user-side `advanced_settings.json` exists, ask the Tunnel
+/// service to import it. The GUI deletes the legacy file once it gets a
+/// successful (or "already present") reply.
+// TODO: remove once all clients have migrated.
+async fn request_legacy_advanced_settings_migration(
+    ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
+) {
+    let Ok(path) = legacy_user_advanced_settings_path() else {
+        return;
+    };
+    if !path.exists() {
+        return;
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), "Failed to read legacy advanced_settings: {e:#}");
+            return;
+        }
+    };
+    let legacy: AdvancedSettings = match serde_json::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                "Legacy advanced_settings.json is unparsable; skipping migration: {e:#}"
+            );
+            return;
+        }
+    };
+    if let Err(e) = ipc_client
+        .send(&service::ClientMsg::ApplyAdvancedSettings(legacy))
+        .await
+    {
+        tracing::warn!("Failed to send legacy advanced_settings migration: {e:#}");
+    }
 }
 
 #[cfg(test)]
@@ -1202,9 +1294,7 @@ mod tests {
         resources: Vec<ResourceView>,
     ) {
         mock_tunnel.send_hello().await;
-        mock_tunnel.rx_start_telemetry().await;
         test_controller.sign_in().await;
-        mock_tunnel.rx_start_telemetry().await;
         mock_tunnel.start_ok().await;
         mock_tunnel.send_resources(resources).await;
     }
@@ -1399,10 +1489,6 @@ mod tests {
         async fn save_general_settings(&self, _: &GeneralSettings) -> Result<()> {
             Ok(())
         }
-
-        async fn save_advanced_settings(&self, _: &AdvancedSettings) -> Result<()> {
-            Ok(())
-        }
     }
 
     struct MockTunnel {
@@ -1415,17 +1501,11 @@ mod tests {
             self.tx
                 .send(&service::ServerMsg::Hello {
                     firezone_id: "test-firezone-id".to_owned(),
+                    advanced_settings: AdvancedSettings::default(),
+                    mdm_settings: MdmSettings::default(),
                 })
                 .await
                 .unwrap();
-        }
-
-        async fn rx_start_telemetry(&mut self) {
-            let msg = self.rx.next().await.unwrap().unwrap();
-            assert!(
-                matches!(msg, service::ClientMsg::StartTelemetry { .. }),
-                "expected `StartTelemetry` but got {msg:?}"
-            );
         }
 
         async fn start_ok(&mut self) {
@@ -1485,10 +1565,9 @@ mod tests {
                 ctrl_tx.clone(),
                 ctrl_rx,
                 GeneralSettings::default(),
-                MdmSettings::default(),
-                AdvancedSettings::default(),
                 log_filter_reloader,
-                true,
+                false,
+                Arc::new(tokio::sync::Mutex::new(Telemetry::disabled())),
                 updates_rx,
                 gui_ipc_server,
             ));

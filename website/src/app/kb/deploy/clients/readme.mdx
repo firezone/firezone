@@ -125,8 +125,9 @@ profile to your macOS fleet. Links for some popular MDM providers are below:
 <TabsItem title="Windows" icon="windows">
 
 On Windows, Firezone supports a variety of MDM-based configuration values. These
-are all read from the `HKEY_CURRENT_USER\Software\Policies\Firezone` registry
-key when the Client starts.
+are all read from the `HKEY_LOCAL_MACHINE\Software\Policies\Firezone` registry
+key (machine-scope, i.e. "Computer Configuration") by the Firezone Tunnel
+service when the Client connects.
 
 <Alert color="warning">
   In order for changes to the configuration to be picked up, users need to
@@ -158,7 +159,20 @@ To set a policy via Microsoft Intune, follow these steps:
 1. From the list, select "Imported Administrative templates (Preview)" as the
    template name.
 1. Go through the wizard, you can select from all available configuration
-   settings for Firezone on the 2nd step.
+   settings for Firezone on the 2nd step. The Firezone settings appear under
+   "Computer Configuration"; assign the resulting profile to **device** groups.
+
+<Alert color="info">
+  **Upgrading from an earlier Windows Client:** previous versions read these
+  policies from the per-user `HKEY_CURRENT_USER` hive. The first time a user
+  launches an upgraded Client, the Firezone Tunnel service automatically copies
+  any existing values into `HKEY_LOCAL_MACHINE` and removes the old per-user
+  key, so settings already deployed to a device keep working without any user
+  action. To keep managing the policies after upgrading, re-import the ADMX
+  template above and recreate the profile as a Computer Configuration policy
+  assigned to device groups; otherwise Intune keeps writing to the per-user
+  hive, which the upgraded Client no longer reads.
+</Alert>
 
 </TabsItem>
 
