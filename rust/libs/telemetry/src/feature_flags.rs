@@ -62,22 +62,35 @@ pub fn show_connected_devices() -> bool {
 
 /// The current value of every feature flag, by name.
 pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
+    // Exhaustive destruction so we don't forget to update this when we add a flag.
+    let FeatureFlags {
+        icmp_unreachable_instead_of_nat64,
+        drop_llmnr_nxdomain_responses,
+        stream_logs,
+        icmp_error_unreachable_prohibited_create_new_flow,
+        stream_metrics,
+        show_connected_devices,
+    } = &*FEATURE_FLAGS;
+
     [
         (
             "icmp_unreachable_instead_of_nat64",
-            icmp_unreachable_instead_of_nat64(),
+            icmp_unreachable_instead_of_nat64.load(Ordering::Relaxed),
         ),
         (
             "drop_llmnr_nxdomain_responses",
-            drop_llmnr_nxdomain_responses(),
+            drop_llmnr_nxdomain_responses.load(Ordering::Relaxed),
         ),
-        ("stream_logs", stream_logs_active()),
+        ("stream_logs", !stream_logs.read().directives.is_empty()),
         (
             "icmp_error_unreachable_prohibited_create_new_flow",
-            icmp_error_unreachable_prohibited_create_new_flow(),
+            icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
         ),
-        ("stream_metrics", stream_metrics()),
-        ("show_connected_devices", show_connected_devices()),
+        ("stream_metrics", stream_metrics.load(Ordering::Relaxed)),
+        (
+            "show_connected_devices",
+            show_connected_devices.load(Ordering::Relaxed),
+        ),
     ]
 }
 
