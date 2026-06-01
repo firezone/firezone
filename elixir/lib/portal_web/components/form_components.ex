@@ -687,6 +687,32 @@ defmodule PortalWeb.FormComponents do
   end
 
   @doc """
+  Renders a button the is only seen when hovered over.
+  """
+  attr :type, :string, default: "button"
+  attr :icon, :string, default: nil
+  attr :style, :string, default: nil
+  attr :size, :string, default: "sm"
+  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
+  attr :rest, :global, include: ~w(disabled form name value navigate href patch title)
+
+  slot :inner_block, required: true, doc: "The label for the button"
+
+  def action_button(assigns) do
+    #"flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-warning hover:bg-raised transition-colors"
+    ~H"""
+    <button
+      type={@type}
+      class={action_button_style(@style) ++ button_size(@size) ++ [@class]}
+      {@rest}
+    >
+      <.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" /> {render_slot(@inner_block)}
+    </button>
+    """
+
+  end
+
+  @doc """
   Renders a locked section with an upgrade banner and a blurred preview of the
   feature content underneath, all wrapped in a single container.
 
@@ -841,36 +867,69 @@ defmodule PortalWeb.FormComponents do
 
   def button_style do
     [
-      "flex items-center justify-center",
+      "flex items-center justify-center gap-1",
       "rounded",
       "phx-submit-loading:opacity-75"
     ]
   end
 
-  def button_style("warning") do
+  def button_style("primary") do
     button_style() ++
       [
-        "text-warning",
-        "border border-warning",
-        "hover:text-white hover:bg-warning"
+        "text-white",
+        "bg-brand",
+        "border border-brand",
+        "hover:border-brand-dark hover:bg-brand-dark"
       ]
   end
 
-  def button_style("danger") do
+  def button_style("secondary") do
     button_style() ++
       [
-        "text-red-600",
-        "border border-red-600",
-        "hover:text-white hover:bg-red-600"
+        "text-white",
+        "bg-accent",
+        "border border-accent",
+        "hover:border-accent-dark hover:bg-accent-dark"
+      ]
+  end
+
+  def button_style("success") do
+    button_style() ++
+      [
+        "text-success",
+        "bg-surface",
+        "border border-success",
+        "hover:bg-success-light"
       ]
   end
 
   def button_style("info") do
     button_style() ++
       [
-        "text-heading",
-        "border border-border-strong",
-        "hover:bg-raised hover:text-heading"
+        "text-info",
+        "bg-surface",
+        "border border-info",
+        "hover:bg-info-light"
+      ]
+  end
+
+  def button_style("warning") do
+    button_style() ++
+      [
+        "text-warning",
+        "bg-surface",
+        "border border-warning",
+        "hover:bg-warning-light"
+      ]
+  end
+
+  def button_style("danger") do
+    button_style() ++
+      [
+        "text-danger",
+        "bg-surface",
+        "border border-danger/40",
+        "hover:bg-danger-light"
       ]
   end
 
@@ -886,24 +945,54 @@ defmodule PortalWeb.FormComponents do
   def button_style(_style) do
     button_style() ++
       [
-        "text-white",
-        "bg-brand",
-        "hover:bg-brand-dark"
+        "text-body",
+        "bg-surface",
+        "border border-border-strong",
+        "hover:bg-raised hover:text-heading"
       ]
+  end
+
+  def action_button_style() do
+    [
+      "flex items-center gap-2",
+      "rounded",
+      "w-full",
+      "bg-surface",
+      "hover:bg-raised"
+    ]
+  end
+
+  def action_button_style("info") do
+    action_button_style() ++
+      [
+        "text-info"
+      ]
+  end
+
+  def action_button_style(style) do
+    types = %{
+      "success" => "text-success",
+      "info" => "text-info",
+      "warning" => "text-warning",
+      "error" => "text-error",
+      "danger" => "text-error"
+    }
+
+    action_button_style() ++ [Map.get(types, style, "")]
   end
 
   def button_size(size) do
     text = %{
       "xs" => "text-xs",
-      "sm" => "text-sm",
+      "sm" => "text-xs",
       "md" => "text-sm",
       "lg" => "text-base",
       "xl" => "text-base"
     }
 
     spacing = %{
-      "xs" => "px-1.5 py-1",
-      "sm" => "px-2 py-2",
+      "xs" => "px-2 py-1",
+      "sm" => "px-3 py-1.5",
       "md" => "px-3 py-2",
       "lg" => "px-4 py-3",
       "xl" => "px-5 py-3.5"
@@ -915,20 +1004,12 @@ defmodule PortalWeb.FormComponents do
   def icon_size(size) do
     icon_size = %{
       "xs" => "w-3 h-3",
-      "sm" => "w-3 h-3",
+      "sm" => "w-3.5 h-3.5",
       "md" => "w-3.5 h-3.5",
       "lg" => "w-4 h-4",
       "xl" => "w-5 h-5"
     }
 
-    spacing = %{
-      "xs" => "mr-1",
-      "sm" => "mr-1.5",
-      "md" => "mr-2",
-      "lg" => "mr-3",
-      "xl" => "mr-4"
-    }
-
-    [icon_size[size], spacing[size]]
+    [icon_size[size]]
   end
 end

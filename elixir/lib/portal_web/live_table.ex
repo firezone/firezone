@@ -107,15 +107,16 @@ defmodule PortalWeb.LiveTable do
                 Try adjusting your search or filters.
               </p>
             </div>
-            <button
+            <.button
               phx-click="filter"
               phx-value-table_id={@id}
               phx-value-filter={nil}
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border text-xs font-medium text-body hover:text-heading hover:border-border-strong transition-colors"
+              icon="ri-filter-3-line"
+              size="sm"
+              class="font-medium"
             >
-              <.icon name="ri-filter-3-line" class="w-4 h-4" />
               Clear filters
-            </button>
+            </.button>
           </div>
         </div>
       </div>
@@ -485,8 +486,8 @@ defmodule PortalWeb.LiveTable do
         </div>
       </div>
       <span>
-        Showing <span class="font-medium tabular-nums text-heading">{@first_row}</span>-<span class="font-medium tabular-nums text-heading">{@last_row}</span>
-        of <span class="font-medium tabular-nums text-heading">{@metadata.count}</span>
+        Showing <span class="font-medium tabular-nums text-heading mx-1">{@first_row}</span>&mdash;<span class="font-medium tabular-nums text-heading mx-1">{@last_row}</span>
+        of <span class="font-medium tabular-nums text-heading mx-1">{@metadata.count}</span>
       </span>
     </div>
     """

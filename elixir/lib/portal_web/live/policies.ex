@@ -329,7 +329,7 @@ defmodule PortalWeb.Policies do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No policies yet</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Create a policy to grant actors access to resources.
+                  Create a Policy to grant Groups access to Resources.
                 </p>
               </div>
               <.link

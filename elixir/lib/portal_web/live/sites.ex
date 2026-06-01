@@ -400,11 +400,18 @@ defmodule PortalWeb.Sites do
           :if={not @sites_loading? and @sites == [] and is_nil(@internet_site)}
           class="flex flex-1 items-center justify-center p-8"
         >
-          <span class="text-sm text-subtle">
-            No sites to display.
-            <button class={link_style()} phx-click="open_new_site_panel">Add a site</button>
-            to start deploying gateways and adding resources.
-          </span>
+          <div class="flex flex-col items-center gap-3 py-16">
+            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+              <.icon name="ri-map-pin-line" class="w-5 h-5 text-subtle" />
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-medium text-heading">No sites yet</p>
+              <p class="text-xs text-subtle mt-0.5">
+                Create a Site in order to deploy Gateways and attach Resources.
+              </p>
+            </div>
+            <.button patch={~p"/#{@account}/sites/new"} icon="ri-add-line" size="xs">Add a Site </.button>
+          </div>
         </div>
       </div>
 

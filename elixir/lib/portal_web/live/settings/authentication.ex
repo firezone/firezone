@@ -749,20 +749,12 @@ defmodule PortalWeb.Settings.Authentication do
               />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <button
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-sm rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-              >
+              <.button phx-click="close_panel">
                 Cancel
-              </button>
-              <button
-                form="auth-provider-form"
-                type="submit"
-                disabled={not @form.source.valid?}
-                class="px-3 py-1.5 text-sm rounded bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              </.button>
+              <.button form="auth-provider-form" type="submit" style="primary" disabled={not @form.source.valid?}>
                 Create
-              </button>
+              </.button>
             </div>
           </div>
         </div>
@@ -816,22 +808,20 @@ defmodule PortalWeb.Settings.Authentication do
             />
           </div>
           <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-            <button
-              phx-click="close_panel"
-              class="px-3 py-1.5 text-sm rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
+            <.button phx-click="close_panel" size="sm">
               Cancel
-            </button>
-            <button
+            </.button>
+            <.button
               form="auth-provider-form"
               type="submit"
+              style="primary"
+              size="sm"
               disabled={
                 not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
               }
-              class="px-3 py-1.5 text-sm rounded bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Save
-            </button>
+            </.button>
           </div>
         </div>
       </div>
@@ -901,23 +891,24 @@ defmodule PortalWeb.Settings.Authentication do
       <%= if @is_pending_revoke do %>
         <td colspan="6" class="px-6 py-3">
           <div class="flex items-center gap-4">
-            <span class="text-xs text-orange-700">
+            <span class="text-xs text-warning">
               Revoke all sessions for this provider? This will immediately sign out all users authenticated this provider.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <button
+              <.button
                 phx-click="cancel_confirm"
-                class="px-2.5 py-1 text-xs rounded border border-orange-300 bg-white text-orange-800 hover:bg-orange-100 transition-colors"
+                size="xs"
               >
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 phx-click="revoke_sessions"
                 phx-value-id={@provider.id}
-                class="px-2.5 py-1 text-xs rounded bg-orange-600 text-white hover:bg-orange-700 transition-colors"
+                size="xs"
+                style="warning"
               >
                 Revoke sessions
-              </button>
+              </.button>
             </div>
           </div>
         </td>
@@ -925,26 +916,27 @@ defmodule PortalWeb.Settings.Authentication do
         <%= if @is_pending_toggle do %>
           <td colspan="6" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-amber-700">
+              <span class="text-xs text-warning">
                 {if @provider.is_disabled,
                   do: "Re-enable this provider?",
                   else:
                     "Disable this provider? Users will not be able to sign in while it is disabled."}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <button
+                <.button
                   phx-click="cancel_confirm"
-                  class="px-2.5 py-1 text-xs rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 transition-colors"
+                  size="xs"
                 >
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   phx-click="toggle_provider"
                   phx-value-id={@provider.id}
-                  class="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                  size="xs"
+                  style="warning"
                 >
                   {if @provider.is_disabled, do: "Enable", else: "Disable"}
-                </button>
+                </.button>
               </div>
             </div>
           </td>
@@ -952,23 +944,24 @@ defmodule PortalWeb.Settings.Authentication do
           <%= if @is_pending_delete do %>
             <td colspan="6" class="px-6 py-3">
               <div class="flex items-center gap-4">
-                <span class="text-xs text-red-700">
+                <span class="text-xs text-danger">
                   Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
                 </span>
                 <div class="flex items-center gap-2 ml-auto shrink-0">
-                  <button
+                  <.button
                     phx-click="cancel_confirm"
-                    class="px-2.5 py-1 text-xs rounded border border-red-300 bg-white text-red-800 hover:bg-red-100 transition-colors"
+                    size="xs"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </.button>
+                  <.button
                     phx-click="delete_provider"
                     phx-value-id={@provider.id}
-                    class="px-2.5 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                    size="xs"
+                    style="danger"
                   >
                     Delete
-                  </button>
+                  </.button>
                 </div>
               </div>
             </td>
@@ -1462,7 +1455,7 @@ defmodule PortalWeb.Settings.Authentication do
                   <.icon name="ri-clipboard-line" class="w-4 h-4" />
                 </span>
                 <span id="redirect-uri-success-message" class="hidden">
-                  <.icon name="ri-check-line" class="w-4 h-4 text-green-600" />
+                  <.icon name="ri-check-line" class="w-4 h-4 text-success" />
                 </span>
               </button>
             </div>
@@ -1502,13 +1495,13 @@ defmodule PortalWeb.Settings.Authentication do
                   {get_field(@form.source, :issuer)}
                 </span>
               </div>
-              <button
+              <.button
                 type="button"
                 phx-click="reset_verification"
-                class="ml-4 shrink-0 text-xs text-subtle hover:text-heading transition-colors"
+                size="xs"
               >
                 Reset
-              </button>
+              </.button>
             </div>
           </div>
         </div>
@@ -1529,7 +1522,7 @@ defmodule PortalWeb.Settings.Authentication do
     ~H"""
     <div
       :if={verified?(@form)}
-      class="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-100 px-2.5 py-1 rounded"
+      class="flex items-center gap-1.5 text-xs font-medium text-success bg-success-light px-2.5 py-1 rounded"
     >
       <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
     </div>

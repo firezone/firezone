@@ -35,12 +35,9 @@ defmodule PortalWeb.Settings.Account do
     <div class="flex flex-col h-full relative">
       <.settings_nav account={@account} current_path={@current_path}>
         <:actions>
-          <button
-            phx-click="open_edit_account"
-            class="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
+          <.button phx-click="open_edit_account" size="xs">
             <.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
-          </button>
+          </.button>
         </:actions>
       </.settings_nav>
 
@@ -96,13 +93,14 @@ defmodule PortalWeb.Settings.Account do
                 </div>
               </div>
             </div>
-            <button
+            <.button
               :if={@billing_provisioned and @billing_plan_type != :enterprise}
               phx-click="redirect_to_billing_portal"
-              class="w-full mt-1 px-3 py-1.5 rounded text-xs font-medium border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+              size="xs"
+              class="w-full mt-1"
             >
               Manage plan
-            </button>
+            </.button>
           </div>
 
           <%!-- Plan features (always shown) --%>
@@ -151,13 +149,9 @@ defmodule PortalWeb.Settings.Account do
             >
               You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
             </div>
-            <button
-              type="button"
-              phx-click="cancel_account_deletion"
-              class="w-full text-left px-3 py-2 rounded border border-border-strong text-xs text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
+            <.button type="button" phx-click="cancel_account_deletion" size="xs" class="w-full">
               Cancel deletion
-            </button>
+            </.button>
             <.flash :if={@error} kind={:error} class="mt-2">
               {@error}
             </.flash>
@@ -204,20 +198,17 @@ defmodule PortalWeb.Settings.Account do
                   class="w-full mb-2.5 rounded border border-error/30 bg-surface px-2 py-1.5 text-xs text-heading placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-error/40"
                 />
                 <div class="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    phx-click="cancel_delete_account"
-                    class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-                  >
+                  <.button type="button" phx-click="cancel_delete_account" size="xs">
                     Cancel
-                  </button>
-                  <button
+                  </.button>
+                  <.button
                     type="submit"
                     disabled={@slug_confirmation != @account.slug}
-                    class="px-2 py-1 text-xs rounded border border-error/40 text-error hover:bg-error/10 bg-surface transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                    style="danger"
+                    size="xs"
                   >
                     Delete
-                  </button>
+                  </.button>
                 </div>
               </form>
               <.flash :if={@error} kind={:error} class="mt-2">
@@ -426,20 +417,12 @@ defmodule PortalWeb.Settings.Account do
         </div>
 
         <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <button
-            type="button"
-            phx-click="close_edit_account"
-            class="px-3 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
+          <.button type="button" phx-click="close_edit_account" size="xs">
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={not @form.source.valid?}
-            class="px-3 py-1.5 rounded text-xs bg-brand text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-          >
+          </.button>
+          <.button type="submit" style="primary" disabled={not @form.source.valid?} size="xs">
             Save
-          </button>
+          </.button>
         </div>
       </.form>
     </div>

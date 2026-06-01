@@ -601,13 +601,13 @@ defmodule PortalWeb.CoreComponents do
 
   def badge(assigns) do
     colors = %{
-      "success" => "bg-green-100 text-green-800",
-      "danger" => "bg-red-100 text-red-800",
-      "warning" => "bg-yellow-100 text-yellow-800",
-      "info" => "bg-badge-dns text-badge-dns-text",
-      "primary" => "bg-brand-muted text-brand",
-      "accent" => "bg-accent-200 text-accent-800",
-      "neutral" => "bg-neutral-100 text-neutral-800"
+      "success" => "bg-success-light text-success",
+      "danger" => "bg-danger-light text-danger",
+      "warning" => "bg-warning-light text-warning",
+      "info" => "bg-info-light text-info",
+      "primary" => "bg-brand-subtle text-brand",
+      "accent" => "bg-accent-subtle text-accent",
+      "neutral" => "bg-neutral-100 text-neutral-700"
     }
 
     sizes = %{
@@ -642,27 +642,27 @@ defmodule PortalWeb.CoreComponents do
     colors = %{
       "success" => %{
         "dark" => "bg-green-300 text-green-800",
-        "light" => "bg-green-100 text-green-800"
+        "light" => "bg-success-light text-success"
       },
       "danger" => %{
         "dark" => "bg-red-300 text-red-800",
-        "light" => "bg-red-100 text-red-800"
+        "light" => "bg-danger-light text-danger"
       },
       "warning" => %{
         "dark" => "bg-yellow-300 text-yellow-800",
-        "light" => "bg-yellow-100 text-yellow-800"
+        "light" => "bg-warning-light text-warning"
       },
       "info" => %{
         "dark" => "bg-blue-300 text-blue-800",
-        "light" => "bg-blue-100 text-blue-800"
+        "light" => "bg-info-light text-info"
       },
       "primary" => %{
-        "dark" => "bg-primary-500 text-white",
-        "light" => "bg-primary-200 text-primary-700"
+        "dark" => "bg-primary-400 text-primary-800",
+        "light" => "bg-brand-subtle text-brand"
       },
       "accent" => %{
         "dark" => "bg-accent-100 text-accent-800",
-        "light" => "bg-accent-50 text-accent-800"
+        "light" => "bg-accent-light text-accent"
       },
       "neutral" => %{
         "dark" => "bg-neutral-100 text-neutral-800",

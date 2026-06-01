@@ -882,7 +882,7 @@ defmodule PortalWeb.Groups do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No groups yet</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  No groups have been created yet.
+                  Create a Group of Actors to use in Policies.
                 </p>
               </div>
               <.link

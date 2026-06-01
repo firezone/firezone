@@ -266,27 +266,16 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     <!-- Panel footer -->
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
               <%= if is_nil(@encoded_token) do %>
-                <button
-                  type="button"
-                  phx-click="close_panel"
-                  class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
+                <.button type="button" phx-click="close_panel" size="sm">
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-                >
+                </.button>
+                <.button type="submit" style="primary" size="sm">
                   Create Token
-                </button>
+                </.button>
               <% else %>
-                <button
-                  type="button"
-                  phx-click="close_reveal"
-                  class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-                >
+                <.button type="button" phx-click="close_reveal" size="sm">
                   Done
-                </button>
+                </.button>
               <% end %>
             </div>
           </.form>
@@ -342,19 +331,12 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
     <!-- Panel footer -->
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-              <button
-                type="button"
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-              >
+              <.button type="button" phx-click="close_panel" size="sm">
                 Cancel
-              </button>
-              <button
-                type="submit"
-                class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-              >
+              </.button>
+              <.button type="submit" style="primary" size="sm">
                 Save
-              </button>
+              </.button>
             </div>
           </.form>
         </div>
@@ -387,58 +369,61 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     ]}>
       <%= if @is_pending_delete do %>
         <td class="px-6 py-3 w-56">
-          <div class="text-sm font-medium text-red-800 truncate">{@actor.name}</div>
-          <div class="font-mono text-[10px] text-red-400 mt-0.5 truncate">{@actor.id}</div>
+          <div class="text-sm font-medium text-danger truncate">{@actor.name}</div>
+          <div class="font-mono text-[10px] text-danger/80 mt-0.5 truncate">{@actor.id}</div>
         </td>
         <td colspan="6" class="px-6 py-3">
           <div class="flex items-center gap-4">
-            <span class="text-xs text-red-700">
+            <span class="text-xs text-danger">
               Delete this API Token? This will remove it along with all associated credentials and cannot be undone.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <button
+              <.button
                 phx-click="cancel_confirm"
-                class="px-2.5 py-1 text-xs rounded border border-red-300 bg-white text-red-800 hover:bg-red-100 transition-colors"
+                size="xs"
               >
-                Cancel
-              </button>
-              <button
+              Cancel
+              </.button>
+              <.button
                 phx-click="delete"
                 phx-value-id={@actor.id}
-                class="px-2.5 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                size="xs"
+                style="danger"
+                class="font-medium"
               >
                 Delete
-              </button>
+              </.button>
             </div>
           </div>
         </td>
       <% else %>
         <%= if @is_pending_toggle do %>
           <td class="px-6 py-3 w-56">
-            <div class="text-sm font-medium text-amber-800 truncate">{@actor.name}</div>
-            <div class="font-mono text-[10px] text-amber-400 mt-0.5 truncate">{@actor.id}</div>
+            <div class="text-sm font-medium text-warning truncate">{@actor.name}</div>
+            <div class="font-mono text-[10px] text-warning/80 mt-0.5 truncate">{@actor.id}</div>
           </td>
           <td colspan="6" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-amber-700">
+              <span class="text-xs text-warning">
                 {if is_nil(@actor.disabled_at),
                   do: "Disable this API Token? It will no longer be able to authenticate.",
                   else: "Re-enable this API Token?"}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <button
+                <.button
                   phx-click="cancel_confirm"
-                  class="px-2.5 py-1 text-xs rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 transition-colors"
+                  size="xs"
                 >
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   phx-click={if is_nil(@actor.disabled_at), do: "disable", else: "enable"}
                   phx-value-id={@actor.id}
-                  class="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                  size="xs"
+                  style="warning"
                 >
                   {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
-                </button>
+                </.button>
               </div>
             </div>
           </td>
@@ -451,13 +436,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           </td>
           <td class="px-6 py-3 w-28">
             <%= if is_nil(@actor.disabled_at) do %>
-              <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+            <.badge type="success" class="text-[10px]">
                 Active
-              </span>
+            </.badge>
             <% else %>
-              <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
+            <.badge class="text-[10px]">
                 Disabled
-              </span>
+            </.badge>
             <% end %>
           </td>
           <td class="px-6 py-3 w-36">

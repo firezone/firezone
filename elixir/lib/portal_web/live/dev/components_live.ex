@@ -53,7 +53,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
       ],
       controls: [
         %{name: "label", type: "text"},
-        %{name: "style", type: "select", options: ~w[primary secondary danger info warning success]},
+        %{name: "style", type: "select", options: ~w[primary secondary danger info warning success default]},
         %{name: "size", type: "select", options: ~w[xs sm md lg xl]},
         %{name: "icon", type: "text"},
         %{name: "disabled", type: "boolean"}

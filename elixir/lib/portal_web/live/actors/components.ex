@@ -127,13 +127,9 @@ defmodule PortalWeb.Actors.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            phx-click="open_actor_edit_form"
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-          >
+          <.button type="button" phx-click="open_actor_edit_form" size="xs">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </button>
+          </.button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
@@ -241,14 +237,14 @@ defmodule PortalWeb.Actors.Components do
         </button>
       </div>
       <div class="shrink-0 px-2">
-        <button
+        <.button
           :if={@actor.type == :service_account and @active_tab == "tokens" and not @adding_token}
           type="button"
           phx-click="open_add_token_form"
-          class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+          size="xs"
         >
           <.icon name="ri-add-line" class="w-3 h-3" /> Add Token
-        </button>
+        </.button>
       </div>
     </div>
     """
@@ -288,21 +284,18 @@ defmodule PortalWeb.Actors.Components do
                 <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  phx-click="cancel_delete_identity"
-                  class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-                >
+                <.button type="button" phx-click="cancel_delete_identity" size="xs">
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   type="button"
                   phx-click="delete_identity"
                   phx-value-id={identity.id}
-                  class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+                  style="danger"
+                  size="xs"
                 >
                   Delete
-                </button>
+                </.button>
               </div>
             </div>
             <details :if={@confirm_delete_identity_id != identity.id} class="group/details">
@@ -453,21 +446,18 @@ defmodule PortalWeb.Actors.Components do
                 <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  phx-click="cancel_delete_token"
-                  class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-                >
+                <.button type="button" phx-click="cancel_delete_token" size="xs">
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   type="button"
                   phx-click="delete_token"
                   phx-value-id={token.id}
-                  class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+                  style="danger"
+                  size="xs"
                 >
                   Revoke
-                </button>
+                </.button>
               </div>
             </div>
             <details :if={@confirm_delete_token_id != token.id} class="group/details">
@@ -551,21 +541,18 @@ defmodule PortalWeb.Actors.Components do
                 <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  phx-click="cancel_delete_session"
-                  class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-                >
+                <.button type="button" phx-click="cancel_delete_session" size="xs">
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   type="button"
                   phx-click="delete_session"
                   phx-value-id={session.id}
-                  class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+                  style="danger"
+                  size="xs"
                 >
                   Revoke
-                </button>
+                </.button>
               </div>
             </div>
             <details :if={@confirm_delete_session_id != session.id} class="group/details">
@@ -695,19 +682,12 @@ defmodule PortalWeb.Actors.Components do
               />
             </div>
             <div class="flex items-center gap-2">
-              <button
-                type="button"
-                phx-click="cancel_add_token_form"
-                class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-              >
+              <.button type="button" phx-click="cancel_add_token_form" size="xs">
                 Cancel
-              </button>
-              <button
-                type="submit"
-                class="px-3 py-1.5 text-xs rounded-md font-medium bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
-              >
+              </.button>
+              <.button type="submit" style="primary" size="xs">
                 Create Token
-              </button>
+              </.button>
             </div>
           </form>
         </div>
@@ -730,21 +710,18 @@ defmodule PortalWeb.Actors.Components do
                   <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
                 </span>
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    phx-click="cancel_delete_token"
-                    class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-                  >
+                  <.button type="button" phx-click="cancel_delete_token" size="xs">
                     Cancel
-                  </button>
-                  <button
+                  </.button>
+                  <.button
                     type="button"
                     phx-click="delete_token"
                     phx-value-id={token.id}
-                    class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+                    style="danger"
+                    size="xs"
                   >
                     Delete
-                  </button>
+                  </.button>
                 </div>
               </div>
               <details :if={@confirm_delete_token_id != token.id} class="group/details">
@@ -954,21 +931,12 @@ defmodule PortalWeb.Actors.Components do
               All active sessions will be immediately revoked.
             </p>
             <div class="flex items-center gap-1.5">
-              <button
-                type="button"
-                phx-click="cancel_disable_actor"
-                class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-              >
+              <.button type="button" phx-click="cancel_disable_actor" size="xs">
                 Cancel
-              </button>
-              <button
-                type="button"
-                phx-click="disable"
-                phx-value-id={@actor.id}
-                class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors font-medium"
-              >
+              </.button>
+              <.button type="button" phx-click="disable" phx-value-id={@actor.id} size="xs">
                 Disable
-              </button>
+              </.button>
             </div>
           </div>
           <button
@@ -1005,21 +973,18 @@ defmodule PortalWeb.Actors.Components do
             All active sessions will be immediately revoked and this cannot be undone.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_delete_actor"
-              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-            >
+            <.button type="button" phx-click="cancel_delete_actor" size="xs">
               Cancel
-            </button>
-            <button
+            </.button>
+            <.button
               type="button"
               phx-click="delete"
               phx-value-id={@actor.id}
-              class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+              style="danger"
+              size="xs"
             >
               Delete
-            </button>
+            </.button>
           </div>
         </div>
       </section>
@@ -1165,19 +1130,12 @@ defmodule PortalWeb.Actors.Components do
         :if={is_nil(@pending_email_change)}
         class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]"
       >
-        <button
-          type="button"
-          phx-click="cancel_actor_edit_form"
-          class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-        >
+        <.button type="button" phx-click="cancel_actor_edit_form" size="xs">
           Cancel
-        </button>
-        <button
-          type="submit"
-          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-        >
+        </.button>
+        <.button type="submit" style="primary" size="xs">
           Save Changes
-        </button>
+        </.button>
       </div>
       <div
         :if={not is_nil(@pending_email_change)}
@@ -1195,20 +1153,12 @@ defmodule PortalWeb.Actors.Components do
           </div>
         </div>
         <div class="flex items-center justify-end gap-1.5">
-          <button
-            type="button"
-            phx-click="cancel_email_change"
-            class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-          >
+          <.button type="button" phx-click="cancel_email_change" size="xs">
             Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="confirm_email_change"
-            class="px-3 py-1.5 text-xs rounded-md font-medium border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors"
-          >
+          </.button>
+          <.button type="button" phx-click="confirm_email_change" style="danger" size="xs">
             Yes, change email and clear identities
-          </button>
+          </.button>
         </div>
       </div>
     </.form>
@@ -1386,20 +1336,13 @@ defmodule PortalWeb.Actors.Components do
             account={@account}
           />
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
-          <button
-            type="button"
-            phx-click="close_panel"
-            class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-          >
+        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
+          <.button type="button" phx-click="close_panel" size="xs">
             Cancel
-          </button>
-          <button
-            type="submit"
-            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-          >
+          </.button>
+          <.button type="submit" style="primary" size="xs">
             Create User
-          </button>
+          </.button>
         </div>
       </.form>
 
@@ -1439,20 +1382,13 @@ defmodule PortalWeb.Actors.Components do
             account={@account}
           />
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
-          <button
-            type="button"
-            phx-click="close_panel"
-            class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-          >
+        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
+          <.button type="button" phx-click="close_panel" size="xs">
             Cancel
-          </button>
-          <button
-            type="submit"
-            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-          >
+          </.button>
+          <.button type="submit" style="primary" size="xs">
             Create Service Account
-          </button>
+          </.button>
         </div>
       </.form>
     </div>

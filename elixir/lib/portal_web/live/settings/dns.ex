@@ -104,19 +104,12 @@ defmodule PortalWeb.Settings.DNS do
             <.dns_form form={@form} />
           </div>
           <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-            <button
-              phx-click="close_panel"
-              class="px-3 py-1.5 text-sm rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
+            <.button phx-click="close_panel" size="sm">
               Cancel
-            </button>
-            <button
-              form="dns-form"
-              type="submit"
-              class="px-3 py-1.5 text-sm rounded bg-brand text-white hover:bg-brand-dark transition-colors"
-            >
+            </.button>
+            <.button form="dns-form" type="submit" size="sm" style="primary">
               Save
-            </button>
+            </.button>
           </div>
         </div>
       </div>
@@ -387,16 +380,17 @@ defmodule PortalWeb.Settings.DNS do
                   name="account[config][clients_upstream_dns][addresses_drop][]"
                 />
 
-                <button
+                <.button
                   :if={length(dns_form[:addresses].value || []) < 8}
                   type="button"
                   name="account[config][clients_upstream_dns][addresses_sort][]"
                   value="new"
                   phx-click={JS.dispatch("change")}
-                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  size="xs"
+                  icon="ri-add-line"
                 >
-                  <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add Resolver
-                </button>
+                  Add Resolver
+                </.button>
                 <p
                   :if={length(dns_form[:addresses].value || []) >= 8}
                   class="text-xs text-[var(--text-tertiary)]"

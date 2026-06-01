@@ -656,14 +656,15 @@ defmodule PortalWeb.Resources.Components do
           Traffic Restrictions <span class="font-normal text-subtle">(optional)</span>
         </span>
         <div :if={@traffic_filters_enabled?} class="relative">
-          <button
+          <.button
             type="button"
             phx-click="toggle_resource_filters_dropdown"
-            class="inline-flex items-center gap-1 text-xs text-body hover:text-heading border border-border rounded px-2 py-1 bg-surface hover:bg-raised transition-colors"
+            size="xs"
+            icon="ri-add-line"
           >
-            <.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
+             Add protocol
             <.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
-          </button>
+          </.button>
           <div
             :if={@filters_dropdown_open}
             phx-click-away="close_resource_filters_dropdown"
@@ -1008,19 +1009,12 @@ defmodule PortalWeb.Resources.Components do
         </div>
 
         <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <button
-            type="button"
-            phx-click="cancel_resource_form"
-            class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
+          <.button type="button" phx-click="cancel_resource_form" size="sm">
             Cancel
-          </button>
-          <button
-            type="submit"
-            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-          >
+          </.button>
+          <.button type="submit" style="primary" size="sm">
             {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
-          </button>
+          </.button>
         </div>
       </.form>
     </div>
@@ -1071,13 +1065,14 @@ defmodule PortalWeb.Resources.Components do
           </div>
           <%!-- Right: actions --%>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button
+            <.button
               :if={not @confirm_delete_resource && @resource.type != :internet}
               phx-click="open_edit_form"
-              class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+              size="sm"
+              icon="ri-pencil-line"
             >
-              <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-            </button>
+              Edit
+            </.button>
             <button
               phx-click="close_panel"
               class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
@@ -1178,12 +1173,9 @@ defmodule PortalWeb.Resources.Components do
         Authorizations
       </button>
       <div :if={@tab == :groups && @panel_view == :list} class="ml-auto pb-2 flex items-center">
-        <button
-          phx-click="open_grant_form"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-        >
-          <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
-        </button>
+        <.button phx-click="open_grant_form" size="xs" icon="ri-add-line">
+          Grant access
+        </.button>
       </div>
     </div>
     """
@@ -1217,21 +1209,18 @@ defmodule PortalWeb.Resources.Components do
               </span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                phx-click="cancel_remove_group"
-                class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-              >
+              <.button type="button" phx-click="cancel_remove_group" size="xs">
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 type="button"
                 phx-click="remove_group_access"
                 phx-value-group_id={row.group.id}
-                class="px-2 py-1 text-xs rounded border border-error/30 text-error hover:bg-error/10 bg-surface transition-colors"
+                style="danger"
+                size="xs"
               >
                 Remove
-              </button>
+              </.button>
             </div>
           </div>
           <div
@@ -1558,20 +1547,12 @@ defmodule PortalWeb.Resources.Components do
         <p :for={{_field, {msg, _}} <- @grant_form.errors}>{msg}</p>
       </div>
       <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-        <button
-          type="button"
-          phx-click="close_grant_form"
-          class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-        >
+        <.button type="button" phx-click="close_grant_form" size="xs">
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={@grant_selected_group_ids == []}
-          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        </.button>
+        <.button type="submit" style="primary" disabled={@grant_selected_group_ids == []} size="xs">
           Grant access
-        </button>
+        </.button>
       </div>
     </.form>
     """
@@ -1862,23 +1843,15 @@ defmodule PortalWeb.Resources.Components do
             Delete this resource?
           </p>
           <p class="text-xs text-error/70 mb-3">
-            All associated policies will also be deleted and clients will immediately lose access.
+            All Policies associated with this Resource will also be deleted and all Clients will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_delete_resource"
-              class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-            >
+            <.button type="button" phx-click="cancel_delete_resource" size="xs">
               Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="delete_resource"
-              class="px-2 py-1 text-xs rounded border border-error/40 text-error hover:bg-error/10 bg-surface transition-colors font-medium"
-            >
+            </.button>
+            <.button type="button" phx-click="delete_resource" style="danger" size="xs">
               Delete
-            </button>
+            </.button>
           </div>
         </div>
       </section>

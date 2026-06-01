@@ -60,14 +60,14 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
                 >REST API</.link>.
               </p>
             </div>
-            <button
+            <.button
               :if={@requested == false}
               id="beta-request"
               phx-click="request_access"
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+              size="sm"
             >
               Request access
-            </button>
+            </.button>
             <p :if={@requested == true} class="text-xs text-subtle">
               Access request submitted.
             </p>

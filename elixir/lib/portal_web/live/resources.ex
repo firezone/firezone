@@ -552,7 +552,7 @@ defmodule PortalWeb.Resources do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No resources yet</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  No resources have been added yet.
+                  Create a Resource to represent an asset or service.
                 </p>
               </div>
               <.link

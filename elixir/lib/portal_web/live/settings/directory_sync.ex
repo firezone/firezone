@@ -584,20 +584,12 @@ defmodule PortalWeb.Settings.DirectorySync do
               />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <button
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-sm rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-              >
+              <.button phx-click="close_panel">
                 Cancel
-              </button>
-              <button
-                form="directory-form"
-                type="submit"
-                disabled={not @form.source.valid?}
-                class="px-3 py-1.5 text-sm rounded bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              </.button>
+              <.button form="directory-form" type="submit" style="primary" disabled={not @form.source.valid?}>
                 Create
-              </button>
+              </.button>
             </div>
           </div>
         </div>
@@ -653,22 +645,19 @@ defmodule PortalWeb.Settings.DirectorySync do
               />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <button
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-sm rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-              >
+              <.button phx-click="close_panel">
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 form="directory-form"
                 type="submit"
+                style="primary"
                 disabled={
                   not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
                 }
-                class="px-3 py-1.5 text-sm rounded bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Save
-              </button>
+              </.button>
             </div>
           </div>
         </div>

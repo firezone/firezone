@@ -219,17 +219,19 @@ defmodule PortalWeb.Groups.Components do
           >
             Cancel
           </.link>
-          <button
+          <.button
             type="submit"
+            style="primary"
             disabled={
               if @panel_view == :new_form,
                 do: not @form.source.valid?,
                 else: edit_form_unchanged?(@form, @members_to_add, @members_to_remove)
             }
-            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+            size="sm"
+            class="font-medium"
           >
             {if @panel_view == :new_form, do: "Create Group", else: "Save Changes"}
-          </button>
+          </.button>
         </div>
       </.form>
     </div>
@@ -397,13 +399,9 @@ defmodule PortalWeb.Groups.Components do
         </span>
       </button>
       <div :if={@tab == :resources && @tab_view == :list} class="ml-auto pb-2 flex items-center">
-        <button
-          type="button"
-          phx-click="open_grant_resource_form"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-        >
+        <.button type="button" phx-click="open_grant_resource_form" size="xs">
           <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
-        </button>
+        </.button>
       </div>
       <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
         <form phx-change="filter_show_members">
@@ -778,20 +776,12 @@ defmodule PortalWeb.Groups.Components do
         <p :for={{_field, {msg, _}} <- @grant_resource_form.errors}>{msg}</p>
       </div>
       <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-        <button
-          type="button"
-          phx-click="close_grant_resource_form"
-          class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-        >
+        <.button type="button" phx-click="close_grant_resource_form" size="xs">
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={@grant_selected_resource_ids == []}
-          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        </.button>
+        <.button type="submit" style="primary" disabled={@grant_selected_resource_ids == []} size="xs">
           Grant access
-        </button>
+        </.button>
       </div>
     </.form>
     """
@@ -834,21 +824,18 @@ defmodule PortalWeb.Groups.Components do
               </span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                phx-click="cancel_remove_resource_access"
-                class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-              >
+              <.button type="button" phx-click="cancel_remove_resource_access" size="xs">
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 type="button"
                 phx-click="remove_resource_access"
                 phx-value-resource_id={row.resource.id}
-                class="px-2 py-1 text-xs rounded border border-error/30 text-error hover:bg-error/10 bg-surface transition-colors"
+                style="danger"
+                size="xs"
               >
                 Remove
-              </button>
+              </.button>
             </div>
           </div>
           <div
@@ -1016,21 +1003,18 @@ defmodule PortalWeb.Groups.Components do
             All associated policies will also be deleted and clients will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_delete_group"
-              class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-            >
+            <.button type="button" phx-click="cancel_delete_group" size="xs">
               Cancel
-            </button>
-            <button
+            </.button>
+            <.button
               type="button"
               phx-click="delete"
               phx-value-id={@group.id}
-              class="px-2 py-1 text-xs rounded border border-error/40 text-error hover:bg-error/10 bg-surface transition-colors font-medium"
+              style="danger"
+              size="xs"
             >
               Delete
-            </button>
+            </.button>
           </div>
         </div>
       </section>

@@ -313,19 +313,12 @@ defmodule PortalWeb.Clients.Components do
   def client_edit_actions(assigns) do
     ~H"""
     <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-      <button
-        type="button"
-        phx-click="cancel_client_edit_form"
-        class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-      >
+      <.button type="button" phx-click="cancel_client_edit_form" size="xs">
         Cancel
-      </button>
-      <button
-        type="submit"
-        class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-      >
+      </.button>
+      <.button type="submit" style="primary" size="xs">
         Save
-      </button>
+      </.button>
     </div>
     """
   end
@@ -571,12 +564,9 @@ defmodule PortalWeb.Clients.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            phx-click="open_client_edit_form"
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
+          <.button phx-click="open_client_edit_form" size="xs">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </button>
+          </.button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
@@ -776,20 +766,12 @@ defmodule PortalWeb.Clients.Components do
             Current authorizations for this client may be revoked.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_unverify_client"
-              class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-            >
+            <.button type="button" phx-click="cancel_unverify_client" size="xs">
               Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="unverify_client"
-              class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors font-medium"
-            >
+            </.button>
+            <.button type="button" phx-click="unverify_client" size="xs">
               Unverify
-            </button>
+            </.button>
           </div>
         </div>
       </div>
@@ -824,20 +806,12 @@ defmodule PortalWeb.Clients.Components do
           This won't prevent the owner from signing in again; to block access, disable the owning actor instead.
         </p>
         <div class="flex items-center gap-1.5">
-          <button
-            type="button"
-            phx-click="cancel_delete_client"
-            class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-          >
+          <.button type="button" phx-click="cancel_delete_client" size="xs">
             Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="delete_client"
-            class="px-2 py-1 text-xs rounded border border-error/40 text-error hover:bg-error/10 bg-surface transition-colors font-medium"
-          >
+          </.button>
+          <.button type="button" phx-click="delete_client" style="danger" size="xs">
             Delete
-          </button>
+          </.button>
         </div>
       </div>
     </section>

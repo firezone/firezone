@@ -51,20 +51,12 @@ defmodule PortalWeb.Sites.Components do
               </div>
             </div>
             <div class="flex items-center justify-end gap-2 mt-6">
-              <button
-                type="button"
-                phx-click="close_new_site_panel"
-                class="px-3 py-1.5 text-sm rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-              >
+              <.button type="button" phx-click="close_new_site_panel">
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={not @form.source.valid?}
-                class="px-3 py-1.5 text-sm rounded bg-brand text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              </.button>
+              <.button type="submit" style="primary" disabled={not @form.source.valid?}>
                 Create Site
-              </button>
+              </.button>
             </div>
           </.form>
         </div>
@@ -192,13 +184,9 @@ defmodule PortalWeb.Sites.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            :if={@view == :gateways}
-            phx-click="open_site_edit_form"
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
+          <.button :if={@view == :gateways} phx-click="open_site_edit_form" size="sm">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </button>
+          </.button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
@@ -311,34 +299,30 @@ defmodule PortalWeb.Sites.Components do
         </span>
       </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
-        <button
-          :if={@tab == :gateways}
-          phx-click="deploy_gateway"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-        >
+        <.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
           <.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
-        </button>
-        <button
+        </.button>
+        <.button
           :if={@tab == :resources and @site.managed_by == :account}
           phx-click="add_resource"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+          size="xs"
         >
           <.icon name="ri-add-line" class="w-3 h-3" /> Add resource
-        </button>
-        <button
+        </.button>
+        <.button
           :if={@tab == :gateways and not @show_all_gateways}
           phx-click="show_all_gateways"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+          size="xs"
         >
           View all <.icon name="ri-arrow-right-line" class="w-3 h-3" />
-        </button>
-        <button
+        </.button>
+        <.button
           :if={@tab == :gateways and @show_all_gateways}
           phx-click="show_online_gateways"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+          size="xs"
         >
           Online only
-        </button>
+        </.button>
       </div>
     </div>
     """
@@ -490,13 +474,9 @@ defmodule PortalWeb.Sites.Components do
       </ul>
       <div :if={@resources == []} class="flex flex-col items-center justify-center gap-3 py-16">
         <p class="text-sm text-subtle">No resources assigned to this site.</p>
-        <button
-          :if={@site.managed_by == :account}
-          phx-click="add_resource"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-        >
+        <.button :if={@site.managed_by == :account} phx-click="add_resource" size="xs">
           <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a resource
-        </button>
+        </.button>
       </div>
     </div>
     """
@@ -571,23 +551,17 @@ defmodule PortalWeb.Sites.Components do
         class="rounded border border-error/20 bg-error-light p-3 space-y-3"
       >
         <p class="text-xs text-error">
-          Delete this site? Associated gateways and resources will be permanently deleted.
+          <span class="font-medium">Delete this Site?</span>
+          <br />
+          All associated gateways and resources will also be permanently deleted.
         </p>
         <div class="flex items-center gap-2">
-          <button
-            type="button"
-            phx-click="cancel_delete_site"
-            class="px-2.5 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-          >
+          <.button type="button" phx-click="cancel_delete_site" size="xs">
             Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="delete_site"
-            class="px-2.5 py-1 text-xs rounded bg-error text-white hover:opacity-90 transition-opacity"
-          >
+          </.button>
+          <.button type="button" phx-click="delete_site" style="danger" size="xs" class="font-medium">
             Delete site
-          </button>
+          </.button>
         </div>
       </div>
     </section>
@@ -1302,19 +1276,12 @@ defmodule PortalWeb.Sites.Components do
   def resource_form_actions(assigns) do
     ~H"""
     <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-      <button
-        type="button"
-        phx-click="close_add_resource"
-        class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-      >
+      <.button type="button" phx-click="close_add_resource" size="xs">
         Cancel
-      </button>
-      <button
-        type="submit"
-        class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-      >
+      </.button>
+      <.button type="submit" style="primary" size="xs">
         Create Resource
-      </button>
+      </.button>
     </div>
     """
   end
@@ -1373,19 +1340,12 @@ defmodule PortalWeb.Sites.Components do
           </div>
         </div>
         <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <button
-            type="button"
-            phx-click="cancel_site_edit_form"
-            class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
+          <.button type="button" phx-click="cancel_site_edit_form" size="sm">
             Cancel
-          </button>
-          <button
-            type="submit"
-            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-          >
+          </.button>
+          <.button type="submit" style="primary" size="sm" class="font-medium">
             Save
-          </button>
+          </.button>
         </div>
       </.form>
     </div>

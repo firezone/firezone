@@ -620,19 +620,12 @@ defmodule PortalWeb.Policies.Components do
   def policy_form_actions(assigns) do
     ~H"""
     <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-      <button
-        type="button"
-        phx-click="cancel_policy_form"
-        class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-      >
+      <.button type="button" phx-click="cancel_policy_form" size="xs">
         Cancel
-      </button>
-      <button
-        type="submit"
-        class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-brand text-white hover:bg-brand-dark"
-      >
+      </.button>
+      <.button type="submit" style="primary" size="xs">
         {if @mode == :new, do: "Create Policy", else: "Save Changes"}
-      </button>
+      </.button>
     </div>
     """
   end
@@ -763,12 +756,9 @@ defmodule PortalWeb.Policies.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            phx-click="open_edit_form"
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-          >
-            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </button>
+          <.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
+            Edit
+          </.button>
           <button
             phx-click="close_panel"
             class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
@@ -1153,14 +1143,14 @@ defmodule PortalWeb.Policies.Components do
         Actions
       </h3>
       <div class="space-y-2">
-        <button
+        <.action_button
           :if={is_nil(@policy.disabled_at) and not @confirm_disable_policy}
-          type="button"
           phx-click="confirm_disable_policy"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-warning hover:bg-raised transition-colors"
+          style="warning"
+          icon="ri-pause-line"
         >
-          <.icon name="ri-pause-line" class="w-3.5 h-3.5" /> Disable policy
-        </button>
+            Disable policy
+        </.action_button>
         <div
           :if={is_nil(@policy.disabled_at) and @confirm_disable_policy}
           class="px-3 py-2.5 rounded border border-border bg-raised"
@@ -1172,30 +1162,22 @@ defmodule PortalWeb.Policies.Components do
             This will immediately revoke all access granted by it.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_disable_policy"
-              class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-            >
+            <.button type="button" phx-click="cancel_disable_policy" size="xs">
               Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="disable_policy"
-              class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors font-medium"
-            >
+            </.button>
+            <.button type="button" style="primary" phx-click="disable_policy" size="xs">
               Disable
-            </button>
+            </.button>
           </div>
         </div>
-        <button
+        <.action_button
           :if={not is_nil(@policy.disabled_at)}
-          type="button"
           phx-click="enable_policy"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-success hover:bg-raised transition-colors"
+          style="success"
+          icon="ri-play-line"
         >
-          <.icon name="ri-play-line" class="w-3.5 h-3.5" /> Enable policy
-        </button>
+            Enable policy
+        </.action_button>
       </div>
     </section>
     """
@@ -1228,20 +1210,12 @@ defmodule PortalWeb.Policies.Components do
           All sessions authorized by it will be expired.
         </p>
         <div class="flex items-center gap-1.5">
-          <button
-            type="button"
-            phx-click="cancel_delete_policy"
-            class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors"
-          >
+          <.button type="button" phx-click="cancel_delete_policy" size="xs">
             Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="delete_policy"
-            class="px-2 py-1 text-xs rounded border border-error/40 text-error hover:bg-error/10 bg-surface transition-colors font-medium"
-          >
+          </.button>
+          <.button type="button" phx-click="delete_policy" style="danger" size="xs" class="font-medium">
             Delete
-          </button>
+          </.button>
         </div>
       </div>
     </section>
@@ -2309,13 +2283,9 @@ defmodule PortalWeb.Policies.Components do
             phx-keyup="add_ip_range_value"
             class={[@input_class, "flex-1 font-mono placeholder:text-muted"]}
           />
-          <button
-            type="button"
-            phx-click="add_ip_range_value"
-            class="px-2 py-1 text-xs rounded border border-border-strong text-body hover:text-heading bg-surface transition-colors shrink-0"
-          >
+          <.button type="button" phx-click="add_ip_range_value" size="xs" class="shrink-0">
             Add
-          </button>
+          </.button>
         </div>
       </div>
     </div>
@@ -2683,20 +2653,12 @@ defmodule PortalWeb.Policies.Components do
             {@tod_pending_error}
           </p>
           <div class="flex justify-end gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_tod_range"
-              class="px-2 py-1 text-xs rounded border border-border text-body hover:text-heading hover:bg-raised transition-colors"
-            >
+            <.button type="button" phx-click="cancel_tod_range" size="xs">
               Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="confirm_tod_range"
-              class="px-2 py-1 text-xs rounded bg-brand text-white hover:opacity-90 transition-opacity"
-            >
+            </.button>
+            <.button type="button" phx-click="confirm_tod_range" style="primary" size="xs">
               Add
-            </button>
+            </.button>
           </div>
         </div>
         <button
