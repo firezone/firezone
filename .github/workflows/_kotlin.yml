@@ -18,8 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-android
-      - name: Run linter
+      - name: Check formatting
         run: ./gradlew spotlessCheck
+      # Lint pulls a connlib cargo build (the `main` source set includes the
+      # uniffi-generated bindings). Lint runs per-variant, never per-ABI, so
+      # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
+      - name: Run Android Lint
+        run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
 
   update-release-draft:
     name: update-release-draft

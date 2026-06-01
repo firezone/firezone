@@ -7,29 +7,28 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.DividerItemDecoration
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.tabs.TabLayout
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.toggle
-import dev.firezone.android.databinding.ActivitySessionBinding
+import dev.firezone.android.features.session.ui.compose.FirezoneTheme
+import dev.firezone.android.features.session.ui.compose.SessionScreen
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
-import kotlinx.coroutines.launch
+import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.collections.immutable.toImmutableList
 
 @AndroidEntryPoint
-class SessionActivity :
-    AppCompatActivity(),
-    ResourceDetailsBottomSheet.InternetResourceToggleCallback {
-    private lateinit var binding: ActivitySessionBinding
-    private var tunnelService: TunnelService? = null
+class SessionActivity : AppCompatActivity() {
+    private var tunnelService by mutableStateOf<TunnelService?>(null)
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
 
@@ -54,19 +53,70 @@ class SessionActivity :
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivitySessionBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        // Bind to existing TunnelService
         val intent = Intent(this, TunnelService::class.java)
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        setupViews()
-        setupObservers()
+        setContent {
+            FirezoneTheme {
+                val resourcesState by viewModel.resourcesStateFlow.collectAsStateWithLifecycle()
+                val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+                val serviceStatus by viewModel.serviceStatusStateFlow.collectAsStateWithLifecycle()
+
+                // Finish if the tunnel service dies.
+                LaunchedEffect(serviceStatus) {
+                    if (serviceStatus == TunnelService.Companion.State.DOWN) finish()
+                }
+
+                var internetState by remember { mutableStateOf(ResourceState.UNSET) }
+
+                // Keep the internet-resource state in sync with the service across (re)binds and
+                // server-pushed resource updates; the toggle handler updates it directly for an
+                // immediate refresh.
+                LaunchedEffect(resourcesState, tunnelService) {
+                    internetState = tunnelService?.internetState() ?: ResourceState.UNSET
+                }
+
+                val resources =
+                    remember(resourcesState, internetState) {
+                        resourcesState
+                            .map { resource ->
+                                if (resource.isInternetResource()) {
+                                    ResourceViewModel(resource, internetState)
+                                } else {
+                                    ResourceViewModel(resource, ResourceState.ENABLED)
+                                }
+                            }.toImmutableList()
+                    }
+
+                val actorName = remember { viewModel.getActorName() }
+
+                SessionScreen(
+                    actorName = actorName,
+                    resources = resources,
+                    favorites = favorites,
+                    onToggleInternet = {
+                        val newState = internetState.toggle()
+                        tunnelService?.internetResourceToggled(newState)
+                        internetState = tunnelService?.internetState() ?: newState
+                    },
+                    onAddFavorite = { id -> viewModel.addFavoriteResource(id) },
+                    onRemoveFavorite = { id -> viewModel.removeFavoriteResource(id) },
+                    onSettings = {
+                        val settings = Intent(this@SessionActivity, SettingsActivity::class.java)
+                        settings.putExtra("isUserSignedIn", true)
+                        startActivity(settings)
+                    },
+                    onSignOut = {
+                        viewModel.clearToken()
+                        viewModel.clearActorName()
+                        tunnelService?.disconnect()
+                    },
+                )
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -77,104 +127,5 @@ class SessionActivity :
         }
 
         super.onDestroy()
-    }
-
-    fun internetState(): ResourceState = tunnelService?.internetState() ?: ResourceState.UNSET
-
-    override fun onInternetResourceToggled(): ResourceState {
-        tunnelService?.let {
-            it.internetResourceToggled(internetState().toggle())
-            refreshList()
-            Log.d(TAG, "Internet resource toggled ${internetState()}")
-        }
-
-        return internetState()
-    }
-
-    private fun setupViews() {
-        binding.btSignOut.setOnClickListener {
-            viewModel.clearToken()
-            viewModel.clearActorName()
-            tunnelService?.disconnect()
-        }
-
-        binding.btSettings.setOnClickListener {
-            val intent = Intent(this, SettingsActivity::class.java)
-            intent.putExtra("isUserSignedIn", true)
-            startActivity(intent)
-        }
-
-        binding.tvActorName.text = viewModel.getActorName()
-
-        val layoutManager = LinearLayoutManager(this@SessionActivity)
-        val dividerItemDecoration =
-            DividerItemDecoration(
-                this@SessionActivity,
-                layoutManager.orientation,
-            )
-        binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
-        binding.rvResourcesList.adapter = resourcesAdapter
-        binding.rvResourcesList.layoutManager = layoutManager
-
-        binding.tabLayout.addOnTabSelectedListener(
-            object : TabLayout.OnTabSelectedListener {
-                override fun onTabSelected(tab: TabLayout.Tab) {
-                    viewModel.tabSelected(tab.position)
-
-                    refreshList {
-                        // TODO: we might want to remember the old position?
-                        binding.rvResourcesList.scrollToPosition(0)
-                    }
-                }
-
-                override fun onTabUnselected(tab: TabLayout.Tab?) {}
-
-                override fun onTabReselected(tab: TabLayout.Tab) {}
-            },
-        )
-        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
-    }
-
-    private fun setupObservers() {
-        // Go back to MainActivity if the service dies
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch {
-                    viewModel.serviceStatusStateFlow.collect { tunnelState ->
-                        if (tunnelState == TunnelService.Companion.State.DOWN) {
-                            finish()
-                        }
-                    }
-                }
-
-                launch {
-                    viewModel.resourcesStateFlow.collect {
-                        refreshList()
-                    }
-                }
-            }
-        }
-
-        // This coroutine could still resume while the Activity is not shown, but this is probably
-        // fine since the Flow will only emit if the user interacts with the UI anyway.
-        lifecycleScope.launch {
-            viewModel.favorites.collect {
-                refreshList()
-            }
-        }
-        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
-    }
-
-    private fun refreshList(afterLoad: () -> Unit = {}) {
-        viewModel.forceTab()?.let { tab -> binding.tabLayout.selectTab(binding.tabLayout.getTabAt(tab), true) }
-
-        binding.tabLayout.visibility = viewModel.tabLayoutVisibility()
-        resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
-            afterLoad()
-        }
-    }
-
-    companion object {
-        private const val TAG = "SessionActivity"
     }
 }

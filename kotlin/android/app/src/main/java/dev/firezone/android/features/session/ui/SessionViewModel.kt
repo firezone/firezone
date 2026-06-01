@@ -1,15 +1,12 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.session.ui
 
-import android.view.View
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -23,7 +20,6 @@ internal class SessionViewModel
         internal lateinit var repo: Repository
         private val _serviceStatusStateFlow = MutableStateFlow<State?>(null)
         private val _resourcesStateFlow = MutableStateFlow<List<Resource>>(emptyList())
-        private var selectedTab = RESOURCES_TAB_FAVORITES
 
         val serviceStatusStateFlow: StateFlow<State?>
             get() = _serviceStatusStateFlow
@@ -52,60 +48,4 @@ internal class SessionViewModel
         }
 
         fun clearToken() = repo.clearToken()
-
-        // The subset of Resources to actually render
-        fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
-            val resources =
-                resourcesStateFlow.value.map {
-                    if (it.isInternetResource()) {
-                        ResourceViewModel(it, isInternetResourceEnabled)
-                    } else {
-                        ResourceViewModel(it, ResourceState.ENABLED)
-                    }
-                }
-
-            return if (repo.favorites.value.inner
-                    .isEmpty()
-            ) {
-                resources
-            } else if (selectedTab == RESOURCES_TAB_FAVORITES) {
-                resources.filter {
-                    repo.favorites.value.inner
-                        .contains(it.id)
-                }
-            } else {
-                resources
-            }
-        }
-
-        fun forceTab(): Int? =
-            if (repo.favorites.value.inner
-                    .isEmpty()
-            ) {
-                RESOURCES_TAB_ALL
-            } else {
-                null
-            }
-
-        fun tabSelected(position: Int) {
-            selectedTab = position
-        }
-
-        fun isFavorite(id: String) =
-            repo.favorites.value.inner
-                .contains(id)
-
-        fun tabLayoutVisibility(): Int =
-            if (repo.favorites.value.inner
-                    .isNotEmpty()
-            ) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
-
-        companion object {
-            private const val RESOURCES_TAB_FAVORITES = 0
-            private const val RESOURCES_TAB_ALL = 1
-        }
     }
