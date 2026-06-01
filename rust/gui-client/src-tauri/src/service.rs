@@ -463,8 +463,7 @@ impl<'a> Handler<'a> {
 
                         let token = token.clone();
                         let is_internet_resource_active = *is_internet_resource_active;
-                        let api_url = self.api_url().to_string();
-                        let result = self.try_connect(&api_url, token, is_internet_resource_active);
+                        let result = self.try_connect(token, is_internet_resource_active);
 
                         if let Some(e) = result
                             .as_ref()
@@ -596,8 +595,7 @@ impl<'a> Handler<'a> {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }
 
-                let api_url = self.api_url().to_string();
-                let result = self.try_connect(&api_url, token.clone(), is_internet_resource_active);
+                let result = self.try_connect(token.clone(), is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -703,7 +701,6 @@ impl<'a> Handler<'a> {
 
     fn try_connect(
         &mut self,
-        api_url: &str,
         token: SecretString,
         is_internet_resource_active: bool,
     ) -> Result<Session> {
@@ -712,8 +709,9 @@ impl<'a> Handler<'a> {
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
+        let api_url = self.api_url().to_string();
         let url = LoginUrl::client(
-            Url::parse(api_url).context("Failed to parse URL")?,
+            Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -749,7 +747,7 @@ impl<'a> Handler<'a> {
             tokio::runtime::Handle::current(),
         );
 
-        analytics::new_session(device_id.id, api_url.to_string());
+        analytics::new_session(device_id.id, api_url);
 
         let tun = self
             .tun_device
