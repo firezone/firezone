@@ -625,7 +625,7 @@ dependencies = [
  "getrandom 0.2.16",
  "instant",
  "pin-project-lite",
- "rand 0.8.5",
+ "rand 0.8.6",
  "tokio",
 ]
 
@@ -837,7 +837,7 @@ dependencies = [
  "constant_time_eq",
  "hmac",
  "parking_lot",
- "rand 0.8.5",
+ "rand 0.8.6",
  "ring",
  "tracing",
  "x25519-dalek",
@@ -1882,7 +1882,7 @@ dependencies = [
  "ip_network",
  "l3-tcp",
  "logging",
- "rand 0.8.5",
+ "rand 0.10.1",
  "tokio",
  "tracing",
  "tun",
@@ -2318,7 +2318,7 @@ dependencies = [
  "parking_lot",
  "phoenix-channel",
  "png 0.18.1",
- "rand 0.8.5",
+ "rand 0.10.1",
  "reqwest 0.13.4",
  "rustls",
  "sadness-generator",
@@ -2402,7 +2402,7 @@ dependencies = [
  "clap",
  "futures",
  "logging",
- "rand 0.8.5",
+ "rand 0.10.1",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -2445,7 +2445,7 @@ dependencies = [
  "opentelemetry_sdk",
  "phoenix-channel",
  "proptest",
- "rand 0.8.5",
+ "rand 0.10.1",
  "rustls",
  "secrecy",
  "serde",
@@ -3973,7 +3973,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "ip-packet",
- "rand 0.8.5",
+ "rand 0.10.1",
  "tracing",
 ]
 
@@ -5609,9 +5609,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -6714,7 +6714,7 @@ dependencies = [
  "itertools",
  "logging",
  "opentelemetry",
- "rand 0.8.5",
+ "rand 0.10.1",
  "ringbuffer",
  "smallvec",
  "stun_codec",
@@ -8232,7 +8232,7 @@ dependencies = [
  "opentelemetry",
  "proptest",
  "proptest-state-machine",
- "rand 0.8.5",
+ "rand 0.10.1",
  "rangemap",
  "ringbuffer",
  "rustls",
