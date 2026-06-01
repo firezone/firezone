@@ -57,16 +57,17 @@ fn main() -> ExitCode {
 
     let result = try_main(cli, &rt, &mut log_guard, Arc::clone(&telemetry));
 
-    // Capture a fatal error while the Sentry session is still live, then flush.
-    if let Err(e) = &result {
-        tracing::error!("GUI failed: {e:#}");
-    }
+    let exit_code = match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            tracing::error!("GUI failed: {e:#}");
+            ExitCode::FAILURE
+        }
+    };
+
     rt.block_on(async { telemetry.lock().await.stop().await });
 
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::FAILURE,
-    }
+    exit_code
 }
 
 fn try_main(

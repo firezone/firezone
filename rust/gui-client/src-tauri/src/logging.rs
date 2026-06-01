@@ -177,7 +177,7 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 ///
 /// Reads from:
 /// 1. `RUST_LOG` env var
-/// 2. `advanced_settings::load()` (the protected on-disk settings file)
+/// 2. `settings::load_advanced_settings()` (the protected on-disk settings file)
 /// 3. Hard-coded default `DEFAULT_LOG_FILTER`
 pub(crate) fn get_log_filter() -> String {
     #[cfg(not(debug_assertions))]
@@ -189,7 +189,7 @@ pub(crate) fn get_log_filter() -> String {
         return filter;
     }
 
-    if let Ok(Some(settings)) = crate::advanced_settings::load()
+    if let Ok(settings) = crate::settings::load_advanced_settings()
         && EnvFilter::try_new(&settings.log_filter).is_ok()
     {
         return settings.log_filter;

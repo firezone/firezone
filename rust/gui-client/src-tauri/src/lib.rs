@@ -11,7 +11,6 @@ mod uptime;
 mod view;
 
 // TODO: See how many of these we can make private.
-pub mod advanced_settings;
 pub mod auth;
 pub mod controller;
 pub mod deep_link;

@@ -542,7 +542,7 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
     // Check that the protected settings file was written by the Tunnel service.
-    anyhow::ensure!(tokio::fs::try_exists(crate::advanced_settings::path()?).await?);
+    anyhow::ensure!(tokio::fs::try_exists(crate::settings::advanced_settings_path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctrl_tx

@@ -396,16 +396,10 @@ impl<I: GuiIntegration> Controller<I> {
         let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
-        // Re-target the GUI's own Sentry session (started in `entrypoint` mode
-        // by `main`) at the real environment now that the api_url is known. If
-        // no session is running -- e.g. in unit tests, which never call `main`
-        // -- there is nothing to re-target, so we don't spin one up here.
-        {
-            let mut tel = self.telemetry.lock().await;
-            if tel.is_active() {
-                tel.start(&environment, crate::RELEASE, telemetry::GUI_DSN);
-            }
-        }
+        self.telemetry
+            .lock()
+            .await
+            .start(&environment, crate::RELEASE, telemetry::GUI_DSN);
 
         if let Some(account_slug) = account_slug.clone() {
             Telemetry::set_account_slug(account_slug);
@@ -716,6 +710,17 @@ impl<I: GuiIntegration> Controller<I> {
                     .reload(&self.advanced_settings.log_filter)
                 {
                     tracing::warn!("Failed to reload GUI log filter: {e:#}");
+                }
+                // The protected store is now authoritative, so any stale legacy
+                // file in the user-writable settings dir can be removed.
+                if let Ok(path) = legacy_user_advanced_settings_path()
+                    && path.exists()
+                    && let Err(e) = std::fs::remove_file(&path)
+                {
+                    tracing::debug!(
+                        path = %path.display(),
+                        "Failed to delete legacy advanced_settings: {e:#}"
+                    );
                 }
                 self.notify_settings_changed()?;
                 self.refresh_ui_state();
@@ -1552,8 +1557,22 @@ mod tests {
         }
     }
 
+    /// Install rustls' crypto provider exactly once. `main` does this in
+    /// production; tests need their own setup before the controller's
+    /// `update_telemetry_context` triggers `sentry::init`, which builds a
+    /// `reqwest` client that panics without a provider.
+    fn install_crypto_provider() {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
+
     impl Controller<Arc<Mutex<MockIntegration>>> {
         fn start_for_test() -> TestController {
+            install_crypto_provider();
+
             let tunnel_id = rand::random::<u32>();
             let gui_id = rand::random::<u32>();
 
