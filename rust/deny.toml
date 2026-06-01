@@ -294,7 +294,6 @@ skip = [
     "toml_datetime",
     "toml_edit",
     "webpki-roots",
-    "which",
     "windows-link",
     "windows-sys",
     "windows-targets",
