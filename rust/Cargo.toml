@@ -130,7 +130,7 @@ mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.29.0"
+netlink-packet-route = "0.30.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.30.1"
 notify-rust = "4.17.0"
