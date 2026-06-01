@@ -366,11 +366,9 @@ impl<I: GuiIntegration> Controller<I> {
             ))?,
         }
 
-        let api_url = self.api_url().clone();
-        tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
+        tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
         self.send_ipc(&service::ClientMsg::Connect {
-            api_url: api_url.to_string(),
             token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
         })

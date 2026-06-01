@@ -53,11 +53,6 @@ pub(crate) use platform::ProcessToken;
 pub enum ClientMsg {
     ClearLogs,
     Connect {
-        // TODO: remove once MDM ownership moves to the Tunnel service. At
-        // that point the service has the only authoritative `api_url` (the
-        // merge of stored settings and machine-scope MDM policy) and the
-        // GUI no longer needs to pass it in `Connect`.
-        api_url: String,
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
@@ -225,6 +220,7 @@ struct Handler<'a> {
     ipc_tx: ipc::ServerWrite<ServerMsg>,
     log_filter_reloader: &'a FilterReloadHandle,
     advanced_settings: AdvancedSettings,
+    mdm_settings: MdmSettings,
     session: Session,
     telemetry: Telemetry,
     tun_device: TunDeviceManager,
@@ -245,7 +241,6 @@ enum Session {
         connlib: client_shared::Session,
     },
     WaitingForNetwork {
-        api_url: String,
         token: SecretString,
         is_internet_resource_active: bool,
     },
@@ -382,7 +377,7 @@ impl<'a> Handler<'a> {
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
                 advanced_settings: advanced_settings.clone(),
-                mdm_settings,
+                mdm_settings: mdm_settings.clone(),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
@@ -394,6 +389,7 @@ impl<'a> Handler<'a> {
             ipc_tx,
             log_filter_reloader,
             advanced_settings,
+            mdm_settings,
             session: Session::None,
             telemetry,
             tun_device,
@@ -460,17 +456,15 @@ impl<'a> Handler<'a> {
                         connlib.reset("network changed".to_owned());
                     }
                     Session::WaitingForNetwork {
-                        api_url,
                         token,
                         is_internet_resource_active,
                     } => {
                         tracing::info!("Attempting to re-connect upon network change");
 
-                        let result = self.try_connect(
-                            &api_url.clone(),
-                            token.clone(),
-                            *is_internet_resource_active,
-                        );
+                        let token = token.clone();
+                        let is_internet_resource_active = *is_internet_resource_active;
+                        let api_url = self.api_url().to_string();
+                        let result = self.try_connect(&api_url, token, is_internet_resource_active);
 
                         if let Some(e) = result
                             .as_ref()
@@ -595,7 +589,6 @@ impl<'a> Handler<'a> {
                     .await?
             }
             ClientMsg::Connect {
-                api_url,
                 token,
                 is_internet_resource_active,
             } => {
@@ -603,6 +596,7 @@ impl<'a> Handler<'a> {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }
 
+                let api_url = self.api_url().to_string();
                 let result = self.try_connect(&api_url, token.clone(), is_internet_resource_active);
 
                 if let Some(e) = result
@@ -614,7 +608,6 @@ impl<'a> Handler<'a> {
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
                     );
                     self.session = Session::WaitingForNetwork {
-                        api_url,
                         token,
                         is_internet_resource_active,
                     };
@@ -696,6 +689,16 @@ impl<'a> Handler<'a> {
             ClientMsg::Panic => panic!("Explicit panic"),
         }
         Ok(())
+    }
+
+    /// Effective `api_url`: machine-scope MDM policy wins over the stored
+    /// advanced setting.
+    fn api_url(&self) -> &str {
+        self.mdm_settings
+            .api_url
+            .as_ref()
+            .map(|u| u.as_str())
+            .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
 
     fn try_connect(
