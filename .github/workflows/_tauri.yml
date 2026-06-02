@@ -25,7 +25,7 @@ jobs:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.13
     steps:
-      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
+      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -78,7 +78,7 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+      - uses: taiki-e/install-action@50b4a718b59c718df4ef27a3b445f86cd57b9f00 # v2.80.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

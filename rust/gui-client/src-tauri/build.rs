@@ -40,12 +40,10 @@ fn main() -> Result<()> {
         println!("cargo:rerun-if-changed=win_files/Firezone.exe.manifest.rc");
     }
 
-    println!("cargo:rerun-if-changed=../website/public/policy-templates/windows/firezone.admx");
+    println!("cargo:rerun-if-changed=../policy-templates/windows/firezone.admx");
 
     let pfn = format!("{PACKAGE_NAME}_{}", publisher_id(PUBLISHER_DN));
-    let sid = package_sid(&pfn);
     println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");
-    println!("cargo:rustc-env=FIREZONE_PACKAGE_SID={sid}");
 
     Ok(())
 }
@@ -89,28 +87,4 @@ fn publisher_id(publisher: &str) -> String {
     let mut buf = [0u8; 9];
     buf[..8].copy_from_slice(&h[..8]);
     crockford13(&buf)
-}
-
-/// Reverse-engineered equivalent of
-/// `DeriveAppContainerSidFromAppContainerName`: lowercase the PFN,
-/// SHA-256 the UTF-16 LE bytes, split the first 28 bytes of the
-/// digest into 7 × u32 little-endian, and prefix with
-/// `S-1-15-2-…` (the AppPackage authority + base RID). The
-/// final 4 bytes of the 32-byte SHA-256 digest are *not* used --
-/// the kernel API truncates to 28 bytes (verified empirically
-/// against `DeriveAppContainerSidFromAppContainerName` for
-/// Firezone's PFN; the install canary catches drift).
-fn package_sid(pfn: &str) -> String {
-    let h = sha256_utf16le(&pfn.to_lowercase());
-    let dword = |i: usize| u32::from_le_bytes(h[i..i + 4].try_into().expect("4 bytes"));
-    format!(
-        "S-1-15-2-{}-{}-{}-{}-{}-{}-{}",
-        dword(0),
-        dword(4),
-        dword(8),
-        dword(12),
-        dword(16),
-        dword(20),
-        dword(24),
-    )
 }

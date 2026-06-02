@@ -18,7 +18,7 @@ pub fn load_mdm_settings() -> Result<MdmSettings> {
 
 /// Windows-specific struct for ADMX-backed MDM settings.
 #[derive(Clone, Debug)]
-#[admx_macro::admx(path = "../website/public/policy-templates/windows/firezone.admx")]
+#[admx_macro::admx(path = "../policy-templates/windows/firezone.admx")]
 #[expect(non_snake_case, reason = "The values in the ADMX file are camel-case.")]
 struct MdmRegistryValues {
     authURL: Option<String>,

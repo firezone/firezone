@@ -24,6 +24,27 @@ use url::Url;
 
 mod ran_before;
 
+/// Whether to skip the portal during sign-in.
+///
+/// When set, a fake session/token is created on the fly (never persisted) at
+/// sign-in time, decoupling the GUI from the portal so the real controller /
+/// IPC / UI can be exercised against the mock Tunnel service. Debug builds only.
+#[cfg(debug_assertions)]
+static SKIP_PORTAL_AUTH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set [`SKIP_PORTAL_AUTH`].
+///
+/// Call once at process startup.
+#[cfg(debug_assertions)]
+pub fn skip_portal_auth() {
+    SKIP_PORTAL_AUTH.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(debug_assertions)]
+fn portal_auth_skipped() -> bool {
+    SKIP_PORTAL_AUTH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
@@ -230,18 +251,19 @@ impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<()> {
         self.update_telemetry_context().await?;
 
-        if let Some(token) = self
-            .auth
-            .token()
-            .context("Failed to load token from disk during app start")?
-        {
-            // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
+        // When the portal is skipped, still honor connect-on-start, but mint the
+        // token on the fly instead of reading a persisted one from disk.
+        #[cfg(debug_assertions)]
+        if portal_auth_skipped() {
             if self.connect_on_start().is_none_or(|c| c) {
+                let token = self.auth.fake_sign_in();
                 self.start_session(token).await?;
             }
         } else {
-            tracing::info!("No token / actor_name on disk, starting in signed-out state");
+            self.resume_persisted_session().await?;
         }
+        #[cfg(not(debug_assertions))]
+        self.resume_persisted_session().await?;
 
         self.refresh_ui_state();
 
@@ -302,6 +324,26 @@ impl<I: GuiIntegration> Controller<I> {
         }
 
         // Don't close telemetry here, `run` will close it.
+
+        Ok(())
+    }
+
+    /// Resume a persisted session at startup: if a token is on disk and
+    /// connect-on-start is enabled, reconnect.
+    async fn resume_persisted_session(&mut self) -> Result<()> {
+        let Some(token) = self
+            .auth
+            .token()
+            .context("Failed to load token from disk during app start")?
+        else {
+            tracing::info!("No token / actor_name on disk, starting in signed-out state");
+            return Ok(());
+        };
+
+        // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
+        if self.connect_on_start().is_none_or(|c| c) {
+            self.start_session(token).await?;
+        }
 
         Ok(())
     }
@@ -484,6 +526,16 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
+                // Decoupled from the portal: mint a fake session/token on the fly
+                // and transition straight to signed-in, as a real deep-link
+                // callback would, instead of opening the browser.
+                #[cfg(debug_assertions)]
+                if portal_auth_skipped() {
+                    let token = self.auth.fake_sign_in();
+                    self.start_session(token).await?;
+                    return Ok(());
+                }
+
                 let auth_url = self.auth_url().clone();
                 let account_slug = self.account_slug().map(|a| a.to_owned());
 

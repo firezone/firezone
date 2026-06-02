@@ -63,6 +63,9 @@ defmodule PortalAPI.Router do
     resources "/client_sessions", ClientSessionController, only: [:index, :show]
     resources "/gateway_sessions", GatewaySessionController, only: [:index, :show]
 
+    get "/change_logs", ChangeLogController, :index
+    get "/change_logs/:event_id", ChangeLogController, :show
+
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 
@@ -75,6 +78,11 @@ defmodule PortalAPI.Router do
 
     resources "/actors", ActorController, except: [:new, :edit] do
       resources "/external_identities", ExternalIdentityController, only: [:index, :show, :delete]
+      get "/client_tokens", ClientTokenController, :index
+      get "/client_tokens/:id", ClientTokenController, :show
+      post "/client_tokens", ClientTokenController, :create
+      delete "/client_tokens", ClientTokenController, :delete_all
+      delete "/client_tokens/:id", ClientTokenController, :delete
     end
 
     resources "/groups", GroupController, except: [:new, :edit] do

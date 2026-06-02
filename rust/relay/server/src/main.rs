@@ -333,9 +333,14 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
+            // `LowMemory` ships counters as cumulative (so rate dashboards keep working) but
+            // histograms as delta. Without delta, Azure Monitor pins Min/Max to lifetime
+            // extremes after the first outlier and per-window averages can only be
+            // reconstructed via fragile prev()-based KQL.
             let exporter = opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
                 .with_endpoint(grpc_endpoint)
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
                 .build()
                 .context("Failed to build OTLP metric exporter")?;
 

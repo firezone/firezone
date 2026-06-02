@@ -6,7 +6,7 @@ defmodule Portal.Workers.DeleteExpiredAPITokens do
   use Oban.Worker,
     queue: :default,
     max_attempts: 3,
-    unique: [period: :infinity, states: [:available, :scheduled, :executing, :retryable]]
+    unique: [period: :infinity, states: :incomplete]
 
   alias __MODULE__.Database
 

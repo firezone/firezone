@@ -83,7 +83,7 @@ jobs:
             config_name: release-drafter-headless-client.yml
 
     steps:
-      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
+      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -322,7 +322,7 @@ jobs:
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Docker meta

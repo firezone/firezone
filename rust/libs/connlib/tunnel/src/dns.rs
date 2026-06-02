@@ -14,6 +14,7 @@ use anyhow::Result;
 use dns_types::DoHUrl;
 use logging::err_with_src;
 use std::net::SocketAddr;
+use std::time::Instant;
 
 pub(crate) const DNS_PORT: u16 = 53;
 
@@ -56,6 +57,19 @@ pub(crate) struct RecursiveResponse {
 
     /// The transport we used.
     pub transport: Transport,
+
+    /// When we sent the query, used to measure the lookup duration on completion.
+    pub started_at: Instant,
+
+    /// Whether the query was recursed locally or through the tunnel.
+    pub recursion: Recursion,
+}
+
+/// Whether a recursive query was resolved locally or forwarded through the tunnel.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Recursion {
+    Local,
+    Tunnel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]

@@ -228,6 +228,20 @@ impl Auth {
         Ok(SecretString::from(token))
     }
 
+    /// Transition straight to a signed-in state with a fake session, bypassing
+    /// the portal. The session and the returned token live in memory only —
+    /// nothing is written to the keyring or disk, so a later non-mock launch is
+    /// unaffected. The returned token is a placeholder; the mock Tunnel service
+    /// ignores its value.
+    #[cfg(debug_assertions)]
+    pub(crate) fn fake_sign_in(&mut self) -> SecretString {
+        self.state = State::SignedIn(Session {
+            account_slug: "demo-co".into(),
+            actor_name: "Demo User".into(),
+        });
+        SecretString::from("skip-portal-auth-token")
+    }
+
     fn save_session(&self, session: &Session, token: &SecretString) -> Result<(), Error> {
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.

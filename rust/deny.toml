@@ -108,8 +108,6 @@ ignore = [
     "RUSTSEC-2025-0012", # backoff, See #8386
     "RUSTSEC-2024-0436", # paste, See #8387
 
-    "RUSTSEC-2024-0429", # `glib`, need to wait for tauri to upgrade
-
     # `rand` unsoundness via re-entrant ThreadRng access from a custom logger (GHSA-cq8v-f236-94qc).
     # Not exploitable: rand's `log` feature is not enabled (verified via `cargo tree -e features`),
     # so the log!() call sites in rand's reseeding path are compiled out entirely.
@@ -276,6 +274,7 @@ skip = [
     "jni-sys",
     "libloading",
     "linux-raw-sys",
+    "nix",
     "nom",
     "object",
     "png",
@@ -295,7 +294,6 @@ skip = [
     "toml_datetime",
     "toml_edit",
     "webpki-roots",
-    "which",
     "windows-link",
     "windows-sys",
     "windows-targets",

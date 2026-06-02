@@ -609,7 +609,7 @@ defmodule PortalWeb.Groups.Components do
               end)
               selected_resources =
                 Enum.filter(@available_resources, &(&1.id in @grant_selected_resource_ids))
-              at_max = length(@grant_selected_resource_ids) >= 5 %>
+              %>
             <div class="flex gap-2 h-52">
               <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
                 <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
@@ -644,15 +644,7 @@ defmodule PortalWeb.Groups.Components do
                       type="button"
                       phx-click="toggle_grant_resource"
                       phx-value-resource_id={resource.id}
-                      disabled={at_max}
-                      class={[
-                        "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
-                        if at_max do
-                          "opacity-40 cursor-not-allowed"
-                        else
-                          "hover:bg-[var(--surface)] cursor-pointer"
-                        end
-                      ]}
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-[var(--surface)] cursor-pointer"
                     >
                       <div class="flex-1 min-w-0">
                         <p class="text-xs text-[var(--text-primary)] truncate">{resource.name}</p>
@@ -681,14 +673,8 @@ defmodule PortalWeb.Groups.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
                     Selected
                   </span>
-                  <span class={[
-                    "text-[10px] font-medium",
-                    if(length(@grant_selected_resource_ids) >= 5,
-                      do: "text-[var(--status-warning)]",
-                      else: "text-[var(--text-muted)]"
-                    )
-                  ]}>
-                    {length(@grant_selected_resource_ids)} / 5
+                  <span class="text-[10px] font-medium text-[var(--text-muted)]">
+                    {length(@grant_selected_resource_ids)}
                   </span>
                 </div>
                 <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">

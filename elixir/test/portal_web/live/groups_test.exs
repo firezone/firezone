@@ -226,38 +226,6 @@ defmodule PortalWeb.GroupsTest do
       assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource3.id)
     end
 
-    test "cannot select more than 5 resources", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      group = group_fixture(account: account)
-
-      resources =
-        for i <- 1..6 do
-          resource_fixture(account: account, name: "Select Resource #{i}")
-        end
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/groups/#{group}?tab=resources")
-
-      render_click(lv, "open_grant_resource_form")
-
-      for resource <- Enum.take(resources, 5) do
-        render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
-      end
-
-      html = render(lv)
-      assert html =~ "5 / 5"
-
-      sixth = Enum.at(resources, 5)
-      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => sixth.id})
-
-      assert html =~ "5 / 5"
-    end
-
     test "toggling a selected resource deselects it", %{
       conn: conn,
       account: account,
@@ -274,10 +242,10 @@ defmodule PortalWeb.GroupsTest do
       render_click(lv, "open_grant_resource_form")
 
       html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
-      assert html =~ "1 / 5"
+      refute html =~ "No resources selected."
 
       html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
-      assert html =~ "0 / 5"
+      assert html =~ "No resources selected."
     end
 
     test "already-granted resources are not shown in available list", %{

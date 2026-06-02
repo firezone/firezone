@@ -841,6 +841,7 @@ defmodule Portal.Safe do
   def permit(_action, Portal.ExternalIdentity, :account_admin_user), do: :ok
   def permit(_action, Portal.ExternalIdentity, :api_client), do: :ok
   def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
+  def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
@@ -925,25 +926,15 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Membership, :api_client), do: :ok
   def permit(:read, Portal.Membership, _), do: :ok
 
+  # ChangeLog permissions
+  def permit(:read, Portal.ChangeLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.ChangeLog, :api_client), do: :ok
+
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream
   defp emit_subject_message(%Subject{} = subject) do
-    subject_info = %{
-      "ip" => to_string(:inet.ntoa(subject.context.remote_ip)),
-      "ip_region" => subject.context.remote_ip_location_region,
-      "ip_city" => subject.context.remote_ip_location_city,
-      "ip_lat" => subject.context.remote_ip_location_lat,
-      "ip_lon" => subject.context.remote_ip_location_lon,
-      "user_agent" => subject.context.user_agent,
-      "actor_name" => subject.actor.name,
-      "actor_type" => to_string(subject.actor.type),
-      "actor_email" => subject.actor.email,
-      "actor_id" => subject.actor.id,
-      "auth_provider_id" => subject.credential.auth_provider_id
-    }
-
-    message = JSON.encode!(subject_info)
+    message = subject |> Subject.to_map() |> JSON.encode!()
     Repo.query!("SELECT pg_logical_emit_message(true, 'subject', $1)", [message])
   end
 end

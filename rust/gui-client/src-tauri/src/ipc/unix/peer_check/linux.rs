@@ -25,9 +25,10 @@ impl AllowedPeer {
     /// can connect to themselves.
     #[cfg(test)]
     pub fn for_current_exe() -> Self {
+        // Use the raw `/proc/self/exe` target (no canonicalisation) so it
+        // matches what `verify` reads for the peer.
         let exe = std::env::current_exe().expect("test binary must have an exe path");
-        let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
-        Self { exe: canonical }
+        Self { exe }
     }
 
     /// Verify the peer of `stream` and return the stream on accept, or an
@@ -42,8 +43,13 @@ impl AllowedPeer {
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
     ///      it `(deleted)`.
-    ///   4. Canonicalise the exe path and compare against the allowlisted
-    ///      path.
+    ///   4. Compare the resolved path against the allowlisted path.
+    ///
+    /// `/proc/<pid>/exe` is already a kernel-resolved absolute path with no
+    /// symlink components, so we compare it directly rather than running it
+    /// through `std::fs::canonicalize`. Canonicalising would re-`stat` every
+    /// path component, which fails with `EACCES` when the daemon's systemd
+    /// sandbox (`ProtectHome=true`) hides a peer that lives under `/home`.
     pub fn verify(&self, stream: UnixStream) -> Result<UnixStream> {
         let pidfd = match peer_pidfd(stream.as_raw_fd()) {
             Ok(fd) => fd,
@@ -71,13 +77,10 @@ impl AllowedPeer {
             );
         }
 
-        let canonical = std::fs::canonicalize(&target)
-            .with_context(|| format!("Couldn't canonicalise peer's exe `{}`", target.display()))?;
-
-        if canonical != self.exe {
+        if target != self.exe {
             bail!(
                 "Peer's executable `{}` does not match the expected GUI binary `{}`",
-                canonical.display(),
+                target.display(),
                 self.exe.display(),
             );
         }

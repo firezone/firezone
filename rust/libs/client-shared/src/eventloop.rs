@@ -60,6 +60,8 @@ pub struct Eventloop {
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
+
+    tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -141,6 +143,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             cmd_rx,
             logged_permission_denied: false,
+            tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
             resource_list_sender,
@@ -376,6 +379,9 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
+            self.tunnel_errors
+                .add(1, &telemetry::otel::error_layers(&e));
+
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {

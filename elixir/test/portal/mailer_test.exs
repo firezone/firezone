@@ -102,7 +102,7 @@ defmodule Portal.MailerTest do
   end
 
   describe "enqueue/1" do
-    test "raises when account_id is missing" do
+    test "enqueues with a nil account_id when not set" do
       email =
         Swoosh.Email.new()
         |> Swoosh.Email.to({"", "recipient@example.com"})
@@ -110,9 +110,8 @@ defmodule Portal.MailerTest do
         |> Swoosh.Email.subject("Missing Account")
         |> Swoosh.Email.text_body("body")
 
-      assert_raise ArgumentError, ~r/with_account_id\/2/, fn ->
-        enqueue(email)
-      end
+      assert {:ok, job} = enqueue(email)
+      assert job.args["account_id"] == nil
     end
 
     test "enqueues an Oban job without delivering" do
@@ -322,6 +321,128 @@ defmodule Portal.MailerTest do
       assert {:ok, %{}} = deliver(email)
       assert_email_sent(subject: "Bypass")
     end
+
+    test "drops undeliverable firezone.invalid recipients before sending" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to([{"", "recipient@example.com"}, {"", "missing@firezone.invalid"}])
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Drop Invalid")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{}} = deliver(email)
+      assert_email_sent(subject: "Drop Invalid", to: [{"", "recipient@example.com"}])
+    end
+
+    test "skips sending when all recipients are undeliverable" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "missing@firezone.invalid"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("All Invalid")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{}} = deliver(email)
+      refute_email_sent(subject: "All Invalid")
+    end
+  end
+
+  describe "deliver_and_track/2" do
+    test "inserts a tracked row when ACS returns a message id, with nil account_id" do
+      adapter_plugin = replace_req_adapter_plugin(self())
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-tracked-msg", "status" => "Running"})
+      end)
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "tracked@example.com"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Sync Tracked")
+        |> Swoosh.Email.text_body("body")
+
+      assert {:ok, %{id: "acs-tracked-msg"}} =
+               deliver_and_track(email,
+                 adapter: Swoosh.Adapters.AzureCommunicationServices,
+                 endpoint: "https://acs.example.com",
+                 access_key: Base.encode64("acs-secret"),
+                 req_opts: [
+                   plug: {Req.Test, Portal.AzureCommunicationServices},
+                   plugins: [adapter_plugin]
+                 ]
+               )
+
+      entry = Repo.get!(Portal.OutboundEmail, "acs-tracked-msg")
+      assert entry.account_id == nil
+      assert entry.subject == "Sync Tracked"
+      assert entry.recipients == ["tracked@example.com"]
+
+      delivery =
+        Repo.get_by!(Portal.OutboundEmailDelivery,
+          message_id: "acs-tracked-msg",
+          email: "tracked@example.com"
+        )
+
+      assert delivery.status == :pending
+      assert delivery.account_id == nil
+    end
+
+    test "associates account_id when set via with_account_id/2" do
+      account = account_fixture()
+      adapter_plugin = replace_req_adapter_plugin(self())
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-tracked-account-msg", "status" => "Running"})
+      end)
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "tracked@example.com"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Sync Tracked Account")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{id: "acs-tracked-account-msg"}} =
+               deliver_and_track(email,
+                 adapter: Swoosh.Adapters.AzureCommunicationServices,
+                 endpoint: "https://acs.example.com",
+                 access_key: Base.encode64("acs-secret"),
+                 req_opts: [
+                   plug: {Req.Test, Portal.AzureCommunicationServices},
+                   plugins: [adapter_plugin]
+                 ]
+               )
+
+      entry = Repo.get!(Portal.OutboundEmail, "acs-tracked-account-msg")
+      assert entry.account_id == account.id
+    end
+
+    test "does not insert a tracked row when the adapter response has no message id" do
+      account = account_fixture()
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to({"", "recipient@example.com"})
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Untracked")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{}} = deliver_and_track(email)
+      assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
+    end
   end
 
   describe "Database.insert_tracked/4" do
@@ -362,6 +483,35 @@ defmodule Portal.MailerTest do
                )
 
       refute changeset.valid?
+    end
+
+    test "persists with a cleared account_id when the account no longer exists" do
+      missing_account_id = Ecto.UUID.generate()
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, entry} =
+                   Portal.Mailer.Database.insert_tracked(
+                     missing_account_id,
+                     "acs-message-orphan",
+                     "Tracked",
+                     ["recipient@example.com"]
+                   )
+
+          # The tracking row is still persisted, just without the account_id.
+          assert entry.account_id == nil
+          assert entry.message_id == "acs-message-orphan"
+        end)
+
+      assert log =~ "Persisting tracked outbound email without account_id"
+
+      delivery =
+        Repo.get_by!(Portal.OutboundEmailDelivery,
+          message_id: "acs-message-orphan",
+          email: "recipient@example.com"
+        )
+
+      assert delivery.account_id == nil
     end
   end
 

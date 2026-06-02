@@ -418,8 +418,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       # Replace notify_conn with a dead pid (simulate broken connection)
       state = :sys.get_state(pid)
-      dead_pid = spawn(fn -> :ok end)
-      ref = Process.monitor(dead_pid)
+      {dead_pid, ref} = spawn_monitor(fn -> :ok end)
       assert_receive {:DOWN, ^ref, :process, ^dead_pid, :normal}
       :sys.replace_state(pid, fn _ -> %{state | notify_conn: dead_pid} end)
 

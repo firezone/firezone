@@ -29,6 +29,7 @@ use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
+use opentelemetry::metrics::Gauge;
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -102,6 +103,8 @@ pub struct Node<TId, RId> {
 
     stats: NodeStats,
     buffer_pool: BufferPool<Vec<u8>>,
+
+    connection_count: Gauge<u64>,
 
     rng: StdRng,
 
@@ -193,6 +196,7 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
+            connection_count: telemetry::otel::metrics::connection_count(),
             unix_now: now,
             unix_ts,
         }
@@ -605,6 +609,8 @@ where
 
         self.allocations_drain_events(now);
 
+        let mut connections_by_path = [0u64; PeerSocket::KINDS.len()];
+
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(
                 id,
@@ -613,6 +619,18 @@ where
                 &mut self.buffered_transmits,
                 &mut self.inflight_stun_requests,
             );
+
+            if let Some(peer_socket) = connection.state.peer_socket() {
+                connections_by_path[peer_socket.kind_index()] += 1;
+            }
+        }
+
+        // Report the current number of connections per network path. Every bucket is
+        // emitted (including `0`) so that a path draining to zero is not stuck at its
+        // last non-zero value.
+        for (kind, count) in PeerSocket::KINDS.into_iter().zip(connections_by_path) {
+            self.connection_count
+                .record(count, &[telemetry::otel::attr::connection_socket(kind)]);
         }
 
         if self.connections.all_idle() {

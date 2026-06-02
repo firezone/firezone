@@ -15,10 +15,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, SentryMetricExporter, Telemetry,
-    feature_flags, otel,
-};
+use telemetry::{MaybePushMetricsExporter, SentryMetricExporter, Telemetry, feature_flags, otel};
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
@@ -162,17 +159,9 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
                 .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
                 .with_resource(resource)
                 .build(),
-            (MetricsExporter::OtelCollector, None) => SdkMeterProvider::builder()
-                .with_periodic_exporter(MaybePushMetricsExporter {
-                    inner: {
-                        // TODO: Once Firezone has a hosted OTLP exporter, it will go here.
-
-                        NoopPushMetricsExporter
-                    },
-                    should_export: feature_flags::stream_metrics,
-                })
-                .with_resource(resource)
-                .build(),
+            (MetricsExporter::OtelCollector, None) => {
+                SdkMeterProvider::builder().with_resource(resource).build()
+            }
             (MetricsExporter::Sentry, _) => SdkMeterProvider::builder()
                 .with_periodic_exporter(MaybePushMetricsExporter {
                     inner: SentryMetricExporter,
@@ -345,7 +334,7 @@ struct Cli {
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
+    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
     metrics: Option<MetricsExporter>,
 
     /// Send metrics to a custom OTLP collector.

@@ -69,13 +69,41 @@
                   Impersonate="no"
                   Return="check" />
 
+    <!--
+      Register the package for the *installing* user so their first
+      GUI launch already carries package identity (provisioning alone
+      doesn't register external-location sparse packages for
+      interactive users). `Impersonate="yes"` runs it as that user
+      when MSI has a real one to impersonate; per-user
+      `AddPackageByUri` needs no admin.
+
+      `Return="ignore"` because MSI deferred CAs sometimes fall back to
+      running as LocalSystem (silent / SYSTEM-initiated / managed
+      installs), and `AddPackageByUriAsync` refuses LocalSystem with
+      `0x80070057` ("Local System account is not allowed to perform
+      this operation"). Failing the install on that would be wrong —
+      it just means there's no interactive user yet to register for.
+      The GUI's launch-time `ensure_package_identity` covers every
+      user the CA couldn't reach (including this case).
+    -->
+    <CustomAction Id="RegisterSparseForUser"
+                  FileKey="RegisterSparseExeFile"
+                  ExeCommand="register-user"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
     <InstallExecuteSequence>
       <!--
         Provision must complete before `StartServices` so the tunnel
         service is launched with the package SID already attached.
+        The per-user registration runs right after, once the package
+        is staged in the all-users store.
       -->
       <Custom Action="ProvisionSparsePackage"
               Before="StartServices">NOT REMOVE</Custom>
+      <Custom Action="RegisterSparseForUser"
+              After="ProvisionSparsePackage">NOT REMOVE</Custom>
 
       <Custom Action="DeprovisionSparsePackage"
               Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>

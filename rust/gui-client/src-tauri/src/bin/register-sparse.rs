@@ -1,13 +1,17 @@
 //! WiX deferred custom actions that register / deregister the
 //! Firezone sparse MSIX package against the installed binaries.
 //!
-//! Two subcommands, each fired from its own MSI custom action; see
+//! Subcommands, each fired from its own MSI custom action; see
 //! `win_files/sparse-package.wxs` for the wiring:
 //!
-//! - [`imp::provision`] — stage + provision for all users.
-//! - [`imp::deprovision`] — uninstall counterpart.
+//! - [`imp::provision`] — stage + provision for all users
+//!   (`LocalSystem`).
+//! - [`imp::register_user`] — register for the installing user
+//!   (impersonated), so their first launch carries identity.
+//! - [`imp::deprovision`] — uninstall counterpart (`LocalSystem`).
 //!
-//! Both run as `LocalSystem` (the AppX provisioning APIs require it).
+//! The all-users provisioning APIs require `LocalSystem`; the
+//! per-user registration runs impersonated as the installing user.
 //! Exit code policy:
 //!
 //! - `0` on success.
@@ -72,6 +76,7 @@ fn run() -> ExitCode {
     let started = std::time::Instant::now();
     let result = match action {
         Action::Provision => imp::provision(),
+        Action::RegisterUser => imp::register_user(),
         Action::Deprovision => imp::deprovision(),
     };
     let elapsed = started.elapsed();
@@ -140,6 +145,8 @@ struct Cli {
 enum Action {
     /// Stage + provision the package for all users.
     Provision,
+    /// Register the package for the current (impersonated) user.
+    RegisterUser,
     /// Deprovision the package for all users.
     Deprovision,
 }
@@ -148,6 +155,7 @@ impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Action::Provision => "provision",
+            Action::RegisterUser => "register-user",
             Action::Deprovision => "deprovision",
         })
     }
@@ -243,6 +251,16 @@ mod imp {
             tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
             Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.get()?)
         })
+    }
+
+    /// Registers the package for the current (impersonated) user, so
+    /// the installing user's first GUI launch already carries package
+    /// identity (provisioning alone doesn't register external-location
+    /// sparse packages for interactive users). Delegates to the shared
+    /// [`firezone_gui_client::package_identity::register_for_current_user`]
+    /// that the GUI's launch-time check uses too.
+    pub fn register_user() -> Result<()> {
+        firezone_gui_client::package_identity::register_for_current_user()
     }
 
     /// Inverse of [`provision`]. Removes every per-user package
@@ -419,6 +437,10 @@ mod imp {
     use anyhow::{Result, bail};
 
     pub fn provision() -> Result<()> {
+        bail!("`register-sparse` is only supported on Windows");
+    }
+
+    pub fn register_user() -> Result<()> {
         bail!("`register-sparse` is only supported on Windows");
     }
 

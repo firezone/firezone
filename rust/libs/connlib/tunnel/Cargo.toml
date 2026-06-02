@@ -50,15 +50,12 @@ serde_with = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
-socket2 = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
-url = { workspace = true, features = ["serde"] }
-uuid = { workspace = true, features = ["std", "v4"] }
 
 [dev-dependencies]
 firezone-relay = { workspace = true, features = ["proptest"] }

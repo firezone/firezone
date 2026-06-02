@@ -2,7 +2,7 @@ name: "Setup Postgres"
 description: "Starts a Postgres container"
 inputs:
   version:
-    default: "17"
+    default: "18"
     description: "Postgres version"
     required: false
   port:

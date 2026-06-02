@@ -9,7 +9,7 @@ defmodule Portal.Workers.DeleteAccount do
     max_attempts: 3,
     unique: [
       period: :infinity,
-      states: [:available, :executing, :retryable],
+      states: :incomplete,
       keys: [:account_id]
     ]
 

@@ -17,12 +17,6 @@ repos:
         entry: bash -c 'cd .github && git -C .. ls-files "*.md" "*.json" "*.yaml" "*.yml" "*.css" "*.js" "*.ts" "*.tsx" | sed "s|^|../|" | xargs pnpm exec prettier --ignore-path ../.prettierignore --check --ignore-unknown --no-error-on-unmatched-pattern'
         language: system
         pass_filenames: false
-      - id: website-eslint
-        name: "website: eslint"
-        entry: bash -c 'cd website && pnpm exec eslint .'
-        language: system
-        pass_filenames: false
-        files: ^website/.*\.(js|jsx|ts|tsx)$
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -30,16 +24,16 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
         description: Forces to replace line ending by the UNIX 'lf' character.
-        exclude: "(^website/public/images/|^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^elixir/priv/static/)"
+        exclude: "(^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^elixir/priv/static/)"
       - id: check-yaml
       - id: check-xml
         files: '\.(xml|manifest|wxs|svg)$'
         types: [file]
       - id: check-merge-conflict
       - id: end-of-file-fixer
-        exclude: (^website/public/images/|^elixir/priv/static/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
+        exclude: (^elixir/priv/static/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
       - id: trailing-whitespace
-        exclude: (^website/public/images/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
+        exclude: (^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
       - id: check-merge-conflict
   # Third party pre-commit hooks
   - repo: local

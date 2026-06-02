@@ -16,13 +16,26 @@ use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
+#[expect(
+    dead_code,
+    reason = "Variants are held only for their `Drop` side effects."
+)]
+enum LogGuard {
+    /// Pre-settings bootstrap logger: a thread-local default that must
+    /// be dropped before the global GUI logger is installed.
+    Bootstrap(DefaultGuard),
+    /// GUI file logger and log-cleanup thread.
+    Gui(logging::file::Handle, logging::CleanupHandle),
+}
+
 fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    let mut bootstrap_log_guard =
-        Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
+    let mut log_guard = Some(LogGuard::Bootstrap(
+        logging::setup_bootstrap().expect("Failed to setup bootstrap logger"),
+    ));
 
     let cli = Cli::parse();
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
@@ -43,7 +56,7 @@ fn main() -> ExitCode {
         telemetry::GUI_DSN,
     );
 
-    let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
+    let result = try_main(cli, &rt, &mut log_guard, &mut telemetry);
 
     rt.block_on(telemetry.stop());
 
@@ -60,7 +73,7 @@ fn main() -> ExitCode {
 fn try_main(
     cli: Cli,
     rt: &Runtime,
-    bootstrap_log_guard: &mut Option<DefaultGuard>,
+    log_guard: &mut Option<LogGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
@@ -68,16 +81,19 @@ fn try_main(
         firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
     }
 
+    #[cfg(debug_assertions)]
+    if cli.skip_portal_auth {
+        controller::skip_portal_auth();
+    }
+
+    #[cfg(debug_assertions)]
+    if cli.mock_tunnel {
+        firezone_gui_client::mock_tunnel::enable();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
-
-    let fake_controller = matches!(
-        cli.command,
-        Some(Cmd::Debug {
-            command: DebugCommand::FakeController
-        })
-    );
 
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
@@ -90,7 +106,6 @@ fn try_main(
         telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
-        fake_controller,
     };
 
     let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
@@ -119,13 +134,15 @@ fn try_main(
         .or(mdm_settings.log_filter.clone())
         .unwrap_or_else(|| advanced_settings.log_filter.clone());
 
-    drop(bootstrap_log_guard.take());
+    *log_guard = None;
 
     let logging::Handles {
-        logger: _logger,
+        logger,
         reloader,
-        cleanup: _cleanup,
+        cleanup,
     } = firezone_gui_client::logging::setup_gui(&log_filter)?;
+
+    *log_guard = Some(LogGuard::Gui(logger, cleanup));
 
     match cli.command {
         None if cli.check_elevation() => match elevation::gui_check() {
@@ -138,13 +155,8 @@ fn try_main(
                 return Err(error.into());
             }
         },
-        None
-        | Some(Cmd::Elevated)
-        | Some(Cmd::Debug {
-            command: DebugCommand::FakeController,
-        }) => {
-            // Fall-through to running the GUI if elevation check should be bypassed,
-            // or if we're in fake-controller demo mode.
+        None | Some(Cmd::Elevated) => {
+            // Fall-through to running the GUI if elevation check should be bypassed.
         }
 
         // All commands below _don't_ end up running the GUI because they return early.
@@ -190,6 +202,10 @@ fn try_main(
     match gui::run(rt, config, mdm_settings, advanced_settings, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
+            if cli.no_error_dialog {
+                return Err(anyhow);
+            }
+
             if anyhow
                 .chain()
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
@@ -202,6 +218,11 @@ fn try_main(
             }
 
             if anyhow.any_is::<gui::AlreadyRunning>() {
+                return Ok(());
+            }
+
+            if anyhow.any_is::<firezone_gui_client::package_identity::RestartRequired>() {
+                dialog::info("Firezone finished first-time setup. Please start Firezone again.")?;
                 return Ok(());
             }
 
@@ -296,6 +317,10 @@ struct Cli {
     /// For headless CI, disable deep links.
     #[arg(long, hide = true)]
     no_deep_links: bool,
+    /// For headless CI, log errors instead of showing a blocking
+    /// dialog (which would hang with no one to dismiss it).
+    #[arg(long, hide = true)]
+    no_error_dialog: bool,
     /// For headless CI, disable the elevation check.
     #[arg(long, hide = true)]
     no_elevation_check: bool,
@@ -315,6 +340,20 @@ struct Cli {
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     skip_tunnel_pipe_owner_check: bool,
+
+    /// Decouple sign-in from the portal: mint a fake session/token on the fly
+    /// (never persisted) instead of opening the browser. Pairs with
+    /// `--mock-tunnel`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    skip_portal_auth: bool,
+
+    /// Mock the Tunnel service in-process: serve a canned resource list over an
+    /// in-memory IPC channel instead of connecting to the real (root-only)
+    /// Tunnel service. Pairs with `--skip-portal-auth`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    mock_tunnel: bool,
 }
 
 impl Cli {
@@ -353,9 +392,6 @@ enum Cmd {
 
 #[derive(clap::Subcommand)]
 enum DebugCommand {
-    /// Run the GUI with a hardcoded fake tunnel state, for iterating on the
-    /// system tray UI without needing the tunnel service or a live portal.
-    FakeController,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
     /// Drive only the launch-lock + GUI IPC handshake — no controller, no

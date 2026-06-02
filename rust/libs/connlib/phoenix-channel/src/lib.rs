@@ -499,6 +499,10 @@ where
         if let Some(waker) = self.waker.take() {
             waker.wake();
         }
+
+        if backoff.is_zero() {
+            self.backoff = None;
+        }
     }
 
     pub fn url(&self) -> String {

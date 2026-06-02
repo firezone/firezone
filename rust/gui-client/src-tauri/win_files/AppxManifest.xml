@@ -17,7 +17,8 @@
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap10 rescap">
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  IgnorableNamespaces="uap uap10 rescap desktop6">
 
   <!-- mark:next-gui-version -->
   <Identity Version="1.5.13.0"
@@ -30,6 +31,16 @@
     <PublisherDisplayName>Firezone, Inc.</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+    <!--
+      Keep the GUI's data (logs/settings under %LOCALAPPDATA%) and its
+      registry writes at their real locations instead of the per-package
+      container, so gaining package identity doesn't relocate them: data
+      stays readable by non-packaged tooling and registry writes land
+      where Windows and MDM expect. Both require the
+      `unvirtualizedResources` restricted capability below.
+    -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
   </Properties>
 
   <Dependencies>
@@ -44,6 +55,8 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust"/>
+    <!-- Required to disable FileSystem/Registry write virtualization. -->
+    <rescap:Capability Name="unvirtualizedResources"/>
   </Capabilities>
 
   <Applications>

@@ -80,11 +80,23 @@ defmodule PortalAPI.Gateway.Channel do
 
   @impl true
   def join("gateway", _payload, socket) do
-    # If we crash, take the transport process down with us since connlib expects the WebSocket to close on error
-    Process.link(socket.transport_pid)
-
     send(self(), :after_join)
     {:ok, socket}
+  end
+
+  # On an abnormal exit, drain the whole WebSocket instead of just letting the
+  # channel die. connlib ignores `phx_error` and would keep the transport alive,
+  # re-joining reactively and reusing the transport-scoped session id (which
+  # collides with the row already persisted). Draining forces a full reconnect
+  # that re-runs `Socket.connect/3` and mints a fresh id, keeping transport:session
+  # 1:1. Graceful stops already send `phx_close`, so we only intervene here.
+  @impl true
+  def terminate(reason, socket) do
+    if abnormal_exit?(reason) do
+      send(socket.transport_pid, :socket_drain)
+    end
+
+    :ok
   end
 
   ####################################
@@ -477,8 +489,8 @@ defmodule PortalAPI.Gateway.Channel do
           "Gateway session #{inspect(session_id)} was not confirmed durable; disconnecting"
         )
 
-        socket = cancel_session_durability_timer(socket, session_id)
-        push(socket, "disconnect", %{reason: "token_expired"})
+        # Avoid sending "token_expired" since that will tear down connlib
+        # state in the gateway. Instead, the gateway must reconnect.
         {:stop, :shutdown, socket}
 
       _ ->
@@ -1091,6 +1103,11 @@ defmodule PortalAPI.Gateway.Channel do
     |> Map.from_struct()
     |> Map.drop([:__meta__, :account, :device, :gateway_token])
   end
+
+  defp abnormal_exit?(:normal), do: false
+  defp abnormal_exit?(:shutdown), do: false
+  defp abnormal_exit?({:shutdown, _reason}), do: false
+  defp abnormal_exit?(_reason), do: true
 
   defmodule Database do
     import Ecto.Query

@@ -54,7 +54,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
-    directories = Database.list_all_directories(socket.assigns.subject)
+    repo = Keyword.get(opts, :repo, :replica)
+    directories = Database.list_all_directories(socket.assigns.subject, repo)
 
     if new do
       socket
@@ -1594,7 +1595,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,
      socket
-     |> init()
+     |> init(repo: :primary)
      |> put_flash(:success, "Directory saved successfully.")
      |> push_patch(to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
@@ -1896,11 +1897,11 @@ defmodule PortalWeb.Settings.DirectorySync do
     alias Portal.{Entra, Google, Okta, Safe}
     import Ecto.Query
 
-    def list_all_directories(subject) do
+    def list_all_directories(subject, repo \\ :replica) do
       [
-        Entra.Directory |> Safe.scoped(subject, :replica) |> Safe.all(),
-        Google.Directory |> Safe.scoped(subject, :replica) |> Safe.all(),
-        Okta.Directory |> Safe.scoped(subject, :replica) |> Safe.all()
+        Entra.Directory |> Safe.scoped(subject, repo) |> Safe.all(),
+        Google.Directory |> Safe.scoped(subject, repo) |> Safe.all(),
+        Okta.Directory |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> enrich_with_job_status()

@@ -704,7 +704,7 @@ dependencies = [
  "logging",
  "netlink-packet-core",
  "netlink-packet-route",
- "nix",
+ "nix 0.30.1",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -715,9 +715,7 @@ dependencies = [
  "socket-factory",
  "telemetry",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tower",
  "tracing",
  "tun",
@@ -884,7 +882,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -1099,9 +1096,9 @@ dependencies = [
 
 [[package]]
 name = "cfg-if"
-version = "1.0.0"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "cfg_aliases"
@@ -1217,32 +1214,25 @@ dependencies = [
  "backoff",
  "client-shared",
  "connlib-model",
- "dns-types",
- "futures",
  "ip-packet",
  "ip_network",
  "itertools",
  "jni 0.22.4",
  "libc",
- "log",
  "logging",
  "oslog",
  "phoenix-channel",
  "rustls",
  "rustls-platform-verifier",
  "secrecy",
- "serde_json",
  "socket-factory",
  "telemetry",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tracing",
- "tracing-appender",
  "tracing-subscriber",
  "tun",
  "uniffi",
- "url",
 ]
 
 [[package]]
@@ -1250,31 +1240,24 @@ name = "client-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "backoff",
- "bimap",
  "bootstrap-dns-client",
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
  "futures",
- "ip_network",
- "libc",
  "logging",
+ "opentelemetry",
  "parking_lot",
  "phoenix-channel",
- "secrecy",
- "serde",
- "serde_json",
  "snownet",
  "socket-factory",
+ "telemetry",
  "thiserror 2.0.18",
- "time",
  "tokio",
  "tokio-stream",
  "tracing",
  "tun",
  "tunnel",
- "url",
 ]
 
 [[package]]
@@ -1615,9 +1598,9 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
-version = "6.1.0"
+version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
 dependencies = [
  "cfg-if",
  "crossbeam-utils",
@@ -1895,7 +1878,6 @@ dependencies = [
  "anyhow-ext",
  "bin-shared",
  "dns-types",
- "futures",
  "ip-packet",
  "ip_network",
  "l3-tcp",
@@ -2032,7 +2014,7 @@ dependencies = [
  "hex-literal",
  "ip-packet",
  "network-types",
- "which 4.4.2",
+ "which",
 ]
 
 [[package]]
@@ -2223,13 +2205,12 @@ dependencies = [
 
 [[package]]
 name = "filetime"
-version = "0.2.27"
+version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98844151eee8917efc50bd9e8318cb963ae8b297431495d3f758616ea5c57db"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
 dependencies = [
  "cfg-if",
  "libc",
- "libredox",
 ]
 
 [[package]]
@@ -2256,7 +2237,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow-ext",
  "clap",
- "nix",
+ "nix 0.30.1",
  "rpassword",
  "secrecy",
  "tracing",
@@ -2270,22 +2251,16 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "bin-shared",
- "boringtun",
  "caps",
- "chrono",
  "clap",
- "connlib-model",
  "dns-types",
- "either",
  "futures",
  "futures-bounded",
  "hickory-resolver",
  "humantime",
  "ip-packet",
- "ip_network",
- "libc",
  "logging",
- "nix",
+ "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
@@ -2294,8 +2269,6 @@ dependencies = [
  "resolv-conf",
  "rustls",
  "secrecy",
- "serde",
- "serde_json",
  "snownet",
  "socket-factory",
  "telemetry",
@@ -2308,7 +2281,6 @@ dependencies = [
  "tun",
  "tunnel",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -2340,14 +2312,14 @@ dependencies = [
  "libc",
  "logging",
  "native-dialog",
- "nix",
+ "nix 0.30.1",
  "notify-rust",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
  "png 0.18.1",
  "rand 0.8.5",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "sadness-generator",
  "sd-notify",
@@ -2398,16 +2370,13 @@ dependencies = [
  "bin-shared",
  "clap",
  "client-shared",
- "connlib-model",
- "dns-types",
  "futures",
  "humantime",
  "ip-packet",
  "ip_network",
  "known-dirs",
- "libc",
  "logging",
- "nix",
+ "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
@@ -2420,9 +2389,7 @@ dependencies = [
  "socket-factory",
  "telemetry",
  "tokio",
- "tokio-stream",
  "tracing",
- "tracing-subscriber",
  "url",
 ]
 
@@ -2436,11 +2403,10 @@ dependencies = [
  "futures",
  "logging",
  "rand 0.8.5",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "surge-ping",
- "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite",
  "toml 1.1.2+spec-1.1.0",
@@ -2486,7 +2452,7 @@ dependencies = [
  "sha2",
  "smallvec",
  "socket-factory",
- "socket2 0.6.3",
+ "socket2 0.6.4",
  "stun_codec",
  "telemetry",
  "test-strategy",
@@ -2496,7 +2462,6 @@ dependencies = [
  "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "trackable",
  "url",
  "uuid",
 ]
@@ -3160,9 +3125,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hex-display"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb645e05a99f3bd36c60436ced4a873c9f9334c0d0fedfba0cee048111d72ea0"
+checksum = "19bdae70705e045e82cfe41f859b1b360913444e325c5cc37924cc6c090bf288"
 
 [[package]]
 name = "hex-literal"
@@ -3259,15 +3224,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "home"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
-dependencies = [
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "hostname"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3290,9 +3246,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3ba2a386d7f85a81f119ad7498ebe444d2e22c2af0b86b069416ace48b3311a"
+checksum = "8be7462df143984c4598a256ef469b251d7d7f9e271135073e78fc535414f3d0"
 dependencies = [
  "bytes",
  "itoa",
@@ -3441,7 +3397,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.6.4",
  "tokio",
  "tower-service",
  "tracing",
@@ -3744,9 +3700,9 @@ dependencies = [
 
 [[package]]
 name = "is"
-version = "0.8.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40cf23944e1280f3b2959321a1ef776c14503af8e1e5efca32147a9136a5f8dc"
+checksum = "840878b6e30d40e5bda1a7116100f1a18b7bdb91814513b87be80bbfb5d41879"
 dependencies = [
  "crc",
  "hmac",
@@ -4005,7 +3961,6 @@ dependencies = [
 name = "l3-tcp"
 version = "0.1.0"
 dependencies = [
- "anyhow-ext",
  "ip-packet",
  "smoltcp",
  "tracing",
@@ -4133,7 +4088,6 @@ checksum = "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
 dependencies = [
  "bitflags 2.10.0",
  "libc",
- "redox_syscall",
 ]
 
 [[package]]
@@ -4308,9 +4262,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
+checksum = "02bd0af71c67b473010cbbc60715ee815645a4dc942899111f494b4b737d6fda"
 dependencies = [
  "libc",
  "log",
@@ -4376,7 +4330,7 @@ dependencies = [
  "thiserror 2.0.18",
  "versions",
  "wfd",
- "which 7.0.3",
+ "which",
  "winapi",
 ]
 
@@ -4485,6 +4439,18 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -5032,13 +4998,13 @@ dependencies = [
 
 [[package]]
 name = "os_info"
-version = "3.14.0"
+version = "3.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4022a17595a00d6a369236fdae483f0de7f0a339960a53118b818238e132224"
+checksum = "9cf20a545b305cf1da722b236b5155c9bb35f1d5ceb28c048bd96ca842f41b5b"
 dependencies = [
  "android_system_properties",
  "log",
- "nix",
+ "nix 0.31.3",
  "objc2",
  "objc2-foundation",
  "objc2-ui-kit",
@@ -5615,7 +5581,7 @@ source = "git+https://github.com/quinn-rs/quinn?branch=main#8acb578f10b02986050b
 dependencies = [
  "cfg_aliases",
  "libc",
- "socket2 0.6.3",
+ "socket2 0.6.4",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -5849,9 +5815,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
+checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -5949,9 +5915,9 @@ dependencies = [
 
 [[package]]
 name = "rpassword"
-version = "7.5.2"
+version = "7.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ac5b223d9738ef56e0b98305410be40fa0941bf6036c56f1506751e43552d64"
+checksum = "2da316a15f47e3d053de9cb2c439650bd8fa4aaeb9365f2e5f27f492ff73c196"
 dependencies = [
  "libc",
  "rtoolbox",
@@ -5970,7 +5936,7 @@ dependencies = [
  "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
- "nix",
+ "nix 0.30.1",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -6312,7 +6278,7 @@ source = "git+https://github.com/getsentry/sentry-rust?branch=master#a6ce8b0813b
 dependencies = [
  "cfg_aliases",
  "httpdate",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "sentry-backtrace",
  "sentry-contexts",
@@ -6747,10 +6713,9 @@ dependencies = [
  "is",
  "itertools",
  "logging",
- "once_cell",
+ "opentelemetry",
  "rand 0.8.5",
  "ringbuffer",
- "sha2",
  "smallvec",
  "stun_codec",
  "telemetry",
@@ -6771,7 +6736,7 @@ dependencies = [
  "libc",
  "opentelemetry",
  "quinn-udp",
- "socket2 0.6.3",
+ "socket2 0.6.4",
  "tokio",
  "tracing",
 ]
@@ -6788,9 +6753,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.6.3"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
+checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
@@ -6903,9 +6868,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m-proto"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "222a6a5a946631a167c1b0282846bfa33b0f8098b8dd565237809735656ed63f"
+checksum = "02836118cf7384413d7e8beb8b9ab56a4007d1b6514c11df35150a2e7aef8f1a"
 dependencies = [
  "base64ct",
  "fastrand",
@@ -7038,7 +7003,7 @@ dependencies = [
  "parking_lot",
  "pnet_packet",
  "rand 0.9.4",
- "socket2 0.6.3",
+ "socket2 0.6.4",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -7231,7 +7196,7 @@ dependencies = [
  "percent-encoding",
  "plist",
  "raw-window-handle",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "serde_repr",
@@ -7547,7 +7512,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "sentry",
  "serde",
@@ -7766,7 +7731,7 @@ dependencies = [
  "mio",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.6.3",
+ "socket2 0.6.4",
  "tokio-macros",
  "tracing",
  "windows-sys 0.61.2",
@@ -8100,7 +8065,7 @@ dependencies = [
 [[package]]
 name = "tracing-macros"
 version = "0.1.0"
-source = "git+https://github.com/tokio-rs/tracing?branch=main#53e14901f484a455d6edd59474ee87fd2f5f6e54"
+source = "git+https://github.com/tokio-rs/tracing?branch=main#d9d4c542de10f5d3a711b7a45ffe450fd0666437"
 dependencies = [
  "tracing",
 ]
@@ -8279,7 +8244,6 @@ dependencies = [
  "smallvec",
  "snownet",
  "socket-factory",
- "socket2 0.6.3",
  "telemetry",
  "test-case",
  "test-strategy",
@@ -8289,8 +8253,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -8301,7 +8263,7 @@ dependencies = [
  "clap",
  "futures",
  "humantime",
- "nix",
+ "nix 0.30.1",
  "num_cpus",
  "tokio",
  "tokio-stream",
@@ -8418,9 +8380,9 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "uniffi"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8c6dec3fc6645f71a16a3fa9ff57991028153bd194ca97f4b55e610c73ce66a"
+checksum = "dc5f2297ee5b893405bed1a6929faec4713a061df158ecf5198089f23910d470"
 dependencies = [
  "anyhow",
  "camino",
@@ -8441,9 +8403,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_bindgen"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ed0150801958d4825da56a41c71f000a457ac3a4613fa9647df78ac4b6b6881"
+checksum = "8bc0c60a9607e7ab77a2ad47ec5530178015014839db25af7512447d2238016c"
 dependencies = [
  "anyhow",
  "askama",
@@ -8467,9 +8429,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_core"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0ef62e69762fbb9386dcb6c87cd3dd05d525fa8a3a579a290892e60ddbda47e"
+checksum = "77baf5d539fe2e1ad6805e942dbc5dbdeb2b83eb5f2b3a6535d422ca4b02a12f"
 dependencies = [
  "anyhow",
  "bytes",
@@ -8479,9 +8441,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_internal_macros"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98f51ebca0d9a4b2aa6c644d5ede45c56f73906b96403c08a1985e75ccb64a01"
+checksum = "b4b42137524f4be6400fcaca9d02c1d4ecb6ad917e4013c0b93235526d8396e5"
 dependencies = [
  "anyhow",
  "indexmap 2.14.0",
@@ -8492,9 +8454,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_macros"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db9d12529f1223d014fd501e5f29ca0884d15d6ed5ddddd9f506e55350327dc3"
+checksum = "d9273ec45330d8fe9a3701b7b983cea7a4e218503359831967cb95d26b873561"
 dependencies = [
  "camino",
  "fs-err",
@@ -8509,9 +8471,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_meta"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9df6d413db2827c68588f8149d30d49b71d540d46539e435b23a7f7dbd4d4f86"
+checksum = "431d2f443e7828a6c29d188de98b6771a6491ee98bba2d4372643bf93f988a18"
 dependencies = [
  "anyhow",
  "siphasher",
@@ -8521,9 +8483,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_pipeline"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a806dddc8208f22efd7e95a5cdf88ed43d0f3271e8f63b47e757a8bbdb43b63a"
+checksum = "761ef74f6175e15603d0424cc5f98854c5baccfe7bf4ccb08e5816f9ab8af689"
 dependencies = [
  "anyhow",
  "heck 0.5.0",
@@ -8534,9 +8496,9 @@ dependencies = [
 
 [[package]]
 name = "uniffi_udl"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d1a7339539bf6f6fa3e9b534dece13f778bda2d54b1a6d4e40b4d6090ac26e7"
+checksum = "68773ec0e1c067b6505a73bbf6a5782f31a7f9209333a0df97b87565c46bf370"
 dependencies = [
  "anyhow",
  "textwrap",
@@ -9023,18 +8985,6 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
-dependencies = [
- "either",
- "home",
- "once_cell",
- "rustix 0.38.44",
-]
-
-[[package]]
-name = "which"
 version = "7.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
@@ -9220,13 +9170,13 @@ dependencies = [
 
 [[package]]
 name = "windows-service"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "193cae8e647981c35bc947fdd57ba7928b1fa0d4a79305f6dd2dc55221ac35ac"
+checksum = "857224b3b211c6f3616921f081ee54721ee3ad2ace2fac6a6337e032f7b4dcf2"
 dependencies = [
  "bitflags 2.10.0",
  "widestring",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
