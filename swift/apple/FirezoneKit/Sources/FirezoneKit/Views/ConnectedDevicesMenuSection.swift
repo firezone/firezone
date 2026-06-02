@@ -40,7 +40,7 @@
     let device: ConnectedDevice
 
     var body: some View {
-      Menu(device.tunneledIPv4) {
+      Menu(device.tunIPv4) {
         ConnectedDeviceDetailsSubmenu(device: device)
       }
     }
@@ -54,8 +54,8 @@
       Group {
         Text("Tunnel IPv4")
           .foregroundStyle(.secondary)
-        Button(device.tunneledIPv4) {
-          Clipboard.copy(device.tunneledIPv4)
+        Button(device.tunIPv4) {
+          Clipboard.copy(device.tunIPv4)
         }
 
         Divider()

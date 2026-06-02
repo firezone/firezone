@@ -22,7 +22,7 @@
             NavigationLink {
               ConnectedDeviceView(device: device)
             } label: {
-              Text(device.tunneledIPv4)
+              Text(device.tunIPv4)
             }
           }
         }
@@ -38,7 +38,7 @@
     var body: some View {
       List {
         Section(header: Text("Tunnel IPv4")) {
-          copyableRow(device.tunneledIPv4)
+          copyableRow(device.tunIPv4)
         }
 
         Section(header: Text("Client ID")) {

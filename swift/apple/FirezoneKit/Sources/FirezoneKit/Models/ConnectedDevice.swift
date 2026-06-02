@@ -10,12 +10,12 @@ import Foundation
 
 public struct ConnectedDevice: Codable, Identifiable, Equatable, Sendable {
   public let id: String
-  public let tunneledIPv4: String
+  public let tunIPv4: String
   public let pools: [String]
 
-  public init(id: String, tunneledIPv4: String, pools: [String]) {
+  public init(id: String, tunIPv4: String, pools: [String]) {
     self.id = id
-    self.tunneledIPv4 = tunneledIPv4
+    self.tunIPv4 = tunIPv4
     self.pools = pools
   }
 }
