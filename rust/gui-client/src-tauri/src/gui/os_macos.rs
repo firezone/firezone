@@ -9,6 +9,10 @@ pub async fn set_autostart(_enabled: bool) -> Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Signature must match other platforms."
+)]
 pub(crate) fn show_notification(_title: String, _body: String) -> Result<NotificationHandle> {
     tracing::warn!("show_notification is not implemented on macOS; skipping");
 
