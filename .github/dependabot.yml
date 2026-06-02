@@ -98,14 +98,9 @@ updates:
           - netlink-packet-*
       otel:
         patterns:
-          - opentelemetry
-          - opentelemetry_api
-          - opentelemetry-otlp
+          - "opentelemetry*"
           - tracing-opentelemetry
           - tracing-stackdriver
-          - opentelemetry_sdk
-        update-types:
-          - minor
       windows:
         patterns:
           - windows
