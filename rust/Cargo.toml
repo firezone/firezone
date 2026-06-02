@@ -220,7 +220,7 @@ tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
 uniffi = "0.31.1"
 url = "2.5.2"
-uuid = "1.23.1"
+uuid = "1.23.2"
 webpki-roots = "1.0.7"
 which = "7.0.3"
 windows = "0.61.3"
