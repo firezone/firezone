@@ -161,9 +161,10 @@ impl Encode for MessageEncoder {
 /// For simplicity reasons, we use a count-based strategy.
 /// Each nonce can be used for a certain number of requests before it is invalid.
 ///
-/// We remember the nonce we last handed out to each client and keep reusing it
-/// for as long as it is valid, rather than minting a fresh one on every request.
-/// This keeps the number of stored nonces bounded by the number of clients.
+/// We remember the nonce we last handed out to each client socket and keep
+/// reusing it for as long as it is valid, rather than minting a fresh one on
+/// every request. This bounds the stored nonces to one per client socket
+/// instead of one per request.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Nonces {
     inner: HashMap<ClientSocket, Nonce>,
@@ -385,7 +386,7 @@ mod tests {
 
         nonces.add_new(client, nonce);
 
-        for _ in 0..10_000 {
+        for _ in 0..Nonces::NUM_REQUESTS {
             nonces.handle_nonce_used(client, nonce).unwrap();
         }
 
@@ -452,7 +453,7 @@ mod tests {
         let mut rng = StepRng::new(0, 1);
 
         let first = nonces.issue(client, &mut rng);
-        for _ in 0..10_000 {
+        for _ in 0..Nonces::NUM_REQUESTS {
             nonces.handle_nonce_used(client, first).unwrap();
         }
 
