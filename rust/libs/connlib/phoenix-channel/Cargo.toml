@@ -16,7 +16,7 @@ itertools = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true }
 os_info = { workspace = true }
-rand_core = { workspace = true }
+rand_core = { workspace = true, features = ["getrandom"] }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

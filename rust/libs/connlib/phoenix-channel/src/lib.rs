@@ -15,7 +15,6 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
 use backoff::ExponentialBackoff;
 use backoff::ExponentialBackoffBuilder;
-use backoff::backoff::Backoff;
 use base64::Engine;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
