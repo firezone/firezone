@@ -96,12 +96,6 @@ updates:
         patterns:
           - rtnetlink
           - netlink-packet-*
-      # OpenTelemetry crates are pre-1.0, so Dependabot's Cargo semver rules treat
-      # every release (e.g. 0.31 -> 0.32) as a *major* update. Do NOT add an
-      # `update-types` filter here: a `minor`-only filter rejects all of these
-      # updates, and Dependabot then opens one individual PR per crate instead of
-      # grouping them. The `opentelemetry*` glob also covers `opentelemetry-stdout`
-      # and any future opentelemetry-* crate.
       otel:
         patterns:
           - "opentelemetry*"
