@@ -53,7 +53,7 @@ fn deallocate_once_time_expired(
 ) {
     let now = Instant::now();
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret();
 
     server.assert_commands(
@@ -158,7 +158,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
 ) {
     let now = Instant::now();
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
 
@@ -238,7 +238,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
 ) {
     let now = Instant::now();
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
 
@@ -321,7 +321,7 @@ fn freeing_allocation_clears_all_channels(
 
     let _guard = logging::test("debug");
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
 
     let _ = server.server.handle_client_message(
@@ -393,7 +393,7 @@ fn ping_pong_relay(
 
     let _guard = logging::test("debug");
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
@@ -504,7 +504,7 @@ fn allows_rebind_channel_after_expiry(
 
     let _guard = logging::test("debug");
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
@@ -628,7 +628,7 @@ fn ping_pong_ip6_relay(
     let _guard = logging::test("debug");
 
     let mut server =
-        TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);
+        TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
@@ -729,8 +729,9 @@ impl TestServer {
         }
     }
 
-    fn with_nonce(mut self, nonce: Uuid) -> Self {
-        self.server.add_nonce(nonce);
+    fn with_nonce(mut self, client: impl Into<SocketAddr>, nonce: Uuid) -> Self {
+        self.server
+            .add_nonce(ClientSocket::new(client.into()), nonce);
 
         self
     }

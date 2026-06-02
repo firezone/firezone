@@ -225,11 +225,9 @@ where
         self.listen_port
     }
 
-    /// Registers a new, valid nonce.
-    ///
-    /// Each nonce is valid for 10 requests.
-    pub fn add_nonce(&mut self, nonce: Uuid) {
-        self.nonces.add_new(nonce);
+    /// Registers a new, valid nonce for the given client.
+    pub fn add_nonce(&mut self, client: ClientSocket, nonce: Uuid) {
+        self.nonces.add_new(client, nonce);
     }
 
     pub fn num_relayed_bytes(&self) -> u64 {
@@ -330,7 +328,7 @@ where
         // In case of a 401 or 438 response, attach a realm and nonce.
         if is_auth_error {
             error_response.add_attribute((*FIREZONE).clone());
-            error_response.add_attribute(self.new_nonce_attribute());
+            error_response.add_attribute(self.new_nonce_attribute(sender));
         }
 
         let message = match message.username() {
@@ -479,7 +477,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -606,7 +604,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
@@ -655,7 +653,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -764,7 +762,7 @@ where
         request: &CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         self.authenticate_and_send(
             &username,
@@ -811,6 +809,7 @@ where
 
     fn verify_auth(
         &mut self,
+        sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
     ) -> Result<Username, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
@@ -842,7 +841,7 @@ where
                 error_response
             })?;
 
-        self.nonces.handle_nonce_used(nonce).map_err(|e| {
+        self.nonces.handle_nonce_used(sender, nonce).map_err(|e| {
             let (error_response, msg) = make_error_response(StaleNonce, request);
             tracing::debug!(target: "relay", "{msg}: Nonce is invalid: {e}");
 
@@ -1098,12 +1097,10 @@ where
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 
-    fn new_nonce_attribute(&mut self) -> Nonce {
-        let new_nonce = Uuid::from_u128(self.rng.r#gen());
+    fn new_nonce_attribute(&mut self, sender: ClientSocket) -> Nonce {
+        let nonce = self.nonces.issue(sender, &mut self.rng);
 
-        self.add_nonce(new_nonce);
-
-        Nonce::new(new_nonce.to_string())
+        Nonce::new(nonce.to_string())
             .expect("UUIDs are valid nonces because they are less than 128 characters long")
     }
 }
