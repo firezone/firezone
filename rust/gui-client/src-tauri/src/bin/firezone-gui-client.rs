@@ -83,7 +83,7 @@ fn try_main(
 
     #[cfg(debug_assertions)]
     if cli.skip_portal_auth {
-        controller::skip_portal_auth();
+        firezone_gui_client::auth::skip_portal_auth();
     }
 
     #[cfg(debug_assertions)]
