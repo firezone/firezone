@@ -56,9 +56,6 @@ on:
         type: string
         default: ${{ github.sha }}
 
-env:
-  COMPOSE_PARALLEL_LIMIT: 1 # Temporary fix for https://github.com/docker/compose/pull/12752 until compose v2.36.0 lands on GitHub actions runners.
-
 jobs:
   collect-images:
     name: collect-images
@@ -119,9 +116,6 @@ jobs:
           overwrite: true
           name: images-${{ inputs.id }}
           path: images.tar
-          # upload-artifact already compresses (and decompresses on download),
-          # so gzipping first was redundant. A low level stays much faster than
-          # gzip while keeping the artifact small for the many downloading jobs.
           compression-level: 1
           retention-days: 1
 
