@@ -244,21 +244,20 @@ fn set_dir_permissions(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Protected DACL for the Tunnel service config directory, mirroring
+/// `bin_shared::device_id`: Full Access to LocalSystem and
+/// `BUILTIN\Administrators`, with Object + Container inheritance so the
+/// ACEs propagate to child files (notably the device-id file) and
+/// subdirectories.
 #[cfg(target_os = "windows")]
 fn set_dir_permissions(dir: &Path) -> Result<()> {
-    windows_security::SecurityDescriptor::from_sddl(DIR_SDDL)?.apply_to_path(dir)
+    use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
+    PipeDacl::new()
+        .allow_inheriting(FileRights::FullAccess, Trustee::local_system())
+        .allow_inheriting(FileRights::FullAccess, Trustee::builtin_administrators())
+        .build()?
+        .apply_to_path(dir)
 }
-
-/// SDDL for the Tunnel service config directory.
-///
-/// Mirrors `bin_shared::device_id`. `D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`:
-/// - `D:P` — protected DACL (don't inherit ACEs from the parent).
-/// - `A;OICI;FA;;;SY` — Allow Full Access to LocalSystem with Object +
-///   Container inheritance.
-/// - `A;OICI;FA;;;BA` — Allow Full Access to BUILTIN\Administrators with
-///   the same inheritance.
-#[cfg(target_os = "windows")]
-const DIR_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[expect(clippy::unnecessary_wraps)]
