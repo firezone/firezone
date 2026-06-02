@@ -38,6 +38,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use bytecodec::Encode;
 use once_cell::sync::Lazy;
+use rand::Rng;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::Sha256;
 use sha2::digest::FixedOutput;
@@ -48,7 +49,7 @@ use stun_codec::Message;
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use uuid::Uuid;
 
-use crate::Attribute;
+use crate::{Attribute, ClientSocket};
 
 // TODO: Upstream a const constructor to `stun-codec`.
 pub static FIREZONE: Lazy<Realm> =
@@ -159,35 +160,78 @@ impl Encode for MessageEncoder {
 ///
 /// For simplicity reasons, we use a count-based strategy.
 /// Each nonce can be used for a certain number of requests before it is invalid.
+///
+/// We remember the nonce we last handed out to each client and keep reusing it
+/// for as long as it is valid, rather than minting a fresh one on every request.
+/// This keeps the number of stored nonces bounded by the number of clients.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Nonces {
-    inner: HashMap<Uuid, u64>,
+    inner: HashMap<ClientSocket, Nonce>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Nonce {
+    value: Uuid,
+    remaining_requests: u64,
 }
 
 impl Nonces {
     /// How many requests a client can perform with the same nonce.
     const NUM_REQUESTS: u64 = 10_000;
 
-    pub(crate) fn add_new(&mut self, nonce: Uuid) {
-        self.inner.insert(nonce, Self::NUM_REQUESTS);
+    /// Returns a valid nonce for the given client.
+    ///
+    /// If we have already issued a nonce to this client that is still valid, the
+    /// same nonce is returned. Otherwise, a fresh one is minted using `rng`.
+    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl Rng) -> Uuid {
+        if let Some(nonce) = self
+            .inner
+            .get(&client)
+            .filter(|nonce| nonce.remaining_requests > 0)
+        {
+            return nonce.value;
+        }
+
+        let value = Uuid::from_u128(rng.r#gen());
+        self.add_new(client, value);
+
+        value
+    }
+
+    pub(crate) fn add_new(&mut self, client: ClientSocket, value: Uuid) {
+        self.inner.insert(
+            client,
+            Nonce {
+                value,
+                remaining_requests: Self::NUM_REQUESTS,
+            },
+        );
     }
 
     /// Record the usage of a nonce in a request.
-    pub(crate) fn handle_nonce_used(&mut self, nonce: Uuid) -> Result<(), Error> {
-        let mut entry = match self.inner.entry(nonce) {
+    pub(crate) fn handle_nonce_used(
+        &mut self,
+        client: ClientSocket,
+        value: Uuid,
+    ) -> Result<(), Error> {
+        let mut entry = match self.inner.entry(client) {
             Entry::Vacant(_) => return Err(Error::UnknownNonce),
             Entry::Occupied(entry) => entry,
         };
 
-        let remaining_requests = entry.get_mut();
+        let nonce = entry.get_mut();
 
-        if *remaining_requests == 0 {
+        if nonce.value != value {
+            return Err(Error::UnknownNonce);
+        }
+
+        if nonce.remaining_requests == 0 {
             entry.remove();
 
             return Err(Error::NonceUsedUp);
         }
 
-        *remaining_requests -= 1;
+        nonce.remaining_requests -= 1;
 
         Ok(())
     }
@@ -245,6 +289,8 @@ pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
 mod tests {
     use super::*;
     use crate::Attribute;
+    use rand::rngs::mock::StepRng;
+    use std::net::SocketAddr;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
 
@@ -332,18 +378,19 @@ mod tests {
     }
 
     #[test]
-    fn nonces_are_valid_for_100_requests() {
+    fn nonces_are_valid_for_a_fixed_number_of_requests() {
         let mut nonces = Nonces::default();
+        let client = client_socket(1);
         let nonce = Uuid::new_v4();
 
-        nonces.add_new(nonce);
+        nonces.add_new(client, nonce);
 
         for _ in 0..10_000 {
-            nonces.handle_nonce_used(nonce).unwrap();
+            nonces.handle_nonce_used(client, nonce).unwrap();
         }
 
         assert!(matches!(
-            nonces.handle_nonce_used(nonce).unwrap_err(),
+            nonces.handle_nonce_used(client, nonce).unwrap_err(),
             Error::NonceUsedUp
         ));
     }
@@ -351,12 +398,67 @@ mod tests {
     #[test]
     fn unknown_nonces_are_invalid() {
         let mut nonces = Nonces::default();
+        let client = client_socket(1);
         let nonce = Uuid::new_v4();
 
         assert!(matches!(
-            nonces.handle_nonce_used(nonce).unwrap_err(),
+            nonces.handle_nonce_used(client, nonce).unwrap_err(),
             Error::UnknownNonce
         ));
+    }
+
+    #[test]
+    fn reuses_the_same_nonce_for_repeated_requests_from_one_client() {
+        let mut nonces = Nonces::default();
+        let client = client_socket(1);
+        let mut rng = StepRng::new(0, 1);
+
+        let first = nonces.issue(client, &mut rng);
+        let second = nonces.issue(client, &mut rng);
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn issues_distinct_nonces_to_distinct_clients() {
+        let mut nonces = Nonces::default();
+        let mut rng = StepRng::new(0, 1);
+
+        let alice = nonces.issue(client_socket(1), &mut rng);
+        let bob = nonces.issue(client_socket(2), &mut rng);
+
+        assert_ne!(alice, bob);
+    }
+
+    #[test]
+    fn a_nonce_issued_to_one_client_is_invalid_for_another() {
+        let mut nonces = Nonces::default();
+        let mut rng = StepRng::new(0, 1);
+
+        let nonce = nonces.issue(client_socket(1), &mut rng);
+
+        assert!(matches!(
+            nonces
+                .handle_nonce_used(client_socket(2), nonce)
+                .unwrap_err(),
+            Error::UnknownNonce
+        ));
+    }
+
+    #[test]
+    fn issues_a_fresh_nonce_once_the_previous_one_is_used_up() {
+        let mut nonces = Nonces::default();
+        let client = client_socket(1);
+        let mut rng = StepRng::new(0, 1);
+
+        let first = nonces.issue(client, &mut rng);
+        for _ in 0..10_000 {
+            nonces.handle_nonce_used(client, first).unwrap();
+        }
+
+        let second = nonces.issue(client, &mut rng);
+
+        assert_ne!(first, second);
     }
 
     fn message_integrity(
@@ -382,5 +484,9 @@ mod tests {
             BINDING,
             TransactionId::new([0u8; 12]),
         )
+    }
+
+    fn client_socket(id: u8) -> ClientSocket {
+        ClientSocket::new(SocketAddr::from(([127, 0, 0, id], 51820)))
     }
 }
