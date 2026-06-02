@@ -42,7 +42,7 @@ pub struct Controller<I: GuiIntegration> {
     status: Status,
     telemetry_allowed: bool,
     telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
-    updates_rx: ReceiverStream<Option<updates::Notification>>,
+    updates_rx: Option<ReceiverStream<Option<updates::Notification>>>,
     uptime: uptime::Tracker,
 
     gui_ipc_clients: BoxStream<
@@ -203,6 +203,11 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::debug!("Failed to apply log filter after `Hello`: {e:#}");
         }
 
+        let updates_rx = match mdm_settings.check_for_updates {
+            Some(true) | None => Some(ReceiverStream::new(updates_rx)),
+            Some(false) => None,
+        };
+
         Telemetry::set_firezone_id(firezone_id).await;
 
         let auth = auth::Auth::new()?;
@@ -227,7 +232,7 @@ impl<I: GuiIntegration> Controller<I> {
             status: Default::default(),
             telemetry_allowed,
             telemetry,
-            updates_rx: ReceiverStream::new(updates_rx),
+            updates_rx,
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
                 let result = gui_ipc
@@ -345,7 +350,9 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::NewInstanceLaunched(new_instance));
             }
 
-            if let Poll::Ready(Some(notification)) = self.updates_rx.poll_next_unpin(cx) {
+            if let Some(Poll::Ready(Some(notification))) =
+                self.updates_rx.as_mut().map(|rx| rx.poll_next_unpin(cx))
+            {
                 return Poll::Ready(EventloopTick::UpdateNotification(notification));
             }
 
@@ -804,11 +811,6 @@ impl<I: GuiIntegration> Controller<I> {
         &mut self,
         notification: Option<updates::Notification>,
     ) -> Result<()> {
-        // Honor the `checkForUpdates` MDM policy. The checker always runs, but
-        // when the policy disables updates we never surface them to the user.
-        let notification =
-            notification.filter(|_| self.mdm_settings.check_for_updates.unwrap_or(true));
-
         let Some(notification) = notification else {
             self.release = None;
             self.refresh_ui_state();
