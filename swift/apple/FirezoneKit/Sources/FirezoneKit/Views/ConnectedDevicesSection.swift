@@ -10,14 +10,14 @@
 #if os(iOS)
   import SwiftUI
 
-  /// "Devices (N)" section listing the peer devices this client is connected to.
+  /// "Connected Devices (N)" section listing the peer devices this client is connected to.
   /// Renders nothing when there are no connected peers.
   struct ConnectedDevicesSection: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
       if !store.connectedDevices.isEmpty {
-        Section("Devices (\(store.connectedDevices.count))") {
+        Section("Connected Devices (\(store.connectedDevices.count))") {
           ForEach(store.connectedDevices) { device in
             NavigationLink {
               ConnectedDeviceView(device: device)

@@ -11,14 +11,14 @@
   /// into an "And N more…" row. Mirrors the desktop client's tray (`MAX_DEVICES_INLINE`).
   private let maxDevicesInline = 20
 
-  /// "Devices (N)" submenu listing the peer devices this client is connected to.
+  /// "Connected Devices (N)" submenu listing the peer devices this client is connected to.
   /// Renders nothing when there are no connected peers.
   struct ConnectedDevicesSection: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
       if !store.connectedDevices.isEmpty {
-        Menu("Devices (\(store.connectedDevices.count))") {
+        Menu("Connected Devices (\(store.connectedDevices.count))") {
           let visible = store.connectedDevices.prefix(maxDevicesInline)
           ForEach(visible) { device in
             ConnectedDeviceMenuItem(device: device)
