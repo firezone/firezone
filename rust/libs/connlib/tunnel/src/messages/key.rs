@@ -91,8 +91,8 @@ pub type SecretKey = SecretBox<Key>;
 
 #[cfg(test)]
 mod test {
-    use boringtun::x25519::{PublicKey, StaticSecret};
     use super::Key;
+    use boringtun::x25519::{PublicKey, StaticSecret};
 
     #[test]
     fn can_deserialize_public_key() {
