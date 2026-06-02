@@ -12,10 +12,26 @@ To compile natively for x86_64 Linux:
 
 ## Setup (Windows)
 
-To compile natively for x86_64 Windows:
+To compile natively for x86_64 Windows, install the following (winget commands shown):
 
-1. [Install rustup](https://rustup.rs/)
-1. Install [pnpm](https://pnpm.io/installation)
+1. PowerShell 7 — `winget install Microsoft.PowerShell`
+1. Visual Studio C++ build tools (MSVC compiler + Windows SDK) —
+   `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
+1. rustup — `winget install Rustlang.Rustup`
+1. mise — `winget install jdx.mise`
+1. An editor of your choice (see [Recommended IDE Setup](#recommended-ide-setup))
+
+`node` and `pnpm` are pinned in [`rust/.tool-versions`](../.tool-versions) and provided
+by mise — you don't install them separately. After installing mise, activate it in
+PowerShell 7 and install the toolchain from `rust/`:
+
+```powershell
+# Activate mise for the current session (add to $PROFILE to persist)
+mise activate pwsh | Out-String | Invoke-Expression
+
+# Install the pinned tools (node, pnpm, cargo-tauri, etc.)
+mise install
+```
 
 ### Recommended IDE Setup
 
@@ -73,24 +89,58 @@ If that doesn't work:
 - Click `New client secret`
 - Note down the secret value. This should be entered into the GitHub repository's secrets as `AZURE_CLIENT_SECRET`.
 
-## Running
+## Running (Windows)
 
-From this dir:
+A live dev session needs **two** processes running at once, each in its own
+PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh | Out-String | Invoke-Expression`).
 
-```powershell
-# This will start the frontend tools in watch mode and then run `tauri dev`
-pnpm dev
+1. **Tunnel service** — run from an **elevated (Administrator)** terminal. It manages
+   the system tunnel and serves the privileged IPC pipe:
 
-# You can call debug subcommands on the exe from this directory too
-# e.g. this is equivalent to `cargo run -- debug hostname`
-cargo tauri dev -- -- debug hostname
+   ```powershell
+   mise run tunnel
+   ```
 
-# The exe is up in the workspace
-stat ../target/debug/Firezone.exe
-```
+   This runs `firezone-client-tunnel run-debug`, which serves the Tunnel IPC pipe
+   without pinning it to `LocalSystem`, so the unprivileged GUI below can connect.
+
+2. **GUI client** — from a normal (non-elevated) terminal. Connects to the Tunnel
+   service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:
+
+   ```powershell
+   mise run tauri-dev
+   # equivalent to: cargo tauri dev -- -- --skip-tunnel-pipe-owner-check
+
+   # You can call debug subcommands on the exe this way too, e.g.
+   cargo tauri dev -- -- debug hostname
+
+   # The exe is up in the workspace
+   stat ../target/debug/Firezone.exe
+   ```
+
+   `tauri dev` starts the Vite dev server itself (via `beforeDevCommand`) and points the
+   webview at it (`devUrl`), so you get hot-reload and client-side routing works. No
+   separate frontend build is needed for dev.
 
 The app's config and logs will be stored at
 `C:\Users\$USER\AppData\Local\dev.firezone.client`.
+
+> Note: `pnpm dev` does **not** work for this flow. `dev.bat` hard-codes `tauri dev`
+> and forwards no arguments, so it can't pass `--skip-tunnel-pipe-owner-check`, and it
+> doesn't start an elevated Tunnel service.
+
+### What this workflow can't test
+
+Running the GUI against a `run-debug` Tunnel deliberately bypasses the named-pipe
+ownership check, so it does **not** exercise the production pipe-ownership security
+model (GUI ⇄ `LocalSystem` Tunnel service). It also doesn't cover MSI packaging, the
+bundled Windows service, sparse-package registration, or the installed app identity.
+
+To test installation end-to-end you need a real signed release MSI, which **cannot** be
+produced locally: the installer is signed with AzureSignTool against HSM-backed keys
+that are only available to CI. Use the GitHub CI pipeline to build a signed release MSI
+(see [Signing the Windows MSI in GitHub CI](#signing-the-windows-msi-in-github-ci)).
+`pnpm build` can still produce an *unsigned* MSI locally to sanity-check the build itself.
 
 ## Platform support
 
