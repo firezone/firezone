@@ -635,7 +635,7 @@ pub async fn establish_single_instance() -> Result<SingleInstance> {
 /// through `Controller`, but iterating over many clients in an
 /// accept loop, not one-shot.
 pub async fn accept_one_for_debug(server: &mut ipc::Server) -> Result<ClientMsg> {
-    let (mut read, mut write) = server
+    let (mut read, mut write, _pid) = server
         .next_client_split::<ClientMsg, ServerMsg>()
         .await
         .context("Failed to accept GUI IPC client")?;

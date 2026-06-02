@@ -339,7 +339,7 @@ impl<'a> Handler<'a> {
             "Listening for GUI to connect over IPC..."
         );
 
-        let (ipc_rx, mut ipc_tx) = server
+        let (ipc_rx, mut ipc_tx, client_pid) = server
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
@@ -365,9 +365,11 @@ impl<'a> Handler<'a> {
         // Migrate any per-user MDM policy into the machine-scope location before
         // we read it, so the read below never has to consider the legacy hive.
         #[cfg(target_os = "windows")]
-        if let Some(client_pid) = server.client_pid() {
+        if let Some(client_pid) = client_pid {
             crate::mdm_migration::run(client_pid);
         }
+        #[cfg(not(target_os = "windows"))]
+        let _ = client_pid;
 
         let mdm_settings = load_mdm_settings()
             .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))

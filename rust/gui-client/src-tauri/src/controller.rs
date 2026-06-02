@@ -200,7 +200,7 @@ impl<I: GuiIntegration> Controller<I> {
             .or_else(|| mdm_settings.log_filter.clone())
             .unwrap_or_else(|| advanced_settings.log_filter.clone());
         if let Err(e) = log_filter_reloader.reload(&effective_log_filter) {
-            tracing::warn!("Failed to apply log filter after `Hello`: {e:#}");
+            tracing::debug!("Failed to apply log filter after `Hello`: {e:#}");
         }
 
         Telemetry::set_firezone_id(firezone_id).await;
@@ -212,7 +212,9 @@ impl<I: GuiIntegration> Controller<I> {
         // overwrite an existing protected file; the GUI deletes the legacy
         // file when it gets `Ok` back (handled in `handle_service_ipc_msg`).
         // TODO: remove once all clients have migrated.
-        request_legacy_advanced_settings_migration(&mut ipc_client).await;
+        if let Err(e) = request_legacy_advanced_settings_migration(&mut ipc_client).await {
+            tracing::debug!("Skipping legacy advanced_settings migration: {e:#}");
+        }
 
         let controller = Controller {
             general_settings,
@@ -233,7 +235,10 @@ impl<I: GuiIntegration> Controller<I> {
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
-                let result = gui_ipc.next_client_split().await;
+                let result = gui_ipc
+                    .next_client_split()
+                    .await
+                    .map(|(rx, tx, _pid)| (rx, tx));
 
                 Some((result, gui_ipc))
             })
@@ -1075,40 +1080,32 @@ fn maybe_delete_legacy_config() {
 
 /// If the legacy user-side `advanced_settings.json` exists, ask the Tunnel
 /// service to import it. The GUI deletes the legacy file once it gets a
-/// successful (or "already present") reply.
+/// successful reply (see `maybe_delete_legacy_config`).
 // TODO: remove once all clients have migrated.
 async fn request_legacy_advanced_settings_migration(
     ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
-) {
-    let Ok(path) = legacy_user_advanced_settings_path() else {
-        return;
-    };
+) -> Result<()> {
+    let path = legacy_user_advanced_settings_path()?;
     if !path.exists() {
-        return;
+        return Ok(());
     }
-    let content = match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(path = %path.display(), "Failed to read legacy advanced_settings: {e:#}");
-            return;
-        }
-    };
-    let legacy: AdvancedSettings = match serde_json::from_str(&content) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(
-                path = %path.display(),
-                "Legacy advanced_settings.json is unparsable; skipping migration: {e:#}"
-            );
-            return;
-        }
-    };
-    if let Err(e) = ipc_client
+    let content = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "Failed to read legacy advanced_settings at {}",
+            path.display()
+        )
+    })?;
+    let legacy: AdvancedSettings = serde_json::from_str(&content).with_context(|| {
+        format!(
+            "Legacy advanced_settings.json at {} is unparsable",
+            path.display()
+        )
+    })?;
+    ipc_client
         .send(&service::ClientMsg::ApplyAdvancedSettings(legacy))
         .await
-    {
-        tracing::warn!("Failed to send legacy advanced_settings migration: {e:#}");
-    }
+        .context("Failed to send legacy advanced_settings migration")?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1280,7 +1277,7 @@ mod tests {
 
     impl TestController {
         async fn tunnel_service_ipc_accept(&mut self) -> MockTunnel {
-            let (rx, tx) = self
+            let (rx, tx, _pid) = self
                 .tunnel_server
                 .next_client_split::<service::ClientMsg, service::ServerMsg>()
                 .await

@@ -100,8 +100,6 @@ pub struct Server {
     socket_id: SocketId,
     pipe_path: String,
     dacl: PipeDacl,
-    /// PID of the most recently accepted client, captured in [`Server::next_client`].
-    client_pid: Option<u32>,
 }
 
 /// Alias for the client's half of a platform-specific IPC stream
@@ -176,17 +174,11 @@ impl Server {
             socket_id: id,
             pipe_path,
             dacl,
-            client_pid: None,
         })
     }
 
-    /// PID of the most recently accepted client, if any.
-    pub(crate) fn client_pid(&self) -> Option<u32> {
-        self.client_pid
-    }
-
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
+    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, Option<u32>)> {
         // Fixes #5143. In the Tunnel service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -217,8 +209,7 @@ impl Server {
         }
 
         tracing::debug!(?client_pid, "Accepted IPC connection");
-        self.client_pid = Some(client_pid);
-        Ok(server)
+        Ok((server, Some(client_pid)))
     }
 
     async fn bind_to_pipe(&self) -> Result<ServerStream> {
@@ -441,7 +432,7 @@ mod tests {
         let pipe_path = server_1.pipe_path.clone();
 
         tokio::spawn(async move {
-            let (mut rx, _tx) = server_1.next_client_split::<(), ()>().await?;
+            let (mut rx, _tx, _pid) = server_1.next_client_split::<(), ()>().await?;
             rx.next().await;
             Ok::<_, anyhow::Error>(())
         });
