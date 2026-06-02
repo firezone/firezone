@@ -183,22 +183,16 @@ where
         let meter = opentelemetry::global::meter("relay");
 
         let allocations_up_down_counter = meter
-            .i64_up_down_counter("allocations_total")
+            .i64_up_down_counter("relay.active_allocations")
             .with_description("The number of active allocations")
+            .with_unit("{allocation}")
             .build();
         let responses_counter = meter
-            .u64_counter("responses_total")
+            .u64_counter("relay.responses")
             .with_description("The number of responses")
+            .with_unit("{response}")
             .build();
-        let relayed_packet_size_histogram = meter
-            .u64_histogram("relayed_packet_size_bytes")
-            .with_description("The size distribution of packets relayed in userspace")
-            .with_unit("b")
-            .with_boundaries(vec![
-                100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0,
-                1200.0, 1300.0, 1400.0, 1500.0,
-            ])
-            .build();
+        let relayed_packet_size_histogram = crate::metrics::packet_size();
 
         Self {
             public_address: public_address.into(),
@@ -394,7 +388,7 @@ where
 
         self.data_relayed += msg.len() as u64;
         self.relayed_packet_size_histogram
-            .record(msg.len() as u64, &[]);
+            .record(msg.len() as u64, &[crate::metrics::datapath_userspace()]);
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -820,7 +814,7 @@ where
 
         self.data_relayed += data.len() as u64;
         self.relayed_packet_size_histogram
-            .record(data.len() as u64, &[]);
+            .record(data.len() as u64, &[crate::metrics::datapath_userspace()]);
 
         Some((channel.allocation, channel.peer_address))
     }
