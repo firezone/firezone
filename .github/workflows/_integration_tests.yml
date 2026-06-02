@@ -110,7 +110,7 @@ jobs:
           echo "$images"
 
           # shellcheck disable=SC2086 # $images must be split into separate args
-          docker save $images | zstd --long=31 -T0 -o images.tar.zst
+          docker save $images | zstd --long=30 -T0 -o images.tar.zst
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           overwrite: true
@@ -188,7 +188,7 @@ jobs:
         with:
           name: images-${{ inputs.id }}
       - name: Load pre-pulled images
-        run: zstd -dc --long=31 images.tar.zst | docker load
+        run: zstd -dc --long=30 images.tar.zst | docker load
       - uses: ./.github/actions/setup-scripts
       - name: Check minimum client version
         id: client_version_check
