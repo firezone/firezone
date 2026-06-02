@@ -116,7 +116,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "POST body for creating a Policy",
       type: :object,
       properties: %{
-        policy: Policy.Schema
+        policy: %Schema{properties: Policy.Schema.schema().properties}
       },
       required: [:policy],
       example: %{
