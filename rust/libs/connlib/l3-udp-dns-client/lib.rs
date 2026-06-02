@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use ip_packet::{FailedPacket, IpPacket, Layer4Protocol};
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -264,7 +264,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
 
         loop {
-            let port = self.rng.gen_range(range.clone());
+            let port = self.rng.random_range(range.clone());
 
             if !self.pending_queries_by_local_port.contains_key(&port) {
                 return Ok(port);

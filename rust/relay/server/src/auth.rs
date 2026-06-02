@@ -38,7 +38,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use bytecodec::Encode;
 use once_cell::sync::Lazy;
-use rand::Rng;
+use rand::RngExt;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::Sha256;
 use sha2::digest::FixedOutput;
@@ -184,7 +184,7 @@ impl Nonces {
     ///
     /// If we have already issued a nonce to this client that is still valid, the
     /// same nonce is returned. Otherwise, a fresh one is minted using `rng`.
-    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl Rng) -> Uuid {
+    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl RngExt) -> Uuid {
         if let Some(nonce) = self
             .inner
             .get(&client)
@@ -193,7 +193,7 @@ impl Nonces {
             return nonce.value;
         }
 
-        let value = Uuid::from_u128(rng.r#gen());
+        let value = Uuid::from_u128(rng.random());
         self.add_new(client, value);
 
         value
@@ -290,10 +290,42 @@ pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
 mod tests {
     use super::*;
     use crate::Attribute;
-    use rand::rngs::mock::StepRng;
     use std::net::SocketAddr;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
+
+    /// Deterministic RNG yielding an arithmetic sequence. Replaces the `StepRng`
+    /// mock that was removed from `rand`'s public API in 0.10.
+    #[derive(Clone, Debug)]
+    struct StepRng(u64, u64);
+
+    impl StepRng {
+        fn new(initial: u64, increment: u64) -> Self {
+            Self(initial, increment)
+        }
+    }
+
+    impl rand::TryRng for StepRng {
+        type Error = core::convert::Infallible;
+
+        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+            self.try_next_u64().map(|x| x as u32)
+        }
+
+        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+            let res = self.0;
+            self.0 = self.0.wrapping_add(self.1);
+            Ok(res)
+        }
+
+        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+            for chunk in dst.chunks_mut(8) {
+                let bytes = self.try_next_u64()?.to_le_bytes();
+                chunk.copy_from_slice(&bytes[..chunk.len()]);
+            }
+            Ok(())
+        }
+    }
 
     const RELAY_SECRET_1: &str = "4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab";
     const RELAY_SECRET_2: &str = "7e35e34801e766a6a29ecb9e22810ea4e3476c2b37bf75882edf94a68b1d9607";

@@ -1,7 +1,7 @@
 //! Module to check the Firezone website API for new releases
 
 use anyhow::{Context, Result};
-use rand::{Rng as _, thread_rng};
+use rand::RngExt as _;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
@@ -62,7 +62,7 @@ pub async fn checker_task(
             }
             Event::WaitRandom => {
                 tracing::debug!("WaitRandom");
-                let rand_time = thread_rng().gen_range(0..interval_in_seconds);
+                let rand_time = rand::rng().random_range(0..interval_in_seconds);
                 tokio::time::sleep(Duration::from_secs(rand_time)).await;
                 // Discard the first interval, which always elapses instantly
                 interval.reset();

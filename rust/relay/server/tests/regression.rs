@@ -6,10 +6,42 @@ use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, SOFTWARE, Server,
 };
-use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
+/// Deterministic RNG yielding an arithmetic sequence. Replaces the `StepRng`
+/// mock that was removed from `rand`'s public API in 0.10.
+#[derive(Clone, Debug)]
+struct StepRng(u64, u64);
+
+impl StepRng {
+    fn new(initial: u64, increment: u64) -> Self {
+        Self(initial, increment)
+    }
+}
+
+impl rand::TryRng for StepRng {
+    type Error = core::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        self.try_next_u64().map(|x| x as u32)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        let res = self.0;
+        self.0 = self.0.wrapping_add(self.1);
+        Ok(res)
+    }
+
+    fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+        for chunk in dst.chunks_mut(8) {
+            let bytes = self.try_next_u64()?.to_le_bytes();
+            chunk.copy_from_slice(&bytes[..chunk.len()]);
+        }
+        Ok(())
+    }
+}
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,

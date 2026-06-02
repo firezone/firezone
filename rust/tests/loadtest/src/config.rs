@@ -7,7 +7,7 @@
 use crate::cli::parse_bitrate;
 use crate::turn::TURN_HEADER_SIZE;
 use anyhow::{Context as _, Result, bail};
-use rand::distributions::uniform::SampleRange;
+use rand::distr::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -73,8 +73,11 @@ impl<'de> serde::Deserialize<'de> for Range {
 }
 
 impl SampleRange<u64> for Range {
-    fn sample_single<R: RngCore + ?Sized>(self, rng: &mut R) -> u64 {
-        rng.gen_range(std::ops::RangeInclusive::new(self.min, self.max))
+    fn sample_single<R: Rng + ?Sized>(
+        self,
+        rng: &mut R,
+    ) -> Result<u64, rand::distr::uniform::Error> {
+        std::ops::RangeInclusive::new(self.min, self.max).sample_single(rng)
     }
 
     fn is_empty(&self) -> bool {

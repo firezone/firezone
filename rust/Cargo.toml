@@ -69,7 +69,7 @@ bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
 bootstrap-dns-client = { path = "libs/connlib/bootstrap-dns-client" }
-boringtun = { version = "0.6.0", default-features = false }
+boringtun = { version = "0.7.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
@@ -154,8 +154,7 @@ proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
-rand = "0.8.5"
-rand_core = "0.6.4"
+rand = "0.10.1"
 rangemap = "1.7.1"
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
