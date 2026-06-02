@@ -18,6 +18,7 @@ use sentry::{
     transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
+use smallvec::SmallVec;
 
 pub mod analytics;
 pub mod feature_flags;
@@ -234,7 +235,15 @@ impl Telemetry {
             // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
             release: Some(release.to_owned().into()),
             max_breadcrumbs: 500,
-            before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
+            before_send: Some({
+                let rate_limit = event_rate_limiter(Duration::from_secs(60 * 5));
+                Arc::new(move |event| {
+                    let event = rate_limit(event)?;
+                    let event = insert_feature_flags_into_event(event);
+
+                    Some(event)
+                })
+            }),
             enable_logs: true,
             enable_metrics: true,
             before_send_log: Some(Arc::new(|log| {
@@ -245,6 +254,7 @@ impl Telemetry {
             })),
             before_send_metric: Some(Arc::new(|metric| {
                 let metric = insert_user_account_slug_into_metric(metric);
+                let metric = insert_feature_flags_into_metric(metric);
 
                 Some(metric)
             })),
@@ -463,6 +473,33 @@ fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
     metric
         .attributes
         .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+
+    metric
+}
+
+fn insert_feature_flags_into_event(mut event: Event<'static>) -> Event<'static> {
+    // Re-emit the current flag state as Sentry's standard "flags" context shape
+    // so issue pages surface the flags that were active when the event was sent.
+    let values: SmallVec<[serde_json::Value; 16]> = feature_flags::current()
+        .into_iter()
+        .map(|(flag, result)| serde_json::json!({ "flag": flag, "result": result }))
+        .collect();
+    let value = serde_json::json!({ "values": values.as_slice() });
+    let context = sentry::protocol::Context::Other(
+        serde_json::from_value(value).expect("to and from json works"),
+    );
+
+    event.contexts.insert("flags".into(), context);
+    event
+}
+
+fn insert_feature_flags_into_metric(mut metric: Metric) -> Metric {
+    for (name, value) in feature_flags::current() {
+        metric.attributes.insert(
+            format!("feature_flag.{name}").into(),
+            LogAttribute::from(value),
+        );
+    }
 
     metric
 }
