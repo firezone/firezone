@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod metrics;
 mod net_ext;
 mod server;
 mod sleep;

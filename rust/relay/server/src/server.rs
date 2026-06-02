@@ -15,7 +15,7 @@ use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, UpDownCounter};
+use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
 use rand::Rng;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -84,8 +84,8 @@ pub struct Server<R> {
     nonces: Nonces,
 
     allocations_up_down_counter: UpDownCounter<i64>,
-    data_relayed_counter: Counter<u64>,
-    data_relayed: u64, // Keep a separate counter because `Counter` doesn't expose the current value :(
+    data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
+    relayed_packet_size_histogram: Histogram<u64>,
     responses_counter: Counter<u64>,
 }
 
@@ -180,21 +180,9 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let meter = opentelemetry::global::meter("relay");
-
-        let allocations_up_down_counter = meter
-            .i64_up_down_counter("allocations_total")
-            .with_description("The number of active allocations")
-            .build();
-        let responses_counter = meter
-            .u64_counter("responses_total")
-            .with_description("The number of responses")
-            .build();
-        let data_relayed_counter = meter
-            .u64_counter("data_relayed_userspace_bytes")
-            .with_description("The number of bytes relayed")
-            .with_unit("b")
-            .build();
+        let allocations_up_down_counter = crate::metrics::active_allocations();
+        let responses_counter = crate::metrics::responses();
+        let relayed_packet_size_histogram = crate::metrics::packet_size();
 
         Self {
             public_address: public_address.into(),
@@ -211,8 +199,8 @@ where
             nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
-            data_relayed_counter,
             data_relayed: 0,
+            relayed_packet_size_histogram,
             channel_and_client_by_port_and_peer: Default::default(),
         }
     }
@@ -388,8 +376,9 @@ where
             return None;
         };
 
-        self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
+        self.relayed_packet_size_histogram
+            .record(msg.len() as u64, &[crate::metrics::datapath_userspace()]);
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -813,8 +802,9 @@ where
 
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
-        self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
+        self.relayed_packet_size_histogram
+            .record(data.len() as u64, &[crate::metrics::datapath_userspace()]);
 
         Some((channel.allocation, channel.peer_address))
     }
