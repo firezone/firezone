@@ -44,6 +44,7 @@ mod os;
 mod os;
 
 pub use os::set_autostart;
+pub use os::show_notification;
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
