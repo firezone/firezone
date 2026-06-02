@@ -38,6 +38,47 @@ fn main() -> ExitCode {
     ));
 
     let cli = Cli::parse();
+
+    // Helper: pluck the bootstrap tracing guard out of the unified `LogGuard`
+    // enum so we can hand it to an experimental GUI that owns its own
+    // subscriber install (must drop the bootstrap default before the global
+    // subscriber goes in).
+    #[cfg(any(feature = "experimental-gui", feature = "experimental-xilem-gui"))]
+    let take_bootstrap = |g: &mut Option<LogGuard>| -> Option<DefaultGuard> {
+        g.take().and_then(|g| match g {
+            LogGuard::Bootstrap(default_guard) => Some(default_guard),
+            LogGuard::Gui(..) => None,
+        })
+    };
+
+    // The experimental iced GUI owns its own tokio runtime (via
+    // `iced::daemon`), so hand off here — before this binary builds its own
+    // multi-thread runtime — to avoid nesting one runtime inside another.
+    #[cfg(feature = "experimental-gui")]
+    if cli.experimental_gui {
+        return match firezone_gui_client::iced::run(take_bootstrap(&mut log_guard)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!("iced GUI failed: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    // Same hand-off for the experimental xilem GUI: it owns the main thread and
+    // its own tokio runtime (via `Xilem::new_simple`), so branch off before
+    // this binary builds its own runtime.
+    #[cfg(feature = "experimental-xilem-gui")]
+    if cli.experimental_xilem_gui {
+        return match firezone_gui_client::xilem::run(take_bootstrap(&mut log_guard)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!("xilem GUI failed: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -289,6 +330,18 @@ struct Cli {
     debug_update_check: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
+
+    /// Launch the experimental iced-based GUI instead of the Tauri UI.
+    /// Only present in builds with the `experimental-gui` feature.
+    #[cfg(feature = "experimental-gui")]
+    #[arg(long)]
+    experimental_gui: bool,
+
+    /// Launch the experimental xilem-based GUI instead of the Tauri UI.
+    /// Only present in builds with the `experimental-xilem-gui` feature.
+    #[cfg(feature = "experimental-xilem-gui")]
+    #[arg(long)]
+    experimental_xilem_gui: bool,
 
     /// Crash the `Controller` task to test error handling
     /// Formerly `--crash-on-purpose`

@@ -36,7 +36,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     clippy::unnecessary_wraps,
     reason = "Signature must match other platforms."
 )]
-pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
+pub fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
     let (_, rx) = futures::channel::oneshot::channel();
 
     tokio::spawn(async move {
@@ -55,7 +55,20 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
 
         tracing::debug!(%title, %body, "Showing notification");
 
-        notification.on_close(|| {});
+        // Keep this task alive until the user dismisses the
+        // notification — some desktops (and some D-Bus daemons)
+        // garbage-collect notifications whose handle owner drops
+        // before the close signal lands.
+        //
+        // Avoid the sync `NotificationHandle::on_close` API: it calls
+        // `zbus::block_on` internally, which — when `zbus`'s `tokio`
+        // feature is enabled (it is, transitively via the iced
+        // binary's `ksni`/`tokio` feature) — spins up a fresh
+        // `tokio::runtime::Runtime` and panics from inside an
+        // existing tokio worker with "Cannot start a runtime from
+        // within a runtime". The async variant just `.await`s the
+        // close signal on the current runtime, no block_on involved.
+        notification.wait_for_action_async(|_| {}).await;
     });
 
     Ok(NotificationHandle { on_click: rx })
