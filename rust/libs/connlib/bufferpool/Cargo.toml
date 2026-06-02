@@ -14,7 +14,7 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [lints]
 workspace = true
