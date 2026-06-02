@@ -16,7 +16,13 @@ use futures::{
 };
 use logging::FilterReloadHandle;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{ops::ControlFlow, path::PathBuf, sync::Arc, task::Poll, time::Duration};
+use std::{
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+    sync::Arc,
+    task::Poll,
+    time::Duration,
+};
 use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -28,6 +34,11 @@ pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
+    /// Path of the legacy user-writable `advanced_settings.json`. The
+    /// authoritative file now lives in the protected service-side location;
+    /// this one is migrated and deleted on first connection.
+    // TODO: remove once all clients have migrated.
+    legacy_advanced_settings_path: PathBuf,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
@@ -177,6 +188,7 @@ impl<I: GuiIntegration> Controller<I> {
         ctrl_tx: mpsc::Sender<ControllerRequest>,
         ctrl_rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
+        legacy_advanced_settings_path: PathBuf,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
         telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
@@ -212,7 +224,9 @@ impl<I: GuiIntegration> Controller<I> {
 
         let auth = auth::Auth::new()?;
 
-        if let Err(e) = try_migrate_advanced_settings(&mut ipc_client).await {
+        if let Err(e) =
+            try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client).await
+        {
             tracing::warn!("Failed to migrate advanced settings to service: {e:#}");
         }
 
@@ -220,6 +234,7 @@ impl<I: GuiIntegration> Controller<I> {
             general_settings,
             mdm_settings,
             advanced_settings,
+            legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
             ctrl_tx,
@@ -714,7 +729,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::warn!("Failed to reload GUI log filter: {e:#}");
                 }
 
-                if let Err(e) = try_delete_legacy_config() {
+                if let Err(e) = try_delete_legacy_config(&self.legacy_advanced_settings_path) {
                     tracing::warn!("{e:#}")
                 }
 
@@ -1052,25 +1067,26 @@ async fn receive_hello(
     Ok((firezone_id, advanced_settings, mdm_settings))
 }
 
-fn try_delete_legacy_config() -> Result<()> {
-    let Some(path) = existing_legacy_advanced_settings()? else {
+fn try_delete_legacy_config(path: &Path) -> Result<()> {
+    if !path.exists() {
         return Ok(());
-    };
+    }
 
-    std::fs::remove_file(&path).context("Failed to delete legacy advanced settings")?;
+    std::fs::remove_file(path).context("Failed to delete legacy advanced settings")?;
 
     Ok(())
 }
 
 async fn try_migrate_advanced_settings(
+    path: &Path,
     ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
 ) -> Result<()> {
-    let Some(path) = existing_legacy_advanced_settings()? else {
+    if !path.exists() {
         return Ok(());
-    };
+    }
 
     let content =
-        std::fs::read_to_string(&path).context("Failed to read legacy advanced settings")?;
+        std::fs::read_to_string(path).context("Failed to read legacy advanced settings")?;
     let legacy = serde_json::from_str::<AdvancedSettings>(&content)
         .context("Failed to parse legacy advanced settings")?;
     ipc_client
@@ -1079,18 +1095,6 @@ async fn try_migrate_advanced_settings(
         .context("Failed to send legacy advanced_settings migration")?;
 
     Ok(())
-}
-
-fn existing_legacy_advanced_settings() -> Result<Option<PathBuf>> {
-    let path = known_dirs::settings()
-        .context("`known_dirs::settings` failed")?
-        .join("advanced_settings.json");
-
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    Ok(Some(path))
 }
 
 #[cfg(test)]
@@ -1239,6 +1243,143 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn no_legacy_skips_migration() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        mock_tunnel.send_hello().await;
+
+        // Without a legacy file, no `ApplyAdvancedSettings` should be sent.
+        let rx = tokio::time::timeout(
+            Duration::from_millis(200),
+            mock_tunnel.rx_apply_advanced_settings(),
+        )
+        .await;
+        assert!(rx.is_err(), "unexpected migration apply: {rx:?}");
+    }
+
+    #[tokio::test]
+    async fn legacy_present_sends_apply() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let canned = canned_advanced_settings();
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            serde_json::to_string(&canned).unwrap(),
+        )
+        .unwrap();
+
+        mock_tunnel.send_hello().await;
+
+        let migrated = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(migrated, canned);
+    }
+
+    #[tokio::test]
+    async fn apply_ok_deletes_legacy() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let canned = canned_advanced_settings();
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            serde_json::to_string(&canned).unwrap(),
+        )
+        .unwrap();
+
+        mock_tunnel.send_hello().await;
+        let _ = mock_tunnel.rx_apply_advanced_settings().await;
+        mock_tunnel.send_advanced_settings_applied(Ok(canned)).await;
+
+        test_controller
+            .wait_integration(|i| (!i.advanced_settings.is_empty()).then_some(()))
+            .await;
+        assert!(
+            !test_controller.legacy_advanced_settings_path.exists(),
+            "legacy file should have been deleted"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_failure_skips_migration() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        // Unparsable contents: `try_migrate_advanced_settings` must surface an
+        // error which the caller logs without sending an apply.
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            "not valid json",
+        )
+        .unwrap();
+
+        mock_tunnel.send_hello().await;
+
+        let rx = tokio::time::timeout(
+            Duration::from_millis(200),
+            mock_tunnel.rx_apply_advanced_settings(),
+        )
+        .await;
+        assert!(rx.is_err(), "unexpected migration apply: {rx:?}");
+    }
+
+    #[tokio::test]
+    async fn apply_err_keeps_legacy() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let canned = canned_advanced_settings();
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            serde_json::to_string(&canned).unwrap(),
+        )
+        .unwrap();
+
+        mock_tunnel.send_hello().await;
+        let _ = mock_tunnel.rx_apply_advanced_settings().await;
+        mock_tunnel
+            .send_advanced_settings_applied(Err("rejected".to_owned()))
+            .await;
+
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+        assert!(
+            test_controller.legacy_advanced_settings_path.exists(),
+            "legacy file should remain after failed apply"
+        );
+    }
+
+    #[tokio::test]
+    async fn migration_overrides_hello_defaults() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        let canned = canned_advanced_settings();
+        assert_ne!(canned, AdvancedSettings::default());
+
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            serde_json::to_string(&canned).unwrap(),
+        )
+        .unwrap();
+
+        // Hello carries defaults; the migration apply must still propagate the
+        // pre-existing user values, not the service-side defaults.
+        mock_tunnel.send_hello().await;
+
+        let migrated = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(migrated, canned);
+    }
+
     async fn boot_tunnel(
         test_controller: &mut TestController,
         mock_tunnel: &mut MockTunnel,
@@ -1250,6 +1391,14 @@ mod tests {
         mock_tunnel.send_resources(resources).await;
     }
 
+    fn canned_advanced_settings() -> AdvancedSettings {
+        AdvancedSettings {
+            auth_url: Url::parse("https://canned.example.com").unwrap(),
+            api_url: Url::parse("wss://canned.api.example.com/").unwrap(),
+            log_filter: "trace".to_owned(),
+        }
+    }
+
     #[expect(dead_code, reason = "It is a test.")]
     struct TestController {
         join_handle: tokio::task::JoinHandle<Result<()>>,
@@ -1258,6 +1407,8 @@ mod tests {
         updates_tx: mpsc::Sender<Option<updates::Notification>>,
         integration: Arc<Mutex<MockIntegration>>,
         gui_id: u32,
+        legacy_advanced_settings_path: PathBuf,
+        _settings_dir: tempfile::TempDir,
     }
 
     impl TestController {
@@ -1495,6 +1646,24 @@ mod tests {
                 .await
                 .unwrap();
         }
+
+        async fn rx_apply_advanced_settings(&mut self) -> AdvancedSettings {
+            let msg = self.rx.next().await.unwrap().unwrap();
+            let service::ClientMsg::ApplyAdvancedSettings(s) = msg else {
+                panic!("expected `ApplyAdvancedSettings` but got {msg:?}");
+            };
+            s
+        }
+
+        async fn send_advanced_settings_applied(
+            &mut self,
+            result: Result<AdvancedSettings, String>,
+        ) {
+            self.tx
+                .send(&service::ServerMsg::AdvancedSettingsApplied(result))
+                .await
+                .unwrap();
+        }
     }
 
     impl Controller<Arc<Mutex<MockIntegration>>> {
@@ -1504,6 +1673,9 @@ mod tests {
 
             let tunnel_ipc_server = ipc::Server::new(SocketId::Test(tunnel_id)).unwrap();
             let gui_ipc_server = ipc::Server::new(SocketId::Test(gui_id)).unwrap();
+
+            let settings_dir = tempfile::tempdir().unwrap();
+            let legacy_advanced_settings_path = settings_dir.path().join("advanced_settings.json");
 
             let (ctrl_tx, ctrl_rx) = mpsc::channel(16);
             let (updates_tx, updates_rx) = mpsc::channel(16);
@@ -1516,6 +1688,7 @@ mod tests {
                 ctrl_tx.clone(),
                 ctrl_rx,
                 GeneralSettings::default(),
+                legacy_advanced_settings_path.clone(),
                 log_filter_reloader,
                 false,
                 Arc::new(tokio::sync::Mutex::new(Telemetry::disabled())),
@@ -1530,6 +1703,8 @@ mod tests {
                 ctrl_tx,
                 updates_tx,
                 gui_id,
+                legacy_advanced_settings_path,
+                _settings_dir: settings_dir,
             }
         }
     }

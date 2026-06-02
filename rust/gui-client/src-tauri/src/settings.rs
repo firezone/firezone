@@ -45,7 +45,7 @@ pub struct MdmSettings {
     pub support_url: Option<Url>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, specta::Type)]
 pub struct AdvancedSettings {
     pub auth_url: Url,
     pub api_url: Url,

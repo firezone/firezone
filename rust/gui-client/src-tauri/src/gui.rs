@@ -352,12 +352,17 @@ pub fn run(
             tray,
         };
 
+        let legacy_advanced_settings_path = known_dirs::settings()
+            .context("`known_dirs::settings` failed")?
+            .join("advanced_settings.json");
+
         let ctrl_task = tokio::spawn(Controller::start(
             SocketId::Tunnel,
             integration,
             ctlr_tx,
             ctlr_rx,
             general_settings,
+            legacy_advanced_settings_path,
             reloader,
             config.telemetry_allowed,
             telemetry,
