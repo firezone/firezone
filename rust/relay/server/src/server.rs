@@ -180,18 +180,8 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let meter = opentelemetry::global::meter("relay");
-
-        let allocations_up_down_counter = meter
-            .i64_up_down_counter("relay.active_allocations")
-            .with_description("The number of active allocations")
-            .with_unit("{allocation}")
-            .build();
-        let responses_counter = meter
-            .u64_counter("relay.responses")
-            .with_description("The number of responses")
-            .with_unit("{response}")
-            .build();
+        let allocations_up_down_counter = crate::metrics::active_allocations();
+        let responses_counter = crate::metrics::responses();
         let relayed_packet_size_histogram = crate::metrics::packet_size();
 
         Self {

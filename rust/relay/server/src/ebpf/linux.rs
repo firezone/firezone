@@ -86,15 +86,7 @@ impl Program {
 
         let packet_size = crate::metrics::packet_size();
 
-        let processing_duration = opentelemetry::global::meter("relay")
-            .u64_histogram("relay.xdp.processing.duration")
-            .with_description("Time the eBPF XDP program spent processing one relayed packet")
-            .with_unit("ns")
-            .with_boundaries(vec![
-                50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, 5_000.0, 10_000.0, 20_000.0, 50_000.0,
-                100_000.0,
-            ])
-            .build();
+        let processing_duration = crate::metrics::xdp_processing_duration();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
