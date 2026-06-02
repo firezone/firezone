@@ -151,8 +151,8 @@ proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
-rand = "0.8.5"
-rand_core = "0.6.4"
+rand = "0.10.1"
+rand_core = "0.10.1"
 rangemap = "1.7.1"
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
