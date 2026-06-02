@@ -55,19 +55,20 @@ jobs:
 
           # Fetch base ref for PRs and merge group
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.base_ref }} --depth=1
-            git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
+            base="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            git diff --name-only "$base" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
           elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            base_sha="${{ github.event.merge_group.base_sha }}"
-            git fetch origin "$base_sha" --depth=1
-            if ! git cat-file -e "${base_sha}^{commit}"; then
-              echo "::error::merge_group base SHA $base_sha not available after fetch" >&2
+            base="${{ github.event.merge_group.base_sha }}"
+            git fetch origin "$base" --depth=1
+            if ! git cat-file -e "${base}^{commit}"; then
+              echo "::error::merge_group base SHA $base not available after fetch" >&2
               exit 1
             fi
-            git diff --name-only "$base_sha" ${{ github.sha }} > changed_files.txt
+            git diff --name-only "$base" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
@@ -112,10 +113,20 @@ jobs:
           # Swift and Kotlin only build rust/client-ffi (the FFI shim) and its
           # workspace dependencies, which are platform-agnostic and already
           # covered by the `rust` job. The mobile builds exist to guard the FFI
-          # boundary, so only run them when client-ffi itself changes. For
+          # boundary, so run them when client-ffi itself changes or when the
+          # `uniffi` binding generator is bumped (handled just below). For
           # riskier changes elsewhere, trigger _swift.yml / _kotlin.yml manually
           # via workflow_dispatch.
           if grep -q '^rust/client-ffi/' changed_files.txt; then
+            jobs="${jobs},kotlin,swift"
+          fi
+
+          # Diff the locked `uniffi` versions against the base ref. Using
+          # Cargo.lock rather than Cargo.toml also catches bare `cargo update`
+          # bumps that keep the same version requirement.
+          git show "$base:rust/Cargo.lock" | grep -A1 '^name = "uniffi' > uniffi_base.txt || true
+          grep -A1 '^name = "uniffi' rust/Cargo.lock > uniffi_head.txt || true
+          if ! diff -q uniffi_base.txt uniffi_head.txt > /dev/null; then
             jobs="${jobs},kotlin,swift"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
