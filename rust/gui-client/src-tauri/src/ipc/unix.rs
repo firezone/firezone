@@ -68,7 +68,7 @@ pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
 impl Server {
     /// Platform-specific setup
-    pub(crate) fn new(id: SocketId) -> Result<Self> {
+    pub fn new(id: SocketId) -> Result<Self> {
         let sock_path = ipc_path(id)?;
 
         tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");

@@ -67,7 +67,7 @@ all-features = false
 no-default-features = false
 # If set, these feature will be enabled when collecting metadata. If `--features`
 # is specified on the cmd line they will take precedence over this option.
-#features = []
+features = ["experimental-gui", "experimental-xilem-gui"]
 
 # The output table provides options for how/if diagnostics are outputted
 [output]
@@ -153,6 +153,8 @@ allow = [
     "Zlib",
     "CDLA-Permissive-2.0",
     "NCSA",
+    "CC0-1.0", # Public domain dedication, pulled in by hexf-parse via iced/wgpu.
+    "Unlicense", # Public domain dedication, pulled in by ksni (used for the Linux tray).
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -260,31 +262,54 @@ deny = [
 skip = [
     "base64",
     "bitflags",
+    "block2", # iced/wgpu's macOS path uses block2 0.6; tauri stays on 0.5.
+    "calloop", # iced winit pulls calloop 0.14; tauri 0.13.
+    "calloop-wayland-source", # Same root cause as `calloop`.
     "cargo-platform",
     "cargo_metadata",
     "chacha20", # boringtun pulls chacha20 0.9 via chacha20poly1305 0.10.1; hickory 0.26 pulls 0.10 via rand 0.10.
     "core-foundation", # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
+    "core-graphics", # iced/wgpu's macOS path uses core-graphics 0.25; tauri stays on 0.24.
+    "core-graphics-types", # Same root cause as `core-graphics`.
     "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
+    "ctor", # iced's text stack uses ctor 0.5; tauri/wry on 0.4.
     "foldhash",
+    "font-types", # iced text shaping uses font-types 0.10; older copy lingers via skrifa 0.32.
     "getrandom",
     "hashbrown",
     "heck",
     "indexmap",
+    "itertools", # iced's image feature uses itertools 0.14; existing copy on 0.12.
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
+    "keyboard-types", # xilem's winit/wgpu 27 stack vs iced's wgpu 26 stack.
+    "kurbo", # iced 0.14's tiny-skia renderer pulls kurbo 0.10 directly and kurbo 0.11 transitively through resvg (SVG support); both stay until resvg or iced_tiny_skia upgrade.
     "libloading",
     "linux-raw-sys",
+    "lru", # iced 0.14 uses lru 0.16; existing copy via other deps.
+    "naga", # xilem renders via vello → wgpu 27 (naga 27); iced 0.14 uses wgpu 26 (naga 26).
     "nix",
     "nom",
+    "objc2", # iced/wgpu's macOS path uses objc2 0.6; tauri stays on 0.5.
+    "objc2-app-kit", # Same root cause as `objc2`.
+    "objc2-foundation", # Same root cause as `objc2`.
+    "objc2-quartz-core", # Same root cause as `objc2`.
+    "objc2-ui-kit", # Same root cause as `objc2`.
     "object",
     "png",
     "proc-macro-crate",
+    "quick-error", # iced's image feature pulls quick-error 2.0; rusttype dep still on 1.2.
     "quick-xml",
     "rand",
     "rand_chacha",
     "rand_core",
+    "read-fonts", # Same root cause as `font-types`.
+    "roxmltree", # iced/cosmic-text uses roxmltree 0.20; admx-macro uses 0.21.
+    "rustc-hash", # iced 0.14 uses rustc-hash 2.x; existing copy on 1.x.
     "rustix",
     "serde_spanned",
+    "skrifa", # iced text shaping; same family as `font-types`.
+    "smithay-client-toolkit", # iced winit uses smithay-client-toolkit 0.20; tauri 0.18.
     "syn",
     "thiserror",
     "thiserror-impl",
@@ -292,9 +317,19 @@ skip = [
     "toml_datetime",
     "toml_edit",
     "webpki-roots",
+    "wgpu", # xilem renders via vello → wgpu 27; iced 0.14 uses wgpu 26.
+    "wgpu-core", # Same wgpu 26-vs-27 split.
+    "wgpu-core-deps-apple", # Same wgpu 26-vs-27 split.
+    "wgpu-core-deps-windows-linux-android", # Same wgpu 26-vs-27 split.
+    "wgpu-hal", # Same wgpu 26-vs-27 split.
+    "wgpu-types", # Same wgpu 26-vs-27 split.
+    "windows", # iced/wgpu's Windows path uses windows 0.62; tauri/wry stay on 0.61.
+    "windows-core", # Same root cause as `windows`.
+    "windows-implement", # Same root cause as `windows`.
+    "windows-interface", # Same root cause as `windows`.
     "windows-link",
-    "windows-result",
-    "windows-strings",
+    "windows-result", # Same root cause as `windows`.
+    "windows-strings", # Same root cause as `windows`.
     "windows-sys",
     "windows-targets",
     "windows_x86_64_msvc",

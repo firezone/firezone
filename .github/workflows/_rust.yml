@@ -99,7 +99,14 @@ jobs:
       - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash
-        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
+        # --no-cfg-coverage: iced's tiny-skia path pulls in `tiny-xlib`,
+        # which has `#![cfg_attr(coverage, feature(coverage_attribute))]`
+        # at the crate root. cargo-llvm-cov sets `--cfg coverage` by
+        # default, which then activates a nightly feature gate on
+        # stable rustc. Suppress the cfg; we still get line coverage
+        # from the instrumentation flags, just not the
+        # `#[coverage(off)]` annotations inside tiny-xlib.
+        run: cargo llvm-cov --no-cfg-coverage --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests

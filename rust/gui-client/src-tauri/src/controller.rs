@@ -174,7 +174,7 @@ enum EventloopTick {
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
-    pub(crate) async fn start(
+    pub async fn start(
         socket: SocketId,
         integration: I,
         ctrl_tx: mpsc::Sender<ControllerRequest>,
