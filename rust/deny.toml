@@ -283,7 +283,6 @@ skip = [
     "rand",
     "rand_chacha",
     "rand_core",
-    "reqwest",
     "rustix",
     "serde_spanned",
     "socket2",
