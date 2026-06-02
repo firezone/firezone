@@ -69,7 +69,42 @@ defmodule PortalAPI.Schemas.Policy do
     })
   end
 
-  defmodule Schema do
+  defmodule RequestSchema do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.Policy
+
+    OpenApiSpex.schema(%{
+      title: "PolicyParams",
+      description: "Policy attributes",
+      type: :object,
+      properties: %{
+        group_id: %Schema{type: :string, format: :uuid, description: "Group ID"},
+        resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
+        description: %Schema{type: :string, description: "Policy Description", nullable: true},
+        conditions: %Schema{
+          type: :array,
+          description: "Conditions that must be satisfied for the Policy to grant access",
+          items: Policy.Condition
+        }
+      },
+      required: [:group_id, :resource_id],
+      example: %{
+        "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
+        "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
+        "description" => "Policy to allow something",
+        "conditions" => [
+          %{
+            "property" => "remote_ip_location_region",
+            "operator" => "is_in",
+            "values" => ["US", "CA"]
+          }
+        ]
+      }
+    })
+  end
+
+  defmodule ResponseSchema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
@@ -116,7 +151,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "POST body for creating a Policy",
       type: :object,
       properties: %{
-        policy: %Schema{properties: Policy.Schema.schema().properties}
+        policy: Policy.RequestSchema
       },
       required: [:policy],
       example: %{
@@ -146,7 +181,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Response schema for single Policy",
       type: :object,
       properties: %{
-        data: Policy.Schema
+        data: Policy.ResponseSchema
       },
       example: %{
         "data" => %{
@@ -176,7 +211,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Response schema for multiple Policies",
       type: :object,
       properties: %{
-        data: %Schema{description: "Policy details", type: :array, items: Policy.Schema},
+        data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
         metadata: %Schema{description: "Pagination metadata", type: :object}
       },
       example: %{
