@@ -226,7 +226,7 @@ which = "7.0.3"
 windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
-windows-native-keyring-store = "1.0.0"
+windows-native-keyring-store = "1.1.0"
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
