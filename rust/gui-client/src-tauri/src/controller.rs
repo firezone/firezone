@@ -207,13 +207,8 @@ impl<I: GuiIntegration> Controller<I> {
 
         let auth = auth::Auth::new()?;
 
-        // Best-effort migration of the legacy user-side advanced_settings.json
-        // into the protected service-side file. The service refuses to
-        // overwrite an existing protected file; the GUI deletes the legacy
-        // file when it gets `Ok` back (handled in `handle_service_ipc_msg`).
-        // TODO: remove once all clients have migrated.
-        if let Err(e) = request_legacy_advanced_settings_migration(&mut ipc_client).await {
-            tracing::debug!("Skipping legacy advanced_settings migration: {e:#}");
+        if let Err(e) = try_migrate_advanced_settings(&mut ipc_client).await {
+            tracing::warn!("Failed to migrate advanced settings to service: {e:#}");
         }
 
         let controller = Controller {
@@ -711,9 +706,14 @@ impl<I: GuiIntegration> Controller<I> {
                 {
                     tracing::warn!("Failed to reload GUI log filter: {e:#}");
                 }
-                maybe_delete_legacy_config();
+
+                if let Err(e) = try_delete_legacy_config() {
+                    tracing::warn!("{e:#}")
+                }
+
                 self.notify_settings_changed()?;
                 self.refresh_ui_state();
+
                 let _ = self.integration.show_notification("Settings saved", "")?;
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
@@ -1050,62 +1050,45 @@ async fn receive_hello(
     Ok((firezone_id, advanced_settings, mdm_settings))
 }
 
-/// Path of the legacy user-writable `advanced_settings.json`. Used only by
-/// the migration step that moves it into the protected service-side file.
-// TODO: remove once all clients have migrated.
-fn legacy_user_advanced_settings_path() -> Result<PathBuf> {
-    Ok(known_dirs::settings()
-        .context("`known_dirs::settings` failed")?
-        .join("advanced_settings.json"))
-}
-
-/// Best-effort cleanup of the legacy user-writable `advanced_settings.json`.
-/// The protected service-side file is the authoritative source once any
-/// settings have been applied.
-// TODO: remove once all clients have migrated.
-fn maybe_delete_legacy_config() {
-    let Ok(path) = legacy_user_advanced_settings_path() else {
-        return;
+fn try_delete_legacy_config() -> Result<()> {
+    let Some(path) = existing_legacy_advanced_settings()? else {
+        return Ok(());
     };
-    if !path.exists() {
-        return;
-    }
-    if let Err(e) = std::fs::remove_file(&path) {
-        tracing::debug!(
-            path = %path.display(),
-            "Failed to delete legacy advanced_settings: {e:#}"
-        );
-    }
+
+    std::fs::remove_file(&path).context("Failed to delete legacy advanced settings")?;
+
+    Ok(())
 }
 
-/// If the legacy user-side `advanced_settings.json` exists, ask the Tunnel
-/// service to import it. The GUI deletes the legacy file once it gets a
-/// successful reply (see `maybe_delete_legacy_config`).
-// TODO: remove once all clients have migrated.
-async fn request_legacy_advanced_settings_migration(
+async fn try_migrate_advanced_settings(
     ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
 ) -> Result<()> {
-    let path = legacy_user_advanced_settings_path()?;
-    if !path.exists() {
+    let Some(path) = existing_legacy_advanced_settings()? else {
         return Ok(());
-    }
-    let content = std::fs::read_to_string(&path).with_context(|| {
-        format!(
-            "Failed to read legacy advanced_settings at {}",
-            path.display()
-        )
-    })?;
-    let legacy: AdvancedSettings = serde_json::from_str(&content).with_context(|| {
-        format!(
-            "Legacy advanced_settings.json at {} is unparsable",
-            path.display()
-        )
-    })?;
+    };
+
+    let content =
+        std::fs::read_to_string(&path).context("Failed to read legacy advanced settings")?;
+    let legacy = serde_json::from_str::<AdvancedSettings>(&content)
+        .context("Failed to parse legacy advanced settings")?;
     ipc_client
         .send(&service::ClientMsg::ApplyAdvancedSettings(legacy))
         .await
         .context("Failed to send legacy advanced_settings migration")?;
+
     Ok(())
+}
+
+fn existing_legacy_advanced_settings() -> Result<Option<PathBuf>> {
+    let path = known_dirs::settings()
+        .context("`known_dirs::settings` failed")?
+        .join("advanced_settings.json");
+
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    Ok(Some(path))
 }
 
 #[cfg(test)]
