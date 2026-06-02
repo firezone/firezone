@@ -13,6 +13,7 @@ import Hooks from "./hooks";
 import { ThemeToggle } from "./hooks/theme";
 import { SidebarCollapse } from "./hooks/sidebar_collapse";
 import { TimePicker } from "./hooks/time_picker";
+import { DatetimeRangeFilter } from "./hooks/datetime_range_filter";
 import {
   PageSizePreference,
   getPageSizePreference,
@@ -22,6 +23,7 @@ import "./event_listeners";
 Hooks.ThemeToggle = ThemeToggle;
 Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.TimePicker = TimePicker;
+Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PageSizePreference = PageSizePreference;
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params

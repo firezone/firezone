@@ -59,25 +59,25 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
 
   # Handle accounts specially
   def on_write(state, lsn, op, "accounts", %{"id" => account_id} = old_data, data) do
-    {old_data, data} = redact_from_schema("accounts", old_data, data)
+    {old_data, data} = prepare("accounts", old_data, data)
     buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
   def on_write(state, lsn, op, "accounts", old_data, %{"id" => account_id} = data) do
-    {old_data, data} = redact_from_schema("accounts", old_data, data)
+    {old_data, data} = prepare("accounts", old_data, data)
     buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
   # Handle other writes where an account_id is present
   def on_write(state, lsn, op, table, old_data, %{"account_id" => account_id} = data)
       when not is_nil(account_id) do
-    {old_data, data} = redact_from_schema(table, old_data, data)
+    {old_data, data} = prepare(table, old_data, data)
     buffer(state, lsn, op, table, account_id, old_data, data)
   end
 
   def on_write(state, lsn, op, table, %{"account_id" => account_id} = old_data, data)
       when not is_nil(account_id) do
-    {old_data, data} = redact_from_schema(table, old_data, data)
+    {old_data, data} = prepare(table, old_data, data)
     buffer(state, lsn, op, table, account_id, old_data, data)
   end
 
@@ -164,6 +164,63 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     }
   end
 
+  # Schema-aware preparation: redact sensitive fields and coerce raw replication
+  # text values ("t"/"f", "123", "1.5", ...) to native JSON types so the audit
+  # log payload survives a round-trip through `Jason` / `JSON` without losing
+  # type information.
+
+  defp prepare(table, old_data, data) do
+    case Map.get(@tables_to_schemas, table) do
+      nil ->
+        {old_data, data}
+
+      schema_module ->
+        redact_fields = schema_module.__schema__(:redact_fields)
+        all_fields = schema_module.__schema__(:fields)
+
+        types =
+          Map.new(all_fields, fn field ->
+            {to_string(field), schema_module.__schema__(:type, field)}
+          end)
+
+        redact_strings = MapSet.new(redact_fields, &to_string/1)
+
+        {transform(old_data, types, redact_strings), transform(data, types, redact_strings)}
+    end
+  end
+
+  defp transform(nil, _types, _redact), do: nil
+
+  defp transform(map, types, redact) when is_map(map) do
+    Map.new(map, fn {key, value} ->
+      if MapSet.member?(redact, key) do
+        {key, @redacted}
+      else
+        {key, coerce(Map.get(types, key), value)}
+      end
+    end)
+  end
+
+  defp coerce(_type, nil), do: nil
+  defp coerce(:boolean, "t"), do: true
+  defp coerce(:boolean, "f"), do: false
+
+  defp coerce(type, value) when type in [:integer, :id] and is_binary(value) do
+    case Integer.parse(value) do
+      {n, ""} -> n
+      _ -> value
+    end
+  end
+
+  defp coerce(type, value) when type in [:float, :decimal] and is_binary(value) do
+    case Float.parse(value) do
+      {n, ""} -> n
+      _ -> value
+    end
+  end
+
+  defp coerce(_type, value), do: value
+
   defp decode_subject(%{current_subject: nil}), do: nil
 
   defp decode_subject(%{current_subject: json_string}) when is_binary(json_string) do
@@ -174,35 +231,6 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
   end
 
   defp decode_subject(_state), do: nil
-
-  # Field redactions - introspects schema to redact sensitive fields
-
-  defp redact_from_schema(table, old_data, data) do
-    schema_module = Map.get(@tables_to_schemas, table)
-
-    if schema_module do
-      fields_to_redact = schema_module.__schema__(:redact_fields)
-      redacted_old_data = redact_fields(old_data, fields_to_redact)
-      redacted_data = redact_fields(data, fields_to_redact)
-      {redacted_old_data, redacted_data}
-    else
-      {old_data, data}
-    end
-  end
-
-  defp redact_fields(nil, _fields), do: nil
-
-  defp redact_fields(map, fields) when is_map(map) and is_list(fields) do
-    Enum.reduce(fields, map, fn field, acc ->
-      field = to_string(field)
-
-      if Map.has_key?(acc, field) do
-        Map.put(acc, field, @redacted)
-      else
-        acc
-      end
-    end)
-  end
 
   defmodule Database do
     require Logger
