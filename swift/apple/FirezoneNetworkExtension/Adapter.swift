@@ -118,6 +118,7 @@ actor Adapter {
 
   /// Keep track of resources for UI
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
+  private var connectedDevices: [ConnectedDevice] = []
 
   /// Resources we couldn't connect to
   private var unreachableResources: [UnreachableResource]
@@ -305,6 +306,7 @@ actor Adapter {
     do {
       return try ConnlibState.encodeIfChanged(
         resources: self.resources?.map { self.convertResource($0) },
+        connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
         unreachableResources: self.unreachableResources,
         isLogStreamingActive: Log.isStreamingActive,
         comparedTo: hash
@@ -414,11 +416,12 @@ actor Adapter {
         }
       }
 
-    case .resourcesUpdated(let resourceList):
+    case .resourcesUpdated(let resourceList, let connectedDeviceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
       // Store resource list (actor-isolated, no dispatch needed)
       resources = resourceList
+      connectedDevices = connectedDeviceList
 
       // Update DNS resource addresses to trigger network settings apply when they change
       // This flushes the DNS cache so new DNS resources are immediately resolvable
@@ -567,6 +570,12 @@ actor Adapter {
 extension FirezoneKit.Site {
   init(_ site: Site) {
     self.init(id: site.id, name: site.name)
+  }
+}
+
+extension FirezoneKit.ConnectedDevice {
+  init(_ device: ConnectedDevice) {
+    self.init(id: device.id, tunIPv4: device.tunIpv4, pools: device.pools)
   }
 }
 

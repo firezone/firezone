@@ -31,6 +31,8 @@ rm -f "${GENERATED_DIR}"/*.modulemap
 
 if [ -f "${GENERATED_DIR}/connlib.swift" ]; then
     sed -i.bak '/#if canImport(connlibFFI)/,/#endif/s/^/\/\/ /' "${GENERATED_DIR}/connlib.swift"
+    # FIXME: remove this workaround when 0.31.1 gets upgraded
+    sed -i.bak 's/^\([[:space:]]*\)static let vtablePtr:/\1nonisolated(unsafe) static let vtablePtr:/' "${GENERATED_DIR}/connlib.swift"
     rm -f "${GENERATED_DIR}/connlib.swift.bak"
 fi
 

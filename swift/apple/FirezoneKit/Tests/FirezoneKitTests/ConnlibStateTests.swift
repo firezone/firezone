@@ -22,6 +22,7 @@ struct ConnlibStateTests {
     // Use encodeIfChanged with empty hash to get initial data
     let data = try ConnlibState.encodeIfChanged(
       resources: [resource],
+      connectedDevices: [],
       unreachableResources: [unreachable],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -42,6 +43,7 @@ struct ConnlibStateTests {
 
     let data1 = try ConnlibState.encodeIfChanged(
       resources: [resource],
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -49,6 +51,7 @@ struct ConnlibStateTests {
 
     let data2 = try ConnlibState.encodeIfChanged(
       resources: [resource],
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -69,6 +72,7 @@ struct ConnlibStateTests {
 
     let data1 = try ConnlibState.encodeIfChanged(
       resources: [resource1],
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -76,6 +80,7 @@ struct ConnlibStateTests {
 
     let data2 = try ConnlibState.encodeIfChanged(
       resources: [resource2],
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -99,6 +104,7 @@ struct ConnlibStateTests {
     // First encode to get the hash
     let data = try ConnlibState.encodeIfChanged(
       resources: [resource],
+      connectedDevices: [],
       unreachableResources: [unreachable],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -110,6 +116,7 @@ struct ConnlibStateTests {
     // Now try to encode again with the same hash
     let result = try ConnlibState.encodeIfChanged(
       resources: [resource],
+      connectedDevices: [],
       unreachableResources: [unreachable],
       isLogStreamingActive: false,
       comparedTo: hash
@@ -126,6 +133,7 @@ struct ConnlibStateTests {
     // Get hash for first state
     let data1 = try ConnlibState.encodeIfChanged(
       resources: [resource1],
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -137,6 +145,7 @@ struct ConnlibStateTests {
     // Try to encode different state with first hash
     let result = try ConnlibState.encodeIfChanged(
       resources: [resource2],
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: hash1
@@ -154,6 +163,7 @@ struct ConnlibStateTests {
   func encodeIfChangedHandlesNilResources() throws {
     let result = try ConnlibState.encodeIfChanged(
       resources: nil,
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -173,6 +183,7 @@ struct ConnlibStateTests {
   func decodeRoundTripsLogStreamingActive() throws {
     let data = try ConnlibState.encodeIfChanged(
       resources: nil,
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: true,
       comparedTo: Data()
@@ -188,6 +199,7 @@ struct ConnlibStateTests {
   func encodeIfChangedDetectsLogStreamingChange() throws {
     let data = try ConnlibState.encodeIfChanged(
       resources: nil,
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: false,
       comparedTo: Data()
@@ -199,8 +211,57 @@ struct ConnlibStateTests {
     // Same resources, different streaming flag — should return data
     let result = try ConnlibState.encodeIfChanged(
       resources: nil,
+      connectedDevices: [],
       unreachableResources: [],
       isLogStreamingActive: true,
+      comparedTo: hash
+    )
+
+    #expect(result != nil)
+  }
+
+  // MARK: - connectedDevices Tests
+
+  @Test("decode() round-trips non-empty connectedDevices")
+  func decodeRoundTripsConnectedDevices() throws {
+    let device = makeTestConnectedDevice(id: "device-1")
+
+    let data = try ConnlibState.encodeIfChanged(
+      resources: nil,
+      connectedDevices: [device],
+      unreachableResources: [],
+      isLogStreamingActive: false,
+      comparedTo: Data()
+    )
+
+    let unwrapped = try #require(data)
+    let (state, _) = try ConnlibState.decode(from: unwrapped)
+
+    #expect(state.connectedDevices.count == 1)
+    #expect(state.connectedDevices[0].id == "device-1")
+    #expect(state.connectedDevices[0].tunIPv4 == "100.64.0.1")
+    #expect(state.connectedDevices[0].pools == ["pool-a"])
+  }
+
+  @Test("encodeIfChanged() detects connectedDevices change")
+  func encodeIfChangedDetectsConnectedDevicesChange() throws {
+    let data = try ConnlibState.encodeIfChanged(
+      resources: nil,
+      connectedDevices: [],
+      unreachableResources: [],
+      isLogStreamingActive: false,
+      comparedTo: Data()
+    )
+
+    let unwrapped = try #require(data)
+    let (_, hash) = try ConnlibState.decode(from: unwrapped)
+
+    // Only the device list differs from the encoded state — should return data.
+    let result = try ConnlibState.encodeIfChanged(
+      resources: nil,
+      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
+      unreachableResources: [],
+      isLogStreamingActive: false,
       comparedTo: hash
     )
 
@@ -220,5 +281,9 @@ struct ConnlibStateTests {
       sites: [site],
       type: .dns
     )
+  }
+
+  private func makeTestConnectedDevice(id: String) -> FirezoneKit.ConnectedDevice {
+    FirezoneKit.ConnectedDevice(id: id, tunIPv4: "100.64.0.1", pools: ["pool-a"])
   }
 }

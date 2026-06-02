@@ -10,21 +10,25 @@ import Foundation
 public struct ConnlibState: Encodable, Decodable {
   // swiftlint:disable:next discouraged_optional_collection
   public let resources: [FirezoneKit.Resource]?
+  public let connectedDevices: [FirezoneKit.ConnectedDevice]
   public let unreachableResources: [UnreachableResource]
   public let isLogStreamingActive: Bool
 
   private enum CodingKeys: String, CodingKey {
     case resources
+    case connectedDevices
     case unreachableResources
     case isLogStreamingActive
   }
 
   private init(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
+    connectedDevices: [FirezoneKit.ConnectedDevice],
     unreachableResources: [UnreachableResource],
     isLogStreamingActive: Bool
   ) {
     self.resources = resources
+    self.connectedDevices = connectedDevices
     self.unreachableResources = unreachableResources
     self.isLogStreamingActive = isLogStreamingActive
   }
@@ -32,6 +36,9 @@ public struct ConnlibState: Encodable, Decodable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     resources = try container.decodeIfPresent([FirezoneKit.Resource].self, forKey: .resources)
+    connectedDevices =
+      try container.decodeIfPresent([FirezoneKit.ConnectedDevice].self, forKey: .connectedDevices)
+      ?? []
     unreachableResources = try container.decode(
       [UnreachableResource].self, forKey: .unreachableResources)
     isLogStreamingActive =
@@ -54,6 +61,7 @@ public struct ConnlibState: Encodable, Decodable {
   /// Creates a ConnlibState from resources and returns encoded data only if different from currentHash
   /// - Parameters:
   ///   - resources: Optional array of resources
+  ///   - connectedDevices: Peer devices with a live connection
   ///   - unreachableResources: Set of unreachable resources
   ///   - isLogStreamingActive: Whether the NE has log streaming enabled
   ///   - currentHash: The hash to compare against
@@ -61,12 +69,14 @@ public struct ConnlibState: Encodable, Decodable {
   /// - Throws: If encoding fails
   public static func encodeIfChanged(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
+    connectedDevices: [FirezoneKit.ConnectedDevice],
     unreachableResources: [UnreachableResource],
     isLogStreamingActive: Bool,
     comparedTo currentHash: Data
   ) throws -> Data? {
     let state = ConnlibState(
-      resources: resources, unreachableResources: unreachableResources,
+      resources: resources, connectedDevices: connectedDevices,
+      unreachableResources: unreachableResources,
       isLogStreamingActive: isLogStreamingActive)
     let encodedData = try Self.encoder.encode(state)
     let newHash = Data(SHA256.hash(data: encodedData))
