@@ -3,6 +3,10 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      id:
+        description: "Unique identifier for this invocation. Used to namespace the artifact holding the pre-pulled images so that concurrent invocations within the same run don't collide."
+        required: true
+        type: string
       portal_image:
         required: false
         type: string
@@ -56,9 +60,62 @@ env:
   COMPOSE_PARALLEL_LIMIT: 1 # Temporary fix for https://github.com/docker/compose/pull/12752 until compose v2.36.0 lands on GitHub actions runners.
 
 jobs:
+  collect-images:
+    name: collect-images
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      PORTAL_IMAGE: ${{ inputs.portal_image }}
+      PORTAL_TAG: ${{ inputs.portal_tag }}
+      RELAY_IMAGE: ${{ inputs.relay_image }}
+      RELAY_TAG: ${{ inputs.relay_tag }}
+      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+      GATEWAY_TAG: ${{ inputs.gateway_tag }}
+      CLIENT_IMAGE: ${{ inputs.client_image }}
+      CLIENT_TAG: ${{ inputs.client_tag }}
+      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+      ELIXIR_TAG: ${{ inputs.elixir_tag }}
+      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
+      HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/ghcr-docker-login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-scripts
+      - name: Pull all images once
+        # Pulls every registry image in the compose project (resolving `extends`,
+        # anchors and env interpolation). Services that are only built locally
+        # (the routers) have no `image:` and are skipped.
+        run: retry docker compose pull
+      - name: Save pulled images as a single archive
+        run: |
+          set -xe
+
+          # Save exactly the images that were pulled (i.e. are present locally) so
+          # that the auto-generated names of build-only services are excluded.
+          images=$(docker compose config --images | sort -u | while read -r image; do
+            if docker image inspect "$image" > /dev/null 2>&1; then
+              echo "$image"
+            fi
+          done)
+
+          echo "Saving images:"
+          echo "$images"
+
+          docker save $images | gzip > images.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          overwrite: true
+          name: images-${{ inputs.id }}
+          path: images.tar.gz
+          retention-days: 1
+
   integration-tests:
     name: ${{ matrix.test.name || matrix.test.script }}
     runs-on: ubuntu-24.04
+    needs: collect-images
     permissions:
       contents: read
       id-token: write # OIDC auth
@@ -119,9 +176,13 @@ jobs:
             rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/ghcr-docker-login
+      - uses: ./.github/actions/setup-docker
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          name: images-${{ inputs.id }}
+      - name: Load pre-pulled images
+        run: docker load -i images.tar.gz
+      - uses: ./.github/actions/setup-scripts
       - name: Check minimum client version
         id: client_version_check
         if: ${{ matrix.test.min_client_version }}
@@ -146,8 +207,6 @@ jobs:
           echo "MIN_VERSION=${MIN_VERSION}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
-      - uses: ./.github/actions/setup-docker
-      - uses: ./.github/actions/setup-scripts
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Start docker compose in the background
