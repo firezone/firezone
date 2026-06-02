@@ -23,7 +23,16 @@ defmodule PortalAPI.PolicyJSON do
       id: policy.id,
       group_id: policy.group_id,
       resource_id: policy.resource_id,
-      description: policy.description
+      description: policy.description,
+      conditions: Enum.map(policy.conditions, &condition/1)
+    }
+  end
+
+  defp condition(%Portal.Policies.Condition{} = condition) do
+    %{
+      property: condition.property,
+      operator: condition.operator,
+      values: condition.values
     }
   end
 end

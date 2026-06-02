@@ -106,9 +106,34 @@ defmodule PortalAPI.PolicyControllerTest do
                  "id" => policy.id,
                  "group_id" => policy.group_id,
                  "resource_id" => policy.resource_id,
-                 "description" => policy.description
+                 "description" => policy.description,
+                 "conditions" => []
                }
              }
+    end
+
+    test "renders conditions for a policy", %{conn: conn, account: account, actor: actor} do
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [
+            %{property: :remote_ip, operator: :is_in_cidr, values: ["10.0.0.0/8"]}
+          ]
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies/#{policy.id}")
+
+      assert json_response(conn, 200)["data"]["conditions"] == [
+               %{
+                 "property" => "remote_ip",
+                 "operator" => "is_in_cidr",
+                 "values" => ["10.0.0.0/8"]
+               }
+             ]
     end
 
     test "returns nil group_id for orphaned policy", %{conn: conn, account: account, actor: actor} do
@@ -206,6 +231,105 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert resp["data"]["group_id"] == attrs["group_id"]
       assert resp["data"]["resource_id"] == attrs["resource_id"]
+      assert resp["data"]["conditions"] == []
+    end
+
+    test "creates a policy with conditions", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "remote_ip_location_region", "operator" => "is_in", "values" => ["US"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert resp = json_response(conn, 201)
+
+      assert resp["data"]["conditions"] == [
+               %{
+                 "property" => "remote_ip_location_region",
+                 "operator" => "is_in",
+                 "values" => ["US"]
+               }
+             ]
+    end
+
+    test "creates a policy with auth_provider_id and time conditions", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+      provider_id = Ecto.UUID.generate()
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "auth_provider_id", "operator" => "is_in", "values" => [provider_id]},
+          %{
+            "property" => "current_utc_datetime",
+            "operator" => "is_in_day_of_week_time_ranges",
+            "values" => ["M/09:00-17:00/America/New_York"]
+          }
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert resp = json_response(conn, 201)
+
+      assert resp["data"]["conditions"] == [
+               %{
+                 "property" => "auth_provider_id",
+                 "operator" => "is_in",
+                 "values" => [provider_id]
+               },
+               %{
+                 "property" => "current_utc_datetime",
+                 "operator" => "is_in_day_of_week_time_ranges",
+                 "values" => ["M/09:00-17:00/America/New_York"]
+               }
+             ]
+    end
+
+    test "returns validation error for invalid condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.0/8"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)["error"]["reason"] == "Unprocessable Content"
     end
 
     test "sets group_idp_id when creating policy for synced group", %{
@@ -270,6 +394,34 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["description"] == attrs["description"]
+    end
+
+    test "updates a policy's conditions", %{conn: conn, account: account, actor: actor} do
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :remote_ip, operator: :is_in_cidr, values: ["10.0.0.0/8"]}]
+        })
+
+      attrs = %{
+        "conditions" => [
+          %{"property" => "client_verified", "operator" => "is", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: attrs)
+
+      assert json_response(conn, 200)["data"]["conditions"] == [
+               %{
+                 "property" => "client_verified",
+                 "operator" => "is",
+                 "values" => ["true"]
+               }
+             ]
     end
 
     test "returns validation error for invalid group_id value", %{
@@ -356,7 +508,8 @@ defmodule PortalAPI.PolicyControllerTest do
                  "id" => policy.id,
                  "group_id" => policy.group_id,
                  "resource_id" => policy.resource_id,
-                 "description" => policy.description
+                 "description" => policy.description,
+                 "conditions" => []
                }
              }
 
