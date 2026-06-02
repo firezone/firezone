@@ -203,7 +203,7 @@ where
 impl platform::Server {
     pub(crate) async fn next_client_split<R, W>(
         &mut self,
-    ) -> Result<(ServerRead<R>, ServerWrite<W>, Option<u32>)>
+    ) -> Result<(ServerRead<R>, ServerWrite<W>, u32)>
     where
         R: DeserializeOwned,
         W: Serialize,

@@ -178,7 +178,7 @@ impl Server {
     }
 
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, Option<u32>)> {
+    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
         // Fixes #5143. In the Tunnel service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -209,7 +209,7 @@ impl Server {
         }
 
         tracing::debug!(?client_pid, "Accepted IPC connection");
-        Ok((server, Some(client_pid)))
+        Ok((server, client_pid))
     }
 
     async fn bind_to_pipe(&self) -> Result<ServerStream> {

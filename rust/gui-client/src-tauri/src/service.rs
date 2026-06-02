@@ -365,9 +365,8 @@ impl<'a> Handler<'a> {
         // Migrate any per-user MDM policy into the machine-scope location before
         // we read it, so the read below never has to consider the legacy hive.
         #[cfg(target_os = "windows")]
-        if let Some(client_pid) = client_pid {
-            crate::mdm_migration::run(client_pid);
-        }
+        crate::mdm_migration::run(client_pid);
+
         #[cfg(not(target_os = "windows"))]
         let _ = client_pid;
 
