@@ -56,7 +56,7 @@ jobs:
           # Fetch base ref for PRs and merge group
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="origin/${{ github.base_ref }}"
-            git fetch origin ${{ github.base_ref }} --depth=1
+            git fetch origin "${{ github.base_ref }}" --depth=1
             git diff --name-only "$base" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
@@ -121,12 +121,8 @@ jobs:
             jobs="${jobs},kotlin,swift"
           fi
 
-          # `uniffi` generates the Swift / Kotlin FFI bindings, so bumping it can
-          # change the generated bindings (and break the mobile builds) even when
-          # rust/client-ffi itself is untouched (e.g. a Dependabot bump or a bare
-          # `cargo update`). Compare the locked `uniffi` package versions against
-          # the base ref and pull in the mobile builds whenever they change. We
-          # use Cargo.lock rather than Cargo.toml so we also catch lockfile-only
+          # Diff the locked `uniffi` versions against the base ref. Using
+          # Cargo.lock rather than Cargo.toml also catches bare `cargo update`
           # bumps that keep the same version requirement.
           git show "$base:rust/Cargo.lock" | grep -A1 '^name = "uniffi' > uniffi_base.txt || true
           grep -A1 '^name = "uniffi' rust/Cargo.lock > uniffi_head.txt || true
