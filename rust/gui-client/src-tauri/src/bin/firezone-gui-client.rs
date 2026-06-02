@@ -38,6 +38,28 @@ fn main() -> ExitCode {
     ));
 
     let cli = Cli::parse();
+
+    // The experimental iced GUI owns its own tokio runtime (via
+    // `iced::daemon`), so hand off here — before this binary builds its own
+    // multi-thread runtime — to avoid nesting one runtime inside another.
+    #[cfg(feature = "experimental-gui")]
+    if cli.experimental_gui {
+        // The bootstrap default-tracing guard must be dropped before the iced
+        // runtime installs its own subscriber; pluck it out of the unified
+        // `LogGuard` enum and hand it to `iced::run`.
+        let bootstrap = log_guard.take().and_then(|g| match g {
+            LogGuard::Bootstrap(default_guard) => Some(default_guard),
+            LogGuard::Gui(..) => None,
+        });
+        return match firezone_gui_client::iced::run(bootstrap) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!("iced GUI failed: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -289,6 +311,12 @@ struct Cli {
     debug_update_check: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
+
+    /// Launch the experimental iced-based GUI instead of the Tauri UI.
+    /// Only present in builds with the `experimental-gui` feature.
+    #[cfg(feature = "experimental-gui")]
+    #[arg(long)]
+    experimental_gui: bool,
 
     /// Crash the `Controller` task to test error handling
     /// Formerly `--crash-on-purpose`

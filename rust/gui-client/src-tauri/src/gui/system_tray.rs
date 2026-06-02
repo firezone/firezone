@@ -17,7 +17,7 @@ use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
 
 mod builder;
-mod compositor;
+pub mod compositor;
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
 type TauriMenu = tauri::menu::Menu<tauri::Wry>;
@@ -65,7 +65,31 @@ pub(crate) struct Tray {
     last_menu_set: Option<Menu>,
 }
 
-fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+/// The tray-icon variant that corresponds to a given [`AppState`].
+/// Shared with the iced binary so both UIs derive the icon the same
+/// way — the Controller only ever calls `set_tray_menu(AppState)` on
+/// state transitions (it never sends a separate `set_tray_icon`), so
+/// each UI is responsible for picking the right icon from the state.
+pub fn icon_from_state(state: &AppState) -> Icon {
+    let base = match &state.connlib {
+        ConnlibState::Loading
+        | ConnlibState::Quitting
+        | ConnlibState::WaitingForBrowser
+        | ConnlibState::WaitingForPortal
+        | ConnlibState::WaitingForTunnel => IconBase::Busy,
+        ConnlibState::SignedOut => IconBase::SignedOut,
+        ConnlibState::SignedIn { .. } => IconBase::SignedIn,
+    };
+    Icon {
+        base,
+        update_ready: state.release.is_some(),
+    }
+}
+
+/// Composite the layered PNGs that make up the tray icon for a given
+/// [`Icon`] state. Shared with the iced binary so both UIs render the
+/// same artwork.
+pub fn compose_icon(that: &Icon) -> Image {
     let layers = match that.base {
         IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
         IconBase::SignedIn => &[LOGO_BASE][..],
@@ -74,9 +98,11 @@ fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
     .iter()
     .copied()
     .chain(that.update_ready.then_some(UPDATE_READY_LAYER));
-    let composed =
-        compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs");
-    image_to_tauri_icon(composed)
+    compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs")
+}
+
+fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+    image_to_tauri_icon(compose_icon(that))
 }
 
 fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
@@ -117,19 +143,7 @@ impl Tray {
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
-        let base = match &state.connlib {
-            ConnlibState::Loading
-            | ConnlibState::Quitting
-            | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => IconBase::Busy,
-            ConnlibState::SignedOut => IconBase::SignedOut,
-            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
-        };
-        let new_icon = Icon {
-            base,
-            update_ready: state.release.is_some(),
-        };
+        let new_icon = icon_from_state(&state);
 
         let menu = state.into_menu();
         let menu_clone = menu.clone();
