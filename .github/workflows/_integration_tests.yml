@@ -110,7 +110,7 @@ jobs:
           echo "$images"
 
           # shellcheck disable=SC2086 # $images must be split into separate args
-          docker save $images | zstd -T0 -o images.tar.zst
+          docker save $images | zstd -19 -T0 -o images.tar.zst
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           overwrite: true
