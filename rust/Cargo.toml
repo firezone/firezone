@@ -287,3 +287,21 @@ debug = 2
 [profile.dev.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
+
+# Shrink the integration-test images: build their binaries with
+# `line-tables-only`, which keeps file/line info for backtraces but drops the
+# bulk of the type/variable DWARF (roughly halves the binaries). This shrinks
+# the images pulled from ghcr and shipped through the test-image artifact. The
+# eBPF object (built via the relay's build script) keeps full debug info for
+# BTF, and the GUI client keeps its full debug info, via their own overrides.
+[profile.dev.package.firezone-headless-client]
+debug = "line-tables-only"
+
+[profile.dev.package.firezone-gateway]
+debug = "line-tables-only"
+
+[profile.dev.package.firezone-relay]
+debug = "line-tables-only"
+
+[profile.dev.package.http-test-server]
+debug = "line-tables-only"
