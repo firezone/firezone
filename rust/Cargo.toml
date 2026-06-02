@@ -214,7 +214,7 @@ tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" } # Contains `dbg!` but for `tracing`.
-tracing-opentelemetry = "0.32.1"
+tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
