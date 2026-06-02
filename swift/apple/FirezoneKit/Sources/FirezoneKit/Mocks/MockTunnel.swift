@@ -38,7 +38,7 @@
   }
 
   /// Answers `getState` with the canned snapshot and reports a connected tunnel.
-  final class MockTunnelSession: TunnelSessionProtocol {
+  private final class MockTunnelSession: TunnelSessionProtocol {
     var status: NEVPNStatus { .connected }
 
     // swiftlint:disable:next discouraged_optional_collection
@@ -52,25 +52,45 @@
     func sendProviderMessage(_ messageData: Data, responseHandler: ((Data?) -> Void)?) throws {
       guard let responseHandler else { return }
 
-      switch try? PropertyListDecoder().decode(ProviderMessage.self, from: messageData) {
+      let message: ProviderMessage
+      do {
+        message = try PropertyListDecoder().decode(ProviderMessage.self, from: messageData)
+      } catch {
+        Log.warning("MockTunnelSession: ignoring undecodable ProviderMessage: \(error)")
+        responseHandler(nil)
+        return
+      }
+
+      // Listed exhaustively (no `default`) so adding a `ProviderMessage` variant
+      // fails to compile here and forces a decision about the mock's response.
+      switch message {
       case .getState(let currentHash):
-        responseHandler(
-          try? ConnlibState.encodeIfChanged(
-            resources: MockFixtures.resources,
-            connectedDevices: MockFixtures.connectedDevices,
-            unreachableResources: [],
-            isLogStreamingActive: false,
-            comparedTo: currentHash
+        do {
+          responseHandler(
+            try ConnlibState.encodeIfChanged(
+              resources: MockFixtures.resources,
+              connectedDevices: MockFixtures.connectedDevices,
+              unreachableResources: [],
+              isLogStreamingActive: false,
+              comparedTo: currentHash
+            )
           )
-        )
-      default:
+        } catch {
+          Log.warning("MockTunnelSession: failed to encode ConnlibState: \(error)")
+          responseHandler(nil)
+        }
+      case .setInternetResourceEnabled, .signOut, .clearLogs, .getLogFolderSize, .exportLogs,
+        .getEncodedFirezoneId:
         responseHandler(nil)
       }
     }
   }
 
+  /// Both factory methods hand back the same `MockTunnelProviderManager` instance, so
+  /// session identity is stable across reloads — `Store` can subscribe to one mock
+  /// session for the lifetime of the app.
   @MainActor
-  final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
+  private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
     private let manager = MockTunnelProviderManager()
 
     func loadAllFromPreferences() async throws -> [any TunnelProviderManager] { [manager] }
@@ -78,7 +98,7 @@
   }
 
   @MainActor
-  final class MockTunnelProviderManager: TunnelProviderManager {
+  private final class MockTunnelProviderManager: TunnelProviderManager {
     var isEnabled = true
     var localizedDescription: String? = VPNConfigurationManager.bundleDescription
     var protocolConfiguration: NEVPNProtocol?
@@ -100,7 +120,7 @@
 
   #if os(macOS)
     @MainActor
-    final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
+    private final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
       func check() async throws -> SystemExtensionStatus { .installed }
       func tryInstall() async throws -> SystemExtensionStatus { .installed }
     }
@@ -108,7 +128,7 @@
     /// Reports notifications as already authorised so the iOS app routes straight to the
     /// session UI instead of `GrantNotificationsView`.
     @MainActor
-    final class MockSessionNotification: SessionNotificationProtocol {
+    private final class MockSessionNotification: SessionNotificationProtocol {
       var signInHandler: () async -> Void = {}
 
       func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { .authorized }
@@ -117,7 +137,6 @@
     }
   #endif
 
-  /// Canned fixtures mirroring the desktop client's `fake_controller.rs`.
   private enum MockFixtures {
     static let resources: [Resource] = {
       let site = Site(id: "demo-site", name: "Demo Site")
