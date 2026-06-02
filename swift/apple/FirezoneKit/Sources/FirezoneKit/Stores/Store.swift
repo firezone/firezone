@@ -632,7 +632,7 @@ public final class Store: ObservableObject {
   ///
   /// - Parameter session: The tunnel provider session to communicate with
   /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchState(session: NETunnelProviderSession) async throws {
+  private func fetchState(session: any TunnelSessionProtocol) async throws {
     // Capture current hash before IPC call
     let currentHash = self.connlibStateHash
 

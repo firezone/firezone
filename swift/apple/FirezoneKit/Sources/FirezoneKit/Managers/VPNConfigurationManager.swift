@@ -17,7 +17,9 @@ public protocol TunnelProviderManager: AnyObject {
   var isEnabled: Bool { get set }
   var localizedDescription: String? { get set }
   var protocolConfiguration: NEVPNProtocol? { get set }
-  var connection: NEVPNConnection { get }
+  /// The tunnel session backing this manager, if its connection is a provider
+  /// session. Mockable counterpart of the concrete, un-mockable `connection`.
+  var tunnelSession: (any TunnelSessionProtocol)? { get }
 
   func saveToPreferences() async throws
   func loadFromPreferences() async throws
@@ -31,7 +33,11 @@ public protocol TunnelProviderManagerFactory {
 
 // MARK: - NetworkExtension Conformances
 
-extension NETunnelProviderManager: TunnelProviderManager {}
+extension NETunnelProviderManager: TunnelProviderManager {
+  public var tunnelSession: (any TunnelSessionProtocol)? {
+    connection as? NETunnelProviderSession
+  }
+}
 
 @MainActor
 public final class NETunnelProviderManagerFactory: TunnelProviderManagerFactory {
@@ -118,8 +124,8 @@ public final class VPNConfigurationManager {
     try await manager.loadFromPreferences()
   }
 
-  func session() -> NETunnelProviderSession? {
-    return manager.connection as? NETunnelProviderSession
+  func session() -> (any TunnelSessionProtocol)? {
+    return manager.tunnelSession
   }
 
   func loadConfiguration(into configuration: Configuration, userDefaults: UserDefaults) async throws
