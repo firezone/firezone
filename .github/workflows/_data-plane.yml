@@ -259,6 +259,11 @@ jobs:
             PROFILE="--release"
           else
             PROFILE=""
+            # Build the debug images with `line-tables-only` debug info: keeps
+            # backtraces but roughly halves the binaries, so the images pull
+            # faster/more reliably from ghcr and are smaller in the test-image
+            # artifact. Local `cargo build` is unaffected (keeps full debug).
+            export CARGO_PROFILE_DEV_DEBUG=line-tables-only
           fi
 
           cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose

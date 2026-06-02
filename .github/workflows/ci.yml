@@ -372,6 +372,7 @@ jobs:
       id-token: write # OIDC auth
       pull-requests: write # post test result comments
     with:
+      id: integration
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
@@ -408,6 +409,7 @@ jobs:
       id-token: write # OIDC auth
       pull-requests: write # post test result comments
     with:
+      id: compat-client-${{ matrix.client.ci-name }}-gateway-${{ matrix.gateway.ci-name }}
       gateway_image: ${{ matrix.gateway.image }}
       gateway_tag: ${{ matrix.gateway.tag }}
       client_image: ${{ matrix.client.image }}
