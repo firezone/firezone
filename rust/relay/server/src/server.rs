@@ -15,7 +15,7 @@ use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, UpDownCounter};
+use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
 use rand::Rng;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -86,6 +86,7 @@ pub struct Server<R> {
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed_counter: Counter<u64>,
     data_relayed: u64, // Keep a separate counter because `Counter` doesn't expose the current value :(
+    relayed_packet_size_histogram: Histogram<u64>,
     responses_counter: Counter<u64>,
 }
 
@@ -195,6 +196,15 @@ where
             .with_description("The number of bytes relayed")
             .with_unit("b")
             .build();
+        let relayed_packet_size_histogram = meter
+            .u64_histogram("relayed_packet_size_bytes")
+            .with_description("The size distribution of packets relayed in userspace")
+            .with_unit("b")
+            .with_boundaries(vec![
+                64.0, 128.0, 256.0, 512.0, 768.0, 1024.0, 1280.0, 1500.0, 2048.0, 4096.0, 8192.0,
+                16384.0, 32768.0,
+            ])
+            .build();
 
         Self {
             public_address: public_address.into(),
@@ -213,6 +223,7 @@ where
             responses_counter,
             data_relayed_counter,
             data_relayed: 0,
+            relayed_packet_size_histogram,
             channel_and_client_by_port_and_peer: Default::default(),
         }
     }
@@ -390,6 +401,8 @@ where
 
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
+        self.relayed_packet_size_histogram
+            .record(msg.len() as u64, &[]);
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -815,6 +828,8 @@ where
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
+        self.relayed_packet_size_histogram
+            .record(data.len() as u64, &[]);
 
         Some((channel.allocation, channel.peer_address))
     }
