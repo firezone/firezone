@@ -244,15 +244,6 @@ The service stores `advanced_settings.json` in its own config dir (`/var/lib/dev
 - [ ] Given a user had custom advanced settings before upgrading to this release, when the GUI first connects, then it migrates the old user-side `advanced_settings.json` into the service and deletes the old copy, preserving the user's `auth_url` / `api_url` / `log_filter`
 - [ ] Given that migration is rejected by the service, when the GUI next connects, then the old file is kept so the migration is retried
 
-### MDM (Windows)
-
-Managed policies live under the registry key `Software\Policies\Firezone` and are read by the Tunnel service.
-As of this release they are read from the **machine** hive (`HKLM`), not the per-user hive (`HKCU`).
-
-- [ ] Given an admin manages Firezone via MDM, when they deploy policy, then they must import the new (Machine-class) ADMX template (`policy-templates/windows/firezone.admx`) and remove the old (User-class) one; the old `HKCU` keys are no longer read
-- [ ] Given a machine still has policy under `HKCU\Software\Policies\Firezone` from an older release, when a user first connects after upgrading, then the service copies those values to `HKLM\Software\Policies\Firezone` (only if `HKLM` is not already set) and deletes the `HKCU` key
-- [ ] Given that one-time migration has run, when any user connects again, then it does not run a second time (it is gated by `HKLM\Software\Firezone\Migration`)
-
 Refs:
 
 - https://github.com/firezone/firezone/pull/3868
