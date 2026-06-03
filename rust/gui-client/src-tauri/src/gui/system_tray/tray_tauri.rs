@@ -40,9 +40,9 @@ fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
 
 fn menu_item_icon(icon: MenuItemIcon) -> tauri::image::Image<'static> {
     let png = match icon {
-        MenuItemIcon::Online => STATUS_ONLINE_ICON,
-        MenuItemIcon::Offline => STATUS_OFFLINE_ICON,
-        MenuItemIcon::Unknown => STATUS_UNKNOWN_ICON,
+        MenuItemIcon::Green => STATUS_ONLINE_ICON,
+        MenuItemIcon::Red => STATUS_OFFLINE_ICON,
+        MenuItemIcon::Grey => STATUS_UNKNOWN_ICON,
     };
     let decoded =
         compositor::compose([png]).expect("PNG decoding should always succeed for baked-in PNGs");
@@ -54,10 +54,12 @@ impl Tray {
         _rt: tokio::runtime::Handle,
         app: AppHandle,
         on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Result<Self> {
+    ) -> Self {
+        let menu = build_menu(&app, &AppState::default().into_menu())
+            .expect("Failed to build initial tray menu");
         let tray = tauri::tray::TrayIconBuilder::new()
             .icon(icon_to_tauri_icon(&Icon::default()))
-            .menu(&build_menu(&app, &AppState::default().into_menu())?)
+            .menu(&menu)
             .on_menu_event(move |app, event| {
                 let id = &event.id.0;
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
@@ -73,14 +75,14 @@ impl Tray {
             })
             .tooltip(TOOLTIP)
             .build(&app)
-            .context("Cannot build Tauri tray icon")?;
+            .expect("Failed to build Tauri tray icon");
 
-        Ok(Self {
+        Self {
             app,
             handle: tray,
             last_icon_set: Default::default(),
             last_menu_set: None,
-        })
+        }
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
@@ -217,11 +219,7 @@ mod tests {
 
     #[test]
     fn menu_item_icons_decode() {
-        for icon in [
-            MenuItemIcon::Online,
-            MenuItemIcon::Offline,
-            MenuItemIcon::Unknown,
-        ] {
+        for icon in [MenuItemIcon::Green, MenuItemIcon::Red, MenuItemIcon::Grey] {
             let image = menu_item_icon(icon);
             assert!(image.width() > 0 && image.height() > 0);
         }

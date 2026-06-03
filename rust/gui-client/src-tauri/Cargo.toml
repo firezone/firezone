@@ -56,8 +56,6 @@ specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
 strum = { workspace = true }
 subtle = { workspace = true }
-# `tray-icon` is enabled per-platform below: Windows/macOS use Tauri's built-in
-# tray, while Linux uses `ksni` directly (so menu-item icons actually render).
 tauri = { workspace = true, features = ["image-png"] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-opener = { workspace = true }
@@ -83,7 +81,7 @@ tauri = { workspace = true, features = ["tray-icon"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
-ksni = { workspace = true }
+ksni = { workspace = true } # Tray icon for Linux.
 libc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 notify-rust = { workspace = true }

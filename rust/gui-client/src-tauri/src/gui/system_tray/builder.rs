@@ -41,19 +41,17 @@ pub struct Item {
     pub icon: Option<Icon>,
 }
 
-/// An icon shown next to a menu item.
+/// A colored dot shown next to a menu item.
 ///
-/// These mirror the native status images the macOS client uses in its tray
-/// menu (`NSImage.statusAvailableName` and friends). Unlike macOS, Tauri has
-/// no cross-platform "native" status icons, so we ship our own equivalents.
+/// Named by color rather than meaning so it can be reused. Currently it
+/// mirrors the native status images the macOS client uses for Site status in
+/// its tray menu (`NSImage.statusAvailableName` and friends); Tauri has no
+/// cross-platform "native" status icons, so we ship our own equivalents.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub enum Icon {
-    /// Green dot: the Gateway for a Site is connected.
-    Online,
-    /// Red dot: all Gateways for a Site are offline.
-    Offline,
-    /// Grey dot: no connection to a Site has been attempted yet.
-    Unknown,
+    Green,
+    Red,
+    Grey,
 }
 
 /// Events that the menu can send to the app

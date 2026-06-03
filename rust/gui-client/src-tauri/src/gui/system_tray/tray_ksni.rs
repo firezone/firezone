@@ -9,7 +9,6 @@
 use std::sync::Arc;
 use std::task::Poll;
 
-use anyhow::Result;
 use ksni::{
     Icon as KsniIcon,
     menu::{CheckmarkItem, MenuItem, StandardItem, SubMenu},
@@ -32,15 +31,11 @@ pub(crate) struct Tray {
 }
 
 impl Tray {
-    // Returns `Result` to match the Tauri backend's fallible constructor, so
-    // `Tray::new` has one signature across platforms. ksni reports spawn
-    // failures asynchronously (logged in the service task) instead.
-    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn new(
         rt: runtime::Handle,
         app: AppHandle,
         on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Result<Self> {
+    ) -> Self {
         let (menu_tx, menu_rx) = mpsc::unbounded_channel();
         let (icon_tx, icon_rx) = mpsc::unbounded_channel();
 
@@ -62,7 +57,7 @@ impl Tray {
                     return;
                 }
             };
-            Service {
+            Eventloop {
                 handle,
                 menu_rx,
                 icon_rx,
@@ -71,12 +66,12 @@ impl Tray {
             .await;
         });
 
-        Ok(Self {
+        Self {
             menu_tx,
             icon_tx,
             last_icon: Icon::default(),
             last_menu: None,
-        })
+        }
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
@@ -105,13 +100,13 @@ impl Tray {
 }
 
 /// The background loop that applies menu and icon updates to the running tray.
-struct Service {
+struct Eventloop {
     handle: ksni::Handle<FzTray>,
     menu_rx: mpsc::UnboundedReceiver<Menu>,
     icon_rx: mpsc::UnboundedReceiver<Icon>,
 }
 
-/// One unit of work for the [`Service`] loop.
+/// One unit of work for the [`Eventloop`].
 enum Tick {
     Menu(Menu),
     Icon(Icon),
@@ -119,7 +114,7 @@ enum Tick {
     Shutdown,
 }
 
-impl Service {
+impl Eventloop {
     async fn run(mut self) {
         loop {
             match self.tick().await {
@@ -249,9 +244,9 @@ fn build_item(item: &Item) -> MenuItem<FzTray> {
 /// themes, matching the colors the macOS client uses for Site status.
 fn themed_icon_name(icon: Option<MenuItemIcon>) -> String {
     match icon {
-        Some(MenuItemIcon::Online) => "user-available",
-        Some(MenuItemIcon::Offline) => "user-busy",
-        Some(MenuItemIcon::Unknown) => "user-offline",
+        Some(MenuItemIcon::Green) => "user-available",
+        Some(MenuItemIcon::Red) => "user-busy",
+        Some(MenuItemIcon::Grey) => "user-offline",
         None => "",
     }
     .to_owned()

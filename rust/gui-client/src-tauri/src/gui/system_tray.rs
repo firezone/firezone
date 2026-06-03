@@ -205,9 +205,9 @@ impl SignedIn {
 
         if let Some(site) = res.sites().first() {
             let (status, icon) = match res.status() {
-                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Unknown),
-                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Online),
-                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
+                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Grey),
+                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Green),
+                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             };
 
             submenu
@@ -657,7 +657,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Unknown),
+                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
             )
             .add_submenu(
                 "MyCorp GitLab",
@@ -680,7 +680,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Online),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -691,7 +691,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
@@ -740,7 +740,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Online),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -751,7 +751,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .separator()
             .add_submenu(
@@ -774,7 +774,7 @@ mod tests {
                         .separator()
                         .disabled("Site")
                         .copyable("test")
-                        .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Unknown),
+                        .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
                 ),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
@@ -823,7 +823,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Unknown),
+                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
             )
             .add_submenu(
                 "MyCorp GitLab",
@@ -846,7 +846,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Online),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -857,7 +857,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
