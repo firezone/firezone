@@ -352,12 +352,14 @@ pub fn run(
             "BUNDLE_ID should match bundle ID in tauri.conf.json"
         );
 
-        let tray = system_tray::Tray::new(app_handle.clone(), |app, event| {
-            match handle_system_tray_event(app, event) {
+        let tray = system_tray::Tray::new(
+            tokio::runtime::Handle::current(),
+            app_handle.clone(),
+            |app, event| match handle_system_tray_event(app, event) {
                 Ok(_) => {}
                 Err(e) => tracing::error!("{e}"),
-            }
-        })?;
+            },
+        )?;
         let integration = TauriIntegration {
             app: app_handle,
             tray,
@@ -561,10 +563,13 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
 }
 
 fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -> Result<()> {
+    // `try_send` rather than `blocking_send`: on Linux this runs inside the
+    // ksni service's async task, where a blocking send would panic. Tray
+    // clicks are human-paced, so the bounded channel won't realistically fill.
     app.try_state::<Managed>()
         .context("can't get Managed struct from Tauri")?
         .req_tx
-        .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
+        .try_send(ControllerRequest::SystemTrayMenu(event))?;
     Ok(())
 }
 

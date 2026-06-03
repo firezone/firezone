@@ -5,23 +5,40 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
-use crate::updates::Release;
-use anyhow::{Context as _, Result};
 use compositor::Image;
 use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
-use tauri::AppHandle;
 use url::Url;
 
+use crate::updates::Release;
+
+/// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
+/// distinct from the tray `Icon` defined in this module.
+pub(crate) use builder::Icon as MenuItemIcon;
 use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
 
 mod builder;
 mod compositor;
 
-type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
-type TauriMenu = tauri::menu::Menu<tauri::Wry>;
-type TauriSubmenu = tauri::menu::Submenu<tauri::Wry>;
+// The tray is drawn by a platform-native backend rather than Tauri's own tray,
+// so that menu-item icons (e.g. Site status) actually render:
+//
+// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature),
+//   which renders per-item icons natively.
+// - **Linux**: `ksni`, a pure-Rust StatusNotifierItem implementation that
+//   speaks the DBusMenu protocol directly and can attach per-item icon data
+//   (a PNG) — which GNOME (with the AppIndicator extension) and KDE render,
+//   unlike Tauri's `libappindicator` path.
+#[cfg(not(target_os = "linux"))]
+mod tray_tauri;
+#[cfg(not(target_os = "linux"))]
+pub(crate) use tray_tauri::Tray;
+
+#[cfg(target_os = "linux")]
+mod tray_ksni;
+#[cfg(target_os = "linux")]
+pub(crate) use tray_ksni::Tray;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -33,9 +50,9 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready 
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
-const NO_ACTIVITY: &str = "[-] No activity";
-const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
-const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
+const NO_ACTIVITY: &str = "No activity";
+const GATEWAY_CONNECTED: &str = "Gateway connected";
+const ALL_GATEWAYS_OFFLINE: &str = "All Gateways offline";
 
 const ENABLED_SYMBOL: &str = "<->";
 const DISABLED_SYMBOL: &str = "—";
@@ -58,14 +75,10 @@ const ENABLE: &str = "Enable this resource";
 
 const TOOLTIP: &str = "Firezone";
 
-pub(crate) struct Tray {
-    app: AppHandle,
-    handle: tauri::tray::TrayIcon,
-    last_icon_set: Icon,
-    last_menu_set: Option<Menu>,
-}
-
-fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+/// Composes the tray icon's PNG layers into a single RGBA image.
+///
+/// Shared by both tray backends.
+pub(crate) fn compose_icon(that: &Icon) -> Image {
     let layers = match that.base {
         IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
         IconBase::SignedIn => &[LOGO_BASE][..],
@@ -74,181 +87,24 @@ fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
     .iter()
     .copied()
     .chain(that.update_ready.then_some(UPDATE_READY_LAYER));
-    let composed =
-        compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs");
-    image_to_tauri_icon(composed)
+    compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs")
 }
 
-fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
-    tauri::image::Image::new_owned(val.rgba, val.width, val.height)
-}
-
-impl Tray {
-    pub(crate) fn new(
-        app: AppHandle,
-        on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Result<Self> {
-        let tray = tauri::tray::TrayIconBuilder::new()
-            .icon(icon_to_tauri_icon(&Icon::default()))
-            .menu(&build_app_state(&app, &AppState::default().into_menu())?)
-            .on_menu_event(move |app, event| {
-                let id = &event.id.0;
-                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match serde_json::from_str::<Event>(id) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
-                    }
-                };
-
-                on_event(app, event);
-            })
-            .tooltip("Firezone")
-            .build(&app)
-            .context("Cannot build Tauri tray icon")?;
-
-        Ok(Self {
-            app,
-            handle: tray,
-            last_icon_set: Default::default(),
-            last_menu_set: None,
-        })
-    }
-
-    pub(crate) fn update(&mut self, state: AppState) {
-        let base = match &state.connlib {
-            ConnlibState::Loading
-            | ConnlibState::Quitting
-            | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => IconBase::Busy,
-            ConnlibState::SignedOut => IconBase::SignedOut,
-            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
-        };
-        let new_icon = Icon {
-            base,
-            update_ready: state.release.is_some(),
-        };
-
-        let menu = state.into_menu();
-        let menu_clone = menu.clone();
-        let app = self.app.clone();
-        let handle = self.handle.clone();
-
-        if Some(&menu) == self.last_menu_set.as_ref() {
-            tracing::debug!("Skipping redundant menu update");
-        } else {
-            self.run_on_main_thread(move || {
-                logging::unwrap_or_debug!(
-                    update(handle, &app, &menu),
-                    "Error while updating tray menu: {}"
-                );
-            });
-        }
-        self.set_icon(new_icon);
-        self.last_menu_set = Some(menu_clone);
-    }
-
-    // Only needed for the stress test
-    // Otherwise it would be inlined
-    pub(crate) fn set_icon(&mut self, icon: Icon) {
-        if icon == self.last_icon_set {
-            return;
-        }
-
-        // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
-        // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
-        // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
-        // on disk.
-        let handle = self.handle.clone();
-        self.last_icon_set = icon.clone();
-        self.run_on_main_thread(move || {
-            let result = handle
-                .set_icon(Some(icon_to_tauri_icon(&icon)))
-                .context("Failed to set tray icon");
-
-            logging::unwrap_or_debug!(result, "{}");
-        });
-    }
-
-    fn run_on_main_thread(&self, f: impl FnOnce() + Send + 'static) {
-        let result = self
-            .app
-            .run_on_main_thread(f)
-            .context("Failed to run closure on main thread");
-
-        logging::unwrap_or_debug!(result, "{}");
-    }
-}
-
-fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<()> {
-    let menu = build_app_state(app, menu).context("Failed to build tray menu")?;
-
-    handle
-        .set_tooltip(Some(TOOLTIP))
-        .context("Failed to set tooltip")?;
-    handle
-        .set_menu(Some(menu))
-        .context("Failed to set tray menu")?;
-
-    Ok(())
-}
-
-fn build_app_state(app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
-    build_menu(app, menu)
-}
-
-/// Builds this abstract `Menu` into a real menu that we can use in Tauri.
-///
-/// This recurses but we never go deeper than 3 or 4 levels so it's fine.
-///
-/// Note that Menus and Submenus are different in Tauri. Using a Submenu as a Menu
-/// may crash on Windows. <https://github.com/tauri-apps/tauri/issues/11363>
-fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
-    let mut menu = tauri::menu::MenuBuilder::new(app);
-    for entry in &that.entries {
-        menu = menu.item(&*build_entry(app, entry)?);
-    }
-    Ok(menu.build()?)
-}
-
-fn build_submenu(app: &AppHandle, title: &str, that: &Menu) -> Result<TauriSubmenu> {
-    let mut menu = tauri::menu::SubmenuBuilder::new(app, title);
-    for entry in &that.entries {
-        menu = menu.item(&*build_entry(app, entry)?);
-    }
-    Ok(menu.build()?)
-}
-
-fn build_entry(app: &AppHandle, entry: &Entry) -> Result<Box<IsMenuItem>> {
-    let entry = match entry {
-        Entry::Item(item) => build_item(app, item)?,
-        Entry::Separator => Box::new(tauri::menu::PredefinedMenuItem::separator(app)?),
-        Entry::Submenu { title, inner } => Box::new(build_submenu(app, title, inner)?),
+/// Maps an [`AppState`] to the tray [`Icon`] that represents it.
+pub(crate) fn icon_from_state(state: &AppState) -> Icon {
+    let base = match &state.connlib {
+        ConnlibState::Loading
+        | ConnlibState::Quitting
+        | ConnlibState::WaitingForBrowser
+        | ConnlibState::WaitingForPortal
+        | ConnlibState::WaitingForTunnel => IconBase::Busy,
+        ConnlibState::SignedOut => IconBase::SignedOut,
+        ConnlibState::SignedIn { .. } => IconBase::SignedIn,
     };
-    Ok(entry)
-}
-
-fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
-    let item: Box<IsMenuItem> = if let Some(checked) = item.checked {
-        let mut tauri_item = tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
-    } else {
-        let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
-    };
-    Ok(item)
+    Icon {
+        base,
+        update_ready: state.release.is_some(),
+    }
 }
 
 pub struct AppState {
@@ -348,18 +204,17 @@ impl SignedIn {
         }
 
         if let Some(site) = res.sites().first() {
-            // Emojis may be causing an issue on some Ubuntu desktop environments.
-            let status = match res.status() {
-                ResourceStatus::Unknown => NO_ACTIVITY,
-                ResourceStatus::Online => GATEWAY_CONNECTED,
-                ResourceStatus::Offline => ALL_GATEWAYS_OFFLINE,
+            let (status, icon) = match res.status() {
+                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Grey),
+                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Green),
+                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             };
 
             submenu
                 .separator()
                 .disabled("Site")
                 .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
-                .copyable(status)
+                .copyable_with_icon(status, icon)
         } else {
             submenu
         }
@@ -802,7 +657,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(NO_ACTIVITY),
+                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
             )
             .add_submenu(
                 "MyCorp GitLab",
@@ -825,7 +680,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -836,7 +691,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
@@ -885,7 +740,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -896,7 +751,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .separator()
             .add_submenu(
@@ -919,7 +774,7 @@ mod tests {
                         .separator()
                         .disabled("Site")
                         .copyable("test")
-                        .copyable(NO_ACTIVITY),
+                        .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
                 ),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
@@ -968,7 +823,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(NO_ACTIVITY),
+                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
             )
             .add_submenu(
                 "MyCorp GitLab",
@@ -991,7 +846,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -1002,7 +857,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
