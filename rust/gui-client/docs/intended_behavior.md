@@ -14,7 +14,7 @@ The desktop client runs as two processes:
 - The **GUI** (this crate), which runs unprivileged as the logged-in user.
   It draws the tray menu and Settings window, drives sign-in, and talks to the Tunnel service over IPC.
 - The **Tunnel service** (`firezone-client-tunnel`), installed by the installer and run as root / `SYSTEM`.
-  It owns the TUN device, connlib, DNS control, the persisted device ID, and (on Windows) `wintun.dll`.
+  It owns the TUN device, connlib, DNS control, the persisted device ID, the advanced settings and MDM (managed) policy, and (on Windows) `wintun.dll`.
 
 IPC is a Unix domain socket on Linux and a named pipe on Windows.
 Because all privileged work lives in the Tunnel service, the GUI never needs to elevate itself.
@@ -169,19 +169,20 @@ The hash check only avoids redundant writes and updates the DLL when needed; it 
 
 ### Directory permissions
 
-The Tunnel service runs as root / `SYSTEM` and locks down the directories it owns, so an unprivileged user cannot read or tamper with the device ID, log filter, or other service config.
+The Tunnel service runs as root / `SYSTEM` and locks down the directories it owns, so an unprivileged user cannot read or tamper with the device ID, the advanced settings, or other service config.
 The GUI's own directories (settings, logs, session data) are owned by the user who runs it.
 
 On Linux:
 
 - [ ] Given the Tunnel service has run once, when you inspect `/var/lib/dev.firezone.client/config/`, then it is `rwxrwx---` (`0o770`), owned by `root:firezone-client`
 - [ ] Given the device ID file exists, when you inspect `/var/lib/dev.firezone.client/config/firezone-id.json`, then it is `rw-r-----` (`0o640`), owned by `root:firezone-client`
+- [ ] Given advanced settings have been saved, when you inspect `/var/lib/dev.firezone.client/config/advanced_settings.json`, then it is `rw-------` (`0o600`), owned by `root` (the GUI receives the values over IPC, so the file needs no group access)
 - [ ] Given a user who is not in the `firezone-client` group, when they try to read the device ID file, then access is denied
 - [ ] Given the GUI has run, when you inspect its config, log, and session dirs under `$HOME`, then they are owned by that user
 
 On Windows:
 
-- [ ] Given the Tunnel service has run once, when you inspect the DACL of `%PROGRAMDATA%\dev.firezone.client\` and its `firezone-id.json`, then it is protected (non-inherited) and grants Full Access only to `SYSTEM` and `Administrators`, with no access for standard users
+- [ ] Given the Tunnel service has run once, when you inspect the DACL of `%PROGRAMDATA%\dev.firezone.client\config\` and its `firezone-id.json` / `advanced_settings.json`, then it is protected (non-inherited) and grants Full Access only to `SYSTEM` and `Administrators`, with no access for standard users
 
 ## Package identity (Windows)
 
@@ -227,16 +228,35 @@ The signed-in tray menu also offers favoriting resources and an "Admin Portal...
 
 Settings are split across an **Advanced** page (Auth Base URL, API URL, Log Filter), a **General** page (start minimized, start on login, connect on start, account slug), and optional **MDM / managed** values that lock the corresponding fields.
 
-- Clicking "Apply" saves and applies the settings.
-- Applying Advanced settings saves to disk, reloads the log filter for both the GUI and the Tunnel service, and shows a "Settings saved" notification.
-  It does **not** sign the user out.
-- Log filter changes take effect immediately.
-  Auth Base URL and API URL changes take effect on the next sign-in.
+The **advanced settings and MDM (managed) policy are owned by the Tunnel service**, not the GUI.
+The GUI reads both from the service over IPC when it first connects, and sends edited advanced settings back over IPC; it never reads or writes them from disk or the registry directly.
+General settings stay GUI-owned, in the user's profile.
+
+- Clicking "Apply" sends the advanced settings to the Tunnel service, which validates them, persists them, and reloads its log filter; the GUI then reloads its own log filter and shows a "Settings saved" notification.
+  A rejected change (e.g. an unparsable log filter) shows "Failed to save settings" and is not persisted.
+  Applying does **not** sign the user out.
+- Log filter changes take effect immediately. Auth Base URL and API URL changes take effect on the next sign-in.
+- A machine-scope MDM policy wins over the stored advanced setting for the same field.
 - "Reset to Defaults" restores the built-in defaults.
+
+The service stores `advanced_settings.json` in its own config dir (`/var/lib/dev.firezone.client/config/` on Linux, `%PROGRAMDATA%\dev.firezone.client\config\` on Windows), protected so another process running as the desktop user cannot, for example, rewrite `auth_url` to redirect the next sign-in.
+
+- [ ] Given a user had custom advanced settings before upgrading to this release, when the GUI first connects, then it migrates the old user-side `advanced_settings.json` into the service and deletes the old copy, preserving the user's `auth_url` / `api_url` / `log_filter`
+- [ ] Given that migration is rejected by the service, when the GUI next connects, then the old file is kept so the migration is retried
+
+### MDM (Windows)
+
+Managed policies live under the registry key `Software\Policies\Firezone` and are read by the Tunnel service.
+As of this release they are read from the **machine** hive (`HKLM`), not the per-user hive (`HKCU`).
+
+- [ ] Given an admin manages Firezone via MDM, when they deploy policy, then they must import the new (Machine-class) ADMX template (`policy-templates/windows/firezone.admx`) and remove the old (User-class) one; the old `HKCU` keys are no longer read
+- [ ] Given a machine still has policy under `HKCU\Software\Policies\Firezone` from an older release, when a user first connects after upgrading, then the service copies those values to `HKLM\Software\Policies\Firezone` (only if `HKLM` is not already set) and deletes the `HKCU` key
+- [ ] Given that one-time migration has run, when any user connects again, then it does not run a second time (it is gated by `HKLM\Software\Firezone\Migration`)
 
 Refs:
 
 - https://github.com/firezone/firezone/pull/3868
+- https://github.com/firezone/firezone/pull/13333
 
 ## Diagnostic logs
 
@@ -302,20 +322,22 @@ This is the on-disk state you need to delete / reset to test a first-time instal
 
 ### Windows
 
-- Dir `%LOCALAPPDATA%\dev.firezone.client\` (config, logs, webview cache, `wintun.dll`, etc.)
-- Dir `%PROGRAMDATA%\dev.firezone.client\` (device ID file)
+- Dir `%LOCALAPPDATA%\dev.firezone.client\` (general settings, logs, webview cache, `wintun.dll`, etc.)
+- Dir `%PROGRAMDATA%\dev.firezone.client\` (device ID, advanced settings, and Tunnel service config / logs)
 - Dir `%PROGRAMFILES%\Firezone\` (exe and un-installer)
 - Registry key `Computer\HKEY_CURRENT_USER\Software\Classes\firezone-fd0020211111` (deep link association)
 - Registry key `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c}` (IP address and DNS server for our tunnel interface)
+- Registry key `HKEY_LOCAL_MACHINE\Software\Firezone\Migration` (one-time HKCU→HKLM MDM migration sentinel)
+- Registry key `HKEY_LOCAL_MACHINE\Software\Policies\Firezone` (MDM policy, if you set any)
 - Windows Credential Manager, "Windows Credentials", "Generic Credentials", `dev.firezone.client/token`
 - The provisioned sparse MSIX package `Firezone.Client.GUI` and its per-user registrations (normally removed by the uninstaller; to reset by hand, remove it with `Remove-AppxPackage` and `Remove-AppxProvisionedPackage`)
 
 ### Linux
 
 - Dir `$HOME/.local/share/applications` (`.desktop` file for deep links. This dir may not even exist by default on distros like Debian)
-- Dir `$HOME/.config/dev.firezone.client/` (GUI settings)
+- Dir `$HOME/.config/dev.firezone.client/` (GUI general settings)
 - Dir `$HOME/.local/share/dev.firezone.client/` (session data, e.g. actor name)
 - Dir `$HOME/.cache/dev.firezone.client/` (GUI logs)
-- Dir `/var/lib/dev.firezone.client/` (device ID and Tunnel service config)
+- Dir `/var/lib/dev.firezone.client/` (device ID, advanced settings, and Tunnel service config)
 - Dir `/var/log/dev.firezone.client/` (Tunnel service logs)
 - The `dev.firezone.client/token` entry in the Secret Service keyring
