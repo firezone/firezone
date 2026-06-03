@@ -290,42 +290,10 @@ pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
 mod tests {
     use super::*;
     use crate::Attribute;
+    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::SocketAddr;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
-
-    /// Deterministic RNG yielding an arithmetic sequence. Replaces the `StepRng`
-    /// mock that was removed from `rand`'s public API in 0.10.
-    #[derive(Clone, Debug)]
-    struct StepRng(u64, u64);
-
-    impl StepRng {
-        fn new(initial: u64, increment: u64) -> Self {
-            Self(initial, increment)
-        }
-    }
-
-    impl rand::TryRng for StepRng {
-        type Error = core::convert::Infallible;
-
-        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
-            self.try_next_u64().map(|x| x as u32)
-        }
-
-        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
-            let res = self.0;
-            self.0 = self.0.wrapping_add(self.1);
-            Ok(res)
-        }
-
-        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
-            for chunk in dst.chunks_mut(8) {
-                let bytes = self.try_next_u64()?.to_le_bytes();
-                chunk.copy_from_slice(&bytes[..chunk.len()]);
-            }
-            Ok(())
-        }
-    }
 
     const RELAY_SECRET_1: &str = "4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab";
     const RELAY_SECRET_2: &str = "7e35e34801e766a6a29ecb9e22810ea4e3476c2b37bf75882edf94a68b1d9607";
@@ -444,7 +412,7 @@ mod tests {
     fn reuses_the_same_nonce_for_repeated_requests_from_one_client() {
         let mut nonces = Nonces::default();
         let client = client_socket(1);
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let first = nonces.issue(client, &mut rng);
         let second = nonces.issue(client, &mut rng);
@@ -455,7 +423,7 @@ mod tests {
     #[test]
     fn issues_distinct_nonces_to_distinct_clients() {
         let mut nonces = Nonces::default();
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let alice = nonces.issue(client_socket(1), &mut rng);
         let bob = nonces.issue(client_socket(2), &mut rng);
@@ -466,7 +434,7 @@ mod tests {
     #[test]
     fn a_nonce_issued_to_one_client_is_invalid_for_another() {
         let mut nonces = Nonces::default();
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let nonce = nonces.issue(client_socket(1), &mut rng);
 
@@ -482,7 +450,7 @@ mod tests {
     fn issues_a_fresh_nonce_once_the_previous_one_is_used_up() {
         let mut nonces = Nonces::default();
         let client = client_socket(1);
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let first = nonces.issue(client, &mut rng);
         for _ in 0..Nonces::NUM_REQUESTS {
