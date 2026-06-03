@@ -56,19 +56,6 @@ pub enum Icon {
     Unknown,
 }
 
-impl Icon {
-    /// ASCII marker shown in place of the icon on platforms whose tray menus
-    /// can't render menu-item icons (Linux/DBusMenu).
-    #[cfg(target_os = "linux")]
-    pub(crate) fn text_marker(self) -> &'static str {
-        match self {
-            Icon::Online => "[O]",
-            Icon::Offline => "[X]",
-            Icon::Unknown => "[-]",
-        }
-    }
-}
-
 /// Events that the menu can send to the app
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Event {

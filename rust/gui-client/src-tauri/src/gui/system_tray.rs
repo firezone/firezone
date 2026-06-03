@@ -5,26 +5,40 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
-use crate::updates::Release;
-use anyhow::{Context as _, Result};
 use compositor::Image;
 use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
-use tauri::AppHandle;
 use url::Url;
 
+use crate::updates::Release;
+
+/// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
+/// distinct from the tray `Icon` defined in this module.
+pub(crate) use builder::Icon as MenuItemIcon;
 use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
-// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
-// distinct from the tray `Icon` defined in this module.
-use builder::Icon as MenuItemIcon;
 
 mod builder;
 mod compositor;
 
-type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
-type TauriMenu = tauri::menu::Menu<tauri::Wry>;
-type TauriSubmenu = tauri::menu::Submenu<tauri::Wry>;
+// The tray is drawn by a platform-native backend rather than Tauri's own tray,
+// so that menu-item icons (e.g. Site status) actually render:
+//
+// - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature),
+//   which renders per-item icons natively.
+// - **Linux**: `ksni`, a pure-Rust StatusNotifierItem implementation that
+//   speaks the DBusMenu protocol directly and can attach an `icon-name` to
+//   each menu item — which GNOME (with the AppIndicator extension) and KDE
+//   render, unlike Tauri's `libappindicator` path.
+#[cfg(not(target_os = "linux"))]
+mod tray_tauri;
+#[cfg(not(target_os = "linux"))]
+pub(crate) use tray_tauri::Tray;
+
+#[cfg(target_os = "linux")]
+mod tray_ksni;
+#[cfg(target_os = "linux")]
+pub(crate) use tray_ksni::Tray;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -33,16 +47,6 @@ const LOGO_GREY_BASE: &[u8] = include_bytes!("../../icons/tray/Logo grey.png");
 const BUSY_LAYER: &[u8] = include_bytes!("../../icons/tray/Busy layer.png");
 const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../icons/tray/Signed out layer.png");
 const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready layer.png");
-
-// Status dots shown next to Site status items, mirroring the native status
-// images the macOS client uses (`NSImage.statusAvailableName` and friends).
-// Only Windows/macOS render menu-item icons; Linux falls back to text markers.
-#[cfg(not(target_os = "linux"))]
-const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../icons/menu/status-online.png");
-#[cfg(not(target_os = "linux"))]
-const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../icons/menu/status-offline.png");
-#[cfg(not(target_os = "linux"))]
-const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../icons/menu/status-unknown.png");
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
@@ -71,14 +75,10 @@ const ENABLE: &str = "Enable this resource";
 
 const TOOLTIP: &str = "Firezone";
 
-pub(crate) struct Tray {
-    app: AppHandle,
-    handle: tauri::tray::TrayIcon,
-    last_icon_set: Icon,
-    last_menu_set: Option<Menu>,
-}
-
-fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+/// Composes the tray icon's PNG layers into a single RGBA image.
+///
+/// Shared by both tray backends.
+pub(crate) fn compose_icon(that: &Icon) -> Image {
     let layers = match that.base {
         IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
         IconBase::SignedIn => &[LOGO_BASE][..],
@@ -87,229 +87,24 @@ fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
     .iter()
     .copied()
     .chain(that.update_ready.then_some(UPDATE_READY_LAYER));
-    let composed =
-        compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs");
-    image_to_tauri_icon(composed)
+    compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs")
 }
 
-fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
-    tauri::image::Image::new_owned(val.rgba, val.width, val.height)
-}
-
-#[cfg(not(target_os = "linux"))]
-fn menu_item_icon(icon: MenuItemIcon) -> tauri::image::Image<'static> {
-    let png = match icon {
-        MenuItemIcon::Online => STATUS_ONLINE_ICON,
-        MenuItemIcon::Offline => STATUS_OFFLINE_ICON,
-        MenuItemIcon::Unknown => STATUS_UNKNOWN_ICON,
+/// Maps an [`AppState`] to the tray [`Icon`] that represents it.
+pub(crate) fn icon_from_state(state: &AppState) -> Icon {
+    let base = match &state.connlib {
+        ConnlibState::Loading
+        | ConnlibState::Quitting
+        | ConnlibState::WaitingForBrowser
+        | ConnlibState::WaitingForPortal
+        | ConnlibState::WaitingForTunnel => IconBase::Busy,
+        ConnlibState::SignedOut => IconBase::SignedOut,
+        ConnlibState::SignedIn { .. } => IconBase::SignedIn,
     };
-    let decoded =
-        compositor::compose([png]).expect("PNG decoding should always succeed for baked-in PNGs");
-    image_to_tauri_icon(decoded)
-}
-
-impl Tray {
-    pub(crate) fn new(
-        app: AppHandle,
-        on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Result<Self> {
-        let tray = tauri::tray::TrayIconBuilder::new()
-            .icon(icon_to_tauri_icon(&Icon::default()))
-            .menu(&build_app_state(&app, &AppState::default().into_menu())?)
-            .on_menu_event(move |app, event| {
-                let id = &event.id.0;
-                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match serde_json::from_str::<Event>(id) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
-                    }
-                };
-
-                on_event(app, event);
-            })
-            .tooltip("Firezone")
-            .build(&app)
-            .context("Cannot build Tauri tray icon")?;
-
-        Ok(Self {
-            app,
-            handle: tray,
-            last_icon_set: Default::default(),
-            last_menu_set: None,
-        })
+    Icon {
+        base,
+        update_ready: state.release.is_some(),
     }
-
-    pub(crate) fn update(&mut self, state: AppState) {
-        let base = match &state.connlib {
-            ConnlibState::Loading
-            | ConnlibState::Quitting
-            | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => IconBase::Busy,
-            ConnlibState::SignedOut => IconBase::SignedOut,
-            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
-        };
-        let new_icon = Icon {
-            base,
-            update_ready: state.release.is_some(),
-        };
-
-        let menu = state.into_menu();
-        let menu_clone = menu.clone();
-        let app = self.app.clone();
-        let handle = self.handle.clone();
-
-        if Some(&menu) == self.last_menu_set.as_ref() {
-            tracing::debug!("Skipping redundant menu update");
-        } else {
-            self.run_on_main_thread(move || {
-                logging::unwrap_or_debug!(
-                    update(handle, &app, &menu),
-                    "Error while updating tray menu: {}"
-                );
-            });
-        }
-        self.set_icon(new_icon);
-        self.last_menu_set = Some(menu_clone);
-    }
-
-    // Only needed for the stress test
-    // Otherwise it would be inlined
-    pub(crate) fn set_icon(&mut self, icon: Icon) {
-        if icon == self.last_icon_set {
-            return;
-        }
-
-        // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
-        // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
-        // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
-        // on disk.
-        let handle = self.handle.clone();
-        self.last_icon_set = icon.clone();
-        self.run_on_main_thread(move || {
-            let result = handle
-                .set_icon(Some(icon_to_tauri_icon(&icon)))
-                .context("Failed to set tray icon");
-
-            logging::unwrap_or_debug!(result, "{}");
-        });
-    }
-
-    fn run_on_main_thread(&self, f: impl FnOnce() + Send + 'static) {
-        let result = self
-            .app
-            .run_on_main_thread(f)
-            .context("Failed to run closure on main thread");
-
-        logging::unwrap_or_debug!(result, "{}");
-    }
-}
-
-fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<()> {
-    let menu = build_app_state(app, menu).context("Failed to build tray menu")?;
-
-    handle
-        .set_tooltip(Some(TOOLTIP))
-        .context("Failed to set tooltip")?;
-    handle
-        .set_menu(Some(menu))
-        .context("Failed to set tray menu")?;
-
-    Ok(())
-}
-
-fn build_app_state(app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
-    build_menu(app, menu)
-}
-
-/// Builds this abstract `Menu` into a real menu that we can use in Tauri.
-///
-/// This recurses but we never go deeper than 3 or 4 levels so it's fine.
-///
-/// Note that Menus and Submenus are different in Tauri. Using a Submenu as a Menu
-/// may crash on Windows. <https://github.com/tauri-apps/tauri/issues/11363>
-fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
-    let mut menu = tauri::menu::MenuBuilder::new(app);
-    for entry in &that.entries {
-        menu = menu.item(&*build_entry(app, entry)?);
-    }
-    Ok(menu.build()?)
-}
-
-fn build_submenu(app: &AppHandle, title: &str, that: &Menu) -> Result<TauriSubmenu> {
-    let mut menu = tauri::menu::SubmenuBuilder::new(app, title);
-    for entry in &that.entries {
-        menu = menu.item(&*build_entry(app, entry)?);
-    }
-    Ok(menu.build()?)
-}
-
-fn build_entry(app: &AppHandle, entry: &Entry) -> Result<Box<IsMenuItem>> {
-    let entry = match entry {
-        Entry::Item(item) => build_item(app, item)?,
-        Entry::Separator => Box::new(tauri::menu::PredefinedMenuItem::separator(app)?),
-        Entry::Submenu { title, inner } => Box::new(build_submenu(app, title, inner)?),
-    };
-    Ok(entry)
-}
-
-fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
-    let item: Box<IsMenuItem> = if let Some(checked) = item.checked {
-        let mut tauri_item = tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
-    } else if let Some(icon) = item.icon {
-        build_icon_item(app, item, icon)?
-    } else {
-        let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
-    };
-    Ok(item)
-}
-
-/// Builds a menu item that shows `icon` to the left of its title.
-///
-/// Windows (and macOS) render the icon natively via `IconMenuItem`.
-#[cfg(not(target_os = "linux"))]
-fn build_icon_item(app: &AppHandle, item: &Item, icon: MenuItemIcon) -> Result<Box<IsMenuItem>> {
-    let mut tauri_item =
-        tauri::menu::IconMenuItemBuilder::new(&item.title).icon(menu_item_icon(icon));
-    if let Some(event) = &item.event {
-        tauri_item = tauri_item.id(serde_json::to_string(event)?);
-    } else {
-        tauri_item = tauri_item.enabled(false);
-    }
-    Ok(Box::new(tauri_item.build(app)?))
-}
-
-/// Builds a menu item that prefixes its title with a text marker for `icon`.
-///
-/// Linux tray menus are exported over the DBusMenu protocol via
-/// `libappindicator`, which only renders menu-item icons attached to the
-/// long-deprecated `GtkImageMenuItem`. The `Image` widget Tauri/muda attaches
-/// is therefore dropped (e.g. on GNOME), so we fall back to an ASCII marker
-/// that conveys the same status as the icon would.
-#[cfg(target_os = "linux")]
-fn build_icon_item(app: &AppHandle, item: &Item, icon: MenuItemIcon) -> Result<Box<IsMenuItem>> {
-    let title = format!("{} {}", icon.text_marker(), item.title);
-    let mut tauri_item = tauri::menu::MenuItemBuilder::new(title);
-    if let Some(event) = &item.event {
-        tauri_item = tauri_item.id(serde_json::to_string(event)?);
-    } else {
-        tauri_item = tauri_item.enabled(false);
-    }
-    Ok(Box::new(tauri_item.build(app)?))
 }
 
 pub struct AppState {
@@ -658,19 +453,6 @@ mod tests {
     use std::str::FromStr as _;
 
     use builder::INTERNET_RESOURCE_DESCRIPTION;
-
-    #[cfg(not(target_os = "linux"))]
-    #[test]
-    fn menu_item_icons_decode() {
-        for icon in [
-            MenuItemIcon::Online,
-            MenuItemIcon::Offline,
-            MenuItemIcon::Unknown,
-        ] {
-            let image = menu_item_icon(icon);
-            assert!(image.width() > 0 && image.height() > 0);
-        }
-    }
 
     impl Menu {
         fn checkable<E: Into<Option<Event>>, S: Into<String>>(

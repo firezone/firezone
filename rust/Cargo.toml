@@ -117,6 +117,7 @@ itertools = "0.14.0"
 jni = "0.22.4"
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
+ksni = { version = "0.3.4", default-features = false, features = ["tokio"] }
 known-folders = "1.4.2"
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
