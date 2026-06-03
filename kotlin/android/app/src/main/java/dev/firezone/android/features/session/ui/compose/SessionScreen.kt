@@ -22,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +56,11 @@ fun SessionScreen(
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
     var selectedTab by rememberSaveable { mutableIntStateOf(TAB_FAVORITES) }
-    // No favorites -> always show "All".
+    // No favorites -> always show "All", and latch the selection there so that adding the
+    // first favorite doesn't unexpectedly switch the user onto the Favorites tab.
+    LaunchedEffect(hasFavorites) {
+        if (!hasFavorites) selectedTab = TAB_ALL
+    }
     val effectiveTab = if (!hasFavorites) TAB_ALL else selectedTab
 
     val displayed =
