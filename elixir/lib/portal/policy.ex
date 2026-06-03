@@ -40,6 +40,7 @@ defmodule Portal.Policy do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_length(:description, min: 1, max: 1024)
+    |> validate_unique_condition_properties()
     |> unique_constraint(
       :base,
       name: :policies_account_id_resource_id_group_id_index,
@@ -58,6 +59,20 @@ defmodule Portal.Policy do
       name: :policies_resource_id_fkey,
       message: "Not allowed to create policies for resources outside of your account"
     )
+  end
+
+  # A policy may carry at most one condition per property. Each operator accepts
+  # a list of values, so multiple conditions on the same property are always
+  # either reducible to one or contradictory (e.g. is_in and is_not_in the same
+  # value), and would never grant access.
+  defp validate_unique_condition_properties(%Ecto.Changeset{} = changeset) do
+    properties = changeset |> get_field(:conditions) |> List.wrap() |> Enum.map(& &1.property)
+
+    if properties == Enum.uniq(properties) do
+      changeset
+    else
+      add_error(changeset, :base, "must not contain more than one condition per property")
+    end
   end
 
   @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()

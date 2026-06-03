@@ -55,7 +55,8 @@ defmodule PortalAPI.PolicyController do
     summary: "Create Policy",
     parameters: [],
     request_body:
-      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.CreateRequest,
+       required: true},
     responses: [
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
@@ -90,7 +91,8 @@ defmodule PortalAPI.PolicyController do
       ]
     ],
     request_body:
-      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.UpdateRequest,
+       required: true},
     responses: [
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
@@ -232,12 +234,13 @@ defmodule PortalAPI.PolicyController do
       |> Safe.delete()
     end
 
+    # The base Policy.changeset/1 is applied centrally by Safe.insert/Safe.update,
+    # so we only do the request-specific casting here.
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do
       %Policy{}
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
-      |> Policy.changeset()
       |> put_change(:account_id, subject.account.id)
     end
 
@@ -246,7 +249,6 @@ defmodule PortalAPI.PolicyController do
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
-      |> Policy.changeset()
     end
 
     def cursor_fields do

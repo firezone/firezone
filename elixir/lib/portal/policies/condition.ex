@@ -54,6 +54,17 @@ defmodule Portal.Policies.Condition do
     |> validate_required([:property, :operator])
     |> validate_operator()
     |> trim_change([:values])
+    |> validate_unique_values()
+  end
+
+  defp validate_unique_values(changeset) do
+    validate_change(changeset, :values, fn :values, values ->
+      if values == Enum.uniq(values) do
+        []
+      else
+        [values: "must not contain duplicate values"]
+      end
+    end)
   end
 
   def valid_operators_for_property(:remote_ip_location_region), do: [:is_in, :is_not_in]
