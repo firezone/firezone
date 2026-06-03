@@ -60,6 +60,18 @@ dir = "gui-client"
 raw = true
 run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
 
+[tasks.tauri-dev]
+description = "Run the GUI client in dev against a dev tunnel service"
+dir = "gui-client"
+raw = true
+run = "cargo tauri dev -- -- --skip-tunnel-pipe-owner-check"
+
+[tasks.tunnel]
+description = "Run the Tunnel service interactively for local GUI dev. In debug builds `run-interactive` skips the LocalSystem pipe-owner check; must be run from an elevated (Administrator) shell."
+dir = "gui-client"
+raw = true
+run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive"
+
 # =============================================================================
 # Composite tasks
 # =============================================================================

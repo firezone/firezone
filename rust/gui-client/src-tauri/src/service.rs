@@ -793,13 +793,26 @@ impl<'a> Handler<'a> {
     }
 }
 
-pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
+/// Run the Tunnel service in an interactive terminal rather than as a
+/// background Windows service / systemd unit.
+///
+/// Mostly used for debugging, but also handy for running a release build
+/// interactively, hence it remains available in release builds.
+pub fn run_interactive(dns_control: DnsControlMethod) -> Result<()> {
     let log_filter_reloader = logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
         version = env!("CARGO_PKG_VERSION"),
         system_uptime_seconds = bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
+
+    // Run interactively (e.g. as the local Administrator) the process has
+    // neither the `LocalSystem` nor the MSIX package identity, so the
+    // production pipe-ownership check would reject the connection. Skip it in
+    // debug builds so local GUI dev works; release builds keep the check.
+    #[cfg(debug_assertions)]
+    ipc::skip_tunnel_pipe_owner_check();
+
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
