@@ -1,15 +1,16 @@
 //! Type-safe builder for the SDDL flavours Firezone applies to its
-//! named pipes.
+//! named pipes and config directories.
 //!
 //! The full SDDL grammar (MS-DTYP §2.5.1) is sprawling — ACE types,
 //! flag sets, generic vs specific access masks, four kinds of
 //! conditional expression, on and on. This module deliberately
-//! exposes only the small dialect our pipe DACLs need: an optional
-//! `O:<owner>` prefix, a protected DACL, plain-allow ACEs, one
-//! conditional packaged-allow ACE (keyed on the `WIN://SYSAPPID`
-//! package-identity attribute), and the file-access rights `FA` /
-//! `FRFW`. Everything else is unrepresentable, so a typo or shape
-//! error can't make it to runtime.
+//! exposes only the small dialect Firezone needs: an optional
+//! `O:<owner>` prefix, a protected DACL, plain-allow ACEs (with
+//! optional Object + Container inheritance flags for config
+//! directories), one conditional packaged-allow ACE (keyed on the
+//! `WIN://SYSAPPID` package-identity attribute), and the file-access
+//! rights `FA` / `FRFW`. Everything else is unrepresentable, so a
+//! typo or shape error can't make it to runtime.
 
 use crate::{SecurityDescriptor, sid_to_string};
 use anyhow::{Context as _, Result};
@@ -38,6 +39,28 @@ impl FileRights {
         match self {
             FileRights::FullAccess => "FA",
             FileRights::ReadWrite => "FRFW",
+        }
+    }
+}
+
+/// Inheritance flags applicable to an allow ACE on a container
+/// (directory) object. Named pipes aren't containers, so leave the
+/// default for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InheritFlags {
+    /// No inheritance -- renders as empty in the SDDL flags slot.
+    #[default]
+    None,
+    /// `OICI` -- Object Inherit + Container Inherit. Child files and
+    /// subdirectories of the secured container inherit this ACE.
+    ObjectAndContainer,
+}
+
+impl InheritFlags {
+    fn as_sddl(self) -> &'static str {
+        match self {
+            InheritFlags::None => "",
+            InheritFlags::ObjectAndContainer => "OICI",
         }
     }
 }
@@ -141,10 +164,11 @@ pub struct PipeDacl {
 
 #[derive(Debug)]
 enum PipeAce {
-    /// Plain `(A;;<rights>;;;<trustee>)`.
+    /// Plain `(A;<flags>;<rights>;;;<trustee>)`.
     Allow {
         rights: FileRights,
         trustee: Trustee,
+        flags: InheritFlags,
     },
     /// Conditional `(XA;;<rights>;;;WD;(WIN://SYSAPPID Contains "<pfn>"))`.
     /// Grants `rights` to any caller whose token carries the
@@ -169,9 +193,25 @@ impl PipeDacl {
         self
     }
 
-    /// Plain `(A;;<rights>;;;<trustee>)` ACE.
+    /// Plain `(A;;<rights>;;;<trustee>)` ACE -- no inheritance.
     pub fn allow(mut self, rights: FileRights, trustee: Trustee) -> Self {
-        self.aces.push(PipeAce::Allow { rights, trustee });
+        self.aces.push(PipeAce::Allow {
+            rights,
+            trustee,
+            flags: InheritFlags::None,
+        });
+        self
+    }
+
+    /// Plain `(A;OICI;<rights>;;;<trustee>)` ACE -- Object + Container
+    /// inheritance, for directory DACLs whose ACEs should propagate to
+    /// child files and subdirectories.
+    pub fn allow_inheriting(mut self, rights: FileRights, trustee: Trustee) -> Self {
+        self.aces.push(PipeAce::Allow {
+            rights,
+            trustee,
+            flags: InheritFlags::ObjectAndContainer,
+        });
         self
     }
 
@@ -213,9 +253,17 @@ impl fmt::Display for PipeDacl {
         f.write_str("D:P")?;
         for ace in &self.aces {
             match ace {
-                PipeAce::Allow { rights, trustee } => {
-                    write!(f, "(A;;{};;;{})", rights.as_sddl(), trustee.as_sddl_str(),)?
-                }
+                PipeAce::Allow {
+                    rights,
+                    trustee,
+                    flags,
+                } => write!(
+                    f,
+                    "(A;{};{};;;{})",
+                    flags.as_sddl(),
+                    rights.as_sddl(),
+                    trustee.as_sddl_str(),
+                )?,
                 PipeAce::PackagedAllow { rights, pfn } => write!(
                     f,
                     "(XA;;{};;;WD;(WIN://SYSAPPID Contains \"{}\"))",
@@ -262,6 +310,38 @@ mod tests {
             .allow(FileRights::ReadWrite, Trustee::builtin_users())
             .to_string();
         assert_eq!(s, "O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFW;;;BU)");
+    }
+
+    /// `allow_inheriting` renders the `OICI` flag in the SDDL flags slot.
+    #[test]
+    fn allow_inheriting_renders_oici() {
+        let s = PipeDacl::new()
+            .allow_inheriting(FileRights::FullAccess, Trustee::local_system())
+            .to_string();
+        assert_eq!(s, "D:P(A;OICI;FA;;;SY)");
+    }
+
+    /// Exact shape Firezone's Tunnel-service config directory uses --
+    /// mirrors `bin_shared::device_id`. The inheritance flags propagate
+    /// the ACEs to child files (notably the device-id file) and
+    /// subdirectories.
+    #[test]
+    fn config_dir_sddl() {
+        let s = PipeDacl::new()
+            .allow_inheriting(FileRights::FullAccess, Trustee::local_system())
+            .allow_inheriting(FileRights::FullAccess, Trustee::builtin_administrators())
+            .to_string();
+        assert_eq!(s, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)");
+    }
+
+    /// The kernel must accept an inheriting ACE through `from_sddl`.
+    #[test]
+    fn inheriting_ace_round_trips_through_security_descriptor() {
+        PipeDacl::new()
+            .allow_inheriting(FileRights::FullAccess, Trustee::local_system())
+            .allow_inheriting(FileRights::FullAccess, Trustee::builtin_administrators())
+            .build()
+            .expect("kernel should accept the inheriting dir SDDL");
     }
 
     /// Exact shape Firezone's GUI pipe uses (no owner clause).

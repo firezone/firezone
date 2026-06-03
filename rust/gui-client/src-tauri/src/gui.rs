@@ -22,9 +22,10 @@ use crate::{
 use anyhow::{Context, Result, bail};
 use futures::SinkExt as _;
 use logging::err_with_src;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tauri::Manager;
 use tauri_specta::Event;
+use telemetry::Telemetry;
 use tokio::{runtime::Runtime, sync::mpsc};
 use tokio_stream::StreamExt;
 use tracing::instrument;
@@ -216,12 +217,6 @@ impl GuiIntegration for TauriIntegration {
 
         Ok(())
     }
-
-    async fn save_advanced_settings(&self, settings: &AdvancedSettings) -> Result<()> {
-        settings::save_advanced(settings).await?;
-
-        Ok(())
-    }
 }
 
 pub struct RunConfig {
@@ -254,9 +249,8 @@ pub enum ServerMsg {
 pub fn run(
     rt: &Runtime,
     config: RunConfig,
-    mdm_settings: MdmSettings,
-    advanced_settings: AdvancedSettings,
     reloader: logging::FilterReloadHandle,
+    telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
 ) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
@@ -285,18 +279,13 @@ pub fn run(
 
         let (updates_tx, updates_rx) = mpsc::channel(1);
 
-        if mdm_settings.check_for_updates.is_none_or(|check| check) {
-            // Check for updates
-            tokio::spawn(async move {
-                if let Err(error) =
-                    updates::checker_task(updates_tx, config.debug_update_check).await
-                {
-                    tracing::error!("Error in updates::checker_task: {error:#}");
-                }
-            });
-        } else {
-            tracing::info!("Update checker disabled via MDM");
-        }
+        // The checker always runs; the controller enforces the `checkForUpdates`
+        // MDM policy once it receives the authoritative settings over IPC.
+        tokio::spawn(async move {
+            if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
+                tracing::error!("Error in updates::checker_task: {error:#}");
+            }
+        });
 
         if config.smoke_test {
             let ctlr_tx = ctlr_tx.clone();
@@ -365,16 +354,20 @@ pub fn run(
             tray,
         };
 
+        let legacy_advanced_settings_path = known_dirs::settings()
+            .context("`known_dirs::settings` failed")?
+            .join("advanced_settings.json");
+
         let ctrl_task = tokio::spawn(Controller::start(
             SocketId::Tunnel,
             integration,
             ctlr_tx,
             ctlr_rx,
             general_settings,
-            mdm_settings,
-            advanced_settings,
+            legacy_advanced_settings_path,
             reloader,
             config.telemetry_allowed,
+            telemetry,
             updates_rx,
             gui_ipc,
         ));
@@ -531,11 +524,16 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
         .map_err(|s| anyhow::anyhow!(s))
         .context("`ClearLogs` failed")?;
 
+    // Round-trip a settings save through the Tunnel service so we exercise
+    // the protected-storage IPC path. The reply lands in the controller's
+    // `AdvancedSettingsApplied` arm; we just need to give it time to land.
+    ctrl_tx
+        .send(ControllerRequest::ApplyAdvancedSettings(Box::default()))
+        .await
+        .context("Failed to send `ApplyAdvancedSettings` request")?;
+
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
-
-    // Write the settings so we can check the path for those
-    settings::save_advanced(&AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
@@ -550,8 +548,8 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
         .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
-    // Check that settings file and at least one log file were written
-    anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
+    // Check that the protected settings file was written by the Tunnel service.
+    anyhow::ensure!(tokio::fs::try_exists(crate::settings::advanced_settings_path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctrl_tx
@@ -647,7 +645,7 @@ pub async fn establish_single_instance() -> Result<SingleInstance> {
 /// through `Controller`, but iterating over many clients in an
 /// accept loop, not one-shot.
 pub async fn accept_one_for_debug(server: &mut ipc::Server) -> Result<ClientMsg> {
-    let (mut read, mut write) = server
+    let (mut read, mut write, _pid) = server
         .next_client_split::<ClientMsg, ServerMsg>()
         .await
         .context("Failed to accept GUI IPC client")?;

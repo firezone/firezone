@@ -203,15 +203,16 @@ where
 impl platform::Server {
     pub(crate) async fn next_client_split<R, W>(
         &mut self,
-    ) -> Result<(ServerRead<R>, ServerWrite<W>)>
+    ) -> Result<(ServerRead<R>, ServerWrite<W>, u32)>
     where
         R: DeserializeOwned,
         W: Serialize,
     {
-        let (rx, tx) = tokio::io::split(self.next_client().await?);
+        let (stream, pid) = self.next_client().await?;
+        let (rx, tx) = tokio::io::split(stream);
         let rx = FramedRead::new(rx, Decoder::default());
         let tx = FramedWrite::new(tx, Encoder::default());
-        Ok((rx, tx))
+        Ok((rx, tx, pid))
     }
 }
 
@@ -258,7 +259,7 @@ mod tests {
 
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = server
+                let (mut rx, mut tx, _pid) = server
                     .next_client_split::<ClientMsg, ServerMsg>()
                     .await
                     .expect("Error while waiting for next IPC client");

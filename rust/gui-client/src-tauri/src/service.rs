@@ -1,9 +1,11 @@
 use crate::{
     ipc::{self, SocketId},
     logging,
+    settings::{
+        AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
+    },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
-use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
@@ -20,20 +22,14 @@ use futures::{
     task::{Context, Poll},
 };
 use ip_network::IpNetwork;
-use logging::{FilterReloadHandle, err_with_src};
+use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    io::{self, Write},
-    mem,
-    panic::AssertUnwindSafe,
-    pin::pin,
-    sync::Arc,
-    time::Duration,
-};
+use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
 use telemetry::{Telemetry, analytics, otel};
 use tokio::time::Instant;
 use tracing::Instrument as _;
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 #[cfg(target_os = "linux")]
@@ -50,19 +46,21 @@ mod platform;
 
 pub use platform::{elevation_check, install, run};
 
+#[cfg(target_os = "windows")]
+pub(crate) use platform::ProcessToken;
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
     Connect {
-        api_url: String,
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
     },
     Disconnect,
-    ApplyLogFilter {
-        directives: String,
-    },
+    /// Persist new advanced settings to the protected on-disk file owned by
+    /// the Tunnel service and reload the log filter.
+    ApplyAdvancedSettings(AdvancedSettings),
     SetInternetResourceState(bool),
     StartTelemetry {
         environment: String,
@@ -83,13 +81,10 @@ where
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
-    /// First message sent on every IPC connection.
-    ///
-    /// Includes the Firezone ID so the GUI can use it for telemetry without
-    /// having to read the on-disk file (which is locked-down to System and
-    /// Administrators on Windows).
     Hello {
         firezone_id: String,
+        advanced_settings: AdvancedSettings,
+        mdm_settings: MdmSettings,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -106,6 +101,9 @@ pub enum ServerMsg {
         resource_id: ResourceId,
     },
     OnUpdateResources(ResourceList),
+    /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
+    /// persisted struct so the GUI is certain about what landed.
+    AdvancedSettingsApplied(Result<AdvancedSettings, String>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -154,6 +152,12 @@ async fn ipc_listen(
         let dir = path.parent().context("No parent path")?;
         std::os::unix::fs::chown(dir, None, Some(group_id))
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
+    }
+
+    if let Ok(stored) = load_advanced_settings()
+        && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
+    {
+        tracing::warn!("Failed to apply stored log filter: {e:#}");
     }
 
     let mut server = ipc::Server::new(socket_id)?;
@@ -215,6 +219,8 @@ struct Handler<'a> {
     ipc_rx: ipc::ServerRead<ClientMsg>,
     ipc_tx: ipc::ServerWrite<ServerMsg>,
     log_filter_reloader: &'a FilterReloadHandle,
+    advanced_settings: AdvancedSettings,
+    mdm_settings: MdmSettings,
     session: Session,
     telemetry: Telemetry,
     tun_device: TunDeviceManager,
@@ -235,7 +241,6 @@ enum Session {
         connlib: client_shared::Session,
     },
     WaitingForNetwork {
-        api_url: String,
         token: SecretString,
         is_internet_resource_active: bool,
     },
@@ -334,7 +339,7 @@ impl<'a> Handler<'a> {
             "Listening for GUI to connect over IPC..."
         );
 
-        let (ipc_rx, mut ipc_tx) = server
+        let (ipc_rx, mut ipc_tx, client_pid) = server
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
@@ -350,9 +355,30 @@ impl<'a> Handler<'a> {
             .context("Failed to initialize network change monitor")?
             .boxed();
 
+        let advanced_settings = load_advanced_settings()
+            .inspect_err(|e| {
+                tracing::debug!("Failed to load advanced settings, using defaults: {e:#}")
+            })
+            .ok()
+            .unwrap_or_default();
+
+        // Migrate any per-user MDM policy into the machine-scope location before
+        // we read it, so the read below never has to consider the legacy hive.
+        #[cfg(target_os = "windows")]
+        crate::mdm_migration::run(client_pid);
+
+        #[cfg(not(target_os = "windows"))]
+        let _ = client_pid;
+
+        let mdm_settings = load_mdm_settings()
+            .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))
+            .unwrap_or_default();
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
+                advanced_settings: advanced_settings.clone(),
+                mdm_settings: mdm_settings.clone(),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
@@ -363,6 +389,8 @@ impl<'a> Handler<'a> {
             ipc_rx,
             ipc_tx,
             log_filter_reloader,
+            advanced_settings,
+            mdm_settings,
             session: Session::None,
             telemetry,
             tun_device,
@@ -429,17 +457,14 @@ impl<'a> Handler<'a> {
                         connlib.reset("network changed".to_owned());
                     }
                     Session::WaitingForNetwork {
-                        api_url,
                         token,
                         is_internet_resource_active,
                     } => {
                         tracing::info!("Attempting to re-connect upon network change");
 
-                        let result = self.try_connect(
-                            &api_url.clone(),
-                            token.clone(),
-                            *is_internet_resource_active,
-                        );
+                        let token = token.clone();
+                        let is_internet_resource_active = *is_internet_resource_active;
+                        let result = self.try_connect(token, is_internet_resource_active);
 
                         if let Some(e) = result
                             .as_ref()
@@ -564,7 +589,6 @@ impl<'a> Handler<'a> {
                     .await?
             }
             ClientMsg::Connect {
-                api_url,
                 token,
                 is_internet_resource_active,
             } => {
@@ -572,7 +596,7 @@ impl<'a> Handler<'a> {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }
 
-                let result = self.try_connect(&api_url, token.clone(), is_internet_resource_active);
+                let result = self.try_connect(token.clone(), is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -583,7 +607,6 @@ impl<'a> Handler<'a> {
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
                     );
                     self.session = Session::WaitingForNetwork {
-                        api_url,
                         token,
                         is_internet_resource_active,
                     };
@@ -602,16 +625,23 @@ impl<'a> Handler<'a> {
                 // so this will be idempotent.
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
-            ClientMsg::ApplyLogFilter { directives } => {
-                self.log_filter_reloader.reload(&directives)?;
-
-                let path = known_dirs::tunnel_log_filter()?;
-
-                if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
-                    .write(|f| f.write_all(directives.as_bytes()))
-                {
-                    tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
-                }
+            ClientMsg::ApplyAdvancedSettings(new) => {
+                // Validate the log filter before persisting so we never write an
+                // unparsable value to disk or report a misleading "saved" to the GUI.
+                let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
+                    Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
+                } else {
+                    match save_advanced(&new).await {
+                        Ok(()) => {
+                            let _ = self.log_filter_reloader.reload(&new.log_filter);
+                            self.advanced_settings = new.clone();
+                            Ok(new)
+                        }
+                        Err(e) => Err(format!("{e:#}")),
+                    }
+                };
+                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
+                    .await?;
             }
             ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {
@@ -660,9 +690,18 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
+    /// Effective `api_url`: machine-scope MDM policy wins over the stored
+    /// advanced setting.
+    fn api_url(&self) -> &str {
+        self.mdm_settings
+            .api_url
+            .as_ref()
+            .map(|u| u.as_str())
+            .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
+    }
+
     fn try_connect(
         &mut self,
-        api_url: &str,
         token: SecretString,
         is_internet_resource_active: bool,
     ) -> Result<Session> {
@@ -671,8 +710,9 @@ impl<'a> Handler<'a> {
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
+        let api_url = self.api_url().to_string();
         let url = LoginUrl::client(
-            Url::parse(api_url).context("Failed to parse URL")?,
+            Url::parse(&api_url).context("Failed to parse URL")?,
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -708,7 +748,7 @@ impl<'a> Handler<'a> {
             tokio::runtime::Handle::current(),
         );
 
-        analytics::new_session(device_id.id, api_url.to_string());
+        analytics::new_session(device_id.id, api_url);
 
         let tun = self
             .tun_device

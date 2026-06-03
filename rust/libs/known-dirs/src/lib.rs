@@ -7,7 +7,6 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
 pub use platform::{
@@ -32,12 +31,6 @@ pub mod platform;
 /// and Windows may use it to track things like the MSI installer, notification titles,
 /// deep link registration, etc.
 const BUNDLE_ID: &str = "dev.firezone.client";
-
-pub fn tunnel_log_filter() -> Result<PathBuf> {
-    Ok(tunnel_service_config()
-        .context("Failed to compute `tunnel_service_config` directory")?
-        .join("log-filter"))
-}
 
 /// Returns the default path for storing the authentication token
 ///
