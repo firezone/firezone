@@ -56,14 +56,15 @@ else
     gh pr create \
         --title "chore: publish $component $version" \
         --body "" \
-        --reviewer @firezone/engineering
+        --reviewer firezone/engineering
 fi
 
 # --- Website (firezone/website): changelog + displayed version markers ------
 #
 # The marketing website and product docs live in the separate firezone/website
-# repo (the website was split out of this monorepo). Clone it, apply the
-# website-specific bumps, and open a PR there.
+# repo (the website was split out of this monorepo). Clone it, run that repo's
+# own scripts/bump-versions.sh to apply the website-specific bumps, and open a
+# PR there.
 #
 # Requires FIREZONE_BOT_WEBSITE_TOKEN: a token scoped to firezone/website with
 # Contents: write (to push the branch) and Pull requests: write (to open the
@@ -92,7 +93,8 @@ fi
 
 git -C "$website_dir" checkout -b "chore/publish-$component-$version"
 
-WEBSITE_DIR="$website_dir" "$path_to_bump_versions" bump_website
+# Version bumps for the website live in the website repo; run its own script.
+(cd "$website_dir" && scripts/bump-versions.sh "$component" "$version")
 
 git -C "$website_dir" add -A
 if git -C "$website_dir" diff --staged --quiet; then
