@@ -18,16 +18,29 @@ const PUBLISHER_DN: &str = "CN=\"Firezone, Inc.\", \
     OID.2.5.4.15=Private Organization";
 
 fn main() -> Result<()> {
-    // Skip tauri-build's default Common-Controls manifest: we embed
-    // our own SXS / fusion manifest below -- only into `Firezone.exe`,
-    // not into the tunnel-service or register-sparse binaries (SCM-
-    // launched services with an embedded `<msix>` identity claim
-    // hang on startup, and the helper has no use for identity).
-    let win = tauri_build::WindowsAttributes::new_without_app_manifest();
-    let attr = tauri_build::Attributes::new().windows_attributes(win);
+    // Release builds embed our own SXS / fusion manifest below -- only
+    // into `Firezone.exe`, not into the tunnel-service or
+    // register-sparse binaries (SCM-launched services with an embedded
+    // `<msix>` identity claim hang on startup, and the helper has no
+    // use for identity).
+    //
+    // Debug builds keep tauri-build's default manifest (Common-Controls
+    // v6 only, no `<msix>` claim): a debug binary run from `target\debug`
+    // typically has no registered sparse package on the dev box, and
+    // an embedded MSIX identity claim makes the kernel fail
+    // `CreateProcess` with `APPMODEL_ERROR_NO_PACKAGE` (15700) before
+    // `main` even runs. The runtime's debug-only `test_pipe_dacl` path
+    // (gated on `SKIP_TUNNEL_PIPE_OWNER_CHECK`) covers IPC without
+    // needing identity.
+    let attr = if cfg!(debug_assertions) {
+        tauri_build::Attributes::new()
+    } else {
+        let win = tauri_build::WindowsAttributes::new_without_app_manifest();
+        tauri_build::Attributes::new().windows_attributes(win)
+    };
     tauri_build::try_build(attr)?;
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
     {
         embed_resource::compile_for(
             "win_files/Firezone.exe.manifest.rc",
