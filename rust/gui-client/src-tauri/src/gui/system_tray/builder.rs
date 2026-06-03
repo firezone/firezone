@@ -35,6 +35,25 @@ pub struct Item {
     pub title: String,
     /// `None` means not checkable, `Some` is the checked state
     pub checked: Option<bool>,
+    /// An optional icon shown to the left of the title.
+    ///
+    /// Mirrors the status icons the macOS client shows in its tray menu.
+    pub icon: Option<Icon>,
+}
+
+/// An icon shown next to a menu item.
+///
+/// These mirror the native status images the macOS client uses in its tray
+/// menu (`NSImage.statusAvailableName` and friends). Unlike macOS, Tauri has
+/// no cross-platform "native" status icons, so we ship our own equivalents.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub enum Icon {
+    /// Green dot: the Gateway for a Site is connected.
+    Online,
+    /// Red dot: all Gateways for a Site are offline.
+    Offline,
+    /// Grey dot: no connection to a Site has been attempted yet.
+    Unknown,
 }
 
 /// Events that the menu can send to the app
@@ -114,6 +133,13 @@ impl Menu {
         self
     }
 
+    /// Appends a menu item that copies its title when clicked and shows `icon`
+    /// to the left of the text.
+    pub(crate) fn copyable_with_icon(mut self, s: &str, icon: Icon) -> Self {
+        self.add_item(copyable(s).icon(icon));
+        self
+    }
+
     /// Appends a disabled item with no accelerator or event
     pub(crate) fn disabled<S: Into<String>>(mut self, title: S) -> Self {
         self.add_item(item(None, title).disabled());
@@ -163,6 +189,11 @@ impl Item {
         self.checked = Some(b);
         self
     }
+
+    pub(crate) fn icon(mut self, icon: Icon) -> Self {
+        self.icon = Some(icon);
+        self
+    }
 }
 
 /// Creates a menu item that copies its title when clicked
@@ -176,5 +207,6 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
         event: event.into(),
         title: title.into(),
         checked: None,
+        icon: None,
     }
 }

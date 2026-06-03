@@ -15,6 +15,9 @@ use url::Url;
 
 use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
+// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
+// distinct from the tray `Icon` defined in this module.
+use builder::Icon as MenuItemIcon;
 
 mod builder;
 mod compositor;
@@ -31,11 +34,17 @@ const BUSY_LAYER: &[u8] = include_bytes!("../../icons/tray/Busy layer.png");
 const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../icons/tray/Signed out layer.png");
 const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready layer.png");
 
+// Status dots shown next to Site status items, mirroring the native status
+// images the macOS client uses (`NSImage.statusAvailableName` and friends).
+const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../icons/menu/status-online.png");
+const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../icons/menu/status-offline.png");
+const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../icons/menu/status-unknown.png");
+
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
-const NO_ACTIVITY: &str = "[-] No activity";
-const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
-const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
+const NO_ACTIVITY: &str = "No activity";
+const GATEWAY_CONNECTED: &str = "Gateway connected";
+const ALL_GATEWAYS_OFFLINE: &str = "All Gateways offline";
 
 const ENABLED_SYMBOL: &str = "<->";
 const DISABLED_SYMBOL: &str = "—";
@@ -81,6 +90,17 @@ fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
 
 fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(val.rgba, val.width, val.height)
+}
+
+fn menu_item_icon(icon: MenuItemIcon) -> tauri::image::Image<'static> {
+    let png = match icon {
+        MenuItemIcon::Online => STATUS_ONLINE_ICON,
+        MenuItemIcon::Offline => STATUS_OFFLINE_ICON,
+        MenuItemIcon::Unknown => STATUS_UNKNOWN_ICON,
+    };
+    let decoded =
+        compositor::compose([png]).expect("PNG decoding should always succeed for baked-in PNGs");
+    image_to_tauri_icon(decoded)
 }
 
 impl Tray {
@@ -239,6 +259,15 @@ fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
             tauri_item = tauri_item.enabled(false);
         }
         Box::new(tauri_item.build(app)?)
+    } else if let Some(icon) = item.icon {
+        let mut tauri_item =
+            tauri::menu::IconMenuItemBuilder::new(&item.title).icon(menu_item_icon(icon));
+        if let Some(event) = &item.event {
+            tauri_item = tauri_item.id(serde_json::to_string(event)?);
+        } else {
+            tauri_item = tauri_item.enabled(false);
+        }
+        Box::new(tauri_item.build(app)?)
     } else {
         let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
         if let Some(event) = &item.event {
@@ -348,18 +377,17 @@ impl SignedIn {
         }
 
         if let Some(site) = res.sites().first() {
-            // Emojis may be causing an issue on some Ubuntu desktop environments.
-            let status = match res.status() {
-                ResourceStatus::Unknown => NO_ACTIVITY,
-                ResourceStatus::Online => GATEWAY_CONNECTED,
-                ResourceStatus::Offline => ALL_GATEWAYS_OFFLINE,
+            let (status, icon) = match res.status() {
+                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Unknown),
+                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Online),
+                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
             };
 
             submenu
                 .separator()
                 .disabled("Site")
                 .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
-                .copyable(status)
+                .copyable_with_icon(status, icon)
         } else {
             submenu
         }
@@ -599,6 +627,18 @@ mod tests {
 
     use builder::INTERNET_RESOURCE_DESCRIPTION;
 
+    #[test]
+    fn menu_item_icons_decode() {
+        for icon in [
+            MenuItemIcon::Online,
+            MenuItemIcon::Offline,
+            MenuItemIcon::Unknown,
+        ] {
+            let image = menu_item_icon(icon);
+            assert!(image.width() > 0 && image.height() > 0);
+        }
+    }
+
     impl Menu {
         fn checkable<E: Into<Option<Event>>, S: Into<String>>(
             mut self,
@@ -802,7 +842,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(NO_ACTIVITY),
+                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Unknown),
             )
             .add_submenu(
                 "MyCorp GitLab",
@@ -825,7 +865,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Online),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -836,7 +876,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
@@ -885,7 +925,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Online),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -896,7 +936,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
             )
             .separator()
             .add_submenu(
@@ -919,7 +959,7 @@ mod tests {
                         .separator()
                         .disabled("Site")
                         .copyable("test")
-                        .copyable(NO_ACTIVITY),
+                        .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Unknown),
                 ),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
@@ -968,7 +1008,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(NO_ACTIVITY),
+                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Unknown),
             )
             .add_submenu(
                 "MyCorp GitLab",
@@ -991,7 +1031,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
+                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Online),
             )
             .add_submenu(
                 "— Internet Resource",
@@ -1002,7 +1042,7 @@ mod tests {
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
+                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Offline),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
