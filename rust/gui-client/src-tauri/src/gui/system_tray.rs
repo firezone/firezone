@@ -36,8 +36,12 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready 
 
 // Status dots shown next to Site status items, mirroring the native status
 // images the macOS client uses (`NSImage.statusAvailableName` and friends).
+// Only Windows/macOS render menu-item icons; Linux falls back to text markers.
+#[cfg(not(target_os = "linux"))]
 const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../icons/menu/status-online.png");
+#[cfg(not(target_os = "linux"))]
 const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../icons/menu/status-offline.png");
+#[cfg(not(target_os = "linux"))]
 const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../icons/menu/status-unknown.png");
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
@@ -92,6 +96,7 @@ fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(val.rgba, val.width, val.height)
 }
 
+#[cfg(not(target_os = "linux"))]
 fn menu_item_icon(icon: MenuItemIcon) -> tauri::image::Image<'static> {
     let png = match icon {
         MenuItemIcon::Online => STATUS_ONLINE_ICON,
@@ -260,14 +265,7 @@ fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
         }
         Box::new(tauri_item.build(app)?)
     } else if let Some(icon) = item.icon {
-        let mut tauri_item =
-            tauri::menu::IconMenuItemBuilder::new(&item.title).icon(menu_item_icon(icon));
-        if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event)?);
-        } else {
-            tauri_item = tauri_item.enabled(false);
-        }
-        Box::new(tauri_item.build(app)?)
+        build_icon_item(app, item, icon)?
     } else {
         let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
         if let Some(event) = &item.event {
@@ -278,6 +276,40 @@ fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
         Box::new(tauri_item.build(app)?)
     };
     Ok(item)
+}
+
+/// Builds a menu item that shows `icon` to the left of its title.
+///
+/// Windows (and macOS) render the icon natively via `IconMenuItem`.
+#[cfg(not(target_os = "linux"))]
+fn build_icon_item(app: &AppHandle, item: &Item, icon: MenuItemIcon) -> Result<Box<IsMenuItem>> {
+    let mut tauri_item =
+        tauri::menu::IconMenuItemBuilder::new(&item.title).icon(menu_item_icon(icon));
+    if let Some(event) = &item.event {
+        tauri_item = tauri_item.id(serde_json::to_string(event)?);
+    } else {
+        tauri_item = tauri_item.enabled(false);
+    }
+    Ok(Box::new(tauri_item.build(app)?))
+}
+
+/// Builds a menu item that prefixes its title with a text marker for `icon`.
+///
+/// Linux tray menus are exported over the DBusMenu protocol via
+/// `libappindicator`, which only renders menu-item icons attached to the
+/// long-deprecated `GtkImageMenuItem`. The `Image` widget Tauri/muda attaches
+/// is therefore dropped (e.g. on GNOME), so we fall back to an ASCII marker
+/// that conveys the same status as the icon would.
+#[cfg(target_os = "linux")]
+fn build_icon_item(app: &AppHandle, item: &Item, icon: MenuItemIcon) -> Result<Box<IsMenuItem>> {
+    let title = format!("{} {}", icon.text_marker(), item.title);
+    let mut tauri_item = tauri::menu::MenuItemBuilder::new(title);
+    if let Some(event) = &item.event {
+        tauri_item = tauri_item.id(serde_json::to_string(event)?);
+    } else {
+        tauri_item = tauri_item.enabled(false);
+    }
+    Ok(Box::new(tauri_item.build(app)?))
 }
 
 pub struct AppState {
@@ -627,6 +659,7 @@ mod tests {
 
     use builder::INTERNET_RESOURCE_DESCRIPTION;
 
+    #[cfg(not(target_os = "linux"))]
     #[test]
     fn menu_item_icons_decode() {
         for icon in [
