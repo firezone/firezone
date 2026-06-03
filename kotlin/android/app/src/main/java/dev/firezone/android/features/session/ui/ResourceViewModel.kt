@@ -1,6 +1,7 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.session.ui
 
+import androidx.compose.runtime.Immutable
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.stateSymbol
 import dev.firezone.android.tunnel.model.Resource
@@ -9,6 +10,7 @@ import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 
+@Immutable
 class ResourceViewModel(
     resource: Resource,
     resourceState: ResourceState,
@@ -21,7 +23,7 @@ class ResourceViewModel(
     val displayName: String = displayName(resource, resourceState)
     val name: String = resource.name
     val status: StatusEnum = resource.status
-    var state: ResourceState = resourceState
+    val state: ResourceState = resourceState
 }
 
 fun displayName(
