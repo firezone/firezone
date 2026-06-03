@@ -101,8 +101,9 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
    mise run tunnel
    ```
 
-   This runs `firezone-client-tunnel run-debug`, which serves the Tunnel IPC pipe
-   without pinning it to `LocalSystem`, so the unprivileged GUI below can connect.
+   This runs `firezone-client-tunnel run-interactive`, which in a debug build serves
+   the Tunnel IPC pipe without pinning it to `LocalSystem`, so the unprivileged GUI
+   below can connect.
 
 2. **GUI client** — from a normal (non-elevated) terminal. Connects to the Tunnel
    service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:
@@ -131,7 +132,7 @@ The app's config and logs will be stored at
 
 ### What this workflow can't test
 
-Running the GUI against a `run-debug` Tunnel deliberately bypasses the named-pipe
+Running the GUI against a debug-build `run-interactive` Tunnel deliberately bypasses the named-pipe
 ownership check, so it does **not** exercise the production pipe-ownership security
 model (GUI ⇄ `LocalSystem` Tunnel service). It also doesn't cover MSI packaging, the
 bundled Windows service, sparse-package registration, or the installed app identity.
