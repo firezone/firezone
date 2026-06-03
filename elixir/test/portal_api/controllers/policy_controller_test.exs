@@ -307,6 +307,64 @@ defmodule PortalAPI.PolicyControllerTest do
              ]
     end
 
+    test "rejects duplicate values within a condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+      provider_id = Ecto.UUID.generate()
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{
+            "property" => "auth_provider_id",
+            "operator" => "is_in",
+            "values" => [provider_id, provider_id]
+          }
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)["error"]["reason"] == "Unprocessable Content"
+    end
+
+    test "rejects more than one condition per property", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "remote_ip_location_region", "operator" => "is_in", "values" => ["US"]},
+          %{"property" => "remote_ip_location_region", "operator" => "is_not_in", "values" => ["US"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)["error"]["validation_errors"] == %{
+               "base" => ["must not contain more than one condition per property"]
+             }
+    end
+
     test "returns validation error for invalid condition", %{
       conn: conn,
       account: account,
@@ -422,6 +480,31 @@ defmodule PortalAPI.PolicyControllerTest do
                  "values" => ["true"]
                }
              ]
+    end
+
+    test "rejects more than one condition per property on update", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy = policy_fixture(account: account)
+
+      attrs = %{
+        "conditions" => [
+          %{"property" => "remote_ip_location_region", "operator" => "is_in", "values" => ["US"]},
+          %{"property" => "remote_ip_location_region", "operator" => "is_not_in", "values" => ["US"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: attrs)
+
+      assert json_response(conn, 422)["error"]["validation_errors"] == %{
+               "base" => ["must not contain more than one condition per property"]
+             }
     end
 
     test "returns validation error for invalid group_id value", %{
