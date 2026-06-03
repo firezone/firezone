@@ -18,4 +18,4 @@ CURRENT_PROJECT_VERSION = 0
 #include? "dynamic_build_number.xcconfig"
 
 // mark:next-apple-version
-MARKETING_VERSION=1.5.16
+MARKETING_VERSION=1.5.17

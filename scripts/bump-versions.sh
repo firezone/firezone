@@ -22,8 +22,8 @@ WEBSITE_DIR="${WEBSITE_DIR:-}"
 # Version source of truth. These are managed by `update_version_variables`
 # (invoked from scripts/create-publish-pr.sh during a release) and consumed by
 # both the monorepo bump (`version`) and the website bump (`bump_website`).
-current_apple_client_version="1.5.15"
-next_apple_client_version="1.5.16"
+current_apple_client_version="1.5.16"
+next_apple_client_version="1.5.17"
 current_android_client_version="1.5.10"
 next_android_client_version="1.5.11"
 current_gui_client_version="1.5.12"
