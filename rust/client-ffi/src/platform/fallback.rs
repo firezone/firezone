@@ -1,6 +1,8 @@
-use std::{io, os::fd::RawFd, time::Duration};
+use std::{io, time::Duration};
 
 use telemetry::Dsn;
+
+use crate::fd::RawFd;
 
 pub const RELEASE: &str = "";
 pub const VERSION: &str = "";

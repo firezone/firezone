@@ -1,8 +1,10 @@
+mod fd;
 mod platform;
+
+use crate::fd::RawFd;
 
 use std::{
     fmt,
-    os::fd::RawFd,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::Duration,
