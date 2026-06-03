@@ -1,30 +1,24 @@
 # Intended Behavior
 
-This document describes the intended behavior of the `firezone-gui-client` and
-how to test it manually. Behavioral expectations use
-[Given-When-Then](https://en.wikipedia.org/wiki/Given-When-Then) phrasing where
-it helps.
+This document describes the intended behavior of the `firezone-gui-client` and how to test it manually.
+Behavioral expectations use [Given-When-Then](https://en.wikipedia.org/wiki/Given-When-Then) phrasing where it helps.
 
 ## Platform support
 
-Linux and Windows are officially supported. The GUI crate also _compiles_ on
-macOS so that the UI can be worked on there, but macOS is **not** officially
-supported and the Tunnel service does not run on it.
+Linux and Windows are officially supported.
+The GUI crate also _compiles_ on macOS so that the UI can be worked on there, but macOS is **not** officially supported and the Tunnel service does not run on it.
 
 ## Architecture
 
 The desktop client runs as two processes:
 
-- The **GUI** (this crate), which runs unprivileged as the logged-in user. It
-  draws the tray menu and Settings window, drives sign-in, and talks to the
-  Tunnel service over IPC.
-- The **Tunnel service** (`firezone-client-tunnel`), installed by the installer
-  and run as root / `SYSTEM`. It owns the TUN device, connlib, DNS control, the
-  persisted device ID, and (on Windows) `wintun.dll`.
+- The **GUI** (this crate), which runs unprivileged as the logged-in user.
+  It draws the tray menu and Settings window, drives sign-in, and talks to the Tunnel service over IPC.
+- The **Tunnel service** (`firezone-client-tunnel`), installed by the installer and run as root / `SYSTEM`.
+  It owns the TUN device, connlib, DNS control, the persisted device ID, and (on Windows) `wintun.dll`.
 
-IPC is a Unix domain socket on Linux and a named pipe on Windows. Because all
-privileged work lives in the Tunnel service, the GUI never needs to elevate
-itself.
+IPC is a Unix domain socket on Linux and a named pipe on Windows.
+Because all privileged work lives in the Tunnel service, the GUI never needs to elevate itself.
 
 ## Smoke test checklist (Ubuntu)
 
@@ -64,7 +58,7 @@ Best performed on a clean VM
 1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
 1. Expect the zip file to start with `firezone_logs_`
-1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
+1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent a tarbomb
 1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2 files respectively, totalling 5 files
 
 ## Smoke test checklist (Windows)
@@ -98,7 +92,7 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
 1. Expect the zip file to start with `firezone_logs_`
-1. Expect the zip to contain a single directory in the root of the zip, to prevent zip bombing
+1. Expect the zip to contain a single directory in the root of the zip, to prevent a tarbomb
 1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files each, totalling 4 files
 
 ## Upgrade checklist (Linux)
@@ -126,18 +120,15 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 
 ## GUI states
 
-Only one instance of the GUI runs at a time. A second launch performs a
-single-instance handshake with the first over the GUI IPC pipe and then exits.
-If the running instance belongs to a different logon session, the second
-instance shows "Firezone is already running in another logon session..." and
-exits instead of producing undefined behavior.
+Only one instance of the GUI runs at a time.
+A second launch performs a single-instance handshake with the first over the GUI IPC pipe and then exits.
+If the running instance belongs to a different logon session, the second instance shows "Firezone is already running in another logon session..." and exits instead of producing undefined behavior.
 
 The GUI is always in one of these states:
 
 - **Signed out** — the tray shows "Sign In".
-- **Signing in** — the tray shows the current sub-state: "Waiting for
-  browser...", "Connecting to Firezone Portal...", or "Raising tunnel...". A
-  "Cancel sign-in" item is available.
+- **Signing in** — the tray shows the current sub-state: "Waiting for browser...", "Connecting to Firezone Portal...", or "Raising tunnel...".
+  A "Cancel sign-in" item is available.
 - **Signed in** — the tray lists the account and resources.
 
 ## Device ID
@@ -158,8 +149,7 @@ Wintun is managed by the Tunnel service, not the GUI.
 - [ ] Given the on-disk DLL has extra bytes appended, or does not match the embedded copy's SHA-256, then the service rewrites it
 - [ ] Given the on-disk DLL matches the embedded SHA-256, then the service reuses it
 
-The hash check only avoids redundant writes and updates the DLL when needed; it
-is not a security boundary.
+The hash check only avoids redundant writes and updates the DLL when needed; it is not a security boundary.
 
 ## Permissions
 
@@ -189,19 +179,17 @@ is not a security boundary.
 - [ ] Given the client was signed in when it stopped, when you start it again, then the GUI returns to the signed-in state and shows the actor name
 - [ ] Given the client is signed out, when you sign in, sign out, then sign in again, then the second sign-in works
 
-The signed-in tray menu also offers favoriting resources and an "Admin
-Portal..." item (which can be hidden by MDM policy).
+The signed-in tray menu also offers favoriting resources and an "Admin Portal..." item (which can be hidden by MDM policy).
 
 ## Settings
 
-Settings are split across an **Advanced** page (Auth Base URL, API URL, Log
-Filter), a **General** page (start minimized, start on login, connect on start,
-account slug), and optional **MDM / managed** values that lock the corresponding
-fields.
+Settings are split across an **Advanced** page (Auth Base URL, API URL, Log Filter), a **General** page (start minimized, start on login, connect on start, account slug), and optional **MDM / managed** values that lock the corresponding fields.
 
-- Pressing Enter in a text field (or clicking "Apply") saves and applies the settings immediately.
-- Applying Advanced settings saves to disk, reloads the log filter for both the GUI and the Tunnel service, and shows a "Settings saved" notification. It does **not** sign the user out.
-- Log filter changes take effect immediately. Auth Base URL and API URL changes take effect on the next sign-in.
+- Clicking "Apply" saves and applies the settings.
+- Applying Advanced settings saves to disk, reloads the log filter for both the GUI and the Tunnel service, and shows a "Settings saved" notification.
+  It does **not** sign the user out.
+- Log filter changes take effect immediately.
+  Auth Base URL and API URL changes take effect on the next sign-in.
 - "Reset to Defaults" restores the built-in defaults.
 
 Refs:
@@ -212,13 +200,13 @@ Refs:
 
 - [ ] Given the client was built in release mode, when you first start it, then it uses the release-mode default log filter
 - [ ] Given you open the Diagnostics page, then it shows the log directory size (file count and MB)
-- [ ] Given you click "Export Logs", then it writes a zip whose name starts with `firezone_logs_`, containing a single top-level directory (to prevent zip bombing) with `connlib` and `app` subdirectories
+- [ ] Given you click "Export Logs", then it writes a zip whose name starts with `firezone_logs_`, containing a single top-level directory (to prevent a tarbomb) with `connlib` and `app` subdirectories
 - [ ] Given you click "Clear Logs", then the GUI logs are deleted and the Tunnel service is asked to clear its own
 
 ## Error logging
 
-These hidden debug flags exercise the Controller's error handling. Run them from
-a terminal so the output is visible.
+These hidden debug flags exercise the Controller's error handling.
+Run them from a terminal so the output is visible.
 
 1. Given the configured log filter is invalid, when you start Firezone, then it shows an error dialog and falls back to the default log filter.
 1. Given `--crash` is passed, when the Controller task runs, then it segfaults on purpose.
@@ -228,51 +216,47 @@ a terminal so the output is visible.
 
 ## Token storage
 
-The token is stored in the OS keyring under `dev.firezone.client/token` — the
-Windows Credential Manager on Windows, the D-Bus Secret Service on Linux.
+The token is stored in the OS keyring under `dev.firezone.client/token` — the Windows Credential Manager on Windows, the D-Bus Secret Service on Linux.
 
 - [ ] Given the client is signed out, or was signed out before it stopped, when you inspect the keyring, then the token entry is absent
 - [ ] Given the client is signed in, or was signed in before it stopped, when you inspect the keyring, then the token entry is present
 
-## Tunneling
-
-If you can't test with resources that respond to ping, `curl` is fine too.
-
-1. The tunnel can route public-routable IPs, e.g. 1.1.1.1, for public resources
-1. All resources accessed by domain get a CGNAT network address, e.g. 100.64.96.19, even public resources
-1. When the client is signed in, all DNS requests go to Firezone first, so that it can route public resources
-1. Given `*.test-ipv6.com` is a resource, and the tunnel is up, when you load `test-ipv6.com` in a web browser, then it shows the gateway's IPv6 address and scores 10/10
-
-### Signed out
-
-Given the client is signed out or not running, when you ping...
-
-1. [ ] a public resource by IP (e.g. 1.1.1.1), it responds through a physical interface
-2. [ ] a protected resource by IP (e.g. 10.0.14.19), it does not respond
-3. [ ] a non-resource by IP (e.g. a.b.c.d), it responds through a physical interface
-4. [ ] a public resource by domain (e.g. example.com), the system's DNS resolves it, and it responds through a physical interface
-5. [ ] a protected resource by domain (e.g. gitlab.company.com), the system's DNS fails to resolve it
-6. [ ] a non-resource by domain (e.g. example.com), the system's DNS resolves it, and it responds through a physical interface
-
-### Signed in
-
-Given the client is signed in, when you ping...
-
-1. [ ] a public resource by IP (e.g. 1.1.1.1), it responds through the tunnel
-2. [ ] a protected resource by IP (e.g. 100.64.96.19), it responds through the tunnel
-3. [ ] a non-resource by IP (e.g. a.b.c.d), it responds through a physical interface
-4. [ ] a public resource by domain (e.g. example.com), Firezone's DNS makes an IP for it, and it responds through the tunnel
-5. [ ] a protected resource by domain (e.g. gitlab.company.com), Firezone's DNS makes an IP for it, and it responds through the tunnel
-6. [ ] a non-resource by domain (e.g. example.com), Firezone's DNS falls back on the system's DNS, which finds the domain's publicly-routable IP, and it responds through a physical interface
-
 ## Network roaming
 
-See [`network_roaming.md`](network_roaming.md).
+Given Ethernet and 2 Wi-Fi networks "A" and "B", this test cycle exercises all interesting combos of:
+
+- Connecting and disconnecting Ethernet and Wi-Fi, while the other is connected and disconnected
+- Roaming from one Wi-Fi network to another
+- Steady-state network connections
+
+Cycle:
+
+1. Steady on A
+2. Change to B
+3. Disconnect Wi-Fi
+4. Steady offline
+5. Connect to A
+6. Connect Eth
+7. Steady on Eth + A
+8. Change to B
+9. Disconnect Wi-Fi
+10. Steady on Eth
+11. Disconnect Eth
+12. Connect Eth
+13. Connect to Wi-Fi A
+14. Disconnect Eth
+
+For each step:
+
+- Make the change. (e.g. click on the Wi-Fi network, or connect / disconnect the Ethernet plug)
+- Wait for the OS to reflect the change. (e.g. "Connected to Wi-Fi A" pop-up)
+- Run `time curl -4 --silent --max-time 30 https://ifconfig.net/ip`.
+- Ensure that you see the Gateway's IP and not your Wi-Fi's external IP.
+- Note how long it took `curl` to return success or failure.
 
 ## Resetting state
 
-This is the on-disk state you need to delete / reset to test a first-time
-install / first-time run of the Firezone GUI client.
+This is the on-disk state you need to delete / reset to test a first-time install / first-time run of the Firezone GUI client.
 
 ### Windows
 
