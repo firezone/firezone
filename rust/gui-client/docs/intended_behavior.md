@@ -1,7 +1,6 @@
 # Intended Behavior
 
 This document describes the intended behavior of the `firezone-gui-client` and how to test it manually.
-Behavioral expectations use [Given-When-Then](https://en.wikipedia.org/wiki/Given-When-Then) phrasing where it helps.
 
 ## Platform support
 
@@ -121,8 +120,9 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 ## GUI states
 
 Only one instance of the GUI runs at a time.
-A second launch performs a single-instance handshake with the first over the GUI IPC pipe and then exits.
-If the running instance belongs to a different logon session, the second instance shows "Firezone is already running in another logon session..." and exits instead of producing undefined behavior.
+
+- [ ] Given the GUI is already running in your session, when you launch it again, then the second launch hands off to the running instance over the GUI IPC pipe and exits, leaving the first instance running
+- [ ] Given the GUI is running in another user's session (e.g. reached via Fast User Switching), when you launch the GUI in your own session, then it shows "Firezone is already running in another logon session. Sign out of that session first, then try again." and exits
 
 The GUI is always in one of these states:
 
@@ -166,6 +166,22 @@ The hash check only avoids redundant writes and updates the DLL when needed; it 
 - [ ] The Tunnel service with `run-debug` can run as admin
 - [ ] The GUI can run as a normal user
 - [ ] The GUI can run as admin
+
+### Directory permissions
+
+The Tunnel service runs as root / `SYSTEM` and locks down the directories it owns, so an unprivileged user cannot read or tamper with the device ID, log filter, or other service config.
+The GUI's own directories (settings, logs, session data) are owned by the user who runs it.
+
+On Linux:
+
+- [ ] Given the Tunnel service has run once, when you inspect `/var/lib/dev.firezone.client/config/`, then it is `rwxrwx---` (`0o770`), owned by `root:firezone-client`
+- [ ] Given the device ID file exists, when you inspect `/var/lib/dev.firezone.client/config/firezone-id.json`, then it is `rw-r-----` (`0o640`), owned by `root:firezone-client`
+- [ ] Given a user who is not in the `firezone-client` group, when they try to read the device ID file, then access is denied
+- [ ] Given the GUI has run, when you inspect its config, log, and session dirs under `$HOME`, then they are owned by that user
+
+On Windows:
+
+- [ ] Given the Tunnel service has run once, when you inspect the DACL of `%PROGRAMDATA%\dev.firezone.client\` and its `firezone-id.json`, then it is protected (non-inherited) and grants Full Access only to `SYSTEM` and `Administrators`, with no access for standard users
 
 ## Package identity (Windows)
 
