@@ -359,7 +359,7 @@ pub fn run(
                 Ok(_) => {}
                 Err(e) => tracing::error!("{e}"),
             },
-        );
+        )?;
         let integration = TauriIntegration {
             app: app_handle,
             tray,

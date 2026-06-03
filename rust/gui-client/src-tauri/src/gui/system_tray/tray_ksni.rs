@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use std::task::Poll;
 
+use anyhow::Result;
 use ksni::{
     Icon as KsniIcon,
     menu::{CheckmarkItem, MenuItem, StandardItem, SubMenu},
@@ -38,11 +39,15 @@ pub(crate) struct Tray {
 }
 
 impl Tray {
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "The Tauri backend's `new` is fallible; the signatures must match"
+    )]
     pub(crate) fn new(
         rt: runtime::Handle,
         app: AppHandle,
         on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Self {
+    ) -> Result<Self> {
         let (menu_tx, menu_rx) = mpsc::unbounded_channel();
         let (icon_tx, icon_rx) = mpsc::unbounded_channel();
 
@@ -73,12 +78,12 @@ impl Tray {
             .await;
         });
 
-        Self {
+        Ok(Self {
             menu_tx,
             icon_tx,
             last_icon: Icon::default(),
             last_menu: None,
-        }
+        })
     }
 
     pub(crate) fn update(&mut self, state: AppState) {

@@ -54,12 +54,10 @@ impl Tray {
         _rt: tokio::runtime::Handle,
         app: AppHandle,
         on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Self {
-        let menu = build_menu(&app, &AppState::default().into_menu())
-            .expect("Failed to build initial tray menu");
+    ) -> Result<Self> {
         let tray = tauri::tray::TrayIconBuilder::new()
             .icon(icon_to_tauri_icon(&Icon::default()))
-            .menu(&menu)
+            .menu(&build_menu(&app, &AppState::default().into_menu())?)
             .on_menu_event(move |app, event| {
                 let id = &event.id.0;
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
@@ -75,14 +73,14 @@ impl Tray {
             })
             .tooltip(TOOLTIP)
             .build(&app)
-            .expect("Failed to build Tauri tray icon");
+            .context("Cannot build Tauri tray icon")?;
 
-        Self {
+        Ok(Self {
             app,
             handle: tray,
             last_icon_set: Default::default(),
             last_menu_set: None,
-        }
+        })
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
