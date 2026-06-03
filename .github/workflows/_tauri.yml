@@ -1,7 +1,21 @@
 name: Build Tauri app
 on:
   workflow_call:
+    inputs:
+      stub-binaries:
+        description: >-
+          Skip the (slow) Rust build and package stub placeholder
+          binaries instead. For fast iteration on the Windows MSI /
+          packaging config only — the resulting installer is NOT
+          functional and skips code signing.
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      stub-binaries:
+        description: "Package stub binaries instead of building (packaging-config iteration only)"
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -112,6 +126,15 @@ jobs:
             os: windows
             pkg-extension: msi
     env:
+      # While this resolves to 'true', the build-gui job iterates the
+      # packaging config WITHOUT the slow Rust build: it stubs the
+      # binaries and runs only the packaging tools (cargo-deb /
+      # generate-rpm / cargo-wix). It's on for pushes to the packaging
+      # iteration branch — so plain commits give fast CI feedback — and
+      # for manual `stub-binaries` dispatches; off everywhere else
+      # (main, merge queue, releases) so real release builds are never
+      # stubbed. Remove the `head_ref` clause once packaging is stable.
+      STUB_BINARIES: ${{ inputs.stub-binaries || github.head_ref == 'claude/packaging-cargo-bundlers' }}
       # mark:next-gui-version
       ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.13_${{ matrix.arch }}
       # mark:next-gui-version
@@ -152,22 +175,69 @@ jobs:
       - name: Install pnpm deps
         run: pnpm install
       - uses: ./.github/actions/setup-azure-sign-tool
-      - name: Build release exe and MSI / deb
+      # Neither OS uses tauri-bundler anymore: Linux packages with
+      # cargo-deb / cargo-generate-rpm, Windows with cargo-wix. The
+      # binaries are still the Tauri binaries — only the bundling
+      # tooling changed.
+      #
+      # When `stub-binaries` is set we skip the (slow) Rust build and
+      # drop placeholder files where the real binaries would go, so the
+      # packaging config can be iterated on CI in ~minutes. Stub
+      # installers are non-functional and skip code signing.
+      - name: Stub binaries (packaging-config iteration)
+        if: ${{ env.STUB_BINARIES == 'true' }}
+        shell: bash
+        working-directory: ./rust
+        run: |
+          mkdir -p target/release
+          for bin in firezone-gui-client firezone-client-tunnel; do
+            printf 'stub binary — not a real executable\n' > "target/release/${bin}"
+            printf 'stub binary — not a real executable\n' > "target/release/${bin}.exe"
+          done
+      - name: Build frontend assets and release binaries
+        if: ${{ env.STUB_BINARIES != 'true' }}
         env:
-          CARGO_PROFILE_RELEASE_LTO: thin # Fat LTO is getting too slow / RAM-hungry on Tauri builds
-        # Signs the exe before bundling it into the MSI
-        run: pnpm build
+          CARGO_PROFILE_RELEASE_LTO: thin
+        # `vite build` produces the web assets that `tauri-build` embeds
+        # into the binary (gated by the `custom-protocol` feature, which
+        # `tauri build` would normally enable). `--bins` builds both the
+        # GUI binary and the `firezone-client-tunnel` secondary binary
+        # (src/bin/firezone-client-tunnel.rs) that the packages ship.
+        run: |
+          pnpm vite build
+          cd .. && cargo build --release -p firezone-gui-client --bins --features firezone-gui-client/custom-protocol
+      - name: Install cargo-deb and cargo-generate-rpm (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+      - name: Build .deb and .rpm (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        working-directory: ./rust
+        run: |
+          cargo deb --package firezone-gui-client --no-build --no-strip
+          cargo generate-rpm --package gui-client/src-tauri
+      - name: Install cargo-wix (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+        with:
+          tool: cargo-wix
+      - name: Build .msi via cargo-wix (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        working-directory: ./rust
+        # `--no-build`: we built (or stubbed) the binaries above.
+        # `--nocapture`: surface candle/light output in the CI log.
+        run: cargo wix --package firezone-gui-client --no-build --nocapture
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
-      # We need to sign the exe inside the MSI. Currently
-      # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
-      # But this will soon be natively supported in Tauri.
-      # TODO: Use Tauri's native MSI signing with support for EV certs
-      # See https://github.com/tauri-apps/tauri/pull/8718
+      # cargo-wix writes the MSI to `target/wix/`. Sign it in place;
+      # the rename script then moves it to the published name. Skipped
+      # for stub builds (the stub MSI wraps placeholder files and isn't
+      # signable / shippable).
       - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' }}
+        if: ${{ runner.os == 'Windows' && env.STUB_BINARIES != 'true' }}
         shell: bash
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/wix/firezone-client-gui-${{ env.FIREZONE_GUI_VERSION }}-x86_64.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
@@ -185,11 +255,11 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Test installation (Linux)
-        if: "${{ runner.os == 'Linux' }}"
+        if: "${{ runner.os == 'Linux' && env.STUB_BINARIES != 'true' }}"
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
       - name: Test installation (Windows)
-        if: "${{ runner.os == 'Windows' }}"
+        if: "${{ runner.os == 'Windows' && env.STUB_BINARIES != 'true' }}"
         shell: powershell
         run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
 

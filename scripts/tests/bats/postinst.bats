@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)/rust/gui-client/src-tauri/linux_package"
+SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)/rust/gui-client/src-tauri/debian"
 
 load test_helper
 
