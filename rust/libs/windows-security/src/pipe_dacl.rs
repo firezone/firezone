@@ -15,11 +15,8 @@ use crate::{SecurityDescriptor, sid_to_string};
 use anyhow::{Context as _, Result};
 use std::{borrow::Cow, fmt};
 use windows::{
-    Win32::{
-        Foundation::{HLOCAL, LocalFree},
-        Security::Isolation::DeriveAppContainerSidFromAppContainerName,
-    },
-    core::{HSTRING, PCWSTR},
+    Win32::{Foundation::HLOCAL, Security::Isolation::DeriveAppContainerSidFromAppContainerName},
+    core::{HSTRING, Owned, PCWSTR},
 };
 
 /// File-system rights expressible in a Firezone pipe ACE. Encoded
@@ -117,17 +114,12 @@ fn derive_package_sid(pfn: &str) -> Result<String> {
     // allocates a SID we must release with `LocalFree`.
     let sid = unsafe { DeriveAppContainerSidFromAppContainerName(PCWSTR(pfn_wide.as_ptr())) }
         .context("DeriveAppContainerSidFromAppContainerName failed")?;
+    // SAFETY: `sid` was allocated via `LocalAlloc` by the call above; wrap
+    // the underlying pointer as `HLOCAL` so `LocalFree` runs on scope exit
+    // even if `sid_to_string` returns an error.
+    let _sid_owned = unsafe { Owned::new(HLOCAL(sid.0)) };
 
-    let sid_string = sid_to_string(sid);
-
-    // SAFETY: `sid` came from `DeriveAppContainerSidFromAppContainerName`
-    // (LocalAlloc-allocated). Free it now; the SDDL string is on the
-    // Rust heap and survives.
-    unsafe {
-        let _ = LocalFree(Some(HLOCAL(sid.0)));
-    }
-
-    sid_string
+    sid_to_string(sid)
 }
 
 /// A security descriptor for a Firezone named pipe: an optional

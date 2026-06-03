@@ -491,13 +491,14 @@ mod async_dns {
         task::LocalSet,
     };
     use windows::Win32::{
-        Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
+        Foundation::{HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
         System::Threading::{
             CreateEventA, INFINITE, RegisterWaitForSingleObject, UnregisterWaitEx,
             WT_EXECUTEINWAITTHREAD,
         },
     };
+    use windows::core::Owned;
     use winreg::RegKey;
 
     /// Opens and returns the IPv4 and IPv6 registry keys
@@ -593,8 +594,9 @@ mod async_dns {
         ///
         /// `RegNotifyChangeKeyValue` can't call a callback directly, so it signals this
         /// event, and we use `RegisterWaitForSingleObject` to adapt that signal into
-        /// a C callback.
-        event: HANDLE,
+        /// a C callback. `Owned<HANDLE>` so the event is closed on `Drop`; the
+        /// wait must be unregistered first (see `close_dont_drop`).
+        event: Owned<HANDLE>,
     }
 
     impl Listener {
@@ -602,7 +604,10 @@ mod async_dns {
             let (tx, rx) = mpsc::channel(1);
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
-            let event = unsafe { CreateEventA(None, false, false, None) }?;
+            // SAFETY: `CreateEventA` returns a handle we must release with
+            // `CloseHandle`; `Owned<HANDLE>` does that on drop, covering the
+            // failure path of `RegisterWaitForSingleObject` below.
+            let event = unsafe { Owned::new(CreateEventA(None, false, false, None)?) };
             let mut wait_handle = HANDLE::default();
 
             // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
@@ -625,7 +630,7 @@ mod async_dns {
             unsafe {
                 RegisterWaitForSingleObject(
                     &mut wait_handle,
-                    event,
+                    *event,
                     Some(callback),
                     Some(tx_ptr as *const _),
                     INFINITE,
@@ -695,7 +700,7 @@ mod async_dns {
                     key_handle,
                     true,
                     notify_flags,
-                    Some(inner.event),
+                    Some(*inner.event),
                     true,
                 )
             }
@@ -714,12 +719,23 @@ mod async_dns {
         /// - `close` which consumes `self` and returns a `Result` for error bubbling
         /// - `drop` which does not consume `self` and does not bubble errors, but which runs even if we forget to call `close`
         fn close_dont_drop(&mut self) -> Result<()> {
-            if let Some(inner) = self.inner.take() {
-                unsafe { UnregisterWaitEx(inner.wait_handle, Some(INVALID_HANDLE_VALUE)) }
-                    .context("Should be able to `UnregisterWaitEx` in the DNS change listener")?;
-                unsafe { CloseHandle(inner.event) }
-                    .context("Should be able to `CloseHandle` in the DNS change listener")?;
+            let Some(inner) = self.inner.take() else {
+                return Ok(());
+            };
+            let ListenerInner { wait_handle, event } = inner;
+            // `UnregisterWaitEx(INVALID_HANDLE_VALUE)` blocks until every
+            // pending callback has finished, so closing `event` is only safe
+            // after it returns successfully. On failure the threadpool wait
+            // may still be active and would signal `event`, so leak the
+            // handle in that branch rather than triggering a use-after-free
+            // via the `Owned<HANDLE>` drop.
+            if let Err(e) = unsafe { UnregisterWaitEx(wait_handle, Some(INVALID_HANDLE_VALUE)) } {
+                std::mem::forget(event);
+                return Err(e)
+                    .context("Should be able to `UnregisterWaitEx` in the DNS change listener");
             }
+            // `event` is dropped here, closing the handle now that the wait
+            // is guaranteed to be unregistered.
             Ok(())
         }
     }
@@ -788,24 +804,27 @@ mod async_dns {
                 .create_subkey_with_flags(&key_path, flags)
                 .expect("`open_subkey_with_flags` failed");
 
-            let event =
-                unsafe { CreateEventA(None, false, false, None) }.expect("`CreateEventA` failed");
+            // SAFETY: `CreateEventA` returns a handle we must release with
+            // `CloseHandle`; `Owned<HANDLE>` does that on drop.
+            let event = unsafe {
+                Owned::new(CreateEventA(None, false, false, None).expect("`CreateEventA` failed"))
+            };
 
             // Registering the notify alone does not signal the event
-            reg_notify(&key, event);
-            assert!(!event_is_signaled(event));
+            reg_notify(&key, *event);
+            assert!(!event_is_signaled(*event));
 
             // Setting the value after we've registered does
             set_reg_value(&key, 0);
-            assert!(event_is_signaled(event));
+            assert!(event_is_signaled(*event));
 
             // Do that one more time to prove it wasn't a fluke
-            reset_event(event);
-            reg_notify(&key, event);
-            assert!(!event_is_signaled(event));
+            reset_event(*event);
+            reg_notify(&key, *event);
+            assert!(!event_is_signaled(*event));
 
             set_reg_value(&key, 500);
-            assert!(event_is_signaled(event));
+            assert!(event_is_signaled(*event));
 
             // I thought there was a gap here, but there's actually not -
             // If we get the notification, then the value changes, then we re-register,
@@ -813,24 +832,23 @@ mod async_dns {
             // Maybe it's storing the state with our regkey handle instead of with the
             // wait operation. This is convenient but it's confusing since the docs don't
             // make it clear. I'll leave the workaround in the main code.
-            reset_event(event);
+            reset_event(*event);
             set_reg_value(&key, 1000);
-            assert!(!event_is_signaled(event));
-            reg_notify(&key, event);
+            assert!(!event_is_signaled(*event));
+            reg_notify(&key, *event);
             // This is the part I was wrong about
-            assert!(event_is_signaled(event));
+            assert!(event_is_signaled(*event));
 
             // Signal normally one more time
-            reset_event(event);
-            reg_notify(&key, event);
+            reset_event(*event);
+            reg_notify(&key, *event);
             set_reg_value(&key, 2000);
-            assert!(event_is_signaled(event));
+            assert!(event_is_signaled(*event));
 
             // Close the handle before the notification goes off
-            reset_event(event);
-            reg_notify(&key, event);
-            unsafe { CloseHandle(event) }.expect("`CloseHandle` failed");
-            let _ = event;
+            reset_event(*event);
+            reg_notify(&key, *event);
+            drop(event);
 
             // Setting the value shouldn't break anything or crash here.
             set_reg_value(&key, 3000);
