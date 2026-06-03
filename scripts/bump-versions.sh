@@ -13,15 +13,9 @@ else
     SEDARG=(-i)
 fi
 
-# Path to a `firezone/website` checkout. Only needed for `bump_website`, which
-# updates the changelog and displayed version markers that live in the website
-# repo (the website was split out of this monorepo). The release pipeline clones
-# the website and points this at it; see scripts/create-publish-pr.sh.
-WEBSITE_DIR="${WEBSITE_DIR:-}"
-
 # Version source of truth. These are managed by `update_version_variables`
 # (invoked from scripts/create-publish-pr.sh during a release) and consumed by
-# both the monorepo bump (`version`) and the website bump (`bump_website`).
+# the monorepo bump (`version`).
 current_apple_client_version="1.5.16"
 next_apple_client_version="1.5.17"
 current_android_client_version="1.5.10"
@@ -39,44 +33,15 @@ function cargo_update_workspace() {
     popd >/dev/null
 }
 
-function update_changelog() {
-    local changelog_file="$1"
-    local current_version="$2"
-    local current_date
-    current_date=$(date +%Y-%m-%d)
-
-    # Be idempotent: Do nothing if we already have a changelog entry for this version.
-    if grep -q "<Entry version=\"${current_version}\"" "$changelog_file"; then
-        return
-    fi
-
-    # Replace the <Unreleased> section with an <Entry> for the current version
-    sed "${SEDARG[@]}" -e "
-        s|<Unreleased>|<Entry version=\"${current_version}\" date={new Date(\"${current_date}\")}>|g;
-        s|</Unreleased>|</Entry>|g;
-    " "$changelog_file"
-
-    # Add a new empty <Unreleased> section above the newly added <Entry>
-    sed "${SEDARG[@]}" -e "
-      /<Entry version=\"${current_version}\"/i\\
-      <Unreleased></Unreleased>
-    " "$changelog_file"
-}
-
-# Update a `mark:`-annotated version, searching tracked files under $root.
-function update_marker_in() {
-    local root="$1"
-    local marker="$2"
-    local new_version="$3"
+# Update a `mark:`-annotated version, searching tracked files in this repo.
+function update_version_marker() {
+    local marker="$1"
+    local new_version="$2"
 
     # Use git grep to find files containing the marker (much faster and git-aware)
-    git -C "$root" grep -l "$marker" 2>/dev/null | while IFS= read -r file; do
-        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/g;}" "$root/$file"
+    git grep -l "$marker" 2>/dev/null | while IFS= read -r file; do
+        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/g;}" "$file"
     done
-}
-
-function update_version_marker() {
-    update_marker_in "." "$1" "$2"
 }
 
 function update_gateway_checksum_marker() {
@@ -261,33 +226,6 @@ function version() {
     gui
     headless
     gateway
-}
-
-# Bump the changelog entries and displayed version markers that live in the
-# `firezone/website` repo. Operates on the checkout pointed to by $WEBSITE_DIR.
-# Run from scripts/create-publish-pr.sh, which opens the resulting PR.
-function bump_website() {
-    if [ -z "$WEBSITE_DIR" ]; then
-        echo "WEBSITE_DIR must point to a firezone/website checkout" >&2
-        exit 1
-    fi
-
-    update_changelog "$WEBSITE_DIR/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
-    update_changelog "$WEBSITE_DIR/src/components/Changelog/Android.tsx" "$current_android_client_version"
-    update_changelog "$WEBSITE_DIR/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
-    update_changelog "$WEBSITE_DIR/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
-    update_changelog "$WEBSITE_DIR/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
-
-    update_marker_in "$WEBSITE_DIR" "mark:current-apple-version" "$current_apple_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:next-apple-version" "$next_apple_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:current-android-version" "$current_android_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:next-android-version" "$next_android_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:current-gui-version" "$current_gui_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:next-gui-version" "$next_gui_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:current-headless-version" "$current_headless_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:next-headless-version" "$next_headless_client_version"
-    update_marker_in "$WEBSITE_DIR" "mark:current-gateway-version" "$current_gateway_version"
-    update_marker_in "$WEBSITE_DIR" "mark:next-gateway-version" "$next_gateway_version"
 }
 
 if [ "$#" -eq 0 ]; then
