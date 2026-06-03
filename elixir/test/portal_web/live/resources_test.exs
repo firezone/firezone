@@ -436,7 +436,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Associated") == 3
+      assert count_occurrences(html, "No Site Associated") == 2
       refute html =~ "No Site Needed"
     end
 
@@ -453,7 +453,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Needed") == 3
+      assert count_occurrences(html, "No Site Needed") == 2
       refute html =~ "No Site Associated"
     end
 

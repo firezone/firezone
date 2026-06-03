@@ -7,6 +7,7 @@ defmodule PortalWeb.Policies do
       map_condition_params: 2,
       maybe_drop_unsupported_conditions: 2,
       policy_panel: 1,
+      policy_status_badge: 1,
       resource_type_badge_class: 1,
       condition_short_label: 1
     ]
@@ -273,7 +274,7 @@ defmodule PortalWeb.Policies do
             </div>
           </:col>
           <:col :let={policy} label="Status" class="w-32">
-            <.status_badge status={if is_nil(policy.disabled_at), do: :active, else: :disabled} />
+            <.policy_status_badge disabled_at={policy.disabled_at} />
           </:col>
           <:col :let={policy} label="Group" class="w-36 lg:w-72">
             <%= if policy.group do %>

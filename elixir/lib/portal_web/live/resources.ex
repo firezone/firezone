@@ -16,7 +16,7 @@ defmodule PortalWeb.Resources do
       resource_details_panel: 1,
       resource_form_panel: 1,
       resource_online?: 2,
-      resource_status: 2,
+      resource_status_badge: 1,
       resource_type_label: 1,
       type_badge_class: 1,
       to_grant_form: 0
@@ -450,7 +450,7 @@ defmodule PortalWeb.Resources do
               </td>
               <td class="px-4 py-3 text-[var(--text-secondary)] text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.status_badge status={resource_status(@internet_resource, @presence_tick)} />
+                <.resource_status_badge resource={@internet_resource} presence_tick={@presence_tick} />
               </td>
             </tr>
           </:prepend_rows>
@@ -534,7 +534,7 @@ defmodule PortalWeb.Resources do
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.status_badge status={resource_status(resource, @presence_tick)} />
+            <.resource_status_badge resource={resource} presence_tick={@presence_tick} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">

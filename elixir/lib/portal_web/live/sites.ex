@@ -369,8 +369,7 @@ defmodule PortalWeb.Sites do
               <td class="px-4 py-3">
                 <% online = gateway_online_count(@internet_site.id) %>
                 <span class="text-sm text-[var(--text-secondary)] tabular-nums">
-                  {online}<span class="text-[var(--text-tertiary)]">/{@internet_site.health_threshold}</span>
-                  <span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
+                  {online}<span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
                 </span>
               </td>
               <td class="px-4 py-3">
@@ -379,7 +378,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.status_badge status={
+                <.site_status_badge status={
                   compute_site_status(@internet_site.id, @internet_site.health_threshold)
                 } />
               </td>
@@ -413,8 +412,7 @@ defmodule PortalWeb.Sites do
               <td class="px-4 py-3">
                 <% online = gateway_online_count(site.id) %>
                 <span class="text-sm text-[var(--text-secondary)] tabular-nums">
-                  {online}<span class="text-[var(--text-tertiary)]">/{site.health_threshold}</span>
-                  <span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
+                  {online}<span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
                 </span>
               </td>
               <td class="px-4 py-3">
@@ -423,7 +421,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.status_badge status={compute_site_status(site.id, site.health_threshold)} />
+                <.site_status_badge status={compute_site_status(site.id, site.health_threshold)} />
               </td>
             </tr>
           </tbody>

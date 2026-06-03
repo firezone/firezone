@@ -191,7 +191,7 @@ defmodule PortalWeb.Clients do
             </span>
           </:col>
           <:col :let={client} label="Status" class="w-28">
-            <.status_badge status={if client.online?, do: :online, else: :offline} />
+            <.client_status_badge online?={client.online?} />
           </:col>
           <:col
             :let={client}

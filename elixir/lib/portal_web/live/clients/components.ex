@@ -558,15 +558,18 @@ defmodule PortalWeb.Clients.Components do
 
   def client_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <h2 class="text-sm font-semibold text-[var(--text-primary)]">{@client.name}</h2>
+    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="flex items-center gap-4">
+        <%!-- Left: name + status + ID --%>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">{@client.name}</h2>
+            <.client_status_badge online?={@client.online?} />
             <.client_verified_badge client={@client} />
           </div>
-          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5">{@client.id}</p>
+          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate">{@client.id}</p>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             phx-click="open_client_edit_form"
@@ -582,31 +585,6 @@ defmodule PortalWeb.Clients.Components do
             <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
-      </div>
-      <.client_summary_bar client={@client} />
-    </div>
-    """
-  end
-
-  attr :client, :any, required: true
-
-  def client_summary_bar(assigns) do
-    ~H"""
-    <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-      <div class="flex items-center gap-1.5">
-        <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-          Status
-        </span>
-        <.status_badge status={if @client.online?, do: :online, else: :offline} />
-      </div>
-      <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-      <div class="flex items-center gap-1.5">
-        <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-          Last Seen
-        </span>
-        <span class="text-xs text-[var(--text-secondary)]">
-          <.relative_datetime datetime={@client.latest_session && @client.latest_session.inserted_at} />
-        </span>
       </div>
     </div>
     """
@@ -745,6 +723,13 @@ defmodule PortalWeb.Clients.Components do
             current={@client.latest_session && @client.latest_session.version}
             latest={ComponentVersions.client_version(@client)}
           />
+        </.client_detail_row>
+        <.client_detail_row label="Last Seen">
+          <span class="text-xs text-[var(--text-secondary)]">
+            <.relative_datetime
+              datetime={@client.latest_session && @client.latest_session.inserted_at}
+            />
+          </span>
         </.client_detail_row>
         <.client_detail_row label="Created">
           <span class="text-xs text-[var(--text-secondary)]">
@@ -910,6 +895,16 @@ defmodule PortalWeb.Clients.Components do
       <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">{@label}</dt>
       <dd>{render_slot(@inner_block)}</dd>
     </div>
+    """
+  end
+
+  attr :online?, :boolean, required: true
+
+  def client_status_badge(assigns) do
+    ~H"""
+    <.status_badge style={if @online?, do: :success, else: :neutral}>
+      {if @online?, do: "Online", else: "Offline"}
+    </.status_badge>
     """
   end
 
