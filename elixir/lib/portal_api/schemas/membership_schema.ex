@@ -30,7 +30,6 @@ defmodule PortalAPI.Schemas.Membership do
   defmodule PatchRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Membership
 
     OpenApiSpex.schema(%{
       title: "MembershipPatchRequest",
@@ -65,11 +64,7 @@ defmodule PortalAPI.Schemas.Membership do
 
   defmodule PutRequest do
     require OpenApiSpex
-    alias Ecto.Adapter.Schema
-    alias Ecto.Adapter.Schema
-    alias Ecto.Adapter.Schema
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Membership
 
     OpenApiSpex.schema(%{
       title: "MembershipPutRequest",

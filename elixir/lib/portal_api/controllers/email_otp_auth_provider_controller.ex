@@ -6,6 +6,7 @@ defmodule PortalAPI.EmailOTPAuthProviderController do
 
   tags ["Email OTP Auth Providers"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Email OTP Auth Providers",
     responses: [
@@ -14,12 +15,15 @@ defmodule PortalAPI.EmailOTPAuthProviderController do
          PortalAPI.Schemas.EmailOTPAuthProvider.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     providers = Database.list_providers(conn.assigns.subject)
     render(conn, :index, providers: providers)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Email OTP Auth Provider",
     parameters: [
@@ -35,6 +39,8 @@ defmodule PortalAPI.EmailOTPAuthProviderController do
         {"Email OTP Auth Provider Response", "application/json",
          PortalAPI.Schemas.EmailOTPAuthProvider.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

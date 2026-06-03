@@ -7,6 +7,7 @@ defmodule PortalAPI.SiteController do
 
   tags ["Sites"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Sites",
     parameters: [
@@ -22,6 +23,8 @@ defmodule PortalAPI.SiteController do
       ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
@@ -33,6 +36,7 @@ defmodule PortalAPI.SiteController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Site",
     parameters: [
@@ -47,6 +51,8 @@ defmodule PortalAPI.SiteController do
       ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
 
+  # coveralls-ignore-stop
+
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, site} <- Database.fetch_site(id, conn.assigns.subject) do
@@ -56,14 +62,17 @@ defmodule PortalAPI.SiteController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Site",
     parameters: [],
     request_body:
-      {"Site Attributes", "application/json", PortalAPI.Schemas.Site.Request, required: true},
+      {"Site Attributes", "application/json", PortalAPI.Schemas.Site.CreateRequest, required: true},
     responses: [
       ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"site" => params}) do
@@ -93,6 +102,7 @@ defmodule PortalAPI.SiteController do
     |> put_change(:managed_by, :account)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update a Site",
     parameters: [
@@ -104,10 +114,12 @@ defmodule PortalAPI.SiteController do
       ]
     ],
     request_body:
-      {"Site Attributes", "application/json", PortalAPI.Schemas.Site.Request, required: true},
+      {"Site Attributes", "application/json", PortalAPI.Schemas.Site.UpdateRequest, required: true},
     responses: [
       ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "site" => params}) do
@@ -126,6 +138,7 @@ defmodule PortalAPI.SiteController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Site",
     parameters: [
@@ -139,6 +152,8 @@ defmodule PortalAPI.SiteController do
     responses: [
       ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -178,7 +193,6 @@ defmodule PortalAPI.SiteController do
 
       case result do
         nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
         site -> {:ok, site}
       end
     end
@@ -188,7 +202,7 @@ defmodule PortalAPI.SiteController do
         Safe.scoped(changeset, subject)
         |> Safe.insert()
       else
-        false -> {:error, :sites_limit_reached}
+        false -> {:error, :forbidden, reason: "Sites limit reached"}
       end
     end
 

@@ -22,6 +22,16 @@ defmodule PortalAPI.SiteControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
+
     test "lists all sites", %{conn: conn, account: account, actor: actor} do
       sites = for _ <- 1..3, do: site_fixture(account: account)
 
@@ -81,6 +91,39 @@ defmodule PortalAPI.SiteControllerTest do
 
       assert MapSet.subset?(data_ids, site_ids)
     end
+
+    test "lists sites with page_cursor", %{conn: conn, account: account, actor: actor} do
+      sites = for _ <- 1..3, do: site_fixture(account: account)
+
+      first_page =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites", limit: "2")
+
+      assert %{"metadata" => %{"next_page" => next_page}} = json_response(first_page, 200)
+      refute is_nil(next_page)
+
+      second_page =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites", page_cursor: next_page)
+
+      assert %{
+               "data" => data,
+               "metadata" => %{
+                 "prev_page" => prev_page
+               }
+             } = json_response(second_page, 200)
+
+      refute is_nil(prev_page)
+
+      data_ids = Enum.map(data, & &1["id"]) |> MapSet.new()
+      site_ids = Enum.map(sites, & &1.id) |> MapSet.new()
+
+      assert MapSet.subset?(data_ids, site_ids)
+    end
   end
 
   describe "show/2" do
@@ -115,6 +158,16 @@ defmodule PortalAPI.SiteControllerTest do
                  "name" => site.name
                }
              }
+    end
+
+    test "returns not found when site does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 
@@ -170,6 +223,21 @@ defmodule PortalAPI.SiteControllerTest do
 
       assert resp["data"]["name"] == attrs["name"]
     end
+
+    test "returns error when sites limit is reached", %{conn: conn, account: account, actor: actor} do
+      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{sites_count: 0})
+      |> Repo.update!()
+
+      attrs = %{"name" => "Example Site"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites", site: attrs)
+
+      assert json_response(conn, 403) == %{"error" => %{"reason" => "Sites limit reached"}}
+    end
   end
 
   describe "update/2" do
@@ -190,6 +258,18 @@ defmodule PortalAPI.SiteControllerTest do
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
+    test "returns not found when site does not exist", %{conn: conn, actor: actor} do
+      attrs = %{"name" => "Updated Site Name"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{Ecto.UUID.generate()}", site: attrs)
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
 
     test "updates a site", %{conn: conn, account: account, actor: actor} do
@@ -232,6 +312,16 @@ defmodule PortalAPI.SiteControllerTest do
       site = site_fixture(%{account: account})
       conn = delete(conn, "/sites/#{site.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns not found when site does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
 
     test "deletes a site", %{conn: conn, account: account, actor: actor} do

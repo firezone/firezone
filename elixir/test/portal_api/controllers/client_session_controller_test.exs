@@ -24,6 +24,16 @@ defmodule PortalAPI.ClientSessionControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/client_sessions", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
+
     test "lists all client sessions", %{
       conn: conn,
       actor: actor,

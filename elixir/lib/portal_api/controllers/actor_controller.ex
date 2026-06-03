@@ -9,6 +9,7 @@ defmodule PortalAPI.ActorController do
 
   tags ["Actors"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Actors",
     parameters: [
@@ -18,6 +19,8 @@ defmodule PortalAPI.ActorController do
     responses: [
       ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}
     ]
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -30,6 +33,7 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Actor",
     parameters: [
@@ -44,6 +48,8 @@ defmodule PortalAPI.ActorController do
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
 
+  # coveralls-ignore-stop
+
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, actor} <- Database.fetch_actor(id, conn.assigns.subject) do
@@ -53,13 +59,17 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create an Actor",
     request_body:
-      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.Request, required: true},
+      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.CreateRequest,
+       required: true},
     responses: [
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"actor" => params}) do
@@ -130,6 +140,7 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update an Actor",
     description: """
@@ -159,10 +170,13 @@ defmodule PortalAPI.ActorController do
       ]
     ],
     request_body:
-      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.Request, required: true},
+      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.UpdateRequest,
+       required: true},
     responses: [
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "actor" => params}) do
@@ -183,6 +197,7 @@ defmodule PortalAPI.ActorController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an Actor",
     parameters: [
@@ -196,6 +211,8 @@ defmodule PortalAPI.ActorController do
     responses: [
       ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do

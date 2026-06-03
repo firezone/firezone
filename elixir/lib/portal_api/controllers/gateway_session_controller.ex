@@ -7,6 +7,7 @@ defmodule PortalAPI.GatewaySessionController do
 
   tags(["Gateway Sessions"])
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:index,
     summary: "List Gateway Sessions",
     parameters: [
@@ -24,6 +25,8 @@ defmodule PortalAPI.GatewaySessionController do
     ]
   )
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
@@ -36,6 +39,7 @@ defmodule PortalAPI.GatewaySessionController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:show,
     summary: "Show Gateway Session",
     parameters: [
@@ -52,6 +56,8 @@ defmodule PortalAPI.GatewaySessionController do
          PortalAPI.Schemas.GatewaySession.Response}
     ]
   )
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -103,9 +109,11 @@ defmodule PortalAPI.GatewaySessionController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway_session -> {:ok, gateway_session}
+        nil ->
+          {:error, :not_found}
+
+        gateway_session ->
+          {:ok, gateway_session}
       end
     end
   end

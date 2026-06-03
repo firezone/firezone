@@ -6,6 +6,7 @@ defmodule PortalAPI.OIDCAuthProviderController do
 
   tags ["OIDC Auth Providers"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List OIDC Auth Providers",
     responses: [
@@ -14,12 +15,15 @@ defmodule PortalAPI.OIDCAuthProviderController do
          PortalAPI.Schemas.OIDCAuthProvider.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     providers = Database.list_providers(conn.assigns.subject)
     render(conn, :index, providers: providers)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show OIDC Auth Provider",
     parameters: [
@@ -35,6 +39,8 @@ defmodule PortalAPI.OIDCAuthProviderController do
         {"OIDC Auth Provider Response", "application/json",
          PortalAPI.Schemas.OIDCAuthProvider.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

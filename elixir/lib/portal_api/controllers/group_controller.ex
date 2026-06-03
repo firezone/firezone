@@ -9,6 +9,7 @@ defmodule PortalAPI.GroupController do
 
   tags ["Groups"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Groups",
     parameters: [
@@ -18,6 +19,8 @@ defmodule PortalAPI.GroupController do
     responses: [
       ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.ListResponse}
     ]
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -30,6 +33,7 @@ defmodule PortalAPI.GroupController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Group",
     parameters: [
@@ -44,6 +48,8 @@ defmodule PortalAPI.GroupController do
       ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
 
+  # coveralls-ignore-stop
+
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, group} <- Database.fetch_group(id, conn.assigns.subject) do
@@ -53,14 +59,18 @@ defmodule PortalAPI.GroupController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Group",
     parameters: [],
     request_body:
-      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.Request, required: true},
+      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.CreateRequest,
+       required: true},
     responses: [
       ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"group" => params}) do
@@ -85,6 +95,7 @@ defmodule PortalAPI.GroupController do
     |> validate_required([:name])
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update a Group",
     parameters: [
@@ -96,10 +107,13 @@ defmodule PortalAPI.GroupController do
       ]
     ],
     request_body:
-      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.Request, required: true},
+      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.UpdateRequest,
+       required: true},
     responses: [
       ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "group" => params}) do
@@ -126,12 +140,12 @@ defmodule PortalAPI.GroupController do
     end
   end
 
+  # coveralls-ignore-start - unreachable: the update route always supplies an :id path param
   def update(conn, _params) do
     Error.handle(conn, {:error, :bad_request})
   end
 
-  defp validate_group_updatable(%Group{type: :managed}),
-    do: {:error, :forbidden, reason: "Cannot update a managed Group"}
+  # coveralls-ignore-stop
 
   defp validate_group_updatable(%Group{idp_id: idp_id}) when not is_nil(idp_id),
     do: {:error, :forbidden, reason: "Cannot update a synced Group"}
@@ -144,6 +158,7 @@ defmodule PortalAPI.GroupController do
     |> validate_required([:name])
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Group",
     parameters: [
@@ -157,6 +172,8 @@ defmodule PortalAPI.GroupController do
     responses: [
       ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do

@@ -7,6 +7,7 @@ defmodule PortalAPI.ExternalIdentityController do
 
   tags ["ExternalIdentities"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List External Identities for an Actor",
     parameters: [
@@ -20,6 +21,8 @@ defmodule PortalAPI.ExternalIdentityController do
          PortalAPI.Schemas.ExternalIdentity.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
     list_opts = Pagination.params_to_list_opts(params)
@@ -32,6 +35,7 @@ defmodule PortalAPI.ExternalIdentityController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show External Identity",
     parameters: [
@@ -54,6 +58,8 @@ defmodule PortalAPI.ExternalIdentityController do
          PortalAPI.Schemas.ExternalIdentity.Response}
     ]
 
+  # coveralls-ignore-stop
+
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, external_identity} <- Database.fetch_external_identity(id, conn.assigns.subject) do
@@ -63,6 +69,7 @@ defmodule PortalAPI.ExternalIdentityController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an External Identity",
     parameters: [
@@ -84,6 +91,8 @@ defmodule PortalAPI.ExternalIdentityController do
         {"ExternalIdentity Response", "application/json",
          PortalAPI.Schemas.ExternalIdentity.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do

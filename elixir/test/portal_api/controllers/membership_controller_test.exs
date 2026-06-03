@@ -23,6 +23,19 @@ defmodule PortalAPI.MembershipControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
+      group = group_fixture(account: account)
+      unprivileged = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}/memberships")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
     test "lists all memberships", %{conn: conn, account: account, actor: api_actor} do
       group = group_fixture(account: account)
 
@@ -153,6 +166,41 @@ defmodule PortalAPI.MembershipControllerTest do
       assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
       assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
       assert [%{"actor" => ["does not exist"]}] = memberships
+    end
+
+    test "returns forbidden when group is not editable", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = synced_group_fixture(account: account)
+      actor = actor_fixture(account: account)
+      attrs = %{"add" => [actor.id]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
+
+      assert json_response(conn, 403) == %{"error" => %{"reason" => "Group is not editable"}}
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      group = group_fixture(account: account)
+      unprivileged = actor_fixture(account: account, type: :service_account)
+      attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns validation error for malformed actor uuid", %{

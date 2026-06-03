@@ -8,6 +8,7 @@ defmodule PortalAPI.MembershipController do
 
   tags ["Memberships"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Memberships",
     parameters: [
@@ -28,6 +29,8 @@ defmodule PortalAPI.MembershipController do
       ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"group_id" => group_id} = params) do
     list_opts =
@@ -41,6 +44,7 @@ defmodule PortalAPI.MembershipController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update_put,
     summary: "Update Memberships",
     parameters: [
@@ -58,6 +62,8 @@ defmodule PortalAPI.MembershipController do
         {"Membership Response", "application/json",
          PortalAPI.Schemas.Membership.MembershipResponse}
     ]
+
+  # coveralls-ignore-stop
 
   @spec update_put(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update_put(
@@ -80,6 +86,7 @@ defmodule PortalAPI.MembershipController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update_patch,
     summary: "Update an Membership",
     parameters: [
@@ -97,6 +104,8 @@ defmodule PortalAPI.MembershipController do
         {"Membership Response", "application/json",
          PortalAPI.Schemas.Membership.MembershipResponse}
     ]
+
+  # coveralls-ignore-stop
 
   @spec update_patch(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update_patch(
@@ -146,7 +155,7 @@ defmodule PortalAPI.MembershipController do
     import Ecto.Changeset
 
     membership
-    |> cast(attrs, [:actor_id, :group_id, :account_id])
+    |> cast(attrs, [:actor_id, :account_id])
     |> Portal.Membership.changeset()
   end
 

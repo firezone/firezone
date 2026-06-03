@@ -11,6 +11,7 @@ defmodule PortalAPI.ChangeLogController do
 
   tags(["Change Logs"])
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:index,
     summary: "List Change Logs",
     description: """
@@ -88,6 +89,8 @@ defmodule PortalAPI.ChangeLogController do
     ]
   )
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     pagination_opts = Pagination.params_to_list_opts(params)
@@ -104,6 +107,7 @@ defmodule PortalAPI.ChangeLogController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:show,
     summary: "Show Change Log",
     description: """
@@ -122,6 +126,8 @@ defmodule PortalAPI.ChangeLogController do
       ok: {"Change Log Response", "application/json", PortalAPI.Schemas.ChangeLog.Response}
     ]
   )
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"event_id" => event_id}) do

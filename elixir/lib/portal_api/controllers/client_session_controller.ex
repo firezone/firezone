@@ -7,6 +7,7 @@ defmodule PortalAPI.ClientSessionController do
 
   tags(["Client Sessions"])
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:index,
     summary: "List Client Sessions",
     parameters: [
@@ -31,6 +32,8 @@ defmodule PortalAPI.ClientSessionController do
     ]
   )
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
@@ -43,6 +46,7 @@ defmodule PortalAPI.ClientSessionController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:show,
     summary: "Show Client Session",
     parameters: [
@@ -58,6 +62,8 @@ defmodule PortalAPI.ClientSessionController do
         {"Client Session Response", "application/json", PortalAPI.Schemas.ClientSession.Response}
     ]
   )
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -109,9 +115,11 @@ defmodule PortalAPI.ClientSessionController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        client_session -> {:ok, client_session}
+        nil ->
+          {:error, :not_found}
+
+        client_session ->
+          {:ok, client_session}
       end
     end
   end

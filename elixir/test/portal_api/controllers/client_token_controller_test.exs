@@ -136,6 +136,18 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       assert %{"data" => [], "metadata" => %{"count" => 0, "limit" => 50}} = json_response(conn, 200)
     end
+
+    test "returns unauthorized when subject cannot read client tokens", %{conn: conn, account: account} do
+      unprivileged_actor = actor_fixture(account: account, type: :account_user)
+      service_account = service_account_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged_actor)
+        |> get("/actors/#{service_account.id}/client_tokens")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
   end
 
   describe "show/2" do
@@ -198,6 +210,30 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> get("/actors/#{other_service_account.id}/client_tokens/#{other_token.id}")
 
       assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns not found for non-existent token", %{conn: conn, account: account, actor: actor} do
+      service_account = service_account_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/actors/#{service_account.id}/client_tokens/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns unauthorized when subject cannot read client tokens", %{conn: conn, account: account} do
+      unprivileged_actor = actor_fixture(account: account, type: :account_user)
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged_actor)
+        |> get("/actors/#{service_account.id}/client_tokens/#{token.id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
   end
 
@@ -328,6 +364,20 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
       assert Repo.aggregate(from(t in ClientToken, where: t.actor_id == ^other_service_account.id), :count) == 0
     end
+
+    test "returns unauthorized when subject cannot read the actor", %{conn: conn, account: account} do
+      unprivileged_actor = actor_fixture(account: account, type: :account_user)
+      service_account = service_account_fixture(account: account)
+      expires_at = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
   end
 
   describe "delete/2" do
@@ -416,6 +466,20 @@ defmodule PortalAPI.ClientTokenControllerTest do
       assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
       assert Repo.get_by(ClientToken, id: other_token.id)
     end
+
+    test "returns unauthorized when subject cannot delete client tokens", %{conn: conn, account: account} do
+      unprivileged_actor = actor_fixture(account: account, type: :account_user)
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged_actor)
+        |> delete("/actors/#{service_account.id}/client_tokens/#{token.id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert Repo.get_by(ClientToken, id: token.id)
+    end
   end
 
   describe "delete_all/2" do
@@ -423,6 +487,21 @@ defmodule PortalAPI.ClientTokenControllerTest do
       service_account = service_account_fixture(account: account)
 
       conn = delete(conn, "/actors/#{service_account.id}/client_tokens")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns unauthorized when subject cannot delete client tokens", %{
+      conn: conn,
+      account: account
+    } do
+      unprivileged_actor = actor_fixture(account: account, type: :account_user)
+      service_account = service_account_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged_actor)
+        |> delete("/actors/#{service_account.id}/client_tokens")
+
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 

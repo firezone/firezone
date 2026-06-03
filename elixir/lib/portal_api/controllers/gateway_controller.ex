@@ -8,6 +8,7 @@ defmodule PortalAPI.GatewayController do
 
   tags ["Gateways"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Gateways",
     parameters: [
@@ -24,19 +25,16 @@ defmodule PortalAPI.GatewayController do
       ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
+    # Gateways are always nested under /sites/:site_id, so site_id is always present.
     list_opts =
       params
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, [:online?])
-
-    list_opts =
-      if site_id = params["site_id"] do
-        Keyword.put(list_opts, :filter, site_id: site_id)
-      else
-        list_opts
-      end
+      |> Keyword.put(:filter, site_id: params["site_id"])
 
     with {:ok, gateways, metadata} <- Database.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
@@ -45,6 +43,7 @@ defmodule PortalAPI.GatewayController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Gateway",
     parameters: [
@@ -65,6 +64,8 @@ defmodule PortalAPI.GatewayController do
       ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
     ]
 
+  # coveralls-ignore-stop
+
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, gateway} <- Database.fetch_gateway(id, conn.assigns.subject) do
@@ -75,6 +76,7 @@ defmodule PortalAPI.GatewayController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Gateway",
     parameters: [
@@ -94,6 +96,8 @@ defmodule PortalAPI.GatewayController do
     responses: [
       ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -157,9 +161,11 @@ defmodule PortalAPI.GatewayController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
+        nil ->
+          {:error, :not_found}
+
+        gateway ->
+          {:ok, gateway}
       end
     end
 

@@ -68,17 +68,90 @@ defmodule PortalAPI.Schemas.Actor do
     })
   end
 
-  defmodule Request do
+  defmodule CreateRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Actor
 
     OpenApiSpex.schema(%{
-      title: "ActorRequest",
+      title: "ActorCreateRequest",
       description: "POST body for creating an Actor",
       type: :object,
       properties: %{
-        actor: Actor.Schema
+        actor: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{
+              type: :string,
+              description: "Actor Name",
+              pattern: "[a-zA-Z][a-zA-Z0-9_]+"
+            },
+            type: %Schema{
+              type: :string,
+              description: "Actor Type",
+              enum: ["account_user", "account_admin_user", "service_account", "api_client"]
+            },
+            email: %Schema{
+              type: :string,
+              description: "Actor Email. Optional for service accounts.",
+              nullable: true
+            },
+            allow_email_otp_sign_in: %Schema{
+              type: :boolean,
+              description: "Allow Email OTP Sign In",
+              default: false
+            }
+          },
+          required: [:name, :type]
+        }
+      },
+      required: [:actor],
+      example: %{
+        "actor" => %{
+          "name" => "Joe User",
+          "type" => "account_admin_user",
+          "email" => "joe.user@example.com",
+          "allow_email_otp_sign_in" => false
+        }
+      }
+    })
+  end
+
+  defmodule UpdateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "ActorUpdateRequest",
+      description:
+        "PATCH/PUT body for updating an Actor. All fields are optional; omitted fields keep " <>
+          "their current value.",
+      type: :object,
+      properties: %{
+        actor: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{
+              type: :string,
+              description: "Actor Name",
+              pattern: "[a-zA-Z][a-zA-Z0-9_]+"
+            },
+            type: %Schema{
+              type: :string,
+              description: "Actor Type",
+              enum: ["account_user", "account_admin_user", "service_account", "api_client"]
+            },
+            email: %Schema{
+              type: :string,
+              description: "Actor Email. Optional for service accounts.",
+              nullable: true
+            },
+            allow_email_otp_sign_in: %Schema{
+              type: :boolean,
+              description: "Allow Email OTP Sign In",
+              default: false
+            }
+          }
+        }
       },
       required: [:actor],
       example: %{

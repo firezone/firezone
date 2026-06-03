@@ -48,5 +48,31 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
       assert data["id"] == provider.id
       assert data["email_verification_method"] == "proof"
     end
+
+    test "returns not found for unknown id", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404)
+    end
+
+    test "returns unauthorized when actor may not read the provider", %{
+      conn: conn,
+      account: account
+    } do
+      provider = oidc_provider_fixture(account: account)
+      unauthorized_actor = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unauthorized_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers/#{provider.id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
   end
 end

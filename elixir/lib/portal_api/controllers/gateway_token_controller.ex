@@ -7,6 +7,7 @@ defmodule PortalAPI.GatewayTokenController do
 
   tags ["Gateway Tokens"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create a Gateway Token",
     parameters: [
@@ -20,6 +21,8 @@ defmodule PortalAPI.GatewayTokenController do
     responses: [
       ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"site_id" => site_id}) do
@@ -35,6 +38,7 @@ defmodule PortalAPI.GatewayTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Gateway Token",
     parameters: [
@@ -57,6 +61,8 @@ defmodule PortalAPI.GatewayTokenController do
          PortalAPI.Schemas.GatewayToken.DeletedResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do
     subject = conn.assigns.subject
@@ -69,6 +75,7 @@ defmodule PortalAPI.GatewayTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete_all,
     summary: "Delete all Gateway Tokens for a Site",
     parameters: [
@@ -84,6 +91,8 @@ defmodule PortalAPI.GatewayTokenController do
         {"Deleted Tokens Response", "application/json",
          PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete_all(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete_all(conn, %{"site_id" => site_id}) do
@@ -111,9 +120,11 @@ defmodule PortalAPI.GatewayTokenController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
+        nil ->
+          {:error, :not_found}
+
+        site ->
+          {:ok, site}
       end
     end
 

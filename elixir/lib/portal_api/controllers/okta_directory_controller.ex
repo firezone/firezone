@@ -6,6 +6,7 @@ defmodule PortalAPI.OktaDirectoryController do
 
   tags ["Okta Directories"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Okta Directories",
     responses: [
@@ -14,12 +15,15 @@ defmodule PortalAPI.OktaDirectoryController do
          PortalAPI.Schemas.OktaDirectory.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     directories = Database.list_directories(conn.assigns.subject)
     render(conn, :index, directories: directories)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Okta Directory",
     parameters: [
@@ -34,6 +38,8 @@ defmodule PortalAPI.OktaDirectoryController do
       ok:
         {"Okta Directory Response", "application/json", PortalAPI.Schemas.OktaDirectory.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

@@ -83,6 +83,18 @@ defmodule PortalAPI.GroupControllerTest do
 
       assert MapSet.subset?(data_ids, group_ids)
     end
+
+    test "returns unauthorized when actor cannot read groups", %{conn: conn, account: account} do
+      service_account = actor_fixture(type: :service_account, account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
   end
 
   describe "show/2" do
@@ -144,6 +156,32 @@ defmodule PortalAPI.GroupControllerTest do
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
              }
+    end
+
+    test "returns not found when group does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      service_account = actor_fixture(type: :service_account, account: account)
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
   end
 
@@ -279,6 +317,45 @@ defmodule PortalAPI.GroupControllerTest do
       assert resp["data"]["id"] == group.id
       assert resp["data"]["name"] == attrs["name"]
     end
+
+    test "returns not found when group does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{Ecto.UUID.generate()}", group: %{"name" => "New Name"})
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns not found for a body without group params when group does not exist", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      service_account = actor_fixture(type: :service_account, account: account)
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}", group: %{"name" => "New Name"})
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
   end
 
   describe "delete/2" do
@@ -312,6 +389,32 @@ defmodule PortalAPI.GroupControllerTest do
              }
 
       refute Repo.get_by(Group, id: group.id, account_id: group.account_id)
+    end
+
+    test "returns not found when group does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/groups/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      service_account = actor_fixture(type: :service_account, account: account)
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/groups/#{group.id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
   end
 end

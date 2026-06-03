@@ -39,6 +39,13 @@ defmodule PortalAPI.Error do
     |> render(:error, reason: reason)
   end
 
+  def handle(conn, {:error, :invalid_cursor}) do
+    conn
+    |> put_status(:bad_request)
+    |> put_view(json: PortalAPI.ErrorJSON)
+    |> render(:error, reason: "Invalid page cursor")
+  end
+
   def handle(conn, {:error, :forbidden}) do
     conn
     |> put_status(:forbidden)

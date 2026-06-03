@@ -26,15 +26,25 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
       [] ->
         send_resp(conn, 400, "Bad Request: missing aeg-event-type header")
 
+      # coveralls-ignore-start
+      # Defensive: only triggered by a payload exceeding read_body/2's default
+      # 8MB length, which Event Grid never sends. Allocating such a body in
+      # tests is wasteful, so this guard is excluded from coverage.
       {:more, _, _} ->
         send_resp(conn, 413, "Request Entity Too Large")
+
+      # coveralls-ignore-stop
 
       {:error, :invalid_json} ->
         send_resp(conn, 400, "Bad Request: invalid JSON")
 
+      # coveralls-ignore-start
+      # Defensive: decode_events/1 only ever returns {:error, :invalid_json}
+      # (matched above), so no other {:error, reason} can reach this clause.
       {:error, reason} ->
         Logger.error("ACS Event Grid webhook failed", reason: inspect(reason))
         send_resp(conn, 500, "Internal Error")
+        # coveralls-ignore-stop
     end
   end
 

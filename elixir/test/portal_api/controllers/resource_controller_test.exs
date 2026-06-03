@@ -27,6 +27,16 @@ defmodule PortalAPI.ResourceControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
+
     test "lists all resources", %{conn: conn, account: account, actor: actor} do
       resources = for _ <- 1..3, do: resource_fixture(account: account)
 
@@ -114,6 +124,16 @@ defmodule PortalAPI.ResourceControllerTest do
                  "ip_stack" => "ipv4_only"
                }
              }
+    end
+
+    test "returns not found when resource does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 
@@ -343,6 +363,16 @@ defmodule PortalAPI.ResourceControllerTest do
       resource = resource_fixture(account: account)
       conn = delete(conn, "/resources/#{resource.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns not found when resource does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/resources/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
 
     test "deletes a resource", %{conn: conn, account: account, actor: actor} do

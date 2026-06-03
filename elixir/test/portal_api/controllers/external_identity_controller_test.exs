@@ -92,6 +92,16 @@ defmodule PortalAPI.IdentityControllerTest do
 
       assert MapSet.subset?(data_ids, identity_ids)
     end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{actor.id}/external_identities", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
   end
 
   describe "show/2" do
@@ -150,6 +160,33 @@ defmodule PortalAPI.IdentityControllerTest do
                |> DateTime.from_naive!("Etc/UTC")
                |> DateTime.to_iso8601()
     end
+
+    test "returns not found for non-existent identity", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{actor.id}/external_identities/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns unauthorized for non-permitted actor type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      identity = identity_fixture(account: account, actor: actor)
+      non_permitted_actor = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(non_permitted_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{actor.id}/external_identities/#{identity.id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
   end
 
   describe "delete/2" do
@@ -176,6 +213,16 @@ defmodule PortalAPI.IdentityControllerTest do
       assert data["email"] == identity.email
 
       refute Repo.get_by(Portal.ExternalIdentity, id: identity.id)
+    end
+
+    test "returns not found for non-existent identity", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{actor.id}/external_identities/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 end

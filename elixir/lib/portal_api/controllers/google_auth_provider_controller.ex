@@ -6,6 +6,7 @@ defmodule PortalAPI.GoogleAuthProviderController do
 
   tags ["Google Auth Providers"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Google Auth Providers",
     responses: [
@@ -14,12 +15,15 @@ defmodule PortalAPI.GoogleAuthProviderController do
          PortalAPI.Schemas.GoogleAuthProvider.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     providers = Database.list_providers(conn.assigns.subject)
     render(conn, :index, providers: providers)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Google Auth Provider",
     parameters: [
@@ -35,6 +39,8 @@ defmodule PortalAPI.GoogleAuthProviderController do
         {"Google Auth Provider Response", "application/json",
          PortalAPI.Schemas.GoogleAuthProvider.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

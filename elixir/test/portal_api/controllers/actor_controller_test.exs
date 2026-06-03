@@ -23,6 +23,18 @@ defmodule PortalAPI.ActorControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
+      unprivileged = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
     test "lists all actors", %{conn: conn, account: account, actor: actor} do
       actors = for _ <- 1..3, do: actor_fixture(account: account)
 
@@ -88,6 +100,29 @@ defmodule PortalAPI.ActorControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor = actor_fixture(account: account)
       conn = get(conn, "/actors/#{actor.id}")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
+      target = actor_fixture(account: account)
+      unprivileged = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{target.id}")
+
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -694,6 +729,16 @@ defmodule PortalAPI.ActorControllerTest do
       actor = actor_fixture(account: account)
       conn = delete(conn, "/actors/#{actor.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404)
     end
 
     test "deletes a resource", %{conn: conn, account: account, actor: api_actor} do

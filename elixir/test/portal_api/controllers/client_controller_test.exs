@@ -27,6 +27,16 @@ defmodule PortalAPI.ClientControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
+
     test "lists all clients", %{
       conn: conn,
       actor: actor,
@@ -152,6 +162,16 @@ defmodule PortalAPI.ClientControllerTest do
       assert %{"data" => data} = json_response(conn, 200)
       assert data["hostname"] == "host.example.com"
     end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
   end
 
   describe "update/2" do
@@ -184,6 +204,23 @@ defmodule PortalAPI.ClientControllerTest do
 
       assert resp["data"]["id"] == client.id
       assert resp["data"]["name"] == attrs["name"]
+    end
+
+    test "returns validation error for an invalid update", %{
+      conn: conn,
+      actor: actor,
+      client: client
+    } do
+      attrs = %{"name" => String.duplicate("a", 256)}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: attrs)
+
+      assert %{"error" => %{"validation_errors" => errors}} = json_response(conn, 422)
+      assert Map.has_key?(errors, "name")
     end
 
     test "sets, updates, and clears hostname", %{conn: conn, actor: actor, client: client} do
@@ -229,6 +266,16 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["name"] == "Renamed"
       assert resp["data"]["hostname"] == "host.example.com"
     end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{Ecto.UUID.generate()}", client: %{"name" => "Nope"})
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
   end
 
   describe "verify/2" do
@@ -249,6 +296,16 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["id"] == client.id
       assert resp["data"]["verified_at"]
     end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{Ecto.UUID.generate()}/verify")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
   end
 
   describe "unverify/2" do
@@ -268,6 +325,16 @@ defmodule PortalAPI.ClientControllerTest do
 
       assert resp["data"]["id"] == client.id
       refute resp["data"]["verified_at"]
+    end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{Ecto.UUID.generate()}/unverify")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 
@@ -298,6 +365,16 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["online"] == false
 
       refute Repo.get_by(Device, id: client.id, account_id: client.account_id)
+    end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete(~p"/clients/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 end

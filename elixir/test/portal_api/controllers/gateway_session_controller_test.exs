@@ -141,6 +141,16 @@ defmodule PortalAPI.GatewaySessionControllerTest do
       refute is_nil(next_page)
       assert is_nil(prev_page)
     end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/gateway_sessions", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
   end
 
   describe "show/2" do

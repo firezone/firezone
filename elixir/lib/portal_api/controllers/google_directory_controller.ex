@@ -6,6 +6,7 @@ defmodule PortalAPI.GoogleDirectoryController do
 
   tags ["Google Directories"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Google Directories",
     responses: [
@@ -14,12 +15,15 @@ defmodule PortalAPI.GoogleDirectoryController do
          PortalAPI.Schemas.GoogleDirectory.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     directories = Database.list_directories(conn.assigns.subject)
     render(conn, :index, directories: directories)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Google Directory",
     parameters: [
@@ -35,6 +39,8 @@ defmodule PortalAPI.GoogleDirectoryController do
         {"Google Directory Response", "application/json",
          PortalAPI.Schemas.GoogleDirectory.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

@@ -20,6 +20,18 @@ defmodule PortalAPI.ChangeLogControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
+      unprivileged = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/change_logs")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
     test "lists change logs scoped to the account", %{
       conn: conn,
       actor: actor,
@@ -559,6 +571,32 @@ defmodule PortalAPI.ChangeLogControllerTest do
       change_log = change_log_fixture(account: account)
       conn = get(conn, ~p"/change_logs/#{change_log.event_id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
+      change_log = change_log_fixture(account: account)
+      unprivileged = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/change_logs/#{change_log.event_id}")
+
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns 400 when event_id is not a 24-char hex string", %{conn: conn, actor: actor} do
+      # A UUID passes the ValidateUUIDParams plug but is not a 24-char hex EventId,
+      # so it reaches the controller's parse_event_id/1 error branch.
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/change_logs/#{Ecto.UUID.generate()}")
+
+      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert reason =~ "`event_id`"
     end
 
     test "returns a single change log", %{conn: conn, actor: actor, account: account} do

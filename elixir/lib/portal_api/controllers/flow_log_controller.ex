@@ -1,4 +1,10 @@
 defmodule PortalAPI.FlowLogController do
+  # This endpoint is intentionally omitted from the OpenAPI spec. It is not part
+  # of the public REST API: it exists solely for Clients and Gateways to batch-post
+  # their flow logs, and is not meant to be called by API consumers. That is why
+  # this controller deliberately does not `use OpenApiSpex.ControllerSpecs` and
+  # declares no `operation`/`request_body` specs (which is what would otherwise
+  # cause `Paths.from_router/1` to document it).
   use PortalAPI, :controller
   import Ecto.Changeset
   alias Portal.FlowLog

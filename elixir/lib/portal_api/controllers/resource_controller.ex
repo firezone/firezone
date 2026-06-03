@@ -7,6 +7,7 @@ defmodule PortalAPI.ResourceController do
 
   tags ["Resources"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Resources",
     parameters: [
@@ -16,6 +17,8 @@ defmodule PortalAPI.ResourceController do
     responses: [
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}
     ]
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -29,6 +32,7 @@ defmodule PortalAPI.ResourceController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Resource",
     parameters: [
@@ -43,6 +47,8 @@ defmodule PortalAPI.ResourceController do
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
 
+  # coveralls-ignore-stop
+
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, resource} <- Database.fetch_resource(id, conn.assigns.subject) do
@@ -52,15 +58,18 @@ defmodule PortalAPI.ResourceController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Resource",
     parameters: [],
     request_body:
-      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request,
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
        required: true},
     responses: [
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"resource" => params}) do
@@ -81,6 +90,7 @@ defmodule PortalAPI.ResourceController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update Resource",
     parameters: [
@@ -92,11 +102,13 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     request_body:
-      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request,
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.UpdateRequest,
        required: true},
     responses: [
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "resource" => params}) do
@@ -116,6 +128,7 @@ defmodule PortalAPI.ResourceController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete Resource",
     parameters: [
@@ -129,6 +142,8 @@ defmodule PortalAPI.ResourceController do
     responses: [
       ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -188,7 +203,6 @@ defmodule PortalAPI.ResourceController do
 
       case result do
         nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end

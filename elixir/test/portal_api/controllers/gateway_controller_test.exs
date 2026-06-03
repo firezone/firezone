@@ -111,6 +111,16 @@ defmodule PortalAPI.GatewayControllerTest do
 
       assert MapSet.subset?(data_ids, gateway_ids)
     end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
   end
 
   describe "show/2" do
@@ -148,6 +158,16 @@ defmodule PortalAPI.GatewayControllerTest do
                }
              }
     end
+
+    test "returns not found for non-existent gateway", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
   end
 
   describe "delete/2" do
@@ -158,6 +178,23 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       gateway = gateway_fixture(account: account, site: site)
       conn = delete(conn, "/sites/#{site.id}/gateways/#{gateway.id}")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns unauthorized when subject may not delete the gateway", %{
+      conn: conn,
+      account: account,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      unprivileged_actor = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged_actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}/gateways/#{gateway.id}")
+
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -181,6 +218,16 @@ defmodule PortalAPI.GatewayControllerTest do
       assert data["online"] == false
 
       refute Repo.get_by(Device, id: gateway.id, account_id: gateway.account_id)
+    end
+
+    test "returns not found for non-existent gateway", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}/gateways/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 end

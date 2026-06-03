@@ -6,6 +6,7 @@ defmodule PortalAPI.UserpassAuthProviderController do
 
   tags ["Userpass Auth Providers"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Userpass Auth Providers",
     responses: [
@@ -14,12 +15,15 @@ defmodule PortalAPI.UserpassAuthProviderController do
          PortalAPI.Schemas.UserpassAuthProvider.ListResponse}
     ]
 
+  # coveralls-ignore-stop
+
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     providers = Database.list_providers(conn.assigns.subject)
     render(conn, :index, providers: providers)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Userpass Auth Provider",
     parameters: [
@@ -35,6 +39,8 @@ defmodule PortalAPI.UserpassAuthProviderController do
         {"Userpass Auth Provider Response", "application/json",
          PortalAPI.Schemas.UserpassAuthProvider.Response}
     ]
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

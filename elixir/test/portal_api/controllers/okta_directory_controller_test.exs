@@ -1,9 +1,9 @@
-defmodule PortalAPI.GoogleDirectoryControllerTest do
+defmodule PortalAPI.OktaDirectoryControllerTest do
   use PortalAPI.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.GoogleDirectoryFixtures
+  import Portal.OktaDirectoryFixtures
 
   setup do
     account = account_fixture()
@@ -14,48 +14,62 @@ defmodule PortalAPI.GoogleDirectoryControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = get(conn, "/google_directories")
+      conn = get(conn, "/okta_directories")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "lists all google directories", %{conn: conn, account: account, actor: actor} do
-      directory = google_directory_fixture(account: account)
+    test "lists all okta directories", %{conn: conn, account: account, actor: actor} do
+      directory = okta_directory_fixture(account: account)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/google_directories")
+        |> get("/okta_directories")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.any?(data, fn d -> d["id"] == directory.id end)
+    end
+
+    test "only lists directories from the authorized account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_directory = okta_directory_fixture()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/okta_directories")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      refute Enum.any?(data, fn d -> d["id"] == other_directory.id end)
+      assert other_directory.account_id != account.id
     end
   end
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      directory = google_directory_fixture(account: account)
-      conn = get(conn, "/google_directories/#{directory.id}")
+      directory = okta_directory_fixture(account: account)
+      conn = get(conn, "/okta_directories/#{directory.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "shows a google directory with sync fields", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      directory = google_directory_fixture(account: account)
+    test "shows an okta directory", %{conn: conn, account: account, actor: actor} do
+      directory = okta_directory_fixture(account: account)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/google_directories/#{directory.id}")
+        |> get("/okta_directories/#{directory.id}")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["id"] == directory.id
-      assert data["group_sync_mode"] == "all"
-      assert data["orgunit_sync_enabled"] == true
+      assert data["account_id"] == account.id
+      assert data["okta_domain"] == directory.okta_domain
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: actor} do
@@ -63,20 +77,20 @@ defmodule PortalAPI.GoogleDirectoryControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/google_directories/#{Ecto.UUID.generate()}")
+        |> get("/okta_directories/#{Ecto.UUID.generate()}")
 
       assert json_response(conn, 404)
     end
 
     test "returns unauthorized for an account_user actor", %{conn: conn, account: account} do
-      directory = google_directory_fixture(account: account)
+      directory = okta_directory_fixture(account: account)
       actor = actor_fixture(account: account, type: :account_user)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/google_directories/#{directory.id}")
+        |> get("/okta_directories/#{directory.id}")
 
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end

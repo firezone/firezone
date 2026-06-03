@@ -24,6 +24,16 @@ defmodule PortalAPI.PolicyControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", page_cursor: "not-a-valid-cursor")
+
+      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+    end
+
     test "lists all policies", %{conn: conn, account: account, actor: actor} do
       policies = for _ <- 1..3, do: policy_fixture(account: account)
 
@@ -147,6 +157,16 @@ defmodule PortalAPI.PolicyControllerTest do
         |> get("/policies/#{policy.id}")
 
       assert json_response(conn, 200)["data"]["group_id"] == nil
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
   end
 
@@ -416,6 +436,71 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert policy.group_idp_id == "synced_group_create_123"
     end
+
+    test "returns not found when referenced resource does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => Ecto.UUID.generate()
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns forbidden when internet resource is not enabled for the account", %{conn: conn} do
+      account = account_fixture()
+      actor = api_client_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 403) == %{
+               "error" => %{"reason" => "Internet resource is not enabled for this account"}
+             }
+    end
+
+    test "creates an internet resource policy when the feature is enabled", %{conn: conn} do
+      account = account_fixture(features: %{internet_resource: true})
+      actor = api_client_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["resource_id"] == resource.id
+      assert resp["data"]["group_id"] == group.id
+    end
   end
 
   describe "update/2" do
@@ -436,6 +521,18 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      attrs = %{"description" => "updated"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{Ecto.UUID.generate()}", policy: attrs)
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
 
     test "updates a policy", %{conn: conn, account: account, actor: actor} do
@@ -575,6 +672,16 @@ defmodule PortalAPI.PolicyControllerTest do
       policy = policy_fixture(account: account)
       conn = delete(conn, "/policies/#{policy.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/policies/#{Ecto.UUID.generate()}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
     end
 
     test "deletes a policy", %{conn: conn, account: account, actor: actor} do
