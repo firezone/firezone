@@ -18,17 +18,40 @@ const PUBLISHER_DN: &str = "CN=\"Firezone, Inc.\", \
     OID.2.5.4.15=Private Organization";
 
 fn main() -> Result<()> {
-    // Skip tauri-build's default Common-Controls manifest: we embed
-    // our own SXS / fusion manifest below -- only into `Firezone.exe`,
-    // not into the tunnel-service or register-sparse binaries (SCM-
-    // launched services with an embedded `<msix>` identity claim
-    // hang on startup, and the helper has no use for identity).
-    let win = tauri_build::WindowsAttributes::new_without_app_manifest();
-    let attr = tauri_build::Attributes::new().windows_attributes(win);
+    // Release builds embed our own SXS / fusion manifest below -- only
+    // into `Firezone.exe`, not into the tunnel-service or
+    // register-sparse binaries (SCM-launched services with an embedded
+    // `<msix>` identity claim hang on startup, and the helper has no
+    // use for identity).
+    //
+    // Non-release profiles (dev, profiling, …) keep tauri-build's
+    // default manifest (Common-Controls v6 only, no `<msix>` claim):
+    // a non-release binary run from `target\<profile>` typically has
+    // no registered sparse package on the dev box, and an embedded
+    // MSIX identity claim makes the kernel fail `CreateProcess` with
+    // `APPMODEL_ERROR_NO_PACKAGE` (15700) before `main` even runs. The
+    // runtime's debug-only `test_pipe_dacl` path (gated on
+    // `SKIP_TUNNEL_PIPE_OWNER_CHECK`) covers IPC without needing
+    // identity.
+    //
+    // We gate on Cargo's `PROFILE` env var rather than
+    // `cfg!(debug_assertions)` so the `profiling` profile (inherits
+    // from `release` in `.cargo/config.toml`, but still runs
+    // un-packaged from `target\profiling`) does not embed the
+    // manifest. Only an actual `--profile release` build does.
+    println!("cargo:rerun-if-env-changed=PROFILE");
+    let is_release = std::env::var("PROFILE").as_deref() == Ok("release");
+
+    let attr = if is_release {
+        let win = tauri_build::WindowsAttributes::new_without_app_manifest();
+        tauri_build::Attributes::new().windows_attributes(win)
+    } else {
+        tauri_build::Attributes::new()
+    };
     tauri_build::try_build(attr)?;
 
     #[cfg(target_os = "windows")]
-    {
+    if is_release {
         embed_resource::compile_for(
             "win_files/Firezone.exe.manifest.rc",
             ["firezone-gui-client"],
