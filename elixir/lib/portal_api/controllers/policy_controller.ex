@@ -55,7 +55,8 @@ defmodule PortalAPI.PolicyController do
     summary: "Create Policy",
     parameters: [],
     request_body:
-      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.CreateRequest,
+       required: true},
     responses: [
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]
@@ -90,7 +91,8 @@ defmodule PortalAPI.PolicyController do
       ]
     ],
     request_body:
-      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.UpdateRequest,
+       required: true},
     responses: [
       ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
     ]

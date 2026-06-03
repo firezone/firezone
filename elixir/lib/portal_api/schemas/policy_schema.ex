@@ -69,14 +69,14 @@ defmodule PortalAPI.Schemas.Policy do
     })
   end
 
-  defmodule RequestSchema do
+  defmodule CreateParams do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
 
     OpenApiSpex.schema(%{
-      title: "PolicyParams",
-      description: "Policy attributes",
+      title: "PolicyCreateParams",
+      description: "Policy attributes accepted when creating a Policy",
       type: :object,
       properties: %{
         group_id: %Schema{type: :string, format: :uuid, description: "Group ID"},
@@ -98,6 +98,40 @@ defmodule PortalAPI.Schemas.Policy do
             "property" => "remote_ip_location_region",
             "operator" => "is_in",
             "values" => ["US", "CA"]
+          }
+        ]
+      }
+    })
+  end
+
+  defmodule UpdateParams do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.Policy
+
+    OpenApiSpex.schema(%{
+      title: "PolicyUpdateParams",
+      description:
+        "Policy attributes accepted when updating a Policy. All fields are " <>
+          "optional; omitted fields keep their current value.",
+      type: :object,
+      properties: %{
+        group_id: %Schema{type: :string, format: :uuid, description: "Group ID"},
+        resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
+        description: %Schema{type: :string, description: "Policy Description", nullable: true},
+        conditions: %Schema{
+          type: :array,
+          description: "Conditions that must be satisfied for the Policy to grant access",
+          items: Policy.Condition
+        }
+      },
+      example: %{
+        "description" => "Updated description",
+        "conditions" => [
+          %{
+            "property" => "remote_ip",
+            "operator" => "is_in_cidr",
+            "values" => ["10.0.0.0/8"]
           }
         ]
       }
@@ -141,17 +175,17 @@ defmodule PortalAPI.Schemas.Policy do
     })
   end
 
-  defmodule Request do
+  defmodule CreateRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
 
     OpenApiSpex.schema(%{
-      title: "PolicyRequest",
+      title: "PolicyCreateRequest",
       description: "POST body for creating a Policy",
       type: :object,
       properties: %{
-        policy: Policy.RequestSchema
+        policy: Policy.CreateParams
       },
       required: [:policy],
       example: %{
@@ -164,6 +198,34 @@ defmodule PortalAPI.Schemas.Policy do
               "property" => "remote_ip_location_region",
               "operator" => "is_in",
               "values" => ["US", "CA"]
+            }
+          ]
+        }
+      }
+    })
+  end
+
+  defmodule UpdateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.Policy
+
+    OpenApiSpex.schema(%{
+      title: "PolicyUpdateRequest",
+      description: "PUT/PATCH body for updating a Policy",
+      type: :object,
+      properties: %{
+        policy: Policy.UpdateParams
+      },
+      required: [:policy],
+      example: %{
+        "policy" => %{
+          "description" => "Updated description",
+          "conditions" => [
+            %{
+              "property" => "remote_ip",
+              "operator" => "is_in_cidr",
+              "values" => ["10.0.0.0/8"]
             }
           ]
         }
