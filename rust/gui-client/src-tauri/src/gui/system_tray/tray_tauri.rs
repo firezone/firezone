@@ -114,10 +114,8 @@ impl Tray {
             return;
         }
 
-        // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
-        // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
-        // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
-        // on disk.
+        // Skip redundant updates; rebuilding and handing a new icon to the OS
+        // on every state change is wasteful.
         let handle = self.handle.clone();
         self.last_icon_set = icon.clone();
         self.run_on_main_thread(move || {

@@ -27,9 +27,9 @@ mod compositor;
 // - **Windows / macOS**: Tauri's built-in tray (the `tray-icon` feature),
 //   which renders per-item icons natively.
 // - **Linux**: `ksni`, a pure-Rust StatusNotifierItem implementation that
-//   speaks the DBusMenu protocol directly and can attach an `icon-name` to
-//   each menu item — which GNOME (with the AppIndicator extension) and KDE
-//   render, unlike Tauri's `libappindicator` path.
+//   speaks the DBusMenu protocol directly and can attach per-item icon data
+//   (a PNG) — which GNOME (with the AppIndicator extension) and KDE render,
+//   unlike Tauri's `libappindicator` path.
 #[cfg(not(target_os = "linux"))]
 mod tray_tauri;
 #[cfg(not(target_os = "linux"))]
