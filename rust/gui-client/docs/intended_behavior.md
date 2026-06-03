@@ -167,6 +167,32 @@ The hash check only avoids redundant writes and updates the DLL when needed; it 
 - [ ] The GUI can run as a normal user
 - [ ] The GUI can run as admin
 
+## Package identity (Windows)
+
+On Windows the GUI runs as a normal, unprivileged user but still has to talk to the privileged Tunnel service.
+Both that channel and the GUI's own deep-link pipe are authorized by **Windows package identity** rather than by administrator rights: each named pipe only accepts a process that carries Firezone's sparse-MSIX package identity (`Firezone.Client.GUI`).
+A standard user can therefore drive the tunnel, while any other process running as that same user — even an elevated one — is refused by the kernel.
+
+The MSI installer stages and provisions the sparse MSIX for the whole machine.
+Provisioning alone does not register the package for a given user, and identity is only attached when a process starts, so each user picks it up the first time they actually run Firezone:
+
+- On a normal interactive (elevated) install, the installing user is registered automatically, so their first launch already carries identity.
+- For any other case — a different user on the same machine, or a silent / MDM / SYSTEM install where the per-user step is skipped — the GUI registers the package for the current user on first launch (no administrator rights needed, since it is already provisioned), then shows "Firezone finished first-time setup. Please start Firezone again." and exits.
+  The next launch carries identity.
+
+- [ ] Given a normal interactive install, when the installing user launches Firezone for the first time, then it carries package identity immediately and shows no "first-time setup" dialog
+- [ ] Given Firezone was installed by another user, or installed silently / via MDM, when a not-yet-registered user launches it for the first time, then it shows "Firezone finished first-time setup. Please start Firezone again." and exits, with no UAC / admin prompt
+- [ ] Given that user has seen the dialog once, when they launch Firezone again, then it starts normally and connects to the Tunnel service, and the dialog does not reappear
+- [ ] Given any standard (non-administrator) user with identity attached, when they use Firezone, then signing in and raising the tunnel never trigger a UAC / admin prompt
+- [ ] Given a process that is not Firezone — even one running elevated as the same user — when it tries to open the Tunnel or GUI pipe, then the kernel denies access
+
+Refs:
+
+- https://github.com/firezone/firezone/pull/13274
+- https://github.com/firezone/firezone/pull/13275
+- https://github.com/firezone/firezone/pull/13433
+- https://github.com/firezone/firezone/pull/13459
+
 ## Auth flow
 
 - [ ] Given the client is running, when you right-click the tray icon, then a menu opens
@@ -266,6 +292,7 @@ This is the on-disk state you need to delete / reset to test a first-time instal
 - Registry key `Computer\HKEY_CURRENT_USER\Software\Classes\firezone-fd0020211111` (deep link association)
 - Registry key `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c}` (IP address and DNS server for our tunnel interface)
 - Windows Credential Manager, "Windows Credentials", "Generic Credentials", `dev.firezone.client/token`
+- The provisioned sparse MSIX package `Firezone.Client.GUI` and its per-user registrations (normally removed by the uninstaller; to reset by hand, remove it with `Remove-AppxPackage` and `Remove-AppxProvisionedPackage`)
 
 ### Linux
 
