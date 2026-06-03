@@ -42,14 +42,15 @@ class SessionActivity : AppCompatActivity() {
                 tunnelService = binder.getService()
 
                 tunnelService?.let {
-                    serviceBound = true
                     it.setServiceStateMutableStateFlow(viewModel.getServiceStatusMutableStateFlow())
                     it.setResourcesMutableStateFlow(viewModel.getResourcesMutableStateFlow())
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                serviceBound = false
+                // The binding still exists (the system will try to reconnect), so leave
+                // `serviceBound` untouched for onDestroy; just drop the stale binder.
+                tunnelService = null
             }
         }
 
@@ -57,7 +58,9 @@ class SessionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val intent = Intent(this, TunnelService::class.java)
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        // Track whether the bind was requested (not whether it has connected yet) so onDestroy
+        // always unbinds, even if the Activity is destroyed before onServiceConnected fires.
+        serviceBound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {
             FirezoneTheme {
