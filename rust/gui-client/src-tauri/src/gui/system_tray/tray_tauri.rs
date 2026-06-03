@@ -3,7 +3,7 @@
 //! Tauri renders per-item icons natively here (Win32 bitmaps / `NSImage`), so
 //! the Site-status dots show up next to the menu text. Linux can't use this
 //! path — its tray is exported over DBusMenu via `libappindicator`, which
-//! drops the icon — so it uses [`super::tray_ksni`] instead.
+//! drops the icon — so it uses the `tray_ksni` backend instead.
 
 use anyhow::{Context as _, Result};
 use tauri::AppHandle;
