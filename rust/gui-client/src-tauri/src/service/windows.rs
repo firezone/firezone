@@ -9,7 +9,7 @@ use std::{
 };
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, HANDLE, HLOCAL, LocalFree},
+        Foundation::{HANDLE, HLOCAL},
         Security::{
             Authorization::ConvertSidToStringSidW, GetTokenInformation, LookupAccountSidW,
             SID_NAME_USE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation, TokenUser,
@@ -18,7 +18,7 @@ use windows::{
             GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
         },
     },
-    core::PWSTR,
+    core::{Owned, PWSTR},
 };
 use windows_service::{
     service::{
@@ -49,7 +49,7 @@ pub fn elevation_check() -> Result<bool> {
 
 // https://stackoverflow.com/questions/8046097/how-to-check-if-a-process-has-the-administrative-rights/8196291#8196291
 pub(crate) struct ProcessToken {
-    inner: HANDLE,
+    inner: Owned<HANDLE>,
 }
 
 impl ProcessToken {
@@ -60,11 +60,14 @@ impl ProcessToken {
         let our_proc = unsafe { GetCurrentProcess() };
         let mut inner = HANDLE::default();
         // SAFETY: We just created `inner`, and moving a `HANDLE` is safe.
-        // We assume that if `OpenProcessToken` fails, we don't need to close the `HANDLE`.
         // Docs say nothing about threads or safety: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken>
         unsafe { OpenProcessToken(our_proc, TOKEN_QUERY, &mut inner) }
             .context("`OpenProcessToken` failed")?;
-        Ok(Self { inner })
+        // SAFETY: `OpenProcessToken` succeeded, so `inner` is a real token
+        // handle that we now own and must release with `CloseHandle`.
+        Ok(Self {
+            inner: unsafe { Owned::new(inner) },
+        })
     }
 
     fn is_elevated(&self) -> Result<bool> {
@@ -77,7 +80,7 @@ impl ProcessToken {
         // It should be fine.
         unsafe {
             GetTokenInformation(
-                self.inner,
+                *self.inner,
                 TokenElevation,
                 Some(&mut elevation as *mut _ as *mut c_void),
                 token_elevation_sz,
@@ -100,7 +103,7 @@ impl ProcessToken {
         // SAFETY: Docs say nothing about threads or safety <https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation>
         unsafe {
             GetTokenInformation(
-                self.inner,
+                *self.inner,
                 TokenUser,
                 Some(token_user as *mut c_void),
                 token_user_sz,
@@ -140,17 +143,24 @@ impl ProcessToken {
 
     /// Opens the access token of another process by PID.
     pub(crate) fn from_pid(pid: u32) -> Result<Self> {
-        // SAFETY: `OpenProcess` returns an owned handle; we close it below once
-        // the token has been opened from it.
-        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
-            .context("`OpenProcess` failed")?;
+        // SAFETY: `OpenProcess` returns a real handle that must be closed; we
+        // hand it to `Owned<HANDLE>` so it gets released at scope exit even if
+        // `OpenProcessToken` below fails.
+        let process = unsafe {
+            Owned::new(
+                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+                    .context("`OpenProcess` failed")?,
+            )
+        };
         let mut inner = HANDLE::default();
-        // SAFETY: `process` is a valid handle and `inner` is a fresh out-param.
-        let opened = unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut inner) };
-        // SAFETY: `process` came from `OpenProcess` and is not used afterwards.
-        let _ = unsafe { CloseHandle(process) };
-        opened.context("`OpenProcessToken` failed")?;
-        Ok(Self { inner })
+        // SAFETY: `*process` is a valid handle and `inner` is a fresh out-param.
+        unsafe { OpenProcessToken(*process, TOKEN_QUERY, &mut inner) }
+            .context("`OpenProcessToken` failed")?;
+        // SAFETY: `OpenProcessToken` succeeded, so `inner` is a real token
+        // handle that we now own and must release with `CloseHandle`.
+        Ok(Self {
+            inner: unsafe { Owned::new(inner) },
+        })
     }
 
     /// Returns the token user's SID in string form (e.g. `S-1-5-21-...`).
@@ -164,7 +174,7 @@ impl ProcessToken {
         // SAFETY: the buffer is large enough to hold a `TOKEN_USER`.
         unsafe {
             GetTokenInformation(
-                self.inner,
+                *self.inner,
                 TokenUser,
                 Some(token_user as *mut c_void),
                 token_user_sz,
@@ -176,31 +186,17 @@ impl ProcessToken {
         let sid = unsafe { (*token_user).User.Sid };
 
         let mut sid_str = PWSTR::null();
-        // SAFETY: `sid` is valid; `ConvertSidToStringSidW` allocates `sid_str`,
-        // which we release with `LocalFree` below.
+        // SAFETY: `sid` is valid; `ConvertSidToStringSidW` allocates `sid_str`
+        // via `LocalAlloc`. We wrap it in `Owned<HLOCAL>` so `LocalFree` runs
+        // on scope exit even if `to_string` fails.
         unsafe { ConvertSidToStringSidW(sid, &mut sid_str) }
             .context("`ConvertSidToStringSidW` failed")?;
+        // SAFETY: `sid_str` came from `ConvertSidToStringSidW` which allocates
+        // via `LocalAlloc`, so `LocalFree` is the matching release.
+        let _sid_str_owned = unsafe { Owned::new(HLOCAL(sid_str.0 as *mut c_void)) };
 
         // SAFETY: on success `sid_str` points at a NUL-terminated UTF-16 string.
-        let result = unsafe { sid_str.to_string() }.context("SID string was not valid UTF-16");
-
-        // SAFETY: `sid_str` was allocated by `ConvertSidToStringSidW`.
-        unsafe {
-            let _ = LocalFree(Some(HLOCAL(sid_str.0 as *mut c_void)));
-        }
-
-        result
-    }
-}
-
-impl Drop for ProcessToken {
-    fn drop(&mut self) {
-        // SAFETY: We got `inner` from `OpenProcessToken` and didn't mutate it after that.
-        // Closing a pseudo-handle is a harmless no-op, though this is a real handle.
-        // <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess>
-        // > The pseudo handle need not be closed when it is no longer needed. Calling the CloseHandle function with a pseudo handle has no effect. If the pseudo handle is duplicated by DuplicateHandle, the duplicate handle must be closed.
-        unsafe { CloseHandle(self.inner) }.expect("`CloseHandle` should always succeed");
-        self.inner = HANDLE::default();
+        unsafe { sid_str.to_string() }.context("SID string was not valid UTF-16")
     }
 }
 
