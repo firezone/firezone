@@ -330,7 +330,7 @@ pub fn install_sentry_meter_provider(
 
     let provider = SdkMeterProvider::builder()
         .with_periodic_exporter(MaybePushMetricsExporter {
-            inner: SentryMetricExporter,
+            inner: SentryMetricExporter::default(),
             should_export: feature_flags::stream_metrics,
         })
         .with_resource(resource)

@@ -390,7 +390,7 @@ fn try_main() -> Result<()> {
                 }
                 (MetricsExporter::Sentry, _) => SdkMeterProvider::builder()
                     .with_periodic_exporter(MaybePushMetricsExporter {
-                        inner: SentryMetricExporter,
+                        inner: SentryMetricExporter::default(),
                         should_export: feature_flags::stream_metrics,
                     })
                     .with_resource(resource)
