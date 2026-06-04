@@ -91,6 +91,11 @@ jobs:
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      swagger-validator:
+        image: swaggerapi/swagger-validator-v2:latest
+        ports:
+          - 8080:8080
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -129,11 +134,12 @@ jobs:
           mix openapi.spec.yaml --spec PortalAPI.ApiSpec
           result=$(curl --fail --show-error --silent \
             --max-time 10 \
-            --retry 3 \
-            --retry-delay 1 \
+            --retry 5 \
+            --retry-delay 2 \
             --retry-connrefused \
+            --retry-all-errors \
             --data-binary @openapi.yaml \
             -H 'Content-Type:application/yaml' \
-            https://validator.swagger.io/validator/debug)
+            http://localhost:8080/validator/debug)
           echo "$result"
           echo "$result" | jq -e '.schemaValidationMessages | length == 0'
