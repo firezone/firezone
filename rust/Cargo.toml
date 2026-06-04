@@ -7,6 +7,7 @@ members = [
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/backoff",
     "libs/bin-shared",
     "libs/client-shared",
     "libs/connlib/bootstrap-dns-client",
@@ -61,7 +62,8 @@ aya-build = { git = "https://github.com/aya-rs/aya" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
 aya-log = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
-backoff = { version = "0.4.0", features = ["tokio"] }
+backoff = { path = "libs/backoff" }
+backon = { version = "1.6.0", default-features = false, features = ["std"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
