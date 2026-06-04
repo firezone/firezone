@@ -41,7 +41,10 @@ impl Outside {
     }
 }
 
-pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
+// RFC 5382 REQ-5 floor for an established connection: 2h4m. The extra 4 minutes over
+// the 2-hour TCP keep-alive interval (RFC 1122) let an in-flight keep-alive refresh
+// the mapping before it expires.
+pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2 + 60 * 4);
 pub(crate) const UDP_TTL: Duration = Duration::from_secs(60 * 2);
 pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
@@ -379,7 +382,7 @@ mod tests {
         let translate_incoming = table.translate_incoming(&response, now).unwrap();
 
         let ttl = match src {
-            Protocol::Tcp(_) => 7200,
+            Protocol::Tcp(_) => 7200 + 240,
             Protocol::Udp(_) => 120,
             Protocol::IcmpEcho(_) => 120,
         };
