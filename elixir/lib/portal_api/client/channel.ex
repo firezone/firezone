@@ -16,7 +16,6 @@ defmodule PortalAPI.Client.Channel do
   alias Portal.Repo.Batch
   alias __MODULE__.Database
   require Logger
-  require OpenTelemetry.Tracer
 
   # For time-based policy conditions, we need to determine whether we still have access
   # If not, we need to send resource_deleted so that if it's added back later, the client's

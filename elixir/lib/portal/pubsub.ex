@@ -5,8 +5,6 @@ defmodule Portal.PubSub do
   """
   use Supervisor
 
-  require Logger
-
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts)
   end

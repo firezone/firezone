@@ -1,6 +1,5 @@
 defmodule PortalWeb.Authentication do
   use PortalWeb, :verified_routes
-  require Logger
 
   @doc """
   Returns the real IP address of the client.

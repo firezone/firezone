@@ -1351,30 +1351,6 @@ defmodule PortalWeb.Policies.Components do
   defp condition_values_display(%{property: :remote_ip, values: values}, _providers, _account),
     do: Enum.join(values, ", ")
 
-  defp condition_values_display(
-         %{property: :current_utc_datetime, values: values},
-         _providers,
-         _account
-       ) do
-    values
-    |> Enum.map(fn v ->
-      case String.split(v, "/", parts: 3) do
-        [day, time_ranges, tz] when time_ranges != "" -> {day, time_ranges, tz}
-        _ -> nil
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.group_by(fn {_day, _ranges, tz} -> tz end)
-    |> Enum.map_join("\n", fn {tz, entries} ->
-      days_str =
-        Enum.map_join(entries, ", ", fn {day, ranges, _tz} ->
-          "#{format_dow_abbr(day)} #{format_time_ranges(ranges)}"
-        end)
-
-      "#{days_str} (#{tz})"
-    end)
-  end
-
   defp condition_values_display(%{values: values}, _providers, _account),
     do: Enum.join(values, ", ")
 

@@ -234,14 +234,12 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  defp derive_version(user_agent) when is_binary(user_agent) do
+  defp derive_version(user_agent) do
     case Version.fetch_version(user_agent) do
       {:ok, version} -> version
       _ -> nil
     end
   end
-
-  defp derive_version(_), do: nil
 
   defp normalize_device_attrs(attrs) do
     firezone_id =

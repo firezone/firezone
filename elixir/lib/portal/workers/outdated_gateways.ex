@@ -10,7 +10,6 @@ defmodule Portal.Workers.OutdatedGateways do
     unique: [period: :infinity, states: :incomplete]
 
   require Logger
-  require OpenTelemetry.Tracer
 
   alias __MODULE__.Database
   alias Portal.{Device, Mailer}
