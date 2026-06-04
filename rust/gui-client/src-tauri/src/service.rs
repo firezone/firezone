@@ -671,7 +671,9 @@ impl<'a> Handler<'a> {
                         .start(&environment, &release, telemetry::GUI_DSN);
                     Telemetry::set_firezone_id(self.device_id.id.clone()).await;
 
-                    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider);
+                    opentelemetry::global::set_meter_provider(
+                        telemetry::SentryMeterProvider::default(),
+                    );
 
                     if let Some(account_slug) = account_slug {
                         Telemetry::set_account_slug(account_slug.clone());

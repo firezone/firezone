@@ -154,7 +154,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             (MetricsExporter::Sentry, _) => {
                 // Sentry has name and version already configured via the global SDK parameters.
 
-                opentelemetry::global::set_meter_provider(SentryMeterProvider);
+                opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
             }
             (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
                 SdkMeterProvider::builder()

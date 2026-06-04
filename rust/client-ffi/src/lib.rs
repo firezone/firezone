@@ -516,7 +516,7 @@ fn connect(
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
-    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider);
+    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 

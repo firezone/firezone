@@ -376,7 +376,7 @@ fn try_main() -> Result<()> {
 
             match (backend, cli.otlp_grpc_endpoint) {
                 (MetricsExporter::Sentry, _) => {
-                    opentelemetry::global::set_meter_provider(SentryMeterProvider);
+                    opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
                 }
                 (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
                     SdkMeterProvider::builder()
