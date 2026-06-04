@@ -698,21 +698,61 @@ defmodule Portal.Safe do
   end
 
   defp fetch_one_with_primary_retry(repo, query, retry?) do
-    result = safe_repo(fn -> repo.one(query) end)
-    if is_nil(result) and retry?, do: safe_repo(fn -> Repo.one(query) end), else: result
+    case read_replica(fn -> repo.one(query) end, retry?) do
+      :fallback ->
+        safe_repo(fn -> Repo.one(query) end)
+
+      nil when retry? ->
+        safe_repo(fn -> Repo.one(query) end)
+
+      result ->
+        result
+    end
   end
 
   defp fetch_one_with_primary_retry!(repo, query, retry?) do
-    case safe_repo(fn -> repo.one(query) end) do
-      nil when retry? -> safe_repo!(fn -> Repo.one!(query) end, query)
-      nil -> raise(Ecto.NoResultsError, queryable: query)
-      result -> result
+    case read_replica(fn -> repo.one(query) end, retry?) do
+      :fallback ->
+        safe_repo!(fn -> Repo.one!(query) end, query)
+
+      nil when retry? ->
+        safe_repo!(fn -> Repo.one!(query) end, query)
+
+      nil ->
+        raise(Ecto.NoResultsError, queryable: query)
+
+      result ->
+        result
     end
   end
 
   defp exists_with_primary_retry?(repo, query, retry?) do
-    result = safe_repo(fn -> repo.exists?(query) end) || false
-    if not result and retry?, do: safe_repo(fn -> Repo.exists?(query) end) || false, else: result
+    case read_replica(fn -> repo.exists?(query) end, retry?) do
+      :fallback -> safe_repo(fn -> Repo.exists?(query) end) || false
+      true -> true
+      _ when retry? -> safe_repo(fn -> Repo.exists?(query) end) || false
+      _ -> false
+    end
+  end
+
+  # Runs a read against the (possibly replica) repo. When a fallback to the
+  # primary is requested and the replica connection fails (e.g. a non-HA Azure
+  # read replica dropping connections during a transient outage), returns
+  # `:fallback` so the caller can retry against the primary. When fallback is
+  # disabled the connection error propagates so the real failure surfaces.
+  defp read_replica(fun, retry?) do
+    safe_repo(fun)
+  rescue
+    error in DBConnection.ConnectionError ->
+      if retry? do
+        Logger.warning("Replica read failed, falling back to primary",
+          error: Exception.message(error)
+        )
+
+        :fallback
+      else
+        reraise error, __STACKTRACE__
+      end
   end
 
   defp resolve_repo(:primary), do: Repo
