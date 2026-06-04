@@ -62,6 +62,7 @@ tauri-plugin-opener = { workspace = true }
 tauri-runtime = { workspace = true }
 tauri-specta = { workspace = true }
 tauri-utils = { workspace = true }
+opentelemetry = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }

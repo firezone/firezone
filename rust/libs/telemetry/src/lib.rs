@@ -25,14 +25,12 @@ pub mod feature_flags;
 pub mod otel;
 
 mod api_url;
-mod maybe_push_metrics_exporter;
 mod noop_push_metrics_exporter;
 mod posthog;
-mod sentry_metric_exporter;
+mod sentry_instrument_provider;
 
-pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
-pub use sentry_metric_exporter::SentryMetricExporter;
+pub use sentry_instrument_provider::SentryMeterProvider;
 
 /// Hashes a device ID using SHA256 and returns the hex-encoded result.
 pub fn hash_device_id(id: impl AsRef<[u8]>) -> String {

@@ -26,7 +26,7 @@ use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
 use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
-use telemetry::{Telemetry, analytics, otel};
+use telemetry::{Telemetry, analytics};
 use tokio::time::Instant;
 use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
@@ -671,11 +671,7 @@ impl<'a> Handler<'a> {
                         .start(&environment, &release, telemetry::GUI_DSN);
                     Telemetry::set_firezone_id(self.device_id.id.clone()).await;
 
-                    otel::install_sentry_meter_provider(
-                        env!("CARGO_PKG_NAME"),
-                        env!("CARGO_PKG_VERSION"),
-                        self.device_id.id.clone(),
-                    );
+                    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider);
 
                     if let Some(account_slug) = account_slug {
                         Telemetry::set_account_slug(account_slug.clone());

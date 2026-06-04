@@ -19,7 +19,7 @@ use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use telemetry::{Telemetry, analytics, otel};
+use telemetry::{Telemetry, analytics};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
@@ -516,7 +516,7 @@ fn connect(
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
-    otel::install_sentry_meter_provider(platform::COMPONENT, platform::VERSION, device_id.clone());
+    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider);
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 

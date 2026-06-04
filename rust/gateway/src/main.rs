@@ -15,7 +15,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::{MaybePushMetricsExporter, SentryMetricExporter, Telemetry, feature_flags, otel};
+use telemetry::{SentryMeterProvider, Telemetry, otel};
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
@@ -150,28 +150,30 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             otel::attr::service_instance_id(firezone_id.clone()),
         ]);
 
-        let provider = match (backend, cli.otlp_grpc_endpoint) {
-            (MetricsExporter::Stdout, _) => SdkMeterProvider::builder()
-                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                .with_resource(resource)
-                .build(),
-            (MetricsExporter::OtelCollector, Some(endpoint)) => SdkMeterProvider::builder()
-                .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                .with_resource(resource)
-                .build(),
-            (MetricsExporter::OtelCollector, None) => {
-                SdkMeterProvider::builder().with_resource(resource).build()
-            }
-            (MetricsExporter::Sentry, _) => SdkMeterProvider::builder()
-                .with_periodic_exporter(MaybePushMetricsExporter {
-                    inner: SentryMetricExporter::default(),
-                    should_export: feature_flags::stream_metrics,
-                })
-                .with_resource(resource)
-                .build(),
-        };
+        match (backend, cli.otlp_grpc_endpoint) {
+            (MetricsExporter::Sentry, _) => {
+                // Sentry has name and version already configured via the global SDK parameters.
 
-        opentelemetry::global::set_meter_provider(provider);
+                opentelemetry::global::set_meter_provider(SentryMeterProvider);
+            }
+            (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
+                SdkMeterProvider::builder()
+                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                    .with_resource(resource)
+                    .build(),
+            ),
+            (MetricsExporter::OtelCollector, Some(endpoint)) => {
+                opentelemetry::global::set_meter_provider(
+                    SdkMeterProvider::builder()
+                        .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                        .with_resource(resource)
+                        .build(),
+                )
+            }
+            (MetricsExporter::OtelCollector, None) => opentelemetry::global::set_meter_provider(
+                SdkMeterProvider::builder().with_resource(resource).build(),
+            ),
+        }
     }
 
     let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)
