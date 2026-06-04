@@ -1432,6 +1432,66 @@ defmodule Portal.Okta.SyncTest do
       assert updated_directory.is_verified == false
       assert updated_directory.error_message =~ "Access denied"
     end
+
+    test "ErrorHandler classifies 401 as transient and does not disable directory" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      # Mock successful token, 401 on apps
+      Req.Test.expect(APIClient, 10, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{"access_token" => @test_access_token})
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") ->
+            conn
+            |> Plug.Conn.put_status(401)
+            |> Req.Test.json(%{
+              "errorCode" => "E0000011",
+              "errorSummary" => "Invalid token provided"
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      # Capture the raised exception
+      exception =
+        assert_raise SyncError, fn ->
+          perform_job(Sync, %{directory_id: directory.id})
+        end
+
+      # Simulate Oban telemetry error handling
+      job = %Oban.Job{
+        id: 1,
+        args: %{"directory_id" => directory.id},
+        worker: "Portal.Okta.Sync",
+        queue: "okta_sync",
+        meta: %{}
+      }
+
+      meta = %{reason: exception, job: job}
+      Portal.DirectorySync.ErrorHandler.handle_error(meta)
+
+      updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
+      assert updated_directory.is_disabled == false
+      assert is_nil(updated_directory.disabled_reason)
+      refute is_nil(updated_directory.errored_at)
+      assert updated_directory.error_message =~ "Invalid token"
+    end
   end
 
   describe "circuit breaker protection" do

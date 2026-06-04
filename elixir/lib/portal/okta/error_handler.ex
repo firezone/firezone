@@ -31,6 +31,10 @@ defmodule Portal.Okta.ErrorHandler do
 
   # Classification
 
+  # Okta intermittently returns 401 on otherwise-valid tokens, so a single 401
+  # is treated as transient rather than hard-failing and disabling the directory.
+  defp classify(%Req.Response{status: 401}), do: :transient
+
   defp classify(%Req.Response{status: status}) when status >= 400 and status < 500 do
     :client_error
   end
