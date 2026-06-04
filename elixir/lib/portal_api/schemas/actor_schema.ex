@@ -17,7 +17,7 @@ defmodule PortalAPI.Schemas.Actor do
           pattern: "[a-zA-Z][a-zA-Z0-9_]+"
         },
         type: %Schema{type: :string, description: "Actor Type"},
-        email: %Schema{type: :string, description: "Actor Email"},
+        email: %Schema{type: :string, description: "Actor Email", nullable: true},
         allow_email_otp_sign_in: %Schema{
           type: :boolean,
           description: "Allow Email OTP Sign In",
