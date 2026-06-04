@@ -131,32 +131,114 @@ const ERROR_TYPE_KEYS: [&str; MAX_ERROR_LAYERS] = [
 
 /// Encodes an error's source chain into per-layer `error.type.{N}` attributes.
 ///
-/// Each layer is a low-cardinality token rather than the error's `Display`/`Debug` body,
-/// which can embed per-flow data such as client IPs that would otherwise explode the
-/// metric's cardinality.
+/// Each layer is the error's `Display` string with variable substrings (IP addresses,
+/// UUIDs) replaced by static placeholders to keep metric cardinality low.
 pub fn error_layers(error: &anyhow::Error) -> Vec<KeyValue> {
     error
         .chain()
+        .map(error_type)
         .zip(ERROR_TYPE_KEYS)
-        .map(|(error, key)| KeyValue::new(key, error_type(error)))
+        .map(|(error, key)| KeyValue::new(key, error))
         .collect()
 }
 
 fn error_type(error: &(dyn std::error::Error + 'static)) -> Value {
-    // The kind is stable, whereas the `Debug` of `io::Error` includes the OS message.
+    // The kind is stable, whereas the Display of `io::Error` includes an OS-specific message.
     if let Some(io) = error.downcast_ref::<std::io::Error>() {
         return attr::io_error_type(io).value;
     }
 
-    // Derived `Debug` renders as `TypeName { .. }` or `TypeName(..)`. Keep only the leading
-    // type/variant name so the values inside the brackets don't leak into the metric.
-    let debug = format!("{error:?}");
-    let name = match debug.split_once(['{', '(']) {
-        Some((name, _)) => name.trim_end(),
-        None => debug.trim_end(),
-    };
+    Value::from(normalize(&format!("{error}")))
+}
 
-    Value::from(name.to_owned())
+/// Replaces variable tokens in an error message with static placeholders.
+///
+/// Splits on whitespace and classifies each token via the stdlib network parsers
+/// and the `uuid` crate.  Tokens that parse as a `SocketAddr` or `IpAddr` become
+/// `{addr}`, UUIDs become `{uuid}`, and bare integers become `{num}`.  Leading and
+/// trailing punctuation is preserved around a replaced token.
+fn normalize(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+
+    while !rest.is_empty() {
+        // Preserve leading whitespace runs.
+        let trimmed = rest.trim_start_matches(|c: char| c.is_ascii_whitespace());
+        out.push_str(&rest[..rest.len() - trimmed.len()]);
+        rest = trimmed;
+
+        // Find the end of the next non-whitespace token.
+        let token_end = rest
+            .find(|c: char| c.is_ascii_whitespace())
+            .unwrap_or(rest.len());
+        let token = &rest[..token_end];
+        rest = &rest[token_end..];
+
+        if !token.is_empty() {
+            out.push_str(&normalize_token(token));
+        }
+    }
+
+    out
+}
+
+/// Attempts to replace a single whitespace-delimited token with a placeholder.
+///
+/// Leading characters that cannot start an address literal (anything except
+/// alphanumerics, `[`, and `:`) are treated as punctuation and passed through
+/// unchanged.  The same applies to trailing characters that cannot end one
+/// (anything except alphanumerics and `]`).
+fn normalize_token(token: &str) -> String {
+    let stripped =
+        token.trim_start_matches(|c: char| !c.is_ascii_alphanumeric() && c != '[' && c != ':');
+    let prefix_len = token.len() - stripped.len();
+    let prefix = &token[..prefix_len];
+
+    let core = stripped.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != ']');
+    let suffix = &stripped[core.len()..];
+
+    match classify(core) {
+        Some(placeholder) => format!("{prefix}{placeholder}{suffix}"),
+        None => token.to_owned(),
+    }
+}
+
+/// Returns the placeholder string for a token that carries variable data, or `None`.
+fn classify(s: &str) -> Option<&'static str> {
+    if s.parse::<std::net::SocketAddr>().is_ok() {
+        return Some("{ip}:{port}");
+    }
+
+    if s.parse::<std::net::IpAddr>().is_ok() {
+        return Some("{ip}");
+    }
+
+    if s.parse::<uuid::Uuid>().is_ok() {
+        return Some("{uuid}");
+    }
+
+    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) {
+        return Some("{num}");
+    }
+
+    // Require at least 8 chars to avoid matching common English words (e.g. "a", "be",
+    // "cafe") that happen to be valid hex. Pure-digit strings are caught above as {num}.
+    if s.len() >= 8 && s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Some("{hex}");
+    }
+
+    // Hex groups separated by dashes (e.g. non-standard IDs, truncated UUIDs).
+    // Every group must be non-empty and all hex digits; at least two groups required.
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() >= 2
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Some("{hex}");
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -175,24 +257,43 @@ mod error_layer_tests {
     }
 
     #[test]
-    fn struct_error_keeps_only_type_name() {
+    fn struct_error_masks_variable_fields() {
         let error = anyhow::Error::new(StructError {
             client_ip: "1.2.3.4",
         });
 
         assert_eq!(
             error_layers(&error)[0],
-            KeyValue::new("error.type.0", "StructError")
+            KeyValue::new("error.type.0", "failed to handle packet from {ip}")
         );
     }
 
     #[test]
-    fn tuple_error_strips_parenthesised_fields() {
+    fn tuple_error_masks_variable_value() {
         let error = anyhow::Error::new(TupleError("1.2.3.4"));
 
         assert_eq!(
             error_layers(&error)[0],
-            KeyValue::new("error.type.0", "TupleError")
+            KeyValue::new("error.type.0", "{ip} is not a client IP")
+        );
+    }
+
+    #[test]
+    fn context_chain_is_recorded_per_layer() {
+        let error = anyhow::Error::new(StructError {
+            client_ip: "1.2.3.4",
+        })
+        .context(TupleError("Test"));
+
+        let layers = error_layers(&error);
+
+        assert_eq!(
+            layers[0],
+            KeyValue::new("error.type.0", "Test is not a client IP")
+        );
+        assert_eq!(
+            layers[1],
+            KeyValue::new("error.type.1", "failed to handle packet from {ip}")
         );
     }
 
@@ -215,6 +316,164 @@ mod error_layer_tests {
     #[derive(Debug, thiserror::Error)]
     #[error("{0} is not a client IP")]
     struct TupleError(&'static str);
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::normalize;
+
+    // --- IPv4 ---
+
+    #[test]
+    fn ipv4_bare() {
+        assert_eq!(
+            normalize("not a client ip: 1.2.3.4"),
+            "not a client ip: {ip}"
+        );
+    }
+
+    #[test]
+    fn ipv4_with_port() {
+        assert_eq!(
+            normalize("failed to bind on 0.0.0.0:53"),
+            "failed to bind on {ip}:{port}"
+        );
+        assert_eq!(
+            normalize("src 1.2.3.4:8080 dst 5.6.7.8:9090"),
+            "src {ip}:{port} dst {ip}:{port}"
+        );
+    }
+
+    #[test]
+    fn ipv4_not_matched_in_identifier() {
+        // Digit immediately preceded by alphanumeric — do not mangle.
+        assert_eq!(normalize("v1.2.3.4"), "v1.2.3.4");
+    }
+
+    // --- IPv6 ---
+
+    #[test]
+    fn ipv6_loopback() {
+        assert_eq!(normalize("not a client ip: ::1"), "not a client ip: {ip}");
+    }
+
+    #[test]
+    fn ipv6_full() {
+        assert_eq!(
+            normalize("addr 2001:db8::1 unreachable"),
+            "addr {ip} unreachable"
+        );
+    }
+
+    #[test]
+    fn ipv6_with_port() {
+        assert_eq!(normalize("binding to [::1]:53"), "binding to {ip}:{port}");
+        assert_eq!(
+            normalize("src [2001:db8::1]:1234 dst [::1]:53"),
+            "src {ip}:{port} dst {ip}:{port}"
+        );
+    }
+
+    #[test]
+    fn ipv6_mapped_ipv4() {
+        assert_eq!(normalize("addr ::ffff:192.0.2.1"), "addr {ip}");
+    }
+
+    // --- UUID ---
+
+    #[test]
+    fn uuid_in_message() {
+        assert_eq!(
+            normalize("resource 12345678-abcd-1234-abcd-1234567890ab not found"),
+            "resource {uuid} not found"
+        );
+    }
+
+    #[test]
+    fn uuid_not_matched_when_too_short() {
+        // Only 4 groups instead of 5 — does not match UUID, but does match dash-separated hex.
+        assert_eq!(normalize("id abcdefab-abcd-abcd-abcd"), "id {hex}");
+    }
+
+    #[test]
+    fn dash_separated_hex() {
+        assert_eq!(normalize("trans ab12cd34-ef56-7890"), "trans {hex}");
+    }
+
+    // --- standalone numbers ---
+
+    #[test]
+    fn number_standalone() {
+        assert_eq!(normalize("context 9"), "context {num}");
+        assert_eq!(normalize("port 8080 is busy"), "port {num} is busy");
+    }
+
+    #[test]
+    fn number_not_matched_in_identifier() {
+        assert_eq!(normalize("error_type_42"), "error_type_42");
+    }
+
+    #[test]
+    fn number_not_matched_before_dot() {
+        // "1.2" is not an IPv4 but should not split into "{num}.{num}" either.
+        assert_eq!(normalize("version 1.2"), "version 1.2");
+    }
+
+    // --- hex strings ---
+
+    #[test]
+    fn hex_string_key() {
+        // 64-char hex string (WireGuard public key length); too long to be a UUID.
+        assert_eq!(
+            normalize(
+                "No connection for key \
+                 deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ),
+            "No connection for key {hex}"
+        );
+    }
+
+    #[test]
+    fn hex_string_too_short_not_matched() {
+        // 7 hex chars — below the 8-char threshold.
+        assert_eq!(normalize("id deadbee"), "id deadbee");
+    }
+
+    #[test]
+    fn pure_decimal_not_matched_as_hex() {
+        // All digits, no a-f — stays as {num}, not {hex}.
+        assert_eq!(normalize("code 12345678"), "code {num}");
+    }
+
+    // --- common TunnelError messages ---
+
+    #[test]
+    fn not_client_ip_message() {
+        assert_eq!(
+            normalize("Not a client IP: 192.168.1.1"),
+            "Not a client IP: {ip}"
+        );
+        assert_eq!(
+            normalize("Not a client IP: fe80::1"),
+            "Not a client IP: {ip}"
+        );
+    }
+
+    #[test]
+    fn failed_to_handle_network_packet() {
+        assert_eq!(
+            normalize("Failed to handle packet from network (src 1.2.3.4:8080 dst 5.6.7.8:9090)"),
+            "Failed to handle packet from network (src {ip}:{port} dst {ip}:{port})"
+        );
+    }
+
+    #[test]
+    fn traffic_not_allowed_message() {
+        assert_eq!(
+            normalize("Traffic to/from this resource IP is not allowed: 10.0.0.1"),
+            "Traffic to/from this resource IP is not allowed: {ip}"
+        );
+    }
 }
 
 pub mod metrics {
