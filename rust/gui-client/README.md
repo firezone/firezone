@@ -141,7 +141,7 @@ To test installation end-to-end you need a real signed release MSI, which **cann
 produced locally: the installer is signed with AzureSignTool against HSM-backed keys
 that are only available to CI. Use the GitHub CI pipeline to build a signed release MSI
 (see [Signing the Windows MSI in GitHub CI](#signing-the-windows-msi-in-github-ci)).
-`pnpm build` can still produce an *unsigned* MSI locally to sanity-check the build itself.
+`pnpm build` can still produce an _unsigned_ MSI locally to sanity-check the build itself.
 
 ## Platform support
 
