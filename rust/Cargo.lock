@@ -1222,6 +1222,7 @@ dependencies = [
  "jni 0.22.4",
  "libc",
  "logging",
+ "opentelemetry",
  "oslog",
  "phoenix-channel",
  "rustls",
@@ -2317,6 +2318,7 @@ dependencies = [
  "native-dialog",
  "nix 0.31.3",
  "notify-rust",
+ "opentelemetry",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
@@ -7490,7 +7492,6 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "futures",
  "hex",
  "ip-packet",
  "moka",

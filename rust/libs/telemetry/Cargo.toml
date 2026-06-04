@@ -6,7 +6,6 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-futures = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }

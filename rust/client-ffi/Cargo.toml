@@ -19,6 +19,7 @@ ip_network = { workspace = true }
 itertools = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true }
+opentelemetry = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
