@@ -32,7 +32,7 @@ fun ConnectedDeviceRow(
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
-                text = device.tunneledIpv4,
+                text = device.tunIpv4,
                 style = MaterialTheme.typography.bodyLarge,
                 fontFamily = FontFamily.Monospace,
             )

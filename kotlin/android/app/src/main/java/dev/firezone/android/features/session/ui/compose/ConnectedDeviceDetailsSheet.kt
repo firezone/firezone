@@ -41,11 +41,11 @@ fun ConnectedDeviceDetailsSheet(
 
             DetailRow(label = "Tunnel IPv4:") {
                 Text(
-                    text = device.tunneledIpv4,
+                    text = device.tunIpv4,
                     fontFamily = FontFamily.Monospace,
                     modifier =
                         Modifier.clickable {
-                            ClipboardUtils.copyToClipboard(context, "Tunnel IPv4", device.tunneledIpv4)
+                            ClipboardUtils.copyToClipboard(context, "Tunnel IPv4", device.tunIpv4)
                         },
                 )
             }
