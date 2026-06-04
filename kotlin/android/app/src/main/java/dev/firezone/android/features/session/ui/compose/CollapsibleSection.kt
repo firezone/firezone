@@ -32,12 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
-
-private val LiveGreen = Color(0xFF22A559)
 
 /**
  * Emits a collapsible section into a [androidx.compose.foundation.lazy.LazyColumn]: an animated
@@ -120,10 +117,11 @@ fun LiveDot(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Restart),
         label = "ring",
     )
+    val color = MaterialTheme.colorScheme.tertiary
     Canvas(modifier.size(16.dp)) {
         val r = size.minDimension / 4f
-        drawCircle(color = LiveGreen.copy(alpha = (1f - ring) * 0.6f), radius = r + r * 2f * ring, center = center)
-        drawCircle(color = LiveGreen, radius = r, center = center)
+        drawCircle(color = color.copy(alpha = (1f - ring) * 0.6f), radius = r + r * 2f * ring, center = center)
+        drawCircle(color = color, radius = r, center = center)
     }
 }
 
