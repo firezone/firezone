@@ -7499,7 +7499,6 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "futures",
  "hex",
  "ip-packet",
  "moka",
