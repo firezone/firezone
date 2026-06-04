@@ -1,6 +1,7 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.session.ui.compose
 
+import android.os.Parcelable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import dev.firezone.android.features.session.ui.ResourceViewModel
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.parcelize.Parcelize
 
 private const val TAB_FAVORITES = 0
 private const val TAB_ALL = 1
@@ -76,10 +78,15 @@ fun SessionScreen(
     var resourcesExpanded by rememberSaveable { mutableStateOf(true) }
     var devicesExpanded by rememberSaveable { mutableStateOf(false) }
 
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedDeviceId by rememberSaveable { mutableStateOf<String?>(null) }
-    val selectedResource = remember(resources, selectedId) { resources.firstOrNull { it.id == selectedId } }
-    val selectedDevice = remember(connectedDevices, selectedDeviceId) { connectedDevices.firstOrNull { it.id == selectedDeviceId } }
+    var selection by rememberSaveable { mutableStateOf<Selection?>(null) }
+    val selectedResource =
+        remember(resources, selection) {
+            (selection as? Selection.Resource)?.let { sel -> resources.firstOrNull { it.id == sel.id } }
+        }
+    val selectedDevice =
+        remember(connectedDevices, selection) {
+            (selection as? Selection.Device)?.let { sel -> connectedDevices.firstOrNull { it.id == sel.id } }
+        }
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
@@ -128,12 +135,12 @@ fun SessionScreen(
                 if (hasFavorites && effectiveTab == TAB_FAVORITES) {
                     itemsIndexed(favoriteResources, key = { _, resource -> resource.id }) { index, resource ->
                         if (index > 0) HorizontalDivider()
-                        ResourceRow(resource = resource, onClick = { selectedId = resource.id })
+                        ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
                     }
                 } else {
                     internetResource?.let { internet ->
                         item(key = "internet-${internet.id}") {
-                            ResourceRow(resource = internet, onClick = { selectedId = internet.id })
+                            ResourceRow(resource = internet, onClick = { selection = Selection.Resource(internet.id) })
                         }
                     }
                     collapsibleSection(
@@ -143,7 +150,7 @@ fun SessionScreen(
                         onToggle = { resourcesExpanded = !resourcesExpanded },
                         key = { "res-${it.id}" },
                     ) { resource ->
-                        ResourceRow(resource = resource, onClick = { selectedId = resource.id })
+                        ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
                     }
                     if (connectedDevices.isNotEmpty()) {
                         collapsibleSection(
@@ -154,7 +161,7 @@ fun SessionScreen(
                             live = true,
                             key = { "dev-${it.id}" },
                         ) { device ->
-                            ConnectedDeviceRow(device = device, onClick = { selectedDeviceId = device.id })
+                            ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
                         }
                     }
                 }
@@ -181,14 +188,26 @@ fun SessionScreen(
             onAddFavorite = { onAddFavorite(resource.id) },
             onRemoveFavorite = { onRemoveFavorite(resource.id) },
             onToggleInternet = onToggleInternet,
-            onDismiss = { selectedId = null },
+            onDismiss = { selection = null },
         )
     }
 
     selectedDevice?.let { device ->
         ConnectedDeviceDetailsSheet(
             device = device,
-            onDismiss = { selectedDeviceId = null },
+            onDismiss = { selection = null },
         )
     }
+}
+
+// At most one detail sheet is open at a time, so the selection is modelled as a sum type: a
+// resource and a connected device can never be selected simultaneously.
+private sealed interface Selection : Parcelable {
+    @Parcelize data class Resource(
+        val id: String,
+    ) : Selection
+
+    @Parcelize data class Device(
+        val id: String,
+    ) : Selection
 }
