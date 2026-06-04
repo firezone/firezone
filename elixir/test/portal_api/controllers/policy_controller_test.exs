@@ -551,6 +551,35 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp["data"]["description"] == attrs["description"]
     end
 
+    test "preserves conditions when conditions are omitted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :remote_ip, operator: :is_in_cidr, values: ["10.0.0.0/8"]}]
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"description" => "updated"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["description"] == "updated"
+
+      assert resp["data"]["conditions"] == [
+               %{
+                 "property" => "remote_ip",
+                 "operator" => "is_in_cidr",
+                 "values" => ["10.0.0.0/8"]
+               }
+             ]
+    end
+
     test "updates a policy's conditions", %{conn: conn, account: account, actor: actor} do
       policy =
         policy_with_conditions_fixture(%{

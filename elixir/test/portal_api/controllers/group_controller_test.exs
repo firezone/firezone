@@ -318,6 +318,19 @@ defmodule PortalAPI.GroupControllerTest do
       assert resp["data"]["name"] == attrs["name"]
     end
 
+    test "keeps current name when name is omitted", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}", group: %{})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == group.name
+    end
+
     test "returns not found when group does not exist", %{conn: conn, actor: actor} do
       conn =
         conn

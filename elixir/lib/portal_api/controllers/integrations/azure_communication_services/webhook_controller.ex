@@ -39,8 +39,9 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
         send_resp(conn, 400, "Bad Request: invalid JSON")
 
       # coveralls-ignore-start
-      # Defensive: decode_events/1 only ever returns {:error, :invalid_json}
-      # (matched above), so no other {:error, reason} can reach this clause.
+      # Defensive: catches read_body/1 transport failures such as {:error, :timeout}
+      # or {:error, :closed}. These are impractical to trigger in tests, so this
+      # clause is excluded from coverage.
       {:error, reason} ->
         Logger.error("ACS Event Grid webhook failed", reason: inspect(reason))
         send_resp(conn, 500, "Internal Error")

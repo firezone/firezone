@@ -113,11 +113,10 @@ defmodule PortalAPI.ResourceController do
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "resource" => params}) do
     subject = conn.assigns.subject
-    attrs = set_param_defaults(params)
 
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
-         {:ok, resource} <- Database.update_resource(resource, attrs, subject) do
+         {:ok, resource} <- Database.update_resource(resource, params, subject) do
       render(conn, :show, resource: resource)
     else
       error -> Error.handle(conn, error)

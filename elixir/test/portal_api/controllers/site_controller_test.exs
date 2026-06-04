@@ -288,6 +288,19 @@ defmodule PortalAPI.SiteControllerTest do
       assert resp["data"]["name"] == attrs["name"]
     end
 
+    test "keeps current name when name is omitted", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}", site: %{})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == site.name
+    end
+
     test "returns error when updating system managed site", %{
       conn: conn,
       account: account,

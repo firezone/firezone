@@ -293,6 +293,92 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp == %{"error" => %{"reason" => "Not Found"}}
     end
 
+    test "preserves filters when filters are omitted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      resource =
+        resource_with_filters_fixture(%{
+          account: account,
+          site: site,
+          type: :ip,
+          address: "10.0.0.9"
+        })
+
+      assert length(resource.filters) == 2
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"name" => "Renamed"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == "Renamed"
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert length(reloaded.filters) == 2
+    end
+
+    test "replaces filters when filters are provided", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      resource =
+        resource_with_filters_fixture(%{
+          account: account,
+          site: site,
+          type: :ip,
+          address: "10.0.0.9"
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}",
+          resource: %{"filters" => [%{"protocol" => "tcp", "ports" => ["8080"]}]}
+        )
+
+      assert json_response(conn, 200)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert [%{protocol: :tcp}] = reloaded.filters
+    end
+
+    test "clears filters when an empty list is provided", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      resource =
+        resource_with_filters_fixture(%{
+          account: account,
+          site: site,
+          type: :ip,
+          address: "10.0.0.9"
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"filters" => []})
+
+      assert json_response(conn, 200)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert reloaded.filters == []
+    end
+
     test "updates a resource", %{conn: conn, account: account, actor: actor} do
       site = site_fixture(account: account)
       resource = dns_resource_fixture(account: account, site: site)
