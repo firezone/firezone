@@ -90,22 +90,46 @@ impl NatTable {
 
         let inside = Inside(src, dst);
 
-        if let Some(outside) = self.table.get_by_left(&inside).copied()
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
+        if let Some(outside) = self.table.get_by_left(&inside).copied() {
+            let should_rebind = self
+                .state_by_inside
+                .get(&inside)
+                .is_some_and(|state| state.is_unconfirmed() && outside.1 != outside_dst);
 
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.outgoing_rst = true;
+            if should_rebind {
+                let Some((_, old_outside)) = self.table.remove_by_left(&inside) else {
+                    return Err(anyhow::anyhow!("NAT table out of sync"));
+                };
+                let Some(old_state) = self.state_by_inside.remove(&inside) else {
+                    return Err(anyhow::anyhow!("NAT state out of sync"));
+                };
+
+                self.expired.insert(old_outside);
+
+                let last_outgoing = now.duration_since(old_state.last_outgoing);
+
+                tracing::debug!(
+                    ?inside,
+                    ?old_outside,
+                    %outside_dst,
+                    ?last_outgoing,
+                    "Rebinding unconfirmed NAT session"
+                );
+            } else if let Some(state) = self.state_by_inside.get_mut(&inside) {
+                tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
+
+                if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                    state.outgoing_rst = true;
+                }
+
+                if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
+                    state.outgoing_fin = true;
+                }
+
+                state.last_outgoing = now;
+
+                return Ok(outside.into_inner());
             }
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.outgoing_fin = true;
-            }
-
-            state.last_outgoing = now;
-
-            return Ok(outside.into_inner());
         }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
@@ -225,11 +249,15 @@ impl EntryState {
     }
 
     fn unconfirmed_timeout(&self) -> Option<Instant> {
-        if self.last_incoming.is_some() {
+        if !self.is_unconfirmed() {
             return None;
         }
 
         Some(self.last_outgoing + UNCONFIRMED_TTL)
+    }
+
+    fn is_unconfirmed(&self) -> bool {
+        self.last_incoming.is_none()
     }
 
     fn fin_timeout(&self) -> Option<Instant> {
@@ -333,6 +361,120 @@ pub enum TranslateIncomingResult {
     IcmpError(IcmpErrorPrototype),
     ExpiredNatSession,
     NoNatSession,
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+    use ip_packet::make::TcpFlags;
+
+    const SOURCE_PORT: u16 = 50_644;
+
+    fn tcp_request() -> IpPacket {
+        ip_packet::make::tcp_packet(
+            Ipv4Addr::new(100, 64, 0, 10),
+            Ipv4Addr::new(100, 96, 0, 1),
+            SOURCE_PORT,
+            443,
+            TcpFlags::default(),
+            &[],
+        )
+        .unwrap()
+    }
+
+    fn outside(last_octet: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(203, 0, 113, last_octet))
+    }
+
+    fn response_for(packet: &IpPacket, outside: (Protocol, IpAddr)) -> IpPacket {
+        let mut response = packet.clone();
+        response.set_destination_protocol(outside.0.value());
+        response.set_src(outside.1).unwrap();
+
+        response
+    }
+
+    #[test]
+    fn unconfirmed_session_rebinds_when_outside_destination_changes() {
+        let mut table = NatTable::default();
+        let mut now = Instant::now();
+        let packet = tcp_request();
+
+        let first_outside = table.translate_outgoing(&packet, outside(1), now).unwrap();
+        assert_eq!(first_outside, (Protocol::Tcp(SOURCE_PORT), outside(1)));
+
+        now += Duration::from_secs(1);
+
+        let second_outside = table.translate_outgoing(&packet, outside(2), now).unwrap();
+        assert_eq!(second_outside, (Protocol::Tcp(SOURCE_PORT), outside(2)));
+
+        assert_eq!(
+            table
+                .translate_incoming(&response_for(&packet, first_outside), now)
+                .unwrap(),
+            TranslateIncomingResult::ExpiredNatSession
+        );
+        assert_eq!(
+            table
+                .translate_incoming(&response_for(&packet, second_outside), now)
+                .unwrap(),
+            TranslateIncomingResult::Ok {
+                proto: Protocol::Tcp(SOURCE_PORT),
+                src: packet.destination()
+            }
+        );
+    }
+
+    #[test]
+    fn unconfirmed_session_is_not_rebound_when_outside_destination_is_unchanged() {
+        let mut table = NatTable::default();
+        let mut now = Instant::now();
+        let packet = tcp_request();
+
+        let first_outside = table.translate_outgoing(&packet, outside(1), now).unwrap();
+
+        now += Duration::from_secs(1);
+
+        let second_outside = table.translate_outgoing(&packet, outside(1), now).unwrap();
+        assert_eq!(second_outside, first_outside);
+
+        // The mapping was reused rather than rebound, so the original session is still active.
+        assert_eq!(
+            table
+                .translate_incoming(&response_for(&packet, first_outside), now)
+                .unwrap(),
+            TranslateIncomingResult::Ok {
+                proto: Protocol::Tcp(SOURCE_PORT),
+                src: packet.destination()
+            }
+        );
+    }
+
+    #[test]
+    fn confirmed_session_remains_pinned_when_outside_destination_changes() {
+        let mut table = NatTable::default();
+        let mut now = Instant::now();
+        let packet = tcp_request();
+
+        let first_outside = table.translate_outgoing(&packet, outside(1), now).unwrap();
+
+        now += Duration::from_secs(1);
+
+        assert_eq!(
+            table
+                .translate_incoming(&response_for(&packet, first_outside), now)
+                .unwrap(),
+            TranslateIncomingResult::Ok {
+                proto: Protocol::Tcp(SOURCE_PORT),
+                src: packet.destination()
+            }
+        );
+
+        now += Duration::from_secs(1);
+
+        let second_outside = table.translate_outgoing(&packet, outside(2), now).unwrap();
+        assert_eq!(second_outside, first_outside);
+    }
 }
 
 #[cfg(all(test, feature = "proptest"))]
