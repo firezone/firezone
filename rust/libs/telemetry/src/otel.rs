@@ -4,7 +4,6 @@ use opentelemetry_sdk::{
     resource::{EnvResourceDetector, ResourceDetector, TelemetryResourceDetector},
 };
 
-
 pub mod attr {
     use ip_packet::{IpPacket, IpVersion};
     use opentelemetry::Value;
@@ -310,7 +309,6 @@ pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resou
         .with_attributes(attributes)
         .build()
 }
-
 
 pub struct OsResourceDetector;
 
