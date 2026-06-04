@@ -39,6 +39,7 @@ keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+opentelemetry = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
@@ -62,7 +63,6 @@ tauri-plugin-opener = { workspace = true }
 tauri-runtime = { workspace = true }
 tauri-specta = { workspace = true }
 tauri-utils = { workspace = true }
-opentelemetry = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }

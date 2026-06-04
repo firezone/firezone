@@ -19,11 +19,11 @@ ip_network = { workspace = true }
 itertools = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true }
+opentelemetry = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
-opentelemetry = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
