@@ -107,6 +107,10 @@ features = [
     "Win32_Security",
     # `GetSecurityInfo` for the pipe-owner SID check
     "Win32_Security_Authorization",
+    # `WinVerifyTrust` to spot a tampered `Firezone.exe` (bad digest)
+    # at launch and report a corrupt install instead of looping on the
+    # package-identity restart prompt.
+    "Win32_Security_WinTrust",
     # IPC system
     "Win32_System_Pipes",
     "Win32_System_Threading",

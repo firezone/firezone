@@ -21,6 +21,17 @@ use anyhow::Result;
 #[error("Registered package identity for the current user; a restart is required")]
 pub struct RestartRequired;
 
+/// Returned by [`ensure_package_identity`] on Windows when the running
+/// image fails its own Authenticode signature with a *bad digest* — it
+/// was modified after signing. Package identity attaches only to a
+/// binary that validates against the package publisher, so the kernel
+/// will never stamp identity onto a tampered image and no restart can
+/// help. The caller surfaces a "reinstall" dialog instead of looping on
+/// the restart prompt.
+#[derive(Debug, thiserror::Error)]
+#[error("Firezone.exe failed its Authenticode signature (bad digest); the installation is corrupt")]
+pub struct InstallationCorrupt;
+
 /// Ensures the current process carries the Firezone package identity
 /// that the pipe DACLs pin access to.
 ///
@@ -30,6 +41,9 @@ pub struct RestartRequired;
 ///   package for the current user (no admin needed once provisioned).
 ///   Identity only attaches on the next launch, so the caller should
 ///   tell the user to relaunch and exit.
+/// - `Err(`[`InstallationCorrupt`]`)` (Windows) if the running image
+///   fails its own Authenticode signature with a bad digest, so
+///   identity can never attach and a restart wouldn't help.
 /// - `Err(_)` on any other failure.
 #[cfg(not(target_os = "windows"))]
 #[expect(clippy::unnecessary_wraps, reason = "Windows impl is fallible")]
@@ -43,6 +57,13 @@ pub fn ensure_package_identity() -> Result<()> {
         return Ok(());
     }
 
+    // No identity yet. Before registering and asking for a restart,
+    // rule out the one case a restart can never fix: our own image
+    // failing its Authenticode signature with a bad digest (modified
+    // after signing). The kernel won't attach identity to a tampered
+    // binary, so that would loop on the restart prompt forever.
+    verify_self_signature()?;
+
     register_for_current_user()?;
     Err(RestartRequired.into())
 }
@@ -53,6 +74,107 @@ pub fn ensure_package_identity() -> Result<()> {
 #[cfg(target_os = "windows")]
 fn has_package_identity() -> bool {
     windows::ApplicationModel::Package::Current().is_ok()
+}
+
+/// Verifies the running image against its own Authenticode signature
+/// and maps a *bad digest* — a binary modified after signing — to
+/// [`InstallationCorrupt`].
+///
+/// Package identity attaches at `CreateProcess` only to a binary that
+/// validates against the package publisher, so a tampered `Firezone.exe`
+/// can never gain it and [`ensure_package_identity`] would loop on the
+/// restart prompt forever. Detecting this up front lets the caller tell
+/// the user to reinstall instead.
+///
+/// Only `TRUST_E_BAD_DIGEST` is treated as fatal. Any other status — an
+/// unsigned profiling build, an untrusted chain on a locked-down box, a
+/// transient verification error — is logged and allowed through to the
+/// normal register / restart path, so a genuine first run is never
+/// misreported as corrupt.
+#[cfg(target_os = "windows")]
+fn verify_self_signature() -> Result<()> {
+    use anyhow::Context as _;
+    use std::{ffi::c_void, os::windows::ffi::OsStrExt as _};
+    use windows::{
+        Win32::{
+            Foundation::{HANDLE, HWND},
+            Security::WinTrust::{
+                WINTRUST_DATA, WINTRUST_DATA_0, WINTRUST_FILE_INFO, WTD_CHOICE_FILE,
+                WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+                WinVerifyTrust,
+            },
+        },
+        core::{GUID, PCWSTR},
+    };
+
+    /// Standard Authenticode verification policy for `WinVerifyTrust`
+    /// (`WINTRUST_ACTION_GENERIC_VERIFY_V2`).
+    const GENERIC_VERIFY_V2: GUID = GUID::from_u128(0x00aac56b_cd44_11d0_8cc2_00c04fc295ee);
+    /// `TRUST_E_BAD_DIGEST`: the file's hash doesn't match its
+    /// signature, i.e. it was modified after signing.
+    const TRUST_E_BAD_DIGEST: i32 = 0x80096010u32 as i32;
+
+    let exe = std::env::current_exe().context("current_exe")?;
+    let path: Vec<u16> = exe
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut file_info = WINTRUST_FILE_INFO {
+        cbStruct: std::mem::size_of::<WINTRUST_FILE_INFO>() as u32,
+        pcwszFilePath: PCWSTR(path.as_ptr()),
+        hFile: HANDLE::default(),
+        pgKnownSubject: std::ptr::null_mut(),
+    };
+
+    let mut data = WINTRUST_DATA {
+        cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
+        dwUIChoice: WTD_UI_NONE,
+        fdwRevocationChecks: WTD_REVOKE_NONE,
+        dwUnionChoice: WTD_CHOICE_FILE,
+        dwStateAction: WTD_STATEACTION_VERIFY,
+        Anonymous: WINTRUST_DATA_0 {
+            pFile: &mut file_info as *mut _,
+        },
+        ..Default::default()
+    };
+
+    let mut action = GENERIC_VERIFY_V2;
+
+    // SAFETY: `action`, `data` and the `file_info` it points at are
+    // valid locals that outlive both calls. `WTD_UI_NONE` keeps the
+    // call non-interactive, so the null window handle is fine.
+    let status = unsafe {
+        WinVerifyTrust(
+            HWND::default(),
+            &mut action,
+            &mut data as *mut _ as *mut c_void,
+        )
+    };
+
+    // The VERIFY call stashed provider state in `data`; release it.
+    data.dwStateAction = WTD_STATEACTION_CLOSE;
+    // SAFETY: same invariants; this closes the state we just opened.
+    unsafe {
+        WinVerifyTrust(
+            HWND::default(),
+            &mut action,
+            &mut data as *mut _ as *mut c_void,
+        );
+    }
+
+    if status == TRUST_E_BAD_DIGEST {
+        return Err(InstallationCorrupt.into());
+    }
+    if status != 0 {
+        tracing::warn!(
+            status = %format!("{status:#010x}"),
+            "WinVerifyTrust on own image returned non-success; continuing to register"
+        );
+    }
+
+    Ok(())
 }
 
 /// Registers the Firezone sparse MSIX for the current user via

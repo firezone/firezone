@@ -208,6 +208,15 @@ fn try_main(
                 return Ok(());
             }
 
+            if anyhow.any_is::<firezone_gui_client::package_identity::InstallationCorrupt>() {
+                dialog::error(
+                    "Firezone can't start because its program files are corrupt. \
+                     Please reinstall Firezone, then try again. If the issue \
+                     persists, contact your administrator.",
+                )?;
+                return Err(anyhow);
+            }
+
             if anyhow.any_is::<firezone_gui_client::ipc::WrongUser>() {
                 dialog::error(
                     "Firezone is already running in another logon session. \
