@@ -24,6 +24,8 @@ defmodule Portal.Version do
     end
   end
 
+  def fetch_version(_user_agent), do: {:error, :invalid_user_agent}
+
   def fetch_gateway_version(_user_agent) do
     {:error, :invalid_user_agent}
   end

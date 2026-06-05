@@ -24,6 +24,8 @@ defmodule Portal.Timing do
   if Mix.env() in [:dev, :test] do
     defp log_constant_time_exceeded(_constant_time, _elapsed_time), do: :ok
   else
+    require Logger
+
     defp log_constant_time_exceeded(constant_time, elapsed_time) do
       Logger.error("Execution took longer than the given constant time",
         constant_time: constant_time,
