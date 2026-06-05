@@ -582,10 +582,10 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
         return false;
     };
 
-    // On Linux / Android, `EIO` means `quinn-udp` just disabled GSO; we retry once to
-    // re-send the data split into smaller batches.
+    // On Linux / Android, `EIO` or `EINVAL` means `quinn-udp` just disabled GSO; we retry
+    // once to re-send the data split into smaller batches.
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if raw_os_error == libc::EIO && attempt < 1 {
+    if (raw_os_error == libc::EIO || raw_os_error == libc::EINVAL) && attempt < 1 {
         return true;
     }
 
@@ -834,11 +834,13 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn retries_os_error_5_once() {
-        let err = io::Error::from_raw_os_error(libc::EIO);
+    fn retries_gso_errors_once() {
+        for raw in [libc::EIO, libc::EINVAL] {
+            let err = io::Error::from_raw_os_error(raw);
 
-        assert!(should_retry(&err, 0));
-        assert!(!should_retry(&err, 1));
+            assert!(should_retry(&err, 0));
+            assert!(!should_retry(&err, 1));
+        }
     }
 
     #[test]
