@@ -23,12 +23,19 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
+/// Default UDP send buffer size (`SO_SNDBUF`).
+///
+/// A non-zero send buffer matters on Windows: it makes transmit backpressure surface as
+/// `WSAEWOULDBLOCK` - which mio's AFD poll signals as writability, so the `async_io(WRITABLE)` wait
+/// in `send_transmit` absorbs it event-driven, with no timer and no busy-loop - rather than
+/// `WSAENOBUFS`, which carries no readiness signal. Overridable at runtime via
+/// `FIREZONE_UDP_SEND_BUFFER_SIZE`.
 pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
-/// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
+/// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS.
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
 
 /// The Windows equivalent of ENOBUFS.
@@ -36,6 +43,14 @@ const MAX_ENOBUFS_RETRIES: u32 = 24;
 /// "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
 #[cfg(target_os = "windows")]
 const WINDOWS_ENOBUFS: i32 = 10055;
+
+/// Debug counters so we can observe, at runtime, which backpressure condition the Windows send path
+/// actually hits (`WSAENOBUFS` vs `WSAEWOULDBLOCK`) and how often. Sampled into the logs to avoid
+/// flooding at line rate.
+#[cfg(target_os = "windows")]
+static ENOBUFS_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(target_os = "windows")]
+static WOULDBLOCK_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl<F, S> SocketFactory<S> for F
 where
@@ -172,6 +187,12 @@ pub struct PerfUdpSocket {
     inner: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
 
+    /// Maximum number of GSO/USO segments to coalesce per send syscall.
+    ///
+    /// [`quinn_udp::UdpSocketState::max_gso_segments`], except on Windows where segmentation
+    /// offload is off by default (forced to `1`) and only enabled via `FIREZONE_UDP_ENABLE_GSO`.
+    max_gso_segments: usize,
+
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: BufferPool<Vec<u8>>,
 
@@ -206,9 +227,35 @@ impl UdpSocket {
             quinn_state.set_apple_fast_path();
         }
 
+        // Segmentation offload (GSO on Linux, USO on Windows) coalesces many segments into one
+        // syscall. We enable it everywhere by default *except* Windows: there, quinn-udp gates USO
+        // on nothing more than a capability probe (whether `UDP_SEND_MSG_SIZE` is accepted), and a
+        // broken NIC driver segments incorrectly and drops packets *silently* - no error is
+        // returned, so neither quinn nor we can detect it (see quinn-rs/quinn#2491 and Firefox's
+        // USO rollback). On Windows it is therefore opt-in via `FIREZONE_UDP_ENABLE_GSO`.
+        let gso_enabled = if cfg!(target_os = "windows") {
+            std::env::var_os("FIREZONE_UDP_ENABLE_GSO").is_some()
+        } else {
+            true
+        };
+        let max_gso_segments = if gso_enabled {
+            quinn_state.max_gso_segments()
+        } else {
+            1
+        };
+
+        tracing::debug!(
+            max_gso_segments,
+            gso_enabled,
+            gro_segments = quinn_state.gro_segments(),
+            local = %socket_addr,
+            "Initialised UDP socket offload capabilities"
+        );
+
         Ok(PerfUdpSocket {
             inner: self.inner,
             state: quinn_state,
+            max_gso_segments,
             buffer_pool: BufferPool::new(
                 u16::MAX as usize,
                 match socket_addr.ip() {
@@ -324,6 +371,24 @@ impl PerfUdpSocket {
             match self.send_transmit(&transmit).await {
                 Ok(()) => return Ok(()),
                 Err(e) => {
+                    // With a non-zero `SO_SNDBUF`, ordinary Windows transmit backpressure surfaces
+                    // as `WSAEWOULDBLOCK` and is absorbed event-driven by the `async_io(WRITABLE)`
+                    // wait in `send_transmit` - no timer, no busy-loop. A `WSAENOBUFS` (10055) that
+                    // still escapes to here is genuine system-wide buffer exhaustion with no
+                    // readiness signal to await, so we drop the datagram (the tunnelled protocol
+                    // retransmits) rather than sleep or busy-spin. With a send buffer this should be
+                    // rare; the sampled counter lets us confirm that.
+                    #[cfg(target_os = "windows")]
+                    if is_windows_enobufs(&e) {
+                        let total =
+                            ENOBUFS_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if total.is_multiple_of(1000) {
+                            tracing::debug!(total, dst = %datagram.dst, len = %datagram.packet.len(), "WSAENOBUFS (10055); dropping datagram (sampled 1/1000)");
+                        }
+
+                        return Ok(());
+                    }
+
                     let backoff = backoff(&e, attempt).ok_or(e)?; // Attempt to get a backoff value or otherwise bail with error.
 
                     tracing::debug!(?backoff, dst = %datagram.dst, len = %datagram.packet.len(), "Retrying packet");
@@ -394,7 +459,22 @@ impl PerfUdpSocket {
             );
 
             self.inner
-                .async_io(Interest::WRITABLE, || self.state.try_send((&self.inner).into(), &chunk))
+                .async_io(Interest::WRITABLE, || {
+                    let result = self.state.try_send((&self.inner).into(), &chunk);
+
+                    // Debug instrumentation: observe how often the writable path is actually
+                    // exercised on Windows, to contrast with the `WSAENOBUFS` retry path in `send`.
+                    #[cfg(target_os = "windows")]
+                    if matches!(&result, Err(e) if e.kind() == io::ErrorKind::WouldBlock) {
+                        let total =
+                            WOULDBLOCK_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if total.is_multiple_of(1000) {
+                            tracing::debug!(total, %dst, "UDP send would block; awaiting writability (sampled 1/1000)");
+                        }
+                    }
+
+                    result
+                })
                 .await
                 .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
         }
@@ -415,7 +495,7 @@ impl PerfUdpSocket {
             SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
         };
 
-        let max_segments_by_config = self.state.max_gso_segments();
+        let max_segments_by_config = self.max_gso_segments;
         let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size;
 
         let max_segments = std::cmp::min(max_segments_by_config, max_segments_by_size);
@@ -541,19 +621,29 @@ fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
         return Some(exp_delay(attempts));
     }
 
-    // On Windows, we may sometimes encounter error 10055.
-    //
-    // Ideally, we would be able to suspend here but it is unclear how to achieve that.
-    // Thus, we do the next best thing and retry.
-    #[cfg(target_os = "windows")]
-    if raw_os_error == WINDOWS_ENOBUFS && attempts < MAX_ENOBUFS_RETRIES {
-        return Some(exp_delay(attempts));
-    }
+    // Windows' `WSAENOBUFS` (10055) is handled separately in `PerfUdpSocket::send` via a
+    // cooperative yield-and-resend; it deliberately does not use a timer-based backoff, so it is
+    // not matched here.
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios"
+    )))]
+    let _ = (raw_os_error, attempts);
 
     None
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
+/// Returns whether `e` is Windows' `WSAENOBUFS` (os error 10055).
+#[cfg(target_os = "windows")]
+fn is_windows_enobufs(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<io::Error>()
+        .and_then(io::Error::raw_os_error)
+        == Some(WINDOWS_ENOBUFS)
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
 fn exp_delay(attempts: u32) -> Duration {
     Duration::from_nanos(2_u64.pow(attempts))
 }
