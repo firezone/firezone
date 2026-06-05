@@ -499,6 +499,14 @@ pub mod metrics {
             .build()
     }
 
+    pub fn portal_connection_hiccups() -> Counter<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_counter("portal.connection.hiccup")
+            .with_description("Number of portal connection hiccups by cause.")
+            .with_unit("{hiccup}")
+            .build()
+    }
+
     pub fn connection_count() -> Gauge<u64> {
         opentelemetry::global::meter("connlib")
             .u64_gauge("tunnel.connection.count")
