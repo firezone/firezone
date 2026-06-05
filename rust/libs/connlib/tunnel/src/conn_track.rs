@@ -122,7 +122,8 @@ struct Key {
     peer_ip: IpAddr,
 }
 
-const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
+// RFC 5382 REQ-5 floor for an established connection: 2h4m (see `nat_table`).
+const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2 + 60 * 4);
 const UDP_TTL: Duration = Duration::from_secs(60 * 2);
 const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
