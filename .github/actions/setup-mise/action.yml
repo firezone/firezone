@@ -27,8 +27,7 @@ runs:
       if: ${{ runner.os != 'Windows' }}
       run: echo "MISE_SCAN_PATH=$HOME/.local/share/mise/installs" >> "$GITHUB_ENV"
 
-    - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-      if: ${{ runner.os != 'Windows' }}
+    - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
       id: mise-1
       continue-on-error: true
       with:
@@ -37,8 +36,8 @@ runs:
         reshim: true
         cache_key_prefix: "mise-v2"
 
-    - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-      if: ${{ runner.os != 'Windows' && steps.mise-1.outcome == 'failure' }}
+    - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
+      if: ${{ steps.mise-1.outcome == 'failure' }}
       id: mise-2
       continue-on-error: true
       with:
@@ -47,73 +46,13 @@ runs:
         reshim: true
         cache_key_prefix: "mise-v2"
 
-    - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-      if: ${{ runner.os != 'Windows' && steps.mise-2.outcome == 'failure' }}
+    - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
+      if: ${{ steps.mise-2.outcome == 'failure' }}
       with:
         version: ${{ inputs.version }}
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
-
-    # jdx/mise-action on Windows does not bundle `mise-shim.exe`, so cargo
-    # subcommand discovery (`cargo shear` -> `cargo-shear.exe`) silently fails
-    # because reshim has nothing to copy into the shims directory. Install mise
-    # manually from the upstream release zip, which contains both `mise.exe`
-    # and `mise-shim.exe`.
-    # We can remove this once https://github.com/jdx/mise-action/issues/475 ships.
-    - name: Install mise (Windows)
-      if: ${{ runner.os == 'Windows' }}
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
-        $version = "${{ inputs.version }}"
-        $url = "https://github.com/jdx/mise/releases/download/v$version/mise-v$version-windows-x64.zip"
-        $zip = "$env:RUNNER_TEMP\mise.zip"
-        $extracted = "$env:RUNNER_TEMP\mise-extracted"
-        $installDir = "C:\mise"
-
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
-          try {
-            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-            break
-          } catch {
-            if ($attempt -eq 3) { throw }
-            Write-Host "Download attempt $attempt failed: $_"
-            Start-Sleep -Seconds ([Math]::Pow(2, $attempt))
-          }
-        }
-
-        Expand-Archive -Path $zip -DestinationPath $extracted -Force
-        New-Item -ItemType Directory -Force -Path "$installDir\bin" | Out-Null
-        Copy-Item "$extracted\mise\bin\mise.exe" "$installDir\bin\mise.exe" -Force
-        Copy-Item "$extracted\mise\bin\mise-shim.exe" "$installDir\bin\mise-shim.exe" -Force
-
-        Add-Content -Path $env:GITHUB_PATH -Value "$installDir\bin"
-        Add-Content -Path $env:GITHUB_PATH -Value "$env:LOCALAPPDATA\mise\shims"
-
-    - name: mise install (Windows)
-      if: ${{ runner.os == 'Windows' }}
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
-        & "C:\mise\bin\mise.exe" trust --all
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-        $installArgs = @()
-        if ("${{ inputs.install_args }}".Trim().Length -gt 0) {
-          $installArgs = "${{ inputs.install_args }}".Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
-        }
-
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
-          & "C:\mise\bin\mise.exe" install @installArgs
-          if ($LASTEXITCODE -eq 0) { break }
-          if ($attempt -eq 3) { exit $LASTEXITCODE }
-          Write-Host "mise install attempt $attempt failed (exit $LASTEXITCODE)"
-          Start-Sleep -Seconds ([Math]::Pow(2, $attempt + 1))
-        }
-
-        & "C:\mise\bin\mise.exe" reshim
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     # Some tools (currently: firebase-tools) ship as a single self-extracting
     # binary and only materialize their bundled deps on first invocation, into
