@@ -10,6 +10,15 @@ auto_install = false
 RUSTFLAGS = "--cfg tokio_unstable"
 
 [tools]
+# Rust toolchains are managed through rustup; mise activates the first entry by
+# exporting `RUSTUP_TOOLCHAIN`. Stable is listed first so it stays the default —
+# keep it in sync with `rust-toolchain.toml` and `Dockerfile`. The dated nightly
+# only compiles the relay's eBPF object (`relay/server/build.rs`) and needs
+# `rust-src`; eBPF is Linux-only. Keep its version in sync with that build script.
+rust = [
+  "1.96.0",
+  { version = "nightly-2025-05-30", components = "rust-src", os = ["linux"] },
+]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
