@@ -5,6 +5,7 @@ use std::{
 
 use dns_types::DoHUrl;
 use ip_network::IpNetwork;
+use itertools::Itertools as _;
 
 use crate::{
     client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
@@ -71,7 +72,7 @@ impl DnsMapping {
 impl DnsConfig {
     #[must_use = "Check if the DNS mapping has changed"]
     pub(crate) fn update_system_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
-        let sanitized = without_sentinel_ips(&servers);
+        let sanitized = without_sentinel_ips(&servers).unique().collect::<Vec<_>>();
 
         tracing::debug!(?servers, ?sanitized, "Received system-defined DNS servers");
 
@@ -82,7 +83,7 @@ impl DnsConfig {
 
     #[must_use = "Check if the DNS mapping has changed"]
     pub(crate) fn update_upstream_do53_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
-        let sanitized = without_sentinel_ips(&servers);
+        let sanitized = without_sentinel_ips(&servers).unique().collect::<Vec<_>>();
 
         tracing::debug!(
             ?servers,
@@ -99,7 +100,7 @@ impl DnsConfig {
     pub(crate) fn update_upstream_doh_resolvers(&mut self, servers: Vec<DoHUrl>) -> bool {
         tracing::debug!(?servers, "Received upstream-defined DoH servers");
 
-        self.upstream_doh = servers;
+        self.upstream_doh = servers.into_iter().unique().collect();
 
         self.update_dns_mapping()
     }
@@ -196,8 +197,8 @@ fn sentinel_dns_mapping(dns: &[dns::Upstream], old_sentinels: Vec<IpAddr>) -> Dn
     DnsMapping { inner: mapping }
 }
 
-fn without_sentinel_ips(servers: &[IpAddr]) -> Vec<IpAddr> {
-    servers.iter().copied().filter_map(not_sentinel).collect()
+fn without_sentinel_ips(servers: &[IpAddr]) -> impl Iterator<Item = IpAddr> + '_ {
+    servers.iter().copied().filter_map(not_sentinel)
 }
 
 fn not_sentinel(srv: IpAddr) -> Option<IpAddr> {
@@ -278,6 +279,54 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dedups_system_resolvers_preserving_order() {
+        let mut config = DnsConfig::default();
+
+        let changed =
+            config.update_system_resolvers(vec![ip("1.1.1.1"), ip("1.0.0.1"), ip("1.1.1.1")]);
+        assert!(changed);
+
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![do53("1.1.1.1:53"), do53("1.0.0.1:53")]
+        );
+    }
+
+    #[test]
+    fn dedups_upstream_do53_resolvers_preserving_order() {
+        let mut config = DnsConfig::default();
+
+        let changed = config.update_upstream_do53_resolvers(vec![
+            ip("1.1.1.1"),
+            ip("1.0.0.1"),
+            ip("1.1.1.1"),
+        ]);
+        assert!(changed);
+
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![do53("1.1.1.1:53"), do53("1.0.0.1:53")]
+        );
+    }
+
+    #[test]
+    fn dedups_upstream_doh_resolvers_preserving_order() {
+        let mut config = DnsConfig::default();
+
+        let changed = config.update_upstream_doh_resolvers(vec![
+            DoHUrl::cloudflare(),
+            DoHUrl::google(),
+            DoHUrl::cloudflare(),
+        ]);
+        assert!(changed);
+
+        assert_eq!(
+            config.mapping().upstream_servers(),
+            vec![doh(DoHUrl::cloudflare()), doh(DoHUrl::google())]
+        );
+    }
+
     fn ip(address: &str) -> IpAddr {
         address.parse().unwrap()
     }
@@ -286,5 +335,9 @@ mod tests {
         dns::Upstream::Do53 {
             server: socket.parse().unwrap(),
         }
+    }
+
+    fn doh(server: DoHUrl) -> dns::Upstream {
+        dns::Upstream::DoH { server }
     }
 }
