@@ -42,7 +42,7 @@ pub(crate) fn packet_size() -> Histogram<u64> {
 }
 
 /// Histogram of the time the eBPF XDP program spent processing one relayed packet.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
 pub(crate) fn xdp_processing_duration() -> Histogram<u64> {
     opentelemetry::global::meter("relay")
         .u64_histogram("relay.xdp.processing.duration")
@@ -61,7 +61,7 @@ pub(crate) fn datapath_userspace() -> KeyValue {
 }
 
 /// `relay.datapath = xdp`: relayed by the in-kernel XDP program.
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
 pub(crate) fn datapath_xdp() -> KeyValue {
     KeyValue::new("relay.datapath", "xdp")
 }

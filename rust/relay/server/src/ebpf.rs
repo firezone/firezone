@@ -1,7 +1,7 @@
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
 #[path = "ebpf/linux.rs"]
 mod platform;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "ebpf")))]
 #[path = "ebpf/stub.rs"]
 mod platform;
 

@@ -95,7 +95,10 @@ etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
 filetime = "0.2.29"
-firezone-relay = { path = "relay/server" }
+# `default-features = false` disables the `ebpf` feature for library consumers (currently
+# only `tunnel`'s tests), so they don't need the nightly toolchain + `bpf-linker` to build it.
+# The relay binary builds from the package directly and keeps `ebpf` via its own default feature.
+firezone-relay = { path = "relay/server", default-features = false }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 gat-lending-iterator = "0.1.8"
