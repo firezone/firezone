@@ -826,6 +826,7 @@ defmodule PortalWeb.CoreComponents do
   end
 
   attr :type, :string, default: "neutral"
+  attr :size, :string, default: "sm", values: ["xs", "sm", "md"]
   attr :class, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
@@ -841,12 +842,19 @@ defmodule PortalWeb.CoreComponents do
       "neutral" => "bg-neutral-100 text-neutral-800"
     }
 
-    assigns = assign(assigns, colors: colors)
+    sizes = %{
+      "xs" => "text-[10px] px-1.5 py-px",
+      "sm" => "text-xs px-2.5 py-0.5",
+      "md" => "text-sm px-3 py-1"
+    }
+
+    assigns = assign(assigns, colors: colors, sizes: sizes)
 
     ~H"""
     <span
       class={[
-        "text-xs px-2.5 py-0.5 rounded-sm whitespace-nowrap",
+        "rounded whitespace-nowrap",
+        @sizes[@size],
         @colors[@type],
         @class
       ]}

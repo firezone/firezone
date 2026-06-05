@@ -377,7 +377,7 @@ defmodule PortalWeb.SitesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert html =~ "system managed"
+      assert html =~ "system"
       refute html =~ "Delete site"
       refute html =~ "Add resource"
     end

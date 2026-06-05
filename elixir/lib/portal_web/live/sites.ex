@@ -358,9 +358,7 @@ defmodule PortalWeb.Sites do
                   ]}>
                     Internet
                   </div>
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-200/70 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                    system
-                  </span>
+                  <.badge type="accent" size="xs">system</.badge>
                 </div>
                 <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
                   {@internet_site.id}

@@ -185,6 +185,7 @@ defmodule PortalWeb.Sites.Components do
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">{@site.name}</h2>
+            <.badge :if={@site.managed_by == :system} type="accent" size="xs">system</.badge>
             <.site_status_badge status={@status} />
           </div>
           <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate">{@site.id}</p>
