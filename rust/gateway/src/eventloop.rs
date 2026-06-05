@@ -39,7 +39,7 @@ pub struct Eventloop {
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
-        ResolveDnsRequest,
+        (ResolveDnsRequest, Instant),
     >,
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
@@ -49,6 +49,7 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 enum PortalCommand {
@@ -84,6 +85,7 @@ impl Eventloop {
             ),
             logged_permission_denied: false,
             tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
+            dns_lookup_duration: telemetry::otel::metrics::dns_lookup_duration(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -95,7 +97,13 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(GatewayEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
-    DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
+    DomainResolved(
+        (
+            Result<Vec<IpAddr>, Arc<anyhow::Error>>,
+            ResolveDnsRequest,
+            Instant,
+        ),
+    ),
 }
 
 impl Eventloop {
@@ -134,7 +142,14 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
-            CombinedEvent::DomainResolved((result, req)) => {
+            CombinedEvent::DomainResolved((result, req, started_at)) => {
+                let mut attributes = Vec::new();
+                if let Err(e) = &result {
+                    attributes.extend(telemetry::otel::error_layers(e));
+                }
+                self.dns_lookup_duration
+                    .record(started_at.elapsed().as_secs_f64(), &attributes);
+
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     tracing::debug!("Ignoring DNS resolution result during shutdown");
 
@@ -166,14 +181,14 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
 
-        if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {
+        if let Poll::Ready((result, (trigger, started_at))) = self.resolve_tasks.poll_unpin(cx) {
             let result = result.unwrap_or_else(|e| {
                 Err(Arc::new(
                     anyhow::Error::new(e).context("DNS resolution timed out"),
                 ))
             });
 
-            return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
+            return Poll::Ready(CombinedEvent::DomainResolved((result, trigger, started_at)));
         }
 
         if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx)) {
@@ -233,7 +248,10 @@ impl Eventloop {
             tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks
-                    .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
+                    .try_push(
+                        self.resolve(setup_nat.domain().clone()),
+                        (setup_nat, Instant::now()),
+                    )
                     .is_err()
                 {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
