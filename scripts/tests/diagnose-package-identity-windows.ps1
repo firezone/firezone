@@ -60,6 +60,9 @@ function Write-Section([string]$Title) {
     Write-Host ("=" * 72)
 }
 function Normalize([string]$s) { if ($null -eq $s) { "" } else { ($s -replace '\s+', ' ').Trim() } }
+# `Get-AuthenticodeSignature` leaves `SignerCertificate` null for an
+# unsigned (or some invalid) file, so guard before reading `.Subject`.
+function SignerSubject($sig) { if ($sig -and $sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { "(no signer / unsigned)" } }
 
 # RT_MANIFEST (24) / CREATEPROCESS_MANIFEST_RESOURCE_ID (1) reader, so
 # we can see the `<msix>` claim baked into the exe without the SDK.
@@ -107,16 +110,18 @@ Write-Host ("InstallDir: {0}" -f $InstallDir)
 # 1. Installed binaries and their Authenticode signatures.
 Write-Section "Installed binaries & signatures"
 $exeSig = $null
+$exeHash = $null
 if (Test-Path $Exe) {
     $exeSig = Get-AuthenticodeSignature $Exe
     $exeItem = Get-Item $Exe
     Write-Host ("Firezone.exe    : {0}" -f $Exe)
     Write-Host ("  Signature     : {0}" -f $exeSig.Status)
     if ($exeSig.StatusMessage) { Write-Host ("  StatusMessage : {0}" -f $exeSig.StatusMessage) }
-    Write-Host ("  Signer        : {0}" -f $exeSig.SignerCertificate.Subject)
+    Write-Host ("  Signer        : {0}" -f (SignerSubject $exeSig))
     Write-Host ("  Created       : {0}" -f $exeItem.CreationTime)
     Write-Host ("  LastWrite     : {0}" -f $exeItem.LastWriteTime)
-    Write-Host ("  Size / SHA256 : {0} bytes / {1}" -f $exeItem.Length, (Get-FileHash $Exe -Algorithm SHA256).Hash)
+    $exeHash = (Get-FileHash $Exe -Algorithm SHA256).Hash
+    Write-Host ("  Size / SHA256 : {0} bytes / {1}" -f $exeItem.Length, $exeHash)
     if ($exeSig.Status -ne "Valid") {
         Add-Finding "ROOT-CAUSE" ("Firezone.exe signature is '{0}', not 'Valid'. Windows refuses to attach package identity to a binary that fails its publisher signature, so every launch re-registers, asks to restart, and loops. 'HashMismatch' means the exe was modified after it was signed." -f $exeSig.Status)
         if ($exeItem.CreationTime -eq $exeItem.LastWriteTime) {
@@ -134,7 +139,7 @@ if (Test-Path $Msix) {
     $msixSig = Get-AuthenticodeSignature $Msix
     Write-Host ("firezone.msix   : {0}" -f $Msix)
     Write-Host ("  Signature     : {0}" -f $msixSig.Status)
-    Write-Host ("  Signer        : {0}" -f $msixSig.SignerCertificate.Subject)
+    Write-Host ("  Signer        : {0}" -f (SignerSubject $msixSig))
     if ($msixSig.Status -ne "Valid") { Add-Finding "WARN" ("firezone.msix signature is '{0}', not 'Valid'." -f $msixSig.Status) }
 } else {
     Write-Host ("firezone.msix   : NOT FOUND at {0}" -f $Msix)
@@ -196,17 +201,21 @@ try {
 
 # 4. The registered package's own manifest.
 Write-Section "Registered package manifest"
-$regVer = $null; $regExe = $null; $regPub = $null
+$regVer = $null; $regExe = $null; $regPub = $null; $regName = $null; $regApp = $null
 if ($pkg -and $pkg.InstallLocation -and (Test-Path $pkg.InstallLocation)) {
     $manifestPath = Join-Path $pkg.InstallLocation "AppxManifest.xml"
     if (Test-Path $manifestPath) {
         try {
             [xml]$m = Get-Content $manifestPath -Raw
             $regVer = $m.Package.Identity.Version
+            $regName = $m.Package.Identity.Name
             $regPub = $m.Package.Identity.Publisher
             $regExe = $m.Package.Applications.Application.Executable
+            $regApp = $m.Package.Applications.Application.Id
+            Write-Host ("  Identity Name   : {0}" -f $regName)
             Write-Host ("  Identity Version: {0}" -f $regVer)
             Write-Host ("  Publisher       : {0}" -f $regPub)
+            Write-Host ("  Application Id  : {0}" -f $regApp)
             Write-Host ("  Executable      : {0}" -f $regExe)
         } catch { Write-Host ("  (failed to parse AppxManifest.xml: {0})" -f $_) }
     } else { Write-Host ("  AppxManifest.xml not found at {0}" -f $manifestPath) }
@@ -232,8 +241,21 @@ if ($exePub -and $regPub) {
         Add-Finding "ROOT-CAUSE" "Publisher mismatch between Firezone.exe's <msix> claim and the registered package; identity can't attach."
     }
 }
-if ($exeApp -and $regExe -and ($exeApp -ne "Firezone")) {
-    Write-Host ("  note: exe applicationId is '{0}' (expected 'Firezone')" -f $exeApp)
+if ($exePkg -and $regName) {
+    if ($exePkg -eq $regName) {
+        Write-Host ("  packageName : exe {0} == registered {1}   [OK]" -f $exePkg, $regName)
+    } else {
+        Write-Host ("  packageName : exe {0} != registered {1}   [MISMATCH]" -f $exePkg, $regName)
+        Add-Finding "ROOT-CAUSE" ("packageName mismatch: Firezone.exe's <msix> claim names '{0}' but the registered package is '{1}'. The kernel can't resolve the claim, so no identity attaches." -f $exePkg, $regName)
+    }
+}
+if ($exeApp -and $regApp) {
+    if ($exeApp -eq $regApp) {
+        Write-Host ("  applicationId : exe {0} == registered {1}   [OK]" -f $exeApp, $regApp)
+    } else {
+        Write-Host ("  applicationId : exe {0} != registered {1}   [MISMATCH]" -f $exeApp, $regApp)
+        Add-Finding "ROOT-CAUSE" ("applicationId mismatch: Firezone.exe's <msix> claim points at '{0}' but the registered package declares Application Id '{1}'. Identity can't attach." -f $exeApp, $regApp)
+    }
 }
 
 # 6. Does a freshly launched Firezone.exe actually receive identity?
@@ -278,13 +300,25 @@ if ($MsiPath) {
         if ($mp.ExitCode -ne 0) {
             Write-Host ("  msiexec /a failed with {0}" -f $mp.ExitCode)
         } else {
-            foreach ($f in (Get-ChildItem -Recurse $extract -Filter Firezone.exe -ErrorAction SilentlyContinue)) {
+            $payloads = @(Get-ChildItem -Recurse $extract -Filter Firezone.exe -ErrorAction SilentlyContinue)
+            if (-not $payloads) { Write-Host "  no Firezone.exe found in the extracted MSI" }
+            foreach ($f in $payloads) {
                 $s = Get-AuthenticodeSignature $f.FullName
-                Write-Host ("  {0,-13} {1}" -f $s.Status, $f.FullName)
-                if ($s.Status -eq "Valid") {
-                    Add-Finding "INFO" ("The MSI payload Firezone.exe is validly signed but the installed copy is '{0}'. Something modified it after install (AV/EDR, bad copy). Reinstall from a known-good MSI." -f $(if ($exeSig) { $exeSig.Status } else { "?" }))
+                $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash
+                Write-Host ("  payload {0,-13} {1}" -f $s.Status, $f.FullName)
+                Write-Host ("          SHA256 {0}" -f $h)
+                if (-not $exeSig) {
+                    Write-Host "  installed Firezone.exe wasn't readable -- can't compare."
+                } elseif ($exeHash -and ($h -eq $exeHash)) {
+                    # Byte-identical: the installed copy is exactly what this MSI ships.
+                    if ($s.Status -eq "Valid") {
+                        Add-Finding "INFO" "Installed Firezone.exe is byte-identical to this MSI's payload and both are validly signed, so the signature is not the problem on this machine -- look at the version / packageName / applicationId cross-checks and the registration."
+                    } else {
+                        Add-Finding "INFO" ("Installed Firezone.exe is byte-identical to this MSI's payload and both are '{0}', so the binary ships broken: it is modified after signing in the build/packaging pipeline and every install from this MSI loops." -f $s.Status)
+                    }
                 } else {
-                    Add-Finding "INFO" ("The MSI payload Firezone.exe is ALSO '{0}'. The binary is modified after signing in the build/packaging pipeline -- every install will loop. Fix the pipeline so the exe is signed last and nothing rewrites it afterward." -f $s.Status)
+                    # Different bytes: wrong MSI, or modified after install.
+                    Add-Finding "INFO" ("Installed Firezone.exe (SHA256 {0}, {1}) differs from this MSI's payload (SHA256 {2}, {3}). Either -MsiPath isn't the MSI this machine was installed from, or the installed copy changed after install. Re-run against the exact MSI used to install." -f $exeHash, $(if ($exeSig) { $exeSig.Status } else { "?" }), $h, $s.Status)
                 }
             }
         }
