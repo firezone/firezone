@@ -109,8 +109,11 @@ features = [
     "Win32_Security_Authorization",
     # `WinVerifyTrust` to spot a tampered `Firezone.exe` (bad digest)
     # at launch and report a corrupt install instead of looping on the
-    # package-identity restart prompt.
+    # package-identity restart prompt. windows-rs gates the
+    # `WINTRUST_DATA` / `WINTRUST_DATA_0` types that call needs behind
+    # the crypto feature, separate from `WinTrust` itself.
     "Win32_Security_WinTrust",
+    "Win32_Security_Cryptography",
     # IPC system
     "Win32_System_Pipes",
     "Win32_System_Threading",
