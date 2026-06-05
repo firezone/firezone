@@ -230,6 +230,9 @@ defmodule PortalAPI.ActorController do
     %Portal.Actor{account_id: account.id}
     |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
     |> validate_required([:name, :type])
+    |> validate_exclusion(:type, [:api_client],
+      message: "API clients cannot be created via the API"
+    )
   end
 
   defp actor_changeset(actor, attrs) do

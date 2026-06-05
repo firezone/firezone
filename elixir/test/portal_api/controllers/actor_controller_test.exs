@@ -192,6 +192,30 @@ defmodule PortalAPI.ActorControllerTest do
                }
     end
 
+    test "does not allow creating api_client actors", %{conn: conn, actor: api_actor} do
+      attrs = %{
+        "name" => "Rogue API Client",
+        "type" => "api_client"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+
+      assert resp == %{
+               "error" => %{
+                 "reason" => "Unprocessable Content",
+                 "validation_errors" => %{
+                   "type" => ["API clients cannot be created via the API"]
+                 }
+               }
+             }
+    end
+
     test "returns error when users limit hit", %{
       conn: conn,
       account: account,
