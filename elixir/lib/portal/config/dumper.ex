@@ -7,13 +7,13 @@ defmodule Portal.Config.Dumper do
   ## Examples:
 
       iex> dump_ssl_opts(%{"verify" => "verify_none", "versions" => ["tlsv1.3"]})
-      [verify: :verify_none, versions: ['tlsv1.3']]
+      [verify: :verify_none, versions: [~c"tlsv1.3"]]
 
       iex> dump_ssl_opts(%{"keep_secrets" => true})
       ** (ArgumentError) unsupported key keep_secrets in ssl opts
 
       iex> dump_ssl_opts(%{"cacertfile" => "/tmp/cacerts.pem"})
-      [cacertfile: '/tmp/cacerts.pem']
+      [cacertfile: ~c"/tmp/cacerts.pem"]
   """
   # sobelow_skip ["DOS.StringToAtom"]
   def dump_ssl_opts(decoded_json) do
@@ -37,4 +37,33 @@ defmodule Portal.Config.Dumper do
       {k, v} when is_atom(k) -> {k, v}
     end)
   end
+
+  @doc ~S"""
+  Maps JSON-decoded database socket options to `:gen_tcp` terms, translating
+  friendly keys to Linux `IPPROTO_TCP` (6) options. `tcp_*` values are seconds,
+  except `tcp_user_timeout` (ms).
+
+  ## Examples:
+
+      iex> dump_socket_opts(%{"keepalive" => true})
+      [{:keepalive, true}]
+
+      iex> dump_socket_opts(%{"tcp_keepidle" => 10}) == [{:raw, 6, 4, <<10::32-native>>}]
+      true
+
+      iex> dump_socket_opts(%{"keep_secrets" => true})
+      ** (ArgumentError) unsupported key keep_secrets in socket opts
+  """
+  def dump_socket_opts(decoded_json) do
+    Enum.map(decoded_json, fn {k, v} -> socket_opt(k, v) end)
+  end
+
+  defp socket_opt("keepalive", v), do: {:keepalive, v}
+  defp socket_opt("tcp_keepidle", v), do: {:raw, 6, 4, <<v::32-native>>}
+  defp socket_opt("tcp_keepintvl", v), do: {:raw, 6, 5, <<v::32-native>>}
+  defp socket_opt("tcp_keepcnt", v), do: {:raw, 6, 6, <<v::32-native>>}
+  defp socket_opt("tcp_user_timeout", v), do: {:raw, 6, 18, <<v::32-native>>}
+
+  defp socket_opt(k, _v),
+    do: raise(ArgumentError, message: "unsupported key #{k} in socket opts")
 end
