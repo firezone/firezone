@@ -6,10 +6,6 @@ license = { workspace = true }
 
 [features]
 default = ["ebpf"]
-# Compiles and embeds the XDP/eBPF TURN router. This requires a pinned nightly
-# toolchain and `bpf-linker`. Disable it (e.g. via `default-features = false`) to
-# skip the eBPF build when only the sans-IO `Server` is needed, such as in the
-# `tunnel` crate's tests.
 ebpf = ["dep:aya", "dep:aya-log", "dep:ebpf-shared"]
 
 [dependencies]
