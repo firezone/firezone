@@ -51,7 +51,7 @@ pub fn ensure_package_identity() -> Result<()> {
 /// process activated with package identity; on a non-packaged process
 /// it errors, which is our signal to register for the current user.
 #[cfg(target_os = "windows")]
-fn has_package_identity() -> bool {
+pub fn has_package_identity() -> bool {
     windows::ApplicationModel::Package::Current().is_ok()
 }
 

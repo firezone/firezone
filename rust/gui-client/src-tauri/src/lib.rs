@@ -55,10 +55,10 @@ pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
 /// `<Application Id="Firezone">` from `win_files/AppxManifest.xml`.
 ///
 /// Windows attributes toast notifications to the calling process's
-/// package AUMID, so this is what we must register them under (not
-/// [`BUNDLE_ID`], which only worked back when the GUI was a plain MSI
-/// install with a Start Menu shortcut carrying that AUMID).
-#[cfg(target_os = "windows")]
+/// package AUMID, so this is what we register them under when the
+/// process has package identity (not [`BUNDLE_ID`], which only worked
+/// back when the GUI was a plain MSI install with a Start Menu shortcut
+/// carrying that AUMID).
 pub const PACKAGE_AUMID: &str = concat!(env!("FIREZONE_PACKAGE_FAMILY_NAME"), "!Firezone");
 
 #[cfg(target_os = "linux")]
