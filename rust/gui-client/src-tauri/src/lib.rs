@@ -32,9 +32,8 @@ pub mod settings;
 /// but sometimes I need to use this before Tauri has booted up, or in a place where
 /// getting the Tauri app handle would be awkward.
 ///
-/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
-/// so if your dev system has Firezone installed by MSI, the notifications will look right.
-/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+/// Note: this is *not* the AppUserModelId Windows uses to label notifications. Now
+/// that the GUI runs under a sparse MSIX identity, that is [`PACKAGE_AUMID`].
 pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// The Sentry "release" we are part of.
@@ -50,6 +49,17 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 /// `register-sparse.exe` to stage / provision / deprovision the
 /// package against the AppX deployment service.
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
+
+/// The AppUserModelId of the GUI under its sparse MSIX identity:
+/// `<PackageFamilyName>!<Application Id>`, where `Firezone` is the
+/// `<Application Id="Firezone">` from `win_files/AppxManifest.xml`.
+///
+/// Windows attributes toast notifications to the calling process's
+/// package AUMID, so this is what we must register them under (not
+/// [`BUNDLE_ID`], which only worked back when the GUI was a plain MSI
+/// install with a Start Menu shortcut carrying that AUMID).
+#[cfg(target_os = "windows")]
+pub const PACKAGE_AUMID: &str = concat!(env!("FIREZONE_PACKAGE_FAMILY_NAME"), "!Firezone");
 
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
