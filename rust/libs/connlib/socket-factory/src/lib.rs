@@ -23,6 +23,11 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
+/// On Windows, setting `SO_SNDBUF` to 0 disables kernel-level send buffering,
+/// which avoids an extra copy and lets `WSASendMsg` complete synchronously.
+#[cfg(target_os = "windows")]
+pub const SEND_BUFFER_SIZE: usize = 0;
+#[cfg(not(target_os = "windows"))]
 pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
