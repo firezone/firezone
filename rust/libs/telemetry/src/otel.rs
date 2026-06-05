@@ -334,6 +334,25 @@ mod error_layer_tests {
         );
     }
 
+    #[test]
+    fn error_layers_masks_http_status_code() {
+        // `StatusCode`'s `Display` renders the numeric code plus its reason phrase,
+        // e.g. "503 Service Unavailable", which is what `phoenix-channel` interpolates
+        // as `{status}`.
+        let error = anyhow::Error::msg("http error: 503 Service Unavailable");
+
+        // The numeric status code *is* masked to `{num}`; only the (bounded) reason
+        // phrase survives. So with the body removed, an HTTP hiccup label would be
+        // low-cardinality.
+        assert_eq!(
+            error_layers(&error),
+            vec![KeyValue::new(
+                "error.type.0",
+                "http error: {num} Service Unavailable"
+            )]
+        );
+    }
+
     #[derive(Debug, thiserror::Error)]
     #[error("failed to handle packet from {client_ip}")]
     struct StructError {
