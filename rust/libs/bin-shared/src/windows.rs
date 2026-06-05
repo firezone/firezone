@@ -122,33 +122,51 @@ pub struct UdpSocketFactory {
 
 impl SocketFactory<UdpSocket> for UdpSocketFactory {
     fn bind(&self, local: SocketAddr) -> io::Result<UdpSocket> {
-        let src_ip_cache = self.src_ip_cache.clone();
+        let resolver = Arc::new(SrcIpResolver {
+            src_ip_cache: self.src_ip_cache.clone(),
+        });
 
-        let source_ip_resolver = move |dst| {
-            // First, try to get the existing entry (this is only using a read-lock internally so quite fast.)
-            if let Some(addr) = src_ip_cache.get(&dst) {
-                return Ok(*addr.value());
-            }
-
-            // If we don't have an entry, compute it.
-            let addr = get_best_non_tunnel_route(dst)?.addr;
-
-            // Insert the result.
-            // This may be a possible data-race if two sockets want to resolve the same IP at the same time.
-            // It doesn't matter though as the result of `get_best_non_tunnel_route` should be deterministic.
-            src_ip_cache.insert(dst, addr);
-
-            Ok(addr)
-        };
-
-        let socket =
-            socket_factory::udp(local)?.with_source_ip_resolver(Box::new(source_ip_resolver));
+        let socket = socket_factory::udp(local)?.with_source_ip_resolver(resolver);
 
         Ok(socket)
     }
 
     fn reset(&self) {
         self.src_ip_cache.clear()
+    }
+}
+
+/// Resolves and caches the source IP to use for outgoing UDP packets.
+struct SrcIpResolver {
+    src_ip_cache: Arc<DashMap<IpAddr, IpAddr>>,
+}
+
+impl socket_factory::SourceIpResolver for SrcIpResolver {
+    fn resolve(&self, dst: IpAddr) -> io::Result<IpAddr> {
+        // First, try to get the existing entry (this is only using a read-lock internally so quite fast.)
+        if let Some(addr) = self.src_ip_cache.get(&dst) {
+            return Ok(*addr.value());
+        }
+
+        // If we don't have an entry, compute it.
+        let addr = get_best_non_tunnel_route(dst)?.addr;
+
+        // Insert the result.
+        // This may be a possible data-race if two sockets want to resolve the same IP at the same time.
+        // It doesn't matter though as the result of `get_best_non_tunnel_route` should be deterministic.
+        self.src_ip_cache.insert(dst, addr);
+
+        Ok(addr)
+    }
+
+    fn reset(&self) {
+        // The OS rejected a cached source IP (e.g. its egress interface went away). Rather than
+        // hunting down the offending entry, drop the entire cache: a roam typically invalidates
+        // the egress interface for _all_ destinations, so we'd have to re-resolve them anyway.
+        // Clearing everything is both simpler and more robust.
+        self.src_ip_cache.clear();
+
+        tracing::debug!("Reset source IP cache");
     }
 }
 

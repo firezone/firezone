@@ -1,13 +1,14 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool};
-use bytes::{Buf as _, BytesMut};
+use bytes::BytesMut;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
-use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
+use quinn_udp::{EcnCodepoint, UdpSockRef};
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
+use std::sync::Arc;
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -40,6 +41,18 @@ const SPIN_LIMIT: u32 = 6;
 /// "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
 #[cfg(target_os = "windows")]
 const WINDOWS_ENOBUFS: i32 = 10055;
+
+/// The Windows error code `WSAEINVAL` ("An invalid argument was supplied.").
+///
+/// We observe this when sending a packet with an explicit source IP (`IP_PKTINFO`) whose
+/// interface has gone away, e.g. after the egress interface is disabled and routing fails
+/// over to another interface. See [`PerfUdpSocket::send`].
+#[cfg(target_os = "windows")]
+const WINDOWS_INVALID_ARGUMENT: i32 = 10022;
+
+/// How many times we at most re-send a packet after evicting a stale source IP on `WSAEINVAL`.
+#[cfg(target_os = "windows")]
+const MAX_INVALID_ARGUMENT_RETRIES: u32 = 1;
 
 impl<F, S> SocketFactory<S> for F
 where
@@ -164,10 +177,19 @@ impl std::os::fd::AsFd for TcpSocket {
     }
 }
 
+/// Resolves the source IP to use when sending a UDP packet to a given destination.
+///
+/// On Windows, we must set an explicit source IP on every outgoing UDP packet to avoid
+/// routing loops. Computing it is expensive, so implementations are expected to cache the
+/// result.
+pub trait SourceIpResolver: Send + Sync + 'static {
+    fn resolve(&self, dst: IpAddr) -> std::io::Result<IpAddr>;
+    fn reset(&self);
+}
+
 pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
-    source_ip_resolver:
-        Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
+    source_ip_resolver: Option<Arc<dyn SourceIpResolver>>,
     port: u16,
 }
 
@@ -181,8 +203,7 @@ pub struct PerfUdpSocket {
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
-    source_ip_resolver:
-        Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
+    source_ip_resolver: Option<Arc<dyn SourceIpResolver>>,
     port: u16,
 }
 
@@ -244,14 +265,11 @@ impl UdpSocket {
 
     /// Configures a new source IP resolver for this UDP socket.
     ///
-    /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
-    /// If set, this function will be called for _every_ packet and should therefore be fast.
+    /// In case [`DatagramOut::src`] is [`None`], this resolver will be used to set a source IP given the destination IP of the datagram.
+    /// If set, [`SourceIpResolver::resolve`] will be called for _every_ packet and should therefore be fast.
     ///
     /// Errors during resolution result in the packet being dropped.
-    pub fn with_source_ip_resolver(
-        mut self,
-        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>,
-    ) -> Self {
+    pub fn with_source_ip_resolver(mut self, resolver: Arc<dyn SourceIpResolver>) -> Self {
         self.source_ip_resolver = Some(resolver);
         self
     }
@@ -323,15 +341,76 @@ impl PerfUdpSocket {
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
-        let transmit = self.prepare_transmit(
-            datagram.dst,
-            datagram.src.map(|s| s.ip()),
-            datagram.packet.chunk(),
-            datagram.segment_size,
-            datagram.ecn,
-        )?;
+        let total = datagram.packet.len();
+        let dst = datagram.dst;
+        let segment_size = datagram.segment_size;
 
-        self.send_transmit(&transmit).await?;
+        // Offset of the next byte that still needs to be sent. On a retryable error
+        // we resume from here instead of restarting the whole transmit, so a batch
+        // the kernel already accepted is never re-sent.
+        let mut offset = 0;
+        let mut attempt = 0;
+
+        while offset < total {
+            // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
+            // the remaining data needs to be re-split into smaller batches.
+            let chunk_size = self.calculate_chunk_size(segment_size, dst)?;
+
+            let end = std::cmp::min(offset + chunk_size, total);
+            let contents = &datagram.packet[offset..end];
+            let len = contents.len();
+            let num_packets = len / segment_size;
+
+            let chunk = self.prepare_transmit(
+                dst,
+                datagram.src.map(|s| s.ip()),
+                contents,
+                datagram.segment_size,
+                datagram.ecn,
+            )?;
+            let src = chunk.src_ip;
+
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, %num_packets, %segment_size);
+
+            match self
+                .inner
+                .async_io(Interest::WRITABLE, || {
+                    self.state.try_send((&self.inner).into(), &chunk)
+                })
+                .await
+            {
+                Ok(()) => {
+                    self.record_send_batch_size(num_packets);
+                    self.record_send_retries(attempt);
+
+                    offset = end;
+                    attempt = 0; // Each batch gets its own retry budget.
+                }
+                // On Windows, `WSAEINVAL` might mean that the source IP we attached is no longer
+                // valid because its egress interface disappeared (e.g. it was disabled and routing
+                // failed over).
+                // See if we can successfully retransmit the packet after resetting the resolver.
+                #[cfg(target_os = "windows")]
+                Err(e)
+                    if datagram.src.is_none()
+                        && is_invalid_argument(&e)
+                        && attempt < MAX_INVALID_ARGUMENT_RETRIES =>
+                {
+                    self.reset_source_ip_resolver()
+                }
+                Err(e) if should_retry(&e, attempt) => spin_and_yield(attempt).await,
+                Err(e) => {
+                    self.record_send_retries(attempt);
+
+                    return Err(e).with_context(|| format!(
+                        "Failed to send {len} bytes at offset {offset}/{total} with segment_size {segment_size} to {dst}"
+                    ));
+                }
+            }
+
+            attempt += 1;
+        }
 
         Ok(())
     }
@@ -350,74 +429,6 @@ impl PerfUdpSocket {
         let recv_buffer_size = socket.recv_buffer_size()?;
 
         tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
-
-        Ok(())
-    }
-
-    async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
-        let segment_size = transmit
-            .segment_size
-            .expect("`segment_size` must always be set");
-        let src = transmit.src_ip;
-        let dst = transmit.destination;
-
-        let total = transmit.contents.len();
-
-        // Offset of the next byte that still needs to be sent. On a retryable error
-        // we resume from here instead of restarting the whole transmit, so a batch
-        // the kernel already accepted is never re-sent.
-        let mut offset = 0;
-        let mut attempt = 0;
-
-        while offset < total {
-            // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
-            // the remaining data needs to be re-split into smaller batches.
-            let chunk_size = self.calculate_chunk_size(segment_size, dst)?;
-
-            let end = std::cmp::min(offset + chunk_size, total);
-            let contents = &transmit.contents[offset..end];
-
-            let chunk = Transmit {
-                destination: dst,
-                ecn: transmit.ecn,
-                contents,
-                segment_size: Some(segment_size),
-                src_ip: src,
-            };
-
-            #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %(contents.len() / segment_size), %segment_size);
-
-            match self
-                .inner
-                .async_io(Interest::WRITABLE, || {
-                    self.state.try_send((&self.inner).into(), &chunk)
-                })
-                .await
-            {
-                Ok(()) => {
-                    self.record_send_batch_size(contents.len() / segment_size);
-                    self.record_send_retries(attempt);
-
-                    offset = end;
-                    attempt = 0; // Each batch gets its own retry budget.
-                }
-                Err(e) if should_retry(&e, attempt) => {
-                    spin_and_yield(attempt).await;
-                    attempt += 1;
-                }
-                Err(e) => {
-                    self.record_send_retries(attempt);
-
-                    return Err(e).with_context(|| {
-                        format!(
-                            "Failed to send {} bytes at offset {offset}/{total} with segment_size {segment_size} to {dst}",
-                            contents.len()
-                        )
-                    });
-                }
-            }
-        }
 
         Ok(())
     }
@@ -519,9 +530,20 @@ impl PerfUdpSocket {
             return Ok(None);
         };
 
-        let src = (resolver)(dst)?;
+        let src = resolver.resolve(dst)?;
 
         Ok(Some(src))
+    }
+
+    /// Flush all cached source IPs that the resolver may hold.
+    ///
+    /// Called when the OS rejected a previously-resolved source IP so that subsequent sends
+    /// re-resolve their source IPs (e.g. after the egress interface went away).
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    fn reset_source_ip_resolver(&self) {
+        if let Some(resolver) = self.source_ip_resolver.as_ref() {
+            resolver.reset();
+        }
     }
 }
 
@@ -619,6 +641,19 @@ async fn spin_and_yield(attempt: u32) {
     }
 
     tokio::task::yield_now().await;
+}
+
+/// Whether `e` is a Windows `WSAEINVAL` error.
+///
+/// This is a heuristic: `WSAEINVAL` is a generic "invalid argument" error and not every
+/// occurrence means the attached source IP went stale. But that is by far the most likely cause
+/// in our send path, and treating it as such is safe — at worst we flush the cache and re-resolve
+/// the same IP.
+#[cfg(target_os = "windows")]
+fn is_invalid_argument(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<io::Error>()
+        .and_then(|e| e.raw_os_error())
+        == Some(WINDOWS_INVALID_ARGUMENT)
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
