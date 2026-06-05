@@ -1899,9 +1899,11 @@ defmodule PortalWeb.Resources.Components do
   attr :presence_tick, :integer, default: 0
 
   def resource_status_badge(assigns) do
+    assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.presence_tick))
+
     ~H"""
-    <.status_badge style={if resource_online?(@resource, @presence_tick), do: :success, else: :neutral}>
-      {if resource_online?(@resource, @presence_tick), do: "Online", else: "Offline"}
+    <.status_badge style={if @online?, do: :success, else: :neutral}>
+      {if @online?, do: "Online", else: "Offline"}
     </.status_badge>
     """
   end
