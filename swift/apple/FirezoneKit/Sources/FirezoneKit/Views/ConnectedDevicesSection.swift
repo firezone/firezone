@@ -41,6 +41,10 @@
           copyableRow(device.tunIPv4)
         }
 
+        Section(header: Text("Tunnel IPv6")) {
+          copyableRow(device.tunIPv6)
+        }
+
         Section(header: Text("Client ID")) {
           copyableRow(device.id)
         }

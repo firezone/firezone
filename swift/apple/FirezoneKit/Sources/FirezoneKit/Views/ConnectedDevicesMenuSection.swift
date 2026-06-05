@@ -60,6 +60,14 @@
 
         Divider()
 
+        Text("Tunnel IPv6")
+          .foregroundStyle(.secondary)
+        Button(device.tunIPv6) {
+          Clipboard.copy(device.tunIPv6)
+        }
+
+        Divider()
+
         Text("Client ID")
           .foregroundStyle(.secondary)
         Button(device.id) {

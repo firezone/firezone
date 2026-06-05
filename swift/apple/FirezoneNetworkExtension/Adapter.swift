@@ -575,7 +575,8 @@ extension FirezoneKit.Site {
 
 extension FirezoneKit.ConnectedDevice {
   init(_ device: ConnectedDevice) {
-    self.init(id: device.id, tunIPv4: device.tunIpv4, pools: device.pools)
+    self.init(
+      id: device.id, tunIPv4: device.tunIpv4, tunIPv6: device.tunIpv6, pools: device.pools)
   }
 }
 

@@ -171,6 +171,7 @@
         ConnectedDevice(
           id: "client-\(index + 1)",
           tunIPv4: "100.96.0.\(index + 1)",
+          tunIPv6: "fd00:2021:1111:8000::\(index + 1)",
           pools: poolPatterns[index % poolPatterns.count]
         )
       }

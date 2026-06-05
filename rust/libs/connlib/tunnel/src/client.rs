@@ -263,6 +263,7 @@ impl ClientState {
                     return None;
                 };
                 let tunneled_ipv4 = peer.tun_ipv4();
+                let tunneled_ipv6 = peer.tun_ipv6();
 
                 let mut pool_names = Vec::new();
                 for pool in &pools {
@@ -292,6 +293,7 @@ impl ClientState {
                 Some(ConnectedDeviceView {
                     id: *client_id,
                     tunneled_ipv4,
+                    tunneled_ipv6,
                     pools: pool_names,
                 })
             })

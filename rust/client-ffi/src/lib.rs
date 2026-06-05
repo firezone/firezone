@@ -123,6 +123,8 @@ pub struct ConnectedDevice {
     pub id: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: String,
+    /// Tunnel IPv6 address the device is reachable on.
+    pub tun_ipv6: String,
     /// Names of the device pools this peer belongs to, sorted (typically one,
     /// but can be multiple).
     pub pools: Vec<String>,
@@ -733,6 +735,7 @@ impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
         ConnectedDevice {
             id: device.id.to_string(),
             tun_ipv4: device.tunneled_ipv4.to_string(),
+            tun_ipv6: device.tunneled_ipv6.to_string(),
             pools: device.pools,
         }
     }
