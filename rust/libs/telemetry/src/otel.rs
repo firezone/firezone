@@ -305,50 +305,29 @@ mod error_layer_tests {
     }
 
     #[test]
-    fn http_error_hiccup_layers() {
-        // Mirrors the error `phoenix-channel` emits on an HTTP hiccup:
-        // `anyhow::Error::new(InternalError::WebSocket(Http)).context("Connection hiccup")`,
-        // whose inner `Display` is `"http error: {status} - {body}"` (and `StatusCode`'s
-        // own `Display` is e.g. `"503 Service Unavailable"`).
-        let hiccup = anyhow::Error::new(HttpHiccup {
-            status: "503 Service Unavailable",
-            body: r#"{"error":"service_unavailable"}"#,
-        })
-        .context("Connection hiccup");
+    fn tungstenite_http_error_omits_body() {
+        use tokio_tungstenite::tungstenite::{
+            self,
+            http::{Response, StatusCode},
+        };
 
-        let layers = error_layers(&hiccup);
+        // The real error `phoenix-channel` gets from a failed websocket upgrade. The
+        // response deliberately carries a body to demonstrate it does not surface.
+        let response = Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(Some(br#"{"error":"service_unavailable"}"#.to_vec()))
+            .unwrap();
+        let error = anyhow::Error::new(tungstenite::Error::Http(Box::new(response)));
 
-        // Only the numeric status code is masked (to `{num}`); the status reason and the
-        // entire response body survive verbatim as the label value. This both leaks the
-        // body into telemetry and makes the value high-cardinality (a per-request body
-        // yields a new series), while 429 vs 503 become indistinguishable.
-        assert_eq!(
-            layers,
-            vec![
-                KeyValue::new("error.type.0", "Connection hiccup"),
-                KeyValue::new(
-                    "error.type.1",
-                    r#"http error: {num} Service Unavailable - {"error":"service_unavailable"}"#
-                ),
-            ]
-        );
-    }
-
-    #[test]
-    fn error_layers_masks_http_status_code() {
-        // `StatusCode`'s `Display` renders the numeric code plus its reason phrase,
-        // e.g. "503 Service Unavailable", which is what `phoenix-channel` interpolates
-        // as `{status}`.
-        let error = anyhow::Error::msg("http error: 503 Service Unavailable");
-
-        // The numeric status code *is* masked to `{num}`; only the (bounded) reason
-        // phrase survives. So with the body removed, an HTTP hiccup label would be
-        // low-cardinality.
+        // `tungstenite`'s own `Display` is status-only ("HTTP error: 503 Service
+        // Unavailable"): the body never appears and the numeric code is masked to `{num}`.
+        // The body that motivated this PR is added by `phoenix-channel`'s custom
+        // `InternalError` `Display`, not by tungstenite.
         assert_eq!(
             error_layers(&error),
             vec![KeyValue::new(
                 "error.type.0",
-                "http error: {num} Service Unavailable"
+                "HTTP error: {num} Service Unavailable"
             )]
         );
     }
@@ -362,13 +341,6 @@ mod error_layer_tests {
     #[derive(Debug, thiserror::Error)]
     #[error("{0} is not a client IP")]
     struct TupleError(&'static str);
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("http error: {status} - {body}")]
-    struct HttpHiccup {
-        status: &'static str,
-        body: &'static str,
-    }
 }
 
 #[cfg(test)]
