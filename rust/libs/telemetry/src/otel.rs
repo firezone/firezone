@@ -304,6 +304,36 @@ mod error_layer_tests {
         assert_eq!(error_layers(&error).len(), MAX_ERROR_LAYERS);
     }
 
+    #[test]
+    fn http_error_hiccup_layers() {
+        // Mirrors the error `phoenix-channel` emits on an HTTP hiccup:
+        // `anyhow::Error::new(InternalError::WebSocket(Http)).context("Connection hiccup")`,
+        // whose inner `Display` is `"http error: {status} - {body}"` (and `StatusCode`'s
+        // own `Display` is e.g. `"503 Service Unavailable"`).
+        let hiccup = anyhow::Error::new(HttpHiccup {
+            status: "503 Service Unavailable",
+            body: r#"{"error":"service_unavailable"}"#,
+        })
+        .context("Connection hiccup");
+
+        let layers = error_layers(&hiccup);
+
+        // Only the numeric status code is masked (to `{num}`); the status reason and the
+        // entire response body survive verbatim as the label value. This both leaks the
+        // body into telemetry and makes the value high-cardinality (a per-request body
+        // yields a new series), while 429 vs 503 become indistinguishable.
+        assert_eq!(
+            layers,
+            vec![
+                KeyValue::new("error.type.0", "Connection hiccup"),
+                KeyValue::new(
+                    "error.type.1",
+                    r#"http error: {num} Service Unavailable - {"error":"service_unavailable"}"#
+                ),
+            ]
+        );
+    }
+
     #[derive(Debug, thiserror::Error)]
     #[error("failed to handle packet from {client_ip}")]
     struct StructError {
@@ -313,6 +343,13 @@ mod error_layer_tests {
     #[derive(Debug, thiserror::Error)]
     #[error("{0} is not a client IP")]
     struct TupleError(&'static str);
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("http error: {status} - {body}")]
+    struct HttpHiccup {
+        status: &'static str,
+        body: &'static str,
+    }
 }
 
 #[cfg(test)]
