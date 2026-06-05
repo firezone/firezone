@@ -3,7 +3,6 @@ defmodule Portal.Changes.Hooks.Accounts do
   alias Portal.{Billing, Changes.Change, PubSub}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
-  require Logger
 
   @impl true
   def on_insert(_lsn, _data), do: :ok

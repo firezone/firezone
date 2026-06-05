@@ -44,19 +44,19 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
     }
   end
 
-  defp csp_policy_for(conn) do
-    if live_reload_frame?(conn) and @live_reload_frame_csp_policy do
-      @live_reload_frame_csp_policy
-    else
-      @default_csp_policy
+  if @live_reload_frame_csp_policy do
+    defp csp_policy_for(conn) do
+      if String.starts_with?(conn.request_path, "/phoenix/live_reload/frame") do
+        @live_reload_frame_csp_policy
+      else
+        @default_csp_policy
+      end
     end
+  else
+    defp csp_policy_for(_conn), do: @default_csp_policy
   end
 
   defp interpolate_nonce(policy, nonce) do
     Enum.map(policy, &String.replace(&1, "${nonce}", nonce))
-  end
-
-  defp live_reload_frame?(conn) do
-    String.starts_with?(conn.request_path, "/phoenix/live_reload/frame")
   end
 end

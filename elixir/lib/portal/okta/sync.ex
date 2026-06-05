@@ -15,7 +15,6 @@ defmodule Portal.Okta.Sync do
   alias __MODULE__.Database
 
   require Logger
-  require OpenTelemetry.Tracer
 
   @syncable_okta_user_statuses ~w[
     ACTIVE

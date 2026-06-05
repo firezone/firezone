@@ -1245,8 +1245,6 @@ defmodule PortalWeb.Groups.Components do
     do:
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--surface-raised)] text-[var(--text-secondary)]"
 
-  defp get_idp_id(nil), do: nil
-
   defp get_idp_id(idp_id) do
     case String.split(idp_id, ":", parts: 2) do
       [_provider, actual_id] -> actual_id

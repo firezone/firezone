@@ -6,7 +6,6 @@ defmodule Portal.Repo do
   alias Portal.Repo
   alias Portal.Repo.Paginator
   alias Portal.Repo.OffsetPaginator
-  require Ecto.Query
 
   defoverridable get_dynamic_repo: 0
 

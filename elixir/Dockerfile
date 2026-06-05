@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.19.5-erlang-28.5-alpine-3.23.4 AS compiler
+FROM hexpm/elixir:1.20.0-erlang-29.0.1-alpine-3.23.4 AS compiler
 
 ENV LANG=C.UTF-8
 

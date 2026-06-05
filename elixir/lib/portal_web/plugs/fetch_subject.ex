@@ -5,8 +5,6 @@ defmodule PortalWeb.Plugs.FetchSubject do
   alias Portal.Account
   alias Portal.Authentication
 
-  require Logger
-
   @impl true
   def init(opts), do: opts
 

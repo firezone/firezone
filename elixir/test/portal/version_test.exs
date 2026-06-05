@@ -38,6 +38,14 @@ defmodule Portal.VersionTest do
       assert Portal.Version.fetch_version("Fedora/42.0.0 gateway/1.4.5 (arm64; 24.1.0)") ==
                {:ok, "1.4.5"}
     end
+
+    test "returns error for an unparseable user agent" do
+      assert Portal.Version.fetch_version("not a user agent") == {:error, :invalid_user_agent}
+    end
+
+    test "returns error for a missing user agent" do
+      assert Portal.Version.fetch_version(nil) == {:error, :invalid_user_agent}
+    end
   end
 
   describe "client_supports_sites_payload?/1" do
