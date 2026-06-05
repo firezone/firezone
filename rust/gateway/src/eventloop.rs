@@ -4,6 +4,11 @@ use dns_types::DomainName;
 use telemetry::{Telemetry, analytics};
 
 use hickory_resolver::TokioResolver;
+use hickory_resolver::lookup::Lookup;
+use hickory_resolver::net::{DnsError, NetError};
+use hickory_resolver::proto::op::ResponseCode;
+use hickory_resolver::proto::rr::RecordType;
+use opentelemetry::KeyValue;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
@@ -39,7 +44,7 @@ pub struct Eventloop {
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
-        (ResolveDnsRequest, Instant),
+        ResolveDnsRequest,
     >,
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
@@ -97,13 +102,7 @@ enum CombinedEvent {
     SigIntTerm,
     Tunnel(GatewayEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
-    DomainResolved(
-        (
-            Result<Vec<IpAddr>, Arc<anyhow::Error>>,
-            ResolveDnsRequest,
-            Instant,
-        ),
-    ),
+    DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
 }
 
 impl Eventloop {
@@ -142,14 +141,7 @@ impl Eventloop {
                 "phoenix channel task stopped unexpectedly",
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
-            CombinedEvent::DomainResolved((result, req, started_at)) => {
-                let mut attributes = Vec::new();
-                if let Err(e) = &result {
-                    attributes.extend(telemetry::otel::error_layers(e));
-                }
-                self.dns_lookup_duration
-                    .record(started_at.elapsed().as_secs_f64(), &attributes);
-
+            CombinedEvent::DomainResolved((result, req)) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     tracing::debug!("Ignoring DNS resolution result during shutdown");
 
@@ -181,14 +173,14 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
 
-        if let Poll::Ready((result, (trigger, started_at))) = self.resolve_tasks.poll_unpin(cx) {
+        if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {
             let result = result.unwrap_or_else(|e| {
                 Err(Arc::new(
                     anyhow::Error::new(e).context("DNS resolution timed out"),
                 ))
             });
 
-            return Poll::Ready(CombinedEvent::DomainResolved((result, trigger, started_at)));
+            return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
         }
 
         if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx)) {
@@ -248,10 +240,7 @@ impl Eventloop {
             tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
                     .resolve_tasks
-                    .try_push(
-                        self.resolve(setup_nat.domain().clone()),
-                        (setup_nat, Instant::now()),
-                    )
+                    .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
                     .is_err()
                 {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
@@ -494,33 +483,126 @@ impl Eventloop {
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
         let resolver = self.resolver.clone();
+        let dns_lookup_duration = self.dns_lookup_duration.clone();
 
         async move {
-            let ipv4_lookup = resolver.ipv4_lookup(domain.to_string());
-            let ipv6_lookup = resolver.ipv6_lookup(domain.to_string());
+            // Resolve `A` and `AAAA` as two independent lookups so that each is
+            // recorded with its own query-type and response-code attributes.
+            let ipv4 = resolve_record(&resolver, &dns_lookup_duration, &domain, RecordType::A);
+            let ipv6 = resolve_record(&resolver, &dns_lookup_duration, &domain, RecordType::AAAA);
 
-            let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                (Ok(ipv4), Ok(ipv6)) => lookup_to_ips(&ipv4).chain(lookup_to_ips(&ipv6)).collect(),
-                (Ok(ipv4), Err(e)) => {
-                    tracing::debug!(%domain, "AAAA lookup failed: {e}");
+            let (ipv4, ipv6) = futures::future::join(ipv4, ipv6).await;
 
-                    lookup_to_ips(&ipv4).collect()
-                }
-                (Err(e), Ok(ipv6)) => {
-                    tracing::debug!(%domain, "A lookup failed: {e}");
-
-                    lookup_to_ips(&ipv6).collect()
-                }
-                (Err(e1), Err(e2)) => {
-                    tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
-
-                    vec![]
-                }
-            };
-
-            Ok(ips)
+            Ok(ipv4.into_iter().chain(ipv6).collect())
         }
     }
+}
+
+/// Performs a single recursive DNS lookup against the upstream resolver, recording
+/// its duration with `dns.question.type` and `dns.response.code` attributes.
+async fn resolve_record(
+    resolver: &TokioResolver,
+    dns_lookup_duration: &opentelemetry::metrics::Histogram<f64>,
+    domain: &DomainName,
+    record_type: RecordType,
+) -> Vec<IpAddr> {
+    let started_at = Instant::now();
+    let result = resolver.lookup(domain.to_string(), record_type).await;
+
+    dns_lookup_duration.record(
+        started_at.elapsed().as_secs_f64(),
+        &lookup_attributes(record_type, &result),
+    );
+
+    match result {
+        Ok(lookup) => lookup_to_ips(&lookup).collect(),
+        Err(e) => {
+            tracing::debug!(%domain, %record_type, "DNS lookup failed: {e}");
+
+            Vec::new()
+        }
+    }
+}
+
+/// Builds the metric attributes for a completed lookup.
+///
+/// On success (or any DNS-level error code such as `NXDOMAIN`), the response code is
+/// recorded. Transport/protocol failures (e.g. timeouts) carry no response code, so
+/// the error layers are recorded instead.
+fn lookup_attributes(record_type: RecordType, result: &Result<Lookup, NetError>) -> Vec<KeyValue> {
+    let mut attributes = vec![dns_question_type(record_type)];
+
+    match result {
+        Ok(_) => attributes.push(dns_response_code(ResponseCode::NoError)),
+        Err(e) => match response_code(e) {
+            Some(code) => attributes.push(dns_response_code(code)),
+            None => attributes.extend(telemetry::otel::error_layers(&anyhow::Error::new(
+                e.clone(),
+            ))),
+        },
+    }
+
+    attributes
+}
+
+/// Extracts the DNS response code from a hickory lookup error, if it carries one.
+///
+/// Transport/protocol errors (timeouts, IO, ...) don't carry a response code.
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Only DNS-level errors carry a response code."
+)]
+fn response_code(error: &NetError) -> Option<ResponseCode> {
+    match error {
+        NetError::Dns(DnsError::ResponseCode(code)) => Some(*code),
+        NetError::Dns(DnsError::NoRecordsFound(no_records)) => Some(no_records.response_code),
+        _ => None,
+    }
+}
+
+/// Maps a query's record type to a `dns.question.type` attribute.
+///
+/// The Gateway only ever resolves `A` and `AAAA`; anything else collapses to `other`.
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "The Gateway only ever resolves `A` and `AAAA`."
+)]
+fn dns_question_type(record_type: RecordType) -> KeyValue {
+    let value = match record_type {
+        RecordType::A => "A",
+        RecordType::AAAA => "AAAA",
+        _ => "other",
+    };
+
+    KeyValue::new("dns.question.type", value)
+}
+
+/// Maps a hickory [`ResponseCode`] to a `dns.response.code` attribute.
+///
+/// The mnemonics match those emitted by the Client (uppercase, per the IANA registry) so
+/// that both report to the same metric. Unassigned codes collapse to `other` to bound the
+/// metric's cardinality.
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Unassigned response codes collapse to `other`."
+)]
+fn dns_response_code(code: ResponseCode) -> KeyValue {
+    let mnemonic = match code {
+        ResponseCode::NoError => "NOERROR",
+        ResponseCode::FormErr => "FORMERR",
+        ResponseCode::ServFail => "SERVFAIL",
+        ResponseCode::NXDomain => "NXDOMAIN",
+        ResponseCode::NotImp => "NOTIMP",
+        ResponseCode::Refused => "REFUSED",
+        ResponseCode::YXDomain => "YXDOMAIN",
+        ResponseCode::YXRRSet => "YXRRSET",
+        ResponseCode::NXRRSet => "NXRRSET",
+        ResponseCode::NotAuth => "NOTAUTH",
+        ResponseCode::NotZone => "NOTZONE",
+        _ => "other",
+    };
+
+    KeyValue::new("dns.response.code", mnemonic)
 }
 
 async fn phoenix_channel_event_loop(
@@ -590,7 +672,7 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-fn lookup_to_ips(lookup: &hickory_resolver::lookup::Lookup) -> impl Iterator<Item = IpAddr> + '_ {
+fn lookup_to_ips(lookup: &Lookup) -> impl Iterator<Item = IpAddr> + '_ {
     lookup
         .answers()
         .iter()
@@ -605,4 +687,45 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn question_type_maps_a_and_aaaa() {
+        assert_eq!(
+            dns_question_type(RecordType::A),
+            KeyValue::new("dns.question.type", "A")
+        );
+        assert_eq!(
+            dns_question_type(RecordType::AAAA),
+            KeyValue::new("dns.question.type", "AAAA")
+        );
+    }
+
+    #[test]
+    fn response_code_mnemonics_match_the_client() {
+        assert_eq!(
+            dns_response_code(ResponseCode::NoError),
+            KeyValue::new("dns.response.code", "NOERROR")
+        );
+        assert_eq!(
+            dns_response_code(ResponseCode::NXDomain),
+            KeyValue::new("dns.response.code", "NXDOMAIN")
+        );
+        assert_eq!(
+            dns_response_code(ResponseCode::ServFail),
+            KeyValue::new("dns.response.code", "SERVFAIL")
+        );
+    }
+
+    #[test]
+    fn unassigned_response_codes_collapse_to_other() {
+        assert_eq!(
+            dns_response_code(ResponseCode::BADVERS),
+            KeyValue::new("dns.response.code", "other")
+        );
+    }
 }
