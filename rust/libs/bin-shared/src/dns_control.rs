@@ -5,7 +5,7 @@
 //!
 //! On Windows, we use NRPT by default. We can also explicitly not control DNS.
 
-use std::net::IpAddr;
+use std::{collections::HashSet, net::IpAddr};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -45,6 +45,13 @@ impl Drop for DnsController {
 
 impl DnsController {
     pub fn system_resolvers(&self) -> Vec<IpAddr> {
-        system_resolvers(self.dns_control_method).unwrap_or_default()
+        // Multiple NICs on the same network can report the same upstream
+        // resolvers, so de-duplicate while preserving order.
+        let mut seen = HashSet::new();
+        system_resolvers(self.dns_control_method)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|ip| seen.insert(*ip))
+            .collect()
     }
 }
