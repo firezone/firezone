@@ -32,8 +32,11 @@ pub mod settings;
 /// but sometimes I need to use this before Tauri has booted up, or in a place where
 /// getting the Tauri app handle would be awkward.
 ///
-/// Note: this is *not* the AppUserModelId Windows uses to label notifications. Now
-/// that the GUI runs under a sparse MSIX identity, that is [`PACKAGE_AUMID`].
+/// Note: under the sparse MSIX identity this is *not* the
+/// AppUserModelId Windows uses to label notifications; that is derived
+/// from [`PACKAGE_FAMILY_NAME`] in `gui::os::show_notification`. It is
+/// still used as the toast AUMID for un-packaged dev builds, which have
+/// no package identity.
 pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// The Sentry "release" we are part of.
@@ -47,19 +50,10 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 /// `Name_publisherId` for the sparse MSIX. Derived at build time
 /// from the manifest's `Name` + Publisher DN in `build.rs`. Used by
 /// `register-sparse.exe` to stage / provision / deprovision the
-/// package against the AppX deployment service.
+/// package against the AppX deployment service, and to derive the
+/// package AUMID (`<PACKAGE_FAMILY_NAME>!Firezone`) that Windows uses to
+/// label toast notifications (see `gui::os::show_notification`).
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
-
-/// The AppUserModelId of the GUI under its sparse MSIX identity:
-/// `<PackageFamilyName>!<Application Id>`, where `Firezone` is the
-/// `<Application Id="Firezone">` from `win_files/AppxManifest.xml`.
-///
-/// Windows attributes toast notifications to the calling process's
-/// package AUMID, so this is what we register them under when the
-/// process has package identity (not [`BUNDLE_ID`], which only worked
-/// back when the GUI was a plain MSI install with a Start Menu shortcut
-/// carrying that AUMID).
-pub const PACKAGE_AUMID: &str = concat!(env!("FIREZONE_PACKAGE_FAMILY_NAME"), "!Firezone");
 
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {

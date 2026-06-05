@@ -44,10 +44,9 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
 ///
 /// Windows silently drops a toast whose AUMID doesn't match the calling
 /// process's identity. Packaged builds run under the sparse MSIX
-/// identity, so we register under the package AUMID ([`crate::PACKAGE_AUMID`])
-/// and the title and icon come from the manifest's `VisualElements`;
-/// this must stay in sync with `win_files/AppxManifest.xml`. Un-packaged
-/// dev builds (no package identity) fall back to [`crate::BUNDLE_ID`].
+/// identity, so we register under the package AUMID and the title and
+/// icon come from the manifest's `VisualElements`. Un-packaged dev
+/// builds (no package identity) fall back to [`crate::BUNDLE_ID`].
 /// <https://github.com/tauri-apps/winrt-notification/issues/17#issuecomment-1988715694>
 ///
 /// Known issue: If the notification times out and goes into the notification center
@@ -67,13 +66,16 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
     // For some reason `on_activated` is FnMut
     let mut tx = Some(tx);
 
+    // `Firezone` is the `<Application Id="Firezone">` from
+    // `win_files/AppxManifest.xml`; together with the package family
+    // name it forms the package AUMID Windows attributes toasts to.
     let app_id = if crate::package_identity::has_package_identity() {
-        crate::PACKAGE_AUMID
+        format!("{}!Firezone", crate::PACKAGE_FAMILY_NAME)
     } else {
-        crate::BUNDLE_ID
+        crate::BUNDLE_ID.to_owned()
     };
 
-    tauri_winrt_notification::Toast::new(app_id)
+    tauri_winrt_notification::Toast::new(&app_id)
         .title(&title)
         .text1(&body)
         .scenario(tauri_winrt_notification::Scenario::Reminder)
