@@ -799,6 +799,11 @@ defmodule PortalWeb.Policies do
      end)}
   end
 
+  def handle_event("change_tod_timezone", params, socket) do
+    timezone = get_in(params, ["policy", "conditions", "current_utc_datetime", "timezone"])
+    {:noreply, merge_state(socket, :policy_conditions, timezone: timezone)}
+  end
+
   def handle_event("change_auth_provider_operator", %{"operator" => op}, socket) do
     {:noreply, merge_state(socket, :policy_conditions, auth_provider_operator: op)}
   end

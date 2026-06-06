@@ -664,6 +664,38 @@ defmodule PortalWeb.PoliciesTest do
       end
     end
 
+    test "keeps selected timezone when toggling tod day buttons", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "current_utc_datetime"})
+
+      lv
+      |> element("select[name='policy[conditions][current_utc_datetime][timezone]']")
+      |> render_change(%{
+        "policy" => %{
+          "conditions" => %{"current_utc_datetime" => %{"timezone" => "America/New_York"}}
+        }
+      })
+
+      render_click(lv, "start_add_tod_range")
+      html = render_click(lv, "toggle_tod_pending_day", %{"day" => "M"})
+
+      assert html =~ ~s(value="America/New_York" selected)
+      refute html =~ ~s(value="UTC" selected)
+    end
+
     test "renders time-of-day condition from saved policy", %{
       conn: conn,
       account: account,
