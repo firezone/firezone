@@ -39,7 +39,7 @@ defmodule Portal.VersionTest do
                {:ok, "1.4.5"}
     end
 
-    test "returns error for an unparseable user agent" do
+    test "returns error for an unparsable user agent" do
       assert Portal.Version.fetch_version("not a user agent") == {:error, :invalid_user_agent}
     end
 
