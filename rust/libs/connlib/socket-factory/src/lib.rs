@@ -372,15 +372,7 @@ impl PerfUdpSocket {
         while offset < total {
             // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
             // the remaining data needs to be re-split into smaller batches.
-            let chunk_size = self.calculate_chunk_size(segment_size, dst);
-
-            // A `segment_size` larger than the maximum UDP payload makes `chunk_size` 0,
-            // which can't be sent and would stall this loop with zero-progress iterations.
-            if chunk_size == 0 {
-                anyhow::bail!(
-                    "Cannot send to {dst}: segment_size {segment_size} exceeds the maximum UDP payload"
-                );
-            }
+            let chunk_size = self.calculate_chunk_size(segment_size, dst)?;
 
             let end = std::cmp::min(offset + chunk_size, total);
             let contents = &transmit.contents[offset..end];
@@ -465,7 +457,9 @@ impl PerfUdpSocket {
     ///
     /// In case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set `max_gso_segments` to 1.
     /// We need to honor both of these constraints when calculating the chunk size.
-    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> usize {
+    ///
+    /// Fails if `segment_size` exceeds the maximum UDP payload, in which case not even a single segment fits.
+    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> Result<usize> {
         let header_overhead = match dst {
             SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
             SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
@@ -476,7 +470,12 @@ impl PerfUdpSocket {
 
         let max_segments = std::cmp::min(max_segments_by_config, max_segments_by_size);
 
-        segment_size * max_segments
+        anyhow::ensure!(
+            max_segments > 0,
+            "segment_size {segment_size} exceeds the maximum UDP payload for {dst}"
+        );
+
+        Ok(segment_size * max_segments)
     }
 
     fn prepare_transmit<'a>(
