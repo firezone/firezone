@@ -786,9 +786,23 @@ async fn phoenix_channel_event_loop(
                 }),
                 _,
             )) => {
+                let http_error_body = error
+                    .chain()
+                    .find_map(|e| e.downcast_ref::<phoenix_channel::WebSocketError>())
+                    .and_then(|e| {
+                        let phoenix_channel::WebSocketError::Http(response) = e else {
+                            return None;
+                        };
+
+                        response
+                            .body()
+                            .as_deref()
+                            .map(|body| String::from_utf8_lossy(body).into_owned())
+                    });
                 tracing::info!(
                     ?backoff,
                     ?max_elapsed_time,
+                    body = http_error_body.as_deref(),
                     "Hiccup in portal connection: {error:#}"
                 );
                 hiccups.add(1, &telemetry::otel::error_layers(&error));

@@ -321,8 +321,8 @@ mod error_layer_tests {
 
         // `tungstenite`'s own `Display` is status-only ("HTTP error: 503 Service
         // Unavailable"): the body never appears and the numeric code is masked to `{num}`.
-        // The body that motivated this PR is added by `phoenix-channel`'s custom
-        // `InternalError` `Display`, not by tungstenite.
+        // `phoenix-channel` surfaces this `tungstenite` error via `source()`, so this is
+        // exactly the layer that reaches the metric for an HTTP hiccup.
         assert_eq!(
             error_layers(&error),
             vec![KeyValue::new(

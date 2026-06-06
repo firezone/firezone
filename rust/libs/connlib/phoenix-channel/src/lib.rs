@@ -35,6 +35,7 @@ use url::Url;
 
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
+pub use tokio_tungstenite::tungstenite::Error as WebSocketError;
 pub use tokio_tungstenite::tungstenite::http::StatusCode;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
@@ -257,16 +258,6 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
 impl fmt::Display for InternalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InternalError::WebSocket(tungstenite::Error::Http(http)) => {
-                let status = http.status();
-                let body = http
-                    .body()
-                    .as_deref()
-                    .map(String::from_utf8_lossy)
-                    .unwrap_or_default();
-
-                write!(f, "http error: {status} - {body}")
-            }
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
@@ -300,7 +291,6 @@ impl fmt::Display for InternalError {
 impl std::error::Error for InternalError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            InternalError::WebSocket(tungstenite::Error::Http(_)) => None,
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
