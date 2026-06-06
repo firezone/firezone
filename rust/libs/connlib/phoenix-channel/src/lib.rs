@@ -305,9 +305,6 @@ impl std::error::Error for InternalError {
 }
 
 /// Recovers the body of an HTTP error response from a portal connection error.
-///
-/// The body is intentionally kept out of the error's `Display` to avoid high-cardinality
-/// telemetry attributes, so this is the way to surface it for diagnostic logging.
 pub fn http_error_body(error: &anyhow::Error) -> Option<String> {
     use anyhow::ErrorExt as _;
 

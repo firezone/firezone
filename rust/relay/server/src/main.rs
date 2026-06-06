@@ -780,11 +780,10 @@ async fn phoenix_channel_event_loop(
                 error,
             }) => {
                 is_connected.store(false, Ordering::Relaxed);
-                let http_error_body = phoenix_channel::http_error_body(&error);
                 tracing::info!(
                     ?backoff,
                     ?max_elapsed_time,
-                    body = http_error_body.as_deref(),
+                    body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
                     "{error:#}"
                 );
 
