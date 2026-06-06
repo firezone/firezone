@@ -331,7 +331,9 @@ impl PerfUdpSocket {
             datagram.ecn,
         )?;
 
-        self.send_transmit(&transmit).await
+        self.send_transmit(&transmit).await?;
+
+        Ok(())
     }
 
     pub fn set_buffer_sizes(
@@ -371,6 +373,15 @@ impl PerfUdpSocket {
             // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
             // the remaining data needs to be re-split into smaller batches.
             let chunk_size = self.calculate_chunk_size(segment_size, dst);
+
+            // A `segment_size` larger than the maximum UDP payload makes `chunk_size` 0,
+            // which can't be sent and would stall this loop with zero-progress iterations.
+            if chunk_size == 0 {
+                anyhow::bail!(
+                    "Cannot send to {dst}: segment_size {segment_size} exceeds the maximum UDP payload"
+                );
+            }
+
             let end = std::cmp::min(offset + chunk_size, total);
             let contents = &transmit.contents[offset..end];
 
@@ -405,20 +416,19 @@ impl PerfUdpSocket {
                     offset = end;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
-                Err(e) => {
-                    if !should_retry(&e, attempt) {
-                        self.record_send_retries(attempt);
-
-                        return Err(e).with_context(|| {
-                            format!(
-                                "Failed to send {} bytes at offset {offset}/{total} with segment_size {segment_size} to {dst}",
-                                contents.len()
-                            )
-                        });
-                    }
-
+                Err(e) if should_retry(&e, attempt) => {
                     spin_and_yield(attempt).await;
                     attempt += 1;
+                }
+                Err(e) => {
+                    self.record_send_retries(attempt);
+
+                    return Err(e).with_context(|| {
+                        format!(
+                            "Failed to send {} bytes at offset {offset}/{total} with segment_size {segment_size} to {dst}",
+                            contents.len()
+                        )
+                    });
                 }
             }
         }
