@@ -27,6 +27,7 @@ uuid = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+tokio-tungstenite = { workspace = true }
 
 [lints]
 workspace = true

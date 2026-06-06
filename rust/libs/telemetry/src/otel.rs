@@ -304,6 +304,34 @@ mod error_layer_tests {
         assert_eq!(error_layers(&error).len(), MAX_ERROR_LAYERS);
     }
 
+    #[test]
+    fn tungstenite_http_error_omits_body() {
+        use tokio_tungstenite::tungstenite::{
+            self,
+            http::{Response, StatusCode},
+        };
+
+        // The real error `phoenix-channel` gets from a failed websocket upgrade. The
+        // response deliberately carries a body to demonstrate it does not surface.
+        let response = Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(Some(br#"{"error":"service_unavailable"}"#.to_vec()))
+            .unwrap();
+        let error = anyhow::Error::new(tungstenite::Error::Http(Box::new(response)));
+
+        // `tungstenite`'s own `Display` is status-only ("HTTP error: 503 Service
+        // Unavailable"): the body never appears and the numeric code is masked to `{num}`.
+        // `phoenix-channel` surfaces this `tungstenite` error via `source()`, so this is
+        // exactly the layer that reaches the metric for an HTTP hiccup.
+        assert_eq!(
+            error_layers(&error),
+            vec![KeyValue::new(
+                "error.type.0",
+                "HTTP error: {num} Service Unavailable"
+            )]
+        );
+    }
+
     #[derive(Debug, thiserror::Error)]
     #[error("failed to handle packet from {client_ip}")]
     struct StructError {
@@ -496,6 +524,14 @@ pub mod metrics {
             .u64_counter("tunnel.error")
             .with_description("Number of errors encountered while processing a packet batch.")
             .with_unit("{error}")
+            .build()
+    }
+
+    pub fn portal_connection_hiccups() -> Counter<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_counter("portal.connection.hiccup")
+            .with_description("Number of portal connection hiccups by cause.")
+            .with_unit("{hiccup}")
             .build()
     }
 

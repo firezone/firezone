@@ -736,6 +736,8 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
+    let hiccups = telemetry::otel::metrics::portal_connection_hiccups();
+
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
         // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
@@ -787,8 +789,10 @@ async fn phoenix_channel_event_loop(
                 tracing::info!(
                     ?backoff,
                     ?max_elapsed_time,
+                    body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
                     "Hiccup in portal connection: {error:#}"
                 );
+                hiccups.add(1, &telemetry::otel::error_layers(&error));
 
                 let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());

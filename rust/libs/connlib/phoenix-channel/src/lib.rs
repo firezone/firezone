@@ -257,16 +257,6 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
 impl fmt::Display for InternalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InternalError::WebSocket(tungstenite::Error::Http(http)) => {
-                let status = http.status();
-                let body = http
-                    .body()
-                    .as_deref()
-                    .map(String::from_utf8_lossy)
-                    .unwrap_or_default();
-
-                write!(f, "http error: {status} - {body}")
-            }
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
@@ -300,7 +290,6 @@ impl fmt::Display for InternalError {
 impl std::error::Error for InternalError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            InternalError::WebSocket(tungstenite::Error::Http(_)) => None,
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
@@ -313,6 +302,20 @@ impl std::error::Error for InternalError {
             InternalError::TooManyUnansweredHeartbeats => None,
         }
     }
+}
+
+/// Recovers the body of an HTTP error response from a portal connection error.
+pub fn http_error_body(error: &anyhow::Error) -> Option<String> {
+    use anyhow::ErrorExt as _;
+
+    let tungstenite::Error::Http(response) = error.any_downcast_ref::<tungstenite::Error>()? else {
+        return None;
+    };
+
+    response
+        .body()
+        .as_deref()
+        .map(|body| String::from_utf8_lossy(body).into_owned())
 }
 
 /// A strict-monotonically increasing ID for outbound requests.
@@ -1098,6 +1101,25 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
+
+    #[test]
+    fn http_error_body_recovers_response_body() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(Some(b"service down".to_vec()))
+            .unwrap();
+        let error = anyhow::Error::new(tungstenite::Error::Http(Box::new(response)))
+            .context("Connection hiccup");
+
+        assert_eq!(http_error_body(&error).as_deref(), Some("service down"));
+    }
+
+    #[test]
+    fn http_error_body_is_none_for_non_http_errors() {
+        let error = anyhow::Error::msg("some other failure").context("Connection hiccup");
+
+        assert_eq!(http_error_body(&error), None);
+    }
 
     #[derive(Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "snake_case", tag = "event", content = "payload")] // This line makes it all work.

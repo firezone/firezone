@@ -518,6 +518,8 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
+    let hiccups = telemetry::otel::metrics::portal_connection_hiccups();
+
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
@@ -541,8 +543,10 @@ async fn phoenix_channel_event_loop(
                 tracing::info!(
                     ?backoff,
                     ?max_elapsed_time,
+                    body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
                     "Hiccup in portal connection: {error:#}"
                 );
+                hiccups.add(1, &telemetry::otel::error_layers(&error));
 
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
