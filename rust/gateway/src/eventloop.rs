@@ -5,10 +5,7 @@ use telemetry::{Telemetry, analytics};
 
 use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
-use hickory_resolver::net::{DnsError, NetError};
-use hickory_resolver::proto::op::ResponseCode;
 use hickory_resolver::proto::rr::RecordType;
-use opentelemetry::KeyValue;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
@@ -89,8 +86,8 @@ impl Eventloop {
                 1000,
             ),
             logged_permission_denied: false,
-            tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
-            dns_lookup_duration: telemetry::otel::metrics::dns_lookup_duration(),
+            tunnel_errors: crate::otel::metrics::tunnel_errors(),
+            dns_lookup_duration: crate::otel::metrics::dns_lookup_duration(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -511,7 +508,7 @@ async fn resolve_record(
 
     dns_lookup_duration.record(
         started_at.elapsed().as_secs_f64(),
-        &lookup_attributes(record_type, &result),
+        &crate::otel::attr::dns_lookup(record_type, &result),
     );
 
     match result {
@@ -522,87 +519,6 @@ async fn resolve_record(
             Vec::new()
         }
     }
-}
-
-/// Builds the metric attributes for a completed lookup.
-///
-/// On success (or any DNS-level error code such as `NXDOMAIN`), the response code is
-/// recorded. Transport/protocol failures (e.g. timeouts) carry no response code, so
-/// the error layers are recorded instead.
-fn lookup_attributes(record_type: RecordType, result: &Result<Lookup, NetError>) -> Vec<KeyValue> {
-    let mut attributes = vec![dns_question_type(record_type)];
-
-    match result {
-        Ok(_) => attributes.push(dns_response_code(ResponseCode::NoError)),
-        Err(e) => match response_code(e) {
-            Some(code) => attributes.push(dns_response_code(code)),
-            None => attributes.extend(telemetry::otel::error_layers(&anyhow::Error::new(
-                e.clone(),
-            ))),
-        },
-    }
-
-    attributes
-}
-
-/// Extracts the DNS response code from a hickory lookup error, if it carries one.
-///
-/// Transport/protocol errors (timeouts, IO, ...) don't carry a response code.
-#[expect(
-    clippy::wildcard_enum_match_arm,
-    reason = "Only DNS-level errors carry a response code."
-)]
-fn response_code(error: &NetError) -> Option<ResponseCode> {
-    match error {
-        NetError::Dns(DnsError::ResponseCode(code)) => Some(*code),
-        NetError::Dns(DnsError::NoRecordsFound(no_records)) => Some(no_records.response_code),
-        _ => None,
-    }
-}
-
-/// Maps a query's record type to a `dns.question.type` attribute.
-///
-/// The Gateway only ever resolves `A` and `AAAA`; anything else collapses to `other`.
-#[expect(
-    clippy::wildcard_enum_match_arm,
-    reason = "The Gateway only ever resolves `A` and `AAAA`."
-)]
-fn dns_question_type(record_type: RecordType) -> KeyValue {
-    let value = match record_type {
-        RecordType::A => "A",
-        RecordType::AAAA => "AAAA",
-        _ => "other",
-    };
-
-    KeyValue::new("dns.question.type", value)
-}
-
-/// Maps a hickory [`ResponseCode`] to a `dns.response.code` attribute.
-///
-/// The mnemonics match those emitted by the Client (uppercase, per the IANA registry) so
-/// that both report to the same metric. Unassigned codes collapse to `other` to bound the
-/// metric's cardinality.
-#[expect(
-    clippy::wildcard_enum_match_arm,
-    reason = "Unassigned response codes collapse to `other`."
-)]
-fn dns_response_code(code: ResponseCode) -> KeyValue {
-    let mnemonic = match code {
-        ResponseCode::NoError => "NOERROR",
-        ResponseCode::FormErr => "FORMERR",
-        ResponseCode::ServFail => "SERVFAIL",
-        ResponseCode::NXDomain => "NXDOMAIN",
-        ResponseCode::NotImp => "NOTIMP",
-        ResponseCode::Refused => "REFUSED",
-        ResponseCode::YXDomain => "YXDOMAIN",
-        ResponseCode::YXRRSet => "YXRRSET",
-        ResponseCode::NXRRSet => "NXRRSET",
-        ResponseCode::NotAuth => "NOTAUTH",
-        ResponseCode::NotZone => "NOTZONE",
-        _ => "other",
-    };
-
-    KeyValue::new("dns.response.code", mnemonic)
 }
 
 async fn phoenix_channel_event_loop(
@@ -687,45 +603,4 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn question_type_maps_a_and_aaaa() {
-        assert_eq!(
-            dns_question_type(RecordType::A),
-            KeyValue::new("dns.question.type", "A")
-        );
-        assert_eq!(
-            dns_question_type(RecordType::AAAA),
-            KeyValue::new("dns.question.type", "AAAA")
-        );
-    }
-
-    #[test]
-    fn response_code_mnemonics_match_the_client() {
-        assert_eq!(
-            dns_response_code(ResponseCode::NoError),
-            KeyValue::new("dns.response.code", "NOERROR")
-        );
-        assert_eq!(
-            dns_response_code(ResponseCode::NXDomain),
-            KeyValue::new("dns.response.code", "NXDOMAIN")
-        );
-        assert_eq!(
-            dns_response_code(ResponseCode::ServFail),
-            KeyValue::new("dns.response.code", "SERVFAIL")
-        );
-    }
-
-    #[test]
-    fn unassigned_response_codes_collapse_to_other() {
-        assert_eq!(
-            dns_response_code(ResponseCode::BADVERS),
-            KeyValue::new("dns.response.code", "other")
-        );
-    }
 }

@@ -15,7 +15,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::{SentryMeterProvider, Telemetry, otel};
+use telemetry::{SentryMeterProvider, Telemetry};
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
@@ -29,6 +29,7 @@ use tun::Tun;
 use url::Url;
 
 mod eventloop;
+mod otel;
 
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
@@ -144,10 +145,10 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 
     if let Some(backend) = cli.metrics {
-        let resource = otel::default_resource_with([
-            otel::attr::service_name!(),
-            otel::attr::service_version!(),
-            otel::attr::service_instance_id(firezone_id.clone()),
+        let resource = telemetry::otel::default_resource_with([
+            telemetry::otel::attr::service_name!(),
+            telemetry::otel::attr::service_version!(),
+            telemetry::otel::attr::service_instance_id(firezone_id.clone()),
         ]);
 
         match (backend, cli.otlp_grpc_endpoint) {
