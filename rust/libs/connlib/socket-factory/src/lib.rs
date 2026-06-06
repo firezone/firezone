@@ -404,13 +404,7 @@ impl PerfUdpSocket {
                 .await
             {
                 Ok(()) => {
-                    self.batch_histogram.record(
-                        (contents.len() / segment_size) as u64,
-                        &[
-                            KeyValue::new("network.transport", "udp"),
-                            KeyValue::new("network.io.direction", "transmit"),
-                        ],
-                    );
+                    self.record_send_batch_size(contents.len() / segment_size);
                     self.record_send_retries(attempt);
 
                     offset = end;
@@ -434,6 +428,17 @@ impl PerfUdpSocket {
         }
 
         Ok(())
+    }
+
+    /// Records the number of segments sent in a single batched syscall.
+    fn record_send_batch_size(&self, num_segments: usize) {
+        self.batch_histogram.record(
+            num_segments as u64,
+            &[
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
     }
 
     /// Records how many times a single batch had to be retried before it went through or was dropped.
