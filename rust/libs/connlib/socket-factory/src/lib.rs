@@ -230,7 +230,7 @@ impl UdpSocket {
                 .with_boundaries((1..32_u64).map(|i| i as f64).collect())
                 .build(),
             send_retry_histogram: opentelemetry::global::meter("connlib")
-                .u64_histogram("system.network.send_retries")
+                .u64_histogram("system.network.retries")
                 .with_description(
                     "How many times a UDP send was retried (spun) after a transient ENOBUFS-style error before it succeeded or was dropped.",
                 )
