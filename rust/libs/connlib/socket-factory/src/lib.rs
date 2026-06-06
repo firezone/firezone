@@ -235,7 +235,7 @@ impl UdpSocket {
                     "How many times a UDP send was retried (spun) after a transient ENOBUFS-style error before it succeeded or was dropped.",
                 )
                 .with_unit("{retry}")
-                .with_boundaries(vec![1.0, 2.0, 4.0, 8.0, 16.0, 24.0])
+                .with_boundaries((1..=24_u64).map(|i| i as f64).collect())
                 .build(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
