@@ -329,18 +329,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let latestSymlinkNames = ["latest", "connlib.latest"]
       let successfullyMovedSymlinks: [(source: URL, temp: URL)] =
         latestSymlinkNames.compactMap { symlinkName in
-        let source = connlibLogFolderURL.appendingPathComponent(symlinkName)
-        let temp = cacheFolderURL.appendingPathComponent(symlinkName)
+          let source = connlibLogFolderURL.appendingPathComponent(symlinkName)
+          let temp = cacheFolderURL.appendingPathComponent(symlinkName)
 
-        try? FileManager.default.removeItem(at: temp)
+          try? FileManager.default.removeItem(at: temp)
 
-        do {
-          try FileManager.default.moveItem(at: source, to: temp)
-          return (source, temp)
-        } catch {
-          return nil
+          do {
+            try FileManager.default.moveItem(at: source, to: temp)
+            return (source, temp)
+          } catch {
+            return nil
+          }
         }
-      }
 
       do {
         // Move any known connlib `latest` symlink out of the way before creating the archive.
