@@ -104,8 +104,7 @@ import SystemPackage
       try? fileManager.removeItem(at: archiveURL)
 
       let latestSymlinkNames = ["latest", "connlib.latest"]
-      let successfullyMovedSymlinks: [(source: URL, temp: URL)] = latestSymlinkNames.compactMap {
-        symlinkName in
+      let successfullyMovedSymlinks: [(source: URL, temp: URL)] = latestSymlinkNames.compactMap { symlinkName in
         let source = connlibLogFolderURL.appendingPathComponent(symlinkName)
         let temp = cacheFolderURL.appendingPathComponent(symlinkName)
 
