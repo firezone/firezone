@@ -577,29 +577,27 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
 }
 
 /// Whether a failed send should be retried for the given attempt.
-///
-/// `ENOBUFS` (MacOS / iOS) and its Windows equivalent (10055) are transient, local
-/// conditions that clear once the network interface drains its queue. That drain
-/// happens off this thread (driver / NIC), usually within microseconds, and is not
-/// observable via write-readiness, so we retry rather than suspend.
-///
-/// On Linux / Android, `EIO` means `quinn-udp` just disabled GSO; we retry once to
-/// re-send the data split into smaller batches.
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     let Some(raw_os_error) = e.raw_os_error() else {
         return false;
     };
 
+    // On Linux / Android, `EIO` means `quinn-udp` just disabled GSO; we retry once to
+    // re-send the data split into smaller batches.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     if raw_os_error == libc::EIO && attempt < 1 {
         return true;
     }
 
+    // On MacOS / iOS, the kernel returns `ENOBUFS` when the interface queue fills up.
+    // It's transient and clears off this thread (driver / NIC), and isn't observable
+    // via write-readiness, so we retry rather than suspend.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     if raw_os_error == libc::ENOBUFS && attempt < MAX_ENOBUFS_RETRIES {
         return true;
     }
 
+    // On Windows, error 10055 is the equivalent of `ENOBUFS`; same transient condition.
     #[cfg(target_os = "windows")]
     if raw_os_error == WINDOWS_ENOBUFS && attempt < MAX_ENOBUFS_RETRIES {
         return true;
