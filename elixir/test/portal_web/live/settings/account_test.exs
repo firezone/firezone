@@ -46,7 +46,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert html =~ "Upgrade plan"
+      assert html =~ "Manage plan"
       refute html =~ "Contact your account manager for plan changes."
     end
 
@@ -65,7 +65,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      refute html =~ "Upgrade plan"
+      refute html =~ "Manage plan"
       assert html =~ "Contact your account manager for plan changes."
     end
 
@@ -79,7 +79,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      refute html =~ "Upgrade plan"
+      refute html =~ "Manage plan"
       refute html =~ "Contact your account manager for plan changes."
     end
   end

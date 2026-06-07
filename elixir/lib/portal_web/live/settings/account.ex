@@ -101,7 +101,7 @@ defmodule PortalWeb.Settings.Account do
               phx-click="redirect_to_billing_portal"
               class="w-full mt-1 px-3 py-1.5 rounded text-xs font-medium border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
             >
-              Upgrade plan
+              Manage plan
             </button>
           </div>
 
