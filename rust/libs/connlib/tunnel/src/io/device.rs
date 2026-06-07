@@ -115,7 +115,16 @@ impl Device {
             return;
         };
 
-        // Try to send immediately if channel has capacity.
+        // Preserve ordering: if we are already buffering (a previous `try_send` hit a full
+        // channel) or a flush is in flight, this packet must queue behind those. Otherwise a
+        // `try_send` here could slip it into the channel ahead of the buffered packets once
+        // `poll_flush` drains them, reordering the stream we write to the TUN device.
+        if self.flush_future.is_some() || !self.outbound_buffer.is_empty() {
+            self.outbound_buffer.push(packet);
+            return;
+        }
+
+        // Fast path: nothing queued, send immediately if the channel has capacity.
         if let Err(packet) = tun.sender().try_send(packet).map_err(|e| e.into_inner()) {
             tracing::trace!(?packet, "Unable to send packet into channel, buffering");
             self.outbound_buffer.push(packet);
