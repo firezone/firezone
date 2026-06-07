@@ -25,7 +25,7 @@ jobs:
     permissions:
       packages: write # push promoted Docker images to GHCR
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Login to GitHub Container Registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -110,7 +110,7 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
@@ -143,7 +143,7 @@ jobs:
           - tag_prefix: android-client
             component: android-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
@@ -228,7 +228,7 @@ jobs:
           - component: android-client
             projects: android-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
@@ -248,7 +248,7 @@ jobs:
           - tag_prefix: gui-client
             deb_name: firezone-client-gui
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 
