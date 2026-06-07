@@ -269,7 +269,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     // Immutable collections give Compose stable (skippable) parameter types.
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
