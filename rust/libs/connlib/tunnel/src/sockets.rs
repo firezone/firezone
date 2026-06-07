@@ -1,5 +1,5 @@
 use crate::otel;
-use anyhow::{Context as _, ErrorExt as _, Result};
+use anyhow::{Context as _, Result};
 use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
@@ -185,7 +185,7 @@ struct Channels {
 
 impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
-        let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (error_tx, error_rx) = std::sync::mpsc::sync_channel(0);
 
@@ -243,103 +243,34 @@ impl ThreadedUdpSocket {
                     .with_unit("{error}")
                     .build();
 
-                let send_buffer_size = read_end_var_usize("FIREZONE_UDP_SEND_BUFFER_SIZE")
-                    .inspect_err(|e| {
-                        tracing::debug!("Failed to read `FIREZONE_UDP_SEND_BUFFER_SIZE`: {e}")
-                    })
-                    .unwrap_or_default()
-                    .unwrap_or(socket_factory::SEND_BUFFER_SIZE);
-                let recv_buffer_size = read_end_var_usize("FIREZONE_UDP_RECV_BUFFER_SIZE")
-                    .inspect_err(|e| {
-                        tracing::debug!("Failed to read `FIREZONE_UDP_RECV_BUFFER_SIZE`: {e}")
-                    })
-                    .unwrap_or_default()
-                    .unwrap_or(socket_factory::RECV_BUFFER_SIZE);
+                let (send_buffer_size, recv_buffer_size) = buffer_sizes();
 
                 if let Err(e) = socket.set_buffer_sizes(send_buffer_size, recv_buffer_size) {
                     tracing::warn!("Failed to set socket buffer sizes: {e}");
                 };
 
-                let socket = Arc::new(socket);
-
-                let send = runtime.spawn({
-                    let io_error_counter = io_error_counter.clone();
-                    let inbound_tx = inbound_tx.clone();
-                    let socket = socket.clone();
-
-                    let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
-
-                    async move {
-                        loop {
-                            let num_batches = outbound_rx
-                                .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
-                                .await;
-
-                            if num_batches == 0 {
-                                tracing::debug!(
-                                    "Channel for outbound datagrams closed; exiting UDP send task"
-                                );
-                                return;
-                            }
-
-                            for datagram in pending_datagrams.drain(..) {
-                                if let Err(e) = socket.send(datagram).await {
-                                    if let Some(io) = e.any_downcast_ref::<io::Error>() {
-                                        io_error_counter.add(
-                                            1,
-                                            &[
-                                                otel::attr::network_io_direction_transmit(),
-                                                otel::attr::network_type_for_addr(preferred_addr),
-                                                otel::attr::io_error_type(io),
-                                                otel::attr::io_error_code(io),
-                                            ],
-                                        );
-                                    }
-
-                                    // We use the inbound_tx channel to send the error back to the main thread.
-                                    if inbound_tx.send(Err(e)).await.is_err() {
-                                        tracing::debug!(
-                                            "Channel for inbound datagrams closed; exiting UDP send task"
-                                        );
-                                        return;
-                                    }
-                                };
-                            }
-                        };
-                    }
-                });
-                let receive = runtime.spawn(async move {
-                    loop {
-                        let result = socket.recv_from().await;
-
-                        if let Some(io) = result
-                            .as_ref()
-                            .err()
-                            .and_then(|e| e.any_downcast_ref::<io::Error>())
-                        {
-                            io_error_counter.add(
-                                1,
-                                &[
-                                    otel::attr::network_io_direction_receive(),
-                                    otel::attr::network_type_for_addr(preferred_addr),
-                                    otel::attr::io_error_type(io),
-                                    otel::attr::io_error_code(io),
-                                ],
-                            );
-                        }
-
-                        if inbound_tx.send(result).await.is_err() {
-                            tracing::debug!(
-                                "Channel for inbound datagrams closed; exiting UDP recv task"
-                            );
-                            return;
-                        }
-                    }
-                });
-
                 let _ = error_tx.send(Ok(()));
 
-                runtime.block_on(futures::future::select(send, receive));
+                // The single-socket model (non-Apple) and the connected-socket pool (Apple) share
+                // the same channel contract; only the in-thread behaviour differs. On Apple, `socket`
+                // is the recv-only listener and all sending happens over a pool of connected sockets.
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                runtime.block_on(connected::run(
+                    socket,
+                    outbound_rx,
+                    inbound_tx,
+                    preferred_addr,
+                    io_error_counter,
+                ));
+
+                #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+                runtime.block_on(run_single(
+                    socket,
+                    outbound_rx,
+                    inbound_tx,
+                    preferred_addr,
+                    io_error_counter,
+                ));
             })?;
 
         error_rx.recv().map_err(io::Error::other)??;
@@ -435,6 +366,392 @@ fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
     Ok(Some(var))
 }
 
+/// The configured UDP send/receive buffer sizes, falling back to [`socket_factory`]'s defaults.
+fn buffer_sizes() -> (usize, usize) {
+    let send = read_end_var_usize("FIREZONE_UDP_SEND_BUFFER_SIZE")
+        .inspect_err(|e| tracing::debug!("Failed to read `FIREZONE_UDP_SEND_BUFFER_SIZE`: {e}"))
+        .unwrap_or_default()
+        .unwrap_or(socket_factory::SEND_BUFFER_SIZE);
+    let recv = read_end_var_usize("FIREZONE_UDP_RECV_BUFFER_SIZE")
+        .inspect_err(|e| tracing::debug!("Failed to read `FIREZONE_UDP_RECV_BUFFER_SIZE`: {e}"))
+        .unwrap_or_default()
+        .unwrap_or(socket_factory::RECV_BUFFER_SIZE);
+
+    (send, recv)
+}
+
+/// The single-socket datapath used on every platform except Apple: one task draining the outbound
+/// channel and one task feeding the inbound channel, both over a single shared (unconnected) socket.
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+async fn run_single(
+    socket: PerfUdpSocket,
+    mut outbound_rx: mpsc::Receiver<DatagramOut>,
+    inbound_tx: mpsc::Sender<Result<DatagramSegmentIter>>,
+    preferred_addr: SocketAddr,
+    io_error_counter: opentelemetry::metrics::Counter<u64>,
+) {
+    use anyhow::ErrorExt as _;
+
+    let socket = Arc::new(socket);
+
+    let send = tokio::spawn({
+        let io_error_counter = io_error_counter.clone();
+        let inbound_tx = inbound_tx.clone();
+        let socket = socket.clone();
+
+        let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
+
+        async move {
+            loop {
+                let num_batches = outbound_rx
+                    .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
+                    .await;
+
+                if num_batches == 0 {
+                    tracing::debug!("Channel for outbound datagrams closed; exiting UDP send task");
+                    return;
+                }
+
+                for datagram in pending_datagrams.drain(..) {
+                    if let Err(e) = socket.send(datagram).await {
+                        if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                            io_error_counter.add(
+                                1,
+                                &[
+                                    otel::attr::network_io_direction_transmit(),
+                                    otel::attr::network_type_for_addr(preferred_addr),
+                                    otel::attr::io_error_type(io),
+                                    otel::attr::io_error_code(io),
+                                ],
+                            );
+                        }
+
+                        // We use the inbound_tx channel to send the error back to the main thread.
+                        if inbound_tx.send(Err(e)).await.is_err() {
+                            tracing::debug!(
+                                "Channel for inbound datagrams closed; exiting UDP send task"
+                            );
+                            return;
+                        }
+                    };
+                }
+            }
+        }
+    });
+    let receive = tokio::spawn(async move {
+        loop {
+            let result = socket.recv_from().await;
+
+            if let Some(io) = result
+                .as_ref()
+                .err()
+                .and_then(|e| e.any_downcast_ref::<io::Error>())
+            {
+                io_error_counter.add(
+                    1,
+                    &[
+                        otel::attr::network_io_direction_receive(),
+                        otel::attr::network_type_for_addr(preferred_addr),
+                        otel::attr::io_error_type(io),
+                        otel::attr::io_error_code(io),
+                    ],
+                );
+            }
+
+            if inbound_tx.send(result).await.is_err() {
+                tracing::debug!("Channel for inbound datagrams closed; exiting UDP recv task");
+                return;
+            }
+        }
+    });
+
+    futures::future::select(send, receive).await;
+}
+
+/// The connected-socket datapath used on Apple.
+///
+/// `listener` is a recv-only, unconnected socket bound to the wildcard address. All *sending*
+/// happens over a pool of connected sockets (one per `(src_ip, dst)`) that share the listener's
+/// port via `SO_REUSEPORT`. This is required on Apple because the batched `sendmsg_x` datapath only
+/// works on connected sockets, and only connected sockets surface `ENOBUFS` for back-pressure.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod connected {
+    use super::*;
+    use anyhow::ErrorExt as _;
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+
+    /// Connected sockets idle (no send) for this long are reaped and recreated lazily on the next
+    /// send. Comfortably above connlib's keep-alive interval; inbound during a gap is caught by the
+    /// listener, so an over-eager reap is self-healing.
+    const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+    /// How often we sweep the pool for idle sockets.
+    const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
+
+    struct Pooled {
+        socket: Arc<PerfUdpSocket>,
+        recv_task: tokio::task::AbortHandle,
+        last_send: Instant,
+    }
+
+    impl Drop for Pooled {
+        fn drop(&mut self) {
+            self.recv_task.abort();
+        }
+    }
+
+    pub(super) async fn run(
+        listener: PerfUdpSocket,
+        mut outbound_rx: mpsc::Receiver<DatagramOut>,
+        inbound_tx: mpsc::Sender<Result<DatagramSegmentIter>>,
+        preferred_addr: SocketAddr,
+        io_error_counter: opentelemetry::metrics::Counter<u64>,
+    ) {
+        let local = listener.local_addr();
+        // All connected sockets bind to the listener's actual port so our ICE candidates (derived
+        // from this port) stay reachable; `connect` then pins the egress per peer.
+        let port = local.port();
+        let unspecified_ip = local.ip();
+
+        // The listener is recv-only: it catches inbound from peers/relays we haven't sent to yet.
+        let _listener_recv = spawn_recv(
+            Arc::new(listener),
+            inbound_tx.clone(),
+            io_error_counter.clone(),
+            preferred_addr,
+        );
+
+        let mut pool: HashMap<(Option<IpAddr>, SocketAddr), Pooled> = HashMap::new();
+        let mut pending = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
+        let mut sweep = tokio::time::interval(SWEEP_INTERVAL);
+        sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        loop {
+            tokio::select! {
+                num_batches = outbound_rx.recv_many(&mut pending, UDP_SEND_BATCH_LIMIT) => {
+                    if num_batches == 0 {
+                        tracing::debug!("Channel for outbound datagrams closed; exiting UDP connected-pool task");
+                        return;
+                    }
+
+                    for datagram in pending.drain(..) {
+                        let socket = match connected_socket(
+                            &mut pool,
+                            &datagram,
+                            port,
+                            unspecified_ip,
+                            &inbound_tx,
+                            &io_error_counter,
+                            preferred_addr,
+                        ) {
+                            Ok(socket) => socket,
+                            Err(e) => {
+                                tracing::debug!(dst = %datagram.dst, "Failed to create connected UDP socket: {e:#}");
+
+                                if inbound_tx.send(Err(e)).await.is_err() {
+                                    return;
+                                }
+                                continue;
+                            }
+                        };
+
+                        // `ENOBUFS` is mapped to `WouldBlock` inside `send`, so this `await` suspends
+                        // (back-pressuring the outbound channel) instead of busy-retrying.
+                        if let Err(e) = socket.send(datagram).await {
+                            if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                                io_error_counter.add(
+                                    1,
+                                    &[
+                                        otel::attr::network_io_direction_transmit(),
+                                        otel::attr::network_type_for_addr(preferred_addr),
+                                        otel::attr::io_error_type(io),
+                                        otel::attr::io_error_code(io),
+                                    ],
+                                );
+                            }
+
+                            if inbound_tx.send(Err(e)).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
+                }
+                _ = sweep.tick() => {
+                    let now = Instant::now();
+                    pool.retain(|_, pooled| now.duration_since(pooled.last_send) < IDLE_TIMEOUT);
+                }
+            }
+        }
+    }
+
+    /// Looks up (or lazily creates) the connected socket for this datagram's `(src_ip, dst)`.
+    fn connected_socket(
+        pool: &mut HashMap<(Option<IpAddr>, SocketAddr), Pooled>,
+        datagram: &DatagramOut,
+        port: u16,
+        unspecified_ip: IpAddr,
+        inbound_tx: &mpsc::Sender<Result<DatagramSegmentIter>>,
+        io_error_counter: &opentelemetry::metrics::Counter<u64>,
+        preferred_addr: SocketAddr,
+    ) -> Result<Arc<PerfUdpSocket>> {
+        let key = (datagram.src.map(|s| s.ip()), datagram.dst);
+
+        if let Some(pooled) = pool.get_mut(&key) {
+            pooled.last_send = Instant::now();
+            return Ok(pooled.socket.clone());
+        }
+
+        let bind = SocketAddr::new(key.0.unwrap_or(unspecified_ip), port);
+        // On Apple we leave both `SO_SNDBUF` and `SO_RCVBUF` at the OS defaults for connected
+        // sockets: a large send buffer lets the kernel accumulate a deep queue (upload bufferbloat),
+        // and we're testing the OS defaults for the data plane.
+        let socket = socket_factory::udp_connected(bind, datagram.dst)
+            .and_then(|s| s.into_perf())
+            .with_context(|| {
+                format!(
+                    "Failed to create connected UDP socket {bind} -> {}",
+                    datagram.dst
+                )
+            })?;
+
+        let socket = Arc::new(socket);
+        let recv_task = spawn_recv(
+            socket.clone(),
+            inbound_tx.clone(),
+            io_error_counter.clone(),
+            preferred_addr,
+        );
+
+        tracing::debug!(%bind, dst = %datagram.dst, "Created connected UDP socket");
+
+        pool.insert(
+            key,
+            Pooled {
+                socket: socket.clone(),
+                recv_task: recv_task.abort_handle(),
+                last_send: Instant::now(),
+            },
+        );
+
+        Ok(socket)
+    }
+
+    /// Spawns a task that reads from `socket` and forwards batches to the inbound channel.
+    fn spawn_recv(
+        socket: Arc<PerfUdpSocket>,
+        inbound_tx: mpsc::Sender<Result<DatagramSegmentIter>>,
+        io_error_counter: opentelemetry::metrics::Counter<u64>,
+        preferred_addr: SocketAddr,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                let result = socket.recv_from().await;
+
+                if let Some(io) = result
+                    .as_ref()
+                    .err()
+                    .and_then(|e| e.any_downcast_ref::<io::Error>())
+                {
+                    io_error_counter.add(
+                        1,
+                        &[
+                            otel::attr::network_io_direction_receive(),
+                            otel::attr::network_type_for_addr(preferred_addr),
+                            otel::attr::io_error_type(io),
+                            otel::attr::io_error_code(io),
+                        ],
+                    );
+                }
+
+                if inbound_tx.send(result).await.is_err() {
+                    tracing::debug!("Channel for inbound datagrams closed; exiting UDP recv task");
+                    return;
+                }
+            }
+        })
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 #[error("UDP socket thread stopped")]
 pub struct UdpSocketThreadStopped;
+
+#[cfg(all(test, any(target_os = "macos", target_os = "ios")))]
+mod connected_tests {
+    use super::*;
+    use bufferpool::BufferPool;
+    use bytes::BytesMut;
+    use ip_packet::Ecn;
+    use std::future::poll_fn;
+    use std::net::UdpSocket as StdUdpSocket;
+
+    fn datagram(dst: SocketAddr, payload: &[u8]) -> DatagramOut {
+        let pool = BufferPool::<BytesMut>::new(2048, "connected-test");
+        DatagramOut {
+            src: None,
+            dst,
+            packet: pool.pull_initialised(payload),
+            segment_size: payload.len(),
+            ecn: Ecn::NonEct,
+        }
+    }
+
+    async fn send(family: &mut ThreadedUdpSocket, datagram: DatagramOut) {
+        poll_fn(|cx| family.poll_send_ready(cx)).await.unwrap();
+        family.send(datagram).unwrap();
+    }
+
+    async fn recv_one(family: &mut ThreadedUdpSocket) -> (Vec<u8>, SocketAddr) {
+        let mut iter = tokio::time::timeout(
+            Duration::from_secs(5),
+            poll_fn(|cx| family.poll_recv_from(cx)),
+        )
+        .await
+        .expect("recv timed out")
+        .expect("recv failed");
+        let datagram = iter.next().expect("at least one datagram in batch");
+        (datagram.packet.to_vec(), datagram.from)
+    }
+
+    /// End-to-end test of the Apple connected-socket pool: sends route through a lazily-created
+    /// connected socket, replies arrive on it (with `from` overridden to the peer), and unsolicited
+    /// traffic from a stranger falls through to the recv-only listener.
+    #[tokio::test]
+    async fn connected_pool_routes_send_and_recv_with_listener_fallback() {
+        let peer = StdUdpSocket::bind("127.0.0.1:0").unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let peer_addr = peer.local_addr().unwrap();
+
+        let mut family = ThreadedUdpSocket::new(
+            Arc::new(socket_factory::udp),
+            "127.0.0.1:0".parse().unwrap(),
+        )
+        .unwrap();
+
+        // Send through the connected pool; the peer learns our (connected) source address.
+        send(&mut family, datagram(peer_addr, b"ping")).await;
+        let mut buf = [0u8; 64];
+        let (n, our_addr) = peer.recv_from(&mut buf).unwrap();
+        assert_eq!(&buf[..n], b"ping");
+
+        // Reply lands on the connected socket; `from` is overridden to the peer.
+        peer.send_to(b"pong", our_addr).unwrap();
+        let (payload, from) = recv_one(&mut family).await;
+        assert_eq!(payload, b"pong");
+        assert_eq!(
+            from, peer_addr,
+            "connected socket reports the peer as `from`"
+        );
+
+        // A stranger (no connected socket) hits the same port; the listener catches it.
+        let stranger = StdUdpSocket::bind("127.0.0.1:0").unwrap();
+        let stranger_addr = stranger.local_addr().unwrap();
+        stranger.send_to(b"hello", our_addr).unwrap();
+        let (payload, from) = recv_one(&mut family).await;
+        assert_eq!(payload, b"hello");
+        assert_eq!(
+            from, stranger_addr,
+            "listener reports the stranger as `from`"
+        );
+    }
+}

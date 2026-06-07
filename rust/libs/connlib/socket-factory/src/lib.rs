@@ -31,6 +31,16 @@ const ONE_MB: usize = 1024 * 1024;
 #[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
 
+/// How many times we yield-and-retry a *connected*-socket send that returns `ENOBUFS` before
+/// giving up on the datagram.
+///
+/// On Apple, `ENOBUFS` from a connected socket means the *interface output queue* is momentarily
+/// full (not the socket buffer). Yielding lets it drain and we retry, which paces us to the link
+/// instead of stalling on a writable edge that tracks the socket buffer. Generous on purpose: real
+/// back-pressure (the bounded outbound channel slowing the TUN reader) engages long before this, so
+/// reaching the bound means the interface is wedged.
+const MAX_ENOBUFS_YIELDS: u32 = 1000;
+
 /// The Windows equivalent of ENOBUFS.
 ///
 /// "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
@@ -66,6 +76,15 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     let addr = socket2::SockAddr::from(std_addr);
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
+    // On Apple, the recv-only data-plane listener and the connected sockets (see `udp_connected`)
+    // share a single local port via `SO_REUSEADDR`/`SO_REUSEPORT`, so the listener needs the flags
+    // too. Other UDP sockets bind ephemeral ports, where the flags are harmless.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        socket.set_reuse_address(true)?;
+        socket.set_reuse_port(true)?;
+    }
+
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
         socket.set_only_v6(true)?;
@@ -77,6 +96,37 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
     let socket = UdpSocket::new(socket)?;
+
+    Ok(socket)
+}
+
+/// Creates a UDP socket that is `bind`ed to `bind` and `connect`ed to `dst`.
+///
+/// On Apple platforms, unconnected UDP sockets cannot use the batched `sendmsg_x` datapath and
+/// don't surface `ENOBUFS` for back-pressure, so all sending happens over connected sockets.
+/// `SO_REUSEADDR`/`SO_REUSEPORT` let many such sockets (and the recv-only listener) share the
+/// same local port, which is required to keep our ICE candidates reachable.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn udp_connected(bind: SocketAddr, dst: SocketAddr) -> io::Result<UdpSocket> {
+    let bind_addr = socket2::SockAddr::from(bind);
+    let socket = socket2::Socket::new(bind_addr.domain(), socket2::Type::DGRAM, None)?;
+
+    socket.set_reuse_address(true)?;
+    socket.set_reuse_port(true)?;
+
+    // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
+    if bind_addr.is_ipv6() {
+        socket.set_only_v6(true)?;
+    }
+
+    socket.set_nonblocking(true)?;
+    socket.bind(&bind_addr)?;
+    socket.connect(&socket2::SockAddr::from(dst))?;
+
+    let socket = std::net::UdpSocket::from(socket);
+    let socket = tokio::net::UdpSocket::try_from(socket)?;
+    let mut socket = UdpSocket::new(socket)?;
+    socket.connected = Some(dst);
 
     Ok(socket)
 }
@@ -165,6 +215,11 @@ pub struct UdpSocket {
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
+    /// The remote this socket is `connect`ed to, if any.
+    ///
+    /// Only set for sockets created via [`udp_connected`]. A connected socket sends to (and
+    /// receives from) exactly this peer; the source address is pinned by `bind`/`connect`.
+    connected: Option<SocketAddr>,
 }
 
 /// A UDP socket with performance optimisations for fast send & receive.
@@ -179,6 +234,10 @@ pub struct PerfUdpSocket {
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
+    /// The remote this socket is `connect`ed to, if any (see [`udp_connected`]).
+    connected: Option<SocketAddr>,
+    /// The local address this socket is bound to.
+    local: SocketAddr,
 }
 
 impl UdpSocket {
@@ -190,12 +249,14 @@ impl UdpSocket {
             port,
             inner,
             source_ip_resolver: None,
+            connected: None,
         })
     }
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
         let socket_addr = self.inner.local_addr()?;
+        let local = socket_addr;
 
         let quinn_ref = quinn_udp::UdpSockRef::from(&self.inner);
         let quinn_state = quinn_udp::UdpSocketState::new(quinn_ref)?;
@@ -226,6 +287,8 @@ impl UdpSocket {
                 .build(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
+            connected: self.connected,
+            local,
         })
     }
 
@@ -306,17 +369,37 @@ impl PerfUdpSocket {
             ],
         );
 
-        Ok(DatagramSegmentIter::new(bufs, meta, self.port, len))
+        Ok(match self.connected {
+            // A connected socket only ever receives from its peer, and may not populate the
+            // `dst_ip` control message. Use the known peer/local addresses directly.
+            Some(peer) => DatagramSegmentIter::new_connected(bufs, meta, len, self.local, peer),
+            None => DatagramSegmentIter::new(bufs, meta, self.port, len),
+        })
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
+        // For connected sockets the source address is pinned by `bind`/`connect`, so we don't
+        // request a per-packet source IP (which would add a redundant `IP_PKTINFO`/`IP_RECVDSTADDR`
+        // control message: the very mechanism we're moving away from on Apple).
+        let src_ip = if self.connected.is_some() {
+            None
+        } else {
+            datagram.src.map(|s| s.ip())
+        };
+
         let transmit = self.prepare_transmit(
             datagram.dst,
-            datagram.src.map(|s| s.ip()),
+            src_ip,
             datagram.packet.chunk(),
             datagram.segment_size,
             datagram.ecn,
         )?;
+
+        // Connected sockets (Apple) handle `ENOBUFS` internally via a bounded yield-retry in
+        // `send_transmit`. The exp-backoff loop below is only for unconnected sockets.
+        if self.connected.is_some() {
+            return self.send_transmit(&transmit).await;
+        }
 
         let mut attempt = 0;
 
@@ -334,6 +417,11 @@ impl PerfUdpSocket {
 
             attempt += 1;
         }
+    }
+
+    /// The local address this socket is bound to.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local
     }
 
     pub fn set_buffer_sizes(
@@ -393,10 +481,31 @@ impl PerfUdpSocket {
                 ],
             );
 
-            self.inner
-                .async_io(Interest::WRITABLE, || self.state.try_send((&self.inner).into(), &chunk))
-                .await
-                .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
+            let connected = self.connected.is_some();
+            let mut enobufs_yields = 0;
+            loop {
+                match self
+                    .inner
+                    .async_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &chunk)
+                    })
+                    .await
+                {
+                    Ok(()) => break,
+                    // On a connected socket, `ENOBUFS` means the *interface output queue* is full,
+                    // not the socket send buffer (which is what `WRITABLE` tracks). Waiting on
+                    // writability would stall on an edge that may never fire, so we yield and retry
+                    // instead, pacing to the interface queue draining. Back-pressure still
+                    // propagates via the bounded outbound channel to the TUN reader.
+                    Err(e) if connected && is_enobufs(&e) && enobufs_yields < MAX_ENOBUFS_YIELDS => {
+                        enobufs_yields += 1;
+                        tokio::task::yield_now().await;
+                    }
+                    Err(e) => {
+                        return Err(e).with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"));
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -521,6 +630,20 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
     }
 }
 
+/// Whether the given IO error is `ENOBUFS` (kernel send buffer full).
+///
+/// On non-Apple platforms we never connect our data-plane sockets, so this is always `false`
+/// and the connected-socket back-pressure path is inert.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn is_enobufs(e: &io::Error) -> bool {
+    e.raw_os_error() == Some(libc::ENOBUFS)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn is_enobufs(_: &io::Error) -> bool {
+    false
+}
+
 fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
     let raw_os_error = e.any_downcast_ref::<io::Error>()?.raw_os_error()?;
 
@@ -583,6 +706,12 @@ pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = B
 
     port: u16,
 
+    /// For connected sockets: the local address to report as [`DatagramIn::local`], bypassing
+    /// `dst_ip` metadata (which a connected socket may not deliver).
+    connected_local: Option<SocketAddr>,
+    /// For connected sockets: the peer to report as [`DatagramIn::from`].
+    connected_from: Option<SocketAddr>,
+
     buf_index: usize,
     segment_index: usize,
 
@@ -609,11 +738,28 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
             metas,
             len,
             port,
+            connected_local: None,
+            connected_from: None,
             buf_index: 0,
             segment_index: 0,
             _total_bytes: total_bytes,
             _num_packets: num_packets,
         }
+    }
+
+    /// Like [`Self::new`], but for a connected socket: report `local`/`from` directly instead of
+    /// deriving them from the (possibly absent) `dst_ip`/`addr` recv-metadata.
+    fn new_connected(
+        buffers: [B; N],
+        metas: [quinn_udp::RecvMeta; N],
+        len: usize,
+        local: SocketAddr,
+        from: SocketAddr,
+    ) -> Self {
+        let mut iter = Self::new(buffers, metas, local.port(), len);
+        iter.connected_local = Some(local);
+        iter.connected_from = Some(from);
+        iter
     }
 }
 
@@ -637,11 +783,18 @@ where
                 continue;
             }
 
-            let Some(local_ip) = meta.dst_ip else {
-                tracing::warn!("Skipping packet without local IP");
+            let local = match self.connected_local {
+                Some(local) => local,
+                None => {
+                    let Some(local_ip) = meta.dst_ip else {
+                        tracing::warn!("Skipping packet without local IP");
 
-                self.buf_index += 1;
-                continue;
+                        self.buf_index += 1;
+                        continue;
+                    };
+
+                    SocketAddr::new(local_ip, self.port)
+                }
             };
 
             match meta.stride.cmp(&meta.len) {
@@ -664,8 +817,6 @@ where
                 continue;
             }
 
-            let local = SocketAddr::new(local_ip, self.port);
-
             let segment_size = meta.stride;
 
             #[cfg(debug_assertions)]
@@ -678,7 +829,7 @@ where
 
             return Some(DatagramIn {
                 local,
-                from: meta.addr,
+                from: self.connected_from.unwrap_or(meta.addr),
                 packet: &buf[segment_start..segment_end],
                 ecn: match meta.ecn {
                     Some(EcnCodepoint::Ce) => Ecn::Ce,
@@ -742,6 +893,61 @@ mod tests {
         assert_eq!(iter.next().unwrap().packet, b"baz5");
         assert_eq!(iter.next().unwrap().packet, b"foo");
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn connected_iter_overrides_from_and_local() {
+        let peer: SocketAddr = "203.0.113.5:9999".parse().unwrap();
+        let local: SocketAddr = "192.0.2.1:52625".parse().unwrap();
+
+        let mut iter = DatagramSegmentIter::new_connected(
+            [DummyBuffer(b"hello".to_vec()), DummyBuffer(Vec::new())],
+            [
+                recv_meta(
+                    "198.51.100.7:1".parse().unwrap(),
+                    IpAddr::V4(Ipv4Addr::new(198, 51, 100, 9)),
+                    5,
+                    5,
+                ),
+                RecvMeta::default(),
+            ],
+            2,
+            local,
+            peer,
+        );
+
+        let d = iter.next().unwrap();
+        assert_eq!(d.packet, b"hello");
+        assert_eq!(d.from, peer, "from is overridden with the connected peer");
+        assert_eq!(d.local, local, "local is overridden with the bound address");
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn connected_iter_yields_packet_even_without_dst_ip() {
+        let peer: SocketAddr = "203.0.113.5:9999".parse().unwrap();
+        let local: SocketAddr = "192.0.2.1:52625".parse().unwrap();
+
+        // A connected socket may not deliver the `dst_ip` control message; the unconnected path
+        // would drop this packet, but the connected path uses the known local address.
+        let mut meta = RecvMeta::default();
+        meta.addr = "198.51.100.7:1".parse().unwrap();
+        meta.dst_ip = None;
+        meta.len = 5;
+        meta.stride = 5;
+
+        let mut iter = DatagramSegmentIter::new_connected(
+            [DummyBuffer(b"hello".to_vec())],
+            [meta],
+            1,
+            local,
+            peer,
+        );
+
+        let d = iter.next().unwrap();
+        assert_eq!(d.packet, b"hello");
+        assert_eq!(d.local, local);
+        assert_eq!(d.from, peer);
     }
 
     #[test]
@@ -818,5 +1024,195 @@ mod tests {
         meta.stride = stride;
 
         meta
+    }
+}
+
+/// Spike tests validating that the Apple fast datapath (`sendmsg_x`/`recvmsg_x`) works on
+/// **connected** UDP sockets, plus `SO_REUSEPORT` coexistence. These gate the connected-socket
+/// refactor; see the plan. Run with `cargo test -p socket-factory --  --nocapture connected_spike`.
+#[cfg(all(test, any(target_os = "macos", target_os = "ios")))]
+mod connected_spike {
+    use quinn_udp::{Transmit, UdpSockRef, UdpSocketState};
+    use socket2::{Domain, Protocol, Socket, Type};
+    use std::io::IoSliceMut;
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+    use std::time::Duration;
+
+    fn v4(port: u16) -> SocketAddr {
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port))
+    }
+
+    fn wildcard_v4(port: u16) -> SocketAddr {
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port))
+    }
+
+    fn socket(bind: SocketAddr, connect_to: Option<SocketAddr>) -> Socket {
+        let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).unwrap();
+        s.set_reuse_address(true).unwrap();
+        s.set_reuse_port(true).unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(500)))
+            .unwrap();
+        s.bind(&bind.into()).unwrap();
+        if let Some(dst) = connect_to {
+            s.connect(&dst.into()).unwrap();
+        }
+        s
+    }
+
+    fn apple_state(s: &Socket) -> UdpSocketState {
+        let state = UdpSocketState::new(UdpSockRef::from(s)).unwrap();
+        // SAFETY: macOS/iOS support these APIs (we already rely on this in `into_perf`).
+        unsafe {
+            state.set_apple_fast_path();
+        }
+        assert!(
+            state.is_apple_fast_path_enabled(),
+            "apple fast path must be enabled for the spike"
+        );
+        state
+    }
+
+    /// THE gating question: does `sendmsg_x` (which always sets `msg_name`) succeed on a
+    /// connected socket, or does Darwin return EISCONN?
+    #[test]
+    fn sendmsg_x_single_and_batch_on_connected_socket() {
+        let receiver = socket(v4(0), None);
+        let recv_addr = receiver.local_addr().unwrap().as_socket().unwrap();
+        let receiver = UdpSocket::from(receiver);
+
+        let sender = socket(v4(0), Some(recv_addr));
+        let state = apple_state(&sender);
+
+        // Single datagram.
+        let payload = b"hello-connected";
+        state
+            .try_send(
+                UdpSockRef::from(&sender),
+                &Transmit {
+                    destination: recv_addr,
+                    ecn: None,
+                    contents: payload,
+                    segment_size: None,
+                    src_ip: None,
+                },
+            )
+            .expect("single sendmsg_x on connected socket must succeed (no EISCONN)");
+
+        let mut buf = [0u8; 2048];
+        let n = receiver.recv(&mut buf).expect("recv single");
+        assert_eq!(&buf[..n], payload);
+
+        // GSO batch: 3 segments of 10 bytes => 3 datagrams in one sendmsg_x syscall.
+        let batch = b"0123456789ABCDEFGHIJabcdefghij"; // 30 bytes
+        state
+            .try_send(
+                UdpSockRef::from(&sender),
+                &Transmit {
+                    destination: recv_addr,
+                    ecn: None,
+                    contents: batch,
+                    segment_size: Some(10),
+                    src_ip: None,
+                },
+            )
+            .expect("batched sendmsg_x on connected socket must succeed");
+
+        for expected in [&b"0123456789"[..], b"ABCDEFGHIJ", b"abcdefghij"] {
+            let n = receiver.recv(&mut buf).expect("recv batch segment");
+            assert_eq!(&buf[..n], expected);
+        }
+    }
+
+    /// Does `recvmsg_x` deliver data on a connected socket, and what `addr`/`dst_ip` metadata
+    /// do we get? (We expect to have to override `from`/`local` from known addresses.)
+    #[test]
+    fn recvmsg_x_on_connected_socket_reports_metadata() {
+        let a = socket(v4(0), None);
+        let a_addr = a.local_addr().unwrap().as_socket().unwrap();
+        let b = socket(v4(0), None);
+        let b_addr = b.local_addr().unwrap().as_socket().unwrap();
+
+        a.connect(&b_addr.into()).unwrap();
+        b.connect(&a_addr.into()).unwrap();
+
+        let a_state = apple_state(&a);
+        let b_state = apple_state(&b);
+
+        let payload = b"a->b";
+        a_state
+            .try_send(
+                UdpSockRef::from(&a),
+                &Transmit {
+                    destination: b_addr,
+                    ecn: None,
+                    contents: payload,
+                    segment_size: None,
+                    src_ip: None,
+                },
+            )
+            .unwrap();
+
+        let mut buf = [0u8; 2048];
+        let mut bufs = [IoSliceMut::new(&mut buf)];
+        let mut metas = [quinn_udp::RecvMeta::default()];
+        // `UdpSocketState::new` puts the socket in nonblocking mode, so retry until loopback
+        // delivers (production gates this on readability via `async_io`).
+        let mut msgs = 0;
+        for _ in 0..200 {
+            match b_state.recv(UdpSockRef::from(&b), &mut bufs, &mut metas) {
+                Ok(n) => {
+                    msgs = n;
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(e) => panic!("recvmsg_x on connected socket: {e}"),
+            }
+        }
+        assert!(msgs >= 1, "no datagram received within deadline");
+        let meta = &metas[0];
+        eprintln!(
+            "connected recvmsg_x: addr={:?} dst_ip={:?} stride={} len={} (a_addr={a_addr}, b_addr={b_addr})",
+            meta.addr, meta.dst_ip, meta.stride, meta.len
+        );
+        assert_eq!(&buf[..meta.stride], payload);
+    }
+
+    /// `SO_REUSEPORT` coexistence + most-specific-match demux: a wildcard listener on `:P` and a
+    /// connected socket on `:P` bind together; the peer's packets reach the connected socket,
+    /// strangers reach the listener.
+    #[test]
+    fn reuseport_listener_and_connected_coexist_and_demux() {
+        // Listener on 0.0.0.0:P.
+        let listener = socket(wildcard_v4(0), None);
+        let port = listener.local_addr().unwrap().as_socket().unwrap().port();
+        let listener = UdpSocket::from(listener);
+
+        // The peer we will connect to.
+        let peer = socket(v4(0), None);
+        let peer_addr = peer.local_addr().unwrap().as_socket().unwrap();
+        let peer = UdpSocket::from(peer);
+
+        // Connected socket bound to the SAME port as the listener.
+        let connected = socket(v4(port), Some(peer_addr));
+        let connected_local = connected.local_addr().unwrap().as_socket().unwrap();
+        let connected = UdpSocket::from(connected);
+
+        // Peer -> our (127.0.0.1:P): should land on the CONNECTED socket (4-tuple match).
+        peer.send_to(b"from-peer", connected_local).unwrap();
+        let mut buf = [0u8; 2048];
+        let n = connected
+            .recv(&mut buf)
+            .expect("connected socket should receive peer traffic");
+        assert_eq!(&buf[..n], b"from-peer");
+
+        // Stranger -> our (127.0.0.1:P): should land on the LISTENER (no connected match).
+        let stranger = UdpSocket::bind(v4(0)).unwrap();
+        stranger.send_to(b"from-stranger", v4(port)).unwrap();
+        let n = listener
+            .recv(&mut buf)
+            .expect("listener should receive stranger traffic");
+        assert_eq!(&buf[..n], b"from-stranger");
     }
 }

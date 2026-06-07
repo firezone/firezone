@@ -52,7 +52,7 @@ snownet = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
