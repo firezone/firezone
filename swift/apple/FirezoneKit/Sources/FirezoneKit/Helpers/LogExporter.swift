@@ -104,7 +104,8 @@ import SystemPackage
       try? fileManager.removeItem(at: archiveURL)
 
       let latestSymlinkNames = ["latest", "connlib.latest"]
-      let movedSymlinks: [(source: URL, temp: URL)] = latestSymlinkNames.compactMap { symlinkName in
+      let successfullyMovedSymlinks: [(source: URL, temp: URL)] = latestSymlinkNames.compactMap {
+        symlinkName in
         let source = connlibLogFolderURL.appendingPathComponent(symlinkName)
         let temp = cacheFolderURL.appendingPathComponent(symlinkName)
 
@@ -121,7 +122,7 @@ import SystemPackage
       // Move any known connlib `latest` symlink out of the way before creating the archive.
       // Apple's implementation of zip appears to not be able to handle symlinks well.
       defer {
-        for moved in movedSymlinks.reversed() {
+        for moved in successfullyMovedSymlinks.reversed() {
           _ = try? fileManager.moveItem(at: moved.temp, to: moved.source)
         }
       }
