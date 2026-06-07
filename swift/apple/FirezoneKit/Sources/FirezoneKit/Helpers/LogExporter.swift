@@ -103,15 +103,27 @@ import SystemPackage
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
-      let latestSymlink = connlibLogFolderURL.appendingPathComponent("latest")
-      let tempSymlink = cacheFolderURL.appendingPathComponent(
-        "latest")
+      let latestSymlinkNames = ["latest", "connlib.latest"]
+      let movedSymlinks: [(source: URL, temp: URL)] = latestSymlinkNames.compactMap { symlinkName in
+        let source = connlibLogFolderURL.appendingPathComponent(symlinkName)
+        let temp = cacheFolderURL.appendingPathComponent(symlinkName)
 
-      // Move the `latest` symlink out of the way before creating the archive.
-      // Apple's implementation of zip appears to not be able to handle symlinks well
-      _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
+        try? fileManager.removeItem(at: temp)
+
+        do {
+          try fileManager.moveItem(at: source, to: temp)
+          return (source, temp)
+        } catch {
+          return nil
+        }
+      }
+
+      // Move any known connlib `latest` symlink out of the way before creating the archive.
+      // Apple's implementation of zip appears to not be able to handle symlinks well.
       defer {
-        _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
+        for moved in movedSymlinks.reversed() {
+          _ = try? fileManager.moveItem(at: moved.temp, to: moved.source)
+        }
       }
 
       // Write final log archive
