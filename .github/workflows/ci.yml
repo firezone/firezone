@@ -31,7 +31,7 @@ jobs:
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Plan jobs to run
         id: plan
         run: |
@@ -168,7 +168,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Check if all jobs are successful
         run: |
           set -e
@@ -185,7 +185,7 @@ jobs:
     name: shell-tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # v4.0.0
         id: setup-bats
       - run: bats scripts/tests/bats
@@ -209,7 +209,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   swift:
@@ -229,7 +229,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   elixir:
@@ -247,7 +247,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   rust:
@@ -267,7 +267,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   tauri:
@@ -286,7 +286,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   codeql:
@@ -306,7 +306,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   control-plane:
@@ -326,7 +326,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
@@ -352,7 +352,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   loadtest:
@@ -371,7 +371,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
