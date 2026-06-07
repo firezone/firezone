@@ -4,6 +4,8 @@ use dns_types::DomainName;
 use telemetry::{Telemetry, analytics};
 
 use hickory_resolver::TokioResolver;
+use hickory_resolver::lookup::Lookup;
+use hickory_resolver::proto::rr::RecordType;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
@@ -49,6 +51,7 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 enum PortalCommand {
@@ -83,7 +86,8 @@ impl Eventloop {
                 1000,
             ),
             logged_permission_denied: false,
-            tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
+            tunnel_errors: crate::otel::metrics::tunnel_errors(),
+            dns_lookup_duration: crate::otel::metrics::dns_lookup_duration(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -476,31 +480,43 @@ impl Eventloop {
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
         let resolver = self.resolver.clone();
+        let dns_lookup_duration = self.dns_lookup_duration.clone();
 
         async move {
-            let ipv4_lookup = resolver.ipv4_lookup(domain.to_string());
-            let ipv6_lookup = resolver.ipv6_lookup(domain.to_string());
+            // Resolve `A` and `AAAA` as two independent lookups so that each is
+            // recorded with its own query-type and response-code attributes.
+            let ipv4 = resolve_record(&resolver, &dns_lookup_duration, &domain, RecordType::A);
+            let ipv6 = resolve_record(&resolver, &dns_lookup_duration, &domain, RecordType::AAAA);
 
-            let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                (Ok(ipv4), Ok(ipv6)) => lookup_to_ips(&ipv4).chain(lookup_to_ips(&ipv6)).collect(),
-                (Ok(ipv4), Err(e)) => {
-                    tracing::debug!(%domain, "AAAA lookup failed: {e}");
+            let (ipv4, ipv6) = futures::future::join(ipv4, ipv6).await;
 
-                    lookup_to_ips(&ipv4).collect()
-                }
-                (Err(e), Ok(ipv6)) => {
-                    tracing::debug!(%domain, "A lookup failed: {e}");
+            Ok(ipv4.into_iter().chain(ipv6).collect())
+        }
+    }
+}
 
-                    lookup_to_ips(&ipv6).collect()
-                }
-                (Err(e1), Err(e2)) => {
-                    tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
+/// Performs a single recursive DNS lookup against the upstream resolver, recording
+/// its duration with `dns.question.type` and `dns.response.code` attributes.
+async fn resolve_record(
+    resolver: &TokioResolver,
+    dns_lookup_duration: &opentelemetry::metrics::Histogram<f64>,
+    domain: &DomainName,
+    record_type: RecordType,
+) -> Vec<IpAddr> {
+    let started_at = Instant::now();
+    let result = resolver.lookup(domain.to_string(), record_type).await;
 
-                    vec![]
-                }
-            };
+    dns_lookup_duration.record(
+        started_at.elapsed().as_secs_f64(),
+        &crate::otel::attr::dns_lookup(record_type, &result),
+    );
 
-            Ok(ips)
+    match result {
+        Ok(lookup) => lookup_to_ips(&lookup).collect(),
+        Err(e) => {
+            tracing::debug!(%domain, %record_type, "DNS lookup failed: {e}");
+
+            Vec::new()
         }
     }
 }
@@ -576,7 +592,7 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-fn lookup_to_ips(lookup: &hickory_resolver::lookup::Lookup) -> impl Iterator<Item = IpAddr> + '_ {
+fn lookup_to_ips(lookup: &Lookup) -> impl Iterator<Item = IpAddr> + '_ {
     lookup
         .answers()
         .iter()
