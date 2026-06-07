@@ -650,10 +650,12 @@ async fn spin_and_yield(attempt: u32) {
 /// in our send path, and treating it as such is safe — at worst we flush the cache and re-resolve
 /// the same IP.
 #[cfg(target_os = "windows")]
-fn is_invalid_argument(e: &anyhow::Error) -> bool {
-    e.any_downcast_ref::<io::Error>()
-        .and_then(|e| e.raw_os_error())
-        == Some(WINDOWS_INVALID_ARGUMENT)
+fn is_invalid_argument(e: &io::Error) -> bool {
+    let Some(raw_os_error) = e.raw_os_error() else {
+        return false;
+    };
+
+    raw_os_error == WINDOWS_INVALID_ARGUMENT
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
