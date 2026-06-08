@@ -602,10 +602,7 @@ mod connected {
         }
 
         let bind = SocketAddr::new(key.0.unwrap_or(unspecified_ip), port);
-        // On Apple we leave both `SO_SNDBUF` and `SO_RCVBUF` at the OS defaults for connected
-        // sockets: a large send buffer lets the kernel accumulate a deep queue (upload bufferbloat),
-        // and we're testing the OS defaults for the data plane.
-        let socket = socket_factory::udp_connected(bind, datagram.dst)
+        let mut socket = socket_factory::udp_connected(bind, datagram.dst)
             .and_then(|s| s.into_perf())
             .with_context(|| {
                 format!(
@@ -613,6 +610,14 @@ mod connected {
                     datagram.dst
                 )
             })?;
+
+        // These connected sockets carry the actual data plane, so they need the same large
+        // send/receive buffers as the listener. Left at the OS defaults, a BDP-sized burst on a
+        // high-latency path overruns the small buffer and gets dropped a whole window at a time.
+        let (send_buffer_size, recv_buffer_size) = buffer_sizes();
+        if let Err(e) = socket.set_buffer_sizes(send_buffer_size, recv_buffer_size) {
+            tracing::warn!("Failed to set connected socket buffer sizes: {e}");
+        }
 
         let socket = Arc::new(socket);
         let recv_task = spawn_recv(
