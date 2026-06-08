@@ -31,7 +31,7 @@ defmodule PortalWeb.Settings.AccountTest do
   end
 
   describe "billing plan UI" do
-    test "shows upgrade button for non-enterprise provisioned account", %{
+    test "shows manage plan button for non-enterprise provisioned account", %{
       conn: conn,
       account: account,
       actor: actor
@@ -50,7 +50,7 @@ defmodule PortalWeb.Settings.AccountTest do
       refute html =~ "Contact your account manager for plan changes."
     end
 
-    test "shows contact message instead of upgrade button for enterprise provisioned account", %{
+    test "shows contact message instead of manage plan button for enterprise provisioned account", %{
       conn: conn,
       account: account,
       actor: actor
@@ -69,7 +69,7 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "Contact your account manager for plan changes."
     end
 
-    test "shows neither upgrade button nor contact message for unprovisioned account", %{
+    test "shows neither manage plan button nor contact message for unprovisioned account", %{
       conn: conn,
       account: account,
       actor: actor
