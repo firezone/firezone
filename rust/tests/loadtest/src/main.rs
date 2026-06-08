@@ -49,13 +49,14 @@ mod util;
 mod websocket;
 
 use crate::config::{HttpConfig, TcpConfig, TestType, WebsocketConfig};
+use anyhow::Context as _;
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{Rng as _, SeedableRng as _};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer as _;
@@ -124,43 +125,81 @@ async fn try_main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Resolve the config (optional in subcommand mode) and seed once, then
+    // dispatch: `random` selects from the config, while each subcommand resolves
+    // its matching section as a base that explicitly-passed CLI args override.
+    let config = load_optional_config(cli.config.as_deref())?;
+    let mut selector = TestSelector::new(cli.seed);
+    let seed = selector.seed();
+
     match cli.command {
-        None | Some(Commands::Random) => run_random(cli.config, cli.seed).await?,
-        Some(Commands::Http(args)) => http::run_with_cli_args(args).await?,
-        Some(Commands::Tcp(args)) => tcp::run_with_cli_args(args).await?,
-        Some(Commands::Websocket(args)) => websocket::run_with_cli_args(args).await?,
+        None | Some(Commands::Random) => run_random(config, &mut selector, seed).await?,
+        Some(Commands::Http(args)) => {
+            let base = config
+                .as_ref()
+                .and_then(|c| c.http.as_ref())
+                .map(|s| selector.resolve_http(s));
+            http::run_with_args(args, base, seed).await?;
+        }
+        Some(Commands::Tcp(args)) => {
+            let base = config
+                .as_ref()
+                .and_then(|c| c.tcp.as_ref())
+                .map(|s| selector.resolve_tcp(s));
+            tcp::run_with_args(args, base, seed).await?;
+        }
+        Some(Commands::Websocket(args)) => {
+            let base = config
+                .as_ref()
+                .and_then(|c| c.websocket.as_ref())
+                .map(|s| selector.resolve_websocket(s));
+            websocket::run_with_args(args, base, seed).await?;
+        }
     }
 
     Ok(())
 }
 
+/// Load the config for subcommand mode, where it is optional.
+///
+/// An explicitly-specified `--config` must exist; the default file is used only
+/// if it happens to be present.
+fn load_optional_config(explicit: Option<&Path>) -> anyhow::Result<Option<LoadTestConfig>> {
+    match explicit {
+        Some(path) => Ok(Some(LoadTestConfig::load(path)?)),
+        None => {
+            let default = Path::new(DEFAULT_CONFIG_FILE);
+
+            if default.exists() {
+                Ok(Some(LoadTestConfig::load(default)?))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
 /// Default configuration compiled from the example file.
 const DEFAULT_CONFIG: &str = include_str!("../loadtest.example.toml");
 
-/// Run a random test from the config file.
-async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::Result<()> {
-    let config_path = config_path.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_FILE));
-
-    if !config_path.exists() {
-        anyhow::bail!(
-            "Config file not found: {}\n\nCreate a loadtest.toml file or specify one with --config",
-            config_path.display()
-        );
-    }
-
-    tracing::info!(config = %config_path.display(), "Loading config");
-
-    let config = LoadTestConfig::load(&config_path)?;
+/// Run a random test selected from the config.
+///
+/// Unlike subcommand mode, a config is required here: there is nothing to select
+/// from otherwise.
+async fn run_random(
+    config: Option<LoadTestConfig>,
+    selector: &mut TestSelector,
+    seed: u64,
+) -> anyhow::Result<()> {
+    let config = config.context(
+        "No config file found; create a loadtest.toml file or specify one with --config",
+    )?;
 
     let enabled_types = config.enabled_types();
     anyhow::ensure!(
         !enabled_types.is_empty(),
-        "No test sections configured in {}; add at least one of [http], [tcp] or [websocket]",
-        config_path.display()
+        "No test sections configured; add at least one of [http], [tcp] or [websocket]"
     );
-
-    let mut selector = TestSelector::new(seed);
-    let seed = selector.seed();
 
     tracing::info!(seed, ?enabled_types, "Selecting random test");
 
