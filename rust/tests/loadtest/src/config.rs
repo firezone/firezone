@@ -74,7 +74,9 @@ impl SampleRange<u64> for Range {
     }
 
     fn is_empty(&self) -> bool {
-        self.max - self.min == 0
+        // An inclusive `[min, max]` range is only empty when `min > max`; when the
+        // bounds are equal it still contains that single value.
+        self.min > self.max
     }
 }
 
@@ -421,5 +423,13 @@ mod tests {
         assert_eq!(config.enabled_types(), vec![TestType::Http]);
 
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn range_with_equal_bounds_is_not_empty() {
+        // `gen_range` panics on a range it believes is empty; an inclusive range
+        // with equal bounds still contains its single value.
+        assert!(!Range { min: 5, max: 5 }.is_empty());
+        assert!(Range { min: 6, max: 5 }.is_empty());
     }
 }
