@@ -4,10 +4,13 @@
 //! Each invocation randomly selects a test type from the sections that are present
 //! and picks parameters from its config.
 
+use crate::cli::parse_bitrate;
+use crate::turn::TURN_HEADER_SIZE;
 use anyhow::{Context as _, Result, bail};
 use rand::distributions::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
+use std::net::SocketAddr;
 use std::path::Path;
 use url::Url;
 
@@ -20,6 +23,7 @@ pub struct LoadTestConfig {
     pub http: Option<HttpConfig>,
     pub tcp: Option<TcpConfig>,
     pub websocket: Option<WebsocketConfig>,
+    pub turn: Option<TurnConfig>,
 }
 
 /// A numeric range with optional step constraint.
@@ -174,6 +178,85 @@ impl WebsocketConfig {
     }
 }
 
+/// Maximum TURN payload size.
+///
+/// Bounded by a conservative typical Internet MTU to avoid IP fragmentation of
+/// the relayed datagrams.
+pub const MAX_TURN_PAYLOAD_SIZE: usize = 1400;
+
+/// TURN (relay) load test configuration.
+///
+/// Unlike the other sections, a TURN test targets a single relay with a single
+/// set of credentials, so its fields are scalars rather than lists or ranges.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TurnConfig {
+    /// Relay socket address (`ip:port`).
+    pub address: SocketAddr,
+    /// TURN username (long-term credential, scoped to this relay).
+    pub username: String,
+    /// TURN password (long-term credential, scoped to this relay).
+    pub password: String,
+    /// UDP payload size in bytes for each relayed datagram.
+    #[serde(default = "default_turn_payload_size")]
+    pub payload_size: usize,
+    /// Target send bitrate in bits per second (e.g. "2mbps", "500kbps").
+    #[serde(rename = "bitrate", deserialize_with = "deserialize_bitrate")]
+    pub bitrate_bps: u64,
+    /// How long to stream datagrams for, in seconds.
+    #[serde(default = "default_turn_duration_secs")]
+    pub duration_secs: u64,
+    /// Fail the test if packet loss exceeds this percentage.
+    pub max_loss_percent: Option<f64>,
+}
+
+/// Default TURN payload size (a typical media MTU).
+fn default_turn_payload_size() -> usize {
+    1280
+}
+
+/// Default TURN test duration in seconds.
+fn default_turn_duration_secs() -> u64 {
+    30
+}
+
+fn deserialize_bitrate<'de, D>(d: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    let string = String::deserialize(d)?;
+    parse_bitrate(&string).map_err(D::Error::custom)
+}
+
+impl TurnConfig {
+    fn validate(&self) -> Result<()> {
+        if self.username.is_empty() {
+            bail!("[turn] username is empty");
+        }
+        if self.password.is_empty() {
+            bail!("[turn] password is empty");
+        }
+        if self.payload_size < TURN_HEADER_SIZE {
+            bail!(
+                "[turn] payload_size ({}) must be at least {TURN_HEADER_SIZE} bytes (sequence header)",
+                self.payload_size
+            );
+        }
+        if self.payload_size > MAX_TURN_PAYLOAD_SIZE {
+            bail!(
+                "[turn] payload_size ({}) exceeds the maximum of {MAX_TURN_PAYLOAD_SIZE} bytes",
+                self.payload_size
+            );
+        }
+        if self.bitrate_bps == 0 {
+            bail!("[turn] bitrate must be greater than zero");
+        }
+
+        Ok(())
+    }
+}
+
 impl LoadTestConfig {
     /// Load and validate configuration from a TOML file.
     pub fn load(path: &Path) -> Result<Self> {
@@ -193,6 +276,9 @@ impl LoadTestConfig {
         if let Some(websocket) = &self.websocket {
             websocket.validate()?;
         }
+        if let Some(turn) = &self.turn {
+            turn.validate()?;
+        }
 
         Ok(())
     }
@@ -203,6 +289,7 @@ impl LoadTestConfig {
             self.http.is_some().then_some(TestType::Http),
             self.tcp.is_some().then_some(TestType::Tcp),
             self.websocket.is_some().then_some(TestType::Websocket),
+            self.turn.is_some().then_some(TestType::Turn),
         ]
         .into_iter()
         .flatten()
@@ -215,6 +302,7 @@ pub enum TestType {
     Http,
     Tcp,
     Websocket,
+    Turn,
 }
 
 #[cfg(test)]
@@ -421,6 +509,47 @@ mod tests {
 
         let config = result.unwrap();
         assert_eq!(config.enabled_types(), vec![TestType::Http]);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_section() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_config.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"2mbps\"\n",
+        )
+        .unwrap();
+
+        let config = LoadTestConfig::load(&path).unwrap();
+        assert_eq!(config.enabled_types(), vec![TestType::Turn]);
+
+        let turn = config.turn.unwrap();
+        assert_eq!(turn.bitrate_bps, 2_000_000);
+        assert_eq!(turn.payload_size, 1280); // default
+        assert_eq!(turn.duration_secs, 30); // default
+        assert_eq!(turn.address, "1.2.3.4:3478".parse().unwrap());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_rejects_small_payload() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_small_payload.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"1mbps\"\npayload_size = 8\n",
+        )
+        .unwrap();
+
+        let result = LoadTestConfig::load(&path);
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "[turn] payload_size (8) must be at least 16 bytes (sequence header)"
+        );
 
         std::fs::remove_file(&path).ok();
     }

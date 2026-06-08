@@ -44,11 +44,13 @@ mod cli;
 mod config;
 mod echo_payload;
 mod http;
+mod portal;
 mod tcp;
+mod turn;
 mod util;
 mod websocket;
 
-use crate::config::{HttpConfig, TcpConfig, TestType, WebsocketConfig};
+use crate::config::{HttpConfig, TcpConfig, TestType, TurnConfig, WebsocketConfig};
 use anyhow::Context as _;
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
@@ -102,6 +104,8 @@ enum Commands {
     Tcp(tcp::Args),
     /// WebSocket connection load testing
     Websocket(websocket::Args),
+    /// TURN relay load testing
+    Turn(turn::Args),
 }
 
 #[tokio::main]
@@ -155,6 +159,13 @@ async fn try_main() -> anyhow::Result<()> {
                 .map(|s| selector.resolve_websocket(s));
             websocket::run_with_args(args, base, seed).await?;
         }
+        Some(Commands::Turn(args)) => {
+            let base = config
+                .as_ref()
+                .and_then(|c| c.turn.as_ref())
+                .map(resolve_turn);
+            turn::run_with_args(args, base, seed).await?;
+        }
     }
 
     Ok(())
@@ -198,7 +209,7 @@ async fn run_random(
     let enabled_types = config.enabled_types();
     anyhow::ensure!(
         !enabled_types.is_empty(),
-        "No test sections configured; add at least one of [http], [tcp] or [websocket]"
+        "No test sections configured; add at least one of [http], [tcp], [websocket] or [turn]"
     );
 
     tracing::info!(seed, ?enabled_types, "Selecting random test");
@@ -207,6 +218,7 @@ async fn run_random(
         AnyTestConfig::Http(http) => http::run_with_config(http, seed).await,
         AnyTestConfig::Tcp(tcp) => tcp::run_with_config(tcp, seed).await,
         AnyTestConfig::Websocket(ws) => websocket::run_with_config(ws, seed).await,
+        AnyTestConfig::Turn(turn) => turn::run_with_config(turn, seed).await,
     }
 }
 
@@ -255,6 +267,7 @@ enum AnyTestConfig {
     Http(http::TestConfig),
     Tcp(tcp::TestConfig),
     Websocket(websocket::TestConfig),
+    Turn(turn::TestConfig),
 }
 
 /// Random test selector.
@@ -294,6 +307,9 @@ impl TestSelector {
                         .expect("websocket section is present"),
                 ),
             ),
+            TestType::Turn => AnyTestConfig::Turn(resolve_turn(
+                config.turn.as_ref().expect("turn section is present"),
+            )),
         }
     }
 
@@ -360,5 +376,21 @@ impl TestSelector {
             hold_duration: duration,
             max_echo_interval: Duration::from_secs(config.max_echo_interval_secs),
         }
+    }
+}
+
+/// Resolve a TURN test configuration.
+///
+/// A TURN test targets a single relay with fixed parameters, so there is nothing
+/// to randomize.
+fn resolve_turn(config: &TurnConfig) -> turn::TestConfig {
+    turn::TestConfig {
+        server: config.address,
+        username: config.username.clone(),
+        password: config.password.clone(),
+        payload_size: config.payload_size,
+        bitrate_bps: config.bitrate_bps,
+        duration: Duration::from_secs(config.duration_secs),
+        max_loss_percent: config.max_loss_percent,
     }
 }
