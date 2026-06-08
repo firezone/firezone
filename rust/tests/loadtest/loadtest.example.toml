@@ -1,15 +1,12 @@
 # Loadtest Configuration
 #
-# All sections and fields are required. Copy this file and modify as needed.
-# Only test types listed in 'types' will be executed.
+# Every section is optional. Copy this file and modify as needed.
+# A random test is selected from whichever sections are present.
 #
 # Usage:
 #   firezone-loadtest                     # Run random test from loadtest.toml
 #   firezone-loadtest --config test.toml  # Use custom config file
 #   firezone-loadtest --seed 12345        # Reproducible random test
-
-# Test types to run. Options: http, tcp, websocket, ping
-types = ["http"]
 
 # HTTP load testing via Goose framework
 [http]
@@ -55,20 +52,3 @@ concurrent = "5..50"
 duration_secs = "30..300"
 # How long to at most wait between messages. Zero means we won't send any messages.
 max_echo_interval_secs = 10
-
-# ICMP ping testing
-# Note: Requires elevated privileges on Linux/macOS (root or CAP_NET_RAW)
-[ping]
-# Target IP addresses (IPv4 or IPv6)
-addresses = [
-    "8.8.8.8",
-    "1.1.1.1",
-]
-# Number of pings per target (minimum 1)
-count = "5..20"
-# Interval between pings (milliseconds)
-interval_ms = "500..2000"
-# Ping timeout (milliseconds)
-timeout_ms = "1000..5000"
-# Payload size (bytes)
-payload_size = "56..1024"
