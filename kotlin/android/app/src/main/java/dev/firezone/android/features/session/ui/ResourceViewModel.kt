@@ -18,6 +18,7 @@ class ResourceViewModel(
     val address: String? = resource.address
     val addressDescription: String? = resource.addressDescription
     val sites: List<Site>? = resource.sites
+
     // The on/off state is shown with a globe icon, so the name needs no prefix.
     val displayName: String = resource.name
     val name: String = resource.name
