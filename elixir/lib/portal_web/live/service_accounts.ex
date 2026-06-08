@@ -626,7 +626,7 @@ defmodule PortalWeb.ServiceAccounts do
             </div>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
+            <.actor_status_badge disabled_at={actor.disabled_at} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">

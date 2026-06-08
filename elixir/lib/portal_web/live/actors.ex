@@ -1047,7 +1047,7 @@ defmodule PortalWeb.Actors do
             </span>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
+            <.actor_status_badge disabled_at={actor.disabled_at} />
           </:col>
           <:empty>
             <span class="text-sm text-[var(--text-tertiary)]">No people to display.</span>

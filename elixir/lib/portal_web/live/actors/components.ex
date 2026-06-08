@@ -110,17 +110,22 @@ defmodule PortalWeb.Actors.Components do
 
   def actor_detail_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex items-center gap-3 min-w-0">
+    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="flex items-center gap-4">
+        <%!-- Left: icon + name + status + email --%>
+        <div class="flex items-center gap-3 min-w-0 flex-1">
           <.actor_type_icon_circle actor={@actor} />
           <div class="min-w-0">
-            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">{@actor.name}</h2>
-            <p :if={@actor.email} class="text-xs text-[var(--text-tertiary)] truncate">
+            <div class="flex items-center gap-2">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">{@actor.name}</h2>
+              <.actor_status_badge disabled_at={@actor.disabled_at} />
+            </div>
+            <p :if={@actor.email} class="text-xs text-[var(--text-tertiary)] truncate mt-0.5">
               {@actor.email}
             </p>
           </div>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
@@ -136,32 +141,6 @@ defmodule PortalWeb.Actors.Components do
           >
             <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
-        </div>
-      </div>
-      <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Status
-          </span>
-          <.status_badge status={if is_nil(@actor.disabled_at), do: :active, else: :disabled} />
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Groups
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-            {length(@groups)}
-          </span>
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            {if @actor.type == :service_account, do: "Tokens", else: "Clients"}
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-            {length(@tokens)}
-          </span>
         </div>
       </div>
     </div>
@@ -1758,5 +1737,15 @@ defmodule PortalWeb.Actors.Components do
     if String.contains?(user_agent, "X11") and String.contains?(user_agent, "Linux") do
       "os-linux"
     end
+  end
+
+  attr :disabled_at, :any, required: true
+
+  def actor_status_badge(assigns) do
+    ~H"""
+    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
+      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
+    </.status_badge>
+    """
   end
 end

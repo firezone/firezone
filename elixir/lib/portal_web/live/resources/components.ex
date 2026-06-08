@@ -1031,21 +1031,24 @@ defmodule PortalWeb.Resources.Components do
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2 flex-wrap">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">{@resource.name}</h2>
-              <span class={type_badge_class(@resource.type)}>
-                {resource_type_label(@resource.type)}
-              </span>
+      <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+        <div class="flex items-center gap-4">
+          <%!-- Left: name + status + address --%>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
+                {@resource.name}
+              </h2>
+              <.resource_status_badge resource={@resource} presence_tick={@presence_tick} />
             </div>
-            <div :if={@resource.type != :internet} class="flex items-center gap-1.5 mt-1">
-              <span class="font-mono text-xs text-[var(--text-secondary)]">
-                {@resource.address}
-              </span>
-            </div>
+            <p
+              :if={@resource.type != :internet}
+              class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate"
+            >
+              {@resource.address}
+            </p>
           </div>
+          <%!-- Right: actions --%>
           <div class="flex items-center gap-1.5 shrink-0">
             <button
               :if={not @confirm_delete_resource && @resource.type != :internet}
@@ -1061,34 +1064,6 @@ defmodule PortalWeb.Resources.Components do
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
-          </div>
-        </div>
-        <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-              Status
-            </span>
-            <.status_badge status={resource_status(@resource, @presence_tick)} />
-          </div>
-          <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-              Site
-            </span>
-            <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-              <%= if @resource.site do %>
-                <.link
-                  navigate={~p"/#{@account}/sites/#{@resource.site}"}
-                  class="text-xs underline font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                  {@resource.site.name}
-                </.link>
-              <% else %>
-                <span class="text-xs italic text-[var(--text-muted)]">
-                  {nil_site_label(@resource)}
-                </span>
-              <% end %>
-            </span>
           </div>
         </div>
       </div>
@@ -1826,7 +1801,7 @@ defmodule PortalWeb.Resources.Components do
               <dd class="flex items-center gap-1.5 flex-wrap">
                 <.link
                   navigate={~p"/#{@account}/sites/#{@resource.site}"}
-                  class="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  class="text-xs underline font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   {@resource.site.name}
                 </.link>
@@ -1918,6 +1893,19 @@ defmodule PortalWeb.Resources.Components do
   @spec resource_status(map(), integer()) :: :online | :offline
   def resource_status(resource, presence_tick \\ 0) do
     if resource_online?(resource, presence_tick), do: :online, else: :offline
+  end
+
+  attr :resource, :any, required: true
+  attr :presence_tick, :integer, default: 0
+
+  def resource_status_badge(assigns) do
+    assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.presence_tick))
+
+    ~H"""
+    <.status_badge style={if @online?, do: :success, else: :neutral}>
+      {if @online?, do: "Online", else: "Offline"}
+    </.status_badge>
+    """
   end
 
   @spec resource_type_label(atom()) :: String.t()

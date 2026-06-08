@@ -298,8 +298,9 @@ defmodule PortalWeb.Groups.Components do
   def group_details_header(assigns) do
     ~H"""
     <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex items-center gap-3 min-w-0">
+      <div class="flex items-center gap-4">
+        <%!-- Left: icon + name + directory info --%>
+        <div class="flex items-center gap-3 min-w-0 flex-1">
           <div class="flex items-center justify-center w-8 h-8 shrink-0">
             <.provider_icon type={provider_type_from_group(@group)} class="w-6 h-6" />
           </div>
@@ -320,6 +321,7 @@ defmodule PortalWeb.Groups.Components do
             </div>
           </div>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
           <.link
             :if={editable_group?(@group) and not @confirm_delete?}

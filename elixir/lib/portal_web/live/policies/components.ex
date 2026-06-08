@@ -745,18 +745,23 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <h2 class="text-sm font-semibold text-[var(--text-primary)]">
-            <%= if @policy.group do %>
-              {@policy.group.name} — {@policy.resource.name}
-            <% else %>
-              <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
-            <% end %>
-          </h2>
-          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5">{@policy.id}</p>
+    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="flex items-center gap-4">
+        <%!-- Left: title + status + ID --%>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
+              <%= if @policy.group do %>
+                {@policy.group.name} — {@policy.resource.name}
+              <% else %>
+                <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
+              <% end %>
+            </h2>
+            <.policy_status_badge disabled_at={@policy.disabled_at} />
+          </div>
+          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate">{@policy.id}</p>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             phx-click="open_edit_form"
@@ -771,23 +776,6 @@ defmodule PortalWeb.Policies.Components do
           >
             <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
-        </div>
-      </div>
-      <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Status
-          </span>
-          <.status_badge status={if is_nil(@policy.disabled_at), do: :active, else: :disabled} />
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Conditions
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-            {length(@policy.conditions)}
-          </span>
         </div>
       </div>
     </div>
@@ -3188,5 +3176,15 @@ defmodule PortalWeb.Policies.Components do
         {:policy_authorizations, :desc, :inserted_at},
         {:policy_authorizations, :asc, :id}
       ]
+  end
+
+  attr :disabled_at, :any, required: true
+
+  def policy_status_badge(assigns) do
+    ~H"""
+    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
+      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
+    </.status_badge>
+    """
   end
 end
