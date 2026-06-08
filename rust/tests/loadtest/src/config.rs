@@ -192,10 +192,6 @@ impl LoadTestConfig {
             websocket.validate()?;
         }
 
-        if self.enabled_types().is_empty() {
-            bail!("at least one test section ([http], [tcp] or [websocket]) must be present");
-        }
-
         Ok(())
     }
 
@@ -307,17 +303,14 @@ mod tests {
     }
 
     #[test]
-    fn test_load_no_sections() {
+    fn test_load_empty_config() {
         let dir = std::env::temp_dir();
-        let path = dir.join("no_sections_config.toml");
-        // A config with no test sections should fail validation.
+        let path = dir.join("empty_config.toml");
+        // A config with no test sections is valid; it simply enables nothing.
         std::fs::write(&path, "# Empty config\n").unwrap();
 
-        let result = LoadTestConfig::load(&path);
-        assert_eq!(
-            format!("{:#}", result.unwrap_err()),
-            "at least one test section ([http], [tcp] or [websocket]) must be present"
-        );
+        let config = LoadTestConfig::load(&path).unwrap();
+        assert!(config.enabled_types().is_empty());
 
         std::fs::remove_file(&path).ok();
     }

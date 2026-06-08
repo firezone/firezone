@@ -151,10 +151,18 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
     tracing::info!(config = %config_path.display(), "Loading config");
 
     let config = LoadTestConfig::load(&config_path)?;
+
+    let enabled_types = config.enabled_types();
+    anyhow::ensure!(
+        !enabled_types.is_empty(),
+        "No test sections configured in {}; add at least one of [http], [tcp] or [websocket]",
+        config_path.display()
+    );
+
     let mut selector = TestSelector::new(seed);
     let seed = selector.seed();
 
-    tracing::info!(seed, enabled_types = ?config.enabled_types(), "Selecting random test");
+    tracing::info!(seed, ?enabled_types, "Selecting random test");
 
     match selector.select(&config) {
         AnyTestConfig::Http(http) => http::run_with_config(http, seed).await,
