@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use clap::Parser;
 use clap::ValueEnum;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng as _;
 use tracing::Instrument;
 
@@ -110,7 +110,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     let client = build_client(&config)?;
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-    let num_connections = rng.gen_range(1..=config.max_connections);
+    let num_connections = rng.random_range(1..=config.max_connections);
 
     tracing::info!(
         url = %config.address,

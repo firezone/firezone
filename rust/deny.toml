@@ -106,12 +106,6 @@ ignore = [
 
     "RUSTSEC-2024-0436", # paste, See #8387
 
-    # `rand` unsoundness via re-entrant ThreadRng access from a custom logger (GHSA-cq8v-f236-94qc).
-    # Not exploitable: rand's `log` feature is not enabled (verified via `cargo tree -e features`),
-    # so the log!() call sites in rand's reseeding path are compiled out entirely.
-    # Upgrading to rand 0.9 is blocked by x25519-dalek requiring rand_core 0.6.
-    "RUSTSEC-2026-0097",
-
     # `rust-unic` crates are unmaintained but still pulled in via tauri.
     "RUSTSEC-2025-0075",
     "RUSTSEC-2025-0080",
@@ -260,15 +254,19 @@ deny = [
 skip = [
     "base64",
     "bitflags",
+    "block-buffer", # boringtun 0.7 pulls the RC crypto stack (curve25519-dalek 5.0-rc, blake2 0.11-rc) on RustCrypto's 0.12 `block-buffer`; the rest of the tree is on 0.10.
     "cargo-platform",
     "cargo_metadata",
     "chacha20", # boringtun pulls chacha20 0.9 via chacha20poly1305 0.10.1; hickory 0.26 pulls 0.10 via rand 0.10.
     "core-foundation", # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
     "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
+    "crypto-common", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.2 vs 0.1 elsewhere).
+    "digest", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.11 vs 0.10 elsewhere).
     "foldhash",
     "getrandom",
     "hashbrown",
     "heck",
+    "hmac", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.13 vs 0.12 elsewhere).
     "indexmap",
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
@@ -281,7 +279,6 @@ skip = [
     "proc-macro-crate",
     "quick-xml",
     "rand",
-    "rand_chacha",
     "rand_core",
     "rustix",
     "serde_spanned",

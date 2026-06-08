@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use keyring_core::CredentialStore;
 use logging::err_with_src;
-use rand::{RngCore, thread_rng};
+use rand::Rng;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -395,7 +395,7 @@ fn session_data_path(session_dir: &Path) -> PathBuf {
 fn generate_nonce() -> SecretString {
     let mut buf = [0u8; NONCE_LENGTH];
     // rand's thread-local RNG is said to be cryptographically secure here: https://docs.rs/rand/latest/rand/rngs/struct.ThreadRng.html
-    thread_rng().fill_bytes(&mut buf);
+    rand::rng().fill_bytes(&mut buf);
 
     // Make sure it's not somehow all still zeroes.
     assert_ne!(buf, [0u8; NONCE_LENGTH]);

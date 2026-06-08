@@ -14,7 +14,7 @@ use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -414,7 +414,7 @@ struct JoinMessage {
 
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
-        return StdRng::from_entropy();
+        return StdRng::from_seed(rand::random());
     };
 
     tracing::info!(target: "relay", "Seeding RNG from '{seed}'");
@@ -450,7 +450,7 @@ struct Eventloop<R> {
 
 impl<R> Eventloop<R>
 where
-    R: Rng,
+    R: RngExt,
 {
     fn new(
         server: Server<R>,

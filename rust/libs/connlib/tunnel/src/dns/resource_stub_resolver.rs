@@ -743,7 +743,7 @@ mod tests {
 #[allow(clippy::unwrap_used)]
 mod benches {
     use super::*;
-    use rand::{Rng, distributions::DistString, seq::IteratorRandom};
+    use rand::{RngExt, distr::SampleString, seq::IteratorRandom};
 
     #[divan::bench(
         consts = [10, 100, 1_000, 10_000, 100_000]
@@ -752,7 +752,7 @@ mod benches {
         bencher
             .with_inputs(|| {
                 let mut resolver = ResourceStubResolver::default();
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
 
                 for n in 0..NUM_RES {
                     resolver.add_resource(
@@ -777,9 +777,9 @@ mod benches {
             .bench_refs(|(resolver, needle)| resolver.match_resource_linear(needle));
     }
 
-    fn make_domain(rng: &mut impl Rng) -> String {
-        (0..rng.gen_range(2..5))
-            .map(|_| rand::distributions::Alphanumeric.sample_string(rng, 3))
+    fn make_domain(rng: &mut impl RngExt) -> String {
+        (0..rng.random_range(2..5))
+            .map(|_| rand::distr::Alphanumeric.sample_string(rng, 3))
             .join(".")
     }
 }

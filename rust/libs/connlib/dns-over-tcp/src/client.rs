@@ -11,7 +11,7 @@ use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::{
     InMemoryDevice, Interface, PollResult, SocketSet, create_interface, create_tcp_socket,
 };
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 /// A sans-io DNS-over-TCP client.
 ///
@@ -429,7 +429,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
 
         loop {
-            let port = self.rng.gen_range(range.clone());
+            let port = self.rng.random_range(range.clone());
 
             if !used_ports.contains(&port) {
                 return Ok(port);

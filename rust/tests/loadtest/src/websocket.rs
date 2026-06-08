@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -172,7 +172,7 @@ async fn run_echo_loop(
     let hold_start = Instant::now();
 
     while hold_start.elapsed() < config.hold_duration {
-        let payload_size = rng.gen_range(0..MAX_PAYLOAD_SIZE);
+        let payload_size = rng.random_range(0..MAX_PAYLOAD_SIZE);
         let mut buffer = vec![0u8; payload_size];
         rng.fill_bytes(&mut buffer);
 
@@ -199,7 +199,7 @@ async fn run_echo_loop(
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
         }
 
-        let interval = rng.gen_range(Duration::ZERO..config.max_echo_interval);
+        let interval = rng.random_range(Duration::ZERO..config.max_echo_interval);
 
         tracing::trace!("Next message in {interval:?}");
 

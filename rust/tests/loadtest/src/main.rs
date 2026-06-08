@@ -55,8 +55,8 @@ use anyhow::Context as _;
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
-use rand::{Rng as _, SeedableRng as _};
+use rand::seq::IndexedRandom;
+use rand::{RngExt as _, SeedableRng as _};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -294,7 +294,7 @@ impl TestSelector {
 
     fn select(&mut self, config: &LoadTestConfig) -> AnyTestConfig {
         let types = config.enabled_types();
-        let test_type = types[self.rng.gen_range(0..types.len())];
+        let test_type = types[self.rng.random_range(0..types.len())];
 
         match test_type {
             TestType::Http => AnyTestConfig::Http(
@@ -341,16 +341,16 @@ impl TestSelector {
             .choose(&mut self.rng)
             .expect("should have at least one address");
 
-        let concurrent = self.rng.gen_range(config.concurrent) as usize;
-        let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
-        let timeout = Duration::from_secs(self.rng.gen_range(config.timeout_secs));
+        let concurrent = self.rng.random_range(config.concurrent) as usize;
+        let duration = Duration::from_secs(self.rng.random_range(config.duration_secs));
+        let timeout = Duration::from_secs(self.rng.random_range(config.timeout_secs));
         let echo_mode = config.echo_mode;
-        let echo_payload_size = self.rng.gen_range(config.echo_payload_size) as usize;
+        let echo_payload_size = self.rng.random_range(config.echo_payload_size) as usize;
         let echo_interval = Some(Duration::from_secs(
-            self.rng.gen_range(config.echo_interval_secs),
+            self.rng.random_range(config.echo_interval_secs),
         ));
         let echo_read_timeout =
-            Duration::from_secs(self.rng.gen_range(config.echo_read_timeout_secs));
+            Duration::from_secs(self.rng.random_range(config.echo_read_timeout_secs));
 
         tcp::TestConfig {
             target: address.to_owned(),
@@ -371,8 +371,8 @@ impl TestSelector {
             .expect("should have at least one address");
         let address = Url::parse(address).expect("URL validated during config load");
 
-        let concurrent = self.rng.gen_range(config.concurrent) as usize;
-        let duration = Duration::from_secs(self.rng.gen_range(config.duration_secs));
+        let concurrent = self.rng.random_range(config.concurrent) as usize;
+        let duration = Duration::from_secs(self.rng.random_range(config.duration_secs));
 
         websocket::TestConfig {
             url: address,

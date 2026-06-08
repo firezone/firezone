@@ -16,7 +16,7 @@ use core::fmt;
 use logging::err_with_src;
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
-use rand::Rng;
+use rand::RngExt;
 use secrecy::SecretString;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -162,7 +162,7 @@ const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<R> Server<R>
 where
-    R: Rng,
+    R: RngExt,
 {
     /// Constructs a new [`Server`].
     ///
@@ -194,7 +194,7 @@ where
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
-            auth_secret: SecretString::from(hex::encode(rng.r#gen::<[u8; 32]>())),
+            auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             rng,
             nonces: Default::default(),
             allocations_up_down_counter,
@@ -881,7 +881,7 @@ where
         );
 
         let port = loop {
-            let candidate = AllocationPort(self.rng.gen_range(self.ports.clone()));
+            let candidate = AllocationPort(self.rng.random_range(self.ports.clone()));
 
             if !self.clients_by_allocation.contains_key(&candidate) {
                 break candidate;
