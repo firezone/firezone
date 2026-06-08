@@ -3,15 +3,11 @@ package dev.firezone.android.features.session.ui.compose
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
@@ -24,27 +20,15 @@ fun ConnectedDeviceRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LiveDot()
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(
-                text = device.tunIpv4,
-                style = MaterialTheme.typography.bodyLarge,
-                fontFamily = FontFamily.Monospace,
-            )
-            if (device.pools.isNotEmpty()) {
-                Text(
-                    text = device.pools.joinToString(", "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
+    // Monospace keeps the octets aligned, but renders visually larger than the proportional resource
+    // names; bodyMedium brings it back in line. The row is a single line, so it needs less vertical
+    // padding than the two-line resource rows to avoid looking sparse.
+    Text(
+        text = device.tunIpv4,
+        style = MaterialTheme.typography.bodyMedium,
+        fontFamily = FontFamily.Monospace,
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 @Preview(showBackground = true)
@@ -52,9 +36,9 @@ fun ConnectedDeviceRow(
 private fun ConnectedDeviceRowPreview() {
     FirezoneTheme {
         Column {
-            ConnectedDeviceRow(ConnectedDevice("1", "100.64.0.12", listOf("engineering")), onClick = {})
-            ConnectedDeviceRow(ConnectedDevice("2", "100.64.0.30", listOf("engineering", "ops")), onClick = {})
-            ConnectedDeviceRow(ConnectedDevice("3", "100.64.0.41", emptyList()), onClick = {})
+            ConnectedDeviceRow(ConnectedDevice("1", "100.96.0.12", listOf("engineering")), onClick = {})
+            ConnectedDeviceRow(ConnectedDevice("2", "100.96.0.30", listOf("engineering", "ops")), onClick = {})
+            ConnectedDeviceRow(ConnectedDevice("3", "100.96.0.41", emptyList()), onClick = {})
         }
     }
 }

@@ -2,6 +2,7 @@
 package dev.firezone.android.features.session.ui.compose
 
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import dev.firezone.android.core.data.Favorites
@@ -32,21 +33,14 @@ private fun SessionScreenPreview() {
     }
 }
 
-// The session screen starts with the Connected Devices section collapsed; this preview renders it
-// expanded so the mocked device rows are visible without interacting.
-@Preview(showBackground = true, heightDp = 480)
+// Renders just the connected-device rows in isolation, so the mocked devices are visible without
+// scrolling past the resources in the full screen preview.
+@Preview(showBackground = true, heightDp = 320)
 @Composable
 private fun ConnectedDevicesSectionPreview() {
     FirezoneTheme {
         LazyColumn {
-            collapsibleSection(
-                title = "Connected Devices",
-                entries = sampleConnectedDevices,
-                expanded = true,
-                onToggle = {},
-                live = true,
-                key = { it.id },
-            ) { device ->
+            items(sampleConnectedDevices, key = { it.id }) { device ->
                 ConnectedDeviceRow(device = device, onClick = {})
             }
         }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -68,15 +69,21 @@ fun SessionScreen(
     }
     val effectiveTab = if (!hasFavorites) TAB_ALL else selectedTab
 
+    // The two tabs share one list, so without this the scroll state restores the previous tab's
+    // anchor (a row that sits lower in the other tab) and lands partway down. Reset to the top.
+    val listState = rememberLazyListState()
+    LaunchedEffect(effectiveTab) { listState.scrollToItem(0) }
+
     val favoriteResources =
         remember(resources, favorites) {
             resources.filter { favorites.inner.contains(it.id) }
         }
-    val internetResource = remember(resources) { resources.firstOrNull { it.isInternetResource() } }
-    val otherResources = remember(resources) { resources.filter { !it.isInternetResource() } }
-
-    var resourcesExpanded by rememberSaveable { mutableStateOf(true) }
-    var devicesExpanded by rememberSaveable { mutableStateOf(false) }
+    // The internet resource is pinned first in the flat list; everything else follows in order.
+    val allResources =
+        remember(resources) {
+            val internet = resources.firstOrNull { it.isInternetResource() }
+            listOfNotNull(internet) + resources.filter { !it.isInternetResource() }
+        }
 
     var selection by rememberSaveable { mutableStateOf<Selection?>(null) }
     val selectedResource =
@@ -105,14 +112,10 @@ fun SessionScreen(
                 actorName?.let { Text(text = it, style = MaterialTheme.typography.bodySmall) }
             }
 
-            Text(
-                text = stringResource(R.string.resources),
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
-            )
-
+            // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
+            // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
-                TabRow(selectedTabIndex = effectiveTab) {
+                TabRow(selectedTabIndex = effectiveTab, modifier = Modifier.padding(top = 16.dp)) {
                     LeadingIconTab(
                         selected = effectiveTab == TAB_FAVORITES,
                         onClick = { selectedTab = TAB_FAVORITES },
@@ -130,39 +133,25 @@ fun SessionScreen(
 
             val resourcesTitle = stringResource(R.string.resources)
             val connectedDevicesTitle = stringResource(R.string.connected_devices)
+            val resourceList = if (hasFavorites && effectiveTab == TAB_FAVORITES) favoriteResources else allResources
 
-            LazyColumn(Modifier.weight(1f)) {
-                if (hasFavorites && effectiveTab == TAB_FAVORITES) {
-                    itemsIndexed(favoriteResources, key = { _, resource -> resource.id }) { index, resource ->
+            LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+                // Favourites shows just the filtered resource list, so the Resources/Connected Devices
+                // headings only appear on the All tab.
+                if (effectiveTab == TAB_ALL) {
+                    item(key = "resources-heading") { SectionTitle(text = resourcesTitle) }
+                }
+                itemsIndexed(resourceList, key = { _, resource -> resource.id }) { index, resource ->
+                    if (index > 0) HorizontalDivider()
+                    ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
+                }
+                // Connected devices is a niche feature, so it sits in its own section below the
+                // resources, sharing the same heading style rather than drawing extra attention.
+                if (effectiveTab == TAB_ALL && connectedDevices.isNotEmpty()) {
+                    item(key = "devices-heading") { SectionTitle(text = connectedDevicesTitle) }
+                    itemsIndexed(connectedDevices, key = { _, device -> "dev-${device.id}" }) { index, device ->
                         if (index > 0) HorizontalDivider()
-                        ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
-                    }
-                } else {
-                    internetResource?.let { internet ->
-                        item(key = "internet-${internet.id}") {
-                            ResourceRow(resource = internet, onClick = { selection = Selection.Resource(internet.id) })
-                        }
-                    }
-                    collapsibleSection(
-                        title = resourcesTitle,
-                        entries = otherResources,
-                        expanded = resourcesExpanded,
-                        onToggle = { resourcesExpanded = !resourcesExpanded },
-                        key = { "res-${it.id}" },
-                    ) { resource ->
-                        ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
-                    }
-                    if (connectedDevices.isNotEmpty()) {
-                        collapsibleSection(
-                            title = connectedDevicesTitle,
-                            entries = connectedDevices,
-                            expanded = devicesExpanded,
-                            onToggle = { devicesExpanded = !devicesExpanded },
-                            live = true,
-                            key = { "dev-${it.id}" },
-                        ) { device ->
-                            ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
-                        }
+                        ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
                     }
                 }
             }
@@ -198,6 +187,18 @@ fun SessionScreen(
             onDismiss = { selection = null },
         )
     }
+}
+
+@Composable
+private fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.headlineSmall,
+        modifier = modifier.padding(top = 24.dp, bottom = 8.dp),
+    )
 }
 
 // At most one detail sheet is open at a time, so the selection is modelled as a sum type: a
