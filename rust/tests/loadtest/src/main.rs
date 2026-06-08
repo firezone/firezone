@@ -112,6 +112,10 @@ enum Commands {
 async fn main() {
     init_logging();
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process should always succeed");
+
     match try_main().await {
         Ok(()) => {}
         Err(e) => {

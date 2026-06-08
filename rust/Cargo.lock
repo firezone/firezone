@@ -2417,6 +2417,7 @@ dependencies = [
  "phoenix-channel",
  "rand 0.8.5",
  "reqwest",
+ "rustls",
  "secrecy",
  "serde",
  "serde_json",
