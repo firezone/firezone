@@ -115,11 +115,17 @@ impl Device {
             return;
         };
 
-        // Preserve ordering: if we are already buffering (a previous `try_send` hit a full
-        // channel) or a flush is in flight, this packet must queue behind those. Otherwise a
-        // `try_send` here could slip it into the channel ahead of the buffered packets once
-        // `poll_flush` drains them, reordering the stream we write to the TUN device.
-        if self.flush_future.is_some() || !self.outbound_buffer.is_empty() {
+        // Preserve ordering: if a flush is already in flight, this packet must queue behind the
+        // packets being flushed. Otherwise a `try_send` here could slip it into the channel ahead
+        // of them, reordering the stream we write to the TUN device.
+        if self.flush_future.is_some() {
+            self.outbound_buffer.push(packet);
+            return;
+        }
+
+        // Likewise, if we haven't started flushing yet but are already buffering (a previous
+        // `try_send` hit a full channel), this packet must queue behind those buffered packets.
+        if !self.outbound_buffer.is_empty() {
             self.outbound_buffer.push(packet);
             return;
         }
@@ -195,6 +201,61 @@ mod tests {
 
             send_rx.recv().await.unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn packets_do_not_overtake_buffered_packets_while_flushing() {
+        let _guard = logging::test("trace");
+
+        let mut device = Device::new();
+        let (test_tun, mut send_rx, _send_tx) = TestTun::new();
+        device.set_tun(Box::new(test_tun));
+
+        let packet_a = test_packet(1);
+        let packet_b = test_packet(2);
+        let packet_c = test_packet(3);
+
+        // A claims the single channel slot via the `try_send` fast-path.
+        device.send(packet_a.clone());
+        // B finds the channel full and gets buffered.
+        device.send(packet_b.clone());
+
+        // Start flushing B. It can't make progress while the channel is still full, so the flush
+        // stays in-flight (`flush_future` is `Some`).
+        let poll = device.poll_flush_noop_waker();
+        assert!(
+            poll.is_pending(),
+            "Flush should suspend while channel is full"
+        );
+
+        // C arrives while the flush is in-flight. It must queue behind B rather than racing ahead
+        // through `try_send`.
+        device.send(packet_c.clone());
+
+        // Drain the channel and finish flushing. The receiver must observe A, then B, then C, and
+        // never A, C, B.
+        assert_eq!(send_rx.recv().await.unwrap(), packet_a);
+
+        std::future::poll_fn(|cx| device.poll_flush(cx))
+            .await
+            .unwrap();
+        assert_eq!(send_rx.recv().await.unwrap(), packet_b);
+
+        std::future::poll_fn(|cx| device.poll_flush(cx))
+            .await
+            .unwrap();
+        assert_eq!(send_rx.recv().await.unwrap(), packet_c);
+    }
+
+    fn test_packet(dst_port: u16) -> IpPacket {
+        ip_packet::make::udp_packet(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1234,
+            dst_port,
+            &[],
+        )
+        .unwrap()
     }
 
     struct TestTun {
