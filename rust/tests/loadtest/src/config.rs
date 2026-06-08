@@ -1,30 +1,25 @@
 //! TOML configuration for randomized load testing.
 //!
-//! All config fields are required - see loadtest.example.toml for defaults.
-//! Each invocation randomly selects a test type and parameters from the config.
-
-/// Minimum ping count (must send at least 1 ping).
-pub const MIN_PING_COUNT: usize = 1;
+//! Every section is optional - see loadtest.example.toml for the available options.
+//! Each invocation randomly selects a test type from the sections that are present
+//! and picks parameters from its config.
 
 use anyhow::{Context as _, Result, bail};
 use rand::distributions::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
-use std::net::IpAddr;
 use std::path::Path;
 use url::Url;
 
-use crate::ping::MAX_ICMP_PAYLOAD_SIZE;
-
 /// Top-level configuration loaded from TOML.
+///
+/// Each section is optional; a random test is selected from whichever
+/// sections are present.
 #[derive(Debug, Deserialize)]
 pub struct LoadTestConfig {
-    /// Test types to run. Must be non-empty.
-    pub types: Vec<TestType>,
-    pub http: HttpConfig,
-    pub tcp: TcpConfig,
-    pub websocket: WebsocketConfig,
-    pub ping: PingConfig,
+    pub http: Option<HttpConfig>,
+    pub tcp: Option<TcpConfig>,
+    pub websocket: Option<WebsocketConfig>,
 }
 
 /// A numeric range with optional step constraint.
@@ -177,45 +172,6 @@ impl WebsocketConfig {
     }
 }
 
-/// ICMP ping load test configuration.
-#[derive(Debug, Deserialize)]
-pub struct PingConfig {
-    /// List of target IP addresses to ping.
-    pub addresses: Vec<String>,
-    /// Number of pings per target.
-    pub count: Range,
-    /// Interval between pings in milliseconds.
-    pub interval_ms: Range,
-    /// Ping timeout in milliseconds.
-    pub timeout_ms: Range,
-    /// Payload size in bytes.
-    pub payload_size: Range,
-}
-
-impl PingConfig {
-    fn validate(&self) -> Result<()> {
-        if self.addresses.is_empty() {
-            bail!("[ping] addresses list is empty");
-        }
-
-        // Validate all addresses are valid IP addresses
-        for addr in &self.addresses {
-            addr.parse::<IpAddr>()
-                .with_context(|| format!("[ping] invalid IP address '{addr}'"))?;
-        }
-
-        if self.payload_size.max as usize > MAX_ICMP_PAYLOAD_SIZE {
-            bail!(
-                "[ping] payload_size.max ({}) exceeds maximum ICMP payload of {} bytes",
-                self.payload_size.max,
-                MAX_ICMP_PAYLOAD_SIZE
-            );
-        }
-
-        Ok(())
-    }
-}
-
 impl LoadTestConfig {
     /// Load and validate configuration from a TOML file.
     pub fn load(path: &Path) -> Result<Self> {
@@ -226,43 +182,41 @@ impl LoadTestConfig {
     }
 
     fn validate(&self) -> Result<()> {
-        // Validate types field
-        if self.types.is_empty() {
-            bail!("'types' list cannot be empty");
+        if let Some(http) = &self.http {
+            http.validate()?;
+        }
+        if let Some(tcp) = &self.tcp {
+            tcp.validate()?;
+        }
+        if let Some(websocket) = &self.websocket {
+            websocket.validate()?;
         }
 
-        // Validate all sections
-        self.http.validate()?;
-        self.tcp.validate()?;
-        self.websocket.validate()?;
-        self.ping.validate()?;
+        if self.enabled_types().is_empty() {
+            bail!("at least one test section ([http], [tcp] or [websocket]) must be present");
+        }
 
         Ok(())
     }
 
-    pub fn enabled_types(&self) -> &[TestType] {
-        &self.types
+    /// The test types that have a config section present, in a stable order.
+    pub fn enabled_types(&self) -> Vec<TestType> {
+        [
+            self.http.is_some().then_some(TestType::Http),
+            self.tcp.is_some().then_some(TestType::Tcp),
+            self.websocket.is_some().then_some(TestType::Websocket),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TestType {
     Http,
     Tcp,
     Websocket,
-    Ping,
-}
-
-impl std::fmt::Display for TestType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Http => write!(f, "http"),
-            Self::Tcp => write!(f, "tcp"),
-            Self::Websocket => write!(f, "websocket"),
-            Self::Ping => write!(f, "ping"),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -353,33 +307,16 @@ mod tests {
     }
 
     #[test]
-    fn test_load_missing_required_fields() {
+    fn test_load_no_sections() {
         let dir = std::env::temp_dir();
-        let path = dir.join("no_types_config.toml");
-        // Config missing required 'types' field - should fail to parse
+        let path = dir.join("no_sections_config.toml");
+        // A config with no test sections should fail validation.
         std::fs::write(&path, "# Empty config\n").unwrap();
 
         let result = LoadTestConfig::load(&path);
         assert_eq!(
             format!("{:#}", result.unwrap_err()),
-            "Failed to parse TOML: TOML parse error at line 1, column 1\n  |\n1 | # Empty config\n  | ^\nmissing field `types`\n"
-        );
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_load_explicit_empty_types() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("explicit_empty_types_config.toml");
-        // Empty types array should fail validation
-        let config = example_config_content().replace(r#"types = ["http"]"#, "types = []");
-        std::fs::write(&path, &config).unwrap();
-
-        let result = LoadTestConfig::load(&path);
-        assert_eq!(
-            format!("{:#}", result.unwrap_err()),
-            "'types' list cannot be empty"
+            "at least one test section ([http], [tcp] or [websocket]) must be present"
         );
 
         std::fs::remove_file(&path).ok();
@@ -459,35 +396,36 @@ mod tests {
     fn test_load_valid_config() {
         let dir = std::env::temp_dir();
         let path = dir.join("valid_config.toml");
-        let config =
-            example_config_content().replace(r#"types = ["http"]"#, r#"types = ["http", "tcp"]"#);
-        std::fs::write(&path, &config).unwrap();
+        std::fs::write(&path, example_config_content()).unwrap();
 
         let result = LoadTestConfig::load(&path);
         assert!(result.is_ok());
 
         let config = result.unwrap();
-        assert_eq!(config.enabled_types(), &[TestType::Http, TestType::Tcp]);
+        assert_eq!(
+            config.enabled_types(),
+            vec![TestType::Http, TestType::Tcp, TestType::Websocket]
+        );
 
         std::fs::remove_file(&path).ok();
     }
 
     #[test]
-    fn test_load_ping_payload_too_large() {
+    fn test_load_with_optional_sections_omitted() {
         let dir = std::env::temp_dir();
-        let path = dir.join("ping_payload_too_large_config.toml");
-        let config = example_config_content().replace(
-            "payload_size = \"56..1024\"",
-            "payload_size = \"56..100000\"",
-        );
-        std::fs::write(&path, &config).unwrap();
+        let path = dir.join("optional_sections_config.toml");
+        // Only the [http] section is present; the others are omitted.
+        std::fs::write(
+            &path,
+            "[http]\naddresses = [\"https://example.com\"]\nhttp_version = [1, 2]\nmax_connections = 100\n",
+        )
+        .unwrap();
 
         let result = LoadTestConfig::load(&path);
-        let error = format!("{:#}", result.unwrap_err());
-        assert_eq!(
-            error,
-            "[ping] payload_size.max (100000) exceeds maximum ICMP payload of 65507 bytes"
-        );
+        assert!(result.is_ok());
+
+        let config = result.unwrap();
+        assert_eq!(config.enabled_types(), vec![TestType::Http]);
 
         std::fs::remove_file(&path).ok();
     }

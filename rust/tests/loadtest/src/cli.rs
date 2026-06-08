@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{echo_payload::HEADER_SIZE, ping};
+use crate::echo_payload::HEADER_SIZE;
 
 /// Duration suffixes: (suffix, seconds_multiplier, unit_name).
 const DURATION_SUFFIXES: &[(&str, u64, &str)] = &[
@@ -40,19 +40,6 @@ pub fn parse_echo_payload_size(s: &str) -> Result<usize, String> {
     if size < HEADER_SIZE {
         return Err(format!(
             "payload size must be at least {HEADER_SIZE} bytes (header size)"
-        ));
-    }
-    Ok(size)
-}
-
-pub fn parse_ping_payload_size(s: &str) -> Result<usize, String> {
-    let size: usize = s
-        .parse()
-        .map_err(|e| format!("invalid payload size: {e}"))?;
-    if size > ping::MAX_ICMP_PAYLOAD_SIZE {
-        return Err(format!(
-            "payload size exceeds maximum ICMP payload of {} bytes",
-            ping::MAX_ICMP_PAYLOAD_SIZE
         ));
     }
     Ok(size)

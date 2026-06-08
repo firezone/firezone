@@ -19,7 +19,6 @@ rand = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-no-provider", "gzip", "http2"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-surge-ping = "0.8"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 toml = { workspace = true }

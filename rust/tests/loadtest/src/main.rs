@@ -44,19 +44,17 @@ mod cli;
 mod config;
 mod echo_payload;
 mod http;
-mod ping;
 mod tcp;
 mod util;
 mod websocket;
 
-use crate::config::{HttpConfig, MIN_PING_COUNT, PingConfig, TcpConfig, TestType, WebsocketConfig};
+use crate::config::{HttpConfig, TcpConfig, TestType, WebsocketConfig};
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{Rng as _, SeedableRng as _};
 use serde::Serialize;
-use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
@@ -103,8 +101,6 @@ enum Commands {
     Tcp(tcp::Args),
     /// WebSocket connection load testing
     Websocket(websocket::Args),
-    /// ICMP ping testing
-    Ping(ping::Args),
 }
 
 #[tokio::main]
@@ -133,7 +129,6 @@ async fn try_main() -> anyhow::Result<()> {
         Some(Commands::Http(args)) => http::run_with_cli_args(args).await?,
         Some(Commands::Tcp(args)) => tcp::run_with_cli_args(args).await?,
         Some(Commands::Websocket(args)) => websocket::run_with_cli_args(args).await?,
-        Some(Commands::Ping(args)) => ping::run_with_cli_args(args).await?,
     }
 
     Ok(())
@@ -165,7 +160,6 @@ async fn run_random(config_path: Option<PathBuf>, seed: Option<u64>) -> anyhow::
         AnyTestConfig::Http(http) => http::run_with_config(http, seed).await,
         AnyTestConfig::Tcp(tcp) => tcp::run_with_config(tcp, seed).await,
         AnyTestConfig::Websocket(ws) => websocket::run_with_config(ws, seed).await,
-        AnyTestConfig::Ping(ping) => ping::run_with_config(ping, seed).await,
     }
 }
 
@@ -214,7 +208,6 @@ enum AnyTestConfig {
     Http(http::TestConfig),
     Tcp(tcp::TestConfig),
     Websocket(websocket::TestConfig),
-    Ping(ping::TestConfig),
 }
 
 /// Random test selector.
@@ -240,12 +233,20 @@ impl TestSelector {
         let test_type = types[self.rng.gen_range(0..types.len())];
 
         match test_type {
-            TestType::Http => AnyTestConfig::Http(self.resolve_http(&config.http)),
-            TestType::Tcp => AnyTestConfig::Tcp(self.resolve_tcp(&config.tcp)),
-            TestType::Websocket => {
-                AnyTestConfig::Websocket(self.resolve_websocket(&config.websocket))
-            }
-            TestType::Ping => AnyTestConfig::Ping(self.resolve_ping(&config.ping)),
+            TestType::Http => AnyTestConfig::Http(
+                self.resolve_http(config.http.as_ref().expect("http section is present")),
+            ),
+            TestType::Tcp => AnyTestConfig::Tcp(
+                self.resolve_tcp(config.tcp.as_ref().expect("tcp section is present")),
+            ),
+            TestType::Websocket => AnyTestConfig::Websocket(
+                self.resolve_websocket(
+                    config
+                        .websocket
+                        .as_ref()
+                        .expect("websocket section is present"),
+                ),
+            ),
         }
     }
 
@@ -311,30 +312,6 @@ impl TestSelector {
             concurrent,
             hold_duration: duration,
             max_echo_interval: Duration::from_secs(config.max_echo_interval_secs),
-        }
-    }
-
-    fn resolve_ping(&mut self, config: &PingConfig) -> ping::TestConfig {
-        // Parse all targets
-        let targets: Vec<IpAddr> = config
-            .addresses
-            .iter()
-            .map(|s| s.parse().expect("IP address validated during config load"))
-            .collect();
-
-        // Ensure minimum count of 1 ping
-        let count = (self.rng.gen_range(config.count) as usize).max(MIN_PING_COUNT);
-        let interval = Duration::from_millis(self.rng.gen_range(config.interval_ms));
-        let timeout = Duration::from_millis(self.rng.gen_range(config.timeout_ms));
-        let payload_size = self.rng.gen_range(config.payload_size) as usize;
-
-        ping::TestConfig {
-            targets,
-            count: Some(count),
-            interval,
-            timeout,
-            payload_size,
-            duration: None,
         }
     }
 }
