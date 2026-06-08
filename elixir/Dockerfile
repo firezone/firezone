@@ -107,9 +107,6 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 ARG MIX_ENV="prod"
 COPY --from=builder --chown=1001:0 /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
-# Allow tzdata to write IANA timezone updates at runtime
-RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
-
 USER default
 
 # tini reaps zombies left behind by short-lived child processes (e.g. liveness

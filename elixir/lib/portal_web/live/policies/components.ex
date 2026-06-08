@@ -2040,7 +2040,7 @@ defmodule PortalWeb.Policies.Components do
             name="policy[conditions][current_utc_datetime][timezone]"
             id="policy_conditions_current_utc_datetime_timezone"
             field={condition_form[:timezone]}
-            options={Tzdata.zone_list()}
+            options={TzExtra.time_zone_ids(include_aliases: true)}
             disabled={@disabled}
             value={condition_form[:timezone].value || @timezone}
           />
@@ -2561,9 +2561,10 @@ defmodule PortalWeb.Policies.Components do
         />
         <select
           name="policy[conditions][current_utc_datetime][timezone]"
+          phx-change="change_tod_timezone"
           class={@input_class}
         >
-          <option :for={tz <- Tzdata.zone_list()} value={tz} selected={tz == @timezone}>
+          <option :for={tz <- TzExtra.time_zone_ids(include_aliases: true)} value={tz} selected={tz == @timezone}>
             {tz}
           </option>
         </select>
@@ -2611,8 +2612,6 @@ defmodule PortalWeb.Policies.Components do
         <%!-- Add range form --%>
         <div
           :if={@tod_adding}
-          id="tod_add_row"
-          phx-hook="TimePicker"
           class="space-y-1.5 p-2 rounded border border-[var(--border)] bg-[var(--surface)]"
         >
           <div class="flex flex-wrap gap-1">
@@ -2645,64 +2644,34 @@ defmodule PortalWeb.Policies.Components do
           </div>
           <div class="flex items-start gap-1.5">
             <div class="flex flex-col items-center gap-0.5">
-              <div class="flex">
-                <input
-                  type="time"
-                  name="_tod_on"
-                  id="tod_pending_on"
-                  value={@tod_pending["on"]}
-                  phx-change="change_tod_pending"
-                  class={[
-                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                    "[&::-webkit-calendar-picker-indicator]:hidden"
-                  ]}
-                />
-                <button
-                  type="button"
-                  data-target="pending_on"
-                  class={[
-                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                    "hover:bg-[var(--surface)] transition-colors"
-                  ]}
-                  title="Pick start time"
-                >
-                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <input
+                type="time"
+                name="_tod_on"
+                id="tod_pending_on"
+                value={@tod_pending["on"]}
+                phx-change="change_tod_pending"
+                class={[
+                  "shrink-0 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)]",
+                  "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                  "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                ]}
+              />
               <span class="text-[9px] text-[var(--text-muted)]">on</span>
             </div>
             <span class="text-[var(--text-muted)] text-xs pt-1">–</span>
             <div class="flex flex-col items-center gap-0.5">
-              <div class="flex">
-                <input
-                  type="time"
-                  name="_tod_off"
-                  id="tod_pending_off"
-                  value={@tod_pending["off"]}
-                  phx-change="change_tod_pending"
-                  class={[
-                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                    "[&::-webkit-calendar-picker-indicator]:hidden"
-                  ]}
-                />
-                <button
-                  type="button"
-                  data-target="pending_off"
-                  class={[
-                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                    "hover:bg-[var(--surface)] transition-colors"
-                  ]}
-                  title="Pick end time"
-                >
-                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <input
+                type="time"
+                name="_tod_off"
+                id="tod_pending_off"
+                value={@tod_pending["off"]}
+                phx-change="change_tod_pending"
+                class={[
+                  "shrink-0 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)]",
+                  "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                  "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                ]}
+              />
               <span class="text-[9px] text-[var(--text-muted)]">off</span>
             </div>
           </div>

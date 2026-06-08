@@ -1009,6 +1009,11 @@ defmodule PortalWeb.Resources do
      end)}
   end
 
+  def handle_event("change_tod_timezone", params, socket) do
+    timezone = get_in(params, ["policy", "conditions", "current_utc_datetime", "timezone"])
+    {:noreply, merge_state(socket, :resource_grant, timezone: timezone)}
+  end
+
   def handle_event("toggle_grant_group", %{"group_id" => group_id}, socket) do
     selected = socket.assigns.resource_grant.grant_selected_group_ids
 

@@ -99,7 +99,8 @@ defmodule Portal.MixProject do
 
       # Erlang clustering
       {:libcluster, "~> 3.3"},
-      {:tzdata, "~> 1.1"},
+      {:tz, "~> 0.28"},
+      {:tz_extra, "~> 0.45"},
       {:sizeable, "~> 1.0"},
 
       # Email
