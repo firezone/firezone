@@ -1,4 +1,5 @@
 import React from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "../logo.png";
 
 export default function AboutPage() {
@@ -12,14 +13,17 @@ export default function AboutPage() {
       <p className="text-neutral-400 text-sm mb-6">
         (<span>{__GIT_VERSION__?.substring(0, 8)}</span>)
       </p>
-      <a
-        href="https://www.firezone.dev/kb?utm_source=product"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        onClick={() =>
+          openUrl("https://www.firezone.dev/kb?utm_source=product").catch(
+            (e) => console.error("Failed to open documentation URL", e)
+          )
+        }
+        role="link"
         className="text-accent-450 hover:underline text-sm"
       >
         Documentation
-      </a>
+      </button>
     </div>
   );
 }
