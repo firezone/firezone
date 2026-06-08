@@ -54,9 +54,6 @@ const NO_ACTIVITY: &str = "No activity";
 const GATEWAY_CONNECTED: &str = "Gateway connected";
 const ALL_GATEWAYS_OFFLINE: &str = "All Gateways offline";
 
-const ENABLED_SYMBOL: &str = "<->";
-const DISABLED_SYMBOL: &str = "—";
-
 const ADD_FAVORITE: &str = "Add to favorites";
 const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
@@ -286,12 +283,13 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             .iter()
             .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
-            let mut name = res.name().to_string();
-            if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
-            }
-
-            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
+            let submenu = signed_in.resource_submenu(res);
+            menu = if res.is_internet_resource() {
+                let icon = internet_resource_icon(internet_resource_enabled.unwrap_or_default());
+                menu.add_submenu_with_icon(res.name(), submenu, icon)
+            } else {
+                menu.add_submenu(res.name(), submenu)
+            };
         }
     } else {
         // No favorites, show every Resource normally, just like before
@@ -299,12 +297,13 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         menu = menu.disabled(RESOURCES);
         for res in resources {
-            let mut name = res.name().to_string();
-            if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
-            }
-
-            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
+            let submenu = signed_in.resource_submenu(res);
+            menu = if res.is_internet_resource() {
+                let icon = internet_resource_icon(internet_resource_enabled.unwrap_or_default());
+                menu.add_submenu_with_icon(res.name(), submenu, icon)
+            } else {
+                menu.add_submenu(res.name(), submenu)
+            };
         }
     }
 
@@ -385,14 +384,12 @@ fn signing_in(waiting_message: &str) -> Menu {
         .item(Event::CancelSignIn, "Cancel sign-in")
 }
 
-fn append_status(name: &str, enabled: bool) -> String {
-    let symbol = if enabled {
-        ENABLED_SYMBOL
+fn internet_resource_icon(enabled: bool) -> MenuItemIcon {
+    if enabled {
+        MenuItemIcon::InternetOn
     } else {
-        DISABLED_SYMBOL
-    };
-
-    format!("{symbol} {name}")
+        MenuItemIcon::InternetOff
+    }
 }
 
 impl Menu {
@@ -682,8 +679,8 @@ mod tests {
                     .copyable("test")
                     .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
-            .add_submenu(
-                "— Internet Resource",
+            .add_submenu_with_icon(
+                "Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
@@ -692,6 +689,7 @@ mod tests {
                     .disabled("Site")
                     .copyable("test")
                     .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+                MenuItemIcon::InternetOff,
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
@@ -742,8 +740,8 @@ mod tests {
                     .copyable("test")
                     .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
-            .add_submenu(
-                "— Internet Resource",
+            .add_submenu_with_icon(
+                "Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
@@ -752,6 +750,7 @@ mod tests {
                     .disabled("Site")
                     .copyable("test")
                     .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+                MenuItemIcon::InternetOff,
             )
             .separator()
             .add_submenu(
@@ -848,8 +847,8 @@ mod tests {
                     .copyable("test")
                     .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
             )
-            .add_submenu(
-                "— Internet Resource",
+            .add_submenu_with_icon(
+                "Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
@@ -858,6 +857,7 @@ mod tests {
                     .disabled("Site")
                     .copyable("test")
                     .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+                MenuItemIcon::InternetOff,
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 

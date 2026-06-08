@@ -28,6 +28,9 @@ use super::{
 const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-online.png");
 const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-offline.png");
 const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../../icons/menu/status-unknown.png");
+// Globe / globe-with-slash glyphs for the Internet Resource's on/off state.
+const INTERNET_ON_ICON: &[u8] = include_bytes!("../../../icons/menu/internet-on.png");
+const INTERNET_OFF_ICON: &[u8] = include_bytes!("../../../icons/menu/internet-off.png");
 
 type OnEvent = Arc<dyn Fn(&AppHandle, Event) + Send + Sync>;
 
@@ -208,9 +211,10 @@ fn build_menu(menu: &Menu) -> Vec<MenuItem<FzTray>> {
 fn build_entry(entry: &Entry) -> MenuItem<FzTray> {
     match entry {
         Entry::Separator => MenuItem::Separator,
-        Entry::Submenu { title, inner } => SubMenu {
+        Entry::Submenu { title, inner, icon } => SubMenu {
             label: title.clone(),
             submenu: build_menu(inner),
+            icon_data: icon_data(*icon),
             ..Default::default()
         }
         .into(),
@@ -256,6 +260,8 @@ fn icon_data(icon: Option<MenuItemIcon>) -> Vec<u8> {
         Some(MenuItemIcon::Green) => STATUS_ONLINE_ICON,
         Some(MenuItemIcon::Red) => STATUS_OFFLINE_ICON,
         Some(MenuItemIcon::Grey) => STATUS_UNKNOWN_ICON,
+        Some(MenuItemIcon::InternetOn) => INTERNET_ON_ICON,
+        Some(MenuItemIcon::InternetOff) => INTERNET_OFF_ICON,
         None => return Vec::new(),
     };
     png.to_vec()

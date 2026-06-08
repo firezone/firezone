@@ -13,20 +13,29 @@
     @EnvironmentObject var store: Store
 
     var body: some View {
-      Menu(resourceTitle) {
-        ResourceDetailsSubmenu(resource: resource)
+      if resource.isInternetResource() {
+        // A globe / globe-with-slash icon conveys the on/off state.
+        Menu {
+          ResourceDetailsSubmenu(resource: resource)
+        } label: {
+          Label {
+            Text(resource.name)
+          } icon: {
+            Image(internetResourceIconName)
+              .renderingMode(.template)
+          }
+        }
+      } else {
+        Menu(resource.name) {
+          ResourceDetailsSubmenu(resource: resource)
+        }
       }
     }
 
-    var resourceTitle: String {
-      if resource.isInternetResource() {
-        let status =
-          store.configuration.internetResourceEnabled
-          ? StatusSymbol.enabled
-          : StatusSymbol.disabled
-        return "\(status) \(resource.name)"
-      }
-      return resource.name
+    var internetResourceIconName: String {
+      store.configuration.internetResourceEnabled
+        ? "InternetResourceOn"
+        : "InternetResourceOff"
     }
   }
 

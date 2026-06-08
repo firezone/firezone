@@ -12,11 +12,6 @@ import Foundation
   import AppKit
 #endif
 
-class StatusSymbol {
-  static let enabled: String = "<->"
-  static let disabled: String = "—"
-}
-
 public enum ResourceList: Sendable {
   case loading
   case loaded([Resource])

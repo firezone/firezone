@@ -19,7 +19,13 @@ pub struct Menu {
 pub enum Entry {
     Item(Item),
     Separator,
-    Submenu { title: String, inner: Menu },
+    Submenu {
+        title: String,
+        inner: Menu,
+        /// An optional icon shown on the submenu's own entry (the row that
+        /// expands it). Used for the Internet Resource's on/off globe.
+        icon: Option<Icon>,
+    },
 }
 
 /// Something that shows text and may be clickable
@@ -41,17 +47,22 @@ pub struct Item {
     pub icon: Option<Icon>,
 }
 
-/// A colored dot shown next to a menu item.
+/// An icon shown next to a menu item.
 ///
-/// Named by color rather than meaning so it can be reused. Currently it
-/// mirrors the native status images the macOS client uses for Site status in
-/// its tray menu (`NSImage.statusAvailableName` and friends); Tauri has no
+/// `Green`/`Red`/`Grey` are colored status dots (named by color so they can be
+/// reused) that mirror the native status images the macOS client uses for Site
+/// status (`NSImage.statusAvailableName` and friends); Tauri has no
 /// cross-platform "native" status icons, so we ship our own equivalents.
+///
+/// `InternetOn`/`InternetOff` are the globe / globe-with-slash glyphs shown on
+/// the Internet Resource's menu entry to indicate whether it is enabled.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub enum Icon {
     Green,
     Red,
     Grey,
+    InternetOn,
+    InternetOff,
 }
 
 /// Events that the menu can send to the app
@@ -121,6 +132,23 @@ impl Menu {
         self.entries.push(Entry::Submenu {
             inner,
             title: title.into(),
+            icon: None,
+        });
+        self
+    }
+
+    /// Like [`add_submenu`](Self::add_submenu), but shows `icon` on the
+    /// submenu's own entry (the row that expands it).
+    pub(crate) fn add_submenu_with_icon<S: Into<String>>(
+        mut self,
+        title: S,
+        inner: Menu,
+        icon: Icon,
+    ) -> Self {
+        self.entries.push(Entry::Submenu {
+            inner,
+            title: title.into(),
+            icon: Some(icon),
         });
         self
     }

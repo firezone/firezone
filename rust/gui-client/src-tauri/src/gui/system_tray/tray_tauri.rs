@@ -22,6 +22,9 @@ type TauriSubmenu = tauri::menu::Submenu<tauri::Wry>;
 const STATUS_ONLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-online.png");
 const STATUS_OFFLINE_ICON: &[u8] = include_bytes!("../../../icons/menu/status-offline.png");
 const STATUS_UNKNOWN_ICON: &[u8] = include_bytes!("../../../icons/menu/status-unknown.png");
+// Globe / globe-with-slash glyphs for the Internet Resource's on/off state.
+const INTERNET_ON_ICON: &[u8] = include_bytes!("../../../icons/menu/internet-on.png");
+const INTERNET_OFF_ICON: &[u8] = include_bytes!("../../../icons/menu/internet-off.png");
 
 pub(crate) struct Tray {
     app: AppHandle,
@@ -43,6 +46,8 @@ fn menu_item_icon(icon: MenuItemIcon) -> tauri::image::Image<'static> {
         MenuItemIcon::Green => STATUS_ONLINE_ICON,
         MenuItemIcon::Red => STATUS_OFFLINE_ICON,
         MenuItemIcon::Grey => STATUS_UNKNOWN_ICON,
+        MenuItemIcon::InternetOn => INTERNET_ON_ICON,
+        MenuItemIcon::InternetOff => INTERNET_OFF_ICON,
     };
     let decoded =
         compositor::compose([png]).expect("PNG decoding should always succeed for baked-in PNGs");
@@ -162,19 +167,33 @@ fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
     Ok(menu.build()?)
 }
 
-fn build_submenu(app: &AppHandle, title: &str, that: &Menu) -> Result<TauriSubmenu> {
+fn build_submenu(
+    app: &AppHandle,
+    title: &str,
+    that: &Menu,
+    icon: Option<MenuItemIcon>,
+) -> Result<TauriSubmenu> {
     let mut menu = tauri::menu::SubmenuBuilder::new(app, title);
     for entry in &that.entries {
         menu = menu.item(&*build_entry(app, entry)?);
     }
-    Ok(menu.build()?)
+    let submenu = menu.build()?;
+    // Submenu icons need the built `Submenu`; `SubmenuBuilder` has no icon
+    // setter. Supported on Windows / macOS since Tauri 2.8 (not compiled on
+    // Linux, which uses the ksni backend).
+    if let Some(icon) = icon {
+        submenu
+            .set_icon(Some(menu_item_icon(icon)))
+            .context("Failed to set submenu icon")?;
+    }
+    Ok(submenu)
 }
 
 fn build_entry(app: &AppHandle, entry: &Entry) -> Result<Box<IsMenuItem>> {
     let entry = match entry {
         Entry::Item(item) => build_item(app, item)?,
         Entry::Separator => Box::new(tauri::menu::PredefinedMenuItem::separator(app)?),
-        Entry::Submenu { title, inner } => Box::new(build_submenu(app, title, inner)?),
+        Entry::Submenu { title, inner, icon } => Box::new(build_submenu(app, title, inner, *icon)?),
     };
     Ok(entry)
 }
@@ -215,7 +234,13 @@ mod tests {
 
     #[test]
     fn menu_item_icons_decode() {
-        for icon in [MenuItemIcon::Green, MenuItemIcon::Red, MenuItemIcon::Grey] {
+        for icon in [
+            MenuItemIcon::Green,
+            MenuItemIcon::Red,
+            MenuItemIcon::Grey,
+            MenuItemIcon::InternetOn,
+            MenuItemIcon::InternetOff,
+        ] {
             let image = menu_item_icon(icon);
             assert!(image.width() > 0 && image.height() > 0);
         }

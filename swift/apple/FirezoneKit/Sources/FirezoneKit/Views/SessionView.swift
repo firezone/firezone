@@ -88,19 +88,10 @@ import SwiftUI
     let resources: [Resource]
     @EnvironmentObject var store: Store
 
-    private func internetResourceTitle(resource: Resource) -> String {
-      let status =
-        Configuration.shared.internetResourceEnabled ? StatusSymbol.enabled : StatusSymbol.disabled
-
-      return status + " " + resource.name
-    }
-
-    private func resourceTitle(resource: Resource) -> String {
-      if resource.isInternetResource() {
-        return internetResourceTitle(resource: resource)
-      }
-
-      return resource.name
+    private var internetResourceIconName: String {
+      Configuration.shared.internetResourceEnabled
+        ? "InternetResourceOn"
+        : "InternetResourceOff"
     }
 
     var body: some View {
@@ -109,7 +100,17 @@ import SwiftUI
           NavigationLink {
             ResourceView(resource: resource)
           } label: {
-            Text(resourceTitle(resource: resource))
+            if resource.isInternetResource() {
+              // A globe / globe-with-slash icon conveys the on/off state.
+              Label {
+                Text(resource.name)
+              } icon: {
+                Image(internetResourceIconName)
+                  .renderingMode(.template)
+              }
+            } else {
+              Text(resource.name)
+            }
           }
         }
         .navigationTitle("All Resources")
