@@ -15,8 +15,8 @@ export default function AboutPage() {
       </p>
       <button
         onClick={() =>
-          openUrl("https://www.firezone.dev/kb?utm_source=product").catch(
-            (e) => console.error("Failed to open documentation URL", e)
+          openUrl("https://www.firezone.dev/kb?utm_source=product").catch((e) =>
+            console.error("Failed to open documentation URL", e)
           )
         }
         role="link"
