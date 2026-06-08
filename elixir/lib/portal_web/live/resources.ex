@@ -15,7 +15,6 @@ defmodule PortalWeb.Resources do
       panel_shell: 1,
       resource_details_panel: 1,
       resource_form_panel: 1,
-      resource_online?: 2,
       resource_status_badge: 1,
       resource_type_label: 1,
       type_badge_class: 1,
@@ -39,6 +38,7 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign(resources_count: Database.count_resources(socket.assigns.subject))
       |> assign(
         selected_resource: nil,
         selected_groups: [],
@@ -355,27 +355,12 @@ defmodule PortalWeb.Resources do
             New Resource
           </.button>
         </:action>
-        <:filters>
-          <% online_count = Enum.count(@resources, &resource_online?(&1, @presence_tick)) %>
-          <% offline_count = length(@resources) - online_count %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@resources_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative flex items-center justify-center w-1.5 h-1.5">
-              <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-            </span>
-            Online {online_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-neutral)]">
-            </span>
-            Offline {offline_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@resources_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1485,6 +1470,19 @@ defmodule PortalWeb.Resources do
       |> preload(:site)
       |> Safe.scoped(subject, :replica)
       |> Safe.one(fallback_to_primary: true)
+    end
+
+    def count_resources(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type != :internet)
+      |> select([resources: r], count(r.id))
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        n -> n
+      end
     end
 
     def list_resources(subject, opts \\ []) do

@@ -241,11 +241,11 @@ defmodule Portal.CryptoTest do
 
     test "raises an error when secret is not a binary" do
       assert_raise FunctionClauseError, fn ->
-        hash(:argon2, 1)
+        apply(Portal.Crypto, :hash, [:argon2, 1])
       end
 
       assert_raise FunctionClauseError, fn ->
-        hash(:sha256, 1)
+        apply(Portal.Crypto, :hash, [:sha256, 1])
       end
     end
 

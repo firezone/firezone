@@ -186,40 +186,13 @@ defmodule PortalWeb.Sites do
             New Site
           </.button>
         </:action>
-        <:filters>
-          <% all_sites = @sites ++ if(@internet_site, do: [@internet_site], else: [])
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{length(@sites) + if @internet_site, do: 1, else: 0}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
 
-          healthy_count =
-            Enum.count(all_sites, &(compute_site_status(&1.id, &1.health_threshold) == :healthy))
-
-          degraded_count =
-            Enum.count(all_sites, &(compute_site_status(&1.id, &1.health_threshold) == :degraded))
-
-          offline_count =
-            Enum.count(all_sites, &(compute_site_status(&1.id, &1.health_threshold) == :offline)) %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {length(all_sites)}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative flex items-center justify-center w-1.5 h-1.5">
-              <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-            </span>
-            Healthy {healthy_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-warn)]">
-            </span>
-            Degraded {degraded_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-neutral)]">
-            </span>
-            Offline {offline_count}
-          </span>
-        </:filters>
       </.page_header>
 
       <div class="flex-1 overflow-auto overflow-x-auto">

@@ -13,6 +13,7 @@ defmodule PortalWeb.Clients do
       socket
       |> assign(page_title: "Clients")
       |> assign(selected_client: nil)
+      |> assign(clients_count: Database.count_clients(socket.assigns.subject))
       |> assign(
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -114,21 +115,13 @@ defmodule PortalWeb.Clients do
         <:action>
           <.docs_action path="/deploy/clients" />
         </:action>
-        <:filters>
-          <% verified_count = Enum.count(@clients, &(not is_nil(&1.verified_at))) %>
-          <% unverified_count = length(@clients) - verified_count %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@clients_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--status-active)]"></span>
-            Verified {verified_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--text-muted)]"></span>
-            Unverified {unverified_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@clients_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
+
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -519,6 +512,19 @@ defmodule PortalWeb.Clients do
     alias Portal.Resource
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
+
+    def count_clients(subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> select([devices: d], count(d.id))
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        n -> n
+      end
+    end
 
     def list_clients(subject, opts \\ []) do
       {preload, opts} = Keyword.pop(opts, :preload, [])

@@ -19,6 +19,7 @@ defmodule PortalWeb.Actors do
     socket =
       socket
       |> assign(page_title: "People")
+      |> assign(actors_count: Database.count_actors(socket.assigns.subject))
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -1011,6 +1012,12 @@ defmodule PortalWeb.Actors do
             New Person
           </.button>
         </:action>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@actors_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1260,6 +1267,19 @@ defmodule PortalWeb.Actors do
             actors.id
           )
       })
+    end
+
+    def count_actors(subject) do
+      from(a in Actor, as: :actors)
+      |> where([actors: a], a.type in [:account_user, :account_admin_user])
+      |> select([actors: a], count(a.id))
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        n -> n
+      end
     end
 
     defp index_query do

@@ -100,8 +100,6 @@ defmodule PortalWeb.ClientsTest do
         |> live(~p"/#{account}/clients")
 
       html = render(lv)
-      assert html =~ "Verified 1"
-      assert html =~ "Unverified 1"
       assert html =~ verified_client.name
       assert html =~ unverified_client.name
       assert has_element?(lv, "#client-#{verified_client.id}", "Verified")

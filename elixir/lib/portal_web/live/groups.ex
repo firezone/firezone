@@ -18,7 +18,8 @@ defmodule PortalWeb.Groups do
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Groups", groups_with_policies_count: 0, selected_group: nil)
+      |> assign(page_title: "Groups", selected_group: nil)
+      |> assign(groups_count: Database.count_groups(socket.assigns.subject))
       |> assign(base_group_assigns(socket))
       |> assign_live_table("groups",
         query_module: Database,
@@ -745,15 +746,11 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    filter = Keyword.get(list_opts, :filter, [])
-
     with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
-         groups_metadata: metadata,
-         groups_with_policies_count:
-           Database.count_groups_with_policies(socket.assigns.subject, filter)
+         groups_metadata: metadata
        )}
     end
   end
@@ -779,17 +776,12 @@ defmodule PortalWeb.Groups do
             New Group
           </.button>
         </:action>
-        <:filters>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@groups_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            With policies {@groups_with_policies_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            No policies {@groups_metadata.count - @groups_with_policies_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@groups_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1371,6 +1363,22 @@ defmodule PortalWeb.Groups do
     end
 
     # Inlined from Portal.Actors.list_groups
+    def count_groups(subject) do
+      from(g in Portal.Group, as: :groups)
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
+      |> select([groups: g], count(g.id))
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        n -> n
+      end
+    end
+
     def list_groups(subject, opts \\ []) do
       {filter, opts} = Keyword.pop(opts, :filter, [])
       {order_by, opts} = Keyword.pop(opts, :order_by, [])
@@ -1438,35 +1446,6 @@ defmodule PortalWeb.Groups do
       group_ids
       |> Enum.map(&Map.get(groups_by_id, &1))
       |> Enum.reject(&is_nil/1)
-    end
-
-    def count_groups_with_policies(subject, filter \\ []) do
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:inner, [groups: g], p in Portal.Policy,
-          on: p.group_id == g.id and is_nil(p.disabled_at),
-          as: :policies
-        )
-        |> where(
-          [groups: g],
-          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-        )
-        |> select([groups: g], count(g.id, :distinct))
-
-      query =
-        case Filter.filter(query, __MODULE__, filter) do
-          {:ok, filtered} -> filtered
-          _ -> query
-        end
-
-      query
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        count -> count
-      end
     end
 
     def count_total_members(subject) do

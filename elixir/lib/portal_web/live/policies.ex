@@ -28,6 +28,7 @@ defmodule PortalWeb.Policies do
       socket
       |> assign(stale: false)
       |> assign(page_title: "Policies")
+      |> assign(policies_count: Database.count_policies(socket.assigns.subject))
       |> assign(selected_policy: nil, policy_providers: [])
       |> assign(
         policy_authorizations: [],
@@ -217,18 +218,12 @@ defmodule PortalWeb.Policies do
             New Policy
           </.button>
         </:action>
-        <:filters>
-          <% conditions_count = Enum.count(@policies, fn p -> length(p.conditions) > 0 end) %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@policies_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            With conditions {conditions_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            No conditions {length(@policies) - conditions_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@policies_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1223,6 +1218,18 @@ defmodule PortalWeb.Policies do
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
       end)
+    end
+
+    def count_policies(subject) do
+      from(p in Policy, as: :policies)
+      |> select([policies: p], count(p.id))
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
+      |> case do
+        {:error, _} -> 0
+        nil -> 0
+        n -> n
+      end
     end
 
     def list_policies(subject, opts \\ []) do
