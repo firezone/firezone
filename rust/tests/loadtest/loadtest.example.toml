@@ -52,3 +52,23 @@ concurrent = "5..50"
 duration_secs = "30..300"
 # How long to at most wait between messages. Zero means we won't send any messages.
 max_echo_interval_secs = 10
+
+# TURN relay load testing (e.g. Firezone's eBPF relay).
+#
+# Streams UDP datagrams through a channel binding and observes packet loss at the
+# peer. Credentials are scoped to a single relay, so configure only one at a time.
+# Left commented out because it requires real, relay-specific credentials.
+# [turn]
+# Relay socket address (ip:port)
+# address = "127.0.0.1:3478"
+# Long-term credentials for the relay
+# username = "<username>"
+# password = "<password>"
+# UDP payload size in bytes (default 1280)
+# payload_size = 1280
+# Target send bitrate (e.g. "2mbps", "500kbps", or a raw bits/sec value)
+# bitrate = "2mbps"
+# How long to stream datagrams, in seconds (default 30)
+# duration_secs = 30
+# Fail the test if packet loss exceeds this percentage (optional)
+# max_loss_percent = 1.0
