@@ -112,6 +112,12 @@ enum Commands {
 async fn main() {
     init_logging();
 
+    // `reqwest` is built with `rustls-no-provider`, so no crypto provider is
+    // installed automatically. Install `ring` explicitly before any TLS is used.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process should always succeed");
+
     match try_main().await {
         Ok(()) => {}
         Err(e) => {
