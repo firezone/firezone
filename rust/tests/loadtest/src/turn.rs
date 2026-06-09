@@ -18,7 +18,7 @@
 use crate::config::MAX_TURN_PAYLOAD_SIZE;
 use crate::util::StreamingStats;
 use crate::{WithSeed, cli};
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, ErrorExt as _, Result, anyhow, bail};
 use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use bytes::BytesMut;
@@ -40,7 +40,7 @@ use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
-use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND};
+use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
 use tokio::time::Instant;
 use url::Url;
@@ -59,6 +59,9 @@ const UDP_TRANSPORT: u8 = 17;
 
 /// `ERROR-CODE` returned when the supplied nonce is stale.
 const STALE_NONCE: u16 = 438;
+
+/// `ERROR-CODE` returned when an allocation already exists for the client's 5-tuple.
+const ALLOCATION_MISMATCH: u16 = 437;
 
 /// How long to wait for a response to a control request before retrying.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
@@ -338,6 +341,13 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
     let recv_stats = receiver.await.context("Receiver task panicked")?;
     reporter.abort();
 
+    // Clean exit: delete the allocation. Best-effort, as it would otherwise expire
+    // on its own and the test has already produced its results.
+    match delete_allocation(&client, config.server, &allocation.credentials, &pool).await {
+        Ok(()) => tracing::info!("Deleted TURN allocation"),
+        Err(error) => tracing::warn!(error = %error, "Failed to delete TURN allocation on exit"),
+    }
+
     Ok(build_summary(
         &config,
         channel,
@@ -388,7 +398,7 @@ async fn allocate(
     let mut credentials =
         Credentials::from_challenge(&challenge, &config.username, &config.password)?;
 
-    let response = authenticated_request(
+    let response = match authenticated_request(
         socket,
         server,
         &mut credentials,
@@ -396,7 +406,32 @@ async fn allocate(
         pool,
         "Allocate",
     )
-    .await?;
+    .await
+    {
+        Ok(response) => response,
+        // An allocation is already bound to our 5-tuple: delete it and retry once.
+        Err(error) if is_allocation_mismatch(&error) => {
+            tracing::info!(
+                "Allocation mismatch (437); deleting the existing allocation and retrying"
+            );
+
+            delete_allocation(socket, server, &credentials, pool)
+                .await
+                .context("Failed to delete the existing allocation after a 437")?;
+
+            authenticated_request(
+                socket,
+                server,
+                &mut credentials,
+                authenticated_allocate,
+                pool,
+                "Allocate",
+            )
+            .await
+            .context("Allocate retry after deleting the existing allocation failed")?
+        }
+        Err(error) => return Err(error),
+    };
 
     let relayed_address = response
         .get_attribute::<XorRelayAddress>()
@@ -422,6 +457,29 @@ async fn channel_bind(
     let build = |credentials: &Credentials| authenticated_channel_bind(credentials, channel, peer);
 
     authenticated_request(socket, server, &mut credentials, build, pool, "ChannelBind").await?;
+
+    Ok(())
+}
+
+/// Delete the allocation by sending an authenticated `Refresh` with a zero
+/// lifetime (RFC 5766 §7); the nonce is refreshed once if the relay reports it stale.
+async fn delete_allocation(
+    socket: &PerfUdpSocket,
+    server: SocketAddr,
+    credentials: &Credentials,
+    pool: &BufferPool<BytesMut>,
+) -> Result<()> {
+    let mut credentials = credentials.clone();
+
+    authenticated_request(
+        socket,
+        server,
+        &mut credentials,
+        authenticated_refresh,
+        pool,
+        "Refresh",
+    )
+    .await?;
 
     Ok(())
 }
@@ -823,9 +881,40 @@ async fn authenticated_request(
                 refreshed_nonce = true;
             }
             Outcome::StaleNonce(_) => bail!("{label} failed: stale nonce after retry"),
-            Outcome::Error { code, reason } => bail!("{label} failed: {code} {reason}"),
+            Outcome::Error { code, reason } => {
+                return Err(RelayError {
+                    label: label.to_owned(),
+                    code,
+                    reason,
+                }
+                .into());
+            }
         }
     }
+}
+
+/// A terminal error response from the relay, carried as a typed error so callers
+/// can match on the `ERROR-CODE` (e.g. to recover from a 437).
+#[derive(Debug)]
+struct RelayError {
+    label: String,
+    code: u16,
+    reason: String,
+}
+
+impl std::fmt::Display for RelayError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} failed: {} {}", self.label, self.code, self.reason)
+    }
+}
+
+impl std::error::Error for RelayError {}
+
+/// Whether `error` carries a relay 437 (Allocation Mismatch) response.
+fn is_allocation_mismatch(error: &anyhow::Error) -> bool {
+    error
+        .any_downcast_ref::<RelayError>()
+        .is_some_and(|e| e.code == ALLOCATION_MISMATCH)
 }
 
 /// Classify a response as success, a stale-nonce retry, or a terminal error.
@@ -889,6 +978,14 @@ fn authenticated_channel_bind(
         ChannelNumber::new(channel).expect("channel number is within the valid range"),
     );
     message.add_attribute(XorPeerAddress::new(peer));
+
+    sign(message, credentials)
+}
+
+/// Build a signed `Refresh` request with a zero lifetime, which deletes the allocation.
+fn authenticated_refresh(credentials: &Credentials) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::Request, REFRESH, TransactionId::new(random()));
+    message.add_attribute(Lifetime::from_u32(0));
 
     sign(message, credentials)
 }
@@ -1243,5 +1340,47 @@ mod tests {
         assert_eq!(live_loss_percent(199, 195), 2.5);
         // Nothing received yet.
         assert_eq!(live_loss_percent(0, 0), 0.0);
+    }
+
+    fn test_credentials() -> Credentials {
+        Credentials {
+            username: Username::new("user".to_owned()).unwrap(),
+            realm: Realm::new("firezone".to_owned()).unwrap(),
+            nonce: Nonce::new("nonce".to_owned()).unwrap(),
+            password: "pass".to_owned(),
+        }
+    }
+
+    #[test]
+    fn refresh_request_deletes_allocation_with_zero_lifetime() {
+        let message = authenticated_refresh(&test_credentials());
+
+        assert_eq!(message.method(), REFRESH);
+        assert_eq!(message.class(), MessageClass::Request);
+        assert!(
+            message
+                .get_attribute::<Lifetime>()
+                .expect("refresh carries a LIFETIME")
+                .lifetime()
+                .is_zero()
+        );
+        // Signed with the long-term credential.
+        assert!(message.get_attribute::<MessageIntegrity>().is_some());
+    }
+
+    #[test]
+    fn detects_allocation_mismatch_error() {
+        let relay_error = |code| {
+            anyhow::Error::new(RelayError {
+                label: "Allocate".to_owned(),
+                code,
+                reason: "reason".to_owned(),
+            })
+        };
+
+        assert!(is_allocation_mismatch(&relay_error(ALLOCATION_MISMATCH)));
+        assert!(!is_allocation_mismatch(&relay_error(STALE_NONCE)));
+        // An unrelated error doesn't carry a `RelayError`.
+        assert!(!is_allocation_mismatch(&anyhow!("connection reset")));
     }
 }
