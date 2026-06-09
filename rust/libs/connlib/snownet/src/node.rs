@@ -1719,14 +1719,31 @@ where
                 tracing::warn!("boringtun error: {e}");
             }
             TunnResult::WriteToNetwork(b) => {
-                transmits.extend(make_owned_transmit(
-                    self.relay.id,
-                    peer_socket,
-                    b,
-                    &self.buffer_pool,
-                    allocations,
-                    now,
-                ));
+                if self.agent.is_iceless() {
+                    // Re-key from boringtun's timer. Route through the
+                    // path-agent so it reopens the bootstrap window and
+                    // probes restart immediately instead of waiting
+                    // ~1 RTT for the inbound response. The init bytes
+                    // get queued on `primary` and the snownet drain
+                    // loop picks them up via `poll_path_transmit`.
+                    //
+                    // Rare regression: if `primary` was just cleared
+                    // (candidate removal mid-probe), the init is
+                    // dropped. boringtun retries within REKEY_TIMEOUT
+                    // (~5s); the new primary lands well under 1s in
+                    // practice. Accepted as a narrow loss window over
+                    // the alternative of sending to a stale socket.
+                    self.agent.handle_outbound(b.to_vec(), now);
+                } else {
+                    transmits.extend(make_owned_transmit(
+                        self.relay.id,
+                        peer_socket,
+                        b,
+                        &self.buffer_pool,
+                        allocations,
+                        now,
+                    ));
+                }
             }
             TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
                 panic!("Unexpected result from update_timers")

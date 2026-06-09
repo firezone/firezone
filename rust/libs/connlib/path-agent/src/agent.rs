@@ -153,10 +153,6 @@ pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
 /// inbound handshake.
 pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 
-/// Echo `id` baked into every probe. We discriminate replies by
-/// `(pair, seq)`, so a fixed value is fine.
-const PROBE_ID: u16 = 0;
-
 struct PairRetransmit {
     next_fire_at: Instant,
     /// Step into [`PairRetransmit::LADDER_MS`], saturating at the last
@@ -882,13 +878,24 @@ impl PathAgent {
         } else {
             (PROBE_INTERVAL, false)
         };
+        // Pairs added after `seed_probe_schedule` ran (typical for
+        // trickle-ICE: relay pairs land first, host/srflx pairs arrive
+        // over the next few hundred ms) have `next_probe_at == None`.
+        // During the open window, treat them as due now so they start
+        // probing without waiting for the next reopen — otherwise
+        // they're invisible to `select_primary` and `maybe_settle`
+        // locks them out for ~2 min until the next re-key.
+        // Pre-handshake the window is closed, so unseeded pairs stay
+        // dormant. Post-settle, only the primary is iterated, and its
+        // deadline is always `Some` from `maybe_settle`.
+        let window_open = self.bootstrap_until.is_some();
         let primary = self.primary;
         let pending = &mut self.pending_transmits;
         for ((local, remote), state) in self.pairs.iter_mut() {
             if only_primary && primary != Some((*local, *remote)) {
                 continue;
             }
-            let Some(deadline) = state.next_probe_at else {
+            let Some(deadline) = state.next_probe_at.or(window_open.then_some(now)) else {
                 continue;
             };
             if now < deadline {
@@ -915,7 +922,7 @@ impl PathAgent {
             pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
-                payload: Payload::Plaintext(crate::icmpv6::build_echo_request(PROBE_ID, seq)),
+                payload: Payload::Plaintext(crate::icmpv6::build_echo_request(0, seq)),
             });
         }
     }

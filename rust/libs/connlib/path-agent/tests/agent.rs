@@ -1370,6 +1370,37 @@ fn probe_skips_while_inflight_until_probe_timeout_lapses() {
     assert_eq!(next_seq, first_seq.wrapping_add(1));
 }
 
+#[test]
+fn trickled_candidate_after_handshake_still_gets_probed() {
+    // Reproduces the trickle-ICE production case: bootstrap handshake
+    // completes when only relay pairs exist (host/srflx candidates
+    // haven't arrived via signalling yet), then a remote host
+    // candidate trickles in. The new pair must start probing within
+    // the same bootstrap window — otherwise it's invisible to
+    // `select_primary` and `maybe_settle` locks it out for ~2 min
+    // until the next re-key reopens the window.
+    let mut a = PathAgent::new();
+    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
+
+    let now = Instant::now();
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    // Trickle: remote host candidate arrives after handshake. Its
+    // pairs (1,3) and (2,3) get added with `next_probe_at = None`.
+    a.add_remote_candidate(Candidate::host(addr(3)));
+
+    a.handle_timeout(now);
+    let transmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    // `extract_probe_for` panics if the pair didn't emit a probe.
+    let _ = extract_probe_for(&transmits, (addr(1), addr(3)));
+    let _ = extract_probe_for(&transmits, (addr(2), addr(3)));
+}
+
 // --- shared fixtures ---
 
 fn agent_with_relay_pairs() -> PathAgent {
