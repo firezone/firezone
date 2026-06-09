@@ -138,7 +138,7 @@ defmodule PortalAPI.Schemas.Actor do
             type: %Schema{
               type: :string,
               description: "Actor Type",
-              enum: ["account_user", "account_admin_user", "service_account", "api_client"]
+              enum: ["account_user", "account_admin_user", "service_account"]
             },
             email: %Schema{
               type: :string,
