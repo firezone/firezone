@@ -149,7 +149,14 @@ defmodule PortalAPI.Schemas.Policy do
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Policy ID"},
-        group_id: %Schema{type: :string, format: :uuid, description: "Group ID", nullable: true},
+        group_id: %Schema{
+          type: :string,
+          format: :uuid,
+          nullable: true,
+          description:
+            "Group ID. Null if the Group was deleted during directory sync; it is relinked " <>
+              "automatically if the Group reappears on a subsequent sync."
+        },
         resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description", nullable: true},
         conditions: %Schema{

@@ -3,6 +3,7 @@ defmodule PortalAPI.ChangeLogController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Types.EventId
   alias __MODULE__.Database
 
@@ -11,6 +12,7 @@ defmodule PortalAPI.ChangeLogController do
 
   tags(["Change Logs"])
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:index,
     summary: "List Change Logs",
     description: """
@@ -83,10 +85,15 @@ defmodule PortalAPI.ChangeLogController do
         example: "admin@example.com"
       ]
     ],
-    responses: [
-      ok: {"Change Logs Response", "application/json", PortalAPI.Schemas.ChangeLog.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Change Logs Response", "application/json", PortalAPI.Schemas.ChangeLog.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
   )
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -104,6 +111,7 @@ defmodule PortalAPI.ChangeLogController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:show,
     summary: "Show Change Log",
     description: """
@@ -118,10 +126,12 @@ defmodule PortalAPI.ChangeLogController do
         example: "c00060db0c2c8eb400000000"
       ]
     ],
-    responses: [
-      ok: {"Change Log Response", "application/json", PortalAPI.Schemas.ChangeLog.Response}
-    ]
+    responses:
+      [ok: {"Change Log Response", "application/json", PortalAPI.Schemas.ChangeLog.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"event_id" => event_id}) do

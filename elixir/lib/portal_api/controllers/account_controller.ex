@@ -1,26 +1,26 @@
 defmodule PortalAPI.AccountController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
-  alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Account"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Account",
-    responses: [
-      ok: {"AccountResponse", "application/json", PortalAPI.Schemas.Account.Response}
-    ]
+    responses:
+      [ok: {"AccountResponse", "application/json", PortalAPI.Schemas.Account.Response}] ++
+        ProblemDetails.responses([:unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
-    account_id = conn.assigns.subject.account.id
-
-    with {:ok, account} <- Database.fetch_account(account_id, conn.assigns.subject) do
-      render(conn, :show, account: account)
-    else
-      error -> Error.handle(conn, error)
-    end
+    # The subject's own account always exists and is readable by every actor type
+    # (Safe.permit/3), so the fetch cannot fail here.
+    account = Database.fetch_account(conn.assigns.subject.account.id, conn.assigns.subject)
+    render(conn, :show, account: account)
   end
 
   defmodule Database do
@@ -29,16 +29,9 @@ defmodule PortalAPI.AccountController do
     alias Portal.Account
 
     def fetch_account(id, subject) do
-      result =
-        from(a in Account, where: a.id == ^id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one()
-
-      case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        account -> {:ok, account}
-      end
+      from(a in Account, where: a.id == ^id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.one()
     end
   end
 end

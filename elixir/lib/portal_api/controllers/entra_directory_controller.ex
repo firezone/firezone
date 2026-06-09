@@ -2,17 +2,23 @@ defmodule PortalAPI.EntraDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Entra Directories"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Entra Directories",
-    responses: [
-      ok:
-        {"Entra Directory Response", "application/json",
-         PortalAPI.Schemas.EntraDirectory.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Entra Directory Response", "application/json",
+           PortalAPI.Schemas.EntraDirectory.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
@@ -20,6 +26,7 @@ defmodule PortalAPI.EntraDirectoryController do
     render(conn, :index, directories: directories)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Entra Directory",
     parameters: [
@@ -30,11 +37,20 @@ defmodule PortalAPI.EntraDirectoryController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Entra Directory Response", "application/json",
-         PortalAPI.Schemas.EntraDirectory.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"Entra Directory Response", "application/json",
+           PortalAPI.Schemas.EntraDirectory.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

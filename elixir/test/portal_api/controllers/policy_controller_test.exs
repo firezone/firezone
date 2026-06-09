@@ -21,7 +21,19 @@ defmodule PortalAPI.PolicyControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/policies")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
     end
 
     test "lists all policies", %{conn: conn, account: account, actor: actor} do
@@ -89,7 +101,8 @@ defmodule PortalAPI.PolicyControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = policy_fixture(account: account)
       conn = get(conn, "/policies/#{policy.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single policy", %{conn: conn, account: account, actor: actor} do
@@ -148,12 +161,24 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert json_response(conn, 200)["data"]["group_id"] == nil
     end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/policies", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, actor: actor} do
@@ -164,7 +189,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> post("/policies")
 
       assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = resp
     end
 
     test "returns error on invalid attrs", %{conn: conn, actor: actor} do
@@ -176,18 +201,13 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/policies", policy: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp ==
-               %{
-                 "error" => %{
-                   "reason" => "Unprocessable Content",
-                   "validation_errors" => %{
-                     "group_id" => ["can't be blank"],
-                     "resource_id" => ["can't be blank"]
-                   }
-                 }
+      assert %{
+               "status" => 422,
+               "validation_errors" => %{
+                 "group_id" => ["can't be blank"],
+                 "resource_id" => ["can't be blank"]
                }
+             } = json_response(conn, 422)
     end
 
     test "returns validation error for malformed group_id value", %{
@@ -203,12 +223,10 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/policies", policy: %{"group_id" => "<no value>", "resource_id" => resource.id})
 
-      assert json_response(conn, 422) == %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{"group_id" => ["is invalid"]}
-               }
-             }
+      assert %{
+               "status" => 422,
+               "validation_errors" => %{"group_id" => ["is invalid"]}
+             } = json_response(conn, 422)
     end
 
     test "creates a policy with valid attrs", %{conn: conn, account: account, actor: actor} do
@@ -334,7 +352,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/policies", policy: attrs)
 
-      assert json_response(conn, 422)["error"]["reason"] == "Unprocessable Content"
+      assert json_response(conn, 422)["title"] == "Unprocessable Content"
     end
 
     test "rejects more than one condition per property", %{
@@ -360,7 +378,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/policies", policy: attrs)
 
-      assert json_response(conn, 422)["error"]["validation_errors"] == %{
+      assert json_response(conn, 422)["validation_errors"] == %{
                "base" => ["must not contain more than one condition per property"]
              }
     end
@@ -387,7 +405,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/policies", policy: attrs)
 
-      assert json_response(conn, 422)["error"]["reason"] == "Unprocessable Content"
+      assert json_response(conn, 422)["title"] == "Unprocessable Content"
     end
 
     test "sets group_idp_id when creating policy for synced group", %{
@@ -416,13 +434,82 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert policy.group_idp_id == "synced_group_create_123"
     end
+
+    test "returns not found when referenced resource does not exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => Ecto.UUID.generate()
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns forbidden when internet resource is not enabled for the account", %{conn: conn} do
+      account = account_fixture()
+      actor = api_client_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 403,
+               "detail" => "Internet resource is not enabled for this account"
+             } = json_response(conn, 403)
+    end
+
+    test "creates an internet resource policy when the feature is enabled", %{conn: conn} do
+      account = account_fixture(features: %{internet_resource: true})
+      actor = api_client_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["resource_id"] == resource.id
+      assert resp["data"]["group_id"] == group.id
+    end
   end
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = policy_fixture(account: account)
       conn = put(conn, "/policies/#{policy.id}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
@@ -435,7 +522,20 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put("/policies/#{policy.id}")
 
       assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = resp
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      attrs = %{"description" => "updated"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{Ecto.UUID.generate()}", policy: attrs)
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "updates a policy", %{conn: conn, account: account, actor: actor} do
@@ -452,6 +552,35 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["description"] == attrs["description"]
+    end
+
+    test "preserves conditions when conditions are omitted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :remote_ip, operator: :is_in_cidr, values: ["10.0.0.0/8"]}]
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: %{"description" => "updated"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["description"] == "updated"
+
+      assert resp["data"]["conditions"] == [
+               %{
+                 "property" => "remote_ip",
+                 "operator" => "is_in_cidr",
+                 "values" => ["10.0.0.0/8"]
+               }
+             ]
     end
 
     test "updates a policy's conditions", %{conn: conn, account: account, actor: actor} do
@@ -502,7 +631,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/policies/#{policy.id}", policy: attrs)
 
-      assert json_response(conn, 422)["error"]["validation_errors"] == %{
+      assert json_response(conn, 422)["validation_errors"] == %{
                "base" => ["must not contain more than one condition per property"]
              }
     end
@@ -520,12 +649,10 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/policies/#{policy.id}", policy: %{"group_id" => "<no value>"})
 
-      assert json_response(conn, 422) == %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{"group_id" => ["is invalid"]}
-               }
-             }
+      assert %{
+               "status" => 422,
+               "validation_errors" => %{"group_id" => ["is invalid"]}
+             } = json_response(conn, 422)
     end
 
     test "updates group_idp_id when changing to a synced group", %{
@@ -574,7 +701,19 @@ defmodule PortalAPI.PolicyControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = policy_fixture(account: account)
       conn = delete(conn, "/policies/#{policy.id}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/policies/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "deletes a policy", %{conn: conn, account: account, actor: actor} do

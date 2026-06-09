@@ -2,17 +2,23 @@ defmodule PortalAPI.OIDCAuthProviderController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["OIDC Auth Providers"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List OIDC Auth Providers",
-    responses: [
-      ok:
-        {"OIDC Auth Provider Response", "application/json",
-         PortalAPI.Schemas.OIDCAuthProvider.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"OIDC Auth Provider Response", "application/json",
+           PortalAPI.Schemas.OIDCAuthProvider.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
@@ -20,6 +26,7 @@ defmodule PortalAPI.OIDCAuthProviderController do
     render(conn, :index, providers: providers)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show OIDC Auth Provider",
     parameters: [
@@ -30,11 +37,20 @@ defmodule PortalAPI.OIDCAuthProviderController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"OIDC Auth Provider Response", "application/json",
-         PortalAPI.Schemas.OIDCAuthProvider.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"OIDC Auth Provider Response", "application/json",
+           PortalAPI.Schemas.OIDCAuthProvider.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

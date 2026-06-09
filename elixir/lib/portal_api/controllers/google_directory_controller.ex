@@ -2,17 +2,23 @@ defmodule PortalAPI.GoogleDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Google Directories"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Google Directories",
-    responses: [
-      ok:
-        {"Google Directory Response", "application/json",
-         PortalAPI.Schemas.GoogleDirectory.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Google Directory Response", "application/json",
+           PortalAPI.Schemas.GoogleDirectory.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
@@ -20,6 +26,7 @@ defmodule PortalAPI.GoogleDirectoryController do
     render(conn, :index, directories: directories)
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Google Directory",
     parameters: [
@@ -30,11 +37,20 @@ defmodule PortalAPI.GoogleDirectoryController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Google Directory Response", "application/json",
-         PortalAPI.Schemas.GoogleDirectory.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"Google Directory Response", "application/json",
+           PortalAPI.Schemas.GoogleDirectory.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do

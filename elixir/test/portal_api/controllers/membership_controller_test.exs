@@ -20,7 +20,22 @@ defmodule PortalAPI.MembershipControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       group = group_fixture(account: account)
       conn = get(conn, "/groups/#{group.id}/memberships")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
+      group = group_fixture(account: account)
+      unprivileged = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}/memberships")
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all memberships", %{conn: conn, account: account, actor: api_actor} do
@@ -120,8 +135,8 @@ defmodule PortalAPI.MembershipControllerTest do
         |> put_req_header("content-type", "application/json")
         |> patch("/groups/#{group.id}/memberships")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns error on invalid group id", %{conn: conn, actor: api_actor} do
@@ -135,8 +150,8 @@ defmodule PortalAPI.MembershipControllerTest do
           memberships: attrs
         )
 
-      assert resp = json_response(conn, 404)
-      assert resp == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "returns error on invalid actor id", %{conn: conn, account: account, actor: api_actor} do
@@ -150,9 +165,46 @@ defmodule PortalAPI.MembershipControllerTest do
         |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       assert resp = json_response(conn, 422)
-      assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
-      assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
+      assert %{"type" => "about:blank", "status" => 422} = resp
+      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
       assert [%{"actor" => ["does not exist"]}] = memberships
+    end
+
+    test "returns forbidden when group is not editable", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = synced_group_fixture(account: account)
+      actor = actor_fixture(account: account)
+      attrs = %{"add" => [actor.id]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
+
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Group is not editable"} =
+               json_response(conn, 403)
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      group = group_fixture(account: account)
+      unprivileged = actor_fixture(account: account, type: :service_account)
+      attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
+
+      conn =
+        conn
+        |> authorize_conn(unprivileged)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/groups/#{group.id}/memberships", memberships: attrs)
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns validation error for malformed actor uuid", %{
@@ -170,8 +222,8 @@ defmodule PortalAPI.MembershipControllerTest do
         |> patch("/groups/#{group.id}/memberships", memberships: attrs)
 
       resp = json_response(conn, 422)
-      assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
-      assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
+      assert %{"type" => "about:blank", "status" => 422} = resp
+      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
       assert [%{"actor_id" => ["is invalid"]}] = memberships
     end
 
@@ -263,8 +315,8 @@ defmodule PortalAPI.MembershipControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/groups/#{group.id}/memberships")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns validation error for malformed actor uuid", %{
@@ -282,8 +334,8 @@ defmodule PortalAPI.MembershipControllerTest do
         |> put("/groups/#{group.id}/memberships", memberships: attrs)
 
       resp = json_response(conn, 422)
-      assert %{"error" => %{"reason" => "Unprocessable Content"}} = resp
-      assert %{"error" => %{"validation_errors" => %{"memberships" => memberships}}} = resp
+      assert %{"type" => "about:blank", "status" => 422} = resp
+      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
       assert [%{"actor_id" => ["is invalid"]}] = memberships
     end
 

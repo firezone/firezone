@@ -3,21 +3,25 @@ defmodule PortalAPI.GroupController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Group
   alias __MODULE__.Database
   import Ecto.Changeset
 
   tags ["Groups"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Groups",
     parameters: [
       limit: [in: :query, description: "Limit Groups returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.ListResponse}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -30,6 +34,7 @@ defmodule PortalAPI.GroupController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Group",
     parameters: [
@@ -40,9 +45,11 @@ defmodule PortalAPI.GroupController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -53,14 +60,23 @@ defmodule PortalAPI.GroupController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Group",
     parameters: [],
     request_body:
-      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.Request, required: true},
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.CreateRequest,
+       required: true},
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"group" => params}) do
@@ -85,6 +101,7 @@ defmodule PortalAPI.GroupController do
     |> validate_required([:name])
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update a Group",
     parameters: [
@@ -96,10 +113,20 @@ defmodule PortalAPI.GroupController do
       ]
     ],
     request_body:
-      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.Request, required: true},
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+      {"Group Attributes", "application/json", PortalAPI.Schemas.Group.UpdateRequest,
+       required: true},
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "group" => params}) do
@@ -126,12 +153,12 @@ defmodule PortalAPI.GroupController do
     end
   end
 
+  # coveralls-ignore-start - unreachable: the update route always supplies an :id path param
   def update(conn, _params) do
     Error.handle(conn, {:error, :bad_request})
   end
 
-  defp validate_group_updatable(%Group{type: :managed}),
-    do: {:error, :forbidden, reason: "Cannot update a managed Group"}
+  # coveralls-ignore-stop
 
   defp validate_group_updatable(%Group{idp_id: idp_id}) when not is_nil(idp_id),
     do: {:error, :forbidden, reason: "Cannot update a synced Group"}
@@ -144,6 +171,7 @@ defmodule PortalAPI.GroupController do
     |> validate_required([:name])
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Group",
     parameters: [
@@ -154,9 +182,11 @@ defmodule PortalAPI.GroupController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do

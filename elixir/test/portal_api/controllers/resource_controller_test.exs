@@ -24,7 +24,19 @@ defmodule PortalAPI.ResourceControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/resources")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
     end
 
     test "lists all resources", %{conn: conn, account: account, actor: actor} do
@@ -92,7 +104,8 @@ defmodule PortalAPI.ResourceControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = resource_fixture(account: account)
       conn = get(conn, "/resources/#{resource.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single resource", %{conn: conn, account: account, actor: actor} do
@@ -115,12 +128,24 @@ defmodule PortalAPI.ResourceControllerTest do
                }
              }
     end
+
+    test "returns not found when resource does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/resources", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, actor: actor} do
@@ -130,8 +155,8 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/resources")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns error on invalid attrs", %{conn: conn, actor: actor} do
@@ -143,19 +168,15 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/resources", resource: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp ==
-               %{
-                 "error" => %{
-                   "reason" => "Unprocessable Content",
-                   "validation_errors" => %{
-                     "site_id" => ["can't be blank"],
-                     "name" => ["can't be blank"],
-                     "type" => ["can't be blank"]
-                   }
-                 }
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["can't be blank"],
+                 "name" => ["can't be blank"],
+                 "type" => ["can't be blank"]
                }
+             } = json_response(conn, 422)
     end
 
     test "creates a resource with valid attrs", %{conn: conn, account: account, actor: actor} do
@@ -224,16 +245,13 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/resources", resource: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp == %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{
-                   "type" => ["device pools are not enabled for this account"]
-                 }
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "type" => ["device pools are not enabled for this account"]
                }
-             }
+             } = json_response(conn, 422)
     end
   end
 
@@ -241,7 +259,8 @@ defmodule PortalAPI.ResourceControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = resource_fixture(account: account)
       conn = put(conn, "/resources/#{resource.id}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
@@ -253,8 +272,8 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/resources/#{resource.id}")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns not found when resource does not exist", %{
@@ -269,8 +288,94 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/resources/#{Ecto.UUID.generate()}", resource: attrs)
 
-      assert resp = json_response(conn, 404)
-      assert resp == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "preserves filters when filters are omitted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      resource =
+        resource_with_filters_fixture(%{
+          account: account,
+          site: site,
+          type: :ip,
+          address: "10.0.0.9"
+        })
+
+      assert length(resource.filters) == 2
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"name" => "Renamed"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == "Renamed"
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert length(reloaded.filters) == 2
+    end
+
+    test "replaces filters when filters are provided", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      resource =
+        resource_with_filters_fixture(%{
+          account: account,
+          site: site,
+          type: :ip,
+          address: "10.0.0.9"
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}",
+          resource: %{"filters" => [%{"protocol" => "tcp", "ports" => ["8080"]}]}
+        )
+
+      assert json_response(conn, 200)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert [%{protocol: :tcp}] = reloaded.filters
+    end
+
+    test "clears filters when an empty list is provided", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      resource =
+        resource_with_filters_fixture(%{
+          account: account,
+          site: site,
+          type: :ip,
+          address: "10.0.0.9"
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"filters" => []})
+
+      assert json_response(conn, 200)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert reloaded.filters == []
     end
 
     test "updates a resource", %{conn: conn, account: account, actor: actor} do
@@ -306,9 +411,11 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/resources/#{resource.id}", resource: %{"name" => "New Name"})
 
-      assert json_response(conn, 403) == %{
-               "error" => %{"reason" => "Internet Resource cannot be modified"}
-             }
+      assert %{
+               "type" => "about:blank",
+               "status" => 403,
+               "detail" => "Internet Resource cannot be modified"
+             } = json_response(conn, 403)
     end
 
     test "returns 422 when updating resource to static_device_pool type with feature disabled", %{
@@ -325,16 +432,13 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/resources/#{resource.id}", resource: %{"type" => "static_device_pool"})
 
-      assert resp = json_response(conn, 422)
-
-      assert resp == %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{
-                   "type" => ["device pools are not enabled for this account"]
-                 }
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "type" => ["device pools are not enabled for this account"]
                }
-             }
+             } = json_response(conn, 422)
     end
   end
 
@@ -342,7 +446,19 @@ defmodule PortalAPI.ResourceControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = resource_fixture(account: account)
       conn = delete(conn, "/resources/#{resource.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "returns not found when resource does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/resources/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "deletes a resource", %{conn: conn, account: account, actor: actor} do
@@ -381,9 +497,11 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/resources/#{resource.id}")
 
-      assert json_response(conn, 403) == %{
-               "error" => %{"reason" => "Internet Resource cannot be modified"}
-             }
+      assert %{
+               "type" => "about:blank",
+               "status" => 403,
+               "detail" => "Internet Resource cannot be modified"
+             } = json_response(conn, 403)
 
       assert Repo.get_by(Resource, id: resource.id, account_id: resource.account_id)
     end

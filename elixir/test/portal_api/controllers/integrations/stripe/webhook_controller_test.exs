@@ -12,6 +12,28 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
       assert response(conn, 400) == "Bad Request: missing signature header"
     end
 
+    test "returns error when timestamp is missing from the signature header", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", "v1=deadbeef")
+        |> post("/integrations/stripe/webhooks", "bar")
+
+      assert response(conn, 400) == "Bad Request: missing timestamp"
+    end
+
+    test "returns error when signatures are missing from the signature header", %{conn: conn} do
+      now = System.system_time(:second)
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", "t=#{now}")
+        |> post("/integrations/stripe/webhooks", "bar")
+
+      assert response(conn, 400) == "Bad Request: missing signatures"
+    end
+
     test "returns error when signature is invalid", %{conn: conn} do
       now = System.system_time(:second)
       signature = generate_signature(now, "foo")
@@ -20,6 +42,19 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
         conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("stripe-signature", create_signature_header(now, signature))
+        |> post("/integrations/stripe/webhooks", "bar")
+
+      assert response(conn, 400) == "Bad Request: invalid signature"
+    end
+
+    test "ignores unrecognized segments in the signature header", %{conn: conn} do
+      now = System.system_time(:second)
+      signature = generate_signature(now, "foo")
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", "t=#{now},foo=bar,v1=#{signature}")
         |> post("/integrations/stripe/webhooks", "bar")
 
       assert response(conn, 400) == "Bad Request: invalid signature"

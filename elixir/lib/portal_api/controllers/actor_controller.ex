@@ -3,21 +3,25 @@ defmodule PortalAPI.ActorController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Billing
   alias __MODULE__.Database
   import Ecto.Changeset
 
   tags ["Actors"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Actors",
     parameters: [
       limit: [in: :query, description: "Limit Users returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}
-    ]
+    responses:
+      [ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -30,6 +34,7 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Actor",
     parameters: [
@@ -40,9 +45,11 @@ defmodule PortalAPI.ActorController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -53,13 +60,23 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create an Actor",
     request_body:
-      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.Request, required: true},
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.CreateRequest,
+       required: true},
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"actor" => params}) do
@@ -130,6 +147,7 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update an Actor",
     description: """
@@ -159,10 +177,20 @@ defmodule PortalAPI.ActorController do
       ]
     ],
     request_body:
-      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.Request, required: true},
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+      {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.UpdateRequest,
+       required: true},
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "actor" => params}) do
@@ -183,6 +211,7 @@ defmodule PortalAPI.ActorController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an Actor",
     parameters: [
@@ -193,9 +222,11 @@ defmodule PortalAPI.ActorController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -213,6 +244,9 @@ defmodule PortalAPI.ActorController do
     %Portal.Actor{account_id: account.id}
     |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
     |> validate_required([:name, :type])
+    |> validate_exclusion(:type, [:api_client],
+      message: "API clients cannot be created via the API"
+    )
   end
 
   defp actor_changeset(actor, attrs) do
