@@ -107,17 +107,11 @@ defmodule PortalAPI.Schemas.Client do
         name: %Schema{
           type: :string,
           description: "Client Name"
-        },
-        hostname: %Schema{
-          type: :string,
-          nullable: true,
-          description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
         }
       },
       required: [:name],
       example: %{
-        "name" => "John's Macbook Air",
-        "hostname" => "johns-macbook.example.com"
+        "name" => "John's Macbook Air"
       }
     })
   end
@@ -137,8 +131,7 @@ defmodule PortalAPI.Schemas.Client do
       required: [:client],
       example: %{
         "client" => %{
-          "name" => "John's Macbook Air",
-          "hostname" => "johns-macbook.example.com"
+          "name" => "John's Macbook Air"
         }
       }
     })

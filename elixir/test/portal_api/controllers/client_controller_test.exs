@@ -223,33 +223,7 @@ defmodule PortalAPI.ClientControllerTest do
       assert Map.has_key?(errors, "name")
     end
 
-    test "sets, updates, and clears hostname", %{conn: conn, actor: actor, client: client} do
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => "host-1.example.com"})
-
-      assert json_response(conn, 200)["data"]["hostname"] == "host-1.example.com"
-
-      conn =
-        recycle(conn)
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => "host-2.example.com"})
-
-      assert json_response(conn, 200)["data"]["hostname"] == "host-2.example.com"
-
-      conn =
-        recycle(conn)
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => nil})
-
-      assert json_response(conn, 200)["data"]["hostname"] == nil
-    end
-
-    test "PUT without hostname does not wipe an existing hostname", %{
+    test "ignores hostname in the update body", %{
       conn: conn,
       actor: actor,
       account: account
@@ -260,7 +234,9 @@ defmodule PortalAPI.ClientControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => "Renamed"})
+        |> put(~p"/clients/#{client}",
+          client: %{"name" => "Renamed", "hostname" => "attacker.example.com"}
+        )
 
       assert resp = json_response(conn, 200)
       assert resp["data"]["name"] == "Renamed"

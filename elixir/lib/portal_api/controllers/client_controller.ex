@@ -110,7 +110,7 @@ defmodule PortalAPI.ClientController do
 
   defp update_changeset(device, attrs) do
     import Ecto.Changeset
-    update_fields = ~w[name hostname]a
+    update_fields = ~w[name]a
     required_fields = ~w[name]a
 
     device
