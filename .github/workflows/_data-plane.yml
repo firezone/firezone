@@ -338,7 +338,7 @@ jobs:
           # We only version client and gateway
           tags: |
             type=raw,value={{branch}}
-            type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ inputs.sha || github.sha }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -451,7 +451,7 @@ jobs:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |
             type=raw,value={{branch}}
-            type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ inputs.sha || github.sha }}
       - name: Create manifest list and push
         id: manifest
         working-directory: /tmp/digests/${{ matrix.image.name }}
