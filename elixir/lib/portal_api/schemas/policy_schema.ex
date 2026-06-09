@@ -149,10 +149,14 @@ defmodule PortalAPI.Schemas.Policy do
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Policy ID"},
-        # required (the key is always rendered) but nullable: a policy's group_id is
-        # nilified when the group is removed (e.g. by directory sync) and stays nil
-        # until reconnect_orphaned_policies/1 relinks it via group_idp_id
-        group_id: %Schema{type: :string, format: :uuid, description: "Group ID", nullable: true},
+        group_id: %Schema{
+          type: :string,
+          format: :uuid,
+          nullable: true,
+          description:
+            "Group ID. Null if the Group was deleted during directory sync; it is relinked " <>
+              "automatically if the Group reappears on a subsequent sync."
+        },
         resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description", nullable: true},
         conditions: %Schema{
