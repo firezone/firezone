@@ -3,6 +3,7 @@ defmodule PortalAPI.GatewaySessionController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
   alias PortalAPI.Pagination
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags(["Gateway Sessions"])
@@ -18,11 +19,13 @@ defmodule PortalAPI.GatewaySessionController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Gateway Sessions Response", "application/json",
-         PortalAPI.Schemas.GatewaySession.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Gateway Sessions Response", "application/json",
+           PortalAPI.Schemas.GatewaySession.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
   )
 
   # coveralls-ignore-stop
@@ -50,11 +53,18 @@ defmodule PortalAPI.GatewaySessionController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Gateway Session Response", "application/json",
-         PortalAPI.Schemas.GatewaySession.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"Gateway Session Response", "application/json",
+           PortalAPI.Schemas.GatewaySession.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
   )
 
   # coveralls-ignore-stop

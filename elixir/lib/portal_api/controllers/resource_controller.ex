@@ -3,6 +3,7 @@ defmodule PortalAPI.ResourceController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Resources"]
@@ -14,9 +15,9 @@ defmodule PortalAPI.ResourceController do
       limit: [in: :query, description: "Limit Resources returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -43,9 +44,9 @@ defmodule PortalAPI.ResourceController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -65,9 +66,14 @@ defmodule PortalAPI.ResourceController do
     request_body:
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
        required: true},
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -104,9 +110,16 @@ defmodule PortalAPI.ResourceController do
     request_body:
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.UpdateRequest,
        required: true},
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -138,9 +151,15 @@ defmodule PortalAPI.ResourceController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 

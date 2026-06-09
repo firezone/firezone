@@ -3,6 +3,7 @@ defmodule PortalAPI.MembershipController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
   import Ecto.Changeset
 
@@ -25,9 +26,9 @@ defmodule PortalAPI.MembershipController do
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}
-    ]
+    responses:
+      [ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -57,11 +58,20 @@ defmodule PortalAPI.MembershipController do
     request_body:
       {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PutRequest,
        required: true},
-    responses: [
-      ok:
-        {"Membership Response", "application/json",
-         PortalAPI.Schemas.Membership.MembershipResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Membership Response", "application/json",
+           PortalAPI.Schemas.Membership.MembershipResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -99,11 +109,20 @@ defmodule PortalAPI.MembershipController do
     request_body:
       {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PatchRequest,
        required: true},
-    responses: [
-      ok:
-        {"Membership Response", "application/json",
-         PortalAPI.Schemas.Membership.MembershipResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Membership Response", "application/json",
+           PortalAPI.Schemas.Membership.MembershipResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 

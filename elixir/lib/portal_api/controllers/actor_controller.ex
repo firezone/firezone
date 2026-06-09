@@ -3,6 +3,7 @@ defmodule PortalAPI.ActorController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Billing
   alias __MODULE__.Database
   import Ecto.Changeset
@@ -16,9 +17,9 @@ defmodule PortalAPI.ActorController do
       limit: [in: :query, description: "Limit Users returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}
-    ]
+    responses:
+      [ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -44,9 +45,9 @@ defmodule PortalAPI.ActorController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
 
   # coveralls-ignore-stop
 
@@ -65,9 +66,15 @@ defmodule PortalAPI.ActorController do
     request_body:
       {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.CreateRequest,
        required: true},
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -172,9 +179,16 @@ defmodule PortalAPI.ActorController do
     request_body:
       {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.UpdateRequest,
        required: true},
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -208,9 +222,9 @@ defmodule PortalAPI.ActorController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}
-    ]
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
 
   # coveralls-ignore-stop
 

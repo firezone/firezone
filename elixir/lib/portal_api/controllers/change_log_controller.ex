@@ -3,6 +3,7 @@ defmodule PortalAPI.ChangeLogController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Types.EventId
   alias __MODULE__.Database
 
@@ -84,9 +85,12 @@ defmodule PortalAPI.ChangeLogController do
         example: "admin@example.com"
       ]
     ],
-    responses: [
-      ok: {"Change Logs Response", "application/json", PortalAPI.Schemas.ChangeLog.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Change Logs Response", "application/json", PortalAPI.Schemas.ChangeLog.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
   )
 
   # coveralls-ignore-stop
@@ -122,9 +126,9 @@ defmodule PortalAPI.ChangeLogController do
         example: "c00060db0c2c8eb400000000"
       ]
     ],
-    responses: [
-      ok: {"Change Log Response", "application/json", PortalAPI.Schemas.ChangeLog.Response}
-    ]
+    responses:
+      [ok: {"Change Log Response", "application/json", PortalAPI.Schemas.ChangeLog.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
 
   # coveralls-ignore-stop

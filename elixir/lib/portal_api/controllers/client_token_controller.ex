@@ -4,6 +4,7 @@ defmodule PortalAPI.ClientTokenController do
   alias Portal.Authentication
   alias PortalAPI.Error
   alias PortalAPI.Pagination
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Client Tokens"]
@@ -21,9 +22,18 @@ defmodule PortalAPI.ClientTokenController do
       limit: [in: :query, description: "Limit Client Tokens returned", type: :integer],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Client Token List Response", "application/json", PortalAPI.Schemas.ClientToken.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Client Token List Response", "application/json",
+           PortalAPI.Schemas.ClientToken.ListResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -56,9 +66,18 @@ defmodule PortalAPI.ClientTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.ShowResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Client Token Response", "application/json",
+           PortalAPI.Schemas.ClientToken.ShowResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -85,10 +104,18 @@ defmodule PortalAPI.ClientTokenController do
     request_body:
       {"Client Token Attributes", "application/json", PortalAPI.Schemas.ClientToken.Request,
        required: true},
-    responses: [
-      created:
-        {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.Response}
-    ]
+    responses:
+      [
+        created:
+          {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -127,9 +154,18 @@ defmodule PortalAPI.ClientTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Deleted Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.DeletedResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Client Token Response", "application/json",
+           PortalAPI.Schemas.ClientToken.DeletedResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -156,11 +192,18 @@ defmodule PortalAPI.ClientTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Deleted Client Tokens Response", "application/json",
-         PortalAPI.Schemas.ClientToken.DeletedAllResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Client Tokens Response", "application/json",
+           PortalAPI.Schemas.ClientToken.DeletedAllResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 

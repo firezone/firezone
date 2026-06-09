@@ -1,6 +1,7 @@
 defmodule PortalAPI.AccountController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Account"]
@@ -8,9 +9,9 @@ defmodule PortalAPI.AccountController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Account",
-    responses: [
-      ok: {"AccountResponse", "application/json", PortalAPI.Schemas.Account.Response}
-    ]
+    responses:
+      [ok: {"AccountResponse", "application/json", PortalAPI.Schemas.Account.Response}] ++
+        ProblemDetails.responses([:unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 

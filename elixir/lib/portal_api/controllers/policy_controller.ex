@@ -3,6 +3,7 @@ defmodule PortalAPI.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Policies"]
@@ -14,9 +15,9 @@ defmodule PortalAPI.PolicyController do
       limit: [in: :query, description: "Limit Policies returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -42,9 +43,9 @@ defmodule PortalAPI.PolicyController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
 
   # coveralls-ignore-stop
 
@@ -64,9 +65,15 @@ defmodule PortalAPI.PolicyController do
     request_body:
       {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.CreateRequest,
        required: true},
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -103,9 +110,16 @@ defmodule PortalAPI.PolicyController do
     request_body:
       {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.UpdateRequest,
        required: true},
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -137,9 +151,9 @@ defmodule PortalAPI.PolicyController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
 
   # coveralls-ignore-stop
 

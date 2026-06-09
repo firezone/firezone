@@ -3,6 +3,7 @@ defmodule PortalAPI.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
   alias Portal.Presence
 
@@ -21,9 +22,9 @@ defmodule PortalAPI.GatewayController do
       limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}
-    ]
+    responses:
+      [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -60,9 +61,9 @@ defmodule PortalAPI.GatewayController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
-    ]
+    responses:
+      [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -93,9 +94,9 @@ defmodule PortalAPI.GatewayController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
-    ]
+    responses:
+      [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 

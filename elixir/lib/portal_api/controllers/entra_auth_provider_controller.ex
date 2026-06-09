@@ -2,6 +2,7 @@ defmodule PortalAPI.EntraAuthProviderController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Entra Auth Providers"]
@@ -9,11 +10,13 @@ defmodule PortalAPI.EntraAuthProviderController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Entra Auth Providers",
-    responses: [
-      ok:
-        {"Entra Auth Provider Response", "application/json",
-         PortalAPI.Schemas.EntraAuthProvider.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Entra Auth Provider Response", "application/json",
+           PortalAPI.Schemas.EntraAuthProvider.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -34,11 +37,18 @@ defmodule PortalAPI.EntraAuthProviderController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Entra Auth Provider Response", "application/json",
-         PortalAPI.Schemas.EntraAuthProvider.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"Entra Auth Provider Response", "application/json",
+           PortalAPI.Schemas.EntraAuthProvider.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 

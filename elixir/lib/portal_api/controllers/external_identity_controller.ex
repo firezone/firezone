@@ -3,6 +3,7 @@ defmodule PortalAPI.ExternalIdentityController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["ExternalIdentities"]
@@ -15,11 +16,18 @@ defmodule PortalAPI.ExternalIdentityController do
       limit: [in: :query, description: "Limit External Identities returned", type: :integer],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok:
-        {"ExternalIdentity List Response", "application/json",
-         PortalAPI.Schemas.ExternalIdentity.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"ExternalIdentity List Response", "application/json",
+           PortalAPI.Schemas.ExternalIdentity.ListResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -52,11 +60,18 @@ defmodule PortalAPI.ExternalIdentityController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"ExternalIdentity Response", "application/json",
-         PortalAPI.Schemas.ExternalIdentity.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"ExternalIdentity Response", "application/json",
+           PortalAPI.Schemas.ExternalIdentity.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -86,11 +101,18 @@ defmodule PortalAPI.ExternalIdentityController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"ExternalIdentity Response", "application/json",
-         PortalAPI.Schemas.ExternalIdentity.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"ExternalIdentity Response", "application/json",
+           PortalAPI.Schemas.ExternalIdentity.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 

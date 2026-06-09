@@ -2,6 +2,7 @@ defmodule PortalAPI.OktaDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Okta Directories"]
@@ -9,11 +10,13 @@ defmodule PortalAPI.OktaDirectoryController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Okta Directories",
-    responses: [
-      ok:
-        {"Okta Directory Response", "application/json",
-         PortalAPI.Schemas.OktaDirectory.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Okta Directory Response", "application/json",
+           PortalAPI.Schemas.OktaDirectory.ListResponse}
+      ] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -34,10 +37,17 @@ defmodule PortalAPI.OktaDirectoryController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Okta Directory Response", "application/json", PortalAPI.Schemas.OktaDirectory.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"Okta Directory Response", "application/json", PortalAPI.Schemas.OktaDirectory.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 

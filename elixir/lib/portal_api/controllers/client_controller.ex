@@ -3,6 +3,7 @@ defmodule PortalAPI.ClientController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Presence.Clients
   alias __MODULE__.Database
   import Ecto.Changeset
@@ -22,9 +23,9 @@ defmodule PortalAPI.ClientController do
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.ListResponse}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
   )
 
   # coveralls-ignore-stop
@@ -54,9 +55,9 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
 
   # coveralls-ignore-stop
@@ -84,9 +85,15 @@ defmodule PortalAPI.ClientController do
     ],
     request_body:
       {"Client Attributes", "application/json", PortalAPI.Schemas.Client.Request, required: true},
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :too_many_requests,
+          :not_found,
+          :unprocessable_entity
+        ])
   )
 
   # coveralls-ignore-stop
@@ -130,9 +137,9 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
 
   # coveralls-ignore-stop
@@ -161,9 +168,9 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
 
   # coveralls-ignore-stop
@@ -192,9 +199,9 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
 
   # coveralls-ignore-stop

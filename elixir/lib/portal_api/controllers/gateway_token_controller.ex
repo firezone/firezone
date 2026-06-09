@@ -3,6 +3,7 @@ defmodule PortalAPI.GatewayTokenController do
   use OpenApiSpex.ControllerSpecs
   alias Portal.Authentication
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Gateway Tokens"]
@@ -18,9 +19,16 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
-    ]
+    responses:
+      [
+        ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -55,11 +63,18 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Deleted Token Response", "application/json",
-         PortalAPI.Schemas.GatewayToken.DeletedResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Token Response", "application/json",
+           PortalAPI.Schemas.GatewayToken.DeletedResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -86,11 +101,13 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Deleted Tokens Response", "application/json",
-         PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Tokens Response", "application/json",
+           PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
+      ] ++
+        ProblemDetails.responses([:unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 

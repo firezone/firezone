@@ -3,6 +3,7 @@ defmodule PortalAPI.GroupController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Group
   alias __MODULE__.Database
   import Ecto.Changeset
@@ -16,9 +17,9 @@ defmodule PortalAPI.GroupController do
       limit: [in: :query, description: "Limit Groups returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.ListResponse}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -44,9 +45,9 @@ defmodule PortalAPI.GroupController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -66,9 +67,14 @@ defmodule PortalAPI.GroupController do
     request_body:
       {"Group Attributes", "application/json", PortalAPI.Schemas.Group.CreateRequest,
        required: true},
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -109,9 +115,16 @@ defmodule PortalAPI.GroupController do
     request_body:
       {"Group Attributes", "application/json", PortalAPI.Schemas.Group.UpdateRequest,
        required: true},
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -169,9 +182,9 @@ defmodule PortalAPI.GroupController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}
-    ]
+    responses:
+      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 

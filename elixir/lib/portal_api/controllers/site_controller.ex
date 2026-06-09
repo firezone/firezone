@@ -3,6 +3,7 @@ defmodule PortalAPI.SiteController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Sites"]
@@ -19,9 +20,9 @@ defmodule PortalAPI.SiteController do
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.ListResponse}
-    ]
+    responses:
+      [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -47,9 +48,9 @@ defmodule PortalAPI.SiteController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
-    ]
+    responses:
+      [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -68,9 +69,15 @@ defmodule PortalAPI.SiteController do
     parameters: [],
     request_body:
       {"Site Attributes", "application/json", PortalAPI.Schemas.Site.CreateRequest, required: true},
-    responses: [
-      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
-    ]
+    responses:
+      [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -115,9 +122,16 @@ defmodule PortalAPI.SiteController do
     ],
     request_body:
       {"Site Attributes", "application/json", PortalAPI.Schemas.Site.UpdateRequest, required: true},
-    responses: [
-      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
-    ]
+    responses:
+      [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -149,9 +163,15 @@ defmodule PortalAPI.SiteController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}
-    ]
+    responses:
+      [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
