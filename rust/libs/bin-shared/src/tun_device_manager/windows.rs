@@ -22,6 +22,9 @@ use tokio::sync::mpsc;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
+use windows::Win32::System::Threading::{
+    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
+};
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
@@ -382,67 +385,71 @@ fn start_send_thread(
 
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || 'next_packet: loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
-                tracing::debug!(
-                    "Stopping TUN send worker thread because the packet channel closed"
-                );
-                break 'next_packet;
-            };
+        .spawn(move || {
+            raise_thread_priority();
 
-            let bytes = packet.packet();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                continue 'next_packet;
-            };
-
-            'next_attempt: for attempt in 0..MAX_ATTEMPTS {
-                let Some(session) = session.upgrade() else {
+            'next_packet: loop {
+                let Some(packet) = packet_rx.blocking_recv() else {
                     tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        "Stopping TUN send worker thread because the packet channel closed"
                     );
-                    return;
+                    break 'next_packet;
                 };
 
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        #[cfg(debug_assertions)]
-                        tracing::trace!(target: "wire::dev::send", ?packet);
-                        session.send_packet(pkt);
+                let bytes = packet.packet();
 
-                        if attempt > 0 {
-                            tracing::trace!(%attempt, "Sent packet with delay");
+                let Ok(len) = bytes.len().try_into() else {
+                    tracing::warn!("Packet too large; length does not fit into u16");
+                    continue 'next_packet;
+                };
+
+                'next_attempt: for attempt in 0..MAX_ATTEMPTS {
+                    let Some(session) = session.upgrade() else {
+                        tracing::debug!(
+                            "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        );
+                        return;
+                    };
+
+                    match session.allocate_send_packet(len) {
+                        Ok(mut pkt) => {
+                            pkt.bytes_mut().copy_from_slice(bytes);
+                            // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                            // space in the ring buffer.
+                            #[cfg(debug_assertions)]
+                            tracing::trace!(target: "wire::dev::send", ?packet);
+                            session.send_packet(pkt);
+
+                            if attempt > 0 {
+                                tracing::trace!(%attempt, "Sent packet with delay");
+                            }
+
+                            continue 'next_packet;
                         }
+                        Err(wintun::Error::Io(e))
+                            if e.raw_os_error()
+                                .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
+                        {
+                            if attempt == 0 {
+                                tracing::trace!("WinTUN ring buffer is full");
+                            }
 
-                        continue 'next_packet;
-                    }
-                    Err(wintun::Error::Io(e))
-                        if e.raw_os_error()
-                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                    {
-                        if attempt == 0 {
-                            tracing::trace!("WinTUN ring buffer is full");
+                            if attempt < SPIN_ATTEMPTS {
+                                std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
+                                continue 'next_attempt;
+                            }
+
+                            std::thread::sleep(Duration::from_micros(100));
                         }
-
-                        if attempt < SPIN_ATTEMPTS {
-                            std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
-                            continue 'next_attempt;
+                        Err(e) => {
+                            tracing::error!("Failed to allocate WinTUN packet: {e}");
+                            continue 'next_packet;
                         }
-
-                        std::thread::sleep(Duration::from_micros(100));
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to allocate WinTUN packet: {e}");
-                        continue 'next_packet;
                     }
                 }
-            }
 
-            tracing::warn!(num_attempts = %MAX_ATTEMPTS, "Exhausted all attempts to pass IP packet to WinTUN");
+                tracing::warn!(num_attempts = %MAX_ATTEMPTS, "Exhausted all attempts to pass IP packet to WinTUN");
+            }
         })
 }
 
@@ -453,6 +460,8 @@ fn start_recv_thread(
     std::thread::Builder::new()
         .name("TUN recv".into())
         .spawn(move || {
+            raise_thread_priority();
+
             loop {
                 let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
                     tracing::debug!(
@@ -514,6 +523,23 @@ fn start_recv_thread(
                 };
             }
         })
+}
+
+/// Raises the priority of the current thread to "above normal".
+///
+/// Packets are dropped if the WinTUN ring buffer or our channels overflow because we aren't scheduled onto a core often enough.
+/// A higher thread priority makes that less likely.
+fn raise_thread_priority() {
+    // SAFETY: `GetCurrentThread` returns a pseudo-handle which does not need to be closed.
+    let thread = unsafe { GetCurrentThread() };
+
+    // SAFETY: The handle is valid for the duration of the call.
+    if let Err(e) = unsafe { SetThreadPriority(thread, THREAD_PRIORITY_ABOVE_NORMAL) } {
+        tracing::warn!("Failed to raise thread priority: {}", err_with_src(&e));
+        return;
+    }
+
+    tracing::debug!("Raised thread priority to above-normal");
 }
 
 /// Sets MTU on the interface
