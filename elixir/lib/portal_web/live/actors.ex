@@ -6,20 +6,29 @@ defmodule PortalWeb.Actors do
 
   alias Portal.Actor
   alias Portal.Authentication
-  alias Portal.Presence
+  alias Portal.Changes.Change
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
   alias Portal.ClientToken
+  alias Portal.Presence
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
 
   import Ecto.Changeset
 
   require Logger
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
+
     socket =
       socket
       |> assign(page_title: "People")
-      |> assign(actors_count: Database.count_actors(socket.assigns.subject))
+      |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -131,6 +140,26 @@ defmodule PortalWeb.Actors do
 
     {:noreply, socket}
   end
+
+  def handle_info(%Change{op: :insert, struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
@@ -1013,10 +1042,13 @@ defmodule PortalWeb.Actors do
           </.button>
         </:action>
         <:stats>
-          <.dual_badge type="primary">
-            <:left>{@actors_count}</:left>
-            <:right>Total</:right>
-          </.dual_badge>
+          <.async_result :let={count} assign={@actors_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
         </:stats>
       </.page_header>
 

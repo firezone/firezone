@@ -5,6 +5,7 @@ defmodule Portal.Changes.ReplicationConnection do
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
     "actors" => Hooks.Actors,
+    "groups" => Hooks.Groups,
     "memberships" => Hooks.Memberships,
     "devices" => Hooks.Devices,
     "external_identities" => Hooks.ExternalIdentities,

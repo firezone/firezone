@@ -2,18 +2,25 @@ defmodule PortalWeb.Clients do
   use PortalWeb, :live_view
   import PortalWeb.Clients.Components
   alias Portal.{Presence.Clients, ComponentVersions}
+  alias Portal.Changes.Change
+  alias Portal.Device
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
-      :ok = Clients.Account.subscribe(socket.assigns.subject.account.id)
+      :ok = Clients.Account.subscribe(subject.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
     end
 
     socket =
       socket
       |> assign(page_title: "Clients")
       |> assign(selected_client: nil)
-      |> assign(clients_count: Database.count_clients(socket.assigns.subject))
+      |> assign_async(:clients_count, fn -> {:ok, %{clients_count: Database.count_clients(subject)}} end)
       |> assign(
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -116,10 +123,13 @@ defmodule PortalWeb.Clients do
           <.docs_action path="/deploy/clients" />
         </:action>
         <:stats>
-          <.dual_badge type="primary">
-            <:left>{@clients_count}</:left>
-            <:right>Total</:right>
-          </.dual_badge>
+          <.async_result :let={count} assign={@clients_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
         </:stats>
 
       </.page_header>
@@ -483,6 +493,26 @@ defmodule PortalWeb.Clients do
      socket
      |> put_flash(:error, message)
      |> push_patch(to: ~p"/#{socket.assigns.account}/clients?#{socket.assigns.query_params}")}
+  end
+
+  def handle_info(%Change{op: :insert, struct: %Device{type: :client}}, socket) do
+    {:noreply,
+     update(socket, :clients_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}}, socket) do
+    {:noreply,
+     update(socket, :clients_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket) do
+    {:noreply, socket}
   end
 
   def handle_info(

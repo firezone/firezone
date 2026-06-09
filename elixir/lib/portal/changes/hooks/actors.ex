@@ -1,9 +1,15 @@
 defmodule Portal.Changes.Hooks.Actors do
   @behaviour Portal.Changes.Hooks
+  alias Portal.{Changes.Change, PubSub}
   alias __MODULE__.Database
+  import Portal.SchemaHelpers
 
   @impl true
-  def on_insert(_lsn, _data), do: :ok
+  def on_insert(lsn, data) do
+    actor = struct_from_params(Portal.Actor, data)
+    change = %Change{lsn: lsn, op: :insert, struct: actor}
+    PubSub.Changes.broadcast(actor.account_id, change)
+  end
 
   @impl true
 
@@ -46,8 +52,11 @@ defmodule Portal.Changes.Hooks.Actors do
   def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true
-  # Side effects are handled by the cascade delete hooks
-  def on_delete(_lsn, _old_data), do: :ok
+  def on_delete(lsn, old_data) do
+    actor = struct_from_params(Portal.Actor, old_data)
+    change = %Change{lsn: lsn, op: :delete, old_struct: actor}
+    PubSub.Changes.broadcast(actor.account_id, change)
+  end
 
   defmodule Database do
     alias Portal.ClientToken

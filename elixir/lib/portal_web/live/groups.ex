@@ -2,6 +2,10 @@ defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  alias Portal.Changes.Change
+  alias Portal.Group
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
   import PortalWeb.Groups.Components
 
   @member_page_size 10
@@ -16,10 +20,16 @@ defmodule PortalWeb.Groups do
     ]
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
+
     socket =
       socket
       |> assign(page_title: "Groups", selected_group: nil)
-      |> assign(groups_count: Database.count_groups(socket.assigns.subject))
+      |> assign_async(:groups_count, fn -> {:ok, %{groups_count: Database.count_groups(subject)}} end)
       |> assign(base_group_assigns(socket))
       |> assign_live_table("groups",
         query_module: Database,
@@ -88,6 +98,32 @@ defmodule PortalWeb.Groups do
      |> assign(selected_group: nil)
      |> assign(base_group_assigns(socket))}
   end
+
+  def handle_info(
+        %Change{op: :insert, struct: %Group{type: type, idp_id: idp_id, name: name}},
+        socket
+      )
+      when type != :managed or not is_nil(idp_id) or name != "Everyone" do
+    {:noreply,
+     update(socket, :groups_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(
+        %Change{op: :delete, old_struct: %Group{type: type, idp_id: idp_id, name: name}},
+        socket
+      )
+      when type != :managed or not is_nil(idp_id) or name != "Everyone" do
+    {:noreply,
+     update(socket, :groups_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
 
   def handle_event(event, params, socket)
       when event in [
@@ -777,10 +813,13 @@ defmodule PortalWeb.Groups do
           </.button>
         </:action>
         <:stats>
-          <.dual_badge type="primary">
-            <:left>{@groups_count}</:left>
-            <:right>Total</:right>
-          </.dual_badge>
+          <.async_result :let={count} assign={@groups_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
         </:stats>
       </.page_header>
 
@@ -1809,4 +1848,5 @@ defmodule PortalWeb.Groups do
       |> Safe.update()
     end
   end
+
 end

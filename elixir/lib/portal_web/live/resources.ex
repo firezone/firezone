@@ -25,9 +25,12 @@ defmodule PortalWeb.Resources do
   alias Portal.Presence
   alias Portal.PubSub
   alias Portal.Resource
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
@@ -38,7 +41,7 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
-      |> assign(resources_count: Database.count_resources(socket.assigns.subject))
+      |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
         selected_groups: [],
@@ -356,10 +359,13 @@ defmodule PortalWeb.Resources do
           </.button>
         </:action>
         <:stats>
-          <.dual_badge type="primary">
-            <:left>{@resources_count}</:left>
-            <:right>Total</:right>
-          </.dual_badge>
+          <.async_result :let={count} assign={@resources_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
         </:stats>
       </.page_header>
 
@@ -1171,6 +1177,28 @@ defmodule PortalWeb.Resources do
      merge_state(socket, :resource_grant,
        active_conditions: List.delete(socket.assigns.resource_grant.active_conditions, type)
      )}
+  end
+
+  def handle_info(%Change{op: :insert, struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
 
   def handle_info(%Change{old_struct: %Resource{}} = change, socket) do

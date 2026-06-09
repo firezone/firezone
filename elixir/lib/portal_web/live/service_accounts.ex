@@ -6,18 +6,27 @@ defmodule PortalWeb.ServiceAccounts do
 
   alias Portal.Actor
   alias Portal.Authentication
-  alias Portal.Presence
+  alias Portal.Changes.Change
   alias Portal.ClientToken
+  alias Portal.Presence
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
 
   import Ecto.Changeset
 
   require Logger
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
+
     socket =
       socket
       |> assign(page_title: "Service Accounts")
-      |> assign(actors_count: Database.count_actors(socket.assigns.subject))
+      |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -120,6 +129,24 @@ defmodule PortalWeb.ServiceAccounts do
 
     {:noreply, socket}
   end
+
+  def handle_info(%Change{op: :insert, struct: %Actor{type: :service_account}}, socket) do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: :service_account}}, socket) do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
@@ -595,10 +622,13 @@ defmodule PortalWeb.ServiceAccounts do
           </.button>
         </:action>
         <:stats>
-          <.dual_badge type="primary">
-            <:left>{@actors_count}</:left>
-            <:right>Total</:right>
-          </.dual_badge>
+          <.async_result :let={count} assign={@actors_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
         </:stats>
       </.page_header>
 
