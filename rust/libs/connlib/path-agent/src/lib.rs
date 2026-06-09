@@ -1,5 +1,4 @@
-//! Path-selection state machine for iceless snownet connections. See
-//! [`PathAgent`] for the lifecycle and the bigger picture.
+//! Path-selection state machine for iceless snownet connections.
 
 mod agent;
 mod candidate;

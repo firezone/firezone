@@ -1,31 +1,25 @@
 use std::net::SocketAddr;
 
-/// A candidate address known to one end of a connection.
-///
-/// The two address axes — `addr` (what the *peer* uses to reach us /
-/// what *we* use to reach the peer, depending on which side this
-/// candidate represents) and `local` (the socket we actually send
-/// from) — diverge for `ServerReflexive` (NAT-mapped) and `Relayed`
-/// (TURN-allocated): in both cases `addr` is the public-facing
-/// destination and `local` is the local interface we send from.
-/// The kind drives tier-based path scoring: direct beats reflexive
-/// beats relayed.
+/// A candidate address known to one end of a connection. The two
+/// address axes — `addr` (public-facing destination) and `local`
+/// (send-from socket) — diverge for `ServerReflexive` (NAT-mapped)
+/// and `Relayed` (TURN-allocated). Kind drives tier-based scoring:
+/// direct beats reflexive beats relayed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Candidate {
-    /// Locally-bound socket address. `addr` is also the send-from.
     Host(SocketAddr),
-    /// NAT-mapped public-facing address. `addr` is what the peer
-    /// reaches us at; `local` is the socket we actually send from.
-    ServerReflexive { addr: SocketAddr, local: SocketAddr },
-    /// TURN relay-allocated address. `addr` is the allocation —
-    /// snownet keys its allocations table on this when it sees it
-    /// as a transmit's local, and routes via TURN channel-data.
-    /// `local` is the local interface we sent the TURN allocation
-    /// request from (i.e. the address we use to communicate with
-    /// the relay over TURN). Kept separate so primary scoring can
-    /// penalise mismatched-family combinations like a v6 allocation
-    /// reached via a v4 TURN socket.
-    Relayed { addr: SocketAddr, local: SocketAddr },
+    ServerReflexive {
+        addr: SocketAddr,
+        local: SocketAddr,
+    },
+    /// `local` is the TURN-allocation interface (so [`Self::local`]
+    /// can return the allocation address itself — snownet keys its
+    /// allocations table on that, which decides TURN channel-data
+    /// wrapping).
+    Relayed {
+        addr: SocketAddr,
+        local: SocketAddr,
+    },
 }
 
 impl Candidate {
@@ -41,9 +35,7 @@ impl Candidate {
         Self::Relayed { addr, local }
     }
 
-    /// The address other endpoints use to reach us (or that we use to
-    /// reach a remote). Goes into `Transmit.remote` for an outbound
-    /// pair's remote side, and into the pair-key on the remote side.
+    /// The destination address; goes into `Transmit.remote`.
     pub const fn addr(&self) -> SocketAddr {
         match self {
             Self::Host(a) => *a,
@@ -51,14 +43,9 @@ impl Candidate {
         }
     }
 
-    /// The local socket the path-agent uses to identify a transmit's
-    /// origin. Goes into `Transmit.local` for an outbound pair's
-    /// local side. For `Host` it's the interface; for
-    /// `ServerReflexive` the underlying base; for `Relayed` it's
-    /// the *allocation* (so snownet's allocations table can recognise
-    /// it as relay-mediated and wrap the payload in TURN channel-data).
-    /// To get the actual local-interface socket for a relay, match on
-    /// `Self::Relayed { local, .. }` directly.
+    /// The local-side identifier used in pair keys and `Transmit.local`.
+    /// For `Relayed` this is the *allocation* (not the local interface),
+    /// so snownet recognises it as relay-mediated.
     pub const fn local(&self) -> SocketAddr {
         match self {
             Self::Host(a) => *a,
@@ -79,14 +66,9 @@ impl Candidate {
         matches!(self, Self::Relayed { .. })
     }
 
-    /// `true` iff this candidate's local-interface IP family matches
-    /// its public-facing `addr` family. For `Host` and
-    /// `ServerReflexive` this is always true (str0m enforces matching
-    /// families when constructing the candidate). For `Relayed` it
-    /// depends on whether we obtained the allocation over the same
-    /// IP version as the allocation itself — a v6 allocation reached
-    /// via a v4 TURN socket counts as a mismatch and is preferable
-    /// to skip when a matched-family alternative exists.
+    /// `true` iff the local interface and `addr` share an IP family.
+    /// Always true for `Host` and `ServerReflexive`; for `Relayed`,
+    /// `false` for e.g. a v6 allocation reached via a v4 TURN socket.
     pub const fn is_family_matched(&self) -> bool {
         match self {
             Self::Host(_) | Self::ServerReflexive { .. } => true,
@@ -95,11 +77,8 @@ impl Candidate {
     }
 }
 
-/// Source of a candidate.
-///
-/// `Ord` follows the preference: `Host < ServerReflexive < Relayed`
-/// (lower is better). The `derive(PartialOrd, Ord)` reflects the
-/// declaration order, so adding new variants requires care.
+/// `Ord` follows the preference `Host < ServerReflexive < Relayed`
+/// — declaration order, so new variants need care.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CandidateKind {
     Host,

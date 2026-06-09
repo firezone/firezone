@@ -1,25 +1,14 @@
-//! Path-probe packet shape.
-//!
-//! Probes ride the WG envelope as ordinary IPv6+ICMPv6 echo packets and
-//! never touch any IP stack — snownet intercepts them after
-//! `Tunn::decapsulate_at` (see [`crate::PathAgent::handle_inbound_decrypted`]).
-//! ICMPv6 echo is just a convenient carrier for `(id, seq)` so we can
-//! match replies to requests. Source and destination live in the IPv6
-//! discard prefix `100::/64` (RFC 6666) so they can't collide with
-//! anything a user might route.
-
-#![allow(dead_code)]
+//! Path-probe packet shape. Probes ride the WG envelope as ICMPv6
+//! echo to/from magic addresses in the `100::/64` discard prefix
+//! (RFC 6666) and are intercepted after `Tunn::decapsulate_at`.
 
 use std::net::{IpAddr, Ipv6Addr};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 
-/// Source address of every probe. Public so consumers can filter
-/// probes off the wire by address match. `dead:1ce` for "ICE is dead"
-/// — iceless's calling card.
+/// `dead:1ce` — "ICE is dead", iceless's calling card. Exposed so
+/// callers can filter probes off the wire by address match.
 pub const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xdead, 0x01ce, 0x0001);
-
-/// Destination address of every probe. See [`PROBE_SRC`].
 pub const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xdead, 0x01ce, 0x0002);
 
 /// Whether a packet is an Echo Request or an Echo Reply.
