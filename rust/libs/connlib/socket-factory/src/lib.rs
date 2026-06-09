@@ -359,7 +359,7 @@ impl PerfUdpSocket {
         let send_buffer_size = socket.send_buffer_size().unwrap_or_default();
         let recv_buffer_size = socket.recv_buffer_size().unwrap_or_default();
 
-        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
+        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "UDP socket buffer sizes");
     }
 
     async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
