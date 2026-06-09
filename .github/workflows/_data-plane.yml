@@ -3,6 +3,11 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_dispatch:
     inputs:
+      sha:
+        description: "The Git SHA to build. Leave blank to build the tip of the selected branch/tag."
+        required: false
+        type: string
+        default: ""
       image_prefix:
         description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
         required: false
@@ -71,6 +76,8 @@ jobs:
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
     runs-on: ubuntu-24.04
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -91,7 +98,7 @@ jobs:
           tag: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
-          commitish: ${{ github.sha }}
+          commitish: ${{ env.RESOLVED_SHA }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
