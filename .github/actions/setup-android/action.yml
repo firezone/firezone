@@ -22,9 +22,9 @@ runs:
         # These consume lots of disk space
         packages: ""
 
-    - name: Install NDK
-      run: sdkmanager "ndk;28.1.13356709" # Must match `kotlin/android/app/build.gradle.kts`
-      shell: bash
+    # No NDK install step: we always pin `ndkVersion` in app/build.gradle.kts to a
+    # version preinstalled on the ubuntu-24.04 runner (currently 28.2.13676358), so
+    # there is nothing to download. Keep them in sync when bumping runner images.
 
     - name: Validate Gradle wrapper
       uses: gradle/actions/wrapper-validation@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
