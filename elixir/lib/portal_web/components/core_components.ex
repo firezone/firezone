@@ -905,13 +905,13 @@ defmodule PortalWeb.CoreComponents do
     assigns = assign(assigns, colors: colors)
 
     ~H"""
-    <span class="flex inline-flex">
-      <div class={[
+    <div class="inline-flex">
+      <span class={[
         "text-xs rounded-l py-0.5 px-2",
         @colors[@type]["dark"]
       ]}>
         {render_slot(@left)}
-      </div>
+      </span>
       <span class={[
         "text-xs",
         "rounded-r",
@@ -920,7 +920,7 @@ defmodule PortalWeb.CoreComponents do
       ]}>
         {render_slot(@right)}
       </span>
-    </span>
+    </div>
     """
   end
 

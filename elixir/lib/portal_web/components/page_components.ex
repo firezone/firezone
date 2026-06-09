@@ -70,7 +70,7 @@ defmodule PortalWeb.PageComponents do
   end
 
   @doc """
-  Renders a page header with icon, title, description, action, and filter slots.
+  Renders a page header with icon, title, description, action, and stats slots.
 
   ## Examples
 
@@ -81,6 +81,12 @@ defmodule PortalWeb.PageComponents do
         <:action>
           <.add_button navigate={~p"/resources/new"}>Add Resource</.add_button>
         </:action>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@resources_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
       </.page_header>
   """
   slot :icon, required: false, doc: "Large icon displayed beside the title"

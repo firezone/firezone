@@ -186,7 +186,7 @@ defmodule PortalWeb.Sites do
             New Site
           </.button>
         </:action>
-        <:stats>
+        <:stats :if={not @sites_loading?}>
           <.dual_badge type="primary">
             <:left>{length(@sites) + if @internet_site, do: 1, else: 0}</:left>
             <:right>Total</:right>
