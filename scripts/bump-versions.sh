@@ -14,8 +14,8 @@ else
 fi
 
 # Version source of truth. These are managed by `update_version_variables`
-# (invoked from scripts/create-publish-pr.sh during a release) and consumed by
-# the monorepo bump (`version`).
+# (invoked from scripts/open-version-bump-pr.sh during a release) and consumed by
+# the bump (`version`).
 current_apple_client_version="1.5.16"
 next_apple_client_version="1.5.17"
 current_android_client_version="1.5.10"
