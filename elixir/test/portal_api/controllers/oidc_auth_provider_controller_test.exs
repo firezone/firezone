@@ -72,7 +72,8 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/oidc_auth_providers/#{provider.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 end

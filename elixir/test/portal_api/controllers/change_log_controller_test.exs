@@ -17,7 +17,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, ~p"/change_logs")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
@@ -29,7 +29,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "lists change logs scoped to the account", %{
@@ -312,7 +312,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", begin: "not-a-date")
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`begin`"
       assert reason =~ "RFC 3339"
     end
@@ -327,7 +327,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", end: "2026-13-99")
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`end`"
     end
 
@@ -341,7 +341,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
           end: "2026-05-25T00:00:00Z"
         )
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`begin`"
       assert reason =~ "`end`"
     end
@@ -353,7 +353,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", actor_id: "not-a-uuid")
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`actor_id`"
     end
 
@@ -403,7 +403,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", begin: %{"x" => "1"})
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`begin`"
       assert reason =~ "must be a string"
     end
@@ -415,7 +415,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", actor_id: %{"x" => "1"})
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`actor_id`"
       assert reason =~ "must be a string"
     end
@@ -427,7 +427,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs", actor_email: %{"x" => "1"})
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`actor_email`"
       assert reason =~ "must be a string"
     end
@@ -570,7 +570,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       change_log = change_log_fixture(account: account)
       conn = get(conn, ~p"/change_logs/#{change_log.event_id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
@@ -583,7 +583,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs/#{change_log.event_id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns 400 when event_id is not a 24-char hex string", %{conn: conn, actor: actor} do
@@ -595,7 +595,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/change_logs/#{Ecto.UUID.generate()}")
 
-      assert %{"error" => %{"reason" => reason}} = json_response(conn, 400)
+      assert %{"detail" => reason} = json_response(conn, 400)
       assert reason =~ "`event_id`"
     end
 
@@ -626,7 +626,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs/#{missing_id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
 
     test "returns 400 when event_id is not a valid identifier", %{conn: conn, actor: actor} do
@@ -636,7 +636,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs/not-a-uuid")
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = json_response(conn, 400)
     end
 
     test "returns 404 when the change log belongs to a different account", %{
@@ -652,7 +652,7 @@ defmodule PortalAPI.ChangeLogControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/change_logs/#{change_log.event_id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
   end
 end

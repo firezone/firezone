@@ -20,7 +20,8 @@ defmodule PortalAPI.ActorControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/actors")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
@@ -32,7 +33,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/actors")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all actors", %{conn: conn, account: account, actor: actor} do
@@ -100,7 +102,8 @@ defmodule PortalAPI.ActorControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor = actor_fixture(account: account)
       conn = get(conn, "/actors/#{actor.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
@@ -110,7 +113,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/actors/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "returns unauthorized for an actor without permission", %{conn: conn, account: account} do
@@ -123,7 +127,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/actors/#{target.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single actor", %{conn: conn, account: account, actor: api_actor} do
@@ -155,7 +160,8 @@ defmodule PortalAPI.ActorControllerTest do
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/actors", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, actor: api_actor} do
@@ -165,8 +171,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns error on invalid attrs", %{conn: conn, actor: api_actor} do
@@ -178,18 +184,13 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp ==
-               %{
-                 "error" => %{
-                   "reason" => "Unprocessable Content",
-                   "validation_errors" => %{
-                     "name" => ["can't be blank"],
-                     "type" => ["can't be blank"]
-                   }
-                 }
+      assert %{
+               "status" => 422,
+               "validation_errors" => %{
+                 "name" => ["can't be blank"],
+                 "type" => ["can't be blank"]
                }
+             } = json_response(conn, 422)
     end
 
     test "does not allow creating api_client actors", %{conn: conn, actor: api_actor} do
@@ -204,16 +205,12 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp == %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{
-                   "type" => ["API clients cannot be created via the API"]
-                 }
+      assert %{
+               "status" => 422,
+               "validation_errors" => %{
+                 "type" => ["API clients cannot be created via the API"]
                }
-             }
+             } = json_response(conn, 422)
     end
 
     test "returns error when users limit hit", %{
@@ -238,8 +235,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 403)
-      assert resp == %{"error" => %{"reason" => "Users limit reached"}}
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Users limit reached"} =
+               json_response(conn, 403)
     end
 
     test "returns error when users limit hit for admin user", %{
@@ -264,8 +261,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 403)
-      assert resp == %{"error" => %{"reason" => "Users limit reached"}}
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Users limit reached"} =
+               json_response(conn, 403)
     end
 
     test "returns error when service accounts limit hit", %{
@@ -289,8 +286,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 403)
-      assert resp == %{"error" => %{"reason" => "Service accounts limit reached"}}
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Service accounts limit reached"} =
+               json_response(conn, 403)
     end
 
     test "creates a actor with valid attrs", %{conn: conn, actor: api_actor} do
@@ -328,11 +325,9 @@ defmodule PortalAPI.ActorControllerTest do
         |> post("/actors", actor: attrs)
 
       assert %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{
-                   "email" => ["is an invalid email address"]
-                 }
+               "status" => 422,
+               "validation_errors" => %{
+                 "email" => ["is an invalid email address"]
                }
              } = json_response(conn, 422)
     end
@@ -342,7 +337,8 @@ defmodule PortalAPI.ActorControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor = actor_fixture(account: account)
       conn = put(conn, "/actors/#{actor.id}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
@@ -354,8 +350,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/actors/#{actor.id}")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "updates an actor", %{conn: conn, account: account, actor: api_actor} do
@@ -401,8 +397,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/actors/#{actor.id}", actor: attrs)
 
-      assert resp = json_response(conn, 403)
-      assert resp == %{"error" => %{"reason" => "Admins limit reached"}}
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Admins limit reached"} =
+               json_response(conn, 403)
     end
 
     test "allows promoting to admin when under the limit", %{
@@ -512,8 +508,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert resp = json_response(conn, 403)
-      assert resp == %{"error" => %{"reason" => "Admins limit reached"}}
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Admins limit reached"} =
+               json_response(conn, 403)
     end
 
     test "allows creating admin user when under the limit", %{
@@ -557,7 +553,7 @@ defmodule PortalAPI.ActorControllerTest do
         |> put("/actors/#{actor.id}", actor: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp["error"]["validation_errors"]["type"] ==
+      assert resp["validation_errors"]["type"] ==
                ["cannot change a user to a service account or API client"]
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
@@ -580,7 +576,7 @@ defmodule PortalAPI.ActorControllerTest do
         |> put("/actors/#{actor.id}", actor: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp["error"]["validation_errors"]["type"] ==
+      assert resp["validation_errors"]["type"] ==
                ["cannot change a user to a service account or API client"]
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
@@ -604,7 +600,7 @@ defmodule PortalAPI.ActorControllerTest do
         |> put("/actors/#{actor.id}", actor: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp["error"]["validation_errors"]["type"] ==
+      assert resp["validation_errors"]["type"] ==
                ["cannot change a user to a service account or API client"]
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
@@ -628,7 +624,7 @@ defmodule PortalAPI.ActorControllerTest do
         |> put("/actors/#{actor.id}", actor: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp["error"]["validation_errors"]["type"] ==
+      assert resp["validation_errors"]["type"] ==
                ["cannot change a user to a service account or API client"]
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
@@ -651,7 +647,7 @@ defmodule PortalAPI.ActorControllerTest do
           |> put("/actors/#{target.id}", actor: %{"type" => type})
 
         assert resp = json_response(request_conn, 422)
-        assert resp["error"]["validation_errors"]["type"] ==
+        assert resp["validation_errors"]["type"] ==
                  ["cannot change the type of an API client"]
       end
 
@@ -675,7 +671,7 @@ defmodule PortalAPI.ActorControllerTest do
           |> put("/actors/#{target.id}", actor: %{"type" => type})
 
         assert resp = json_response(request_conn, 422)
-        assert resp["error"]["validation_errors"]["type"] ==
+        assert resp["validation_errors"]["type"] ==
                  ["cannot change the type of a service account"]
       end
 
@@ -752,7 +748,8 @@ defmodule PortalAPI.ActorControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor = actor_fixture(account: account)
       conn = delete(conn, "/actors/#{actor.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: api_actor} do

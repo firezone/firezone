@@ -15,7 +15,8 @@ defmodule PortalAPI.OktaDirectoryControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/okta_directories")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all okta directories", %{conn: conn, account: account, actor: actor} do
@@ -54,7 +55,8 @@ defmodule PortalAPI.OktaDirectoryControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       directory = okta_directory_fixture(account: account)
       conn = get(conn, "/okta_directories/#{directory.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "shows an okta directory", %{conn: conn, account: account, actor: actor} do
@@ -92,7 +94,8 @@ defmodule PortalAPI.OktaDirectoryControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/okta_directories/#{directory.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 end

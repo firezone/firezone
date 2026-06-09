@@ -15,7 +15,8 @@ defmodule PortalAPI.EntraDirectoryControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/entra_directories")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all entra directories", %{conn: conn, account: account, actor: actor} do
@@ -54,7 +55,8 @@ defmodule PortalAPI.EntraDirectoryControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       directory = entra_directory_fixture(account: account)
       conn = get(conn, "/entra_directories/#{directory.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "shows an entra directory", %{conn: conn, account: account, actor: actor} do
@@ -92,7 +94,8 @@ defmodule PortalAPI.EntraDirectoryControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/entra_directories/#{directory.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 end

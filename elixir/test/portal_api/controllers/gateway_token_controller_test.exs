@@ -21,7 +21,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(%{account: account})
       conn = post(conn, "/sites/#{site.id}/gateway_tokens")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "creates a gateway token", %{
@@ -47,7 +48,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/sites/#{Ecto.UUID.generate()}/gateway_tokens")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 
@@ -56,7 +58,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       site = site_fixture(%{account: account})
       token = gateway_token_fixture(account: account, site: site)
       conn = delete(conn, "/sites/#{site.id}/gateway_tokens/#{token.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "deletes gateway token", %{conn: conn, account: account, actor: actor} do
@@ -85,7 +88,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/sites/#{site.id}/gateway_tokens/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "returns unauthorized when actor cannot read the token", %{
@@ -101,7 +105,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
         |> authorize_conn(account_user)
         |> delete("/sites/#{site.id}/gateway_tokens/#{token.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 
@@ -109,7 +114,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(%{account: account})
       conn = delete(conn, "/sites/#{site.id}/gateway_tokens")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "deletes all gateway tokens", %{
@@ -141,7 +147,8 @@ defmodule PortalAPI.GatewayTokenControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{Ecto.UUID.generate()}/gateway_tokens")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 end

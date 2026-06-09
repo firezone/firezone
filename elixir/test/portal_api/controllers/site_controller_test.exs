@@ -19,7 +19,7 @@ defmodule PortalAPI.SiteControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/sites")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
@@ -29,7 +29,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/sites", page_cursor: "not-a-valid-cursor")
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} = json_response(conn, 400)
     end
 
     test "lists all sites", %{conn: conn, account: account, actor: actor} do
@@ -130,7 +130,7 @@ defmodule PortalAPI.SiteControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(account: account)
       conn = get(conn, "/sites/#{site.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns 400 for invalid UUID id", %{conn: conn, actor: actor} do
@@ -140,7 +140,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/sites/null")
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = json_response(conn, 400)
     end
 
     test "returns a single site", %{conn: conn, account: account, actor: actor} do
@@ -167,14 +167,14 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/sites/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
   end
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/sites", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, actor: actor} do
@@ -184,8 +184,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/sites")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = json_response(conn, 400)
     end
 
     test "returns error on invalid attrs", %{conn: conn, actor: actor} do
@@ -197,15 +196,10 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/sites", site: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp ==
-               %{
-                 "error" => %{
-                   "reason" => "Unprocessable Content",
-                   "validation_errors" => %{"name" => ["should be at most 64 character(s)"]}
-                 }
-               }
+      assert %{
+               "status" => 422,
+               "validation_errors" => %{"name" => ["should be at most 64 character(s)"]}
+             } = json_response(conn, 422)
     end
 
     test "creates a site with valid attrs", %{conn: conn, actor: actor} do
@@ -236,7 +230,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/sites", site: attrs)
 
-      assert json_response(conn, 403) == %{"error" => %{"reason" => "Sites limit reached"}}
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Sites limit reached"} = json_response(conn, 403)
     end
   end
 
@@ -244,7 +238,7 @@ defmodule PortalAPI.SiteControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(%{account: account})
       conn = put(conn, "/sites/#{site.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
@@ -256,8 +250,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/sites/#{site.id}")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = json_response(conn, 400)
     end
 
     test "returns not found when site does not exist", %{conn: conn, actor: actor} do
@@ -269,7 +262,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/sites/#{Ecto.UUID.generate()}", site: attrs)
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
 
     test "updates a site", %{conn: conn, account: account, actor: actor} do
@@ -314,9 +307,8 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/sites/#{site.id}", site: %{"name" => "New Name"})
 
-      assert json_response(conn, 403) == %{
-               "error" => %{"reason" => "System managed Site cannot be modified"}
-             }
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "System managed Site cannot be modified"} =
+               json_response(conn, 403)
     end
   end
 
@@ -324,7 +316,7 @@ defmodule PortalAPI.SiteControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(%{account: account})
       conn = delete(conn, "/sites/#{site.id}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns not found when site does not exist", %{conn: conn, actor: actor} do
@@ -334,7 +326,7 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
 
     test "deletes a site", %{conn: conn, account: account, actor: actor} do
@@ -369,9 +361,8 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{site.id}")
 
-      assert json_response(conn, 403) == %{
-               "error" => %{"reason" => "System managed Site cannot be modified"}
-             }
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "System managed Site cannot be modified"} =
+               json_response(conn, 403)
 
       assert Repo.get_by(Site, id: site.id, account_id: site.account_id)
     end

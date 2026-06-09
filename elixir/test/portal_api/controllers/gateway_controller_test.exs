@@ -22,7 +22,8 @@ defmodule PortalAPI.GatewayControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, site: site} do
       conn = get(conn, "/sites/#{site.id}/gateways")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns 400 for invalid UUID site_id", %{conn: conn, actor: actor} do
@@ -32,7 +33,8 @@ defmodule PortalAPI.GatewayControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/sites/null/gateways")
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "lists all gateways for a site", %{
@@ -119,7 +121,8 @@ defmodule PortalAPI.GatewayControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/sites/#{site.id}/gateways", page_cursor: "not-a-valid-cursor")
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
     end
   end
 
@@ -131,7 +134,8 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       gateway = gateway_fixture(account: account, site: site)
       conn = get(conn, "/sites/#{site.id}/gateways/#{gateway.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single gateway", %{
@@ -166,7 +170,8 @@ defmodule PortalAPI.GatewayControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/sites/#{site.id}/gateways/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 
@@ -178,7 +183,8 @@ defmodule PortalAPI.GatewayControllerTest do
     } do
       gateway = gateway_fixture(account: account, site: site)
       conn = delete(conn, "/sites/#{site.id}/gateways/#{gateway.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns unauthorized when subject may not delete the gateway", %{
@@ -195,7 +201,8 @@ defmodule PortalAPI.GatewayControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{site.id}/gateways/#{gateway.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "deletes a gateway", %{
@@ -227,7 +234,8 @@ defmodule PortalAPI.GatewayControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{site.id}/gateways/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 end

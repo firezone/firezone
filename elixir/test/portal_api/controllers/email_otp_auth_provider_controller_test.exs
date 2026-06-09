@@ -15,7 +15,8 @@ defmodule PortalAPI.EmailOTPAuthProviderControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/email_otp_auth_providers")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all email OTP auth providers", %{conn: conn, account: account, actor: actor} do
@@ -54,7 +55,8 @@ defmodule PortalAPI.EmailOTPAuthProviderControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       provider = email_otp_provider_fixture(account: account)
       conn = get(conn, "/email_otp_auth_providers/#{provider.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "shows an email OTP auth provider", %{conn: conn, account: account, actor: actor} do
@@ -94,7 +96,8 @@ defmodule PortalAPI.EmailOTPAuthProviderControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/email_otp_auth_providers/#{provider.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 end

@@ -22,7 +22,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       service_account = service_account_fixture(account: account)
       conn = get(conn, "/actors/#{service_account.id}/client_tokens")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "lists client token metadata for a service account", %{conn: conn, account: account, actor: actor} do
@@ -146,7 +146,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(unprivileged_actor)
         |> get("/actors/#{service_account.id}/client_tokens")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
   end
 
@@ -155,7 +155,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       service_account = service_account_fixture(account: account)
       token = client_token_fixture(account: account, actor: service_account)
       conn = get(conn, "/actors/#{service_account.id}/client_tokens/#{token.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns client token metadata", %{conn: conn, account: account, actor: actor} do
@@ -196,7 +196,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> get("/actors/#{api_client_actor.id}/client_tokens/#{token.id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
 
     test "does not return token from another account", %{conn: conn, actor: actor} do
@@ -209,7 +209,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> get("/actors/#{other_service_account.id}/client_tokens/#{other_token.id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
 
     test "returns not found for non-existent token", %{conn: conn, account: account, actor: actor} do
@@ -220,7 +220,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> get("/actors/#{service_account.id}/client_tokens/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
 
     test "returns unauthorized when subject cannot read client tokens", %{conn: conn, account: account} do
@@ -233,7 +233,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(unprivileged_actor)
         |> get("/actors/#{service_account.id}/client_tokens/#{token.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
   end
 
@@ -244,7 +244,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
 
       conn = post(conn, "/actors/#{service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "creates client token for service account and returns secret once", %{
@@ -291,11 +291,9 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> post("/actors/#{service_account.id}/client_tokens", client_token: %{})
 
       assert %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{"expires_at" => ["can't be blank"]}
-               }
-              } = json_response(conn, 422)
+               "status" => 422,
+               "validation_errors" => %{"expires_at" => ["can't be blank"]}
+             } = json_response(conn, 422)
     end
 
     test "returns validation error when client_token wrapper is missing", %{
@@ -312,7 +310,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors/#{service_account.id}/client_tokens", %{expires_at: expires_at})
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} = json_response(conn, 400)
     end
 
     test "returns validation error when expires_at is in the past", %{
@@ -330,10 +328,8 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> post("/actors/#{service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
 
       assert %{
-               "error" => %{
-                 "reason" => "Unprocessable Content",
-                 "validation_errors" => %{"expires_at" => _}
-               }
+               "status" => 422,
+               "validation_errors" => %{"expires_at" => _}
              } = json_response(conn, 422)
     end
 
@@ -346,8 +342,8 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> post("/actors/#{user_actor.id}/client_tokens", client_token: %{expires_at: expires_at})
 
-      assert json_response(conn, 400) ==
-               %{"error" => %{"reason" => "Actor must be a service account"}}
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Actor must be a service account"} =
+               json_response(conn, 400)
     end
 
     test "does not create client token for actor in another account", %{conn: conn, actor: actor} do
@@ -361,7 +357,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors/#{other_service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
       assert Repo.aggregate(from(t in ClientToken, where: t.actor_id == ^other_service_account.id), :count) == 0
     end
 
@@ -376,7 +372,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors/#{service_account.id}/client_tokens", client_token: %{expires_at: expires_at})
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
   end
 
@@ -386,7 +382,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       token = client_token_fixture(account: account, actor: service_account)
 
       conn = delete(conn, "/actors/#{service_account.id}/client_tokens/#{token.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "deletes client token", %{conn: conn, account: account, actor: actor} do
@@ -431,7 +427,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/actors/#{another_user_actor.id}/client_tokens/#{token.id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
       assert Repo.get_by(ClientToken, id: token.id)
     end
 
@@ -448,7 +444,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/actors/#{api_client_actor.id}/client_tokens/#{token.id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
 
       assert Repo.get_by(ClientToken, id: token.id)
     end
@@ -463,7 +459,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(actor)
         |> delete("/actors/#{other_service_account.id}/client_tokens/#{other_token.id}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
       assert Repo.get_by(ClientToken, id: other_token.id)
     end
 
@@ -477,7 +473,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(unprivileged_actor)
         |> delete("/actors/#{service_account.id}/client_tokens/#{token.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
       assert Repo.get_by(ClientToken, id: token.id)
     end
   end
@@ -487,7 +483,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       service_account = service_account_fixture(account: account)
 
       conn = delete(conn, "/actors/#{service_account.id}/client_tokens")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns unauthorized when subject cannot delete client tokens", %{
@@ -502,7 +498,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
         |> authorize_conn(unprivileged_actor)
         |> delete("/actors/#{service_account.id}/client_tokens")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "deletes all client tokens for service account", %{conn: conn, account: account, actor: actor} do

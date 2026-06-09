@@ -22,7 +22,8 @@ defmodule PortalAPI.IdentityControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, actor: actor} do
       conn = get(conn, "/actors/#{actor.id}/external_identities")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all identities for actor", %{conn: conn, account: account, actor: actor} do
@@ -100,7 +101,8 @@ defmodule PortalAPI.IdentityControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/actors/#{actor.id}/external_identities", page_cursor: "not-a-valid-cursor")
 
-      assert json_response(conn, 400) == %{"error" => %{"reason" => "Invalid page cursor"}}
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
     end
   end
 
@@ -108,7 +110,8 @@ defmodule PortalAPI.IdentityControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
       identity = identity_fixture(account: account, actor: actor)
       conn = get(conn, "/actors/#{actor.id}/external_identities/#{identity.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single identity with populated email field", %{
@@ -168,7 +171,8 @@ defmodule PortalAPI.IdentityControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/actors/#{actor.id}/external_identities/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
 
     test "returns unauthorized for non-permitted actor type", %{
@@ -185,7 +189,8 @@ defmodule PortalAPI.IdentityControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/actors/#{actor.id}/external_identities/#{identity.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 
@@ -193,7 +198,8 @@ defmodule PortalAPI.IdentityControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
       identity = synced_identity_fixture(account: account, actor: actor)
       conn = delete(conn, "/actors/#{actor.id}/external_identities/#{identity.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "deletes an identity", %{conn: conn, account: account, actor: actor} do
@@ -222,7 +228,8 @@ defmodule PortalAPI.IdentityControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/actors/#{actor.id}/external_identities/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 end

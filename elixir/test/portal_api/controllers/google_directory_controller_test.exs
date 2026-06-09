@@ -15,7 +15,8 @@ defmodule PortalAPI.GoogleDirectoryControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/google_directories")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all google directories", %{conn: conn, account: account, actor: actor} do
@@ -36,7 +37,8 @@ defmodule PortalAPI.GoogleDirectoryControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       directory = google_directory_fixture(account: account)
       conn = get(conn, "/google_directories/#{directory.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "shows a google directory with sync fields", %{
@@ -78,7 +80,8 @@ defmodule PortalAPI.GoogleDirectoryControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/google_directories/#{directory.id}")
 
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 end
