@@ -1369,14 +1369,8 @@ defmodule PortalWeb.Groups do
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
-      |> select([groups: g], count(g.id))
       |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        n -> n
-      end
+      |> Safe.aggregate(:count)
     end
 
     def list_groups(subject, opts \\ []) do

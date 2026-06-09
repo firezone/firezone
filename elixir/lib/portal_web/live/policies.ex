@@ -1222,14 +1222,8 @@ defmodule PortalWeb.Policies do
 
     def count_policies(subject) do
       from(p in Policy, as: :policies)
-      |> select([policies: p], count(p.id))
       |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        n -> n
-      end
+      |> Safe.aggregate(:count)
     end
 
     def list_policies(subject, opts \\ []) do

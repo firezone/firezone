@@ -1475,14 +1475,8 @@ defmodule PortalWeb.Resources do
     def count_resources(subject) do
       from(r in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
-      |> select([resources: r], count(r.id))
       |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        n -> n
-      end
+      |> Safe.aggregate(:count)
     end
 
     def list_resources(subject, opts \\ []) do

@@ -516,14 +516,8 @@ defmodule PortalWeb.Clients do
     def count_clients(subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
-      |> select([devices: d], count(d.id))
       |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        n -> n
-      end
+      |> Safe.aggregate(:count)
     end
 
     def list_clients(subject, opts \\ []) do

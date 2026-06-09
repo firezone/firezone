@@ -1272,14 +1272,8 @@ defmodule PortalWeb.Actors do
     def count_actors(subject) do
       from(a in Actor, as: :actors)
       |> where([actors: a], a.type in [:account_user, :account_admin_user])
-      |> select([actors: a], count(a.id))
       |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        n -> n
-      end
+      |> Safe.aggregate(:count)
     end
 
     defp index_query do
