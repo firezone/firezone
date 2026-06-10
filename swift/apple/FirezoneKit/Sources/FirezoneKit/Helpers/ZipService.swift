@@ -31,16 +31,29 @@ public final class ZipService {
       throw CreateZipError.urlNotADirectory(directoryURL)
     }
 
+    // Stage a copy of the directory and zip that instead: the source may contain
+    // symlinks (the Rust file appender maintains `*.latest` links), which Apple's
+    // zip-for-upload implementation chokes on when they dangle, and live log files
+    // can be rotated or deleted mid-archive.
+    let fileManager = FileManager.default
+    let stagingRootURL = fileManager
+      .temporaryDirectory
+      .appendingPathComponent("zip-staging-\(UUID().uuidString)")
+    let stagingURL = stagingRootURL.appendingPathComponent(directoryURL.lastPathComponent)
+    defer { try? fileManager.removeItem(at: stagingRootURL) }
+
+    try copyRegularFiles(from: directoryURL, to: stagingURL)
+
     var fileManagerError: Swift.Error?
     var coordinatorError: NSError?
 
     NSFileCoordinator().coordinate(
-      readingItemAt: directoryURL,
+      readingItemAt: stagingURL,
       options: .forUploading,
       error: &coordinatorError
     ) { zipAccessURL in
       do {
-        try FileManager.default.moveItem(at: zipAccessURL, to: zipFinalURL)
+        try fileManager.moveItem(at: zipAccessURL, to: zipFinalURL)
       } catch {
         fileManagerError = error
       }
@@ -52,6 +65,47 @@ public final class ZipService {
 
     if let error = fileManagerError {
       throw CreateZipError.failedToMoveZIP(error)
+    }
+  }
+
+  // Recursively copies directories and regular files, skipping symlinks and
+  // tolerating files that vanish while we're copying.
+  private static func copyRegularFiles(from sourceURL: URL, to destinationURL: URL) throws {
+    let fileManager = FileManager.default
+    try fileManager.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+
+    let resourceKeys: Set<URLResourceKey> = [
+      .isSymbolicLinkKey,
+      .isDirectoryKey,
+      .isRegularFileKey,
+    ]
+    guard
+      let enumerator = fileManager.enumerator(
+        at: sourceURL,
+        includingPropertiesForKeys: Array(resourceKeys)
+      )
+    else {
+      return
+    }
+
+    let sourcePath = sourceURL.standardizedFileURL.path
+    for case let itemURL as URL in enumerator {
+      guard let resourceValues = try? itemURL.resourceValues(forKeys: resourceKeys),
+        resourceValues.isSymbolicLink != true
+      else {
+        continue
+      }
+
+      let itemPath = itemURL.standardizedFileURL.path
+      guard itemPath.hasPrefix(sourcePath + "/") else { continue }
+      let relativePath = String(itemPath.dropFirst(sourcePath.count + 1))
+      let targetURL = destinationURL.appendingPathComponent(relativePath)
+
+      if resourceValues.isDirectory == true {
+        try? fileManager.createDirectory(at: targetURL, withIntermediateDirectories: true)
+      } else if resourceValues.isRegularFile == true {
+        try? fileManager.copyItem(at: itemURL, to: targetURL)
+      }
     }
   }
 }
