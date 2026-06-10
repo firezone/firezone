@@ -9,6 +9,31 @@ use tokio::sync::mpsc;
 
 const QUEUE_SIZE: usize = 10_000;
 
+/// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
+///
+/// The kernel default (`ctl_recvsize`) is 512 KiB, only a few hundred MTU-sized
+/// packets, after which inbound packets are backpressured. A larger buffer lets the kernel
+/// queue more while we drain it. 8 MiB matches the default `kern.ipc.maxsockbuf`
+/// ceiling — the most the kernel grants without raising that system-wide limit.
+const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
+    2 * 1024 * 1024
+} else {
+    8 * 1024 * 1024
+};
+
+/// How many packets the kernel may park in the socket receive buffer before it pauses
+/// the interface's output queue until we read them.
+///
+/// XNU defaults this to 1, so every packet costs a full read + flow-control roundtrip
+/// before the kernel hands us the next one. We size it to [`RECV_BUFFER_SIZE`] at the
+/// TUN MTU ([`ip_packet::MAX_IP_SIZE`]), rounded up to a power of two, leaving the byte
+/// buffer as the limit that actually governs how much is queued.
+const MAX_PENDING_PACKETS: u32 =
+    (RECV_BUFFER_SIZE as u32 / ip_packet::MAX_IP_SIZE as u32).next_power_of_two();
+
+/// From XNU's `bsd/net/if_utun.h`.
+const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
+
 pub struct Tun {
     name: String,
     outbound_tx: mpsc::Sender<IpPacket>,
@@ -36,6 +61,9 @@ impl Tun {
 
     fn from_fd_inner(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
         let name = name(fd)?;
+
+        raise_recv_buffer(fd);
+        raise_max_pending_packets(fd);
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
@@ -108,6 +136,96 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
             _ => Ok(()),
         },
     }
+}
+
+/// Raises the limit of packets the kernel buffers on the utun socket, allowing it to run ahead of our reads instead of in lock-step.
+fn raise_max_pending_packets(fd: RawFd) {
+    let mut current = 0u32;
+    let mut len = size_of::<u32>() as libc::socklen_t;
+
+    // Safety: Within this module, the file descriptor is always valid.
+    if unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SYSPROTO_CONTROL,
+            UTUN_OPT_MAX_PENDING_PACKETS,
+            &mut current as *mut u32 as _,
+            &mut len,
+        )
+    } < 0
+    {
+        tracing::warn!(error = %get_last_error(), "Failed to get `UTUN_OPT_MAX_PENDING_PACKETS`");
+        return;
+    }
+
+    tracing::debug!(current, "Queried `UTUN_OPT_MAX_PENDING_PACKETS`");
+
+    if current >= MAX_PENDING_PACKETS {
+        return;
+    }
+
+    // Safety: Within this module, the file descriptor is always valid.
+    if unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SYSPROTO_CONTROL,
+            UTUN_OPT_MAX_PENDING_PACKETS,
+            &MAX_PENDING_PACKETS as *const u32 as _,
+            size_of::<u32>() as libc::socklen_t,
+        )
+    } < 0
+    {
+        tracing::warn!(error = %get_last_error(), "Failed to set `UTUN_OPT_MAX_PENDING_PACKETS`");
+        return;
+    }
+
+    tracing::debug!(
+        previous = current,
+        new = MAX_PENDING_PACKETS,
+        "Raised `UTUN_OPT_MAX_PENDING_PACKETS`"
+    );
+}
+
+/// Raises the utun socket's receive buffer so the kernel can queue more inbound
+/// packets between our reads.
+fn raise_recv_buffer(fd: RawFd) {
+    // Safety: Within this module, the file descriptor is always valid.
+    if unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVBUF,
+            &RECV_BUFFER_SIZE as *const libc::c_int as _,
+            size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    } < 0
+    {
+        tracing::warn!(error = %get_last_error(), "Failed to set TUN socket receive buffer");
+        return;
+    }
+
+    // The kernel clamps to `kern.ipc.maxsockbuf`; read back what it actually applied.
+    let mut actual: libc::c_int = 0;
+    let mut len = size_of::<libc::c_int>() as libc::socklen_t;
+    if unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVBUF,
+            &mut actual as *mut libc::c_int as _,
+            &mut len,
+        )
+    } < 0
+    {
+        tracing::warn!(error = %get_last_error(), "Failed to read back TUN socket receive buffer");
+        return;
+    }
+
+    tracing::debug!(
+        requested = RECV_BUFFER_SIZE,
+        actual,
+        "Set TUN socket receive buffer"
+    );
 }
 
 fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
