@@ -156,6 +156,8 @@ updates:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
       - dependency-name: org.jetbrains.kotlin.android
+      # Must match the Kotlin version bundled with AGP's built-in Kotlin support
+      - dependency-name: org.jetbrains.kotlin.plugin.compose
     groups:
       security-all:
         applies-to: security-updates
