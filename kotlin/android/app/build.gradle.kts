@@ -278,7 +278,7 @@ dependencies {
     // (1.4.2 targeted lint 31.7 for AGP 8.13). We stay on 1.4.3 rather than 1.5.0: 1.5.0
     // rewrote ComposeViewModelForwarding to flag forwarding inside nested blocks, which
     // false-positives on our @Immutable ResourceViewModel (a UI model, not a real ViewModel).
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.4.3")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.1")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
