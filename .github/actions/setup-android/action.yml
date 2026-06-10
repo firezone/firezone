@@ -14,7 +14,7 @@ runs:
 
     - uses: ./.github/actions/setup-rust-sccache
 
-    - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+    - uses: gradle/actions/setup-gradle@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60 # v6.1.1
 
     - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       with:
@@ -27,7 +27,7 @@ runs:
     # there is nothing to download. Keep them in sync when bumping runner images.
 
     - name: Validate Gradle wrapper
-      uses: gradle/actions/wrapper-validation@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+      uses: gradle/actions/wrapper-validation@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60 # v6.1.1
 
     - run: touch local.properties
       shell: bash
