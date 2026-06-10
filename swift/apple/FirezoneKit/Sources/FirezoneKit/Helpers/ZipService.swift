@@ -14,6 +14,7 @@ extension URL {
 
 enum CreateZipError: Swift.Error {
   case urlNotADirectory(URL)
+  case failedToEnumerateSource(URL)
   case failedToCreateZIP(Swift.Error)
   case failedToMoveZIP(Swift.Error)
 }
@@ -85,7 +86,7 @@ public final class ZipService {
         includingPropertiesForKeys: Array(resourceKeys)
       )
     else {
-      return
+      throw CreateZipError.failedToEnumerateSource(sourceURL)
     }
 
     let sourcePath = sourceURL.standardizedFileURL.path
@@ -101,11 +102,31 @@ public final class ZipService {
       let relativePath = String(itemPath.dropFirst(sourcePath.count + 1))
       let targetURL = destinationURL.appendingPathComponent(relativePath)
 
-      if resourceValues.isDirectory == true {
-        try? fileManager.createDirectory(at: targetURL, withIntermediateDirectories: true)
-      } else if resourceValues.isRegularFile == true {
-        try? fileManager.copyItem(at: itemURL, to: targetURL)
+      do {
+        if resourceValues.isDirectory == true {
+          try fileManager.createDirectory(at: targetURL, withIntermediateDirectories: true)
+        } else if resourceValues.isRegularFile == true {
+          try fileManager.copyItem(at: itemURL, to: targetURL)
+        }
+      } catch {
+        if !isFileVanishedError(error) {
+          throw error
+        }
       }
     }
+  }
+
+  // A file disappearing between enumeration and copy is expected: log rotation
+  // and the log size cleanup both delete files while an export may be running.
+  private static func isFileVanishedError(_ error: Swift.Error) -> Bool {
+    let nsError = error as NSError
+
+    if nsError.domain == NSCocoaErrorDomain,
+      nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError
+    {
+      return true
+    }
+
+    return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
   }
 }
