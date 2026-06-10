@@ -20,6 +20,8 @@ fun FirezoneTheme(content: @Composable () -> Unit) {
             surface = colorResource(R.color.neutral_50),
             onSurface = colorResource(R.color.neutral_900),
             onSurfaceVariant = colorResource(R.color.neutral_600),
+            // Repurposed as the "live" status accent (e.g. the connected-device pulse dot).
+            tertiary = colorResource(R.color.live_green),
         )
 
     MaterialTheme(colorScheme = colorScheme, typography = FirezoneTypography, content = content)

@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import dev.firezone.android.core.data.isEnabled
@@ -164,25 +163,5 @@ private fun SiteSection(
                 Text(text = statusText)
             }
         }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleLarge,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-}
-
-@Composable
-private fun DetailRow(
-    label: String,
-    value: @Composable () -> Unit,
-) {
-    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Text(text = label, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
-        value()
     }
 }
