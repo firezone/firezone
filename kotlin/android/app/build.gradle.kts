@@ -255,7 +255,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
 
     // UniFFI
-    implementation("net.java.dev.jna:jna:5.18.1@aar")
+    implementation("net.java.dev.jna:jna:5.19.0@aar")
 
     // Sentry
     implementation("io.sentry:sentry-android:8.43.0")
