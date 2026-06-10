@@ -889,8 +889,8 @@ defmodule PortalWeb.CoreComponents do
         "light" => "bg-blue-100 text-blue-800"
       },
       "primary" => %{
-        "dark" => "bg-primary-400 text-primary-800",
-        "light" => "bg-primary-100 text-primary-800"
+        "dark" => "bg-primary-500 text-white",
+        "light" => "bg-primary-200 text-primary-700"
       },
       "accent" => %{
         "dark" => "bg-accent-100 text-accent-800",
@@ -905,22 +905,22 @@ defmodule PortalWeb.CoreComponents do
     assigns = assign(assigns, colors: colors)
 
     ~H"""
-    <span class="flex inline-flex">
-      <div class={[
-        "text-xs rounded-l py-0.5 pl-2.5 pr-1.5",
+    <div class="inline-flex">
+      <span class={[
+        "text-xs rounded-l py-0.5 px-2",
         @colors[@type]["dark"]
       ]}>
         {render_slot(@left)}
-      </div>
+      </span>
       <span class={[
         "text-xs",
         "rounded-r",
-        "mr-2 py-0.5 pl-1.5 pr-2.5",
+        "py-0.5 px-2",
         @colors[@type]["light"]
       ]}>
         {render_slot(@right)}
       </span>
-    </span>
+    </div>
     """
   end
 

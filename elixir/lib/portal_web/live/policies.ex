@@ -13,6 +13,7 @@ defmodule PortalWeb.Policies do
     ]
 
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
@@ -20,6 +21,8 @@ defmodule PortalWeb.Policies do
   import Portal.Changeset
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
     end
@@ -28,6 +31,7 @@ defmodule PortalWeb.Policies do
       socket
       |> assign(stale: false)
       |> assign(page_title: "Policies")
+      |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
       |> assign(selected_policy: nil, policy_providers: [])
       |> assign(
         policy_authorizations: [],
@@ -217,18 +221,15 @@ defmodule PortalWeb.Policies do
             New Policy
           </.button>
         </:action>
-        <:filters>
-          <% conditions_count = Enum.count(@policies, fn p -> length(p.conditions) > 0 end) %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@policies_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            With conditions {conditions_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            No conditions {length(@policies) - conditions_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@policies_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -816,11 +817,31 @@ defmodule PortalWeb.Policies do
     {:noreply, merge_state(socket, :policy_conditions, auth_provider_values: updated)}
   end
 
-  def handle_info(%Change{old_struct: %Portal.Policy{}} = change, socket) do
+  def handle_info(%Change{op: :insert, struct: %Policy{}} = change, socket) do
+    {:noreply,
+     socket
+     |> update(:policies_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Policy{}} = change, socket) do
+    {:noreply,
+     socket
+     |> update(:policies_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{old_struct: %Policy{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
-  def handle_info(%Change{struct: %Portal.Policy{}} = change, socket) do
+  def handle_info(%Change{struct: %Policy{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
@@ -1223,6 +1244,12 @@ defmodule PortalWeb.Policies do
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
       end)
+    end
+
+    def count_policies(subject) do
+      from(p in Policy, as: :policies)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
     end
 
     def list_policies(subject, opts \\ []) do

@@ -15,7 +15,6 @@ defmodule PortalWeb.Resources do
       panel_shell: 1,
       resource_details_panel: 1,
       resource_form_panel: 1,
-      resource_online?: 2,
       resource_status_badge: 1,
       resource_type_label: 1,
       type_badge_class: 1,
@@ -26,9 +25,12 @@ defmodule PortalWeb.Resources do
   alias Portal.Presence
   alias Portal.PubSub
   alias Portal.Resource
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
@@ -39,6 +41,7 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
         selected_groups: [],
@@ -355,27 +358,15 @@ defmodule PortalWeb.Resources do
             New Resource
           </.button>
         </:action>
-        <:filters>
-          <% online_count = Enum.count(@resources, &resource_online?(&1, @presence_tick)) %>
-          <% offline_count = length(@resources) - online_count %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@resources_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative flex items-center justify-center w-1.5 h-1.5">
-              <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-            </span>
-            Online {online_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-neutral)]">
-            </span>
-            Offline {offline_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@resources_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1188,6 +1179,28 @@ defmodule PortalWeb.Resources do
      )}
   end
 
+  def handle_info(%Change{op: :insert, struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
   def handle_info(%Change{old_struct: %Resource{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
@@ -1485,6 +1498,13 @@ defmodule PortalWeb.Resources do
       |> preload(:site)
       |> Safe.scoped(subject, :replica)
       |> Safe.one(fallback_to_primary: true)
+    end
+
+    def count_resources(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type != :internet)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
     end
 
     def list_resources(subject, opts \\ []) do

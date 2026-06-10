@@ -6,19 +6,29 @@ defmodule PortalWeb.Actors do
 
   alias Portal.Actor
   alias Portal.Authentication
-  alias Portal.Presence
+  alias Portal.Changes.Change
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
   alias Portal.ClientToken
+  alias Portal.Presence
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
 
   import Ecto.Changeset
 
   require Logger
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
+
     socket =
       socket
       |> assign(page_title: "People")
+      |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -740,6 +750,26 @@ defmodule PortalWeb.Actors do
     end
   end
 
+  def handle_info(%Change{op: :insert, struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
+
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
 
@@ -1011,6 +1041,15 @@ defmodule PortalWeb.Actors do
             New Person
           </.button>
         </:action>
+        <:stats>
+          <.async_result :let={count} assign={@actors_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1260,6 +1299,13 @@ defmodule PortalWeb.Actors do
             actors.id
           )
       })
+    end
+
+    def count_actors(subject) do
+      from(a in Actor, as: :actors)
+      |> where([actors: a], a.type in [:account_user, :account_admin_user])
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
     end
 
     defp index_query do

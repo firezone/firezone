@@ -2,6 +2,10 @@ defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  alias Portal.Changes.Change
+  alias Portal.Group
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
   import PortalWeb.Groups.Components
 
   @member_page_size 10
@@ -16,9 +20,16 @@ defmodule PortalWeb.Groups do
     ]
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
+
     socket =
       socket
-      |> assign(page_title: "Groups", groups_with_policies_count: 0, selected_group: nil)
+      |> assign(page_title: "Groups", selected_group: nil)
+      |> assign_async(:groups_count, fn -> {:ok, %{groups_count: Database.count_groups(subject)}} end)
       |> assign(base_group_assigns(socket))
       |> assign_live_table("groups",
         query_module: Database,
@@ -87,6 +98,32 @@ defmodule PortalWeb.Groups do
      |> assign(selected_group: nil)
      |> assign(base_group_assigns(socket))}
   end
+
+  def handle_info(
+        %Change{op: :insert, struct: %Group{type: type, idp_id: idp_id, name: name}},
+        socket
+      )
+      when type != :managed or not is_nil(idp_id) or name != "Everyone" do
+    {:noreply,
+     update(socket, :groups_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(
+        %Change{op: :delete, old_struct: %Group{type: type, idp_id: idp_id, name: name}},
+        socket
+      )
+      when type != :managed or not is_nil(idp_id) or name != "Everyone" do
+    {:noreply,
+     update(socket, :groups_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
 
   def handle_event(event, params, socket)
       when event in [
@@ -745,15 +782,11 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    filter = Keyword.get(list_opts, :filter, [])
-
     with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
-         groups_metadata: metadata,
-         groups_with_policies_count:
-           Database.count_groups_with_policies(socket.assigns.subject, filter)
+         groups_metadata: metadata
        )}
     end
   end
@@ -779,17 +812,15 @@ defmodule PortalWeb.Groups do
             New Group
           </.button>
         </:action>
-        <:filters>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@groups_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            With policies {@groups_with_policies_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            No policies {@groups_metadata.count - @groups_with_policies_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@groups_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1371,6 +1402,16 @@ defmodule PortalWeb.Groups do
     end
 
     # Inlined from Portal.Actors.list_groups
+    def count_groups(subject) do
+      from(g in Portal.Group, as: :groups)
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
+    end
+
     def list_groups(subject, opts \\ []) do
       {filter, opts} = Keyword.pop(opts, :filter, [])
       {order_by, opts} = Keyword.pop(opts, :order_by, [])
@@ -1438,35 +1479,6 @@ defmodule PortalWeb.Groups do
       group_ids
       |> Enum.map(&Map.get(groups_by_id, &1))
       |> Enum.reject(&is_nil/1)
-    end
-
-    def count_groups_with_policies(subject, filter \\ []) do
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:inner, [groups: g], p in Portal.Policy,
-          on: p.group_id == g.id and is_nil(p.disabled_at),
-          as: :policies
-        )
-        |> where(
-          [groups: g],
-          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-        )
-        |> select([groups: g], count(g.id, :distinct))
-
-      query =
-        case Filter.filter(query, __MODULE__, filter) do
-          {:ok, filtered} -> filtered
-          _ -> query
-        end
-
-      query
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        count -> count
-      end
     end
 
     def count_total_members(subject) do
@@ -1836,4 +1848,5 @@ defmodule PortalWeb.Groups do
       |> Safe.update()
     end
   end
+
 end
