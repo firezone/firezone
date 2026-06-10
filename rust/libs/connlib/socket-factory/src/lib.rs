@@ -575,10 +575,10 @@ impl UdpSocket {
     }
 }
 
-/// Applies the requested buffer size to a socket, retrying with smaller sizes on failure.
+/// Applies the requested buffer size to a socket, halving it until the kernel accepts it.
 ///
-/// Apple platforms reject buffer sizes above `kern.ipc.maxsockbuf` with `ENOBUFS` instead of clamping them like Linux does.
-/// We therefore clamp the requested size ourselves and - in case that still fails - halve it until the kernel accepts it.
+/// Apple platforms reject buffer sizes above `kern.ipc.maxsockbuf` with `ENOBUFS` instead of
+/// clamping them like Linux does.
 fn apply_buffer_size(
     requested: usize,
     mut set: impl FnMut(usize) -> io::Result<()>,
@@ -586,7 +586,7 @@ fn apply_buffer_size(
     /// Buffer sizes below this are not worth trading for an error message; all platforms accept it.
     const FLOOR: usize = 64 * 1024;
 
-    let mut size = clamp_to_max_sockbuf(requested);
+    let mut size = requested;
 
     loop {
         match set(size) {
@@ -595,50 +595,6 @@ fn apply_buffer_size(
             Err(e) => return Err(e),
         }
     }
-}
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-fn clamp_to_max_sockbuf(requested: usize) -> usize {
-    // `sbreserve` only allows `kern.ipc.maxsockbuf * MCLBYTES / (MSIZE + MCLBYTES)` bytes of actual data,
-    // i.e. 8/9th of `maxsockbuf` with MSIZE = 256 and MCLBYTES = 2048.
-    match max_sockbuf() {
-        Some(max) => std::cmp::min(requested, max * 8 / 9),
-        None => requested,
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-fn clamp_to_max_sockbuf(requested: usize) -> usize {
-    requested
-}
-
-/// Reads `kern.ipc.maxsockbuf`, the upper limit for socket buffer sizes on Apple platforms.
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-fn max_sockbuf() -> Option<usize> {
-    let mut value: libc::c_int = 0;
-    let mut len = std::mem::size_of::<libc::c_int>();
-
-    // SAFETY: The value and length pointers are valid for the duration of the call and match in size.
-    let ret = unsafe {
-        libc::sysctlbyname(
-            c"kern.ipc.maxsockbuf".as_ptr(),
-            std::ptr::from_mut(&mut value).cast(),
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-
-    if ret != 0 {
-        tracing::debug!(
-            "Failed to read `kern.ipc.maxsockbuf`: {}",
-            io::Error::last_os_error()
-        );
-
-        return None;
-    }
-
-    usize::try_from(value).ok()
 }
 
 /// Compares the two [`SocketAddr`]s for equality, ignored IPv6 scopes for link-local addresses.
