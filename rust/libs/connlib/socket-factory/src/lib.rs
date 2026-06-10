@@ -22,7 +22,15 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
-pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
+/// On Apple platforms, UDP sockets never buffer data in the send buffer: datagrams are
+/// handed straight to the interface and `SO_SNDBUF` only acts as a cap on the maximum
+/// datagram size. A large send buffer is therefore pointless (and cannot cause
+/// bufferbloat either); 64 KiB comfortably covers the largest datagram we ever send.
+pub const SEND_BUFFER_SIZE: usize = if cfg!(any(target_os = "macos", target_os = "ios")) {
+    64 * 1024
+} else {
+    16 * ONE_MB
+};
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
