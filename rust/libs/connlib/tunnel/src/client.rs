@@ -165,9 +165,10 @@ pub struct ClientState {
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
-    /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the ID of the recursive DNS query we issued.
-    dns_streams_by_local_upstream_and_query_id:
-        HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr, Instant)>,
+    /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the token of the recursive DNS query we issued.
+    dns_streams_by_query_token: HashMap<u64, (SocketAddr, SocketAddr, Instant)>,
+    /// Monotonic counter for issuing unique tokens to recursive DNS queries.
+    next_dns_query_token: u64,
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
@@ -210,7 +211,8 @@ impl ClientState {
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(10), seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
-            dns_streams_by_local_upstream_and_query_id: Default::default(),
+            dns_streams_by_query_token: Default::default(),
+            next_dns_query_token: 0,
             pending_flows: Default::default(),
             pending_device_access: Default::default(),
             dns_resource_nat: Default::default(),
@@ -1572,12 +1574,11 @@ impl ClientState {
             if let Some(query_result) = self.udp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
                 let Some((local, remote, started_at)) =
-                    known_sockets.remove(&(dns::Transport::Udp, query_result.local, server, qid))
+                    self.dns_streams_by_query_token.remove(&query_result.token)
                 else {
-                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
+                    tracing::warn!(%server, %qid, token = %query_result.token, "Failed to find UDP socket handle for query result");
 
                     continue;
                 };
@@ -1602,12 +1603,11 @@ impl ClientState {
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
                 let Some((local, remote, started_at)) =
-                    known_sockets.remove(&(dns::Transport::Tcp, query_result.local, server, qid))
+                    self.dns_streams_by_query_token.remove(&query_result.token)
                 else {
-                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
+                    tracing::warn!(%server, %qid, token = %query_result.token, "Failed to find TCP socket handle for query result");
 
                     continue;
                 };
@@ -1863,10 +1863,15 @@ impl ClientState {
         now: Instant,
     ) {
         let query_id = query.id();
+        let token = self.next_dns_query_token;
+        self.next_dns_query_token = self.next_dns_query_token.wrapping_add(1);
 
         let result = match transport {
-            dns::Transport::Udp => self.udp_dns_client.send_query(server, query.clone(), now),
-            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query.clone()),
+            dns::Transport::Udp => {
+                self.udp_dns_client
+                    .send_query(server, query.clone(), token, now)
+            }
+            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query.clone(), token),
         };
 
         let local_socket = match result {
@@ -1900,18 +1905,13 @@ impl ClientState {
             }
         };
 
-        tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarded {transport} DNS query via tunnel");
+        tracing::trace!(%local_socket, %server, %local, %query_id, %token, "Forwarded {transport} DNS query via tunnel");
 
-        let existing = self.dns_streams_by_local_upstream_and_query_id.insert(
-            (transport, local_socket, server, query_id),
-            (local, remote, now),
-        );
+        let existing = self
+            .dns_streams_by_query_token
+            .insert(token, (local, remote, now));
 
-        if let Some((existing_local, existing_remote, _)) = existing
-            && (existing_local != local || existing_remote != remote)
-        {
-            debug_assert!(false, "Query IDs should be unique");
-        }
+        debug_assert!(existing.is_none(), "Query tokens should be unique");
     }
 
     fn maybe_update_tun_routes(&mut self) {

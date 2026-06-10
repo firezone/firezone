@@ -47,12 +47,15 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 #[derive(Debug)]
 struct PendingQuery {
     query: dns_types::Query,
+    token: u64,
     deadline: Instant,
 }
 
 #[derive(Debug)]
 pub struct QueryResult {
     pub query: dns_types::Query,
+    /// The token passed to [`Client::send_query`], identifying this query.
+    pub token: u64,
     pub local: SocketAddr,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
@@ -91,11 +94,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
     /// Send the given DNS query to the target server.
     ///
+    /// The `token` is opaque to the client and echoed back in the corresponding [`QueryResult`],
+    /// allowing callers to correlate results with queries.
+    ///
     /// This only queues the message. You need to call [`Client::handle_timeout`] to actually send them.
     pub fn send_query(
         &mut self,
         server: SocketAddr,
         message: dns_types::Query,
+        token: u64,
     ) -> Result<SocketAddr> {
         let (ipv4_source, ipv6_source) = self
             .source_ips
@@ -121,6 +128,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
             pending_queries.push_back(PendingQuery {
                 query: message,
+                token,
                 deadline,
             });
 
@@ -135,6 +143,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .or_default()
             .push_back(PendingQuery {
                 query: message,
+                token,
                 deadline,
             });
 
@@ -363,6 +372,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             while let Some(queued) = queries.pop_front_if(|pq| pq.deadline <= now) {
                 let res = QueryResult {
                     query: queued.query,
+                    token: queued.token,
                     server: *server,
                     local: *local,
                     result: Err(anyhow!(
@@ -382,6 +392,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                         .extract_if(.., |_, pq| pq.deadline <= now)
                         .map(|(_, queued)| QueryResult {
                             query: queued.query,
+                            token: queued.token,
                             server: *server,
                             local: *local,
                             result: Err(anyhow!(
@@ -487,6 +498,7 @@ fn send_pending_queries(
                 ));
                 query_results.push_back(QueryResult {
                     query: pending.query,
+                    token: pending.token,
                     server,
                     local,
                     result: Err(e),
@@ -519,6 +531,7 @@ fn recv_responses(
 
             Ok(vec![QueryResult {
                 query: queued.query,
+                token: queued.token,
                 server,
                 local,
                 result: Ok(response),
@@ -555,6 +568,7 @@ fn into_failed_results(
 ) -> impl Iterator<Item = QueryResult> {
     iter.into_iter().map(move |queued| QueryResult {
         query: queued.query,
+        token: queued.token,
         server,
         local,
         result: Err(make_error()),
@@ -586,7 +600,7 @@ mod tests {
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
-        let local = client.send_query(server, query.clone()).unwrap();
+        let local = client.send_query(server, query.clone(), 1).unwrap();
         client.handle_timeout(now);
         client.handle_timeout(now);
 
@@ -599,6 +613,7 @@ mod tests {
 
         assert_eq!(query_result.query.id(), query.id());
         assert_eq!(query_result.query.domain(), query.domain());
+        assert_eq!(query_result.token, 1);
         assert_eq!(query_result.local, local);
         assert_eq!(query_result.server, server);
         assert_eq!(
@@ -616,7 +631,7 @@ mod tests {
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
-        let local = client.send_query(server, query.clone()).unwrap();
+        let local = client.send_query(server, query.clone(), 1).unwrap();
 
         // Advance time past the query deadline without ever delivering a TCP reply.
         client.handle_timeout(now + Duration::from_secs(10) + Duration::from_millis(1));
@@ -624,6 +639,7 @@ mod tests {
         let query_result = client.poll_query_result().unwrap();
 
         assert_eq!(query_result.query.id(), query.id());
+        assert_eq!(query_result.token, 1);
         assert_eq!(query_result.local, local);
         assert_eq!(query_result.server, server);
         assert_eq!(

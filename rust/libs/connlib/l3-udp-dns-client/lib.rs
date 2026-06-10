@@ -29,6 +29,7 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 
 struct PendingQuery {
     message: dns_types::Query,
+    token: u64,
     expires_at: Instant,
     server: SocketAddr,
     local: SocketAddr,
@@ -37,6 +38,8 @@ struct PendingQuery {
 #[derive(Debug)]
 pub struct QueryResult {
     pub query: dns_types::Query,
+    /// The token passed to [`Client::send_query`], identifying this query.
+    pub token: u64,
     pub local: SocketAddr,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
@@ -64,12 +67,16 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
     /// Send the given DNS query to the target server.
     ///
+    /// The `token` is opaque to the client and echoed back in the corresponding [`QueryResult`],
+    /// allowing callers to correlate results with queries.
+    ///
     /// This only queues the message. You need to call [`Client::poll_outbound`] to retrieve
     /// the resulting IP packet and send it to the server.
     pub fn send_query(
         &mut self,
         server: SocketAddr,
         message: dns_types::Query,
+        token: u64,
         now: Instant,
     ) -> Result<SocketAddr> {
         let local_port = self.sample_new_unique_port()?;
@@ -88,6 +95,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             local_port,
             PendingQuery {
                 message: message.clone(),
+                token,
                 expires_at: now + TIMEOUT,
                 server,
                 local: local_socket,
@@ -150,6 +158,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
             self.query_results.push_back(QueryResult {
                 query: pending_query.message,
+                token: pending_query.token,
                 local: pending_query.local,
                 server: pending_query.server,
                 result: Err(anyhow!("Received ICMP error for DNS query: {icmp_error}")),
@@ -179,6 +188,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         let Some(PendingQuery {
             message,
+            token,
             server,
             local,
             ..
@@ -191,6 +201,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         self.query_results.push_back(QueryResult {
             query: message,
+            token,
             local,
             server,
             result,
@@ -212,6 +223,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             _,
             PendingQuery {
                 message,
+                token,
                 server,
                 local,
                 ..
@@ -222,6 +234,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         {
             self.query_results.push_back(QueryResult {
                 query: message,
+                token,
                 local,
                 server,
                 result: Err(anyhow!("Timeout")),
@@ -248,6 +261,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 .drain()
                 .map(|(_, pending_query)| QueryResult {
                     query: pending_query.message,
+                    token: pending_query.token,
                     local: pending_query.local,
                     server: pending_query.server,
                     result: Err(anyhow!("Timeout")),
@@ -306,17 +320,17 @@ mod tests {
 
         // Send two queries at the same time
         client
-            .send_query(server1, create_test_query(), now)
+            .send_query(server1, create_test_query(), 1, now)
             .unwrap();
         client
-            .send_query(server2, create_test_query(), now)
+            .send_query(server2, create_test_query(), 2, now)
             .unwrap();
         assert_eq!(client.poll_timeout(), Some(now + TIMEOUT));
 
         // Send third query 10 seconds later
         let later = now + Duration::from_secs(10);
         client
-            .send_query(server1, create_test_query(), later)
+            .send_query(server1, create_test_query(), 3, later)
             .unwrap();
 
         // poll_timeout should return the earliest timeout
@@ -349,8 +363,8 @@ mod tests {
         let query2 = create_test_query();
 
         // Send multiple queries
-        client.send_query(server1, query1, now).unwrap();
-        client.send_query(server2, query2, now).unwrap();
+        client.send_query(server1, query1, 1, now).unwrap();
+        client.send_query(server2, query2, 2, now).unwrap();
 
         // Reset should abort all pending queries
         client.reset();
@@ -376,7 +390,7 @@ mod tests {
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
-        let local = client.send_query(server, query.clone(), now).unwrap();
+        let local = client.send_query(server, query.clone(), 1, now).unwrap();
 
         let packet = client.poll_outbound().unwrap();
         let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
@@ -387,6 +401,7 @@ mod tests {
 
         assert_eq!(query_result.query.id(), query.id());
         assert_eq!(query_result.query.domain(), query.domain());
+        assert_eq!(query_result.token, 1);
         assert_eq!(query_result.local, local);
         assert_eq!(query_result.server, server);
         assert_eq!(
