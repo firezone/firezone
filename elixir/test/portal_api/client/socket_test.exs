@@ -144,6 +144,9 @@ defmodule PortalAPI.Client.SocketTest do
       assert session.remote_ip_location_lat == 50.4333
       assert session.remote_ip_location_lon == 30.5167
       assert session.version == "1.3.0"
+      assert DateTime.diff(DateTime.utc_now(), session.timestamp, :second) < 5
+      assert session.actor_id
+      assert session.actor_email
     end
 
     test "creates a new client for service account identity" do

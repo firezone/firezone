@@ -53,7 +53,8 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions
+      Portal.ComponentVersions,
+      Portal.ClockDriftAlarm
     ]
 
     endpoint_children = [
@@ -159,7 +160,8 @@ defmodule Portal.Application do
   defp replication do
     connection_modules = [
       Portal.Changes.ReplicationConnection,
-      Portal.ChangeLogs.ReplicationConnection
+      Portal.ChangeLogs.ReplicationConnection,
+      Portal.SessionLogs.ReplicationConnection
     ]
 
     # Filter out disabled replication connections

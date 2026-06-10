@@ -922,7 +922,7 @@ defmodule Portal.BillingTest do
         )
 
       # Backdate the session to more than a month ago
-      Repo.query!("UPDATE client_sessions SET inserted_at = $1 WHERE id = $2", [
+      Repo.query!(~s(UPDATE client_sessions SET "timestamp" = $1 WHERE id = $2), [
         DateTime.add(DateTime.utc_now(), -35, :day),
         Ecto.UUID.dump!(session.id)
       ])

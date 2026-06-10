@@ -56,9 +56,10 @@ defmodule Portal.ClientSessionTest do
                  %{
                    account_id: Ecto.UUID.generate(),
                    device_id: client.id,
-                   client_token_id: token.id
+                   client_token_id: token.id,
+                   timestamp: DateTime.utc_now()
                  },
-                 [:account_id, :device_id, :client_token_id]
+                 [:account_id, :device_id, :client_token_id, :timestamp]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
@@ -78,9 +79,10 @@ defmodule Portal.ClientSessionTest do
                  %{
                    account_id: account.id,
                    device_id: device_id,
-                   client_token_id: token.id
+                   client_token_id: token.id,
+                   timestamp: DateTime.utc_now()
                  },
-                 [:account_id, :device_id, :client_token_id]
+                 [:account_id, :device_id, :client_token_id, :timestamp]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
@@ -99,9 +101,10 @@ defmodule Portal.ClientSessionTest do
                  %{
                    account_id: account.id,
                    device_id: client.id,
-                   client_token_id: Ecto.UUID.generate()
+                   client_token_id: Ecto.UUID.generate(),
+                   timestamp: DateTime.utc_now()
                  },
-                 [:account_id, :device_id, :client_token_id]
+                 [:account_id, :device_id, :client_token_id, :timestamp]
                )
                |> ClientSession.changeset()
                |> Repo.insert()

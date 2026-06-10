@@ -47,7 +47,8 @@ defmodule PortalAPI.Client.ChannelTest do
       remote_ip_location_city: subject.context.remote_ip_location_city,
       remote_ip_location_lat: subject.context.remote_ip_location_lat,
       remote_ip_location_lon: subject.context.remote_ip_location_lon,
-      version: client_version
+      version: client_version,
+      timestamp: DateTime.utc_now()
     }
 
     {:ok, _reply, socket} =

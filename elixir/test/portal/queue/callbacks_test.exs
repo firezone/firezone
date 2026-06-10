@@ -33,6 +33,7 @@ defmodule Portal.Queue.CallbacksTest do
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",
         version: "1.3.0",
+        timestamp: DateTime.utc_now(),
         inserted_at: DateTime.utc_now()
       }
 
@@ -64,6 +65,7 @@ defmodule Portal.Queue.CallbacksTest do
         remote_ip: {100, 64, 0, 2},
         remote_ip_location_region: "US",
         version: "1.3.0",
+        timestamp: DateTime.utc_now(),
         inserted_at: DateTime.utc_now()
       }
 
