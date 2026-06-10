@@ -49,6 +49,55 @@ fn smoke() {
 }
 
 #[test]
+fn concurrent_queries_with_same_id() {
+    let _guard = logging::test(
+        "netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,smoltcp=trace,debug",
+    );
+
+    let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
+    let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
+
+    let resolver_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
+
+    let mut dns_client =
+        dns_over_tcp::Client::new(Instant::now(), Duration::from_secs(10), [0u8; 32]);
+    dns_client.set_source_interface(ipv4, ipv6);
+
+    let mut dns_server = dns_over_tcp::Server::new(Instant::now());
+    dns_server.set_listen_addresses::<1>(BTreeSet::from([resolver_addr]));
+
+    // Windows' stub resolver always uses query ID 1 for queries over TCP.
+    for domain in ["foo.example.com", "bar.example.com"] {
+        dns_client
+            .send_query(
+                resolver_addr,
+                Query::new(domain.parse().unwrap(), RecordType::A).with_id(1),
+            )
+            .unwrap();
+    }
+
+    let results = std::iter::from_fn(|| progress(&mut dns_client, &mut dns_server))
+        .take(2)
+        .collect::<Vec<_>>();
+
+    // Both concurrent queries must complete despite sharing wire ID 1 from the stub resolver.
+    assert_eq!(results.len(), 2);
+    assert_ne!(
+        results[0].query.domain(),
+        results[1].query.domain(),
+        "the two same-ID queries must be de-multiplexed to their distinct domains"
+    );
+
+    for query_result in &results {
+        let response = query_result.result.as_ref().unwrap();
+
+        // The response is translated back to the original stub query ID.
+        assert_eq!(response.id(), 1);
+        assert_eq!(response.domain(), query_result.query.domain());
+    }
+}
+
+#[test]
 fn no_panic_after_set_listen_address() {
     let _guard = logging::test(
         "netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,smoltcp=trace,debug",
