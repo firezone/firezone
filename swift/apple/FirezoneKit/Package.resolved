@@ -1,5 +1,5 @@
 {
-  "originHash" : "b5730d4419191aa7084f6a75a4f10af9ecb1c4518203add716bdf572908b7ad2",
+  "originHash" : "f73919e7e12852a6a2cbf57f97f8c7e744098fdcb69e86362a4048c4b8849a37",
   "pins" : [
     {
       "identity" : "sentry-cocoa",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system",
       "state" : {
-        "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
-        "version" : "1.6.4"
+        "revision" : "669763cfd5806a67e21972d7e5e2d6b80b1ea985",
+        "version" : "1.6.5"
       }
     }
   ],
