@@ -1,9 +1,14 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import groovy.json.JsonSlurper
+import org.gradle.kotlin.dsl.support.serviceOf
+import org.gradle.process.ExecOperations
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.Properties
+import javax.inject.Inject
 
 plugins {
-    id("org.mozilla.rust-android-gradle.rust-android")
     id("com.android.application")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
@@ -11,9 +16,8 @@ plugins {
     id("com.diffplug.spotless") version "8.6.0"
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
+    id("com.google.devtools.ksp")
 
-    kotlin("android")
-    kotlin("kapt")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -37,16 +41,15 @@ spotless {
     }
 }
 
-apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
-
 android {
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
 
     namespace = "dev.firezone.android"
     compileSdk = 36
-    ndkVersion = "28.1.13356709" // Must match `.github/actions/setup-android/action.yml`
+    ndkVersion = "28.2.13676358" // Must be a version preinstalled on the CI runner (see setup-android)
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -134,10 +137,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         viewBinding = true
         compose = true
@@ -206,22 +205,22 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.58")
+    implementation("com.google.dagger:hilt-android:2.59.2")
     implementation("androidx.browser:browser:1.10.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
-    kapt("androidx.hilt:hilt-compiler:1.3.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.58")
+    ksp("androidx.hilt:hilt-compiler:1.3.0")
+    ksp("com.google.dagger:hilt-android-compiler:2.59.2")
     // Instrumented Tests
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.58")
-    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.58")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.59.2")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.59.2")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     // Unit Tests
-    testImplementation("com.google.dagger:hilt-android-testing:2.58")
+    testImplementation("com.google.dagger:hilt-android-testing:2.59.2")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
@@ -274,19 +273,24 @@ dependencies {
     // Immutable collections give Compose stable (skippable) parameter types.
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
 
-    // Slack's Compose lint checks. Pinned to 1.4.2: lint check JARs are versioned to
-    // the lint API (`lint = AGP + 23`), so with AGP 8.13 (lint 31.13) we need a build
-    // against an older lint. 1.4.3+/1.5.0 target lint 32.2 (AGP 9.2) and get rejected.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.4.2")
+    // Slack's Compose lint checks. Lint check JARs are versioned to the lint API
+    // (`lint = AGP + 23`), so AGP 9.2 (lint 32.2) needs 1.4.3, which is built against it
+    // (1.4.2 targeted lint 31.7 for AGP 8.13). We stay on 1.4.3 rather than 1.5.0: 1.5.0
+    // rewrote ComposeViewModelForwarding to flag forwarding inside nested blocks, which
+    // false-positives on our @Immutable ResourceViewModel (a UI model, not a real ViewModel).
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.4.3")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
+
+// Gradle 9 removed `Project.exec`; run external processes through the injected `ExecOperations`.
+val execOperations = serviceOf<ExecOperations>()
 
 // Resolve the cargo target directory from cargo metadata so we don't hardcode a path that may
 // be overridden by the user's ~/.cargo/config.toml (e.g. `target-dir`).
 val cargoTargetDir: String by lazy {
     val metadataOutput = ByteArrayOutputStream()
-    project.exec {
+    execOperations.exec {
         workingDir = rustDir.asFile
         commandLine("cargo", "metadata", "--format-version", "1")
         standardOutput = metadataOutput
@@ -320,15 +324,6 @@ val targetAndroidAbi: String? =
         ?.trim()
         ?.takeIf { it.isNotEmpty() }
 
-fun androidAbiToCargoTarget(abi: String): String =
-    when (abi) {
-        "arm64-v8a" -> "arm64"
-        "armeabi-v7a" -> "arm"
-        "x86" -> "x86"
-        "x86_64" -> "x86_64"
-        else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
-    }
-
 fun androidAbiToRustTriple(abi: String): String =
     when (abi) {
         "arm64-v8a" -> "aarch64-linux-android"
@@ -338,26 +333,199 @@ fun androidAbiToRustTriple(abi: String): String =
         else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
     }
 
-cargo {
-    if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
-        profile = "release"
-    } else {
-        profile = "debug"
+val ndkHostTag =
+    System.getProperty("os.name").lowercase().let { osName ->
+        when {
+            osName.contains("win") -> "windows-x86_64"
+            osName.contains("mac") || osName.contains("darwin") -> "darwin-x86_64"
+            else -> "linux-x86_64"
+        }
     }
-    // Needed for Ubuntu 22.04
-    pythonCommand = "python3"
-    prebuiltToolchains = true
-    module = "../../../rust/client-ffi"
-    libname = "connlib"
-    targets =
-        targetAndroidAbi?.let { listOf(androidAbiToCargoTarget(it)) }
-            ?: listOf("arm64", "x86_64", "x86", "arm")
-    targetDirectory = cargoTargetDir
+
+// NDK Clang wrapper prefix for an ABI (the part before the API level). armeabi-v7a uses the
+// `armv7a-linux-androideabi` Clang prefix even though its Rust triple is `armv7-linux-androideabi`.
+fun androidAbiToClangPrefix(abi: String): String =
+    when (abi) {
+        "arm64-v8a" -> "aarch64-linux-android"
+        "armeabi-v7a" -> "armv7a-linux-androideabi"
+        "x86" -> "i686-linux-android"
+        "x86_64" -> "x86_64-linux-android"
+        else -> throw GradleException("Unsupported ABI '$abi'. Supported: arm64-v8a, armeabi-v7a, x86, x86_64.")
+    }
+
+// Resolve the installed NDK directory. AGP 9's new DSL no longer exposes `android.ndkDirectory`,
+// so we locate it ourselves from the environment or local.properties.
+fun resolveNdkDir(ndkVersion: String): File {
+    System.getenv("ANDROID_NDK_HOME")?.let { return file(it) }
+    System.getenv("ANDROID_NDK_ROOT")?.let { return file(it) }
+    val sdkDir =
+        System.getenv("ANDROID_HOME")
+            ?: System.getenv("ANDROID_SDK_ROOT")
+            ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { propsFile ->
+                Properties()
+                    .apply { propsFile.inputStream().use { load(it) } }
+                    .getProperty("sdk.dir")
+            }
+            ?: throw GradleException(
+                "Cannot locate the Android SDK. Set ANDROID_HOME or `sdk.dir` in local.properties.",
+            )
+    val ndkDir = file(sdkDir).resolve("ndk").resolve(ndkVersion)
+    if (!ndkDir.isDirectory) {
+        throw GradleException(
+            "Android NDK $ndkVersion not found at $ndkDir. Install it with `mise run setup-ndk`.",
+        )
+    }
+    return ndkDir
 }
 
+// Cross-compile connlib (Rust) for the selected Android ABIs and stage each library under
+// `build/rustJniLibs/android/<abi>/` for AGP to package. Replaces the rust-android-gradle plugin,
+// which is incompatible with the AGP 9 / Gradle 9 toolchain. We point cargo at the NDK Clang
+// wrappers per target; connlib's only C dependency is ring, which just needs CC/AR.
+abstract class CargoBuildTask
+    @Inject
+    constructor() : DefaultTask() {
+        // Maps each Android ABI (jniLibs dir name) to its Rust target triple.
+        @get:Input
+        abstract val abiTriples: MapProperty<String, String>
+
+        // Maps each Android ABI to its NDK Clang wrapper prefix.
+        @get:Input
+        abstract val abiClangPrefixes: MapProperty<String, String>
+
+        @get:Input
+        abstract val release: Property<Boolean>
+
+        @get:Input
+        abstract val apiLevel: Property<Int>
+
+        @get:Input
+        abstract val toolchainBinDir: Property<String>
+
+        @get:Input
+        abstract val clangSuffix: Property<String>
+
+        @get:Input
+        abstract val cargoTargetDirectory: Property<String>
+
+        @get:Internal
+        abstract val clientFfiDir: DirectoryProperty
+
+        @get:OutputDirectory
+        abstract val jniLibsDir: DirectoryProperty
+
+        @get:Inject
+        abstract val execOperations: ExecOperations
+
+        @TaskAction
+        fun build() {
+            val triples = abiTriples.get()
+            val clangPrefixes = abiClangPrefixes.get()
+            val cargoTarget = cargoTargetDirectory.get()
+            val profileDir = if (release.get()) "release" else "debug"
+            val binDir = File(toolchainBinDir.get())
+            val suffix = clangSuffix.get()
+            val api = apiLevel.get()
+            val archiver = File(binDir, "llvm-ar")
+
+            for ((abi, triple) in triples) {
+                val clangPrefix = clangPrefixes.getValue(abi)
+                val clang = File(binDir, "$clangPrefix$api-clang$suffix")
+                val clangxx = File(binDir, "$clangPrefix$api-clang++$suffix")
+                val envTriple = triple.uppercase().replace('-', '_')
+
+                execOperations.exec {
+                    workingDir = clientFfiDir.get().asFile
+                    environment("CARGO_TARGET_DIR", cargoTarget)
+                    // Linker for the Rust target plus the C/C++ toolchain for `cc`-built
+                    // dependencies such as ring.
+                    environment("CARGO_TARGET_${envTriple}_LINKER", clang.absolutePath)
+                    environment("CC_$triple", clang.absolutePath)
+                    environment("CXX_$triple", clangxx.absolutePath)
+                    environment("AR_$triple", archiver.absolutePath)
+                    val cargoArgs = mutableListOf("cargo", "build", "--lib", "--target", triple)
+                    if (release.get()) {
+                        cargoArgs.add("--release")
+                    }
+                    commandLine(cargoArgs)
+                }
+            }
+
+            // Stage libconnlib.so per ABI.
+            val outDir = jniLibsDir.get().asFile
+            outDir.deleteRecursively()
+            for ((abi, triple) in triples) {
+                val abiDir = File(outDir, abi).apply { mkdirs() }
+                File("$cargoTarget/$triple/$profileDir/libconnlib.so")
+                    .copyTo(File(abiDir, "libconnlib.so"), overwrite = true)
+            }
+        }
+    }
+
+val cargoBuild =
+    tasks.register<CargoBuildTask>("cargoBuild") {
+        description = "Cross-compile connlib (Rust) for the selected Android ABIs"
+        group = "build"
+
+        val ndkVersion =
+            android.ndkVersion ?: throw GradleException("android.ndkVersion is not set.")
+        val selectedAbis =
+            targetAndroidAbi?.let { listOf(it) }
+                ?: listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+
+        val minSdk =
+            android.defaultConfig.minSdk ?: throw GradleException("android.defaultConfig.minSdk is not set.")
+
+        release.set(gradle.startParameter.taskNames.any { it.lowercase().contains("release") })
+        apiLevel.set(minSdk)
+        abiTriples.set(selectedAbis.associateWith { androidAbiToRustTriple(it) })
+        abiClangPrefixes.set(selectedAbis.associateWith { androidAbiToClangPrefix(it) })
+        toolchainBinDir.set(
+            resolveNdkDir(ndkVersion).resolve("toolchains/llvm/prebuilt/$ndkHostTag/bin").absolutePath,
+        )
+        clangSuffix.set(if (ndkHostTag.startsWith("windows")) ".cmd" else "")
+        cargoTargetDirectory.set(cargoTargetDir)
+        clientFfiDir.set(rustDir.dir("client-ffi"))
+        jniLibsDir.set(layout.buildDirectory.dir("rustJniLibs/android"))
+
+        // Cargo performs its own incremental compilation, so always let it decide what to rebuild.
+        outputs.upToDateWhen { false }
+    }
+
 // Custom task to run uniffi-bindgen
+abstract class GenerateUniffiBindings
+    @Inject
+    constructor() : DefaultTask() {
+        @get:InputFile
+        abstract val libraryFile: RegularFileProperty
+
+        @get:Internal
+        abstract val rustProjectDir: DirectoryProperty
+
+        @get:OutputDirectory
+        abstract val outputDir: DirectoryProperty
+
+        @get:Inject
+        abstract val execOperations: ExecOperations
+
+        @TaskAction
+        fun generate() {
+            val input = libraryFile.get().asFile
+            val outDir = outputDir.get().asFile
+            // Spawn a shell to run the command; fixes PATH race conditions that can cause
+            // the cargo executable to not be found even though it is in the PATH.
+            execOperations.exec {
+                commandLine(
+                    "sh",
+                    "-c",
+                    "cd ${rustProjectDir.get().asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin $input --out-dir $outDir",
+                )
+            }
+        }
+    }
+
 val generateUniffiBindings =
-    tasks.register("generateUniffiBindings") {
+    tasks.register<GenerateUniffiBindings>("generateUniffiBindings") {
         description = "Generate Kotlin bindings using uniffi-bindgen"
         group = "build"
 
@@ -372,45 +540,35 @@ val generateUniffiBindings =
                 "debug"
             }
 
-        val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
-
         // UniFFI bindings are identical across ABIs, so we only need one libconnlib.so as input.
         // Point this task at an ABI that actually gets built when callers narrow the target list
         // via `android.injected.build.abi`. Defaults to x86_64 so the all-ABI build keeps working.
         val rustTargetTriple =
             targetAndroidAbi?.let { androidAbiToRustTriple(it) } ?: "x86_64-linux-android"
-        val inputFile = file("$cargoTargetDir/$rustTargetTriple/$profile/libconnlib.so")
 
-        inputs.file(inputFile)
-        outputs.dir(outDir)
-
-        doLast {
-            // Execute uniffi-bindgen command from the rust directory
-            project.exec {
-                // Spawn a shell to run the command; fixes PATH race conditions that can cause
-                // the cargo executable to not be found even though it is in the PATH.
-                commandLine(
-                    "sh",
-                    "-c",
-                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin $inputFile --out-dir ${outDir.asFile}",
-                )
-            }
-        }
+        libraryFile.fileValue(file("$cargoTargetDir/$rustTargetTriple/$profile/libconnlib.so"))
+        rustProjectDir.set(rustDir)
+        outputDir.set(layout.buildDirectory.dir("generated/source/uniffi/$profile"))
     }
 
-tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
-    inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
-    dependsOn("cargoBuild")
-}
-
-kapt {
-    correctErrorTypes = true
-}
-
 kotlin {
-    sourceSets {
-        main {
-            kotlin.srcDir(generateUniffiBindings)
-        }
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
+    }
+}
+
+// Wire the cargo build and uniffi outputs into every variant via the AGP variant API, which adds
+// the generated directories as sources and carries the task dependencies automatically. AGP 9
+// disallows adding task providers to the older source set API.
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(
+            cargoBuild,
+            CargoBuildTask::jniLibsDir,
+        )
+        variant.sources.kotlin?.addGeneratedSourceDirectory(
+            generateUniffiBindings,
+            GenerateUniffiBindings::outputDir,
+        )
     }
 }
