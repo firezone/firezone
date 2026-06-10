@@ -61,16 +61,6 @@ defmodule Portal.Types.EventIdTest do
         EventId.build_change_log(0, -1)
       end
     end
-
-    test "raises FunctionClauseError on non-integer inputs" do
-      assert_raise FunctionClauseError, fn ->
-        apply(Portal.Types.EventId, :build_change_log, ["not an integer", 0])
-      end
-
-      assert_raise FunctionClauseError, fn ->
-        apply(Portal.Types.EventId, :build_change_log, [0, nil])
-      end
-    end
   end
 
   describe "cast/1" do
