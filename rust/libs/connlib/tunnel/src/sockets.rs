@@ -256,9 +256,7 @@ impl ThreadedUdpSocket {
                     .unwrap_or_default()
                     .unwrap_or(socket_factory::RECV_BUFFER_SIZE);
 
-                if let Err(e) = socket.set_buffer_sizes(send_buffer_size, recv_buffer_size) {
-                    tracing::warn!("Failed to set socket buffer sizes: {e}");
-                };
+                socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
 
                 let socket = Arc::new(socket);
 

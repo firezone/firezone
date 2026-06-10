@@ -1112,12 +1112,10 @@ async fn send_datagram(
 fn bind_socket(addr: SocketAddr) -> Result<PerfUdpSocket> {
     let mut socket = socket_factory::udp(addr)?.into_perf()?;
 
-    if let Err(e) = socket.set_buffer_sizes(
+    socket.set_buffer_sizes(
         socket_factory::SEND_BUFFER_SIZE,
         socket_factory::RECV_BUFFER_SIZE,
-    ) {
-        tracing::warn!(error = %e, "Failed to enlarge socket buffers; continuing with defaults");
-    }
+    );
 
     Ok(socket)
 }

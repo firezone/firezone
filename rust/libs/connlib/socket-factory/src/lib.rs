@@ -22,6 +22,13 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
+/// On Apple platforms, UDP sockets never buffer data in the send buffer: datagrams are
+/// handed straight to the interface and `SO_SNDBUF` only acts as a cap on the maximum
+/// datagram size. A large send buffer is therefore pointless (and cannot cause
+/// bufferbloat either); 64 KiB comfortably covers the largest datagram we ever send.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub const SEND_BUFFER_SIZE: usize = 64 * 1024;
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
@@ -340,18 +347,26 @@ impl PerfUdpSocket {
         &mut self,
         requested_send_buffer_size: usize,
         requested_recv_buffer_size: usize,
-    ) -> io::Result<()> {
+    ) {
         let socket = socket2::SockRef::from(&self.inner);
 
-        socket.set_send_buffer_size(requested_send_buffer_size)?;
-        socket.set_recv_buffer_size(requested_recv_buffer_size)?;
+        // Apply each direction independently: failing to set one buffer size must not prevent the other from being applied.
+        if let Err(e) = apply_buffer_size(requested_send_buffer_size, |size| {
+            socket.set_send_buffer_size(size)
+        }) {
+            tracing::warn!(%requested_send_buffer_size, "Failed to set send buffer size: {e}");
+        }
 
-        let send_buffer_size = socket.send_buffer_size()?;
-        let recv_buffer_size = socket.recv_buffer_size()?;
+        if let Err(e) = apply_buffer_size(requested_recv_buffer_size, |size| {
+            socket.set_recv_buffer_size(size)
+        }) {
+            tracing::warn!(%requested_recv_buffer_size, "Failed to set recv buffer size: {e}");
+        }
 
-        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
+        let send_buffer_size = socket.send_buffer_size().unwrap_or_default();
+        let recv_buffer_size = socket.recv_buffer_size().unwrap_or_default();
 
-        Ok(())
+        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "UDP socket buffer sizes");
     }
 
     async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
@@ -557,6 +572,28 @@ impl UdpSocket {
         buffer.truncate(num_received);
 
         Ok(buffer)
+    }
+}
+
+/// Applies the requested buffer size to a socket, halving it until the kernel accepts it.
+///
+/// Apple platforms reject buffer sizes above `kern.ipc.maxsockbuf` with `ENOBUFS` instead of
+/// clamping them like Linux does.
+fn apply_buffer_size(
+    requested: usize,
+    mut set: impl FnMut(usize) -> io::Result<()>,
+) -> io::Result<()> {
+    /// Buffer sizes below this are not worth trading for an error message; all platforms accept it.
+    const FLOOR: usize = 64 * 1024;
+
+    let mut size = requested;
+
+    loop {
+        match set(size) {
+            Ok(()) => return Ok(()),
+            Err(_) if size > FLOOR => size /= 2,
+            Err(e) => return Err(e),
+        }
     }
 }
 
@@ -823,6 +860,31 @@ mod tests {
         ));
 
         assert!(is_equal_modulo_scope_for_ipv6_link_local(left, right))
+    }
+
+    #[test]
+    fn apply_buffer_size_halves_until_accepted() {
+        let mut attempts = Vec::new();
+
+        let result = apply_buffer_size(1024 * 1024, |size| {
+            attempts.push(size);
+
+            if size > 256 * 1024 {
+                return Err(io::Error::other("too big"));
+            }
+
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert_eq!(attempts, vec![1024 * 1024, 512 * 1024, 256 * 1024]);
+    }
+
+    #[test]
+    fn apply_buffer_size_gives_up_at_floor() {
+        let result = apply_buffer_size(256 * 1024, |_| Err(io::Error::other("nope")));
+
+        assert!(result.is_err());
     }
 
     #[test]
