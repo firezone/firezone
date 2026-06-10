@@ -258,7 +258,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.19.0@aar")
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.43.0")
+    implementation("io.sentry:sentry-android:8.43.1")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.05.01")
