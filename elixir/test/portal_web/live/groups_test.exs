@@ -2,6 +2,7 @@ defmodule PortalWeb.GroupsTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Group, Membership, Policy, Repo}
+  alias Portal.Changes.Change
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -623,6 +624,80 @@ defmodule PortalWeb.GroupsTest do
 
       html = render(lv)
       refute html =~ group.name
+    end
+  end
+
+  describe "count badge" do
+    test "shows total group count after async load", %{conn: conn, account: account, actor: actor} do
+      _group = group_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on group insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Group{type: :static}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on group delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Group{type: :static}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores managed Everyone group changes", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Group{type: :managed, idp_id: nil, name: "Everyone"}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 end

@@ -2,6 +2,8 @@ defmodule PortalWeb.ResourcesTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Policy, Repo}
+  alias Portal.Changes.Change
+  alias Portal.Resource
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -1026,6 +1028,84 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "open_grant_form")
       assert html =~ "Grant access"
+    end
+  end
+
+  describe "count badge" do
+    test "shows total resource count after async load", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _resource = resource_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on resource insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Resource{type: :dns}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on resource delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Resource{type: :dns}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores internet resource changes", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Resource{type: :internet}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 

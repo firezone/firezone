@@ -2,6 +2,7 @@ defmodule PortalWeb.ClientsTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Device, Repo}
+  alias Portal.Changes.Change
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -539,6 +540,80 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Regression Laptop"
       assert html =~ "Tunnel IPv4"
       assert html =~ "Tunnel IPv6"
+    end
+  end
+
+  describe "count badge" do
+    test "shows total client count after async load", %{conn: conn, account: account, actor: actor} do
+      _client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on client insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Device{type: :client}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on client delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Device{type: :client}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores non-client device changes", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Device{type: :gateway}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 end

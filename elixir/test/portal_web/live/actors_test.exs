@@ -1,6 +1,9 @@
 defmodule PortalWeb.ActorsTest do
   use PortalWeb.ConnCase, async: true
 
+  alias Portal.Actor
+  alias Portal.Changes.Change
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -1349,6 +1352,76 @@ defmodule PortalWeb.ActorsTest do
 
       assert is_nil(Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id))
       assert is_nil(Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id))
+    end
+  end
+
+  describe "count badge" do
+    test "shows total actor count after async load", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on actor insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
+
+      html = render(lv)
+      assert html =~ "2"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on actor delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :account_user}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores service account changes", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
     end
   end
 end

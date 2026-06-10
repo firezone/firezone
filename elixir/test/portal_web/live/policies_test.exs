@@ -2,6 +2,7 @@ defmodule PortalWeb.PoliciesTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Policy, Repo}
+  alias Portal.Changes.Change
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -1152,6 +1153,69 @@ defmodule PortalWeb.PoliciesTest do
 
       render_click(lv, "delete_policy")
       assert_patch(lv, ~p"/#{account}/policies")
+    end
+  end
+
+  describe "count badge" do
+    test "shows total policy count after async load", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      _policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on policy insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Policy{}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on policy delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      _policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Policy{}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 end
