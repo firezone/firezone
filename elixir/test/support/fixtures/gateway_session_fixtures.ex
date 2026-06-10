@@ -27,6 +27,7 @@ defmodule Portal.GatewaySessionFixtures do
       |> Map.put_new(:remote_ip, {100, 64, 0, 1})
       |> Map.put_new(:remote_ip_location_region, "US")
       |> Map.put_new(:version, "1.3.0")
+      |> Map.put_new(:timestamp, DateTime.utc_now())
 
     {:ok, session} =
       %Portal.GatewaySession{}
@@ -38,7 +39,8 @@ defmodule Portal.GatewaySessionFixtures do
         :remote_ip_location_city,
         :remote_ip_location_lat,
         :remote_ip_location_lon,
-        :version
+        :version,
+        :timestamp
       ])
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Ecto.Changeset.put_change(:device_id, gateway.id)

@@ -15,6 +15,7 @@ defmodule Portal.GatewaySession do
           remote_ip_location_lat: float() | nil,
           remote_ip_location_lon: float() | nil,
           version: String.t() | nil,
+          timestamp: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil
         }
 
@@ -37,6 +38,10 @@ defmodule Portal.GatewaySession do
     field :remote_ip_location_lat, :float
     field :remote_ip_location_lon, :float
     field :version, :string
+
+    # The moment the session connected; `inserted_at` lags by the time the
+    # entry spends in `Portal.Queue`.
+    field :timestamp, :utc_datetime_usec
 
     timestamps(updated_at: false)
   end

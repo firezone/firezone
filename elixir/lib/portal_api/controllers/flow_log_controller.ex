@@ -8,11 +8,17 @@ defmodule PortalAPI.FlowLogController do
   use PortalAPI, :controller
   import Ecto.Changeset
   alias Portal.FlowLog
+  alias Portal.Types.EventId
   alias PortalAPI.ProblemDetails
   alias __MODULE__.Database
+  require Logger
 
-  @top_level_keys ~w(flow_id device_id role flow_start flow_end)
-  @cast_fields ~w[flow_id account_id device_id role flow_start flow_end payload inserted_at]a
+  @cast_fields ~w[account_id event_id device_id role protocol flow_start flow_end last_packet
+                  auth_provider_id actor_id actor_name actor_email resource_id resource_name
+                  resource_address inner_src_ip inner_dst_ip inner_src_port inner_dst_port
+                  inner_domain outer_src_ip outer_dst_ip outer_src_port outer_dst_port
+                  rx_packets tx_packets rx_bytes tx_bytes inserted_at]a
+  @server_assigned_keys ~w[account_id event_id inserted_at]
   @max_batch_size 10_000
 
   def create(conn, %{"flow_logs" => records})
@@ -22,17 +28,30 @@ defmodule PortalAPI.FlowLogController do
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
     account_id = conn.assigns.account.id
+    token_type = conn.assigns.token_type
     now = DateTime.utc_now()
 
     {entries, errors} =
       records
       |> Enum.with_index()
       |> Enum.reduce({[], []}, fn {record, index}, acc ->
-        validate_record(record, index, account_id, now, acc)
+        validate_record(record, index, account_id, token_type, now, acc)
       end)
 
     if entries != [] do
-      Database.insert_all_flow_logs(entries)
+      {inserted, _} = Database.insert_all_flow_logs(entries)
+      dropped = length(entries) - inserted
+
+      # Dropped entries are duplicates by the flow uniqueness tuple
+      # (flow_logs_unique_flow_per_window). Usually a benign batch retry, but
+      # logged so sustained drops (clock regression, a cloned device identity)
+      # are visible rather than silent data loss.
+      if dropped > 0 do
+        Logger.info("Deduplicated #{dropped} flow log entries",
+          account_id: account_id,
+          token_type: token_type
+        )
+      end
     end
 
     if errors == [] do
@@ -53,15 +72,15 @@ defmodule PortalAPI.FlowLogController do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
 
-  defp validate_record(record, index, _account_id, _now, {valid, invalid})
+  defp validate_record(record, index, _account_id, _token_type, _now, {valid, invalid})
        when not is_map(record) do
     {valid, [{index, :not_a_map} | invalid]}
   end
 
-  defp validate_record(record, index, account_id, now, {valid, invalid}) do
+  defp validate_record(record, index, account_id, token_type, now, {valid, invalid}) do
     changeset =
       record
-      |> to_attrs(account_id, now)
+      |> to_attrs(account_id, token_type, now)
       |> changeset()
 
     if changeset.valid? do
@@ -94,20 +113,22 @@ defmodule PortalAPI.FlowLogController do
     end)
   end
 
-  defp to_attrs(record, account_id, now) do
-    {top, rest} = Map.split(record, @top_level_keys)
-
-    %{
-      "flow_id" => top["flow_id"],
+  defp to_attrs(record, account_id, token_type, now) do
+    record
+    |> Map.drop(@server_assigned_keys)
+    |> force_gateway_role(token_type)
+    |> Map.merge(%{
       "account_id" => account_id,
-      "device_id" => top["device_id"],
-      "role" => top["role"],
-      "flow_start" => top["flow_start"],
-      "flow_end" => top["flow_end"],
-      "payload" => rest,
+      "event_id" => EventId.build_flow_log(),
       "inserted_at" => now
-    }
+    })
   end
+
+  # A Gateway is always the responder side of a flow, so its role is forced
+  # from the token type rather than trusted from the payload. Clients report
+  # either role (client-client flows), validated by the changeset.
+  defp force_gateway_role(record, :gateway), do: Map.put(record, "role", "responder")
+  defp force_gateway_role(record, :client), do: record
 
   defmodule Database do
     alias Portal.Safe

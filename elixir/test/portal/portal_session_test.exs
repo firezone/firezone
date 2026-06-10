@@ -19,9 +19,10 @@ defmodule Portal.PortalSessionTest do
           %{
             actor_id: Ecto.UUID.generate(),
             auth_provider_id: auth_provider.id,
-            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
+            timestamp: DateTime.utc_now()
           },
-          [:actor_id, :auth_provider_id, :expires_at]
+          [:actor_id, :auth_provider_id, :expires_at, :timestamp]
         )
         |> put_assoc(:account, account)
         |> PortalSession.changeset()
@@ -39,9 +40,10 @@ defmodule Portal.PortalSessionTest do
         |> cast(
           %{
             auth_provider_id: Ecto.UUID.generate(),
-            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
+            timestamp: DateTime.utc_now()
           },
-          [:auth_provider_id, :expires_at]
+          [:auth_provider_id, :expires_at, :timestamp]
         )
         |> put_assoc(:account, account)
         |> put_assoc(:actor, actor)
@@ -60,9 +62,10 @@ defmodule Portal.PortalSessionTest do
         %PortalSession{}
         |> cast(
           %{
-            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+            expires_at: DateTime.add(DateTime.utc_now(), 3600, :second),
+            timestamp: DateTime.utc_now()
           },
-          [:expires_at]
+          [:expires_at, :timestamp]
         )
         |> put_assoc(:account, account)
         |> put_assoc(:actor, actor)

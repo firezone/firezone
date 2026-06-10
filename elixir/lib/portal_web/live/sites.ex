@@ -1046,7 +1046,7 @@ defmodule PortalWeb.Sites do
           from(s in Portal.GatewaySession,
             where: s.device_id in ^gateway_ids,
             distinct: s.device_id,
-            order_by: [asc: s.device_id, desc: s.inserted_at]
+            order_by: [asc: s.device_id, desc: s.timestamp]
           )
           |> Safe.scoped(subject, :replica)
           |> Safe.all()

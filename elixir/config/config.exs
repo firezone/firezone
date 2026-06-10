@@ -129,15 +129,12 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     google_directories
     devices
     sites
-    client_sessions
-    gateway_sessions
     gateway_tokens
     policies
     resources
     static_device_pool_members
     client_tokens
     one_time_passcodes
-    portal_sessions
     api_tokens
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
@@ -151,6 +148,41 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
   flush_interval: :timer.seconds(30),
 
   # We want to flush at most 500 change logs at a time
+  flush_buffer_size: 500
+
+config :portal, Portal.SessionLogs.ReplicationConnection,
+  replication_slot_name: "session_logs_slot",
+  publication_name: "session_logs_publication",
+  region: "",
+  enabled: true,
+  connection_opts: [
+    hostname: "localhost",
+    port: 5432,
+    ssl: false,
+    parameters: [application_name: "session_logs"],
+    username: "postgres",
+    database: "firezone_dev",
+    password: "postgres"
+  ],
+  # When changing these, make sure to also:
+  #   1. Make appropriate changes to `Portal.SessionLogs.ReplicationConnection`
+  #   2. Add tests and test WAL locally
+  table_subscriptions: ~w[
+    client_sessions
+    gateway_sessions
+    portal_sessions
+  ],
+  # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
+  # deploys without alerting.
+  warning_threshold: :timer.minutes(5),
+
+  # We almost never want to bypass session log inserts
+  error_threshold: :timer.hours(30 * 24),
+
+  # Flush session logs data at least every 30 seconds
+  flush_interval: :timer.seconds(30),
+
+  # We want to flush at most 500 session logs at a time
   flush_buffer_size: 500
 
 config :portal, Portal.Changes.ReplicationConnection,
@@ -294,6 +326,8 @@ config :portal, Portal.ComponentVersions,
     gui: "1.5.11",
     headless: "1.5.7"
   ]
+
+config :portal, Portal.ClockDriftAlarm, enabled: true
 
 config :portal, Portal.Cluster,
   adapter: nil,

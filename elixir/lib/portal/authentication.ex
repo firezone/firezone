@@ -162,7 +162,7 @@ defmodule Portal.Authentication do
   # Portal Sessions
 
   def create_portal_session(
-        %Portal.Actor{type: :account_admin_user, account_id: account_id, id: actor_id},
+        %Portal.Actor{type: :account_admin_user, account_id: account_id, id: actor_id} = actor,
         auth_provider_id,
         %Context{} = context,
         expires_at
@@ -170,6 +170,7 @@ defmodule Portal.Authentication do
     %PortalSession{
       account_id: account_id,
       actor_id: actor_id,
+      actor_email: actor.email,
       auth_provider_id: auth_provider_id,
       user_agent: context.user_agent,
       remote_ip: %Postgrex.INET{address: context.remote_ip},
@@ -177,7 +178,8 @@ defmodule Portal.Authentication do
       remote_ip_location_city: context.remote_ip_location_city,
       remote_ip_location_lat: context.remote_ip_location_lat,
       remote_ip_location_lon: context.remote_ip_location_lon,
-      expires_at: expires_at
+      expires_at: expires_at,
+      timestamp: DateTime.utc_now()
     }
     |> Database.insert_portal_session()
   end

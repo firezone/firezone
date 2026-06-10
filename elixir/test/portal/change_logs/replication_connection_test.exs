@@ -32,9 +32,12 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "configured tables" do
-    test "includes client and gateway sessions in the audit publication", %{tables: tables} do
-      assert "client_sessions" in tables
-      assert "gateway_sessions" in tables
+    test "excludes session tables, which belong to the session_logs publication", %{
+      tables: tables
+    } do
+      refute "client_sessions" in tables
+      refute "gateway_sessions" in tables
+      refute "portal_sessions" in tables
     end
   end
 
