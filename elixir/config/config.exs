@@ -174,6 +174,7 @@ config :portal, Portal.Changes.ReplicationConnection,
   table_subscriptions: ~w[
     accounts
     actors
+    groups
     memberships
     devices
     external_identities

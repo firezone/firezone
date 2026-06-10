@@ -141,26 +141,6 @@ defmodule PortalWeb.Actors do
     {:noreply, socket}
   end
 
-  def handle_info(%Change{op: :insert, struct: %Actor{type: type}}, socket)
-      when type in [:account_user, :account_admin_user] do
-    {:noreply,
-     update(socket, :actors_count, fn
-       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
-       ar -> ar
-     end)}
-  end
-
-  def handle_info(%Change{op: :delete, old_struct: %Actor{type: type}}, socket)
-      when type in [:account_user, :account_admin_user] do
-    {:noreply,
-     update(socket, :actors_count, fn
-       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
-       ar -> ar
-     end)}
-  end
-
-  def handle_info(%Change{}, socket), do: {:noreply, socket}
-
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
       do: handle_live_table_event(event, params, socket)
@@ -769,6 +749,26 @@ defmodule PortalWeb.Actors do
       {:noreply, put_flash(socket, :error, "Cannot send welcome email to this actor")}
     end
   end
+
+  def handle_info(%Change{op: :insert, struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
