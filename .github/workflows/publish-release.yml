@@ -79,6 +79,41 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
             $SOURCE_TAG
 
+  # Builds the Nix packages at the tagged commit, signs the closures and
+  # pushes them to the binary cache so users pinning the new release tag
+  # substitute instead of compiling from source.
+  resolve-nix-cache-sha:
+    if: >-
+      ${{
+        startsWith(inputs.release_name || github.event.release.name, 'gateway') ||
+        startsWith(inputs.release_name || github.event.release.name, 'headless-client') ||
+        startsWith(inputs.release_name || github.event.release.name, 'gui-client')
+      }}
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - id: resolve
+        env:
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -xe
+
+          sha=$(gh release view "$release_name" --json targetCommitish -q '.targetCommitish')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  publish-nix-cache:
+    needs: resolve-nix-cache-sha
+    uses: ./.github/workflows/_nix.yml
+    secrets: inherit
+    permissions:
+      contents: read
+    with:
+      sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
+      push_to_cache: true
+
   # WINGET_TOKEN requirements (read this before debugging auth failures):
   #
   # Must be a **classic** PAT owned by `firezone-bot` with the `public_repo`

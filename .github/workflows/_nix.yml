@@ -1,0 +1,84 @@
+name: Nix
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: "Commit to build. Defaults to the workflow sha."
+        required: false
+        type: string
+      push_to_cache:
+        description: "Sign and push the built closures to the binary cache"
+        required: false
+        type: boolean
+        default: false
+      systems:
+        description: "JSON list of Nix systems to build"
+        required: false
+        type: string
+        default: '["x86_64-linux", "aarch64-linux"]'
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to build. Defaults to the workflow sha."
+        required: false
+        type: string
+      push_to_cache:
+        description: "Sign and push the built closures to the binary cache"
+        required: false
+        type: boolean
+        default: false
+      systems:
+        description: "JSON list of Nix systems to build"
+        required: false
+        type: string
+        default: '["x86_64-linux", "aarch64-linux"]'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build-${{ matrix.system }}
+    # The nix-cache-publish environment holds NIX_CACHE_SIGNING_KEY and is
+    # restricted to main and release tags; PR builds never push or sign.
+    environment: ${{ inputs.push_to_cache && 'nix-cache-publish' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        system: ${{ fromJSON(inputs.systems) }}
+        include:
+          - system: x86_64-linux
+            runs-on: ubuntu-24.04
+          - system: aarch64-linux
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: ./.github/actions/free-disk-space
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          # TODO: once the cache signing key is provisioned, add:
+          #   extra-substituters = https://artifacts.firezone.dev/nix
+          #   extra-trusted-public-keys = artifacts.firezone.dev/nix-1:<public key>
+          # so CI substitutes from the warm cache instead of rebuilding.
+      - name: Check flake
+        run: nix flake check --no-build
+      - name: Build packages
+        run: |
+          nix build \
+            .#firezone-gateway \
+            .#firezone-headless-client \
+            .#firezone-gui-client \
+            --print-build-logs
+      - name: Sign and push to binary cache
+        if: ${{ inputs.push_to_cache }}
+        env:
+          NIX_CACHE_SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+          AZURERM_ARTIFACTS_CONNECTION_STRING: ${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}
+        run: ./scripts/upload/nix-cache.sh
