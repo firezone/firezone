@@ -206,6 +206,47 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
 
+  # The website half of the version bump (changelog entry + displayed version
+  # markers) lives in firezone/website. Notify it of the publish; its
+  # open-version-bump-pr workflow runs that repo's scripts/bump-versions.sh
+  # and opens the PR there.
+  notify-website:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
+          - tag_prefix: gateway
+            component: gateway
+          - tag_prefix: gui-client
+            component: gui-client
+          - tag_prefix: headless-client
+            component: headless-client
+          - tag_prefix: macos-client
+            component: apple-client
+          - tag_prefix: android-client
+            component: android-client
+    steps:
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+        env:
+          # repository_dispatch on firezone/website requires this token to
+          # have Contents: write there.
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+        run: |
+          set -xeuo pipefail
+
+          version=${release_name#${{ matrix.tag_prefix }}-}
+
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/firezone/website/dispatches \
+            --raw-field "event_type=publish" \
+            --field "client_payload[component]=${{ matrix.component }}" \
+            --field "client_payload[version]=$version"
+
   create-sentry-release:
     name: create_${{ matrix.component }}_sentry_release
     runs-on: ubuntu-24.04
