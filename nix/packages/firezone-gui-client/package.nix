@@ -26,7 +26,8 @@ fzLib.rustPlatform.buildRustPackage {
 
   inherit (fzLib) src cargoLock;
 
-  cargoRoot = "gui-client/src-tauri";
+  # The workspace Cargo.lock lives at the source root, so cargoRoot stays
+  # unset; the Tauri hook cd's into the project via buildAndTestSubdir.
   buildAndTestSubdir = "gui-client/src-tauri";
 
   nativeBuildInputs = [
