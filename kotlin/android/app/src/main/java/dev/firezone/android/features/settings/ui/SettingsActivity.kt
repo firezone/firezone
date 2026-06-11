@@ -44,7 +44,7 @@ internal class SettingsActivity : AppCompatActivity() {
             // FOCUS_BEFORE_DESCENDANTS, so the relayout caused by the soft keyboard
             // appearing steals focus from a just-tapped EditText. Keep it out of
             // touch-mode focus so inputs retain focus on the first tap.
-            viewPager.getChildAt(0).isFocusableInTouchMode = false
+            viewPager.getChildAt(0)?.isFocusableInTouchMode = false
 
             TabLayoutMediator(tabLayout, viewPager) { tab, position ->
                 when (position) {
