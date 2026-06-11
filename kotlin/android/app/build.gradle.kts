@@ -334,10 +334,10 @@ fun androidAbiToClangPrefix(abi: String): String =
     }
 
 // Resolve the installed NDK directory. AGP 9's new DSL no longer exposes `android.ndkDirectory`,
-// so we locate it ourselves from the environment or local.properties.
+// so we locate it ourselves from the SDK or local.properties. Deliberately ignores
+// ANDROID_NDK_HOME / ANDROID_NDK_ROOT: CI runners preset those to the image's default
+// NDK, which silently overrode the pinned `ndkVersion`.
 fun resolveNdkDir(ndkVersion: String): File {
-    System.getenv("ANDROID_NDK_HOME")?.let { return file(it) }
-    System.getenv("ANDROID_NDK_ROOT")?.let { return file(it) }
     val sdkDir =
         System.getenv("ANDROID_HOME")
             ?: System.getenv("ANDROID_SDK_ROOT")
@@ -427,6 +427,13 @@ abstract class CargoBuildTask
                     // Linker for the Rust target plus the C/C++ toolchain for `cc`-built
                     // dependencies such as ring.
                     environment("CARGO_TARGET_${envTriple}_LINKER", clang.absolutePath)
+                    // Google Play requires 16 KB page-size support. NDK r28+ aligns ELF
+                    // LOAD segments to 16 KB by default but older NDKs use 4 KB, so pass
+                    // the flag explicitly rather than relying on the toolchain default.
+                    environment(
+                        "CARGO_TARGET_${envTriple}_RUSTFLAGS",
+                        "-C link-arg=-Wl,-z,max-page-size=16384",
+                    )
                     environment("CC_$triple", clang.absolutePath)
                     environment("CXX_$triple", clangxx.absolutePath)
                     environment("AR_$triple", archiver.absolutePath)
