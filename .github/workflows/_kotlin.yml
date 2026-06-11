@@ -25,6 +25,10 @@ jobs:
       # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
       - name: Run Android Lint
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
+      # AGP 9 only creates unit test components for the tested build type
+      # (debug). Narrowing to one ABI reuses the cargo build from lint above.
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
 
   update-release-draft:
     name: update-release-draft
@@ -95,9 +99,6 @@ jobs:
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         run: |
           sentry-cli debug-files upload --log-level info --project android-client --include-sources ../../rust/target
-      - name: Run Unit Test
-        run: |
-          ./gradlew testReleaseUnitTest
       - name: Upload package artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
