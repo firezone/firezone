@@ -417,6 +417,13 @@ abstract class CargoBuildTask
                 execOperations.exec {
                     workingDir = clientFfiDir.get().asFile
                     environment("CARGO_TARGET_DIR", cargoTarget)
+                    if (release.get()) {
+                        // Compile the whole dependency graph with line tables so
+                        // Crashlytics gets file/line info in native stack traces.
+                        // AGP strips them from the packaged lib; Crashlytics uploads
+                        // the unstripped one (see unstrippedNativeLibsDir).
+                        environment("CARGO_PROFILE_RELEASE_DEBUG", "line-tables-only")
+                    }
                     // Linker for the Rust target plus the C/C++ toolchain for `cc`-built
                     // dependencies such as ring.
                     environment("CARGO_TARGET_${envTriple}_LINKER", clang.absolutePath)
