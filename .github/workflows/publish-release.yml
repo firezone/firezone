@@ -238,10 +238,14 @@ jobs:
 
           version=${release_name#${{ matrix.tag_prefix }}-}
 
-          gh api repos/firezone/website/dispatches \
-            -f event_type=publish \
-            -F "client_payload[component]=${{ matrix.component }}" \
-            -F "client_payload[version]=$version"
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/firezone/website/dispatches \
+            --raw-field "event_type=publish" \
+            --field "client_payload[component]=${{ matrix.component }}" \
+            --field "client_payload[version]=$version"
 
   create-sentry-release:
     name: create_${{ matrix.component }}_sentry_release
