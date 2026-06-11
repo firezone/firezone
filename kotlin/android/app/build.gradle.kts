@@ -1,9 +1,6 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
-import groovy.json.JsonSlurper
-import org.gradle.kotlin.dsl.support.serviceOf
 import org.gradle.process.ExecOperations
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Properties
 import javax.inject.Inject
@@ -288,33 +285,10 @@ dependencies {
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
 
-// Gradle 9 removed `Project.exec`; run external processes through the injected `ExecOperations`.
-val execOperations = serviceOf<ExecOperations>()
-
-// Resolve the cargo target directory from cargo metadata so we don't hardcode a path that may
-// be overridden by the user's ~/.cargo/config.toml (e.g. `target-dir`).
-val cargoTargetDir: String by lazy {
-    val metadataOutput = ByteArrayOutputStream()
-    execOperations.exec {
-        workingDir = rustDir.asFile
-        commandLine("cargo", "metadata", "--format-version", "1")
-        standardOutput = metadataOutput
-    }
-    val metadataJson = metadataOutput.toString(Charsets.UTF_8.name())
-    val metadata =
-        try {
-            JsonSlurper().parseText(metadataJson) as Map<*, *>
-        } catch (e: Exception) {
-            throw GradleException(
-                "Failed to parse cargo metadata JSON. Ensure 'cargo' is installed and accessible. Error: ${e.message}",
-                e,
-            )
-        }
-    metadata["target_directory"] as? String
-        ?: throw GradleException(
-            "cargo metadata did not contain 'target_directory' field. Output was: ${metadataJson.take(500)}",
-        )
-}
+// Cargo's target directory, not hardcoded because the user's ~/.cargo/config.toml may override
+// it (e.g. `target-dir`). Resolved from the single `cargo metadata` call in settings.gradle.kts
+// and shared via gradle extras.
+val cargoTargetDir = (gradle as ExtensionAware).extra["cargoTargetDir"] as String
 
 // Resolve the target Android ABI from the `android.injected.build.abi` Gradle property,
 // injected by Android Studio when launching on a connected device (comma-separated, preferred

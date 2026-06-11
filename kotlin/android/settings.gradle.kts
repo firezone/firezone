@@ -12,8 +12,8 @@ pluginManagement {
 // Kotlin component (org.rustls.platformverifier.CertificateVerifier) that must be bundled
 // into the APK. The crate ships it as a local Maven repo inside its source; resolve its
 // path and version via cargo metadata so they always match the Rust dependency.
-fun rustlsPlatformVerifierAndroidPackage(): Map<*, *> {
-    val metadataText =
+val cargoMetadata: Map<*, *> =
+    JsonSlurper().parseText(
         providers
             .exec {
                 workingDir = File(rootDir, "../../rust")
@@ -27,15 +27,18 @@ fun rustlsPlatformVerifierAndroidPackage(): Map<*, *> {
                 )
             }.standardOutput
             .asText
-            .get()
+            .get(),
+    ) as Map<*, *>
 
-    val metadata = JsonSlurper().parseText(metadataText) as Map<*, *>
-    val packages = (metadata["packages"] as List<*>).filterIsInstance<Map<*, *>>()
-    return packages.firstOrNull { it["name"] == "rustls-platform-verifier-android" }
+// Share the cargo target directory with app/build.gradle.kts via gradle extras so project
+// scripts don't have to shell out to `cargo metadata` again at configuration time.
+(gradle as ExtensionAware).extra["cargoTargetDir"] = cargoMetadata["target_directory"] as String
+
+val rustlsAndroidPackage =
+    (cargoMetadata["packages"] as List<*>)
+        .filterIsInstance<Map<*, *>>()
+        .firstOrNull { it["name"] == "rustls-platform-verifier-android" }
         ?: throw GradleException("rustls-platform-verifier-android not found in cargo metadata")
-}
-
-val rustlsAndroidPackage = rustlsPlatformVerifierAndroidPackage()
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)

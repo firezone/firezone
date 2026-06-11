@@ -22,4 +22,4 @@
 
 # rustls-platform-verifier's Kotlin component is only reached via JNI from
 # libconnlib.so, so R8 sees no references to it and would strip it.
--keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
+-keep,includedescriptorclasses class org.rustls.platformverifier.** { *; }
