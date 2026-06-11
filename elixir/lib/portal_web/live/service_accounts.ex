@@ -976,7 +976,7 @@ defmodule PortalWeb.ServiceAccounts do
         from(s in ClientSession,
           where: s.client_token_id in ^token_ids,
           distinct: s.client_token_id,
-          order_by: [asc: s.client_token_id, desc: s.timestamp]
+          order_by: [asc: s.client_token_id, desc_nulls_last: s.timestamp]
         )
         |> Safe.scoped(subject, :replica)
         |> Safe.all()

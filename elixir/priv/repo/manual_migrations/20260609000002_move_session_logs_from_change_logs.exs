@@ -70,28 +70,35 @@ defmodule Portal.Repo.Migrations.MoveSessionLogsFromChangeLogs do
              device_id, token_id, auth_provider_id, user_agent, remote_ip,
              remote_ip_location_region, remote_ip_location_city,
              remote_ip_location_lat, remote_ip_location_lon)
-          SELECT account_id,
-                 set_byte(event_id, 0, (get_byte(event_id, 0) & 15) | 80),
-                 COALESCE(("after" ->> 'timestamp')::timestamptz, "timestamp"),
-                 lsn,
-                 CASE object
+          SELECT m.account_id,
+                 set_byte(m.event_id, 0, (get_byte(m.event_id, 0) & 15) | 80),
+                 COALESCE((m."after" ->> 'timestamp')::timestamptz, m."timestamp"),
+                 m.lsn,
+                 CASE m.object
                    WHEN 'client_sessions' THEN 'client'
                    WHEN 'gateway_sessions' THEN 'gateway'
                    ELSE 'portal'
                  END,
-                 ("after" ->> 'actor_id')::uuid,
-                 "after" ->> 'actor_email',
-                 ("after" ->> 'device_id')::uuid,
-                 COALESCE("after" ->> 'client_token_id', "after" ->> 'gateway_token_id')::uuid,
-                 ("after" ->> 'auth_provider_id')::uuid,
-                 "after" ->> 'user_agent',
-                 ("after" ->> 'remote_ip')::inet,
-                 "after" ->> 'remote_ip_location_region',
-                 "after" ->> 'remote_ip_location_city',
-                 ("after" ->> 'remote_ip_location_lat')::float8,
-                 ("after" ->> 'remote_ip_location_lon')::float8
-          FROM moved
-          WHERE operation = 'insert'
+                 -- Client session rows written before the actor_id column was
+                 -- added have none in the payload; recover it from the owning
+                 -- device when that device still exists.
+                 COALESCE((m."after" ->> 'actor_id')::uuid, d.actor_id),
+                 m."after" ->> 'actor_email',
+                 (m."after" ->> 'device_id')::uuid,
+                 COALESCE(m."after" ->> 'client_token_id', m."after" ->> 'gateway_token_id')::uuid,
+                 (m."after" ->> 'auth_provider_id')::uuid,
+                 m."after" ->> 'user_agent',
+                 (m."after" ->> 'remote_ip')::inet,
+                 m."after" ->> 'remote_ip_location_region',
+                 m."after" ->> 'remote_ip_location_city',
+                 (m."after" ->> 'remote_ip_location_lat')::float8,
+                 (m."after" ->> 'remote_ip_location_lon')::float8
+          FROM moved m
+          LEFT JOIN devices d
+            ON m.object = 'client_sessions'
+            AND d.account_id = m.account_id
+            AND d.id = (m."after" ->> 'device_id')::uuid
+          WHERE m.operation = 'insert'
           ON CONFLICT (lsn) DO NOTHING
           RETURNING lsn
         )

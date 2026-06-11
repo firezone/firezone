@@ -27,6 +27,7 @@ defmodule Portal.Queue.CallbacksTest do
         id: session_id,
         account_id: account.id,
         device_id: client.id,
+        actor_id: client.actor_id,
         client_token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",

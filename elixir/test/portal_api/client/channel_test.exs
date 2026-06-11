@@ -39,6 +39,8 @@ defmodule PortalAPI.Client.ChannelTest do
       id: session_id,
       device_id: client.id,
       account_id: client.account_id,
+      actor_id: subject.actor.id,
+      actor_email: subject.actor.email,
       client_token_id: subject.credential.id,
       public_key: Portal.DeviceFixtures.generate_public_key(),
       user_agent: subject.context.user_agent,
