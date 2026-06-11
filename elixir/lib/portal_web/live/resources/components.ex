@@ -620,13 +620,13 @@ defmodule PortalWeb.Resources.Components do
       <p class="mt-1.5 text-xs text-[var(--text-secondary)] leading-snug">
         {case "#{@form[:ip_stack].value}" do
           "ipv4_only" ->
-            "Resolves only A records — clients connect over IPv4."
+            "Resolves only A records. Clients connect over IPv4."
 
           "ipv6_only" ->
-            "Resolves only AAAA records — clients connect over IPv6."
+            "Resolves only AAAA records. Clients connect over IPv6."
 
           _ ->
-            "Resolves A and AAAA records — clients connect over IPv4 or IPv6, whichever is available."
+            "Resolves A and AAAA records. Clients connect over IPv4 or IPv6, whichever is available. We recommend setting this to IPv4-only if you experience connectivity issues."
         end}
       </p>
     </div>
@@ -1304,6 +1304,7 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_grant_form(assigns) do
     assigns = assign(assigns, assigns.grant_state)
+
     assigns =
       assign(
         assigns,
@@ -1369,9 +1370,9 @@ defmodule PortalWeb.Resources.Components do
                   end)
                 end
               end)
-              selected_groups =
-                Enum.filter(@available_groups, &(&1.group.id in @grant_selected_group_ids))
-              %>
+
+            selected_groups =
+              Enum.filter(@available_groups, &(&1.group.id in @grant_selected_group_ids)) %>
             <div class="flex gap-2 h-52">
               <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
                 <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
@@ -1409,7 +1410,9 @@ defmodule PortalWeb.Resources.Components do
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
                         <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
                       </div>
-                      <span class="text-xs text-[var(--text-primary)] truncate">{row.group.name}</span>
+                      <span class="text-xs text-[var(--text-primary)] truncate">
+                        {row.group.name}
+                      </span>
                     </button>
                   </li>
                   <li
@@ -1446,7 +1449,9 @@ defmodule PortalWeb.Resources.Components do
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
                         <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
                       </div>
-                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{row.group.name}</span>
+                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">
+                        {row.group.name}
+                      </span>
                       <.icon
                         name="ri-close-line"
                         class="w-3.5 h-3.5 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
