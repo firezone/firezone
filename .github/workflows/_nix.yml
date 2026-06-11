@@ -46,13 +46,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # An `include` with runner mappings would re-add excluded systems
+        # (non-matching include entries become new combinations), so the
+        # runner is derived from the system instead.
         system: ${{ fromJSON(inputs.systems) }}
-        include:
-          - system: x86_64-linux
-            runs-on: ubuntu-24.04
-          - system: aarch64-linux
-            runs-on: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.system == 'aarch64-linux' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
