@@ -85,7 +85,7 @@ defmodule PortalWeb.SignIn do
             type="google"
           >
             <:icon>
-              <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-5 h-5" />
+              <.provider_icon provider="google" size="md" />
             </:icon>
           </.auth_button>
 
@@ -97,7 +97,7 @@ defmodule PortalWeb.SignIn do
             type="okta"
           >
             <:icon>
-              <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5" />
+              <.provider_icon provider="okta" size="md" />
             </:icon>
           </.auth_button>
 
@@ -109,7 +109,7 @@ defmodule PortalWeb.SignIn do
             type="entra"
           >
             <:icon>
-              <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5" />
+              <.provider_icon provider="entra" size="md" />
             </:icon>
           </.auth_button>
 
@@ -121,7 +121,7 @@ defmodule PortalWeb.SignIn do
             type="oidc"
           >
             <:icon>
-              <.provider_icon type={provider_type_from_issuer(provider.issuer)} class="w-5 h-5" />
+              <.provider_icon provider={provider_type_from_issuer(provider.issuer)} size="md" />
             </:icon>
           </.auth_button>
         </div>

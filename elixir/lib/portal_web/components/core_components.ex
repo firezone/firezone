@@ -493,7 +493,7 @@ defmodule PortalWeb.CoreComponents do
       <.icon name="ri-settings-3-line" class="w-4 h-4 text-gray-500" />
   """
   attr :name, :string, required: true
-  attr :class, :string, default: nil
+  attr :class, :any, default: nil
   attr :rest, :global
 
   def icon(%{name: "ri-" <> _} = assigns) do
@@ -531,7 +531,7 @@ defmodule PortalWeb.CoreComponents do
 
   def icon(%{name: "terraform"} = assigns) do
     ~H"""
-    <span class={"inline-flex " <> @class} @rest>
+    <span class={["inline-flex", @class]} @rest>
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
         <g fill-rule="evenodd">
           <path d="M77.941 44.5v36.836L46.324 62.918V26.082zm0 0" fill="currentColor" />
@@ -548,7 +548,7 @@ defmodule PortalWeb.CoreComponents do
 
   def icon(%{name: "docker"} = assigns) do
     ~H"""
-    <span class={"inline-flex " <> @class} @rest>
+    <span class={["inline-flex", @class]} @rest>
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756.26 596.9">
         <path
           fill="currentColor"
@@ -1244,7 +1244,7 @@ defmodule PortalWeb.CoreComponents do
           border-r
           border-neutral-200
         ]}>
-        <.provider_icon type={provider_type_from_group(@group)} class="h-3.5 w-3.5" />
+        <.provider_icon provider={provider_type_from_group(@group)} size="xs" />
       </span>
       <.link
         title={"View Group \"#{@group.name}\""}
@@ -1286,7 +1286,7 @@ defmodule PortalWeb.CoreComponents do
           border-neutral-100
           border
         ]}>
-        <.provider_icon type={provider_type_from_group(@group)} class="h-2.5 w-2.5" />
+        <.provider_icon provider={provider_type_from_group(@group)} size="xs" />
       </span>
       <.link
         title={"View Group \"#{@group.name}\""}
@@ -1555,60 +1555,139 @@ defmodule PortalWeb.CoreComponents do
   @doc """
   Renders a logo appropriate for the given provider.
 
-  <.provider_icon type={:google} class="w-5 h-5 mr-2" />
+  <.provider_icon provider="google" size="md" />
+  <.provider_icon provider="okta" size="xl" variant="circle" />
+  <.provider_icon provider={@type} size="sm" />
   """
-  attr :type, :string, required: true
+  attr :provider, :string,
+    required: true,
+    values: ~w[firezone google entra okta oidc email_otp userpass]
+
+  attr :size, :string, default: "md", values: ~w[xs sm md lg xl]
+  attr :variant, :string, default: "plain", values: ~w[plain circle square]
   attr :rest, :global
 
-  def provider_icon(%{type: "firezone"} = assigns) do
+  def provider_icon(assigns) do
+    assigns =
+      assigns
+      |> assign(:icon_spec, provider_icon_spec(assigns.provider))
+      |> assign(:icon_class, provider_icon_size(assigns.size))
+      |> assign(:wrapper_class, provider_icon_variant(assigns.variant, assigns.size))
+
     ~H"""
-    <img src={~p"/images/logo.svg"} alt="Firezone Logo" {@rest} />
+    <span class={@wrapper_class} {@rest}>
+      <%= if @icon_spec.type == :image && Map.has_key?(@icon_spec, :dark_src) do %>
+        <img
+          src={@icon_spec.src}
+          alt={@icon_spec.alt}
+          class={[@icon_class, "dark:hidden"]}
+        />
+
+        <img
+          src={@icon_spec.dark_src}
+          alt={@icon_spec.alt}
+          class={[@icon_class, "hidden dark:block"]}
+        />
+      <% else %>
+        <img
+          :if={@icon_spec.type == :image}
+          src={@icon_spec.src}
+          alt={@icon_spec.alt}
+          class={@icon_class}
+        />
+      <% end %>
+      <.icon
+        :if={@icon_spec.type == :icon}
+        name={@icon_spec.name}
+        class={[@icon_class, "text-[var(--text-primary)]"]}
+        aria-hidden="true"
+      />
+    </span>
     """
   end
 
-  def provider_icon(%{type: "okta"} = assigns) do
-    ~H"""
-    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
-    """
+  defp provider_icon_spec("firezone") do
+    %{
+      type: :image,
+      src: ~p"/images/logo.svg",
+      alt: "Firezone"
+    }
   end
 
-  def provider_icon(%{type: "email_otp"} = assigns) do
-    ~H"""
-    <.icon name="ri-mail-line" {@rest} />
-    """
+  defp provider_icon_spec("google") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-google.svg",
+      alt: "Google"
+    }
   end
 
-  def provider_icon(%{type: "oidc"} = assigns) do
-    ~H"""
-    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
-    """
+  defp provider_icon_spec("entra") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-entra.svg",
+      alt: "Microsoft Entra"
+    }
   end
 
-  def provider_icon(%{type: "google"} = assigns) do
-    ~H"""
-    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
-    """
+  defp provider_icon_spec("okta") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-okta.svg",
+      dark_src: ~p"/images/logo-okta-dark.svg",
+      alt: "Okta"
+    }
   end
 
-  def provider_icon(%{type: "entra"} = assigns) do
-    ~H"""
-    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
-    """
+  defp provider_icon_spec("oidc") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-openid.svg",
+      alt: "OpenID Connect"
+    }
   end
 
-  def provider_icon(%{type: "userpass"} = assigns) do
-    ~H"""
-    <.icon name="ri-key-line" {@rest} />
-    """
+  defp provider_icon_spec("email_otp") do
+    %{
+      type: :icon,
+      name: "ri-mail-line"
+    }
   end
 
-  def provider_icon(%{type: "unknown"} = assigns) do
-    ~H"""
-    <.icon name="ri-question-line" {@rest} />
-    """
+  defp provider_icon_spec("userpass") do
+    %{
+      type: :icon,
+      name: "ri-key-line"
+    }
   end
 
-  def provider_icon(assigns), do: ~H""
+  defp provider_icon_size("xs"), do: "size-3"
+  defp provider_icon_size("sm"), do: "size-4"
+  defp provider_icon_size("md"), do: "size-5"
+  defp provider_icon_size("lg"), do: "size-6"
+  defp provider_icon_size("xl"), do: "size-8"
+
+  defp provider_icon_variant("plain", _size), do: nil
+
+  defp provider_icon_variant("circle", size) do
+    [
+      "inline-flex items-center justify-center rounded-full bg-[var(--icon-bg)] border border-[var(--border)]",
+      provider_icon_wrapper_size(size)
+    ]
+  end
+
+  defp provider_icon_variant("square", size) do
+    [
+      "inline-flex items-center justify-center rounded-md bg-[var(--icon-bg)] border border-[var(--border)]",
+      provider_icon_wrapper_size(size)
+    ]
+  end
+
+  defp provider_icon_wrapper_size("xs"), do: "size-5"
+  defp provider_icon_wrapper_size("sm"), do: "size-7"
+  defp provider_icon_wrapper_size("md"), do: "size-8"
+  defp provider_icon_wrapper_size("lg"), do: "size-10"
+  defp provider_icon_wrapper_size("xl"), do: "size-12"
 
   def feature_name(%{feature: :idp_sync} = assigns) do
     ~H"""

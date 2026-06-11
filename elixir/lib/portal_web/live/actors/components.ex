@@ -306,10 +306,8 @@ defmodule PortalWeb.Actors.Components do
               </div>
             </div>
             <details :if={@confirm_delete_identity_id != identity.id} class="group/details">
-              <summary class="flex items-center gap-3 px-5 py-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
-                <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                  <.provider_icon type={provider_type_from_issuer(identity.issuer)} class="w-4 h-4" />
-                </div>
+              <summary class="flex items-center gap-4 px-5 py-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+                <.provider_icon provider={provider_type_from_issuer(identity.issuer)} size="sm" variant="circle" />
                 <div class="flex-1 min-w-0">
                   <p
                     class="text-sm font-medium text-[var(--text-primary)] truncate"
@@ -770,9 +768,7 @@ defmodule PortalWeb.Actors.Components do
               navigate={~p"/#{@account}/groups/#{row.group.id}"}
               class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0 hover:bg-[var(--surface-raised)] group/item"
             >
-              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
-              </div>
+              <.provider_icon provider={provider_type_from_group(row)} size="sm" variant="circle" />
               <span class="flex-1 text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
                 {row.group.name}
               </span>
