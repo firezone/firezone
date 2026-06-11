@@ -162,7 +162,7 @@ defmodule Portal.Cache.Reauth do
       result =
         from(s in Portal.ClientSession,
           where: s.account_id == ^account_id and s.device_id == ^client_id,
-          order_by: [desc: s.timestamp],
+          order_by: [desc_nulls_last: s.timestamp],
           limit: 1
         )
         |> Safe.unscoped(:replica)

@@ -38,7 +38,7 @@ defmodule Portal.Workers.DeleteOldClientSessions do
               # timestamp (e.g. from a batch flush), ensuring exactly one is kept.
               |> over(
                 partition_by: s.device_id,
-                order_by: [desc: s.timestamp, desc: s.id]
+                order_by: [desc_nulls_last: s.timestamp, desc: s.id]
               )
           }
         )

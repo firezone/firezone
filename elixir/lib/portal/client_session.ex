@@ -6,7 +6,7 @@ defmodule Portal.ClientSession do
           id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           device_id: Ecto.UUID.t(),
-          actor_id: Ecto.UUID.t() | nil,
+          actor_id: Ecto.UUID.t(),
           actor_email: String.t() | nil,
           client_token_id: Ecto.UUID.t(),
           user_agent: String.t() | nil,
@@ -55,7 +55,7 @@ defmodule Portal.ClientSession do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :device_id, :client_token_id])
+    |> validate_required([:account_id, :device_id, :client_token_id, :actor_id])
     |> validate_length(:user_agent, max: 255)
     |> validate_length(:version, max: 255)
     |> validate_length(:remote_ip_location_region, max: 255)

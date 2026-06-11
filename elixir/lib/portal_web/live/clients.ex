@@ -585,7 +585,7 @@ defmodule PortalWeb.Clients do
           from(s in ClientSession,
             where: s.device_id == parent_as(:devices).id,
             where: s.account_id == parent_as(:devices).account_id,
-            order_by: [desc: s.timestamp],
+            order_by: [desc_nulls_last: s.timestamp],
             limit: 1
           )
         ),
@@ -729,7 +729,7 @@ defmodule PortalWeb.Clients do
           session =
             from(s in ClientSession,
               where: s.device_id == ^client.id,
-              order_by: [desc: s.timestamp],
+              order_by: [desc_nulls_last: s.timestamp],
               limit: 1
             )
             |> Safe.scoped(subject, :replica)
