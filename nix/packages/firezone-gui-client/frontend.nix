@@ -1,5 +1,4 @@
 {
-  lib,
   stdenvNoCC,
   nodejs,
   pnpm_10,
@@ -27,7 +26,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # The only maintained hash in the Nix packaging. It changes only when
     # gui-client/pnpm-lock.yaml changes; the build failure message contains
     # the new value.
-    hash = lib.fakeHash;
+    hash = "sha256-IflKPJMznh7xIpUfAHdw+pfNQ7n5Rx1fmPyLqjdaneM=";
   };
 
   nativeBuildInputs = [
