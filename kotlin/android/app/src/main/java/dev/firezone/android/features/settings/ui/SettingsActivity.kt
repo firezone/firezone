@@ -3,6 +3,7 @@ package dev.firezone.android.features.settings.ui
 
 import android.os.Bundle
 import android.view.View
+import android.view.ViewTreeObserver
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +26,25 @@ internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
+
+    private val focusTracker =
+        ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
+            if (newFocus != null) {
+                lastFocusedView = newFocus
+            }
+        }
+
+    private val pageReselectionFocusRestorer =
+        object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                if (position == lastSelectedPage) {
+                    lastFocusedView
+                        ?.takeIf { it.isAttachedToWindow && !it.hasFocus() }
+                        ?.requestFocus()
+                }
+                lastSelectedPage = position
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,23 +71,8 @@ internal class SettingsActivity : AppCompatActivity() {
             // callbacks run after the internal focus clearer, so when the current page
             // is "re-selected" we hand focus back to the view that just lost it.
             // See https://issuetracker.google.com/issues/140656866
-            window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->
-                if (newFocus != null) {
-                    lastFocusedView = newFocus
-                }
-            }
-            viewPager.registerOnPageChangeCallback(
-                object : ViewPager2.OnPageChangeCallback() {
-                    override fun onPageSelected(position: Int) {
-                        if (position == lastSelectedPage) {
-                            lastFocusedView
-                                ?.takeIf { it.isAttachedToWindow && !it.hasFocus() }
-                                ?.requestFocus()
-                        }
-                        lastSelectedPage = position
-                    }
-                },
-            )
+            window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener(focusTracker)
+            viewPager.registerOnPageChangeCallback(pageReselectionFocusRestorer)
 
             TabLayoutMediator(tabLayout, viewPager) { tab, position ->
                 when (position) {
@@ -142,6 +147,13 @@ internal class SettingsActivity : AppCompatActivity() {
         if (isFinishing) {
             viewModel.deleteLogZip(this@SettingsActivity)
         }
+    }
+
+    override fun onDestroy() {
+        window.decorView.viewTreeObserver.removeOnGlobalFocusChangeListener(focusTracker)
+        binding.viewPager.unregisterOnPageChangeCallback(pageReselectionFocusRestorer)
+        lastFocusedView = null
+        super.onDestroy()
     }
 
     private inner class SettingsPagerAdapter(
