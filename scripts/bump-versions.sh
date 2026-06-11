@@ -16,8 +16,8 @@ fi
 # Version source of truth. These are managed by `update_version_variables`
 # (invoked from scripts/open-version-bump-pr.sh during a release) and consumed by
 # the bump (`version`).
-current_apple_client_version="1.5.16"
-next_apple_client_version="1.5.17"
+current_apple_client_version="1.5.17"
+next_apple_client_version="1.5.18"
 current_android_client_version="1.5.10"
 next_android_client_version="1.5.11"
 current_gui_client_version="1.5.13"
