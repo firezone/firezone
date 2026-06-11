@@ -40,6 +40,12 @@ internal class SettingsActivity : AppCompatActivity() {
         with(binding) {
             viewPager.adapter = adapter
 
+            // ViewPager2's inner RecyclerView is focusable-in-touch-mode with
+            // FOCUS_BEFORE_DESCENDANTS, so the relayout caused by the soft keyboard
+            // appearing steals focus from a just-tapped EditText. Keep it out of
+            // touch-mode focus so inputs retain focus on the first tap.
+            viewPager.getChildAt(0)?.isFocusableInTouchMode = false
+
             TabLayoutMediator(tabLayout, viewPager) { tab, position ->
                 when (position) {
                     0 -> {

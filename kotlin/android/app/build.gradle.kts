@@ -95,12 +95,13 @@ android {
             // Enables code shrinking, obfuscation, and optimization for only
             // your project's release build type. Make sure to use a build
             // variant with `isDebuggable=false`.
-            // Not compatible with Rust
-            isMinifyEnabled = false
+            // R8 only processes JVM bytecode; classes reached from libconnlib.so
+            // via JNI/JNA are preserved through proguard-rules.pro.
+            isMinifyEnabled = true
 
             // Enables resource shrinking, which is performed by the
             // Android Gradle plugin.
-            isShrinkResources = false
+            isShrinkResources = true
 
             // Includes the default ProGuard rules files that are packaged with
             // the Android Gradle plugin. To learn more, go to the section about
@@ -416,6 +417,13 @@ abstract class CargoBuildTask
                 execOperations.exec {
                     workingDir = clientFfiDir.get().asFile
                     environment("CARGO_TARGET_DIR", cargoTarget)
+                    if (release.get()) {
+                        // Compile the whole dependency graph with line tables so
+                        // Crashlytics gets file/line info in native stack traces.
+                        // AGP strips them from the packaged lib; Crashlytics uploads
+                        // the unstripped one (see unstrippedNativeLibsDir).
+                        environment("CARGO_PROFILE_RELEASE_DEBUG", "line-tables-only")
+                    }
                     // Linker for the Rust target plus the C/C++ toolchain for `cc`-built
                     // dependencies such as ring.
                     environment("CARGO_TARGET_${envTriple}_LINKER", clang.absolutePath)
