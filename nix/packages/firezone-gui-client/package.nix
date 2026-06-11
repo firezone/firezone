@@ -1,5 +1,6 @@
 {
   lib,
+  stdenv,
   fzLib,
   firezone-gui-client-frontend,
   cargo-tauri,
@@ -65,6 +66,13 @@ fzLib.rustPlatform.buildRustPackage {
     # directory only holds a .gitkeep.
     rm -rf gui-client/dist
     ln -s ${firezone-gui-client-frontend} gui-client/dist
+
+    # The Nix Tauri hook installs from the deb bundle, which copies the
+    # tunnel binary from a path that assumes no --target triple in the
+    # cargo target directory.
+    substituteInPlace gui-client/src-tauri/tauri.conf.json \
+      --replace-fail '../../target/release/firezone-client-tunnel' \
+        '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel'
   '';
 
   # The workspace pulls Apple-specific crates into the test graph.
