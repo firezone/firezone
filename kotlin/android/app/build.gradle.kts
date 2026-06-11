@@ -257,6 +257,11 @@ dependencies {
     // UniFFI
     implementation("net.java.dev.jna:jna:5.19.0@aar")
 
+    // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
+    // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
+    // bundled in the crate source (see settings.gradle.kts).
+    implementation(cargo.rustls.platform.verifier)
+
     // Sentry
     implementation("io.sentry:sentry-android:8.43.1")
 

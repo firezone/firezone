@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# rustls-platform-verifier's Kotlin component is only reached via JNI from
+# libconnlib.so, so R8 sees no references to it and would strip it.
+-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
