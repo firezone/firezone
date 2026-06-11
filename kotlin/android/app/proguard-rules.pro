@@ -12,14 +12,28 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Preserve file and line number information so Crashlytics and Play Console
+# can show readable, deobfuscated stack traces.
+-keepattributes SourceFile,LineNumberTable
 
 # rustls-platform-verifier's Kotlin component is only reached via JNI from
 # libconnlib.so, so R8 sees no references to it and would strip it.
 -keep,includedescriptorclasses class org.rustls.platformverifier.** { *; }
+
+# The UniFFI-generated bindings are loaded through JNA, which resolves classes,
+# fields and native methods reflectively by name at runtime.
+-keep,includedescriptorclasses class uniffi.connlib.** { *; }
+-keep class com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.* { public *; }
+-dontwarn java.awt.*
+
+# Tunnel models are deserialized reflectively by Moshi's KotlinJsonAdapterFactory,
+# which reads Kotlin metadata through kotlin-reflect.
+-keep class dev.firezone.android.tunnel.model.** { *; }
+-keepclassmembers class kotlin.Metadata {
+    public <methods>;
+}
+
+# Persisted to SharedPreferences via Gson by constant name; renaming the
+# constants would corrupt existing installs on update.
+-keep class dev.firezone.android.core.data.ResourceState { *; }
