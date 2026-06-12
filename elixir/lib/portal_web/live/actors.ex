@@ -798,11 +798,16 @@ defmodule PortalWeb.Actors do
     Logger.warning("Unrecognized handle_info message",
       account_id: socket.assigns.account.id,
       liveview: "actors",
-      message: message
+      message_tag: message_tag(message)
     )
 
     {:noreply, socket}
   end
+
+  defp message_tag(message) when is_struct(message), do: message.__struct__
+  defp message_tag(message) when is_tuple(message), do: elem(message, 0)
+  defp message_tag(message) when is_atom(message), do: message
+  defp message_tag(_message), do: :unknown
 
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
