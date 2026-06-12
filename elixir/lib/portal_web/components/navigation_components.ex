@@ -285,6 +285,46 @@ defmodule PortalWeb.NavigationComponents do
             </.sidebar_item>
           </ul>
         </div>
+
+        <%!-- Audit --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+          >
+            Audit
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/change_logs"}
+              icon="ri-history-line"
+            >
+              Change Logs
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/session_logs"}
+              icon="ri-login-circle-line"
+            >
+              Session Logs
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/flow_logs"}
+              icon="ri-exchange-line"
+            >
+              Flow Logs
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/api_request_logs"}
+              icon="ri-terminal-box-line"
+            >
+              API Request Logs
+            </.sidebar_item>
+          </ul>
+        </div>
       </nav>
 
       <%!-- Settings --%>
