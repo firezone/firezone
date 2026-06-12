@@ -1327,9 +1327,7 @@ defmodule PortalWeb.CoreComponents do
   <.provider_icon provider="okta" size="xl" variant="circle" />
   <.provider_icon provider={@type} size="sm" />
   """
-  attr :provider, :string,
-    required: true,
-    values: ~w[firezone google entra okta oidc email_otp userpass]
+  attr :provider, :string, required: true
 
   attr :size, :string, default: "md", values: ~w[xs sm md lg xl]
   attr :variant, :string, default: "plain", values: ~w[plain circle square]
@@ -1343,7 +1341,7 @@ defmodule PortalWeb.CoreComponents do
       |> assign(:wrapper_class, provider_icon_variant(assigns.variant, assigns.size))
 
     ~H"""
-    <span class={@wrapper_class} {@rest}>
+    <span class={["shrink-0", @wrapper_class]} {@rest}>
       <%= if @icon_spec.type == :image && Map.has_key?(@icon_spec, :dark_src) do %>
         <img
           src={@icon_spec.src}
@@ -1426,6 +1424,13 @@ defmodule PortalWeb.CoreComponents do
     %{
       type: :icon,
       name: "ri-key-line"
+    }
+  end
+
+  defp provider_icon_spec(_unknown) do
+    %{
+      type: :icon,
+      name: "ri-question-line"
     }
   end
 
