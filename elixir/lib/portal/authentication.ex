@@ -268,7 +268,8 @@ defmodule Portal.Authentication do
     with {:ok, token} <- Database.fetch_gateway_token(account_id, id),
          :ok <- verify_secret_hash(token, nonce, fragment) do
       account = Database.get_account_by_id!(token.account_id)
-      {:ok, :gateway, account, token.id}
+      # No actor: a Gateway token authenticates a site, not an actor.
+      {:ok, :gateway, account, token.id, nil}
     else
       _ -> {:error, :invalid_token}
     end
@@ -280,7 +281,7 @@ defmodule Portal.Authentication do
 
     with {:ok, token} <- use_token(encoded_token, context),
          {:ok, subject} <- build_subject(token, context) do
-      {:ok, :client, subject.account, token.id}
+      {:ok, :client, subject.account, token.id, subject.actor}
     else
       _ -> {:error, :invalid_token}
     end

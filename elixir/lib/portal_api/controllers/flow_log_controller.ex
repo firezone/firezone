@@ -29,13 +29,14 @@ defmodule PortalAPI.FlowLogController do
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
     account_id = conn.assigns.account.id
     token_type = conn.assigns.token_type
+    actor = conn.assigns.actor
     now = DateTime.utc_now()
 
     {entries, errors} =
       records
       |> Enum.with_index()
       |> Enum.reduce({[], []}, fn {record, index}, acc ->
-        validate_record(record, index, account_id, token_type, now, acc)
+        validate_record(record, index, account_id, token_type, actor, now, acc)
       end)
 
     if entries != [] do
@@ -72,15 +73,15 @@ defmodule PortalAPI.FlowLogController do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
 
-  defp validate_record(record, index, _account_id, _token_type, _now, {valid, invalid})
+  defp validate_record(record, index, _account_id, _token_type, _actor, _now, {valid, invalid})
        when not is_map(record) do
     {valid, [{index, :not_a_map} | invalid]}
   end
 
-  defp validate_record(record, index, account_id, token_type, now, {valid, invalid}) do
+  defp validate_record(record, index, account_id, token_type, actor, now, {valid, invalid}) do
     changeset =
       record
-      |> to_attrs(account_id, token_type, now)
+      |> to_attrs(account_id, token_type, actor, now)
       |> changeset()
 
     if changeset.valid? do
@@ -113,10 +114,11 @@ defmodule PortalAPI.FlowLogController do
     end)
   end
 
-  defp to_attrs(record, account_id, token_type, now) do
+  defp to_attrs(record, account_id, token_type, actor, now) do
     record
     |> Map.drop(@server_assigned_keys)
     |> force_gateway_role(token_type)
+    |> force_initiator_actor(token_type, actor)
     |> Map.merge(%{
       "account_id" => account_id,
       "event_id" => EventId.build_flow_log(),
@@ -129,6 +131,24 @@ defmodule PortalAPI.FlowLogController do
   # either role (client-client flows), validated by the changeset.
   defp force_gateway_role(record, :gateway), do: Map.put(record, "role", "responder")
   defp force_gateway_role(record, :client), do: record
+
+  # The actor is always the initiating client. When a Client reports its own
+  # initiator side, its identity is exactly the authenticated token's actor,
+  # so we overwrite the actor fields from the token rather than trust the
+  # payload: a Client cannot attribute its initiated flows to another actor.
+  #
+  # Responder rows are left untouched. There the actor describes the remote
+  # initiator, which the reporter (a responding Client, or a Gateway with no
+  # actor of its own) legitimately observed but cannot prove from its token.
+  defp force_initiator_actor(%{"role" => "initiator"} = record, :client, %Portal.Actor{} = actor) do
+    Map.merge(record, %{
+      "actor_id" => actor.id,
+      "actor_name" => actor.name,
+      "actor_email" => actor.email
+    })
+  end
+
+  defp force_initiator_actor(record, _token_type, _actor), do: record
 
   defmodule Database do
     alias Portal.Safe
