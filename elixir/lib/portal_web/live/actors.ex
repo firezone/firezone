@@ -794,20 +794,8 @@ defmodule PortalWeb.Actors do
     {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: false)}
   end
 
-  def handle_info(message, socket) do
-    Logger.warning("Unrecognized handle_info message",
-      account_id: socket.assigns.account.id,
-      liveview: "actors",
-      message_tag: message_tag(message)
-    )
-
-    {:noreply, socket}
-  end
-
-  defp message_tag(message) when is_struct(message), do: message.__struct__
-  defp message_tag(message) when is_tuple(message) and tuple_size(message) > 0, do: elem(message, 0)
-  defp message_tag(message) when is_atom(message), do: message
-  defp message_tag(_message), do: :unknown
+  def handle_info(:directories_changed, socket), do: {:noreply, socket}
+  def handle_info(message, socket), do: super(message, socket)
 
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
