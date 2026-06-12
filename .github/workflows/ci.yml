@@ -304,10 +304,8 @@ jobs:
     permissions:
       contents: read
     with:
-      # TEMPORARY: build both systems on PRs to validate the aarch64 leg
-      # pre-merge. Revert to PR cost-control gating before merging:
-      # systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
-      systems: '["x86_64-linux", "aarch64-linux"]'
+      # Build only x86_64 on PRs to control cost; both systems elsewhere.
+      systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
 
   monitor-nix:
     needs: [nix]
