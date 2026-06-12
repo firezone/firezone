@@ -15,6 +15,13 @@ defmodule Portal.FlowLog do
   report either role (client-client flows), but Gateways always report
   `responder`, enforced from the token type at ingestion rather than trusted
   from the payload.
+
+  The actor fields always describe the initiating Client. When a Client
+  reports its own `initiator` side, the reporter is that actor, so the actor
+  fields are forced from the authenticated client token at ingestion: a
+  Client cannot attribute an initiated flow to another actor. On `responder`
+  rows (a responding Client, or a Gateway, which has no actor of its own)
+  the actor describes the remote initiator and is trusted from the payload.
   """
   use Ecto.Schema
   import Ecto.Changeset

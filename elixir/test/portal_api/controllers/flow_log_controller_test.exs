@@ -333,6 +333,62 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert log.role == "responder"
     end
 
+    test "a client initiator's actor fields are forced to the token's actor", %{
+      conn: conn,
+      account: account
+    } do
+      actor = actor_fixture(account: account, name: "Real Owner")
+      token = client_token_fixture(account: account, actor: actor)
+
+      # The payload claims a different actor; the server must overwrite it so a
+      # Client cannot attribute its initiated flows to someone else.
+      record =
+        build_flow_record(%{
+          "role" => "initiator",
+          "actor_id" => Ecto.UUID.generate(),
+          "actor_name" => "Spoofed Victim",
+          "actor_email" => "victim@example.com"
+        })
+
+      conn
+      |> put_req_header("authorization", "Bearer " <> encode_token(token))
+      |> post("/ingestion/flow_logs", %{"flow_logs" => [record]})
+
+      assert [log] = Repo.all(FlowLog)
+      assert log.actor_id == actor.id
+      assert log.actor_name == "Real Owner"
+      assert log.actor_email == actor.email
+    end
+
+    test "a client responder's actor fields are left as reported", %{
+      conn: conn,
+      account: account
+    } do
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+
+      # On a responder row the actor describes the remote initiator, not the
+      # reporter, so it is taken from the payload rather than the token.
+      remote_actor_id = Ecto.UUID.generate()
+
+      record =
+        build_flow_record(%{
+          "role" => "responder",
+          "actor_id" => remote_actor_id,
+          "actor_name" => "Remote Initiator",
+          "actor_email" => "remote@example.com"
+        })
+
+      conn
+      |> put_req_header("authorization", "Bearer " <> encode_token(token))
+      |> post("/ingestion/flow_logs", %{"flow_logs" => [record]})
+
+      assert [log] = Repo.all(FlowLog)
+      assert log.actor_id == remote_actor_id
+      assert log.actor_name == "Remote Initiator"
+      assert log.actor_email == "remote@example.com"
+    end
+
     test "returns 422 when a client supplies an invalid role", %{conn: conn, account: account} do
       record = build_flow_record(%{"role" => "sideways"})
 
