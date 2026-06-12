@@ -124,6 +124,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_info(%Change{}, socket), do: {:noreply, socket}
+  def handle_info(:directories_changed, socket), do: {:noreply, socket}
 
   def handle_event(event, params, socket)
       when event in [
