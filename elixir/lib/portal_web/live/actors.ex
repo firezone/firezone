@@ -805,7 +805,7 @@ defmodule PortalWeb.Actors do
   end
 
   defp message_tag(message) when is_struct(message), do: message.__struct__
-  defp message_tag(message) when is_tuple(message), do: elem(message, 0)
+  defp message_tag(message) when is_tuple(message) and tuple_size(message) > 0, do: elem(message, 0)
   defp message_tag(message) when is_atom(message), do: message
   defp message_tag(_message), do: :unknown
 

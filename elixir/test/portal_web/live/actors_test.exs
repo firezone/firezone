@@ -1430,10 +1430,16 @@ defmodule PortalWeb.ActorsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/actors")
 
-      send(lv.pid, :directories_changed)
-      send(lv.pid, {:unknown_tuple_message, "some data"})
+      pid = lv.pid
+      ref = Process.monitor(pid)
 
-      assert Process.alive?(lv.pid)
+      send(pid, :directories_changed)
+      send(pid, {:unknown_tuple_message, "some data"})
+      send(pid, {})
+
+      render(lv)
+
+      refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 500
     end
   end
 end
