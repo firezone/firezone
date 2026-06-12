@@ -1,14 +1,13 @@
 {
-  description = "Firezone — zero-trust access platform built on WireGuard";
+  description = "Firezone, a zero-trust access platform built on WireGuard";
 
   # Convenience hints for the first-party binary cache. Nix only honors these
   # for trusted users (or with --accept-flake-config); the docs in nix/README.md
   # lead with the explicit `nix.settings` form.
-  # TODO: uncomment once the cache signing key is provisioned.
-  # nixConfig = {
-  #   extra-substituters = [ "https://artifacts.firezone.dev/nix" ];
-  #   extra-trusted-public-keys = [ "artifacts.firezone.dev/nix-1:<public key>" ];
-  # };
+  nixConfig = {
+    extra-substituters = [ "https://artifacts.firezone.dev/nix" ];
+    extra-trusted-public-keys = [ "artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=" ];
+  };
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

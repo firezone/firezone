@@ -61,10 +61,11 @@ jobs:
         with:
           determinate: false
           diagnostic-endpoint: ""
-          # TODO: once the cache signing key is provisioned, add:
-          #   extra-substituters = https://artifacts.firezone.dev/nix
-          #   extra-trusted-public-keys = artifacts.firezone.dev/nix-1:<public key>
-          # so CI substitutes from the warm cache instead of rebuilding.
+          # Substitute from the first-party cache (kept warm by main and
+          # release builds) instead of rebuilding.
+          extra-conf: |
+            extra-substituters = https://artifacts.firezone.dev/nix
+            extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
         run: nix flake check --no-build
       - name: Build packages

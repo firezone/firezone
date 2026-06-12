@@ -25,7 +25,7 @@ you need:
   # from source. Optional but strongly recommended.
   nix.settings = {
     extra-substituters = [ "https://artifacts.firezone.dev/nix" ];
-    extra-trusted-public-keys = [ "artifacts.firezone.dev/nix-1:<public key>" ];
+    extra-trusted-public-keys = [ "artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=" ];
   };
 
   services.firezone.gateway = {
@@ -86,7 +86,7 @@ Design goal: **zero Nix edits per release.**
 - The **single maintained hash** is `pnpmDeps.hash` in
   `nix/packages/firezone-gui-client/frontend.nix`. It must be bumped
   whenever `gui-client/pnpm-lock.yaml` changes; the CI failure message
-  prints the expected value — paste it and re-run.
+  prints the expected value, paste it and re-run.
 - Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and
   the `postinstall` script in `gui-client/package.json`; keep them in sync
   when those change.
@@ -102,7 +102,7 @@ Design goal: **zero Nix edits per release.**
 `firezoneartifacts` Azure storage account, which is served at
 `https://artifacts.firezone.dev/nix`. It runs from `.github/workflows/_nix.yml`
 on main and when a release is published. NAR files are content-addressed
-and shared between releases — never apply age-based lifecycle rules to the
+and shared between releases; never apply age-based lifecycle rules to the
 container.
 
 Key rotation: generate `artifacts.firezone.dev/nix-2` with
