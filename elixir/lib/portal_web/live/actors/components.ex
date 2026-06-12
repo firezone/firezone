@@ -1677,25 +1677,25 @@ defmodule PortalWeb.Actors.Components do
   end
 
   @firezone_client_patterns [
-    {"Windows/", "os-windows"},
-    {"Mac OS/", "os-macos"},
-    {"iOS/", "os-ios"},
-    {"Android/", "os-android"},
-    {"Ubuntu/", "os-ubuntu"},
-    {"Debian/", "os-debian"},
-    {"Manjaro/", "os-manjaro"},
-    {"CentOS/", "os-linux"},
-    {"Fedora/", "os-linux"}
+    {"Windows/", "icon-os-windows"},
+    {"Mac OS/", "icon-os-macos"},
+    {"iOS/", "icon-os-ios"},
+    {"Android/", "icon-os-android"},
+    {"Ubuntu/", "icon-os-ubuntu"},
+    {"Debian/", "icon-os-debian"},
+    {"Manjaro/", "icon-os-manjaro"},
+    {"CentOS/", "icon-os-linux"},
+    {"Fedora/", "icon-os-linux"}
   ]
 
   @browser_patterns [
-    {"iPhone", "os-ios"},
-    {"iPad", "os-ios"},
-    {"Android", "os-android"},
-    {"Macintosh", "os-macos"},
-    {"Mac OS X", "os-macos"},
-    {"Windows NT", "os-windows"},
-    {"linux", "os-linux"}
+    {"iPhone", "icon-os-ios"},
+    {"iPad", "icon-os-ios"},
+    {"Android", "icon-os-android"},
+    {"Macintosh", "icon-os-macos"},
+    {"Mac OS X", "icon-os-macos"},
+    {"Windows NT", "icon-os-windows"},
+    {"linux", "icon-os-linux"}
   ]
 
   defp session_user_agent_icon(user_agent) when is_binary(user_agent) do
@@ -1731,7 +1731,7 @@ defmodule PortalWeb.Actors.Components do
 
   defp detect_x11_linux(user_agent) do
     if String.contains?(user_agent, "X11") and String.contains?(user_agent, "Linux") do
-      "os-linux"
+      "icon-os-linux"
     end
   end
 
