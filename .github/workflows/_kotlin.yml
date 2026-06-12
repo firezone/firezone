@@ -37,7 +37,7 @@ jobs:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
-      RELEASE_NAME: android-client-1.5.11
+      RELEASE_NAME: android-client-1.5.12
     steps:
       - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -110,7 +110,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
-          RELEASE_NAME: android-client-1.5.11
+          RELEASE_NAME: android-client-1.5.12
         run: |
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
