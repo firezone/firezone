@@ -794,6 +794,16 @@ defmodule PortalWeb.Actors do
     {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: false)}
   end
 
+  def handle_info(message, socket) do
+    Logger.warning("Unrecognized handle_info message",
+      account_id: socket.assigns.account.id,
+      liveview: "actors",
+      message: message
+    )
+
+    {:noreply, socket}
+  end
+
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
 
