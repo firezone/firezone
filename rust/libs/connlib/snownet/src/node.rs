@@ -196,7 +196,7 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
-            connection_count: telemetry::otel::metrics::connection_count(),
+            connection_count: otel_instruments::connection_count(),
             unix_now: now,
             unix_ts,
         }

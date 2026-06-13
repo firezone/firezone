@@ -22,6 +22,7 @@ members = [
     "libs/connlib/l4-tcp-dns-server",
     "libs/connlib/l4-udp-dns-server",
     "libs/connlib/model",
+    "libs/connlib/otel-instruments",
     "libs/connlib/phoenix-channel",
     "libs/connlib/snownet",
     "libs/connlib/socket-factory",
@@ -145,6 +146,7 @@ opentelemetry-otlp = "0.32.0"
 opentelemetry-stdout = "0.32.0"
 opentelemetry_sdk = "0.32.0"
 os_info = { version = "3.15.0", default-features = false }
+otel-instruments = { path = "libs/connlib/otel-instruments" }
 output_vt100 = "0.1.3"
 parking_lot = "0.12.5"
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }

@@ -228,22 +228,8 @@ impl UdpSocket {
                     IpAddr::V6(_) => "udp-socket-v6",
                 },
             ),
-            batch_histogram: opentelemetry::global::meter("connlib")
-                .u64_histogram("system.network.packets.batch_count")
-                .with_description(
-                    "How many batches of packets we have processed in a single syscall.",
-                )
-                .with_unit("{batches}")
-                .with_boundaries((1..32_u64).map(|i| i as f64).collect())
-                .build(),
-            send_retry_histogram: opentelemetry::global::meter("connlib")
-                .u64_histogram("system.network.retries")
-                .with_description(
-                    "How many times a UDP send was retried (spun) after a transient ENOBUFS-style error before it succeeded or was dropped.",
-                )
-                .with_unit("{retry}")
-                .with_boundaries((1..=24_u64).map(|i| i as f64).collect())
-                .build(),
+            batch_histogram: otel_instruments::network_packets_batch_count(),
+            send_retry_histogram: otel_instruments::network_retries(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
         })

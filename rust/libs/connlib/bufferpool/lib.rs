@@ -33,11 +33,7 @@ where
     B: Buf,
 {
     pub fn new(capacity: usize, tag: &'static str) -> Self {
-        let buffer_counter = opentelemetry::global::meter("connlib")
-            .i64_up_down_counter("system.buffer.count")
-            .with_description("The number of buffers allocated in the pool.")
-            .with_unit("{buffers}")
-            .build();
+        let buffer_counter = otel_instruments::buffer_count();
 
         Self {
             inner: Arc::new(SegQueue::new()),

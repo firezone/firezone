@@ -16,7 +16,7 @@ impl UniquePacketBuffer {
         Self {
             buffer: AllocRingBuffer::with_capacity_power_of_2(capacity),
             tag,
-            num_dropped_packets: crate::otel::metrics::network_packet_dropped(),
+            num_dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
