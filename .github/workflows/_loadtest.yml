@@ -100,23 +100,39 @@ jobs:
             rust/${{ matrix.binary }}
             rust/${{ matrix.binary }}.sha256sum.txt
 
-      - name: Upload to Azure Storage
+      # Authenticate to the dedicated QA artifacts storage via GitHub OIDC. The
+      # loadtest binaries are QA-only and live in their own account, separate
+      # from the production `firezoneartifacts` (firezone/infra#687).
+      - name: Azure login (OIDC)
+        if: github.ref == 'refs/heads/main'
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_QA_SUBSCRIPTION_ID }}
+          # The QA principal only holds a data-plane role on the storage account,
+          # not subscription-wide Reader, so don't fail on subscription enumeration.
+          allow-no-subscriptions: true
+
+      - name: Upload to QA artifacts storage
         if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -e
           az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
             --container-name binaries \
             --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}" \
             --file "${{ matrix.binary }}" \
             --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --no-progress
 
           az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
             --container-name binaries \
             --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}.sha256sum.txt" \
             --file "${{ matrix.binary }}.sha256sum.txt" \
             --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --no-progress
