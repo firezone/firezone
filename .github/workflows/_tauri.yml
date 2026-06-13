@@ -259,20 +259,9 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
-      - name: Upload to preview repository
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
-        shell: bash
-        run: |
-          az storage blob upload \
-            --container-name binaries \
-            --name "windows-gui-client/preview/${{ matrix.arch }}" \
-            --file "${{ env.BINARY_DEST_PATH }}.msi" \
-            --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
-
-      # The QA clients consume the preview MSI too, but from their own storage
-      # account (firezone/infra#687). Push a copy there via GitHub OIDC.
+      # The preview MSI is consumed only by the QA clients, so it goes to the
+      # dedicated QA artifacts storage account (firezone/infra#687),
+      # authenticated via GitHub OIDC.
       - name: Azure login (OIDC) for QA artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
