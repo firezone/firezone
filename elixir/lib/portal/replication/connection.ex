@@ -444,11 +444,14 @@ defmodule Portal.Replication.Connection do
 
       def handle_data(data, state) when is_write(data) do
         OpenTelemetry.Tracer.with_span "#{__MODULE__}.handle_data/2" do
-          %Write{server_wal_end: server_wal_end, message: message} = parse(data)
+          # server_wal_start is the LSN of the WAL record contained in this
+          # message, unique per record. server_wal_end is just the server's
+          # current end of WAL and can repeat across messages.
+          %Write{server_wal_start: lsn, message: message} = parse(data)
 
           message
           |> decode_message()
-          |> handle_write(server_wal_end, %{state | counter: state.counter + 1})
+          |> handle_write(lsn, %{state | counter: state.counter + 1})
         end
       end
 
@@ -483,7 +486,7 @@ defmodule Portal.Replication.Connection do
                name: name,
                columns: columns
              },
-             server_wal_end,
+             _lsn,
              state
            ) do
         relation = %{
@@ -495,27 +498,27 @@ defmodule Portal.Replication.Connection do
         {:noreply, [], %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
-      defp handle_write(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
-        process_write(msg, server_wal_end, state)
+      defp handle_write(%Decoder.Messages.Insert{} = msg, lsn, state) do
+        process_write(msg, lsn, state)
       end
 
-      defp handle_write(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
-        process_write(msg, server_wal_end, state)
+      defp handle_write(%Decoder.Messages.Update{} = msg, lsn, state) do
+        process_write(msg, lsn, state)
       end
 
-      defp handle_write(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
-        process_write(msg, server_wal_end, state)
+      defp handle_write(%Decoder.Messages.Delete{} = msg, lsn, state) do
+        process_write(msg, lsn, state)
       end
 
-      defp process_write(_msg, _server_wal_end, %{error_threshold_exceeded?: true} = state) do
+      defp process_write(_msg, _lsn, %{error_threshold_exceeded?: true} = state) do
         {:noreply, [], state}
       end
 
-      defp process_write(msg, server_wal_end, state) do
+      defp process_write(msg, lsn, state) do
         {op, table, old_data, data} = transform(msg, state.relations)
 
         state
-        |> on_write(server_wal_end, op, table, old_data, data)
+        |> on_write(lsn, op, table, old_data, data)
         |> maybe_flush()
         |> then(&{:noreply, [], &1})
       end
@@ -534,7 +537,7 @@ defmodule Portal.Replication.Connection do
     quote do
       defp handle_write(
              %Decoder.Messages.Begin{commit_timestamp: commit_timestamp} = msg,
-             server_wal_end,
+             _lsn,
              state
            ) do
         # We can use the commit timestamp to check how far we are lagging behind
@@ -552,28 +555,28 @@ defmodule Portal.Replication.Connection do
     quote do
       # These messages are not relevant for our use case, so we ignore them.
 
-      defp handle_write(%Decoder.Messages.Commit{}, _server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Commit{}, _lsn, state) do
         {:noreply, [], state}
       end
 
-      defp handle_write(%Decoder.Messages.Origin{}, _server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Origin{}, _lsn, state) do
         {:noreply, [], state}
       end
 
-      defp handle_write(%Decoder.Messages.Truncate{}, _server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Truncate{}, _lsn, state) do
         {:noreply, [], state}
       end
 
-      defp handle_write(%Decoder.Messages.Type{}, _server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Type{}, _lsn, state) do
         {:noreply, [], state}
       end
 
-      defp handle_write(%Decoder.Messages.LogicalMessage{} = msg, _server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.LogicalMessage{} = msg, _lsn, state) do
         state = on_logical_message(state, msg)
         {:noreply, [], state}
       end
 
-      defp handle_write(%Decoder.Messages.Unsupported{data: data}, _server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Unsupported{data: data}, _lsn, state) do
         Logger.warning("#{__MODULE__}: Unsupported message received",
           data: inspect(data),
           counter: state.counter

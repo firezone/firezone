@@ -32,8 +32,8 @@ defmodule Portal.Replication.ConnectionTest do
     end
 
     # Helper function to expose the private handle_write function for testing
-    def test_handle_write(msg, server_wal_end, state) do
-      handle_write(msg, server_wal_end, state)
+    def test_handle_write(msg, lsn, state) do
+      handle_write(msg, lsn, state)
     end
   end
 
@@ -670,6 +670,31 @@ defmodule Portal.Replication.ConnectionTest do
       assert new_state.last_sent_lsn == 1
       assert [<<?r, wal_end::64, wal_end::64, wal_end::64, _timestamp::64, 0>>] = reply_data
       assert wal_end == 1
+    end
+
+    test "uses server_wal_start as lsn for decoded write messages" do
+      state =
+        %TestReplicationConnection{step: :streaming}
+        |> Map.put(:operations, [])
+        |> Map.put(:relations, %{42 => %{name: "test_table", columns: []}})
+
+      # Create a write message where server_wal_start != server_wal_end
+      # to verify we use server_wal_start, not server_wal_end
+      server_wal_start = 100
+      server_wal_end = 500
+
+      # Decode a simple Insert message: I (insert), relation_id=42, N (new), 0 columns
+      insert_message = <<"I", 42::integer-32, "N", 0::integer-16>>
+
+      write_data = <<?w, server_wal_start::integer-64, server_wal_end::integer-64,
+                      0::integer-64, insert_message::binary>>
+
+      {:noreply, _reply, new_state} = TestReplicationConnection.handle_data(write_data, state)
+
+      # Verify on_write was called with server_wal_start, not server_wal_end
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      assert [%{lsn: ^server_wal_start} | _] = operations
     end
   end
 
