@@ -50,10 +50,11 @@ defmodule Portal.SessionLogs.ReplicationConnection do
 
     Logger.info("Flushed #{successful_count}/#{attempted_count} session logs")
 
-    # We always advance the LSN to the highest LSN in the flush buffer. LSN
-    # conflicts just mean the data is already inserted, and entries for accounts
-    # that no longer exist are dropped during bulk_insert. Any other insert_all
-    # issue raises so we crash and replay from the durable slot.
+    # We always advance the LSN to the highest LSN in the flush buffer. Entries
+    # for accounts that no longer exist are dropped during bulk_insert. LSN
+    # conflicts are silently ignored for idempotency: after a crash/disconnect,
+    # the replication slot replays records before the slot's confirmed_flush_lsn
+    # is advanced, so we may insert the same LSN again on recovery.
     last_lsn =
       state.flush_buffer
       |> Map.keys()
@@ -230,6 +231,10 @@ defmodule Portal.SessionLogs.ReplicationConnection do
     end
 
     defp insert_all(list_of_attrs) do
+      # Use on_conflict: :nothing to make the insert idempotent. With a durable
+      # replication slot, it's normal for WAL records to be replayed on reconnect
+      # if we crash between inserting rows and advancing the slot's
+      # confirmed_flush_lsn. Silently skipping re-inserted LSNs allows recovery.
       {inserted, _} =
         Safe.unscoped()
         |> Safe.insert_all(SessionLog, list_of_attrs,
