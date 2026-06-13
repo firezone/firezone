@@ -189,14 +189,14 @@ impl ThreadedUdpSocket {
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (error_tx, error_rx) = std::sync::mpsc::sync_channel(0);
 
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_system_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_gso_batch(),
                 otel::attr::network_type_for_addr(preferred_addr),
             ],
         ));
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_system_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_gro_batch(),
@@ -237,11 +237,7 @@ impl ThreadedUdpSocket {
                     }
                 };
 
-                let io_error_counter = opentelemetry::global::meter("connlib")
-                    .u64_counter("system.network.errors")
-                    .with_description("Number of IO errors encountered")
-                    .with_unit("{error}")
-                    .build();
+                let io_error_counter = otel_instruments::network_errors();
 
                 let send_buffer_size = read_end_var_usize("FIREZONE_UDP_SEND_BUFFER_SIZE")
                     .inspect_err(|e| {

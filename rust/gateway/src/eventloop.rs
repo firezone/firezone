@@ -86,8 +86,8 @@ impl Eventloop {
                 1000,
             ),
             logged_permission_denied: false,
-            tunnel_errors: crate::otel::metrics::tunnel_errors(),
-            dns_lookup_duration: crate::otel::metrics::dns_lookup_duration(),
+            tunnel_errors: otel_instruments::tunnel_errors(),
+            dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -534,7 +534,7 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
-    let hiccups = telemetry::otel::metrics::portal_connection_hiccups();
+    let hiccups = otel_instruments::portal_connection_hiccups();
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {

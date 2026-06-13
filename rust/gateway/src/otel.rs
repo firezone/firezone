@@ -91,10 +91,6 @@ pub mod attr {
     }
 }
 
-pub mod metrics {
-    pub use telemetry::otel::metrics::*;
-}
-
 #[cfg(test)]
 mod tests {
     use super::attr::{dns_question_type, dns_response_code};

@@ -12,6 +12,7 @@ derive_more = { workspace = true, features = ["debug"] }
 gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-instruments = { workspace = true }
 quinn-udp = { workspace = true }
 socket2 = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt"] }
