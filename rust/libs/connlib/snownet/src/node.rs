@@ -1931,7 +1931,7 @@ where
         // actually drives boringtun and drains transmits.
         if self
             .agent
-            .handle_inbound(packet, (destination, from), now)
+            .handle_inbound_network(packet, (destination, from), now)
             .is_break()
         {
             return ControlFlow::Break(Ok(()));
@@ -2036,7 +2036,7 @@ where
                     .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
                 self.agent
-                    .handle_inbound_decrypted(packet, (destination, from), now)
+                    .handle_inbound_tun(packet, (destination, from), now)
                     .map_break(Ok)
             }
             ControlFlow::Break(b) => ControlFlow::Break(b),

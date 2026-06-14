@@ -10,7 +10,7 @@ use crate::candidate::Candidate;
 /// Path-selection state machine for ICE-less snownet connections.
 ///
 /// snownet drives outbound WG bytes through [`PathAgent::handle_outbound`]
-/// and inbound bytes through [`PathAgent::handle_inbound`]. Decisions
+/// and inbound bytes through [`PathAgent::handle_inbound_network`]. Decisions
 /// flow back via [`PathAgent::poll_transmit`] / [`PathAgent::poll_event`].
 /// Pair identifiers are `(local, remote)` `SocketAddr` tuples.
 ///
@@ -465,7 +465,7 @@ impl PathAgent {
     /// here (handshake deduped or forwarded via [`Event::ForwardInbound`]);
     /// `Continue(())` for non-handshake bytes the caller must feed to
     /// `Tunn::decapsulate_at`.
-    pub fn handle_inbound(
+    pub fn handle_inbound_network(
         &mut self,
         bytes: &[u8],
         path: (SocketAddr, SocketAddr),
@@ -604,7 +604,7 @@ impl PathAgent {
     }
 
     /// Take ownership of a decrypted inner-IP packet.
-    pub fn handle_inbound_decrypted(
+    pub fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,
         pair: (SocketAddr, SocketAddr),
