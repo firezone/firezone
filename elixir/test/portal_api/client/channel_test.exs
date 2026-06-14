@@ -6907,14 +6907,14 @@ defmodule PortalAPI.Client.ChannelTest do
 
       initiating_client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      ghost_paid = Ecto.UUID.generate()
+      ghost_pa_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           Portal.Cache.Client.Authorizations.put(
             state.assigns.authorizations_cache,
-            ghost_paid,
+            ghost_pa_id,
             initiating_client_id,
             resource_id,
             Ecto.UUID.generate(),
@@ -6925,7 +6925,7 @@ defmodule PortalAPI.Client.ChannelTest do
       end)
 
       policy_authorization = %Portal.PolicyAuthorization{
-        id: ghost_paid,
+        id: ghost_pa_id,
         account_id: account.id,
         initiating_device_id: initiating_client_id,
         receiving_device_id: client.id,
@@ -6940,7 +6940,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute Map.has_key?(
                :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
-               Ecto.UUID.dump!(ghost_paid)
+               Ecto.UUID.dump!(ghost_pa_id)
              )
     end
   end
@@ -7254,7 +7254,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       expired_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
 
       cacheable_resource = Portal.Cache.Cacheable.to_cache(pool_resource)
       rendered_resource = PortalAPI.Client.Views.Resource.render(cacheable_resource)
@@ -7273,7 +7273,7 @@ defmodule PortalAPI.Client.ChannelTest do
           remote_ice_credentials: %{username: "u", password: "p"},
           ice_role: :controlled,
           resource: rendered_resource,
-          policy_authorization_id: paid,
+          policy_authorization_id: pa_id,
           policy_id: Ecto.UUID.generate(),
           authorization_expires_at: expired_at
         }

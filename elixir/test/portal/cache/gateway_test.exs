@@ -73,12 +73,12 @@ defmodule Portal.Cache.GatewayTest do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
-      cache = Cache.Gateway.put(%{}, paid, client_id, resource_id, policy_id, expires_at)
+      cache = Cache.Gateway.put(%{}, pa_id, client_id, resource_id, policy_id, expires_at)
 
-      key = dump!(paid)
+      key = dump!(pa_id)
 
       assert %{^key => entry} = cache
 
@@ -97,13 +97,13 @@ defmodule Portal.Cache.GatewayTest do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
-      cache = Cache.Gateway.put(%{}, paid, client_id, resource_id, policy_id, expires_at)
+      cache = Cache.Gateway.put(%{}, pa_id, client_id, resource_id, policy_id, expires_at)
 
       assert {:ok, ^client_id, ^resource_id, expires_at_unix, updated} =
-               Cache.Gateway.delete(cache, paid)
+               Cache.Gateway.delete(cache, pa_id)
 
       assert expires_at_unix == DateTime.to_unix(expires_at, :second)
       assert updated == %{}
@@ -112,19 +112,19 @@ defmodule Portal.Cache.GatewayTest do
     test "only removes the targeted authorization for a shared pair" do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      paid_a = Ecto.UUID.generate()
-      paid_b = Ecto.UUID.generate()
+      pa_id_a = Ecto.UUID.generate()
+      pa_id_b = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
       cache =
         %{}
-        |> Cache.Gateway.put(paid_a, client_id, resource_id, Ecto.UUID.generate(), expires_at)
-        |> Cache.Gateway.put(paid_b, client_id, resource_id, Ecto.UUID.generate(), expires_at)
+        |> Cache.Gateway.put(pa_id_a, client_id, resource_id, Ecto.UUID.generate(), expires_at)
+        |> Cache.Gateway.put(pa_id_b, client_id, resource_id, Ecto.UUID.generate(), expires_at)
 
-      assert {:ok, ^client_id, ^resource_id, _exp, updated} = Cache.Gateway.delete(cache, paid_a)
+      assert {:ok, ^client_id, ^resource_id, _exp, updated} = Cache.Gateway.delete(cache, pa_id_a)
 
-      assert Map.has_key?(updated, dump!(paid_b))
-      refute Map.has_key?(updated, dump!(paid_a))
+      assert Map.has_key?(updated, dump!(pa_id_b))
+      refute Map.has_key?(updated, dump!(pa_id_a))
     end
   end
 
@@ -133,10 +133,10 @@ defmodule Portal.Cache.GatewayTest do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
       expired = DateTime.utc_now() |> DateTime.add(-3600, :second)
 
-      cache = Cache.Gateway.put(%{}, paid, client_id, resource_id, policy_id, expired)
+      cache = Cache.Gateway.put(%{}, pa_id, client_id, resource_id, policy_id, expired)
 
       assert Cache.Gateway.prune(cache) == %{}
     end
@@ -145,10 +145,10 @@ defmodule Portal.Cache.GatewayTest do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
-      cache = Cache.Gateway.put(%{}, paid, client_id, resource_id, policy_id, expires_at)
+      cache = Cache.Gateway.put(%{}, pa_id, client_id, resource_id, policy_id, expires_at)
 
       assert Cache.Gateway.prune(cache) == cache
     end
@@ -159,9 +159,9 @@ defmodule Portal.Cache.GatewayTest do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
-      cache = Cache.Gateway.put(%{}, paid, client_id, resource_id, policy_id, expires_at)
+      cache = Cache.Gateway.put(%{}, pa_id, client_id, resource_id, policy_id, expires_at)
 
       assert Cache.Gateway.has_resource?(cache, resource_id)
     end
