@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, VecDeque};
+use std::iter;
 use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -697,16 +698,13 @@ impl PathAgent {
                 .then_some(i.started_at)
         });
 
-        [
-            self.events_queued_at,
-            next_retransmit,
-            next_probe,
-            self.bootstrap.until,
-            pending_fanout,
-        ]
-        .into_iter()
-        .flatten()
-        .min()
+        iter::empty()
+            .chain(self.events_queued_at)
+            .chain(next_retransmit)
+            .chain(next_probe)
+            .chain(self.bootstrap.until)
+            .chain(pending_fanout)
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
