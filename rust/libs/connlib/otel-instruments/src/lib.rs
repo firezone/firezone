@@ -40,12 +40,14 @@ pub fn network_errors() -> Counter<u64> {
         .build()
 }
 
-/// How many times a UDP send was retried after a transient ENOBUFS-style error.
+/// How many times a network write was retried after a transient queue-full error.
+///
+/// Shared across IO paths (UDP sockets, the TUN device); distinguish them via attributes.
 pub fn network_retries() -> Histogram<u64> {
     meter()
         .u64_histogram("system.network.retries")
         .with_description(
-            "How many times a UDP send was retried (spun) after a transient ENOBUFS-style error before it succeeded or was dropped.",
+            "How many times a network write was retried (spun) after a transient queue-full error before it succeeded or was dropped.",
         )
         .with_unit("{retry}")
         .with_boundaries((1..=24_u64).map(|i| i as f64).collect())

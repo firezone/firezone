@@ -8178,6 +8178,8 @@ dependencies = [
  "anyhow-ext",
  "ip-packet",
  "libc",
+ "opentelemetry",
+ "otel-instruments",
  "tokio",
  "tracing",
 ]
