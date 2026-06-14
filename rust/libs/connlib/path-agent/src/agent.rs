@@ -168,10 +168,35 @@ impl PairState {
     }
 }
 
+/// Which end of the pair carries the relay. Within the Relayed tier,
+/// prefer our own relay so a relay rotation stays a local-only concern
+/// (no invalidated remote candidate to signal back to the peer).
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum RelayEnd {
+    Local,
+    Remote,
+}
+
+/// Whether the relay has to bridge address families internally.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum FamilyMatch {
+    Matched,
+    Mismatched,
+}
+
+/// Address family of the local send socket. v6 paths are generally
+/// shorter and our gear is dual-stack, so prefer them.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum LocalFamily {
+    V6,
+    V4,
+}
+
 /// Smaller-is-better discrete preference bucket. Field order is the
-/// comparison priority and every axis is phrased as a penalty, so
-/// `false` always sorts ahead of `true`. These are categorical: a
-/// strict win here switches the primary regardless of RTT (see
+/// comparison priority; each axis is an enum whose variants are
+/// declared best-first, so derived `Ord` ranks pairs without leaning
+/// on any `bool` ordering convention. These are categorical: a strict
+/// win here switches the primary regardless of RTT (see
 /// `select_primary`). Pairs in the same bucket are separated
 /// only by RTT.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -179,14 +204,9 @@ struct Bucket {
     /// Worse-of-pair candidate kind. `Host < ServerReflexive < Relayed`,
     /// so direct beats relayed.
     tier: crate::CandidateKind,
-    /// `true` when the *local* end isn't the relay. Within the Relayed
-    /// tier this prefers routing through our relay, keeping a relay
-    /// rotation a local-only concern.
-    local_is_not_relay: bool,
-    /// `true` when the relay has to bridge address families.
-    family_mismatch: bool,
-    /// `true` when the local end is IPv4 (v6 paths are preferred).
-    is_v4: bool,
+    relay_end: RelayEnd,
+    family_match: FamilyMatch,
+    local_family: LocalFamily,
 }
 
 /// Smaller-is-better sort key for primary selection: the discrete
@@ -203,9 +223,21 @@ fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
     PairScore {
         bucket: Bucket {
             tier: state.kinds.0.max(state.kinds.1),
-            local_is_not_relay: !matches!(state.kinds.0, crate::CandidateKind::Relayed),
-            family_mismatch: !state.local_family_matched,
-            is_v4: !pair.0.is_ipv6(),
+            relay_end: if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
+                RelayEnd::Local
+            } else {
+                RelayEnd::Remote
+            },
+            family_match: if state.local_family_matched {
+                FamilyMatch::Matched
+            } else {
+                FamilyMatch::Mismatched
+            },
+            local_family: if pair.0.is_ipv6() {
+                LocalFamily::V6
+            } else {
+                LocalFamily::V4
+            },
         },
         rtt: state.smoothed_rtt,
     }
