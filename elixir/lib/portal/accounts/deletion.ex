@@ -182,7 +182,7 @@ defmodule Portal.Accounts.Deletion do
     defp maybe_cancel_delete_jobs({:unchanged, _account}), do: {:ok, []}
 
     defp cancel_delete_jobs(account_id) do
-      [worker: DeleteAccount, state: [:scheduled, :available, :retryable]]
+      [worker: DeleteAccount, state: Oban.Job.unique_states(:incomplete)]
       |> Oban.Job.query()
       |> where([j], fragment("?->>'account_id'", j.args) == ^account_id)
       |> Oban.cancel_all_jobs()
@@ -195,7 +195,7 @@ defmodule Portal.Accounts.Deletion do
     defp maybe_cancel_reminder_jobs({:unchanged, _account}), do: {:ok, []}
 
     defp cancel_reminder_jobs(account_id) do
-      [worker: AccountDeletionReminder, state: [:scheduled, :available, :retryable]]
+      [worker: AccountDeletionReminder, state: Oban.Job.unique_states(:incomplete)]
       |> Oban.Job.query()
       |> where([j], fragment("?->>'account_id'", j.args) == ^account_id)
       |> Oban.cancel_all_jobs()

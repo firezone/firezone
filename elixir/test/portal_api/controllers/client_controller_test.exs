@@ -24,7 +24,19 @@ defmodule PortalAPI.ClientControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, client: client} do
       conn = get(conn, ~p"/clients/#{client}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
     end
 
     test "lists all clients", %{
@@ -114,7 +126,8 @@ defmodule PortalAPI.ClientControllerTest do
       client: client
     } do
       conn = get(conn, ~p"/clients/#{client.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single client", %{
@@ -152,12 +165,24 @@ defmodule PortalAPI.ClientControllerTest do
       assert %{"data" => data} = json_response(conn, 200)
       assert data["hostname"] == "host.example.com"
     end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, client: client} do
       conn = put(conn, ~p"/clients/#{client}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, actor: actor, client: client} do
@@ -167,8 +192,8 @@ defmodule PortalAPI.ClientControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put(~p"/clients/#{client}")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "updates a client", %{conn: conn, actor: actor, client: client} do
@@ -186,33 +211,24 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["name"] == attrs["name"]
     end
 
-    test "sets, updates, and clears hostname", %{conn: conn, actor: actor, client: client} do
+    test "returns validation error for an invalid update", %{
+      conn: conn,
+      actor: actor,
+      client: client
+    } do
+      attrs = %{"name" => String.duplicate("a", 256)}
+
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => "host-1.example.com"})
+        |> put(~p"/clients/#{client}", client: attrs)
 
-      assert json_response(conn, 200)["data"]["hostname"] == "host-1.example.com"
-
-      conn =
-        recycle(conn)
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => "host-2.example.com"})
-
-      assert json_response(conn, 200)["data"]["hostname"] == "host-2.example.com"
-
-      conn =
-        recycle(conn)
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "hostname" => nil})
-
-      assert json_response(conn, 200)["data"]["hostname"] == nil
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert Map.has_key?(errors, "name")
     end
 
-    test "PUT without hostname does not wipe an existing hostname", %{
+    test "ignores hostname in the update body", %{
       conn: conn,
       actor: actor,
       account: account
@@ -223,18 +239,32 @@ defmodule PortalAPI.ClientControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put(~p"/clients/#{client}", client: %{"name" => "Renamed"})
+        |> put(~p"/clients/#{client}",
+          client: %{"name" => "Renamed", "hostname" => "attacker.example.com"}
+        )
 
       assert resp = json_response(conn, 200)
       assert resp["data"]["name"] == "Renamed"
       assert resp["data"]["hostname"] == "host.example.com"
+    end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{Ecto.UUID.generate()}", client: %{"name" => "Nope"})
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 
   describe "verify/2" do
     test "returns error when not authorized", %{conn: conn, client: client} do
       conn = put(conn, ~p"/clients/#{client}/verify", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "verifies a client", %{conn: conn, actor: actor, client: client} do
@@ -249,12 +279,24 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["id"] == client.id
       assert resp["data"]["verified_at"]
     end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{Ecto.UUID.generate()}/verify")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "unverify/2" do
     test "returns error when not authorized", %{conn: conn, client: client} do
       conn = put(conn, ~p"/clients/#{client}/verify", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "unverifies a client", %{conn: conn, actor: actor, client: client} do
@@ -269,6 +311,17 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["id"] == client.id
       refute resp["data"]["verified_at"]
     end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{Ecto.UUID.generate()}/unverify")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "delete/2" do
@@ -277,7 +330,8 @@ defmodule PortalAPI.ClientControllerTest do
       client: client
     } do
       conn = delete(conn, ~p"/clients/#{client.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "deletes a client", %{
@@ -298,6 +352,17 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["online"] == false
 
       refute Repo.get_by(Device, id: client.id, account_id: client.account_id)
+    end
+
+    test "returns not found for non-existent client", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete(~p"/clients/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 end

@@ -698,21 +698,61 @@ defmodule Portal.Safe do
   end
 
   defp fetch_one_with_primary_retry(repo, query, retry?) do
-    result = safe_repo(fn -> repo.one(query) end)
-    if is_nil(result) and retry?, do: safe_repo(fn -> Repo.one(query) end), else: result
+    case read_replica(fn -> repo.one(query) end, retry?) do
+      :fallback ->
+        safe_repo(fn -> Repo.one(query) end)
+
+      nil when retry? ->
+        safe_repo(fn -> Repo.one(query) end)
+
+      result ->
+        result
+    end
   end
 
   defp fetch_one_with_primary_retry!(repo, query, retry?) do
-    case safe_repo(fn -> repo.one(query) end) do
-      nil when retry? -> safe_repo!(fn -> Repo.one!(query) end, query)
-      nil -> raise(Ecto.NoResultsError, queryable: query)
-      result -> result
+    case read_replica(fn -> repo.one(query) end, retry?) do
+      :fallback ->
+        safe_repo!(fn -> Repo.one!(query) end, query)
+
+      nil when retry? ->
+        safe_repo!(fn -> Repo.one!(query) end, query)
+
+      nil ->
+        raise(Ecto.NoResultsError, queryable: query)
+
+      result ->
+        result
     end
   end
 
   defp exists_with_primary_retry?(repo, query, retry?) do
-    result = safe_repo(fn -> repo.exists?(query) end) || false
-    if not result and retry?, do: safe_repo(fn -> Repo.exists?(query) end) || false, else: result
+    case read_replica(fn -> repo.exists?(query) end, retry?) do
+      :fallback -> safe_repo(fn -> Repo.exists?(query) end) || false
+      true -> true
+      _ when retry? -> safe_repo(fn -> Repo.exists?(query) end) || false
+      _ -> false
+    end
+  end
+
+  # Runs a read against the (possibly replica) repo. When a fallback to the
+  # primary is requested and the replica connection fails (e.g. a non-HA Azure
+  # read replica dropping connections during a transient outage), returns
+  # `:fallback` so the caller can retry against the primary. When fallback is
+  # disabled the connection error propagates so the real failure surfaces.
+  defp read_replica(fun, retry?) do
+    safe_repo(fun)
+  rescue
+    error in DBConnection.ConnectionError ->
+      if retry? do
+        Logger.warning("Replica read failed, falling back to primary",
+          error: Exception.message(error)
+        )
+
+        :fallback
+      else
+        reraise error, __STACKTRACE__
+      end
   end
 
   defp resolve_repo(:primary), do: Repo
@@ -926,25 +966,15 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Membership, :api_client), do: :ok
   def permit(:read, Portal.Membership, _), do: :ok
 
+  # ChangeLog permissions
+  def permit(:read, Portal.ChangeLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.ChangeLog, :api_client), do: :ok
+
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream
   defp emit_subject_message(%Subject{} = subject) do
-    subject_info = %{
-      "ip" => to_string(:inet.ntoa(subject.context.remote_ip)),
-      "ip_region" => subject.context.remote_ip_location_region,
-      "ip_city" => subject.context.remote_ip_location_city,
-      "ip_lat" => subject.context.remote_ip_location_lat,
-      "ip_lon" => subject.context.remote_ip_location_lon,
-      "user_agent" => subject.context.user_agent,
-      "actor_name" => subject.actor.name,
-      "actor_type" => to_string(subject.actor.type),
-      "actor_email" => subject.actor.email,
-      "actor_id" => subject.actor.id,
-      "auth_provider_id" => subject.credential.auth_provider_id
-    }
-
-    message = JSON.encode!(subject_info)
+    message = subject |> Subject.to_map() |> JSON.encode!()
     Repo.query!("SELECT pg_logical_emit_message(true, 'subject', $1)", [message])
   end
 end

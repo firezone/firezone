@@ -82,6 +82,7 @@ struct DnsQueryMetaData {
     local: SocketAddr,
     remote: SocketAddr,
     transport: dns::Transport,
+    started_at: Instant,
 }
 
 pub(crate) struct Buffers {
@@ -192,11 +193,8 @@ impl Io {
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packets")
-                .with_description("The number of packets processed.")
-                .build(),
-            dropped_packets: otel::metrics::network_packet_dropped(),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
@@ -355,30 +353,28 @@ impl Io {
             })
             .collect::<Vec<_>>();
 
-        let dns_response = self
-            .dns_queries
-            .poll_unpin(cx)
-            .map(|(result, meta)| match result {
-                Ok(result) => dns::RecursiveResponse {
+        let dns_response = match self.dns_queries.poll_unpin(cx) {
+            Poll::Ready((result, meta)) => {
+                let message = match result {
+                    Ok(message) => message,
+                    Err(e @ futures_bounded::Timeout { .. }) => Err(anyhow::Error::new(
+                        io::Error::new(io::ErrorKind::TimedOut, e),
+                    )),
+                };
+
+                Poll::Ready(dns::RecursiveResponse {
                     server: meta.server,
                     query: meta.query,
-                    message: result,
+                    message,
                     transport: meta.transport,
                     local: meta.local,
                     remote: meta.remote,
-                },
-                Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
-                    server: meta.server,
-                    query: meta.query,
-                    message: Err(anyhow::Error::new(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        e,
-                    ))),
-                    transport: meta.transport,
-                    local: meta.local,
-                    remote: meta.remote,
-                },
-            });
+                    started_at: meta.started_at,
+                    recursion: dns::Recursion::Local,
+                })
+            }
+            Poll::Pending => Poll::Pending,
+        };
 
         // We need to discard DoH clients if their queries fail because the connection got closed.
         // They will get re-bootstrapped on the next requested DoH query.
@@ -524,6 +520,7 @@ impl Io {
             transport: query.transport,
             local: query.local,
             remote: query.remote,
+            started_at: Instant::now(),
         };
 
         match (query.transport, query.server) {

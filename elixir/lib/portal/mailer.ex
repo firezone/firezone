@@ -9,6 +9,10 @@ defmodule Portal.Mailer do
 
   @recipient_fields [{"to", :to}, {"cc", :cc}, {"bcc", :bcc}]
 
+  # Email addresses ending in any of these suffixes are non-deliverable and are
+  # dropped from every recipient field before delivery.
+  @blocked_suffixes ["@firezone.invalid"]
+
   def deliver_with_rate_limit(email, config \\ []) do
     {key, config} = Keyword.pop(config, :rate_limit_key, {email.to, email.subject})
 
@@ -16,7 +20,13 @@ defmodule Portal.Mailer do
     {rate_limit_interval, config} = Keyword.pop(config, :rate_limit_interval, :timer.minutes(2))
 
     RateLimiter.rate_limit(key, rate_limit, rate_limit_interval, fn ->
-      deliver(email, config)
+      # Tracking depends on the message id ACS returns and the ACS Event Grid
+      # delivery webhooks; revert by pointing the adapter env var elsewhere.
+      if effective_adapter(config) == Swoosh.Adapters.AzureCommunicationServices do
+        deliver_and_track(email, config)
+      else
+        deliver(email, config)
+      end
     end)
     |> case do
       {:ok, result} -> result
@@ -41,6 +51,22 @@ defmodule Portal.Mailer do
     deliver_with_mailer_config(email, opts, metadata)
   end
 
+  @doc """
+  Delivers an email synchronously and, on success, inserts a tracked row when
+  the adapter returns a message id (ACS). Used by the primary mailer call sites
+  so delivery report webhooks can update those messages too.
+  """
+  def deliver_and_track(email, config \\ []) do
+    case deliver(email, config) do
+      {:ok, result} = ok ->
+        maybe_insert_tracked(email, result)
+        ok
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   def deliver_secondary(email, config \\ []) do
     opts =
       Portal.Config.fetch_env!(:portal, Portal.Mailer.Secondary)
@@ -53,10 +79,20 @@ defmodule Portal.Mailer do
 
   defp deliver_with_mailer_config(email, opts, metadata) do
     if opts[:adapter] do
-      email = put_adapter_client_options(email, opts)
-      metadata = %{metadata | email: email}
+      email = drop_blocked_recipients(email)
 
-      deliver_with_telemetry(email, opts, metadata)
+      if has_recipients?(email) do
+        email = put_adapter_client_options(email, opts)
+        metadata = %{metadata | email: email}
+
+        deliver_with_telemetry(email, opts, metadata)
+      else
+        Logger.info("Skipping email because all recipients are undeliverable",
+          email_subject: inspect(email.subject)
+        )
+
+        {:ok, %{}}
+      end
     else
       Logger.info("Emails are not configured", email_subject: inspect(email.subject))
       {:ok, %{}}
@@ -151,7 +187,7 @@ defmodule Portal.Mailer do
   `{:ok, :suppressed}` if all recipients are suppressed.
   """
   def enqueue(%Email{} = email) do
-    account_id = require_account_id!(email)
+    account_id = email.private[:account_id]
     request = serialize(email)
 
     case drop_suppressed_recipients(request) do
@@ -174,11 +210,44 @@ defmodule Portal.Mailer do
     Database.insert_tracked(account_id, message_id, subject, recipients)
   end
 
-  defp require_account_id!(%Email{} = email) do
-    case email.private[:account_id] do
-      account_id when is_binary(account_id) -> account_id
-      _ -> raise ArgumentError, "call Portal.Mailer.with_account_id/2 before enqueue/1"
+  defp maybe_insert_tracked(%Email{} = email, result) do
+    with message_id when is_binary(message_id) <- result_message_id(result),
+         [_ | _] = recipients <- email_addresses(email) do
+      account_id = email.private[:account_id]
+
+      case Database.insert_tracked(account_id, message_id, email.subject, recipients) do
+        {:ok, _entry} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Failed to persist tracked outbound email; email was already sent",
+            account_id: account_id,
+            message_id: message_id,
+            reason: inspect(reason)
+          )
+
+          :ok
+      end
+    else
+      _ -> :ok
     end
+  end
+
+  defp result_message_id(result) when is_map(result), do: result[:id] || result["id"]
+  defp result_message_id(_), do: nil
+
+  defp effective_adapter(config) do
+    Mailer.parse_config(:portal, __MODULE__, [], config)[:adapter]
+  end
+
+  defp email_addresses(%Email{} = email) do
+    (List.wrap(email.to) ++ List.wrap(email.cc) ++ List.wrap(email.bcc))
+    |> Enum.map(fn
+      {_, addr} -> addr
+      addr when is_binary(addr) -> addr
+    end)
+    |> Enum.reject(&undeliverable_address?/1)
+    |> Enum.uniq()
   end
 
   defp serialize(%Email{} = email) do
@@ -233,10 +302,33 @@ defmodule Portal.Mailer do
     end
   end
 
+  defp drop_blocked_recipients(%Email{} = email) do
+    %{
+      email
+      | to: reject_blocked_addresses(email.to),
+        cc: reject_blocked_addresses(email.cc),
+        bcc: reject_blocked_addresses(email.bcc)
+    }
+  end
+
+  defp reject_blocked_addresses(recipients) do
+    recipients
+    |> List.wrap()
+    |> Enum.reject(fn
+      {_name, address} -> undeliverable_address?(address)
+      address when is_binary(address) -> undeliverable_address?(address)
+    end)
+  end
+
+  defp has_recipients?(%Email{} = email) do
+    Enum.any?([email.to, email.cc, email.bcc], fn field ->
+      field |> List.wrap() |> Enum.any?()
+    end)
+  end
+
   defp undeliverable_address?(address) do
-    address
-    |> String.downcase()
-    |> String.ends_with?("@firezone.invalid")
+    normalized = EmailSuppression.normalize_email(address)
+    Enum.any?(@blocked_suffixes, &String.ends_with?(normalized, &1))
   end
 
   defp recipient_addresses(request) do
@@ -247,6 +339,7 @@ defmodule Portal.Mailer do
 
   defmodule Database do
     import Ecto.Query
+    require Logger
 
     alias Portal.Safe
     alias Portal.{EmailSuppression, OutboundEmail, OutboundEmailDelivery, Repo}
@@ -271,6 +364,29 @@ defmodule Portal.Mailer do
       now = DateTime.utc_now()
       recipients = normalize_recipients(recipients)
 
+      case do_insert_tracked(account_id, message_id, subject, recipients, now) do
+        {:error, %Ecto.Changeset{} = changeset} when not is_nil(account_id) ->
+          if account_does_not_exist?(changeset) do
+            # The account was deleted out from under us (e.g. a deletion-complete
+            # email racing teardown). Still persist the tracking record, just
+            # without the account_id, which the FK now allows (ON DELETE SET NULL).
+            Logger.info(
+              "Persisting tracked outbound email without account_id; account no longer exists",
+              account_id: account_id,
+              message_id: message_id
+            )
+
+            do_insert_tracked(nil, message_id, subject, recipients, now)
+          else
+            {:error, changeset}
+          end
+
+        result ->
+          result
+      end
+    end
+
+    defp do_insert_tracked(account_id, message_id, subject, recipients, now) do
       Safe.transact(
         fn ->
           with {:ok, entry} <- insert_entry(account_id, message_id, subject, recipients, now) do
@@ -286,6 +402,10 @@ defmodule Portal.Mailer do
         end,
         @db_opts
       )
+    end
+
+    defp account_does_not_exist?(%Ecto.Changeset{errors: errors}) do
+      match?({_, [{:constraint, :assoc} | _]}, Keyword.get(errors, :account))
     end
 
     defp normalize_recipients(recipients) do

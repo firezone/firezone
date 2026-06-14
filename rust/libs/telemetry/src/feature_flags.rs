@@ -68,6 +68,42 @@ pub fn show_connected_devices() -> bool {
     FEATURE_FLAGS.show_connected_devices()
 }
 
+/// The current value of every feature flag, by name.
+pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
+    // Exhaustive destruction so we don't forget to update this when we add a flag.
+    let FeatureFlags {
+        icmp_unreachable_instead_of_nat64,
+        drop_llmnr_nxdomain_responses,
+        stream_logs,
+        icmp_error_unreachable_prohibited_create_new_flow,
+        stream_metrics,
+        iceless,
+        show_connected_devices,
+    } = &*FEATURE_FLAGS;
+
+    [
+        (
+            "icmp_unreachable_instead_of_nat64",
+            icmp_unreachable_instead_of_nat64.load(Ordering::Relaxed),
+        ),
+        (
+            "drop_llmnr_nxdomain_responses",
+            drop_llmnr_nxdomain_responses.load(Ordering::Relaxed),
+        ),
+        ("stream_logs", !stream_logs.read().directives.is_empty()),
+        (
+            "icmp_error_unreachable_prohibited_create_new_flow",
+            icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
+        ),
+        ("stream_metrics", stream_metrics.load(Ordering::Relaxed)),
+        ("iceless", iceless.load(Ordering::Relaxed)),
+        (
+            "show_connected_devices",
+            show_connected_devices.load(Ordering::Relaxed),
+        ),
+    ]
+}
+
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     if user_id.is_empty() {
         return;
@@ -87,10 +123,6 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     let flags = update_from_env(flags);
 
     FEATURE_FLAGS.update(flags, payloads);
-
-    sentry::Hub::main().configure_scope(|scope| {
-        scope.set_context("flags", sentry_flag_context(flags));
-    });
 
     tracing::debug!(%env, flags = ?FEATURE_FLAGS, "Evaluated feature-flags");
 }
@@ -308,47 +340,6 @@ fn env_or(key: &str, fallback: bool) -> bool {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(fallback)
-}
-
-fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
-    #[derive(Debug, serde::Serialize)]
-    #[serde(tag = "flag", rename_all = "snake_case")]
-    enum SentryFlag {
-        IcmpUnreachableInsteadOfNat64 { result: bool },
-        DropLlmnrNxdomainResponses { result: bool },
-        StreamLogs { result: bool },
-        IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
-        StreamMetrics { result: bool },
-        Iceless { result: bool },
-        ShowConnectedDevices { result: bool },
-    }
-
-    // Exhaustive destruction so we don't forget to update this when we add a flag.
-    let FeatureFlagsResponse {
-        icmp_unreachable_instead_of_nat64,
-        drop_llmnr_nxdomain_responses,
-        stream_logs,
-        icmp_error_unreachable_prohibited_create_new_flow,
-        stream_metrics,
-        iceless,
-        show_connected_devices,
-    } = flags;
-
-    let value = serde_json::json!({
-        "values": [
-            SentryFlag::IcmpUnreachableInsteadOfNat64 {
-                result: icmp_unreachable_instead_of_nat64,
-            },
-            SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
-            SentryFlag::StreamLogs { result: stream_logs },
-            SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
-            SentryFlag::StreamMetrics { result: stream_metrics },
-            SentryFlag::Iceless { result: iceless },
-            SentryFlag::ShowConnectedDevices { result: show_connected_devices },
-        ]
-    });
-
-    sentry::protocol::Context::Other(serde_json::from_value(value).expect("to and from json works"))
 }
 
 struct LogFilter {

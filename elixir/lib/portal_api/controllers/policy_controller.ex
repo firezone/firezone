@@ -3,19 +3,23 @@ defmodule PortalAPI.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Policies"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Policies",
     parameters: [
       limit: [in: :query, description: "Limit Policies returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -28,6 +32,7 @@ defmodule PortalAPI.PolicyController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Policy",
     parameters: [
@@ -38,9 +43,11 @@ defmodule PortalAPI.PolicyController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -51,14 +58,24 @@ defmodule PortalAPI.PolicyController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Policy",
     parameters: [],
     request_body:
-      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.CreateRequest,
+       required: true},
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"policy" => params}) do
@@ -79,6 +96,7 @@ defmodule PortalAPI.PolicyController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update a Policy",
     parameters: [
@@ -90,10 +108,20 @@ defmodule PortalAPI.PolicyController do
       ]
     ],
     request_body:
-      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.Request, required: true},
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+      {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.UpdateRequest,
+       required: true},
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "policy" => params}) do
@@ -112,6 +140,7 @@ defmodule PortalAPI.PolicyController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Policy",
     parameters: [
@@ -122,9 +151,11 @@ defmodule PortalAPI.PolicyController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}
-    ]
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -157,7 +188,6 @@ defmodule PortalAPI.PolicyController do
 
       case result do
         nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
         policy -> {:ok, policy}
       end
     end
@@ -232,12 +262,13 @@ defmodule PortalAPI.PolicyController do
       |> Safe.delete()
     end
 
+    # The base Policy.changeset/1 is applied centrally by Safe.insert/Safe.update,
+    # so we only do the request-specific casting here.
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do
       %Policy{}
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
-      |> Policy.changeset()
       |> put_change(:account_id, subject.account.id)
     end
 
@@ -246,7 +277,6 @@ defmodule PortalAPI.PolicyController do
       |> cast(attrs, ~w[description group_id resource_id]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
-      |> Policy.changeset()
     end
 
     def cursor_fields do

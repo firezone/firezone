@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Cmd::Install => service::install(),
         Cmd::Run => service::run(cli.log_dir, cli.dns_control),
-        Cmd::RunDebug => service::run_debug(cli.dns_control),
+        Cmd::RunInteractive => service::run_interactive(cli.dns_control),
         Cmd::RunSmokeTest => service::run_smoke_test(),
     }
 }
@@ -66,7 +66,9 @@ enum Cmd {
     Install,
     #[default]
     Run,
-    RunDebug,
+    /// Run the Tunnel service in an interactive terminal instead of as a
+    /// background service. Used for local development and debugging.
+    RunInteractive,
     RunSmokeTest,
 }
 
@@ -83,8 +85,9 @@ mod tests {
     #[test]
     fn cli() {
         let actual =
-            Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
-        assert!(matches!(actual.command, Cmd::RunDebug));
+            Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-interactive"])
+                .unwrap();
+        assert!(matches!(actual.command, Cmd::RunInteractive));
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();

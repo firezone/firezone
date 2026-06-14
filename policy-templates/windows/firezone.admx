@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<policyDefinitions revision="1.0" schemaVersion="1.0">
+  <policyNamespaces>
+    <target namespace="Firezone.Policies" prefix="firezone" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn>
+    <definitions>
+      <definition
+        name="SUPPORTED_FZ_GUI_1_5_0"
+        displayName="$(string.SUPPORTED_FZ_GUI_1_5_0)"
+      />
+    </definitions>
+  </supportedOn>
+  <categories>
+    <category displayName="$(string.firezone)" name="firezone" />
+  </categories>
+  <policies>
+    <policy
+      name="authURL"
+      class="Machine"
+      displayName="$(string.authURL)"
+      explainText="$(string.authURL_explain)"
+      key="Software\Policies\Firezone"
+      presentation="$(presentation.authURL)"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <elements>
+        <text id="authURL" valueName="authURL" required="true" />
+      </elements>
+    </policy>
+
+    <policy
+      name="apiURL"
+      class="Machine"
+      displayName="$(string.apiURL)"
+      explainText="$(string.apiURL_explain)"
+      key="Software\Policies\Firezone"
+      presentation="$(presentation.apiURL)"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <elements>
+        <text id="apiURL" valueName="apiURL" required="true" />
+      </elements>
+    </policy>
+
+    <policy
+      name="logFilter"
+      class="Machine"
+      displayName="$(string.logFilter)"
+      explainText="$(string.logFilter_explain)"
+      key="Software\Policies\Firezone"
+      presentation="$(presentation.logFilter)"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <elements>
+        <text id="logFilter" valueName="logFilter" required="true" />
+      </elements>
+    </policy>
+
+    <policy
+      name="accountSlug"
+      class="Machine"
+      displayName="$(string.accountSlug)"
+      explainText="$(string.accountSlug_explain)"
+      key="Software\Policies\Firezone"
+      presentation="$(presentation.accountSlug)"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <elements>
+        <text id="accountSlug" valueName="accountSlug" required="true" />
+      </elements>
+    </policy>
+
+    <policy
+      name="hideAdminPortalMenuItem"
+      class="Machine"
+      displayName="$(string.hideAdminPortalMenuItem)"
+      explainText="$(string.hideAdminPortalMenuItem_explain)"
+      key="Software\Policies\Firezone"
+      valueName="hideAdminPortalMenuItem"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+
+    <policy
+      name="connectOnStart"
+      class="Machine"
+      displayName="$(string.connectOnStart)"
+      explainText="$(string.connectOnStart_explain)"
+      key="Software\Policies\Firezone"
+      valueName="connectOnStart"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+
+    <policy
+      name="checkForUpdates"
+      class="Machine"
+      displayName="$(string.checkForUpdates)"
+      explainText="$(string.checkForUpdates_explain)"
+      key="Software\Policies\Firezone"
+      valueName="checkForUpdates"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+
+    <policy
+      name="supportURL"
+      class="Machine"
+      displayName="$(string.supportURL)"
+      explainText="$(string.supportURL_explain)"
+      key="Software\Policies\Firezone"
+      presentation="$(presentation.supportURL)"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <elements>
+        <text id="supportURL" valueName="supportURL" required="true" />
+      </elements>
+    </policy>
+  </policies>
+</policyDefinitions>

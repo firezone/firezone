@@ -3,10 +3,12 @@ defmodule PortalAPI.GatewayTokenController do
   use OpenApiSpex.ControllerSpecs
   alias Portal.Authentication
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Gateway Tokens"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create a Gateway Token",
     parameters: [
@@ -17,9 +19,18 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
-    ]
+    responses:
+      [
+        ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"site_id" => site_id}) do
@@ -35,6 +46,7 @@ defmodule PortalAPI.GatewayTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Gateway Token",
     parameters: [
@@ -51,11 +63,20 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Deleted Token Response", "application/json",
-         PortalAPI.Schemas.GatewayToken.DeletedResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Token Response", "application/json",
+           PortalAPI.Schemas.GatewayToken.DeletedResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do
@@ -69,6 +90,7 @@ defmodule PortalAPI.GatewayTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete_all,
     summary: "Delete all Gateway Tokens for a Site",
     parameters: [
@@ -79,11 +101,15 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Deleted Tokens Response", "application/json",
-         PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Tokens Response", "application/json",
+           PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
+      ] ++
+        ProblemDetails.responses([:unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec delete_all(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete_all(conn, %{"site_id" => site_id}) do
@@ -111,9 +137,11 @@ defmodule PortalAPI.GatewayTokenController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        site -> {:ok, site}
+        nil ->
+          {:error, :not_found}
+
+        site ->
+          {:ok, site}
       end
     end
 

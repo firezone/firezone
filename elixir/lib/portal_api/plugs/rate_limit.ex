@@ -24,10 +24,10 @@ defmodule PortalAPI.Plugs.RateLimit do
       {:deny, retry_after_ms} ->
         conn
         |> put_resp_header("retry-after", Integer.to_string(ceil(retry_after_ms / 1000)))
-        |> put_status(429)
-        |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
-        |> Phoenix.Controller.render(:"429")
-        |> halt()
+        |> PortalAPI.ProblemDetails.send(
+          429,
+          "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
+        )
     end
   end
 

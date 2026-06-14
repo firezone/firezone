@@ -15,8 +15,8 @@ use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, UpDownCounter};
-use rand::Rng;
+use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
+use rand::RngExt;
 use secrecy::SecretString;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -84,8 +84,8 @@ pub struct Server<R> {
     nonces: Nonces,
 
     allocations_up_down_counter: UpDownCounter<i64>,
-    data_relayed_counter: Counter<u64>,
-    data_relayed: u64, // Keep a separate counter because `Counter` doesn't expose the current value :(
+    data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
+    relayed_packet_size_histogram: Histogram<u64>,
     responses_counter: Counter<u64>,
 }
 
@@ -162,7 +162,7 @@ const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<R> Server<R>
 where
-    R: Rng,
+    R: RngExt,
 {
     /// Constructs a new [`Server`].
     ///
@@ -180,21 +180,9 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let meter = opentelemetry::global::meter("relay");
-
-        let allocations_up_down_counter = meter
-            .i64_up_down_counter("allocations_total")
-            .with_description("The number of active allocations")
-            .build();
-        let responses_counter = meter
-            .u64_counter("responses_total")
-            .with_description("The number of responses")
-            .build();
-        let data_relayed_counter = meter
-            .u64_counter("data_relayed_userspace_bytes")
-            .with_description("The number of bytes relayed")
-            .with_unit("b")
-            .build();
+        let allocations_up_down_counter = crate::metrics::active_allocations();
+        let responses_counter = crate::metrics::responses();
+        let relayed_packet_size_histogram = crate::metrics::packet_size();
 
         Self {
             public_address: public_address.into(),
@@ -206,13 +194,13 @@ where
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
-            auth_secret: SecretString::from(hex::encode(rng.r#gen::<[u8; 32]>())),
+            auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             rng,
             nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
-            data_relayed_counter,
             data_relayed: 0,
+            relayed_packet_size_histogram,
             channel_and_client_by_port_and_peer: Default::default(),
         }
     }
@@ -237,11 +225,9 @@ where
         self.listen_port
     }
 
-    /// Registers a new, valid nonce.
-    ///
-    /// Each nonce is valid for 10 requests.
-    pub fn add_nonce(&mut self, nonce: Uuid) {
-        self.nonces.add_new(nonce);
+    /// Registers a new, valid nonce for the given client.
+    pub fn add_nonce(&mut self, client: ClientSocket, nonce: Uuid) {
+        self.nonces.add_new(client, nonce);
     }
 
     pub fn num_relayed_bytes(&self) -> u64 {
@@ -342,7 +328,7 @@ where
         // In case of a 401 or 438 response, attach a realm and nonce.
         if is_auth_error {
             error_response.add_attribute((*FIREZONE).clone());
-            error_response.add_attribute(self.new_nonce_attribute());
+            error_response.add_attribute(self.new_nonce_attribute(sender));
         }
 
         let message = match message.username() {
@@ -388,8 +374,9 @@ where
             return None;
         };
 
-        self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
+        self.relayed_packet_size_histogram
+            .record(msg.len() as u64, &[crate::metrics::datapath_userspace()]);
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -490,7 +477,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -617,7 +604,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
@@ -666,7 +653,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -775,7 +762,7 @@ where
         request: &CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(request)?;
+        let username = self.verify_auth(sender, request)?;
 
         self.authenticate_and_send(
             &username,
@@ -813,14 +800,16 @@ where
 
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
-        self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
+        self.relayed_packet_size_histogram
+            .record(data.len() as u64, &[crate::metrics::datapath_userspace()]);
 
         Some((channel.allocation, channel.peer_address))
     }
 
     fn verify_auth(
         &mut self,
+        sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
     ) -> Result<Username, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
@@ -852,7 +841,7 @@ where
                 error_response
             })?;
 
-        self.nonces.handle_nonce_used(nonce).map_err(|e| {
+        self.nonces.handle_nonce_used(sender, nonce).map_err(|e| {
             let (error_response, msg) = make_error_response(StaleNonce, request);
             tracing::debug!(target: "relay", "{msg}: Nonce is invalid: {e}");
 
@@ -892,7 +881,7 @@ where
         );
 
         let port = loop {
-            let candidate = AllocationPort(self.rng.gen_range(self.ports.clone()));
+            let candidate = AllocationPort(self.rng.random_range(self.ports.clone()));
 
             if !self.clients_by_allocation.contains_key(&candidate) {
                 break candidate;
@@ -1108,12 +1097,10 @@ where
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 
-    fn new_nonce_attribute(&mut self) -> Nonce {
-        let new_nonce = Uuid::from_u128(self.rng.r#gen());
+    fn new_nonce_attribute(&mut self, sender: ClientSocket) -> Nonce {
+        let nonce = self.nonces.issue(sender, &mut self.rng);
 
-        self.add_nonce(new_nonce);
-
-        Nonce::new(new_nonce.to_string())
+        Nonce::new(nonce.to_string())
             .expect("UUIDs are valid nonces because they are less than 128 characters long")
     }
 }

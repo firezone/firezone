@@ -826,6 +826,7 @@ defmodule PortalWeb.CoreComponents do
   end
 
   attr :type, :string, default: "neutral"
+  attr :size, :string, default: "sm", values: ["xs", "sm", "md"]
   attr :class, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
@@ -841,12 +842,19 @@ defmodule PortalWeb.CoreComponents do
       "neutral" => "bg-neutral-100 text-neutral-800"
     }
 
-    assigns = assign(assigns, colors: colors)
+    sizes = %{
+      "xs" => "text-[10px] px-1.5 py-px",
+      "sm" => "text-xs px-2.5 py-0.5",
+      "md" => "text-sm px-3 py-1"
+    }
+
+    assigns = assign(assigns, colors: colors, sizes: sizes)
 
     ~H"""
     <span
       class={[
-        "text-xs px-2.5 py-0.5 rounded-sm whitespace-nowrap",
+        "rounded whitespace-nowrap",
+        @sizes[@size],
         @colors[@type],
         @class
       ]}
@@ -881,8 +889,8 @@ defmodule PortalWeb.CoreComponents do
         "light" => "bg-blue-100 text-blue-800"
       },
       "primary" => %{
-        "dark" => "bg-primary-400 text-primary-800",
-        "light" => "bg-primary-100 text-primary-800"
+        "dark" => "bg-primary-500 text-white",
+        "light" => "bg-primary-200 text-primary-700"
       },
       "accent" => %{
         "dark" => "bg-accent-100 text-accent-800",
@@ -897,22 +905,22 @@ defmodule PortalWeb.CoreComponents do
     assigns = assign(assigns, colors: colors)
 
     ~H"""
-    <span class="flex inline-flex">
-      <div class={[
-        "text-xs rounded-l py-0.5 pl-2.5 pr-1.5",
+    <div class="inline-flex">
+      <span class={[
+        "text-xs rounded-l py-0.5 px-2",
         @colors[@type]["dark"]
       ]}>
         {render_slot(@left)}
-      </div>
+      </span>
       <span class={[
         "text-xs",
         "rounded-r",
-        "mr-2 py-0.5 pl-1.5 pr-2.5",
+        "py-0.5 px-2",
         @colors[@type]["light"]
       ]}>
         {render_slot(@right)}
       </span>
-    </span>
+    </div>
     """
   end
 
@@ -1717,91 +1725,42 @@ defmodule PortalWeb.CoreComponents do
 
   ## Statuses
 
-  - `:online` / `:healthy` / `:active` — green
-  - `:degraded` — amber
-  - `:offline` — gray
-  - `:disabled` — red
+  - `:success` — green
+  - `:warning` — amber
+  - `:danger` — red
+  - `:neutral` — gray
 
   ## Examples
 
-    <.status_badge status={:online} />
-    <.status_badge status={:offline} />
-    <.status_badge status={:active} />
-    <.status_badge status={:disabled} />
-    <.status_badge status={:healthy} />
-    <.status_badge status={:degraded} />
+    <.status_badge style={:success}>Online</.status_badge>
+    <.status_badge style={:neutral}>Offline</.status_badge>
+    <.status_badge style={:warning}>Degraded</.status_badge>
+    <.status_badge style={:danger}>Disabled</.status_badge>
+    <.status_badge style={:success} dot={false}>Active</.status_badge>
   """
-  attr :status, :atom,
-    required: true,
-    values: [:online, :offline, :active, :disabled, :healthy, :degraded, :expired]
+  attr :style, :atom, required: true, values: [:success, :warning, :danger, :neutral]
+  attr :dot, :boolean, default: true
+  slot :inner_block, required: true
 
   def status_badge(assigns) do
-    assigns = assign(assigns, :cfg, status_badge_config(assigns.status))
-
     ~H"""
     <span class={[
       "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
-      @cfg.pill_class
+      badge_pill_class(@style)
     ]}>
-      <span class={["w-1.5 h-1.5 rounded-full shrink-0", @cfg.dot_class]}></span>
-      {@cfg.label}
+      <span :if={@dot} class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}></span>
+      {render_slot(@inner_block)}
     </span>
     """
   end
 
-  defp status_badge_config(:online) do
-    %{
-      label: "Online",
-      pill_class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-      dot_class: "bg-green-500"
-    }
-  end
+  defp badge_pill_class(:success), do: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+  defp badge_pill_class(:warning), do: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+  defp badge_pill_class(:danger), do: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+  defp badge_pill_class(:neutral), do: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
 
-  defp status_badge_config(:healthy) do
-    %{
-      label: "Healthy",
-      pill_class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-      dot_class: "bg-green-500"
-    }
-  end
-
-  defp status_badge_config(:active) do
-    %{
-      label: "Active",
-      pill_class: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-      dot_class: "bg-green-500"
-    }
-  end
-
-  defp status_badge_config(:degraded) do
-    %{
-      label: "Degraded",
-      pill_class: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-      dot_class: "bg-amber-500"
-    }
-  end
-
-  defp status_badge_config(:offline) do
-    %{
-      label: "Offline",
-      pill_class: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
-      dot_class: "bg-gray-400"
-    }
-  end
-
-  defp status_badge_config(:disabled) do
-    %{
-      label: "Disabled",
-      pill_class: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-      dot_class: "bg-red-500"
-    }
-  end
-
-  defp status_badge_config(:expired) do
-    %{
-      label: "Expired",
-      pill_class: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
-      dot_class: "bg-gray-400"
-    }
-  end
+  defp badge_dot_class(:success), do: "bg-green-500"
+  defp badge_dot_class(:warning), do: "bg-amber-500"
+  defp badge_dot_class(:danger), do: "bg-red-500"
+  defp badge_dot_class(:neutral), do: "bg-gray-400"
 end

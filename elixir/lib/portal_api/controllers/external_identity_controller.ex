@@ -3,10 +3,12 @@ defmodule PortalAPI.ExternalIdentityController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["ExternalIdentities"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List External Identities for an Actor",
     parameters: [
@@ -14,11 +16,20 @@ defmodule PortalAPI.ExternalIdentityController do
       limit: [in: :query, description: "Limit External Identities returned", type: :integer],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok:
-        {"ExternalIdentity List Response", "application/json",
-         PortalAPI.Schemas.ExternalIdentity.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"ExternalIdentity List Response", "application/json",
+           PortalAPI.Schemas.ExternalIdentity.ListResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
@@ -32,6 +43,7 @@ defmodule PortalAPI.ExternalIdentityController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show External Identity",
     parameters: [
@@ -48,11 +60,20 @@ defmodule PortalAPI.ExternalIdentityController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"ExternalIdentity Response", "application/json",
-         PortalAPI.Schemas.ExternalIdentity.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"ExternalIdentity Response", "application/json",
+           PortalAPI.Schemas.ExternalIdentity.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -63,6 +84,7 @@ defmodule PortalAPI.ExternalIdentityController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an External Identity",
     parameters: [
@@ -79,11 +101,20 @@ defmodule PortalAPI.ExternalIdentityController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"ExternalIdentity Response", "application/json",
-         PortalAPI.Schemas.ExternalIdentity.Response}
-    ]
+    responses:
+      [
+        ok:
+          {"ExternalIdentity Response", "application/json",
+           PortalAPI.Schemas.ExternalIdentity.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do

@@ -7,7 +7,7 @@ defmodule Portal.Entra.Sync do
     max_attempts: 1,
     unique: [
       period: :infinity,
-      states: [:available, :scheduled, :executing],
+      states: :incomplete,
       keys: [:directory_id]
     ]
 

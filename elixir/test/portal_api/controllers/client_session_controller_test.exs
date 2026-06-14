@@ -21,7 +21,17 @@ defmodule PortalAPI.ClientSessionControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, ~p"/client_sessions")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/client_sessions", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} = json_response(conn, 400)
     end
 
     test "lists all client sessions", %{
@@ -130,7 +140,7 @@ defmodule PortalAPI.ClientSessionControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account, client: client} do
       session = client_session_fixture(account: account, client: client)
       conn = get(conn, ~p"/client_sessions/#{session.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
     test "returns a single client session", %{
@@ -160,7 +170,7 @@ defmodule PortalAPI.ClientSessionControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/client_sessions/#{Ecto.UUID.generate()}")
 
-      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} = json_response(conn, 404)
     end
   end
 end

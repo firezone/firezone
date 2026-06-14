@@ -32,7 +32,7 @@ jobs:
               APPLICATION_NAME=portal
               GIT_SHA=${{ inputs.sha }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ inputs.sha }}
       - name: Set up Docker Buildx
@@ -105,7 +105,7 @@ jobs:
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
         if: ${{ matrix.image_name == 'portal' }}
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: trivy-results.sarif
           category: trivy-portal

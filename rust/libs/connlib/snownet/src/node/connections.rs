@@ -517,7 +517,7 @@ mod tests {
         let mut connections: Connections<u32, u32> = Connections::default();
         let mut allocations: Allocations<u32> = Allocations::default();
         let now = Instant::now();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Insert a connection that is using relay id 1.
         let conn = new_connection(12345, 1, [1u8; 32]);
@@ -610,7 +610,7 @@ mod tests {
     }
 
     fn new_connection(idx: u32, relay_id: u32, key: [u8; 32]) -> Connection<u32> {
-        let private = StaticSecret::random_from_rng(rand::thread_rng());
+        let private = StaticSecret::random_from_rng(&mut rand::rng());
         let new_local = Index::new_local(idx);
 
         Connection {

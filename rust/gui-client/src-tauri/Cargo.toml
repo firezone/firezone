@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:next-gui-version
-version = "1.5.13"
+version = "1.5.14"
 description = "Firezone"
 edition = { workspace = true }
 default-run = "firezone-gui-client"
@@ -39,6 +39,7 @@ keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
+opentelemetry = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
@@ -56,7 +57,7 @@ specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
 strum = { workspace = true }
 subtle = { workspace = true }
-tauri = { workspace = true, features = ["tray-icon", "image-png"] }
+tauri = { workspace = true, features = ["image-png"] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-runtime = { workspace = true }
@@ -74,9 +75,14 @@ url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }
 
+# Windows and macOS keep Tauri's built-in tray.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tauri = { workspace = true, features = ["tray-icon"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
+ksni = { workspace = true } # Tray icon for Linux.
 libc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 notify-rust = { workspace = true }
@@ -101,6 +107,13 @@ features = [
     "Win32_Security",
     # `GetSecurityInfo` for the pipe-owner SID check
     "Win32_Security_Authorization",
+    # `WinVerifyTrust` to spot a tampered `Firezone.exe` (bad digest)
+    # at launch and report a corrupt install instead of looping on the
+    # package-identity restart prompt. windows-rs gates the
+    # `WINTRUST_DATA` / `WINTRUST_DATA_0` types that call needs behind
+    # the crypto feature, separate from `WinTrust` itself.
+    "Win32_Security_WinTrust",
+    "Win32_Security_Cryptography",
     # IPC system
     "Win32_System_Pipes",
     "Win32_System_Threading",

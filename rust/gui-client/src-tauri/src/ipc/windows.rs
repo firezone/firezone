@@ -30,9 +30,18 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 ///   (S-1-5-32-544, not S-1-5-18), which would cause the client-side
 ///   check in [`is_pipe_owned_by_local_system`] to reject the
 ///   legitimate pipe.
-/// - ACEs: Full Access for `LocalSystem` and `BUILTIN\Administrators`;
-///   `FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE` for the
-///   Firezone MSIX package SID (baked at build time by `build.rs`).
+/// - ACEs: Full Access for `LocalSystem` (the account the service
+///   runs as); read/write for any process carrying the Firezone
+///   package's `WIN://SYSAPPID` identity attribute (a conditional
+///   ACE keyed on [`crate::PACKAGE_FAMILY_NAME`]). No
+///   `BUILTIN\Administrators` grant: only the package-identity'd GUI
+///   should drive the tunnel, not arbitrary elevated processes.
+///
+/// We match `WIN://SYSAPPID` rather than the AppContainer package SID
+/// because the GUI is a *full-trust* packaged app: it runs as the
+/// user with no AppContainer, so its token never carries the
+/// `S-1-15-2-…` package SID, but the kernel does stamp every packaged
+/// process with the `SYSAPPID` attribute.
 ///
 /// In debug builds the Tunnel pipe may also be opened without the
 /// `Owner` pin — see [`skip_tunnel_pipe_owner_check`] — so the
@@ -45,11 +54,7 @@ fn tunnel_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .owner(Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
-        .allow(
-            FileRights::ReadWrite,
-            Trustee::from_sid_string(crate::PACKAGE_SID),
-        )
+        .allow_packaged(FileRights::ReadWrite, crate::PACKAGE_FAMILY_NAME)
 }
 
 /// Security descriptor for the GUI pipe.
@@ -61,19 +66,16 @@ fn tunnel_pipe_dacl() -> PipeDacl {
 fn gui_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow(FileRights::FullAccess, Trustee::builtin_administrators())
-        .allow(
-            FileRights::ReadWrite,
-            Trustee::from_sid_string(crate::PACKAGE_SID),
-        )
+        .allow_packaged(FileRights::ReadWrite, crate::PACKAGE_FAMILY_NAME)
 }
 
 /// Relaxed DACL for test contexts (gui-smoke-test, `SocketId::Test`
 /// unit tests). The production DACLs grant read/write only to
-/// processes carrying the Firezone package SID -- but a `cargo run`
-/// / `cargo test` process has no MSIX identity, so opening either
-/// pipe would fail with `ERROR_ACCESS_DENIED`. Grant `BUILTIN\Users`
-/// instead so the test process can act as both server and client.
+/// processes carrying the Firezone package identity -- but a `cargo
+/// run` / `cargo test` process has no MSIX identity, so opening
+/// either pipe would fail with `ERROR_ACCESS_DENIED`. Grant
+/// `BUILTIN\Users` instead so the test process can act as both server
+/// and client.
 #[cfg(any(debug_assertions, test))]
 fn test_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
@@ -152,8 +154,15 @@ impl Server {
     pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         let dacl = match id {
+            // `gui-smoke-test` runs debug GUI / Tunnel binaries that
+            // carry no MSIX identity, so they can't open a
+            // package-SID-pinned pipe. The smoke test sets the skip
+            // flag, so reuse it to fall back to the relaxed test DACL
+            // for both pipes.
             #[cfg(debug_assertions)]
-            SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => {
+            SocketId::Tunnel | SocketId::Gui
+                if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) =>
+            {
                 test_pipe_dacl()
             }
             SocketId::Tunnel => tunnel_pipe_dacl(),
@@ -169,7 +178,7 @@ impl Server {
     }
 
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
+    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
         // Fixes #5143. In the Tunnel service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -200,7 +209,7 @@ impl Server {
         }
 
         tracing::debug!(?client_pid, "Accepted IPC connection");
-        Ok(server)
+        Ok((server, client_pid))
     }
 
     async fn bind_to_pipe(&self) -> Result<ServerStream> {
@@ -423,7 +432,7 @@ mod tests {
         let pipe_path = server_1.pipe_path.clone();
 
         tokio::spawn(async move {
-            let (mut rx, _tx) = server_1.next_client_split::<(), ()>().await?;
+            let (mut rx, _tx, _pid) = server_1.next_client_split::<(), ()>().await?;
             rx.next().await;
             Ok::<_, anyhow::Error>(())
         });

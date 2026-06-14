@@ -9,11 +9,6 @@ import Combine
 import SwiftUI
 
 #if os(iOS)
-  private func copyToClipboard(_ value: String) {
-    let pasteboard = UIPasteboard.general
-    pasteboard.string = value
-  }
-
   struct ResourceView: View {
     @EnvironmentObject var store: Store
     var resource: Resource
@@ -40,7 +35,7 @@ import SwiftUI
             .contextMenu {
               Button(
                 action: {
-                  copyToClipboard(site.name)
+                  Clipboard.copy(site.name)
                 },
                 label: {
                   Text("Copy name")
@@ -62,7 +57,7 @@ import SwiftUI
             .contextMenu {
               Button(
                 action: {
-                  copyToClipboard(resource.status.toSiteStatus())
+                  Clipboard.copy(resource.status.toSiteStatus())
                 },
                 label: {
                   Text("Copy status")
@@ -120,7 +115,7 @@ import SwiftUI
         .contextMenu {
           Button(
             action: {
-              copyToClipboard(resource.name)
+              Clipboard.copy(resource.name)
             },
             label: {
               Text("Copy name")
@@ -148,7 +143,7 @@ import SwiftUI
                   .contextMenu {
                     Button(
                       action: {
-                        copyToClipboard(displayAddress)
+                        Clipboard.copy(displayAddress)
                       },
                       label: {
                         Text("Copy address")
@@ -163,7 +158,7 @@ import SwiftUI
               .contextMenu {
                 Button(
                   action: {
-                    copyToClipboard(displayAddress)
+                    Clipboard.copy(displayAddress)
                   },
                   label: {
                     Text("Copy address")

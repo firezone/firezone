@@ -6,7 +6,6 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-futures = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
@@ -18,6 +17,7 @@ sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+smallvec = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -27,6 +27,7 @@ uuid = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+tokio-tungstenite = { workspace = true }
 
 [lints]
 workspace = true

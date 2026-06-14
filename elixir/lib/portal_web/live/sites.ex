@@ -186,40 +186,13 @@ defmodule PortalWeb.Sites do
             New Site
           </.button>
         </:action>
-        <:filters>
-          <% all_sites = @sites ++ if(@internet_site, do: [@internet_site], else: [])
+        <:stats :if={not @sites_loading?}>
+          <.dual_badge type="primary">
+            <:left>{length(@sites) + if @internet_site, do: 1, else: 0}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
 
-          healthy_count =
-            Enum.count(all_sites, &(compute_site_status(&1.id, &1.health_threshold) == :healthy))
-
-          degraded_count =
-            Enum.count(all_sites, &(compute_site_status(&1.id, &1.health_threshold) == :degraded))
-
-          offline_count =
-            Enum.count(all_sites, &(compute_site_status(&1.id, &1.health_threshold) == :offline)) %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {length(all_sites)}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative flex items-center justify-center w-1.5 h-1.5">
-              <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-            </span>
-            Healthy {healthy_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-warn)]">
-            </span>
-            Degraded {degraded_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-neutral)]">
-            </span>
-            Offline {offline_count}
-          </span>
-        </:filters>
       </.page_header>
 
       <div class="flex-1 overflow-auto overflow-x-auto">
@@ -358,9 +331,7 @@ defmodule PortalWeb.Sites do
                   ]}>
                     Internet
                   </div>
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-200/70 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                    system
-                  </span>
+                  <.badge type="accent" size="xs">system</.badge>
                 </div>
                 <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
                   {@internet_site.id}
@@ -369,8 +340,7 @@ defmodule PortalWeb.Sites do
               <td class="px-4 py-3">
                 <% online = gateway_online_count(@internet_site.id) %>
                 <span class="text-sm text-[var(--text-secondary)] tabular-nums">
-                  {online}<span class="text-[var(--text-tertiary)]">/{@internet_site.health_threshold}</span>
-                  <span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
+                  {online}<span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
                 </span>
               </td>
               <td class="px-4 py-3">
@@ -379,7 +349,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.status_badge status={
+                <.site_status_badge status={
                   compute_site_status(@internet_site.id, @internet_site.health_threshold)
                 } />
               </td>
@@ -413,8 +383,7 @@ defmodule PortalWeb.Sites do
               <td class="px-4 py-3">
                 <% online = gateway_online_count(site.id) %>
                 <span class="text-sm text-[var(--text-secondary)] tabular-nums">
-                  {online}<span class="text-[var(--text-tertiary)]">/{site.health_threshold}</span>
-                  <span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
+                  {online}<span class="ml-1.5 text-[10px] text-[var(--text-tertiary)]">online</span>
                 </span>
               </td>
               <td class="px-4 py-3">
@@ -423,7 +392,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.status_badge status={compute_site_status(site.id, site.health_threshold)} />
+                <.site_status_badge status={compute_site_status(site.id, site.health_threshold)} />
               </td>
             </tr>
           </tbody>
@@ -598,7 +567,7 @@ defmodule PortalWeb.Sites do
     with true <- Portal.Billing.can_create_sites?(account),
          changeset = Database.new_site_changeset(account, attrs),
          {:ok, site} <- Database.create_site(changeset, socket.assigns.subject) do
-      sites = Database.list_all_sites(socket.assigns.subject)
+      sites = Database.list_all_sites(socket.assigns.subject, :primary)
 
       {:noreply,
        socket
@@ -831,7 +800,7 @@ defmodule PortalWeb.Sites do
 
     case Database.update_site(changeset, socket.assigns.subject) do
       {:ok, updated_site} ->
-        sites = Database.list_all_sites(socket.assigns.subject)
+        sites = Database.list_all_sites(socket.assigns.subject, :primary)
         site_ids = Enum.map(sites, & &1.id)
         resources_counts = Database.count_resources_by_site(site_ids, socket.assigns.subject)
 
@@ -1005,11 +974,11 @@ defmodule PortalWeb.Sites do
     alias Portal.{Safe, Site, Resource, Device}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
-    def list_all_sites(subject) do
+    def list_all_sites(subject, repo \\ :replica) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.managed_by == :account)
       |> order_by([sites: s], asc: s.name)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject, repo)
       |> Safe.all()
     end
 

@@ -60,6 +60,8 @@ pub struct Eventloop {
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
+
+    tunnel_errors: opentelemetry::metrics::Counter<u64>,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -141,6 +143,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             cmd_rx,
             logged_permission_denied: false,
+            tunnel_errors: otel_instruments::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
             resource_list_sender,
@@ -376,6 +379,9 @@ impl Eventloop {
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
+            self.tunnel_errors
+                .add(1, &telemetry::otel::error_layers(&e));
+
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {
@@ -734,6 +740,8 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
+    let hiccups = otel_instruments::portal_connection_hiccups();
+
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
         // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
@@ -785,8 +793,10 @@ async fn phoenix_channel_event_loop(
                 tracing::info!(
                     ?backoff,
                     ?max_elapsed_time,
+                    body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
                     "Hiccup in portal connection: {error:#}"
                 );
+                hiccups.add(1, &telemetry::otel::error_layers(&error));
 
                 let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());

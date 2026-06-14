@@ -63,6 +63,9 @@ defmodule PortalAPI.Router do
     resources "/client_sessions", ClientSessionController, only: [:index, :show]
     resources "/gateway_sessions", GatewaySessionController, only: [:index, :show]
 
+    get "/change_logs", ChangeLogController, :index
+    get "/change_logs/:event_id", ChangeLogController, :show
+
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 
@@ -88,7 +91,6 @@ defmodule PortalAPI.Router do
       patch "/memberships", MembershipController, :update_patch
     end
 
-    resources "/userpass_auth_providers", UserpassAuthProviderController, only: [:index, :show]
     resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
     resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
     resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]

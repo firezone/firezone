@@ -112,12 +112,10 @@ defmodule PortalWeb.Sites.Components do
     assigns =
       if assigns.site do
         assigns
-        |> assign(:online_count, Enum.count(assigns.gateways, & &1.online?))
         |> assign(:total_count, Map.get(assigns.gateway_counts, assigns.site.id, 0))
         |> assign(:status, site_status(assigns.gateways, assigns.site.health_threshold))
       else
         assigns
-        |> assign(:online_count, 0)
         |> assign(:total_count, 0)
         |> assign(:status, :offline)
       end
@@ -139,8 +137,6 @@ defmodule PortalWeb.Sites.Components do
           site={@site}
           view={@view}
           status={@status}
-          online_count={@online_count}
-          resource_count={Map.get(@resources_counts, @site.id, 0)}
         />
 
         <.site_overview_view
@@ -180,21 +176,21 @@ defmodule PortalWeb.Sites.Components do
   attr :site, :any, required: true
   attr :view, :atom, required: true
   attr :status, :atom, required: true
-  attr :online_count, :integer, required: true
-  attr :resource_count, :integer, required: true
 
   def site_panel_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <h2 class="text-sm font-semibold text-[var(--text-primary)]">{@site.name}</h2>
+    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="flex items-center gap-4">
+        <%!-- Left: name + status + ID --%>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">{@site.name}</h2>
+            <.badge :if={@site.managed_by == :system} type="accent" size="xs">system</.badge>
+            <.site_status_badge status={@status} />
           </div>
-          <p :if={@site.managed_by == :system} class="text-xs text-[var(--text-tertiary)] mt-0.5">
-            system managed
-          </p>
+          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate">{@site.id}</p>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             :if={@view == :gateways}
@@ -210,24 +206,6 @@ defmodule PortalWeb.Sites.Components do
           >
             <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
-        </div>
-      </div>
-      <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Status
-          </span>
-          <.status_badge status={@status} />
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Gateways
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">
-            {@online_count}<span class="text-[var(--text-tertiary)] font-normal"> online / </span>
-            {@site.health_threshold} <span class="text-[var(--text-tertiary)] font-normal"> required</span>
-          </span>
         </div>
       </div>
     </div>
@@ -1413,6 +1391,20 @@ defmodule PortalWeb.Sites.Components do
     </div>
     """
   end
+
+  attr :status, :atom, required: true, values: [:healthy, :degraded, :offline]
+
+  def site_status_badge(assigns) do
+    ~H"""
+    <.status_badge style={site_badge_style(@status)}>
+      {Phoenix.Naming.humanize(@status)}
+    </.status_badge>
+    """
+  end
+
+  defp site_badge_style(:healthy), do: :success
+  defp site_badge_style(:degraded), do: :warning
+  defp site_badge_style(:offline), do: :neutral
 
   defp site_status(gateways, threshold) do
     online_count = Enum.count(gateways, & &1.online?)

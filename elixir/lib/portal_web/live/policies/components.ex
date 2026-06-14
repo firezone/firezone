@@ -745,18 +745,23 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <h2 class="text-sm font-semibold text-[var(--text-primary)]">
-            <%= if @policy.group do %>
-              {@policy.group.name} — {@policy.resource.name}
-            <% else %>
-              <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
-            <% end %>
-          </h2>
-          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5">{@policy.id}</p>
+    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="flex items-center gap-4">
+        <%!-- Left: title + status + ID --%>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
+              <%= if @policy.group do %>
+                {@policy.group.name} — {@policy.resource.name}
+              <% else %>
+                <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
+              <% end %>
+            </h2>
+            <.policy_status_badge disabled_at={@policy.disabled_at} />
+          </div>
+          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate">{@policy.id}</p>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
           <button
             phx-click="open_edit_form"
@@ -771,23 +776,6 @@ defmodule PortalWeb.Policies.Components do
           >
             <.icon name="ri-close-line" class="w-4 h-4" />
           </button>
-        </div>
-      </div>
-      <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Status
-          </span>
-          <.status_badge status={if is_nil(@policy.disabled_at), do: :active, else: :disabled} />
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Conditions
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-            {length(@policy.conditions)}
-          </span>
         </div>
       </div>
     </div>
@@ -1350,30 +1338,6 @@ defmodule PortalWeb.Policies.Components do
 
   defp condition_values_display(%{property: :remote_ip, values: values}, _providers, _account),
     do: Enum.join(values, ", ")
-
-  defp condition_values_display(
-         %{property: :current_utc_datetime, values: values},
-         _providers,
-         _account
-       ) do
-    values
-    |> Enum.map(fn v ->
-      case String.split(v, "/", parts: 3) do
-        [day, time_ranges, tz] when time_ranges != "" -> {day, time_ranges, tz}
-        _ -> nil
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.group_by(fn {_day, _ranges, tz} -> tz end)
-    |> Enum.map_join("\n", fn {tz, entries} ->
-      days_str =
-        Enum.map_join(entries, ", ", fn {day, ranges, _tz} ->
-          "#{format_dow_abbr(day)} #{format_time_ranges(ranges)}"
-        end)
-
-      "#{days_str} (#{tz})"
-    end)
-  end
 
   defp condition_values_display(%{values: values}, _providers, _account),
     do: Enum.join(values, ", ")
@@ -2076,7 +2040,7 @@ defmodule PortalWeb.Policies.Components do
             name="policy[conditions][current_utc_datetime][timezone]"
             id="policy_conditions_current_utc_datetime_timezone"
             field={condition_form[:timezone]}
-            options={Tzdata.zone_list()}
+            options={TzExtra.time_zone_ids(include_aliases: true)}
             disabled={@disabled}
             value={condition_form[:timezone].value || @timezone}
           />
@@ -2597,9 +2561,10 @@ defmodule PortalWeb.Policies.Components do
         />
         <select
           name="policy[conditions][current_utc_datetime][timezone]"
+          phx-change="change_tod_timezone"
           class={@input_class}
         >
-          <option :for={tz <- Tzdata.zone_list()} value={tz} selected={tz == @timezone}>
+          <option :for={tz <- TzExtra.time_zone_ids(include_aliases: true)} value={tz} selected={tz == @timezone}>
             {tz}
           </option>
         </select>
@@ -2647,8 +2612,6 @@ defmodule PortalWeb.Policies.Components do
         <%!-- Add range form --%>
         <div
           :if={@tod_adding}
-          id="tod_add_row"
-          phx-hook="TimePicker"
           class="space-y-1.5 p-2 rounded border border-[var(--border)] bg-[var(--surface)]"
         >
           <div class="flex flex-wrap gap-1">
@@ -2681,64 +2644,34 @@ defmodule PortalWeb.Policies.Components do
           </div>
           <div class="flex items-start gap-1.5">
             <div class="flex flex-col items-center gap-0.5">
-              <div class="flex">
-                <input
-                  type="time"
-                  name="_tod_on"
-                  id="tod_pending_on"
-                  value={@tod_pending["on"]}
-                  phx-change="change_tod_pending"
-                  class={[
-                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                    "[&::-webkit-calendar-picker-indicator]:hidden"
-                  ]}
-                />
-                <button
-                  type="button"
-                  data-target="pending_on"
-                  class={[
-                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                    "hover:bg-[var(--surface)] transition-colors"
-                  ]}
-                  title="Pick start time"
-                >
-                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <input
+                type="time"
+                name="_tod_on"
+                id="tod_pending_on"
+                value={@tod_pending["on"]}
+                phx-change="change_tod_pending"
+                class={[
+                  "shrink-0 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)]",
+                  "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                  "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                ]}
+              />
               <span class="text-[9px] text-[var(--text-muted)]">on</span>
             </div>
             <span class="text-[var(--text-muted)] text-xs pt-1">–</span>
             <div class="flex flex-col items-center gap-0.5">
-              <div class="flex">
-                <input
-                  type="time"
-                  name="_tod_off"
-                  id="tod_pending_off"
-                  value={@tod_pending["off"]}
-                  phx-change="change_tod_pending"
-                  class={[
-                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                    "[&::-webkit-calendar-picker-indicator]:hidden"
-                  ]}
-                />
-                <button
-                  type="button"
-                  data-target="pending_off"
-                  class={[
-                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                    "hover:bg-[var(--surface)] transition-colors"
-                  ]}
-                  title="Pick end time"
-                >
-                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <input
+                type="time"
+                name="_tod_off"
+                id="tod_pending_off"
+                value={@tod_pending["off"]}
+                phx-change="change_tod_pending"
+                class={[
+                  "shrink-0 text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)]",
+                  "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
+                  "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                ]}
+              />
               <span class="text-[9px] text-[var(--text-muted)]">off</span>
             </div>
           </div>
@@ -3212,5 +3145,15 @@ defmodule PortalWeb.Policies.Components do
         {:policy_authorizations, :desc, :inserted_at},
         {:policy_authorizations, :asc, :id}
       ]
+  end
+
+  attr :disabled_at, :any, required: true
+
+  def policy_status_badge(assigns) do
+    ~H"""
+    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
+      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
+    </.status_badge>
+    """
   end
 end

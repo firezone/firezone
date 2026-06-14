@@ -3,4 +3,4 @@ nodejs                           24.13.0
 github:cargo-bins/cargo-binstall 1.18.1
 github:DevinR528/cargo-sort      2.1.4
 github:EmbarkStudios/cargo-deny  0.19.4
-github:est31/cargo-udeps         0.1.61
+github:Boshen/cargo-shear        1.12.4

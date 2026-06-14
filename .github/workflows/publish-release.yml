@@ -25,7 +25,7 @@ jobs:
     permissions:
       packages: write # push promoted Docker images to GHCR
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Login to GitHub Container Registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -110,7 +110,7 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
@@ -126,7 +126,7 @@ jobs:
           release-notes-url: https://www.firezone.dev/changelog
           release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
 
-  create-publish-pr:
+  open-version-bump-pr:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -143,7 +143,7 @@ jobs:
           - tag_prefix: android-client
             component: android-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
@@ -200,11 +200,52 @@ jobs:
           git config --local commit.gpgsign true
 
           # Create the PR
-          scripts/create-publish-pr.sh ${{ matrix.component }} "$version"
+          scripts/open-version-bump-pr.sh ${{ matrix.component }} "$version"
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
+
+  # The website half of the version bump (changelog entry + displayed version
+  # markers) lives in firezone/website. Notify it of the publish; its
+  # open-version-bump-pr workflow runs that repo's scripts/bump-versions.sh
+  # and opens the PR there.
+  notify-website:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
+          - tag_prefix: gateway
+            component: gateway
+          - tag_prefix: gui-client
+            component: gui-client
+          - tag_prefix: headless-client
+            component: headless-client
+          - tag_prefix: macos-client
+            component: apple-client
+          - tag_prefix: android-client
+            component: android-client
+    steps:
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+        env:
+          # repository_dispatch on firezone/website requires this token to
+          # have Contents: write there.
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+        run: |
+          set -xeuo pipefail
+
+          version=${release_name#${{ matrix.tag_prefix }}-}
+
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/firezone/website/dispatches \
+            --raw-field "event_type=publish" \
+            --field "client_payload[component]=${{ matrix.component }}" \
+            --field "client_payload[version]=$version"
 
   create-sentry-release:
     name: create_${{ matrix.component }}_sentry_release
@@ -224,7 +265,7 @@ jobs:
           - component: android-client
             projects: android-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
@@ -244,7 +285,7 @@ jobs:
           - tag_prefix: gui-client
             deb_name: firezone-client-gui
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 

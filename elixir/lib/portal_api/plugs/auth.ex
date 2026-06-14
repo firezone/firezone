@@ -15,11 +15,11 @@ defmodule PortalAPI.Plugs.Auth do
       assign(conn, :subject, subject)
     else
       _ ->
-        conn
-        |> put_status(401)
-        |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
-        |> Phoenix.Controller.render(:"401")
-        |> halt()
+        PortalAPI.ProblemDetails.send(
+          conn,
+          401,
+          "Authentication credentials were missing or invalid."
+        )
     end
   end
 end

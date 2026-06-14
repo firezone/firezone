@@ -8,9 +8,8 @@ auto_install = false
 
 [env]
 # Single source of truth for Android tool versions used by tasks and setup.sh.
-# Keep the NDK version in sync with `app/build.gradle.kts` and
-# `.github/actions/setup-android/action.yml`.
-NDK_VERSION = "28.1.13356709"
+# Keep the NDK version in sync with `ndkVersion` in `app/build.gradle.kts`.
+NDK_VERSION = "28.2.13676358"
 ANDROID_CMD_TOOLS_VERSION = "11076708"
 
 [task_config]

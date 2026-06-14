@@ -1,8 +1,10 @@
+mod fd;
 mod platform;
+
+use crate::fd::RawFd;
 
 use std::{
     fmt,
-    os::fd::RawFd,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::Duration,
@@ -17,7 +19,7 @@ use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use telemetry::{Telemetry, analytics, otel};
+use telemetry::{Telemetry, analytics};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
@@ -115,6 +117,17 @@ pub enum Resource {
     Internet { resource: InternetResource },
 }
 
+/// A device peer that this client currently has a live connection to.
+#[derive(uniffi::Record)]
+pub struct ConnectedDevice {
+    pub id: String,
+    /// Tunnel IPv4 address the device is reachable on.
+    pub tun_ipv4: String,
+    /// Names of the device pools this peer belongs to, sorted (typically one,
+    /// but can be multiple).
+    pub pools: Vec<String>,
+}
+
 #[derive(uniffi::Enum)]
 pub enum Event {
     TunInterfaceUpdated {
@@ -127,6 +140,7 @@ pub enum Event {
     },
     ResourcesUpdated {
         resources: Vec<Resource>,
+        connected_devices: Vec<ConnectedDevice>,
     },
     AllGatewaysOffline {
         resource_id: String,
@@ -412,10 +426,22 @@ impl Session {
                     ipv6_routes,
                 })
             }
-            client_shared::Event::ResourcesUpdated(resources) => {
-                let resources = resources.resources.into_iter().map(Into::into).collect();
+            client_shared::Event::ResourcesUpdated(resource_list) => {
+                let resources = resource_list
+                    .resources
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
+                let connected_devices = resource_list
+                    .connected_devices
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
 
-                Some(Event::ResourcesUpdated { resources })
+                Some(Event::ResourcesUpdated {
+                    resources,
+                    connected_devices,
+                })
             }
             client_shared::Event::AllGatewaysOffline { resource_id } => {
                 Some(Event::AllGatewaysOffline {
@@ -490,7 +516,7 @@ fn connect(
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
-    otel::install_sentry_meter_provider(platform::COMPONENT, platform::VERSION, device_id.clone());
+    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
@@ -698,6 +724,16 @@ impl From<connlib_model::InternetResourceView> for InternetResource {
             name: internet.name,
             sites: internet.sites.into_iter().map(Into::into).collect(),
             status: internet.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
+    fn from(device: connlib_model::ConnectedDeviceView) -> Self {
+        ConnectedDevice {
+            id: device.id.to_string(),
+            tun_ipv4: device.tunneled_ipv4.to_string(),
+            pools: device.pools,
         }
     }
 }

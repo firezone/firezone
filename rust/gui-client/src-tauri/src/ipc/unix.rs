@@ -105,7 +105,7 @@ impl Server {
         })
     }
 
-    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
+    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
         loop {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
@@ -118,7 +118,9 @@ impl Server {
                         pid = cred.pid(),
                         "Accepted an IPC connection"
                     );
-                    return Ok(stream);
+                    let pid = cred.pid().context("No PID")?.try_into()?;
+
+                    return Ok((stream, pid));
                 }
                 Err(rejected) => {
                     tracing::info!(

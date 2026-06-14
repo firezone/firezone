@@ -135,7 +135,7 @@ defmodule PortalWeb.Settings.DNS do
           {"ri-computer-line", "System DNS", "Use the device's default DNS resolvers."}
 
         :secure ->
-          provider = doh_provider_label(dns && dns.doh_provider)
+          provider = doh_provider_label(dns.doh_provider)
           {"ri-lock-line", "Secure DNS", "DNS-over-HTTPS via #{provider}."}
 
         :custom ->

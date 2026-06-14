@@ -2,6 +2,7 @@ defmodule PortalWeb.PoliciesTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Policy, Repo}
+  alias Portal.Changes.Change
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -664,6 +665,38 @@ defmodule PortalWeb.PoliciesTest do
       end
     end
 
+    test "keeps selected timezone when toggling tod day buttons", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "current_utc_datetime"})
+
+      lv
+      |> element("select[name='policy[conditions][current_utc_datetime][timezone]']")
+      |> render_change(%{
+        "policy" => %{
+          "conditions" => %{"current_utc_datetime" => %{"timezone" => "America/New_York"}}
+        }
+      })
+
+      render_click(lv, "start_add_tod_range")
+      html = render_click(lv, "toggle_tod_pending_day", %{"day" => "M"})
+
+      assert html =~ ~s(value="America/New_York" selected)
+      refute html =~ ~s(value="UTC" selected)
+    end
+
     test "renders time-of-day condition from saved policy", %{
       conn: conn,
       account: account,
@@ -1120,6 +1153,69 @@ defmodule PortalWeb.PoliciesTest do
 
       render_click(lv, "delete_policy")
       assert_patch(lv, ~p"/#{account}/policies")
+    end
+  end
+
+  describe "count badge" do
+    test "shows total policy count after async load", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      _policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on policy insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Policy{}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on policy delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      _policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Policy{}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 end

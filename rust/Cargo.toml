@@ -7,6 +7,7 @@ members = [
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/backoff",
     "libs/bin-shared",
     "libs/client-shared",
     "libs/connlib/bootstrap-dns-client",
@@ -21,6 +22,7 @@ members = [
     "libs/connlib/l4-tcp-dns-server",
     "libs/connlib/l4-udp-dns-server",
     "libs/connlib/model",
+    "libs/connlib/otel-instruments",
     "libs/connlib/path-agent",
     "libs/connlib/phoenix-channel",
     "libs/connlib/snownet",
@@ -55,7 +57,6 @@ admx-macro = { path = "gui-client/src-admx-macro" }
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
-async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
 axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
@@ -63,13 +64,14 @@ aya-build = { git = "https://github.com/aya-rs/aya" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
 aya-log = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
-backoff = { version = "0.4.0", features = ["tokio"] }
+backoff = { path = "libs/backoff" }
+backon = { version = "1.6.0", default-features = false, features = ["std"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
 bootstrap-dns-client = { path = "libs/connlib/bootstrap-dns-client" }
-boringtun = { version = "0.6.0", default-features = false }
+boringtun = { version = "0.7.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
@@ -79,37 +81,33 @@ clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
 crossbeam-queue = "0.3.12"
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
-dns-lookup = "3.0"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
-either = "1.15.0"
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 etherparse = { version = "0.20.1", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
-filetime = "0.2.27"
-firezone-headless-client = { path = "headless-client" }
-firezone-relay = { path = "relay/server" }
-flume = { version = "0.11.1", features = ["async"] }
+filetime = "0.2.29"
+firezone-relay = { path = "relay/server", default-features = false }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 gat-lending-iterator = "0.1.8"
 glob = "0.3.3"
 hex = "0.4.3"
-hex-display = "0.3.2"
+hex-display = "0.4.0"
 hex-literal = "1.1.0"
 hickory-resolver = "0.26.1"
 hmac = "0.12.1"
-http = "1.4.0"
+http = "1.4.1"
 http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
 humantime = "2.3.0"
@@ -118,37 +116,38 @@ hyper-util = "0.1.20"
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
-is = "0.8.1"
+is = "0.9.0"
 itertools = "0.14.0"
 jni = "0.22.4"
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
+ksni = { version = "0.3.4", default-features = false, features = ["async-io"] }
 l3-tcp = { path = "libs/connlib/l3-tcp" }
 l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
 libfuzzer-sys = "0.4.12"
-log = "0.4.29"
 logging = { path = "libs/logging" }
 lru = "0.18.0"
-mio = "1.1.1"
+mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
 netlink-packet-core = "0.8.1"
 netlink-packet-route = "0.29.0"
 network-types = { version = "0.2.0", default-features = false }
-nix = "0.30.1"
+nix = "0.31.3"
 notify-rust = "4.17.0"
 nu-ansi-term = "0.50.3"
 num_cpus = "1.17.0"
 once_cell = "1.21.4"
-opentelemetry = "0.31.0"
-opentelemetry-otlp = "0.31.0"
-opentelemetry-stdout = "0.31.0"
-opentelemetry_sdk = "0.31.0"
-os_info = { version = "3.14.0", default-features = false }
+opentelemetry = "0.32.0"
+opentelemetry-otlp = "0.32.0"
+opentelemetry-stdout = "0.32.0"
+opentelemetry_sdk = "0.32.0"
+os_info = { version = "3.15.0", default-features = false }
+otel-instruments = { path = "libs/connlib/otel-instruments" }
 output_vt100 = "0.1.3"
 parking_lot = "0.12.5"
 path-agent = { path = "libs/connlib/path-agent" }
@@ -159,14 +158,13 @@ proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
-rand = "0.8.5"
-rand_core = "0.6.4"
+rand = "0.10.1"
 rangemap = "1.7.1"
-reqwest = { version = "0.13.3", default-features = false }
+reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
-rpassword = "7.5.2"
+rpassword = "7.5.3"
 rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-pki-types = "1.14.1"
@@ -181,24 +179,21 @@ serde = "1.0.228"
 serde_json = "1.0.150"
 serde_variant = "0.1.3"
 serde_with = "3.20.0"
-sha1 = "0.10.6"
 sha2 = "0.10.9"
 smallvec = "1.15.1"
 smbios-lib = "0.9.2"
 smoltcp = { version = "0.13.1", default-features = false }
 snownet = { path = "libs/connlib/snownet" }
 socket-factory = { path = "libs/connlib/socket-factory" }
-socket2 = { version = "0.6.3" }
+socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-str0m-proto = "0.4"
+str0m-proto = "0.5"
 strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
 subprocess = "1.1.0"
 subtle = "2.5.0"
 supports-color = "3.0.2"
-swift-bridge = "0.1.57"
-swift-bridge-build = "0.1.57"
 syn = "2.0.117"
 tauri = "2.10.3"
 tauri-build = { version = "2.6.0", default-features = false }
@@ -226,22 +221,21 @@ tracing-core = "0.1.36"
 tracing-journald = "0.3.2"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" } # Contains `dbg!` but for `tracing`.
-tracing-opentelemetry = "0.32.1"
+tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
-trackable = "1.3.0"
 tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
-uniffi = "0.31.0"
+uniffi = "0.31.1"
 url = "2.5.2"
-uuid = "1.23.1"
+uuid = "1.23.2"
 webpki-roots = "1.0.7"
-which = "4.4.2"
+which = "7.0.3"
 windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
-windows-native-keyring-store = "1.0.0"
+windows-native-keyring-store = "1.1.0"
 windows-security = { path = "libs/windows-security" }
-windows-service = "0.8.0"
+windows-service = "0.8.1"
 winreg = "0.56.0"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }

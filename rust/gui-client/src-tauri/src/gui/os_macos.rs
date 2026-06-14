@@ -1,12 +1,22 @@
 //! This file is a stub only to do Tauri UI dev natively on a Mac.
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::controller::NotificationHandle;
 
 pub async fn set_autostart(_enabled: bool) -> Result<()> {
-    bail!("Not implemented")
+    tracing::warn!("set_autostart is not implemented on macOS; skipping");
+
+    Ok(())
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Signature must match other platforms."
+)]
 pub(crate) fn show_notification(_title: String, _body: String) -> Result<NotificationHandle> {
-    bail!("Not implemented")
+    tracing::warn!("show_notification is not implemented on macOS; skipping");
+
+    let (_tx, on_click) = futures::channel::oneshot::channel();
+
+    Ok(NotificationHandle { on_click })
 }

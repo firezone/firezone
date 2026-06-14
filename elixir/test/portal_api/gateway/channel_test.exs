@@ -5,6 +5,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   alias Portal.PG
   import Portal.Cache.Cacheable, only: [to_cache: 1]
   import Portal.SchemaHelpers, only: [struct_from_params: 2]
+  import ExUnit.CaptureLog
 
   @test_user_agent "macOS/14.0 apple-client/1.3.0"
 
@@ -38,6 +39,56 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
 
     socket
+  end
+
+  # Joins the gateway channel with a custom transport pid instead of the test
+  # process, so the channel's `Process.link(transport_pid)` targets our fake
+  # trapping transport. Mirrors `join_channel/4` otherwise.
+  defp join_channel_with_transport(gateway, site, token, transport_pid) do
+    device = fetch_device!(gateway)
+    session = build_gateway_session(gateway, token)
+
+    base =
+      PortalAPI.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
+        gateway: device,
+        site: site,
+        session: session,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+
+    {:ok, _reply, socket} =
+      %{base | transport_pid: transport_pid}
+      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+
+    socket
+  end
+
+  # Models the production transport: traps exits, and records every message it
+  # receives so tests can assert the channel drained it.
+  defp start_trapping_transport do
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        Process.flag(:trap_exit, true)
+        send(parent, {:ready, self()})
+        trapping_transport_loop(parent)
+      end)
+
+    assert_receive {:ready, ^pid}
+    on_exit(fn -> Process.exit(pid, :kill) end)
+    pid
+  end
+
+  defp trapping_transport_loop(parent) do
+    receive do
+      msg ->
+        send(parent, {:transport_got, msg})
+        trapping_transport_loop(parent)
+    end
   end
 
   defp build_gateway_session(gateway, token, opts \\ []) do
@@ -167,20 +218,77 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute :sys.get_state(socket.channel_pid).assigns.session_durability
     end
 
-    test "channel crash takes down the transport", %{gateway: gateway, site: site, token: token} do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
+    # These tests inject a separate trapping process as the transport, because
+    # `Phoenix.ChannelTest` otherwise makes the test process the transport and
+    # links the channel to it.
 
-      Process.flag(:trap_exit, true)
+    test "an abnormal channel crash drains the trapping transport", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      transport = start_trapping_transport()
+      socket = join_channel_with_transport(gateway, site, token, transport)
+      channel_pid = socket.channel_pid
 
-      # In tests, we (the test process) are the transport_pid
-      assert socket.transport_pid == self()
+      # Drop the harness link so the crash below doesn't kill the test.
+      Process.unlink(channel_pid)
+      ref = Process.monitor(channel_pid)
 
-      # Kill the channel - we receive EXIT because we're linked
-      Process.exit(socket.channel_pid, :kill)
+      # An abnormal stop runs terminate/2, modeling an in-process crash (e.g. a
+      # Postgrex query raising on timeout).
+      capture_log(fn ->
+        GenServer.stop(channel_pid, :boom)
+        assert_receive {:DOWN, ^ref, :process, ^channel_pid, :boom}
+      end)
 
-      assert_receive {:EXIT, pid, :killed}
-      assert pid == socket.channel_pid
+      # The drain reaches the real trapping transport, closing the WebSocket.
+      assert_receive {:transport_got, :socket_drain}
+    end
+
+    test "transport death takes the channel down with it (no orphan channel)", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      transport = start_trapping_transport()
+      socket = join_channel_with_transport(gateway, site, token, transport)
+      channel_pid = socket.channel_pid
+
+      Process.unlink(channel_pid)
+      ref = Process.monitor(channel_pid)
+
+      # :kill is the one signal a trapping process cannot trap, so the transport
+      # actually dies here (modeling a real WebSocket teardown).
+      capture_log(fn ->
+        Process.exit(transport, :kill)
+        assert_receive {:DOWN, ^ref, :process, ^channel_pid, _reason}
+      end)
+
+      # The channel does not outlive its transport. With the explicit link gone,
+      # this is enforced by `Phoenix.Channel.Server`, which monitors the transport
+      # pid on join and stops the channel on its :DOWN.
+      refute Process.alive?(channel_pid)
+    end
+
+    test "a graceful channel stop does NOT drain the transport", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      transport = start_trapping_transport()
+      socket = join_channel_with_transport(gateway, site, token, transport)
+      channel_pid = socket.channel_pid
+
+      Process.unlink(channel_pid)
+      ref = Process.monitor(channel_pid)
+
+      # A :shutdown stop already sends phx_close, which connlib treats as a clean
+      # reconnect, so terminate/2 must NOT additionally drain the transport.
+      GenServer.stop(channel_pid, :shutdown)
+      assert_receive {:DOWN, ^ref, :process, ^channel_pid, :shutdown}
+
+      refute_receive {:transport_got, :socket_drain}
     end
 
     test "sends init message after join", %{
@@ -2772,12 +2880,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                device_os_version: "14.0"
              }
 
-      assert payload.subject == %{
-               auth_provider_id: subject.credential.auth_provider_id,
-               actor_id: subject.actor.id,
-               actor_email: subject.actor.email,
-               actor_name: subject.actor.name
-             }
+      assert payload.subject == PortalAPI.Gateway.Views.Subject.render(subject)
 
       assert payload.client_ice_credentials == ice_credentials.initiator
       assert payload.gateway_ice_credentials == ice_credentials.receiver

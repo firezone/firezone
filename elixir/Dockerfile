@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.19.5-erlang-28.5-alpine-3.23.4 AS compiler
+FROM hexpm/elixir:1.20.0-erlang-29.0.1-alpine-3.23.4 AS compiler
 
 ENV LANG=C.UTF-8
 
@@ -106,9 +106,6 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 # Only copy the final release from the build stage
 ARG MIX_ENV="prod"
 COPY --from=builder --chown=1001:0 /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
-
-# Allow tzdata to write IANA timezone updates at runtime
-RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
 
 USER default
 

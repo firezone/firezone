@@ -15,13 +15,11 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
 use backoff::ExponentialBackoff;
 use backoff::ExponentialBackoffBuilder;
-use backoff::backoff::Backoff;
 use base64::Engine;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use logging::err_with_src;
-use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
@@ -258,16 +256,6 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
 impl fmt::Display for InternalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InternalError::WebSocket(tungstenite::Error::Http(http)) => {
-                let status = http.status();
-                let body = http
-                    .body()
-                    .as_deref()
-                    .map(String::from_utf8_lossy)
-                    .unwrap_or_default();
-
-                write!(f, "http error: {status} - {body}")
-            }
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
@@ -301,7 +289,6 @@ impl fmt::Display for InternalError {
 impl std::error::Error for InternalError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            InternalError::WebSocket(tungstenite::Error::Http(_)) => None,
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
@@ -314,6 +301,20 @@ impl std::error::Error for InternalError {
             InternalError::TooManyUnansweredHeartbeats => None,
         }
     }
+}
+
+/// Recovers the body of an HTTP error response from a portal connection error.
+pub fn http_error_body(error: &anyhow::Error) -> Option<String> {
+    use anyhow::ErrorExt as _;
+
+    let tungstenite::Error::Http(response) = error.any_downcast_ref::<tungstenite::Error>()? else {
+        return None;
+    };
+
+    response
+        .body()
+        .as_deref()
+        .map(|body| String::from_utf8_lossy(body).into_owned())
 }
 
 /// A strict-monotonically increasing ID for outbound requests.
@@ -498,6 +499,10 @@ where
         // In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
             waker.wake();
+        }
+
+        if backoff.is_zero() {
+            self.backoff = None;
         }
     }
 
@@ -1045,8 +1050,7 @@ impl<T> PhoenixMessage<T> {
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
 fn make_request(url: Url, host: String, user_agent: String, token: &SecretString) -> Request {
-    let mut r = [0u8; 16];
-    OsRng.fill_bytes(&mut r);
+    let r: [u8; 16] = rand::random();
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
     let user_agent = user_agent.replace(|c: char| !c.is_ascii(), "");
@@ -1095,6 +1099,25 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
+
+    #[test]
+    fn http_error_body_recovers_response_body() {
+        let response = tungstenite::http::Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(Some(b"service down".to_vec()))
+            .unwrap();
+        let error = anyhow::Error::new(tungstenite::Error::Http(Box::new(response)))
+            .context("Connection hiccup");
+
+        assert_eq!(http_error_body(&error).as_deref(), Some("service down"));
+    }
+
+    #[test]
+    fn http_error_body_is_none_for_non_http_errors() {
+        let error = anyhow::Error::msg("some other failure").context("Connection hiccup");
+
+        assert_eq!(http_error_body(&error), None);
+    }
 
     #[derive(Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "snake_case", tag = "event", content = "payload")] // This line makes it all work.

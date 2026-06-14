@@ -14,9 +14,9 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.5.16
+      RELEASE_NAME: macos-client-1.5.18
     steps:
-      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
+      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -35,7 +35,7 @@ jobs:
     env:
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: ./.github/actions/setup-mise
         with:
@@ -59,7 +59,7 @@ jobs:
     env:
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: ./.github/actions/setup-mise
         with:
@@ -105,13 +105,13 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.16.dmg"
+            artifact-file: "firezone-macos-client-1.5.18.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.16.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.18.pkg"
             # mark:next-apple-version
-            release-name: macos-client-1.5.16
+            release-name: macos-client-1.5.18
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-mise

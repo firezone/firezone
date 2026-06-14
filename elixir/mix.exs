@@ -99,13 +99,14 @@ defmodule Portal.MixProject do
 
       # Erlang clustering
       {:libcluster, "~> 3.3"},
-      {:tzdata, "~> 1.1"},
+      {:tz, "~> 0.28"},
+      {:tz_extra, "~> 0.45"},
       {:sizeable, "~> 1.0"},
 
       # Email
       {:gen_smtp, "~> 1.0"},
       {:multipart, "~> 0.6.0"},
-      {:swoosh, "~> 1.25.0"},
+      {:swoosh, "~> 1.26.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
@@ -115,7 +116,7 @@ defmodule Portal.MixProject do
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
-      {:hammer, "~> 7.3.0"},
+      {:hammer, "~> 7.4.0"},
 
       # Observability
       {:telemetry, "~> 1.0"},
@@ -146,7 +147,7 @@ defmodule Portal.MixProject do
       # TODO: Remove override when this issue is resolved:
       # https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/428
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
-      {:sentry, "~> 12.0"},
+      {:sentry, "~> 13.1"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
       {:req, "~> 0.5.15"},

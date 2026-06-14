@@ -4,25 +4,36 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::process::ExitCode;
+use std::{process::ExitCode, sync::Arc};
 
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
-use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging, settings};
-use settings::AdvancedSettings;
+use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging};
 use telemetry::Telemetry;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::Mutex};
 use tracing::subscriber::DefaultGuard;
-use tracing_subscriber::EnvFilter;
+
+#[expect(
+    dead_code,
+    reason = "Variants are held only for their `Drop` side effects."
+)]
+enum LogGuard {
+    /// Pre-settings bootstrap logger: a thread-local default that must
+    /// be dropped before the global GUI logger is installed.
+    Bootstrap(DefaultGuard),
+    /// GUI file logger and log-cleanup thread.
+    Gui(logging::file::Handle, logging::CleanupHandle),
+}
 
 fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    let mut bootstrap_log_guard =
-        Some(logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
+    let mut log_guard = Some(LogGuard::Bootstrap(
+        logging::setup_bootstrap().expect("Failed to setup bootstrap logger"),
+    ));
 
     let cli = Cli::parse();
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
@@ -35,49 +46,54 @@ fn main() -> ExitCode {
 
     // Start telemetry in `entrypoint` mode so that crashes during settings
     // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
-    // `try_main` will switch the env to the real api_url once it has loaded
-    // settings; on graceful exit we flush below.
+    // The controller re-targets it at the real environment once `Hello`
+    // arrives; `main` keeps ownership so we can flush on every exit path.
     telemetry.start(
         "entrypoint",
         firezone_gui_client::RELEASE,
         telemetry::GUI_DSN,
     );
+    let telemetry = Arc::new(Mutex::new(telemetry));
 
-    let result = try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry);
+    let result = try_main(cli, &rt, &mut log_guard, Arc::clone(&telemetry));
 
-    rt.block_on(telemetry.stop());
-
-    match result {
+    let exit_code = match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("GUI failed: {e:#}");
-
             ExitCode::FAILURE
         }
-    }
+    };
+
+    rt.block_on(async { telemetry.lock().await.stop().await });
+
+    exit_code
 }
 
 fn try_main(
     cli: Cli,
     rt: &Runtime,
-    bootstrap_log_guard: &mut Option<DefaultGuard>,
-    telemetry: &mut Telemetry,
+    log_guard: &mut Option<LogGuard>,
+    telemetry: Arc<Mutex<Telemetry>>,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
     if cli.skip_tunnel_pipe_owner_check {
         firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
     }
 
+    #[cfg(debug_assertions)]
+    if cli.skip_portal_auth {
+        firezone_gui_client::auth::skip_portal_auth();
+    }
+
+    #[cfg(debug_assertions)]
+    if cli.mock_tunnel {
+        firezone_gui_client::mock_tunnel::enable();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
-
-    let fake_controller = matches!(
-        cli.command,
-        Some(Cmd::Debug {
-            command: DebugCommand::FakeController
-        })
-    );
 
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
@@ -90,42 +106,25 @@ fn try_main(
         telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
-        fake_controller,
     };
 
-    let mut advanced_settings = settings::load_advanced_settings().unwrap_or_default();
+    // The authoritative advanced settings and machine-scope MDM policy are
+    // owned by the privileged Tunnel service and arrive over the `Hello` IPC
+    // message. Telemetry stays in `entrypoint` mode (started in `main`) and the
+    // log filter is `RUST_LOG` or a hardcoded `info` until then; once `Hello`
+    // lands the controller re-applies the effective log filter and sends the
+    // real environment to the service via `StartTelemetry`.
+    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned());
 
-    let mdm_settings = settings::load_mdm_settings()
-        .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
-        .unwrap_or_default();
-
-    // Now that we know the real api_url, switch the Sentry session out of
-    // entrypoint mode. `Telemetry::start` notices the env change and stops
-    // the previous session before initialising a new one.
-    let api_url = mdm_settings
-        .api_url
-        .as_ref()
-        .unwrap_or(&advanced_settings.api_url)
-        .to_string();
-    telemetry.start(&api_url, firezone_gui_client::RELEASE, telemetry::GUI_DSN);
-
-    // Don't fix the log filter for smoke tests because we can't show a dialog there.
-    if !config.smoke_test {
-        fix_log_filter(&mut advanced_settings)?;
-    }
-
-    let log_filter = std::env::var("RUST_LOG")
-        .ok()
-        .or(mdm_settings.log_filter.clone())
-        .unwrap_or_else(|| advanced_settings.log_filter.clone());
-
-    drop(bootstrap_log_guard.take());
+    *log_guard = None;
 
     let logging::Handles {
-        logger: _logger,
+        logger,
         reloader,
-        cleanup: _cleanup,
+        cleanup,
     } = firezone_gui_client::logging::setup_gui(&log_filter)?;
+
+    *log_guard = Some(LogGuard::Gui(logger, cleanup));
 
     match cli.command {
         None if cli.check_elevation() => match elevation::gui_check() {
@@ -138,13 +137,8 @@ fn try_main(
                 return Err(error.into());
             }
         },
-        None
-        | Some(Cmd::Elevated)
-        | Some(Cmd::Debug {
-            command: DebugCommand::FakeController,
-        }) => {
-            // Fall-through to running the GUI if elevation check should be bypassed,
-            // or if we're in fake-controller demo mode.
+        None | Some(Cmd::Elevated) => {
+            // Fall-through to running the GUI if elevation check should be bypassed.
         }
 
         // All commands below _don't_ end up running the GUI because they return early.
@@ -179,7 +173,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, config, mdm_settings, advanced_settings, reloader)?;
+            gui::run(rt, config, reloader, telemetry)?;
 
             return Ok(());
         }
@@ -187,9 +181,13 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, config, mdm_settings, advanced_settings, reloader) {
+    match gui::run(rt, config, reloader, telemetry) {
         Ok(()) => {}
         Err(anyhow) => {
+            if cli.no_error_dialog {
+                return Err(anyhow);
+            }
+
             if anyhow
                 .chain()
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
@@ -203,6 +201,20 @@ fn try_main(
 
             if anyhow.any_is::<gui::AlreadyRunning>() {
                 return Ok(());
+            }
+
+            if anyhow.any_is::<firezone_gui_client::package_identity::RestartRequired>() {
+                dialog::info("Firezone finished first-time setup. Please start Firezone again.")?;
+                return Ok(());
+            }
+
+            if anyhow.any_is::<firezone_gui_client::package_identity::InstallationCorrupt>() {
+                dialog::error(
+                    "Firezone can't start because its program files are corrupt. \
+                     Please reinstall Firezone, then try again. If the issue \
+                     persists, contact your administrator.",
+                )?;
+                return Err(anyhow);
             }
 
             if anyhow.any_is::<firezone_gui_client::ipc::WrongUser>() {
@@ -239,20 +251,6 @@ fn try_main(
             return Err(anyhow);
         }
     };
-
-    Ok(())
-}
-
-/// Parse the log filter from settings, showing an error and fixing it if needed
-fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
-    if EnvFilter::try_new(&settings.log_filter).is_ok() {
-        return Ok(());
-    }
-    settings.log_filter = AdvancedSettings::default().log_filter;
-
-    firezone_gui_client::dialog::error(
-        "The custom log filter is not parsable. Using the default log filter.",
-    )?;
 
     Ok(())
 }
@@ -296,6 +294,10 @@ struct Cli {
     /// For headless CI, disable deep links.
     #[arg(long, hide = true)]
     no_deep_links: bool,
+    /// For headless CI, log errors instead of showing a blocking
+    /// dialog (which would hang with no one to dismiss it).
+    #[arg(long, hide = true)]
+    no_error_dialog: bool,
     /// For headless CI, disable the elevation check.
     #[arg(long, hide = true)]
     no_elevation_check: bool,
@@ -315,6 +317,20 @@ struct Cli {
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     skip_tunnel_pipe_owner_check: bool,
+
+    /// Decouple sign-in from the portal: mint a fake session/token on the fly
+    /// (never persisted) instead of opening the browser. Pairs with
+    /// `--mock-tunnel`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    skip_portal_auth: bool,
+
+    /// Mock the Tunnel service in-process: serve a canned resource list over an
+    /// in-memory IPC channel instead of connecting to the real (root-only)
+    /// Tunnel service. Pairs with `--skip-portal-auth`. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    mock_tunnel: bool,
 }
 
 impl Cli {
@@ -353,9 +369,6 @@ enum Cmd {
 
 #[derive(clap::Subcommand)]
 enum DebugCommand {
-    /// Run the GUI with a hardcoded fake tunnel state, for iterating on the
-    /// system tray UI without needing the tunnel service or a live portal.
-    FakeController,
     Replicate6791,
     SetAutostart(SetAutostartArgs),
     /// Drive only the launch-lock + GUI IPC handshake — no controller, no

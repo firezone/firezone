@@ -117,6 +117,35 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
     })
 }
 
+/// Transforms the real auth URL (from [`auth::Request::to_url`]) into the
+/// deep-link callback the portal would send back, reusing its `state`.
+///
+/// The inverse of [`parse_auth_callback`] for a fabricated [`auth::Response`].
+/// Used by `--skip-portal-auth` to synthesize the URL we'd otherwise receive
+/// from the browser. Debug builds only.
+#[cfg(debug_assertions)]
+pub(crate) fn fake_callback_url(real_auth_url: &SecretString) -> Result<Url> {
+    use secrecy::ExposeSecret as _;
+
+    let state = Url::parse(real_auth_url.expose_secret())
+        .context("Failed to parse generated auth URL")?
+        .query_pairs()
+        .find(|(key, _)| &**key == "state")
+        .map(|(_, value)| value.into_owned())
+        .context("Generated auth URL is missing `state`")?;
+
+    let response = auth::Response::fake(SecretString::from(state));
+
+    let mut url = Url::parse("firezone-fd0020211111://handle_client_sign_in_callback/")
+        .context("Static deep-link URL should be valid")?;
+    url.query_pairs_mut()
+        .append_pair("account_slug", &response.account_slug)
+        .append_pair("actor_name", &response.actor_name)
+        .append_pair("fragment", response.fragment.expose_secret())
+        .append_pair("state", response.state.expose_secret());
+    Ok(url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

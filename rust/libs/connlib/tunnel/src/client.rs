@@ -34,7 +34,7 @@ use crate::peer_store::{Peer, PeerStore};
 use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{ClientEvent, FailedToDecapsulate, packet_kind};
+use crate::{ClientEvent, FailedToDecapsulate, otel, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519;
@@ -167,7 +167,7 @@ pub struct ClientState {
     tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the ID of the recursive DNS query we issued.
     dns_streams_by_local_upstream_and_query_id:
-        HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
+        HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr, Instant)>,
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
@@ -175,6 +175,7 @@ pub struct ClientState {
 
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
+    dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 impl ClientState {
@@ -216,6 +217,7 @@ impl ClientState {
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
+            dns_lookup_duration: otel_instruments::dns_lookup_duration(),
         }
     }
 
@@ -686,6 +688,24 @@ impl ClientState {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
+        let mut attributes = vec![
+            match response.recursion {
+                dns::Recursion::Local => otel::attr::dns_recursion_local(),
+                dns::Recursion::Tunnel => otel::attr::dns_recursion_tunnel(),
+            },
+            otel::attr::dns_question_type(response.query.qtype()),
+            otel::attr::network_transport(response.transport),
+        ];
+        match &response.message {
+            Ok(message) => attributes.push(otel::attr::dns_response_code(message.response_code())),
+            Err(e) => attributes.extend(telemetry::otel::error_layers(e)),
+        }
+        self.dns_lookup_duration.record(
+            now.saturating_duration_since(response.started_at)
+                .as_secs_f64(),
+            &attributes,
+        );
+
         let qid = response.query.id();
         let server = response.server;
         let domain = response.query.domain();
@@ -1560,7 +1580,7 @@ impl ClientState {
                 let qid = query_result.query.id();
                 let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
-                let Some((local, remote)) =
+                let Some((local, remote, started_at)) =
                     known_sockets.remove(&(dns::Transport::Udp, query_result.local, server, qid))
                 else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
@@ -1576,6 +1596,8 @@ impl ClientState {
                         query: query_result.query,
                         message: query_result.result,
                         transport: dns::Transport::Udp,
+                        started_at,
+                        recursion: dns::Recursion::Tunnel,
                     },
                     now,
                 );
@@ -1588,7 +1610,7 @@ impl ClientState {
                 let qid = query_result.query.id();
                 let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
-                let Some((local, remote)) =
+                let Some((local, remote, started_at)) =
                     known_sockets.remove(&(dns::Transport::Tcp, query_result.local, server, qid))
                 else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
@@ -1604,6 +1626,8 @@ impl ClientState {
                         query: query_result.query,
                         message: query_result.result,
                         transport: dns::Transport::Tcp,
+                        started_at,
+                        recursion: dns::Recursion::Tunnel,
                     },
                     now,
                 );
@@ -1884,11 +1908,12 @@ impl ClientState {
 
         tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarded {transport} DNS query via tunnel");
 
-        let existing = self
-            .dns_streams_by_local_upstream_and_query_id
-            .insert((transport, local_socket, server, query_id), (local, remote));
+        let existing = self.dns_streams_by_local_upstream_and_query_id.insert(
+            (transport, local_socket, server, query_id),
+            (local, remote, now),
+        );
 
-        if let Some((existing_local, existing_remote)) = existing
+        if let Some((existing_local, existing_remote, _)) = existing
             && (existing_local != local || existing_remote != remote)
         {
             debug_assert!(false, "Query IDs should be unique");

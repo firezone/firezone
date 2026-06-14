@@ -1,7 +1,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
-mod fake_controller;
+/// One-shot migration of MDM policy from the per-user registry hive into the
+/// machine-scope hive, owned by the Tunnel service.
+// TODO: remove once all clients have migrated.
+#[cfg(target_os = "windows")]
+mod mdm_migration;
 mod updates;
 mod uptime;
 mod view;
@@ -16,6 +20,9 @@ pub mod gui;
 pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
+#[cfg(debug_assertions)]
+pub mod mock_tunnel;
+pub mod package_identity;
 pub mod service;
 pub mod settings;
 
@@ -25,9 +32,11 @@ pub mod settings;
 /// but sometimes I need to use this before Tauri has booted up, or in a place where
 /// getting the Tauri app handle would be awkward.
 ///
-/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
-/// so if your dev system has Firezone installed by MSI, the notifications will look right.
-/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+/// Note: under the sparse MSIX identity this is *not* the
+/// AppUserModelId Windows uses to label notifications; that is derived
+/// from [`PACKAGE_FAMILY_NAME`] in `gui::os::show_notification`. It is
+/// still used as the toast AUMID for un-packaged dev builds, which have
+/// no package identity.
 pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// The Sentry "release" we are part of.
@@ -41,12 +50,10 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 /// `Name_publisherId` for the sparse MSIX. Derived at build time
 /// from the manifest's `Name` + Publisher DN in `build.rs`. Used by
 /// `register-sparse.exe` to stage / provision / deprovision the
-/// package against the AppX deployment service.
+/// package against the AppX deployment service, and to derive the
+/// package AUMID (`<PACKAGE_FAMILY_NAME>!Firezone`) that Windows uses to
+/// label toast notifications (see `gui::os::show_notification`).
 pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
-
-/// AppContainer SID for [`PACKAGE_FAMILY_NAME`], derived at build
-/// time. Baked in so the tunnel pipe DACL is deterministic.
-pub const PACKAGE_SID: &str = env!("FIREZONE_PACKAGE_SID");
 
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {

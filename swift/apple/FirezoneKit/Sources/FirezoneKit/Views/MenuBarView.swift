@@ -24,6 +24,7 @@
       // Resources (only when connected and not hidden by admin)
       if store.vpnStatus == .connected && !store.configuration.publishedHideResourceList {
         ResourcesSection()
+        ConnectedDevicesSection()
         Divider()
       }
 

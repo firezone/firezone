@@ -10,6 +10,7 @@ defaults:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+  security-events: "write" # trivy SARIF upload from setup-mise
 
 env:
   RUSTFLAGS: "--cfg tokio_unstable --deny warnings"
@@ -25,7 +26,7 @@ jobs:
         runs-on: [ubuntu-24.04, macos-26, windows-2022]
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust-stable
       - uses: ./.github/actions/setup-rust-nightly
@@ -48,59 +49,17 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - name: Guard RUSTSEC-2026-0097 allowlist assumption
-        run: |
-          # RUSTSEC-2026-0097 is allowlisted because rand's `log` feature is not enabled,
-          # meaning the vulnerable re-entrant ThreadRng code path is compiled out.
-          # If a dependency ever enables rand/log, the allowlist is no longer valid.
-          if cargo tree -e features 2>/dev/null | grep -q 'rand feature "log"'; then
-            echo "::error::rand's 'log' feature is now enabled — RUSTSEC-2026-0097 allowlist in deny.toml is no longer safe to keep"
-            exit 1
-          fi
-        shell: bash
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
+        shell: bash
+      # cargo-shear does not compile the workspace; it runs `cargo metadata` and
+      # parses sources, so it piggy-backs on the toolchain already set up here.
+      - run: cargo shear
+        name: cargo shear
         shell: bash
 
   monitor-static-analysis:
     needs: [static-analysis]
     if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh run cancel ${{ github.run_id }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  unused-dependencies:
-    name: unused-dependencies-${{ matrix.runs-on }}
-    strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
-      matrix:
-        # TODO: https://github.com/rust-lang/cargo/issues/5220
-        runs-on: [ubuntu-24.04, macos-26, windows-2022]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/setup-rust-stable
-        id: setup-rust-stable
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust-nightly
-      - uses: ./.github/actions/setup-rust-target-dependency-cache
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
-      - uses: ./.github/actions/setup-tauri-v2
-        timeout-minutes: 15
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd rust
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: cargo +${{ steps.setup-rust-nightly.outputs.nightly_version }} udeps --verbose --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
-        name: cargo udeps
-
-  monitor-unused-dependencies:
-    needs: [unused-dependencies]
-    if: "!cancelled() && needs.unused-dependencies.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     steps:
       - run: gh run cancel ${{ github.run_id }}
@@ -116,7 +75,7 @@ jobs:
         runs-on: [ubuntu-24.04, macos-26, windows-2025]
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
       - uses: ./.github/actions/setup-rust-nightly
@@ -127,6 +86,7 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash
         run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
@@ -134,6 +94,13 @@ jobs:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+          # Minimise DWARF debuginfo for the coverage build: source-based
+          # coverage data lives in __llvm_covmap, independent of debug info, so
+          # lcov.info / Coveralls are unaffected while target/ shrinks ~60%.
+          # `line-tables-only` keeps file:line in panic backtraces. eBPF BTF is
+          # unaffected (built separately under the release profile via aya_build).
+          CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
+          CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
 
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
@@ -148,7 +115,7 @@ jobs:
     name: tunnel-test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
       - uses: ./.github/actions/setup-rust-nightly
@@ -158,6 +125,7 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/free-disk-space
       - name: Tunnel proptest
         id: proptest
         shell: bash
@@ -220,11 +188,11 @@ jobs:
         fuzz-target: [ip_packet]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/setup-rust-nightly
         id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2.81.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -247,7 +215,7 @@ jobs:
           - { runs-on: ubuntu-24.04, test: token-path-linux.sh }
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-sccache
       - uses: ./.github/actions/setup-tauri-v2

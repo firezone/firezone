@@ -98,14 +98,9 @@ updates:
           - netlink-packet-*
       otel:
         patterns:
-          - opentelemetry
-          - opentelemetry_api
-          - opentelemetry-otlp
+          - "opentelemetry*"
           - tracing-opentelemetry
           - tracing-stackdriver
-          - opentelemetry_sdk
-        update-types:
-          - minor
       windows:
         patterns:
           - windows
@@ -161,6 +156,8 @@ updates:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
       - dependency-name: org.jetbrains.kotlin.android
+      # Must match the Kotlin version bundled with AGP's built-in Kotlin support
+      - dependency-name: org.jetbrains.kotlin.plugin.compose
     groups:
       security-all:
         applies-to: security-updates
@@ -232,27 +229,6 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
-  - package-ecosystem: npm
-    directory: website/
-    schedule:
-      interval: weekly
-    cooldown:
-      semver-patch-days: 2
-      semver-minor-days: 7
-      semver-major-days: 14
-      default-days: 7
-    open-pull-requests-limit: 100
-    groups:
-      security-all:
-        applies-to: security-updates
-        patterns:
-          - "*"
-      react:
-        patterns:
-          - "react"
-          - "react-dom"
-          - "@types/react"
-          - "@types/react-dom"
   - package-ecosystem: npm
     directory: rust/gui-client/
     schedule:

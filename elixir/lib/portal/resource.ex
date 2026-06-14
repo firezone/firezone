@@ -328,7 +328,7 @@ defmodule Portal.Resource do
       current_type == :dns ->
         put_default_value(changeset, :ip_stack, :dual)
 
-      original_type == :dns and current_type != :dns ->
+      original_type == :dns ->
         put_change(changeset, :ip_stack, nil)
 
       true ->

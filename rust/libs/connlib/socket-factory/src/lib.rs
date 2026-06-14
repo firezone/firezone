@@ -1,4 +1,4 @@
-use anyhow::{Context as _, ErrorExt, Result};
+use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool};
 use bytes::{Buf as _, BytesMut};
 use gat_lending_iterator::LendingIterator;
@@ -8,7 +8,6 @@ use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
-use std::time::Duration;
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -23,13 +22,25 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
+/// On Apple platforms, UDP sockets never buffer data in the send buffer: datagrams are
+/// handed straight to the interface and `SO_SNDBUF` only acts as a cap on the maximum
+/// datagram size. A large send buffer is therefore pointless (and cannot cause
+/// bufferbloat either); 64 KiB comfortably covers the largest datagram we ever send.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub const SEND_BUFFER_SIZE: usize = 64 * 1024;
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
 /// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows"))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
+
+/// Upper bound (as a power of two) for how many times we busy-spin between send retries.
+///
+/// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
+const SPIN_LIMIT: u32 = 6;
 
 /// The Windows equivalent of ENOBUFS.
 ///
@@ -176,6 +187,7 @@ pub struct PerfUdpSocket {
     buffer_pool: BufferPool<Vec<u8>>,
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
+    send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
@@ -216,14 +228,8 @@ impl UdpSocket {
                     IpAddr::V6(_) => "udp-socket-v6",
                 },
             ),
-            batch_histogram: opentelemetry::global::meter("connlib")
-                .u64_histogram("system.network.packets.batch_count")
-                .with_description(
-                    "How many batches of packets we have processed in a single syscall.",
-                )
-                .with_unit("{batches}")
-                .with_boundaries((1..32_u64).map(|i| i as f64).collect())
-                .build(),
+            batch_histogram: otel_instruments::network_packets_batch_count(),
+            send_retry_histogram: otel_instruments::network_retries(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
         })
@@ -318,40 +324,35 @@ impl PerfUdpSocket {
             datagram.ecn,
         )?;
 
-        let mut attempt = 0;
+        self.send_transmit(&transmit).await?;
 
-        loop {
-            match self.send_transmit(&transmit).await {
-                Ok(()) => return Ok(()),
-                Err(e) => {
-                    let backoff = backoff(&e, attempt).ok_or(e)?; // Attempt to get a backoff value or otherwise bail with error.
-
-                    tracing::debug!(?backoff, dst = %datagram.dst, len = %datagram.packet.len(), "Retrying packet");
-
-                    tokio::time::sleep(backoff).await;
-                }
-            }
-
-            attempt += 1;
-        }
+        Ok(())
     }
 
     pub fn set_buffer_sizes(
         &mut self,
         requested_send_buffer_size: usize,
         requested_recv_buffer_size: usize,
-    ) -> io::Result<()> {
+    ) {
         let socket = socket2::SockRef::from(&self.inner);
 
-        socket.set_send_buffer_size(requested_send_buffer_size)?;
-        socket.set_recv_buffer_size(requested_recv_buffer_size)?;
+        // Apply each direction independently: failing to set one buffer size must not prevent the other from being applied.
+        if let Err(e) = apply_buffer_size(requested_send_buffer_size, |size| {
+            socket.set_send_buffer_size(size)
+        }) {
+            tracing::warn!(%requested_send_buffer_size, "Failed to set send buffer size: {e}");
+        }
 
-        let send_buffer_size = socket.send_buffer_size()?;
-        let recv_buffer_size = socket.recv_buffer_size()?;
+        if let Err(e) = apply_buffer_size(requested_recv_buffer_size, |size| {
+            socket.set_recv_buffer_size(size)
+        }) {
+            tracing::warn!(%requested_recv_buffer_size, "Failed to set recv buffer size: {e}");
+        }
 
-        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
+        let send_buffer_size = socket.send_buffer_size().unwrap_or_default();
+        let recv_buffer_size = socket.recv_buffer_size().unwrap_or_default();
 
-        Ok(())
+        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "UDP socket buffer sizes");
     }
 
     async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
@@ -361,45 +362,93 @@ impl PerfUdpSocket {
         let src = transmit.src_ip;
         let dst = transmit.destination;
 
-        let chunk_size = self.calculate_chunk_size(segment_size, dst);
-        let num_batches = transmit.contents.len() / chunk_size;
+        let total = transmit.contents.len();
 
-        for (idx, chunk) in transmit
-            .contents
-            .chunks(chunk_size)
-            .map(|contents| Transmit {
+        // Offset of the next byte that still needs to be sent. On a retryable error
+        // we resume from here instead of restarting the whole transmit, so a batch
+        // the kernel already accepted is never re-sent.
+        let mut offset = 0;
+        let mut attempt = 0;
+
+        while offset < total {
+            // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
+            // the remaining data needs to be re-split into smaller batches.
+            let chunk_size = self.calculate_chunk_size(segment_size, dst)?;
+
+            let end = std::cmp::min(offset + chunk_size, total);
+            let contents = &transmit.contents[offset..end];
+
+            let chunk = Transmit {
                 destination: dst,
                 ecn: transmit.ecn,
                 contents,
                 segment_size: Some(segment_size),
                 src_ip: src,
-            })
-            .enumerate()
-        {
-            let num_bytes = chunk.contents.len();
-            let batch_num = idx + 1;
+            };
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
+            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %(contents.len() / segment_size), %segment_size);
 
-            let batch_size =
-                chunk.contents.len() / chunk.segment_size.unwrap_or(chunk.contents.len());
-
-            self.batch_histogram.record(
-                batch_size as u64,
-                &[
-                    KeyValue::new("network.transport", "udp"),
-                    KeyValue::new("network.io.direction", "transmit"),
-                ],
-            );
-
-            self.inner
-                .async_io(Interest::WRITABLE, || self.state.try_send((&self.inner).into(), &chunk))
+            match self
+                .inner
+                .async_io(Interest::WRITABLE, || {
+                    self.state.try_send((&self.inner).into(), &chunk)
+                })
                 .await
-                .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
+            {
+                Ok(()) => {
+                    self.record_send_batch_size(contents.len() / segment_size);
+                    self.record_send_retries(attempt);
+
+                    offset = end;
+                    attempt = 0; // Each batch gets its own retry budget.
+                }
+                Err(e) if should_retry(&e, attempt) => {
+                    spin_and_yield(attempt).await;
+                    attempt += 1;
+                }
+                Err(e) => {
+                    self.record_send_retries(attempt);
+
+                    return Err(e).with_context(|| {
+                        format!(
+                            "Failed to send {} bytes at offset {offset}/{total} with segment_size {segment_size} to {dst}",
+                            contents.len()
+                        )
+                    });
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Records the number of segments sent in a single batched syscall.
+    fn record_send_batch_size(&self, num_segments: usize) {
+        self.batch_histogram.record(
+            num_segments as u64,
+            &[
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
+    }
+
+    /// Records how many times a single batch had to be retried before it went through or was dropped.
+    ///
+    /// Batches that succeed on the first try (the common case) are not recorded, keeping the hot path cheap.
+    fn record_send_retries(&self, attempt: u32) {
+        if attempt == 0 {
+            return;
+        }
+
+        self.send_retry_histogram.record(
+            attempt as u64,
+            &[
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
     }
 
     /// Calculate the chunk size for a given segment size.
@@ -409,7 +458,9 @@ impl PerfUdpSocket {
     ///
     /// In case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set `max_gso_segments` to 1.
     /// We need to honor both of these constraints when calculating the chunk size.
-    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> usize {
+    ///
+    /// Fails if `segment_size` exceeds the maximum UDP payload, in which case not even a single segment fits.
+    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> Result<usize> {
         let header_overhead = match dst {
             SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
             SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
@@ -420,7 +471,12 @@ impl PerfUdpSocket {
 
         let max_segments = std::cmp::min(max_segments_by_config, max_segments_by_size);
 
-        segment_size * max_segments
+        anyhow::ensure!(
+            max_segments > 0,
+            "segment_size {segment_size} exceeds the maximum UDP payload for {dst}"
+        );
+
+        Ok(segment_size * max_segments)
     }
 
     fn prepare_transmit<'a>(
@@ -505,6 +561,28 @@ impl UdpSocket {
     }
 }
 
+/// Applies the requested buffer size to a socket, halving it until the kernel accepts it.
+///
+/// Apple platforms reject buffer sizes above `kern.ipc.maxsockbuf` with `ENOBUFS` instead of
+/// clamping them like Linux does.
+fn apply_buffer_size(
+    requested: usize,
+    mut set: impl FnMut(usize) -> io::Result<()>,
+) -> io::Result<()> {
+    /// Buffer sizes below this are not worth trading for an error message; all platforms accept it.
+    const FLOOR: usize = 64 * 1024;
+
+    let mut size = requested;
+
+    loop {
+        match set(size) {
+            Ok(()) => return Ok(()),
+            Err(_) if size > FLOOR => size /= 2,
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 /// Compares the two [`SocketAddr`]s for equality, ignored IPv6 scopes for link-local addresses.
 fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: SocketAddr) -> bool {
     match (expected, actual) {
@@ -521,41 +599,49 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
     }
 }
 
-fn backoff(e: &anyhow::Error, attempts: u32) -> Option<Duration> {
-    let raw_os_error = e.any_downcast_ref::<io::Error>()?.raw_os_error()?;
+/// Whether a failed send should be retried for the given attempt.
+fn should_retry(e: &io::Error, attempt: u32) -> bool {
+    let Some(raw_os_error) = e.raw_os_error() else {
+        return false;
+    };
 
-    // On Linux and Android, we retry sending once for os error 5.
-    //
-    // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
+    // On Linux / Android, `EIO` or `EINVAL` means `quinn-udp` just disabled GSO; we retry
+    // once to re-send the data split into smaller batches.
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if raw_os_error == libc::EIO && attempts < 1 {
-        return Some(Duration::ZERO);
+    if (raw_os_error == libc::EIO || raw_os_error == libc::EINVAL) && attempt < 1 {
+        return true;
     }
 
-    // On MacOS, the kernel may return ENOBUFS if the buffer fills up.
-    //
-    // Ideally, we would be able to suspend here but MacOS doesn't support that.
-    // Thus, we do the next best thing and retry.
+    // On MacOS / iOS, the kernel returns `ENOBUFS` when the interface queue fills up.
+    // It's transient and clears off this thread (driver / NIC), and isn't observable
+    // via write-readiness, so we retry rather than suspend.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    if raw_os_error == libc::ENOBUFS && attempts < MAX_ENOBUFS_RETRIES {
-        return Some(exp_delay(attempts));
+    if raw_os_error == libc::ENOBUFS && attempt < MAX_ENOBUFS_RETRIES {
+        return true;
     }
 
-    // On Windows, we may sometimes encounter error 10055.
-    //
-    // Ideally, we would be able to suspend here but it is unclear how to achieve that.
-    // Thus, we do the next best thing and retry.
+    // On Windows, error 10055 is the equivalent of `ENOBUFS`; same transient condition.
     #[cfg(target_os = "windows")]
-    if raw_os_error == WINDOWS_ENOBUFS && attempts < MAX_ENOBUFS_RETRIES {
-        return Some(exp_delay(attempts));
+    if raw_os_error == WINDOWS_ENOBUFS && attempt < MAX_ENOBUFS_RETRIES {
+        return true;
     }
 
-    None
+    false
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "windows", test))]
-fn exp_delay(attempts: u32) -> Duration {
-    Duration::from_nanos(2_u64.pow(attempts))
+/// Briefly back off after a retryable send error before trying again.
+///
+/// We avoid `tokio::time::sleep`: its timer wheel rounds up to ~1ms (~15ms on
+/// Windows), far longer than the microseconds an `ENOBUFS` needs to clear. Instead
+/// we spin a few (escalating) times and then cooperatively yield. The yield matters:
+/// send and receive share a single-threaded runtime, so a pure spin would starve the
+/// receive task.
+async fn spin_and_yield(attempt: u32) {
+    for _ in 0..(1u32 << attempt.min(SPIN_LIMIT)) {
+        std::hint::spin_loop();
+    }
+
+    tokio::task::yield_now().await;
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
@@ -763,46 +849,61 @@ mod tests {
     }
 
     #[test]
-    fn max_enobufs_delay() {
-        assert_eq!(
-            exp_delay(MAX_ENOBUFS_RETRIES),
-            Duration::from_nanos(16_777_216) // ~16ms
-        )
+    fn apply_buffer_size_halves_until_accepted() {
+        let mut attempts = Vec::new();
+
+        let result = apply_buffer_size(1024 * 1024, |size| {
+            attempts.push(size);
+
+            if size > 256 * 1024 {
+                return Err(io::Error::other("too big"));
+            }
+
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert_eq!(attempts, vec![1024 * 1024, 512 * 1024, 256 * 1024]);
+    }
+
+    #[test]
+    fn apply_buffer_size_gives_up_at_floor() {
+        let result = apply_buffer_size(256 * 1024, |_| Err(io::Error::other("nope")));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn does_not_retry_non_os_errors() {
+        let err = io::Error::other("not an os error");
+
+        assert!(!should_retry(&err, 0));
     }
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn immediate_retry_of_os_error_5() {
-        let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::EIO));
+    fn retries_gso_errors_once() {
+        for raw in [libc::EIO, libc::EINVAL] {
+            let err = io::Error::from_raw_os_error(raw);
 
-        let backoff = backoff(&err, 0);
-
-        assert_eq!(backoff.unwrap(), Duration::ZERO);
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn only_one_retry_of_os_error_5() {
-        let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::EIO));
-
-        let backoff = backoff(&err, 1);
-
-        assert!(backoff.is_none());
+            assert!(should_retry(&err, 0));
+            assert!(!should_retry(&err, 1));
+        }
     }
 
     #[test]
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    fn at_most_24_retries_of_enobufs() {
-        let err = anyhow::Error::new(io::Error::from_raw_os_error(libc::ENOBUFS));
+    fn retries_enobufs_at_most_24_times() {
+        let err = io::Error::from_raw_os_error(libc::ENOBUFS);
 
-        assert!(backoff(&err, 23).is_some());
-        assert!(backoff(&err, 24).is_none());
+        assert!(should_retry(&err, 23));
+        assert!(!should_retry(&err, 24));
     }
 
     #[test]
     #[cfg(target_os = "windows")]
     fn windows_10055_error() {
-        let err = anyhow::Error::new(io::Error::from_raw_os_error(WINDOWS_ENOBUFS));
+        let err = io::Error::from_raw_os_error(WINDOWS_ENOBUFS);
 
         assert_eq!(
             err.to_string(),

@@ -84,6 +84,106 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
 
       assert response(conn, 200) == ""
     end
+
+    test "returns 400 when the aeg-event-type header is missing", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          "/integrations/azure_communication_services/webhooks",
+          notification_payload()
+        )
+
+      assert response(conn, 400) == "Bad Request: missing aeg-event-type header"
+    end
+
+    test "returns 400 for invalid JSON", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("aeg-event-type", "Notification")
+        |> post(
+          "/integrations/azure_communication_services/webhooks",
+          "{not valid json"
+        )
+
+      assert response(conn, 400) == "Bad Request: invalid JSON"
+    end
+
+    test "returns 400 for a validation event without a validation code", %{conn: conn} do
+      payload = JSON.encode!([%{"data" => %{}}])
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("aeg-event-type", "SubscriptionValidation")
+        |> post("/integrations/azure_communication_services/webhooks", payload)
+
+      assert response(conn, 400) == "Bad Request: invalid validation event"
+    end
+
+    test "returns 200 for Unsubscribe events", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("aeg-event-type", "Unsubscribe")
+        |> post("/integrations/azure_communication_services/webhooks", JSON.encode!([]))
+
+      assert response(conn, 200) == ""
+    end
+
+    test "returns 400 for unsupported event types", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("aeg-event-type", "SomethingElse")
+        |> post("/integrations/azure_communication_services/webhooks", JSON.encode!([]))
+
+      assert response(conn, 400) == "Bad Request: unsupported aeg-event-type"
+    end
+
+    test "returns 401 when the webhook secret is not configured", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.AzureCommunicationServices,
+        event_grid_webhook_signing_secret: nil
+      )
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("aeg-event-type", "Notification")
+        |> put_req_header("aeg-sas-key", "acs-secret")
+        |> post(
+          "/integrations/azure_communication_services/webhooks",
+          notification_payload()
+        )
+
+      assert response(conn, 401) == "Unauthorized"
+    end
+
+    test "returns 500 when event handling fails so Event Grid will retry", %{conn: conn} do
+      import ExUnit.CaptureLog
+
+      payload =
+        JSON.encode!([
+          %{
+            "id" => Ecto.UUID.generate(),
+            "eventType" => "Microsoft.Communication.EmailDeliveryReportReceived",
+            "eventTime" => "2026-03-13T07:00:00Z",
+            "data" => "not-a-map"
+          }
+        ])
+
+      {conn, _log} =
+        with_log(fn ->
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("aeg-event-type", "Notification")
+          |> put_req_header("aeg-sas-key", "acs-secret")
+          |> post("/integrations/azure_communication_services/webhooks", payload)
+        end)
+
+      assert response(conn, 500) == "Internal Error"
+    end
   end
 
   defp validation_payload(code) do

@@ -620,13 +620,13 @@ defmodule PortalWeb.Resources.Components do
       <p class="mt-1.5 text-xs text-[var(--text-secondary)] leading-snug">
         {case "#{@form[:ip_stack].value}" do
           "ipv4_only" ->
-            "Resolves only A records — clients connect over IPv4."
+            "Resolves only A records. Clients connect over IPv4."
 
           "ipv6_only" ->
-            "Resolves only AAAA records — clients connect over IPv6."
+            "Resolves only AAAA records. Clients connect over IPv6."
 
           _ ->
-            "Resolves A and AAAA records — clients connect over IPv4 or IPv6, whichever is available."
+            "Resolves A and AAAA records. Clients connect over IPv4 or IPv6, whichever is available. We recommend setting this to IPv4-only if you experience connectivity issues."
         end}
       </p>
     </div>
@@ -1031,21 +1031,24 @@ defmodule PortalWeb.Resources.Components do
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2 flex-wrap">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">{@resource.name}</h2>
-              <span class={type_badge_class(@resource.type)}>
-                {resource_type_label(@resource.type)}
-              </span>
+      <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+        <div class="flex items-center gap-4">
+          <%!-- Left: name + status + address --%>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
+                {@resource.name}
+              </h2>
+              <.resource_status_badge resource={@resource} presence_tick={@presence_tick} />
             </div>
-            <div :if={@resource.type != :internet} class="flex items-center gap-1.5 mt-1">
-              <span class="font-mono text-xs text-[var(--text-secondary)]">
-                {@resource.address}
-              </span>
-            </div>
+            <p
+              :if={@resource.type != :internet}
+              class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5 truncate"
+            >
+              {@resource.address}
+            </p>
           </div>
+          <%!-- Right: actions --%>
           <div class="flex items-center gap-1.5 shrink-0">
             <button
               :if={not @confirm_delete_resource && @resource.type != :internet}
@@ -1061,34 +1064,6 @@ defmodule PortalWeb.Resources.Components do
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
             </button>
-          </div>
-        </div>
-        <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-              Status
-            </span>
-            <.status_badge status={resource_status(@resource, @presence_tick)} />
-          </div>
-          <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-              Site
-            </span>
-            <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-              <%= if @resource.site do %>
-                <.link
-                  navigate={~p"/#{@account}/sites/#{@resource.site}"}
-                  class="text-xs underline font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                  {@resource.site.name}
-                </.link>
-              <% else %>
-                <span class="text-xs italic text-[var(--text-muted)]">
-                  {nil_site_label(@resource)}
-                </span>
-              <% end %>
-            </span>
           </div>
         </div>
       </div>
@@ -1329,6 +1304,7 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_grant_form(assigns) do
     assigns = assign(assigns, assigns.grant_state)
+
     assigns =
       assign(
         assigns,
@@ -1394,9 +1370,9 @@ defmodule PortalWeb.Resources.Components do
                   end)
                 end
               end)
-              selected_groups =
-                Enum.filter(@available_groups, &(&1.group.id in @grant_selected_group_ids))
-              at_max = length(@grant_selected_group_ids) >= 5 %>
+
+            selected_groups =
+              Enum.filter(@available_groups, &(&1.group.id in @grant_selected_group_ids)) %>
             <div class="flex gap-2 h-52">
               <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
                 <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
@@ -1429,20 +1405,14 @@ defmodule PortalWeb.Resources.Components do
                       type="button"
                       phx-click="toggle_grant_group"
                       phx-value-group_id={row.group.id}
-                      disabled={at_max}
-                      class={[
-                        "flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors",
-                        if at_max do
-                          "opacity-40 cursor-not-allowed"
-                        else
-                          "hover:bg-[var(--surface)] cursor-pointer"
-                        end
-                      ]}
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-[var(--surface)] cursor-pointer"
                     >
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
                         <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
                       </div>
-                      <span class="text-xs text-[var(--text-primary)] truncate">{row.group.name}</span>
+                      <span class="text-xs text-[var(--text-primary)] truncate">
+                        {row.group.name}
+                      </span>
                     </button>
                   </li>
                   <li
@@ -1464,14 +1434,8 @@ defmodule PortalWeb.Resources.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
                     Selected
                   </span>
-                  <span class={[
-                    "text-[10px] font-medium",
-                    if(length(@grant_selected_group_ids) >= 5,
-                      do: "text-[var(--status-warning)]",
-                      else: "text-[var(--text-muted)]"
-                    )
-                  ]}>
-                    {length(@grant_selected_group_ids)} / 5
+                  <span class="text-[10px] font-medium text-[var(--text-muted)]">
+                    {length(@grant_selected_group_ids)}
                   </span>
                 </div>
                 <ul class="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
@@ -1485,7 +1449,9 @@ defmodule PortalWeb.Resources.Components do
                       <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
                         <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
                       </div>
-                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{row.group.name}</span>
+                      <span class="flex-1 text-xs text-[var(--text-primary)] truncate">
+                        {row.group.name}
+                      </span>
                       <.icon
                         name="ri-close-line"
                         class="w-3.5 h-3.5 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
@@ -1840,7 +1806,7 @@ defmodule PortalWeb.Resources.Components do
               <dd class="flex items-center gap-1.5 flex-wrap">
                 <.link
                   navigate={~p"/#{@account}/sites/#{@resource.site}"}
-                  class="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  class="text-xs underline font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   {@resource.site.name}
                 </.link>
@@ -1932,6 +1898,19 @@ defmodule PortalWeb.Resources.Components do
   @spec resource_status(map(), integer()) :: :online | :offline
   def resource_status(resource, presence_tick \\ 0) do
     if resource_online?(resource, presence_tick), do: :online, else: :offline
+  end
+
+  attr :resource, :any, required: true
+  attr :presence_tick, :integer, default: 0
+
+  def resource_status_badge(assigns) do
+    assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.presence_tick))
+
+    ~H"""
+    <.status_badge style={if @online?, do: :success, else: :neutral}>
+      {if @online?, do: "Online", else: "Offline"}
+    </.status_badge>
+    """
   end
 
   @spec resource_type_label(atom()) :: String.t()

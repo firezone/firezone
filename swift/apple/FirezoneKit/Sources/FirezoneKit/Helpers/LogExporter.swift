@@ -29,7 +29,7 @@ import SystemPackage
     @MainActor
     static func export(
       to archiveURL: URL,
-      session: NETunnelProviderSession
+      session: any TunnelSessionProtocol
     ) async throws {
       guard let logFolderURL = SharedAccess.logFolderURL
       else {
@@ -92,27 +92,13 @@ import SystemPackage
     }
 
     static func export(to archiveURL: URL) async throws {
-      guard let logFolderURL = SharedAccess.logFolderURL,
-        let connlibLogFolderURL = SharedAccess.connlibLogFolderURL,
-        let cacheFolderURL = SharedAccess.cacheFolderURL
-
+      guard let logFolderURL = SharedAccess.logFolderURL
       else {
         throw ExportError.invalidSourceDirectory
       }
 
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
-
-      let latestSymlink = connlibLogFolderURL.appendingPathComponent("latest")
-      let tempSymlink = cacheFolderURL.appendingPathComponent(
-        "latest")
-
-      // Move the `latest` symlink out of the way before creating the archive.
-      // Apple's implementation of zip appears to not be able to handle symlinks well
-      _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
-      defer {
-        _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
-      }
 
       // Write final log archive
       try ZipService.createZip(

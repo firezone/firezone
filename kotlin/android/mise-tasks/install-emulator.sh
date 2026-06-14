@@ -102,7 +102,14 @@ adb shell am force-stop "$PACKAGE"
 # Build only the ABI the emulator uses; saves ~4x build time vs the default all-ABI build.
 ./gradlew installDebug "-Pandroid.injected.build.abi=$HOST_ABI"
 
-echo "==> Launching ${PACKAGE}..."
-adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null
+# LAUNCH_COMPONENT lets callers (e.g. the sample-UI task) start a specific activity instead of the
+# default launcher entry.
+if [ -n "${LAUNCH_COMPONENT:-}" ]; then
+    echo "==> Launching ${LAUNCH_COMPONENT}..."
+    adb shell am start -n "$LAUNCH_COMPONENT" >/dev/null
+else
+    echo "==> Launching ${PACKAGE}..."
+    adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null
+fi
 
 echo "==> Done. Emulator log: /tmp/firezone-emulator.log"

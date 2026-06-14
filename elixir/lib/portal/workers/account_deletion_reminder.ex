@@ -8,7 +8,7 @@ defmodule Portal.Workers.AccountDeletionReminder do
     max_attempts: 3,
     unique: [
       period: :infinity,
-      states: [:available, :scheduled, :executing, :retryable],
+      states: :incomplete,
       keys: [:account_id]
     ]
 

@@ -1,7 +1,7 @@
 [package]
 name = "firezone-headless-client"
 # mark:next-headless-version
-version = "1.5.9"
+version = "1.5.10"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]
 license = { workspace = true }
@@ -13,8 +13,6 @@ backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
 client-shared = { workspace = true }
-connlib-model = { workspace = true }
-dns-types = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
@@ -34,13 +32,10 @@ telemetry = { workspace = true }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
 tokio = { workspace = true, features = ["macros", "signal", "process", "time", "fs", "rt"] }
-tokio-stream = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
 

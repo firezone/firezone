@@ -120,8 +120,8 @@ Firezone is **not:**
 
 ## Contents of this repository
 
-This is a monorepo containing the full Firezone product, marketing website, and
-product documentation, organized as follows:
+This is a monorepo containing the full Firezone product and its documentation,
+organized as follows:
 
 - [elixir](../elixir): Admin portal and control plane
 - [rust/](../rust): Data plane and internal Rust libraries:
@@ -133,7 +133,8 @@ product documentation, organized as follows:
   - [rust/gui-client](../rust/gui-client): Cross-platform GUI client.
 - [swift/](../swift/apple): macOS / iOS clients.
 - [kotlin/](../kotlin/android): Android / ChromeOS clients.
-- [website/](../website): Marketing website and product documentation.
+- [policy-templates/](../policy-templates): MDM policy templates (Windows ADMX/ADML, macOS profile manifests) published for admin download and compiled into the Windows client.
+- The marketing website and product documentation live in the separate [firezone/website](https://github.com/firezone/website) repository.
 
 ## License & Pricing
 

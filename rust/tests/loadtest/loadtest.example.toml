@@ -1,15 +1,12 @@
 # Loadtest Configuration
 #
-# All sections and fields are required. Copy this file and modify as needed.
-# Only test types listed in 'types' will be executed.
+# Every section is optional. Copy this file and modify as needed.
+# A random test is selected from whichever sections are present.
 #
 # Usage:
 #   firezone-loadtest                     # Run random test from loadtest.toml
 #   firezone-loadtest --config test.toml  # Use custom config file
 #   firezone-loadtest --seed 12345        # Reproducible random test
-
-# Test types to run. Options: http, tcp, websocket, ping
-types = ["http"]
 
 # HTTP load testing via Goose framework
 [http]
@@ -56,19 +53,22 @@ duration_secs = "30..300"
 # How long to at most wait between messages. Zero means we won't send any messages.
 max_echo_interval_secs = 10
 
-# ICMP ping testing
-# Note: Requires elevated privileges on Linux/macOS (root or CAP_NET_RAW)
-[ping]
-# Target IP addresses (IPv4 or IPv6)
-addresses = [
-    "8.8.8.8",
-    "1.1.1.1",
-]
-# Number of pings per target (minimum 1)
-count = "5..20"
-# Interval between pings (milliseconds)
-interval_ms = "500..2000"
-# Ping timeout (milliseconds)
-timeout_ms = "1000..5000"
-# Payload size (bytes)
-payload_size = "56..1024"
+# TURN relay load testing (e.g. Firezone's eBPF relay).
+#
+# Streams UDP datagrams through a channel binding and observes packet loss at the
+# peer. Credentials are scoped to a single relay, so configure only one at a time.
+# Left commented out because it requires real, relay-specific credentials.
+# [turn]
+# Relay socket address (ip:port)
+# address = "127.0.0.1:3478"
+# Long-term credentials for the relay
+# username = "<username>"
+# password = "<password>"
+# UDP payload size in bytes (default 1280)
+# payload_size = 1280
+# Target send bitrate (e.g. "2mbps", "500kbps", or a raw bits/sec value)
+# bitrate = "2mbps"
+# How long to stream datagrams, in seconds (default 30)
+# duration_secs = 30
+# Fail the test if packet loss exceeds this percentage (optional)
+# max_loss_percent = 1.0

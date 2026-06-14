@@ -3,11 +3,13 @@ defmodule PortalAPI.MembershipController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
   import Ecto.Changeset
 
   tags ["Memberships"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Memberships",
     parameters: [
@@ -24,9 +26,11 @@ defmodule PortalAPI.MembershipController do
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}
-    ]
+    responses:
+      [ok: {"Membership Response", "application/json", PortalAPI.Schemas.Membership.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"group_id" => group_id} = params) do
@@ -41,6 +45,7 @@ defmodule PortalAPI.MembershipController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update_put,
     summary: "Update Memberships",
     parameters: [
@@ -53,11 +58,22 @@ defmodule PortalAPI.MembershipController do
     request_body:
       {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PutRequest,
        required: true},
-    responses: [
-      ok:
-        {"Membership Response", "application/json",
-         PortalAPI.Schemas.Membership.MembershipResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Membership Response", "application/json",
+           PortalAPI.Schemas.Membership.MembershipResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec update_put(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update_put(
@@ -80,6 +96,7 @@ defmodule PortalAPI.MembershipController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update_patch,
     summary: "Update an Membership",
     parameters: [
@@ -92,11 +109,22 @@ defmodule PortalAPI.MembershipController do
     request_body:
       {"Membership Attributes", "application/json", PortalAPI.Schemas.Membership.PatchRequest,
        required: true},
-    responses: [
-      ok:
-        {"Membership Response", "application/json",
-         PortalAPI.Schemas.Membership.MembershipResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Membership Response", "application/json",
+           PortalAPI.Schemas.Membership.MembershipResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec update_patch(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update_patch(
@@ -146,7 +174,7 @@ defmodule PortalAPI.MembershipController do
     import Ecto.Changeset
 
     membership
-    |> cast(attrs, [:actor_id, :group_id, :account_id])
+    |> cast(attrs, [:actor_id, :account_id])
     |> Portal.Membership.changeset()
   end
 

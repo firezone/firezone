@@ -3,6 +3,7 @@ defmodule PortalAPI.ClientController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Presence.Clients
   alias __MODULE__.Database
   import Ecto.Changeset
@@ -10,6 +11,7 @@ defmodule PortalAPI.ClientController do
 
   tags(["Clients"])
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:index,
     summary: "List Clients",
     parameters: [
@@ -21,10 +23,12 @@ defmodule PortalAPI.ClientController do
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.ListResponse}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
   )
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -40,6 +44,7 @@ defmodule PortalAPI.ClientController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:show,
     summary: "Show Client",
     parameters: [
@@ -50,10 +55,12 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -65,6 +72,7 @@ defmodule PortalAPI.ClientController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:update,
     summary: "Update Client",
     parameters: [
@@ -77,10 +85,18 @@ defmodule PortalAPI.ClientController do
     ],
     request_body:
       {"Client Attributes", "application/json", PortalAPI.Schemas.Client.Request, required: true},
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :too_many_requests,
+          :not_found,
+          :unprocessable_entity
+        ])
   )
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "client" => params}) do
@@ -101,8 +117,8 @@ defmodule PortalAPI.ClientController do
 
   defp update_changeset(device, attrs) do
     import Ecto.Changeset
-    update_fields = ~w[name hostname]a
-    required_fields = ~w[firezone_id name]a
+    update_fields = ~w[name]a
+    required_fields = ~w[name]a
 
     device
     |> cast(attrs, update_fields)
@@ -110,6 +126,7 @@ defmodule PortalAPI.ClientController do
     |> Portal.Device.changeset()
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:verify,
     summary: "Verify Client",
     parameters: [
@@ -120,10 +137,12 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
+
+  # coveralls-ignore-stop
 
   @spec verify(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def verify(conn, %{"id" => id}) do
@@ -138,6 +157,7 @@ defmodule PortalAPI.ClientController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:unverify,
     summary: "Unverify Client",
     parameters: [
@@ -148,10 +168,12 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
+
+  # coveralls-ignore-stop
 
   @spec unverify(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def unverify(conn, %{"id" => id}) do
@@ -166,6 +188,7 @@ defmodule PortalAPI.ClientController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation(:delete,
     summary: "Delete a Client",
     parameters: [
@@ -176,10 +199,12 @@ defmodule PortalAPI.ClientController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}
-    ]
+    responses:
+      [ok: {"Client Response", "application/json", PortalAPI.Schemas.Client.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests, :not_found])
   )
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -229,9 +254,6 @@ defmodule PortalAPI.ClientController do
         nil ->
           {:error, :not_found}
 
-        {:error, :unauthorized} ->
-          {:error, :unauthorized}
-
         client ->
           {:ok, client}
       end
@@ -252,8 +274,10 @@ defmodule PortalAPI.ClientController do
         {:ok, updated_client} ->
           {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
+        # coveralls-ignore-start - defensive: Safe.update on a server-built changeset cannot fail
         {:error, reason} ->
           {:error, reason}
+          # coveralls-ignore-stop
       end
     end
 
@@ -262,8 +286,10 @@ defmodule PortalAPI.ClientController do
         {:ok, updated_client} ->
           {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
 
+        # coveralls-ignore-start - defensive: Safe.update on a server-built changeset cannot fail
         {:error, reason} ->
           {:error, reason}
+          # coveralls-ignore-stop
       end
     end
 
@@ -272,8 +298,10 @@ defmodule PortalAPI.ClientController do
         {:ok, deleted_client} ->
           {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
 
+        # coveralls-ignore-start - defensive: Safe.delete on an existing client cannot fail
         {:error, reason} ->
           {:error, reason}
+          # coveralls-ignore-stop
       end
     end
   end

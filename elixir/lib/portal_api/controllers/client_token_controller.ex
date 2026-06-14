@@ -4,10 +4,12 @@ defmodule PortalAPI.ClientTokenController do
   alias Portal.Authentication
   alias PortalAPI.Error
   alias PortalAPI.Pagination
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Client Tokens"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Client Tokens for service_account, account_user, or account_admin_user actors",
     parameters: [
@@ -20,9 +22,20 @@ defmodule PortalAPI.ClientTokenController do
       limit: [in: :query, description: "Limit Client Tokens returned", type: :integer],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Client Token List Response", "application/json", PortalAPI.Schemas.ClientToken.ListResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Client Token List Response", "application/json",
+           PortalAPI.Schemas.ClientToken.ListResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
@@ -36,6 +49,7 @@ defmodule PortalAPI.ClientTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show a Client Token for service_account, account_user, or account_admin_user actors",
     parameters: [
@@ -52,9 +66,20 @@ defmodule PortalAPI.ClientTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.ShowResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Client Token Response", "application/json",
+           PortalAPI.Schemas.ClientToken.ShowResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"actor_id" => actor_id, "id" => token_id}) do
@@ -65,6 +90,7 @@ defmodule PortalAPI.ClientTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create a Client Token for a Service Account",
     parameters: [
@@ -78,10 +104,20 @@ defmodule PortalAPI.ClientTokenController do
     request_body:
       {"Client Token Attributes", "application/json", PortalAPI.Schemas.ClientToken.Request,
        required: true},
-    responses: [
-      created:
-        {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.Response}
-    ]
+    responses:
+      [
+        created:
+          {"Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.Response}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"actor_id" => actor_id, "client_token" => attrs}) do
@@ -101,6 +137,7 @@ defmodule PortalAPI.ClientTokenController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Client Token",
     parameters: [
@@ -117,9 +154,20 @@ defmodule PortalAPI.ClientTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Deleted Client Token Response", "application/json", PortalAPI.Schemas.ClientToken.DeletedResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Client Token Response", "application/json",
+           PortalAPI.Schemas.ClientToken.DeletedResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"actor_id" => actor_id, "id" => token_id}) do
@@ -132,6 +180,7 @@ defmodule PortalAPI.ClientTokenController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete_all,
     summary:
       "Delete all Client Tokens for service_account, account_user, or account_admin_user actors",
@@ -143,20 +192,33 @@ defmodule PortalAPI.ClientTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok:
-        {"Deleted Client Tokens Response", "application/json",
-         PortalAPI.Schemas.ClientToken.DeletedAllResponse}
-    ]
+    responses:
+      [
+        ok:
+          {"Deleted Client Tokens Response", "application/json",
+           PortalAPI.Schemas.ClientToken.DeletedAllResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec delete_all(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete_all(conn, %{"actor_id" => actor_id}) do
     subject = conn.assigns.subject
 
-    with {deleted_count, _} <- Database.delete_all_tokens(actor_id, subject) do
-      render(conn, :deleted_all, count: deleted_count)
-    else
-      error -> Error.handle(conn, error)
+    # `{:error, :unauthorized}` is itself a 2-tuple, so it must be matched before
+    # the `{deleted_count, _}` success shape or it would be treated as a count.
+    case Database.delete_all_tokens(actor_id, subject) do
+      {:error, reason} ->
+        Error.handle(conn, {:error, reason})
+
+      {deleted_count, _} ->
+        render(conn, :deleted_all, count: deleted_count)
     end
   end
 
@@ -251,11 +313,14 @@ defmodule PortalAPI.ClientTokenController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        %ClientToken{} = token -> {:ok, token}
-        unexpected ->
-          raise "Unexpected return value from Safe.one/1. Expected nil, {:error, :unauthorized}, or %ClientToken{}, got: #{inspect(unexpected)}"
+        nil ->
+          {:error, :not_found}
+
+        {:error, :unauthorized} ->
+          {:error, :unauthorized}
+
+        %ClientToken{} = token ->
+          {:ok, token}
       end
     end
 

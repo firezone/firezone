@@ -31,7 +31,7 @@ jobs:
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Plan jobs to run
         id: plan
         run: |
@@ -55,19 +55,20 @@ jobs:
 
           # Fetch base ref for PRs and merge group
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.base_ref }} --depth=1
-            git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
+            base="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            git diff --name-only "$base" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
           elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            base_sha="${{ github.event.merge_group.base_sha }}"
-            git fetch origin "$base_sha" --depth=1
-            if ! git cat-file -e "${base_sha}^{commit}"; then
-              echo "::error::merge_group base SHA $base_sha not available after fetch" >&2
+            base="${{ github.event.merge_group.base_sha }}"
+            git fetch origin "$base" --depth=1
+            if ! git cat-file -e "${base}^{commit}"; then
+              echo "::error::merge_group base SHA $base not available after fetch" >&2
               exit 1
             fi
-            git diff --name-only "$base_sha" ${{ github.sha }} > changed_files.txt
+            git diff --name-only "$base" ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
@@ -112,10 +113,20 @@ jobs:
           # Swift and Kotlin only build rust/client-ffi (the FFI shim) and its
           # workspace dependencies, which are platform-agnostic and already
           # covered by the `rust` job. The mobile builds exist to guard the FFI
-          # boundary, so only run them when client-ffi itself changes. For
+          # boundary, so run them when client-ffi itself changes or when the
+          # `uniffi` binding generator is bumped (handled just below). For
           # riskier changes elsewhere, trigger _swift.yml / _kotlin.yml manually
           # via workflow_dispatch.
           if grep -q '^rust/client-ffi/' changed_files.txt; then
+            jobs="${jobs},kotlin,swift"
+          fi
+
+          # Diff the locked `uniffi` versions against the base ref. Using
+          # Cargo.lock rather than Cargo.toml also catches bare `cargo update`
+          # bumps that keep the same version requirement.
+          git show "$base:rust/Cargo.lock" | grep -A1 '^name = "uniffi' > uniffi_base.txt || true
+          grep -A1 '^name = "uniffi' rust/Cargo.lock > uniffi_head.txt || true
+          if ! diff -q uniffi_base.txt uniffi_head.txt > /dev/null; then
             jobs="${jobs},kotlin,swift"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
@@ -132,9 +143,6 @@ jobs:
           fi
           if grep -q '^swift/' changed_files.txt; then
             jobs="${jobs},swift"
-          fi
-          if grep -q '^website/' changed_files.txt; then
-            jobs="${jobs},codeql"
           fi
           if grep -q '^scripts/tests/' changed_files.txt; then
             jobs="${jobs},control-plane,data-plane"
@@ -160,7 +168,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Check if all jobs are successful
         run: |
           set -e
@@ -177,7 +185,7 @@ jobs:
     name: shell-tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # v4.0.0
         id: setup-bats
       - run: bats scripts/tests/bats
@@ -201,7 +209,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   swift:
@@ -221,7 +229,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   elixir:
@@ -239,7 +247,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   rust:
@@ -250,6 +258,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
 
   monitor-rust:
     needs: [rust]
@@ -258,7 +267,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   tauri:
@@ -277,7 +286,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   codeql:
@@ -297,7 +306,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   control-plane:
@@ -317,7 +326,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
@@ -343,7 +352,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   loadtest:
@@ -362,7 +371,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
@@ -374,6 +383,7 @@ jobs:
       id-token: write # OIDC auth
       pull-requests: write # post test result comments
     with:
+      id: integration
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
@@ -410,6 +420,7 @@ jobs:
       id-token: write # OIDC auth
       pull-requests: write # post test result comments
     with:
+      id: compat-client-${{ matrix.client.ci-name }}-gateway-${{ matrix.gateway.ci-name }}
       gateway_image: ${{ matrix.gateway.image }}
       gateway_tag: ${{ matrix.gateway.tag }}
       client_image: ${{ matrix.client.image }}

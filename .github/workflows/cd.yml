@@ -117,6 +117,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
 
   elixir:
     uses: ./.github/workflows/_elixir.yml
@@ -130,6 +131,7 @@ jobs:
     permissions:
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
 
   coverage-finish:
     name: coverage-finish

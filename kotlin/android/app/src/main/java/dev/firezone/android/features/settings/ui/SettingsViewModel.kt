@@ -70,17 +70,19 @@ internal class SettingsViewModel
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
-            val totalSize =
-                directory
-                    .walkTopDown()
-                    .filter { it.isFile }
-                    .map { it.length() }
-                    .sum()
+            viewModelScope.launch(Dispatchers.IO) {
+                val totalSize =
+                    directory
+                        .walkTopDown()
+                        .filter { it.isFile }
+                        .map { it.length() }
+                        .sum()
 
-            _uiState.value =
-                _uiState.value.copy(
-                    logSizeBytes = totalSize,
-                )
+                _uiState.value =
+                    _uiState.value.copy(
+                        logSizeBytes = totalSize,
+                    )
+            }
         }
 
         fun onSaveSettingsCompleted() {
@@ -126,7 +128,7 @@ internal class SettingsViewModel
         }
 
         fun deleteLogDirectory(context: Context) {
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
                 val logDir = context.cacheDir.absolutePath + "/logs"
                 val directory = File(logDir)
                 directory.walkTopDown().forEach { file ->

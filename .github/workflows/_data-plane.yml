@@ -3,6 +3,11 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_dispatch:
     inputs:
+      sha:
+        description: "The Git SHA to build. Leave blank to build the tip of the selected branch/tag."
+        required: false
+        type: string
+        default: ""
       image_prefix:
         description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
         required: false
@@ -71,6 +76,8 @@ jobs:
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
     runs-on: ubuntu-24.04
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -79,11 +86,11 @@ jobs:
           - release_name: gateway-1.5.3
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.9
+          - release_name: headless-client-1.5.10
             config_name: release-drafter-headless-client.yml
 
     steps:
-      - uses: release-drafter/release-drafter@c2e2804cc59f45f57076a99af580d0fedb697927 # v7.3.0
+      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -91,7 +98,7 @@ jobs:
           tag: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
-          commitish: ${{ github.sha }}
+          commitish: ${{ env.RESOLVED_SHA }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -112,16 +119,17 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.9]
+        release_name: [headless-client-1.5.10]
         # mark:next-headless-version
-        version: [1.5.9]
+        version: [1.5.10]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ inputs.sha }}
+          ref: ${{ env.RESOLVED_SHA }}
           fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/setup-rust-stable
         with:
@@ -200,9 +208,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.9
+            release_name: headless-client-1.5.10
             # mark:next-headless-version
-            version: 1.5.9
+            version: 1.5.10
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -220,15 +228,16 @@ jobs:
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
       gateway_image: ${{ steps.image-name.outputs.gateway_image }}
       http_test_server_image: ${{ steps.image-name.outputs.http-test-server_image }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ inputs.sha }}
+          ref: ${{ env.RESOLVED_SHA }}
           fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/ghcr-docker-login
         id: login
@@ -259,6 +268,11 @@ jobs:
             PROFILE="--release"
           else
             PROFILE=""
+            # Build the debug images with `line-tables-only` debug info: keeps
+            # backtraces but roughly halves the binaries, so the images pull
+            # faster/more reliably from ghcr and are smaller in the test-image
+            # artifact. Local `cargo build` is unaffected (keeps full debug).
+            export CARGO_PROFILE_DEV_DEBUG=line-tables-only
           fi
 
           cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
@@ -276,7 +290,7 @@ jobs:
 
           az storage blob upload \
             --container-name binaries \
-            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
+            --name "${{ matrix.name.image_name }}/${{ env.RESOLVED_SHA }}/${{ matrix.arch.shortname }}" \
             --file "${{ matrix.name.package }}" \
             --overwrite true \
             --no-progress \
@@ -284,7 +298,7 @@ jobs:
 
           az storage blob upload \
             --container-name binaries \
-            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
+            --name "${{ matrix.name.image_name }}/${{ env.RESOLVED_SHA }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
             --file "${{ matrix.name.package }}.sha256sum.txt" \
             --overwrite true \
             --no-progress \
@@ -322,7 +336,7 @@ jobs:
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Docker meta
@@ -333,7 +347,7 @@ jobs:
           # We only version client and gateway
           tags: |
             type=raw,value={{branch}}
-            type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ env.RESOLVED_SHA }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -358,7 +372,7 @@ jobs:
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
           labels: |
-            org.opencontainers.image.revision=${{ inputs.sha }}
+            org.opencontainers.image.revision=${{ env.RESOLVED_SHA }}
       # main: read/write cache
       - name: Build Docker images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
@@ -378,7 +392,7 @@ jobs:
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
           labels: |
-            org.opencontainers.image.revision=${{ inputs.sha }}
+            org.opencontainers.image.revision=${{ env.RESOLVED_SHA }}
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
@@ -388,7 +402,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           overwrite: true
-          name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
+          name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch.shortname }}
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
@@ -401,6 +415,8 @@ jobs:
     needs: data-plane-linux
     if: ${{ always() }}
     runs-on: ubuntu-24.04
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -422,9 +438,9 @@ jobs:
             version: 1.0.6
           - name: http-test-server
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ inputs.sha }}
+          ref: ${{ env.RESOLVED_SHA }}
       - uses: ./.github/actions/ghcr-docker-login
         id: login
         with:
@@ -432,7 +448,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ inputs.sha }}-digest-*
+          pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ env.RESOLVED_SHA }}-digest-*
           merge-multiple: true
           path: /tmp/digests/${{ matrix.image.name }}
       - name: Display structure of downloaded artifacts
@@ -446,7 +462,7 @@ jobs:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |
             type=raw,value={{branch}}
-            type=raw,value=${{ inputs.sha }}
+            type=raw,value=${{ env.RESOLVED_SHA }}
       - name: Create manifest list and push
         id: manifest
         working-directory: /tmp/digests/${{ matrix.image.name }}
@@ -460,7 +476,7 @@ jobs:
 
           # shellcheck disable=SC2086 # $tags and $sources must be split by whitespace
           docker buildx imagetools create \
-            --annotation "index:org.opencontainers.image.revision=${{ inputs.sha }}" \
+            --annotation "index:org.opencontainers.image.revision=${{ env.RESOLVED_SHA }}" \
             $tags $sources
 
           first_tag=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
@@ -484,7 +500,7 @@ jobs:
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
         if: ${{ matrix.image.name != 'http-test-server' }}
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: trivy-results.sarif
           category: trivy-${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}

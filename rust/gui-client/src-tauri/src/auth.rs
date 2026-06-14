@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use keyring_core::CredentialStore;
 use logging::err_with_src;
-use rand::{RngCore, thread_rng};
+use rand::Rng;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,6 +14,26 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 const NONCE_LENGTH: usize = 32;
+
+/// Whether to skip the portal during sign-in.
+///
+/// When set, [`Auth::new`] uses an in-memory keystore and signs in with a
+/// fabricated response instead of contacting the portal, so the real controller
+/// / IPC / UI can be exercised against the mock Tunnel service without touching
+/// the real keyring or persisted session. Debug builds only.
+#[cfg(debug_assertions)]
+static SKIP_PORTAL_AUTH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set [`SKIP_PORTAL_AUTH`]. Call once at process startup.
+#[cfg(debug_assertions)]
+pub fn skip_portal_auth() {
+    SKIP_PORTAL_AUTH.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn portal_auth_skipped() -> bool {
+    SKIP_PORTAL_AUTH.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -87,6 +107,22 @@ pub(crate) struct Response {
     pub(crate) state: SecretString,
 }
 
+#[cfg(debug_assertions)]
+impl Response {
+    /// Fabricate the response the portal would send back for `state`.
+    ///
+    /// The fragment is a placeholder because the mock Tunnel service ignores the
+    /// token's value. Debug builds only.
+    pub(crate) fn fake(state: SecretString) -> Self {
+        Self {
+            account_slug: "demo-co".to_owned(),
+            actor_name: "Demo User".to_owned(),
+            fragment: SecretString::from("fake-fragment"),
+            state,
+        }
+    }
+}
+
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct Session {
     pub(crate) account_slug: String,
@@ -103,6 +139,11 @@ impl Auth {
     ///
     /// Performs I/O except on `cfg(test)`.
     pub fn new() -> Result<Self> {
+        #[cfg(debug_assertions)]
+        if portal_auth_skipped() {
+            return Self::new_fake();
+        }
+
         #[cfg(all(target_os = "linux", not(test)))]
         let store = dbus_secret_service_keyring_store::Store::new()?;
 
@@ -122,6 +163,22 @@ impl Auth {
             store,
             known_dirs::session().context("Failed to determine `session` directory")?,
         )
+    }
+
+    /// Creates an [`Auth`] backed by an in-memory keystore and a temp session
+    /// dir, already signed in with a fabricated response.
+    #[cfg(debug_assertions)]
+    fn new_fake() -> Result<Self> {
+        let mut this = Self::new_with_key(
+            "dev.firezone.client/token",
+            keyring_core::mock::Store::new()?,
+            std::env::temp_dir().join("dev.firezone.client.skip-portal-auth"),
+        )?;
+        let request = this.start_sign_in()?;
+        let response = Response::fake(request.state.clone());
+        this.handle_response(response)?;
+
+        Ok(this)
     }
 
     /// Creates a new Auth struct with a custom keyring key for testing.
@@ -338,7 +395,7 @@ fn session_data_path(session_dir: &Path) -> PathBuf {
 fn generate_nonce() -> SecretString {
     let mut buf = [0u8; NONCE_LENGTH];
     // rand's thread-local RNG is said to be cryptographically secure here: https://docs.rs/rand/latest/rand/rngs/struct.ThreadRng.html
-    thread_rng().fill_bytes(&mut buf);
+    rand::rng().fill_bytes(&mut buf);
 
     // Make sure it's not somehow all still zeroes.
     assert_ne!(buf, [0u8; NONCE_LENGTH]);

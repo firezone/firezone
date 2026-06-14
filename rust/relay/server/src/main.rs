@@ -14,7 +14,7 @@ use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -333,9 +333,14 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
+            // `LowMemory` ships counters as cumulative (so rate dashboards keep working) but
+            // histograms as delta. Without delta, Azure Monitor pins Min/Max to lifetime
+            // extremes after the first outlier and per-window averages can only be
+            // reconstructed via fragile prev()-based KQL.
             let exporter = opentelemetry_otlp::MetricExporter::builder()
                 .with_tonic()
                 .with_endpoint(grpc_endpoint)
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
                 .build()
                 .context("Failed to build OTLP metric exporter")?;
 
@@ -409,7 +414,7 @@ struct JoinMessage {
 
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
-        return StdRng::from_entropy();
+        return StdRng::from_seed(rand::random());
     };
 
     tracing::info!(target: "relay", "Seeding RNG from '{seed}'");
@@ -445,7 +450,7 @@ struct Eventloop<R> {
 
 impl<R> Eventloop<R>
 where
-    R: Rng,
+    R: RngExt,
 {
     fn new(
         server: Server<R>,
@@ -775,7 +780,12 @@ async fn phoenix_channel_event_loop(
                 error,
             }) => {
                 is_connected.store(false, Ordering::Relaxed);
-                tracing::info!(?backoff, ?max_elapsed_time, "{error:#}");
+                tracing::info!(
+                    ?backoff,
+                    ?max_elapsed_time,
+                    body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
+                    "{error:#}"
+                );
 
                 let ips = resolve_portal_host_ips(portal.host()).await;
                 portal.connect(ips, backoff, NoParams);

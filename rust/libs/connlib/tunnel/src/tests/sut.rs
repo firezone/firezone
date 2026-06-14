@@ -21,7 +21,7 @@ use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
 use rand::SeedableRng;
-use rand::distributions::DistString;
+use rand::distr::SampleString;
 use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
 use std::collections::BTreeSet;
@@ -735,6 +735,8 @@ impl TunnelTest {
                             transport,
                             local,
                             remote,
+                            started_at: now,
+                            recursion: dns::Recursion::Local,
                         },
                         now,
                     )
@@ -1426,8 +1428,8 @@ fn ice_creds(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> Ice
     let mut rng = rand::rngs::StdRng::from_seed(hkdf(domain, client_key, gateway_key));
 
     IceCredentials {
-        username: rand::distributions::Alphanumeric.sample_string(&mut rng, 4),
-        password: rand::distributions::Alphanumeric.sample_string(&mut rng, 12),
+        username: rand::distr::Alphanumeric.sample_string(&mut rng, 4),
+        password: rand::distr::Alphanumeric.sample_string(&mut rng, 12),
     }
 }
 

@@ -15,8 +15,7 @@ defmodule PortalWeb.Resources do
       panel_shell: 1,
       resource_details_panel: 1,
       resource_form_panel: 1,
-      resource_online?: 2,
-      resource_status: 2,
+      resource_status_badge: 1,
       resource_type_label: 1,
       type_badge_class: 1,
       to_grant_form: 0
@@ -26,9 +25,12 @@ defmodule PortalWeb.Resources do
   alias Portal.Presence
   alias Portal.PubSub
   alias Portal.Resource
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
@@ -39,6 +41,7 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
         selected_groups: [],
@@ -355,27 +358,15 @@ defmodule PortalWeb.Resources do
             New Resource
           </.button>
         </:action>
-        <:filters>
-          <% online_count = Enum.count(@resources, &resource_online?(&1, @presence_tick)) %>
-          <% offline_count = length(@resources) - online_count %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@resources_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative flex items-center justify-center w-1.5 h-1.5">
-              <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-            </span>
-            Online {online_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-neutral)]">
-            </span>
-            Offline {offline_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@resources_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -450,7 +441,7 @@ defmodule PortalWeb.Resources do
               </td>
               <td class="px-4 py-3 text-[var(--text-secondary)] text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.status_badge status={resource_status(@internet_resource, @presence_tick)} />
+                <.resource_status_badge resource={@internet_resource} presence_tick={@presence_tick} />
               </td>
             </tr>
           </:prepend_rows>
@@ -534,7 +525,7 @@ defmodule PortalWeb.Resources do
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.status_badge status={resource_status(resource, @presence_tick)} />
+            <.resource_status_badge resource={resource} presence_tick={@presence_tick} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
@@ -1009,6 +1000,11 @@ defmodule PortalWeb.Resources do
      end)}
   end
 
+  def handle_event("change_tod_timezone", params, socket) do
+    timezone = get_in(params, ["policy", "conditions", "current_utc_datetime", "timezone"])
+    {:noreply, merge_state(socket, :resource_grant, timezone: timezone)}
+  end
+
   def handle_event("toggle_grant_group", %{"group_id" => group_id}, socket) do
     selected = socket.assigns.resource_grant.grant_selected_group_ids
 
@@ -1016,11 +1012,7 @@ defmodule PortalWeb.Resources do
       if group_id in selected do
         List.delete(selected, group_id)
       else
-        if length(selected) < 5 do
-          selected ++ [group_id]
-        else
-          selected
-        end
+        selected ++ [group_id]
       end
 
     {:noreply, merge_state(socket, :resource_grant, grant_selected_group_ids: updated)}
@@ -1052,7 +1044,7 @@ defmodule PortalWeb.Resources do
 
     case result do
       :ok ->
-        groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
+        groups = Database.list_groups_for_resource(resource, socket.assigns.subject, :primary)
 
         {:noreply,
          socket
@@ -1187,6 +1179,28 @@ defmodule PortalWeb.Resources do
      )}
   end
 
+  def handle_info(%Change{op: :insert, struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
   def handle_info(%Change{old_struct: %Resource{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
@@ -1304,7 +1318,11 @@ defmodule PortalWeb.Resources do
 
   defp refresh_selected_groups(socket) do
     groups =
-      Database.list_groups_for_resource(socket.assigns.selected_resource, socket.assigns.subject)
+      Database.list_groups_for_resource(
+        socket.assigns.selected_resource,
+        socket.assigns.subject,
+        :primary
+      )
 
     assign(socket, selected_groups: groups)
   end
@@ -1482,6 +1500,13 @@ defmodule PortalWeb.Resources do
       |> Safe.one(fallback_to_primary: true)
     end
 
+    def count_resources(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type != :internet)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
+    end
+
     def list_resources(subject, opts \\ []) do
       from(resources in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
@@ -1505,7 +1530,7 @@ defmodule PortalWeb.Resources do
       end
     end
 
-    def list_groups_for_resource(resource, subject) do
+    def list_groups_for_resource(resource, subject, repo \\ :replica) do
       from(g in Group, as: :groups)
       |> join(:inner, [groups: g], p in Policy,
         on: p.group_id == g.id and p.resource_id == ^resource.id,
@@ -1522,7 +1547,7 @@ defmodule PortalWeb.Resources do
         policy_disabled_at: p.disabled_at
       })
       |> order_by([policies: p], desc: is_nil(p.disabled_at))
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject, repo)
       |> Safe.all()
       |> case do
         {:error, _} -> []

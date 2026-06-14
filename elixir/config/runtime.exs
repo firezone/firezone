@@ -320,6 +320,9 @@ if config_env() == :prod do
     # Delete expired portal sessions every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
 
+    # Delete old change_logs every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
+
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
   ]

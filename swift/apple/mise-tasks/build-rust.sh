@@ -97,14 +97,17 @@ iphoneos)
     TARGETS=("aarch64-apple-ios")
     ;;
 iphonesimulator)
-    if [[ "$NATIVE_ARCH" == "arm64" ]]; then
-        TARGETS=("aarch64-apple-ios-sim")
-    elif [[ "$NATIVE_ARCH" == "x86_64" ]]; then
-        TARGETS=("x86_64-apple-ios")
-    else
-        echo "ERROR: Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH" >&2
-        exit 1
-    fi
+    TARGETS=()
+    for arch in $NATIVE_ARCH; do
+        case "$arch" in
+        arm64) TARGETS+=("aarch64-apple-ios-sim") ;;
+        x86_64) TARGETS+=("x86_64-apple-ios") ;;
+        *)
+            echo "ERROR: Unsupported native arch for $PLATFORM_NAME: $arch" >&2
+            exit 1
+            ;;
+        esac
+    done
     ;;
 *)
     echo "ERROR: Unknown platform: $PLATFORM_NAME" >&2

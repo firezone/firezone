@@ -6,10 +6,42 @@ use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, SOFTWARE, Server,
 };
-use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
+/// Deterministic RNG yielding an arithmetic sequence. Replaces the `StepRng`
+/// mock that was removed from `rand`'s public API in 0.10.
+#[derive(Clone, Debug)]
+struct StepRng(u64, u64);
+
+impl StepRng {
+    fn new(initial: u64, increment: u64) -> Self {
+        Self(initial, increment)
+    }
+}
+
+impl rand::TryRng for StepRng {
+    type Error = core::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        self.try_next_u64().map(|x| x as u32)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        let res = self.0;
+        self.0 = self.0.wrapping_add(self.1);
+        Ok(res)
+    }
+
+    fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+        for chunk in dst.chunks_mut(8) {
+            let bytes = self.try_next_u64()?.to_le_bytes();
+            chunk.copy_from_slice(&bytes[..chunk.len()]);
+        }
+        Ok(())
+    }
+}
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -53,7 +85,7 @@ fn deallocate_once_time_expired(
 ) {
     let now = Instant::now();
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret();
 
     server.assert_commands(
@@ -158,7 +190,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
 ) {
     let now = Instant::now();
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
 
@@ -238,7 +270,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
 ) {
     let now = Instant::now();
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
 
@@ -321,7 +353,7 @@ fn freeing_allocation_clears_all_channels(
 
     let _guard = logging::test("debug");
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
 
     let _ = server.server.handle_client_message(
@@ -393,7 +425,7 @@ fn ping_pong_relay(
 
     let _guard = logging::test("debug");
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
@@ -504,7 +536,7 @@ fn allows_rebind_channel_after_expiry(
 
     let _guard = logging::test("debug");
 
-    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
@@ -628,7 +660,7 @@ fn ping_pong_ip6_relay(
     let _guard = logging::test("debug");
 
     let mut server =
-        TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(nonce);
+        TestServer::new((public_relay_ip4_addr, public_relay_ip6_addr)).with_nonce(source, nonce);
     let secret = server.auth_secret().to_owned();
     let lifetime = Lifetime::new(Duration::from_secs(60 * 60)).unwrap(); // Lifetime longer than channel expiry
 
@@ -729,8 +761,9 @@ impl TestServer {
         }
     }
 
-    fn with_nonce(mut self, nonce: Uuid) -> Self {
-        self.server.add_nonce(nonce);
+    fn with_nonce(mut self, client: impl Into<SocketAddr>, nonce: Uuid) -> Self {
+        self.server
+            .add_nonce(ClientSocket::new(client.into()), nonce);
 
         self
     }

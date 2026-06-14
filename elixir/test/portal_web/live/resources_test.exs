@@ -2,6 +2,8 @@ defmodule PortalWeb.ResourcesTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Policy, Repo}
+  alias Portal.Changes.Change
+  alias Portal.Resource
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -436,7 +438,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Associated") == 3
+      assert count_occurrences(html, "No Site Associated") == 2
       refute html =~ "No Site Needed"
     end
 
@@ -453,7 +455,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       assert html =~ resource.name
-      assert count_occurrences(html, "No Site Needed") == 3
+      assert count_occurrences(html, "No Site Needed") == 2
       refute html =~ "No Site Associated"
     end
 
@@ -554,38 +556,6 @@ defmodule PortalWeb.ResourcesTest do
       assert Repo.get_by!(Policy, resource_id: resource.id, group_id: group3.id)
     end
 
-    test "cannot select more than 5 groups", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      resource = resource_fixture(account: account)
-
-      groups =
-        for i <- 1..6 do
-          group_fixture(account: account, name: "Select Group #{i}")
-        end
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources/#{resource.id}")
-
-      render_click(lv, "open_grant_form")
-
-      for group <- Enum.take(groups, 5) do
-        render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
-      end
-
-      html = render(lv)
-      assert html =~ "5 / 5"
-
-      sixth = Enum.at(groups, 5)
-      html = render_click(lv, "toggle_grant_group", %{"group_id" => sixth.id})
-
-      assert html =~ "5 / 5"
-    end
-
     test "toggling a selected group deselects it", %{
       conn: conn,
       account: account,
@@ -602,10 +572,10 @@ defmodule PortalWeb.ResourcesTest do
       render_click(lv, "open_grant_form")
 
       html = render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
-      assert html =~ "1 / 5"
+      refute html =~ "No groups selected."
 
       html = render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
-      assert html =~ "0 / 5"
+      assert html =~ "No groups selected."
     end
 
     test "already-granted groups are not shown in available list", %{
@@ -1058,6 +1028,84 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "open_grant_form")
       assert html =~ "Grant access"
+    end
+  end
+
+  describe "count badge" do
+    test "shows total resource count after async load", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _resource = resource_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on resource insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Resource{type: :dns}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on resource delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Resource{type: :dns}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores internet resource changes", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Resource{type: :internet}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 

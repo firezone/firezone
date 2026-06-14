@@ -5,25 +5,31 @@ use anyhow::Result;
 
 use clap::Parser;
 use clap::ValueEnum;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng as _;
 use tracing::Instrument;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Default maximum number of concurrent connections.
+const DEFAULT_MAX_CONNECTIONS: u64 = 10;
+
+/// Default HTTP version.
+const DEFAULT_HTTP_VERSION: u8 = 1;
+
 #[derive(Parser)]
 pub struct Args {
-    /// HTTP version to use (1 or 2)
-    #[arg(long, default_value = "1", value_name = "VERSION")]
-    http_version: HttpVersion,
+    /// HTTP version to use (1 or 2). Overrides the config; default 1.
+    #[arg(long, value_name = "VERSION")]
+    http_version: Option<HttpVersion>,
 
-    /// The address to GET.
+    /// The address to GET. Overrides the config's `[http]` addresses.
     #[arg(long)]
-    address: String,
+    address: Option<String>,
 
     /// The maximum number of concurrent connections.
-    #[arg(long, default_value_t = 10)]
-    max_connections: u64,
+    #[arg(long)]
+    max_connections: Option<u64>,
 }
 
 /// HTTP protocol version to use for load testing.
@@ -35,6 +41,15 @@ enum HttpVersion {
 
     #[value(name = "2", alias = "http2")]
     Http2,
+}
+
+impl HttpVersion {
+    fn to_u8(self) -> u8 {
+        match self {
+            Self::Http1 => 1,
+            Self::Http2 => 2,
+        }
+    }
 }
 
 impl std::fmt::Display for HttpVersion {
@@ -54,20 +69,34 @@ pub struct TestConfig {
     pub http_version: u8,
 }
 
-/// Run HTTP test with manual CLI args.
-pub async fn run_with_cli_args(args: Args) -> Result<()> {
-    let config = TestConfig {
-        address: args.address,
-        max_connections: args.max_connections,
-        http_version: match args.http_version {
-            HttpVersion::Http1 => 1,
-            HttpVersion::Http2 => 2,
-        },
-    };
+/// Build a [`TestConfig`] from CLI args, filling unspecified values from `base`.
+pub fn merge(args: Args, base: Option<TestConfig>) -> Result<TestConfig> {
+    let base = base.as_ref();
 
-    run(config, 0).await?;
+    let address = args
+        .address
+        .or_else(|| base.map(|b| b.address.clone()))
+        .context("--address is required (or add [http] to the config)")?;
+    let max_connections = args
+        .max_connections
+        .or_else(|| base.map(|b| b.max_connections))
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS);
+    let http_version = args
+        .http_version
+        .map(HttpVersion::to_u8)
+        .or_else(|| base.map(|b| b.http_version))
+        .unwrap_or(DEFAULT_HTTP_VERSION);
 
-    Ok(())
+    Ok(TestConfig {
+        address,
+        max_connections,
+        http_version,
+    })
+}
+
+/// Run HTTP test from CLI args merged over an optional config base.
+pub async fn run_with_args(args: Args, base: Option<TestConfig>, seed: u64) -> Result<()> {
+    run_with_config(merge(args, base)?, seed).await
 }
 
 /// Run HTTP test from resolved config.
@@ -81,7 +110,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<()> {
     let client = build_client(&config)?;
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-    let num_connections = rng.gen_range(1..=config.max_connections);
+    let num_connections = rng.random_range(1..=config.max_connections);
 
     tracing::info!(
         url = %config.address,

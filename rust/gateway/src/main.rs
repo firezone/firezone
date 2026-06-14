@@ -15,10 +15,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::{
-    MaybePushMetricsExporter, NoopPushMetricsExporter, SentryMetricExporter, Telemetry,
-    feature_flags, otel,
-};
+use telemetry::{SentryMeterProvider, Telemetry};
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
@@ -32,6 +29,7 @@ use tun::Tun;
 use url::Url;
 
 mod eventloop;
+mod otel;
 
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
@@ -147,42 +145,36 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 
     if let Some(backend) = cli.metrics {
-        let resource = otel::default_resource_with([
-            otel::attr::service_name!(),
-            otel::attr::service_version!(),
-            otel::attr::service_instance_id(firezone_id.clone()),
+        let resource = telemetry::otel::default_resource_with([
+            telemetry::otel::attr::service_name!(),
+            telemetry::otel::attr::service_version!(),
+            telemetry::otel::attr::service_instance_id(firezone_id.clone()),
         ]);
 
-        let provider = match (backend, cli.otlp_grpc_endpoint) {
-            (MetricsExporter::Stdout, _) => SdkMeterProvider::builder()
-                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                .with_resource(resource)
-                .build(),
-            (MetricsExporter::OtelCollector, Some(endpoint)) => SdkMeterProvider::builder()
-                .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                .with_resource(resource)
-                .build(),
-            (MetricsExporter::OtelCollector, None) => SdkMeterProvider::builder()
-                .with_periodic_exporter(MaybePushMetricsExporter {
-                    inner: {
-                        // TODO: Once Firezone has a hosted OTLP exporter, it will go here.
+        match (backend, cli.otlp_grpc_endpoint) {
+            (MetricsExporter::Sentry, _) => {
+                // Sentry has name and version already configured via the global SDK parameters.
 
-                        NoopPushMetricsExporter
-                    },
-                    should_export: feature_flags::stream_metrics,
-                })
-                .with_resource(resource)
-                .build(),
-            (MetricsExporter::Sentry, _) => SdkMeterProvider::builder()
-                .with_periodic_exporter(MaybePushMetricsExporter {
-                    inner: SentryMetricExporter,
-                    should_export: feature_flags::stream_metrics,
-                })
-                .with_resource(resource)
-                .build(),
-        };
-
-        opentelemetry::global::set_meter_provider(provider);
+                opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
+            }
+            (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
+                SdkMeterProvider::builder()
+                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                    .with_resource(resource)
+                    .build(),
+            ),
+            (MetricsExporter::OtelCollector, Some(endpoint)) => {
+                opentelemetry::global::set_meter_provider(
+                    SdkMeterProvider::builder()
+                        .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                        .with_resource(resource)
+                        .build(),
+                )
+            }
+            (MetricsExporter::OtelCollector, None) => opentelemetry::global::set_meter_provider(
+                SdkMeterProvider::builder().with_resource(resource).build(),
+            ),
+        }
     }
 
     let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)
@@ -345,7 +337,7 @@ struct Cli {
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
+    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
     metrics: Option<MetricsExporter>,
 
     /// Send metrics to a custom OTLP collector.

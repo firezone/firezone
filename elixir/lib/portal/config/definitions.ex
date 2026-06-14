@@ -348,20 +348,19 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_queue_interval, :integer, default: 1000)
 
   @doc """
-  Socket options for database connections.
+  TCP socket options for database connections, tuning how quickly dead connections are
+  detected so queries fail over instead of hanging until the checkout timeout.
 
-  These options are passed to the underlying TCP socket. The most important option is
-  `keepalive: true` which enables TCP keepalive probes to detect dead connections.
+  Accepts a JSON object with any of: `keepalive` (boolean), `tcp_keepidle`,
+  `tcp_keepintvl`, `tcp_keepcnt` (seconds/count), `tcp_user_timeout` (ms). `keepalive`
+  alone uses Linux's 2-hour idle default, so the `tcp_keep*` options are needed to detect
+  dead connections in seconds.
 
-  Without keepalive, connections can become "zombies" when the database server becomes
-  unavailable (e.g., during Azure platform maintenance), causing queries to hang until
-  the checkout timeout is reached.
-
-  Accepts a JSON object with socket options (e.g. `{"keepalive": true}`).
+  Example: `{"keepalive": true, "tcp_keepidle": 10, "tcp_keepintvl": 5, "tcp_keepcnt": 3, "tcp_user_timeout": 10000}`.
   """
   defconfig(:database_socket_options, :map,
     default: %{},
-    dump: &Dumper.keyword/1
+    dump: &Dumper.dump_socket_opts/1
   )
 
   @doc """

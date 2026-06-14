@@ -21,7 +21,8 @@ defmodule PortalAPI.GroupControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/groups")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "lists all groups", %{conn: conn, account: account, actor: actor} do
@@ -83,13 +84,27 @@ defmodule PortalAPI.GroupControllerTest do
 
       assert MapSet.subset?(data_ids, group_ids)
     end
+
+    test "returns unauthorized when actor cannot read groups", %{conn: conn, account: account} do
+      service_account = actor_fixture(type: :service_account, account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups")
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
   end
 
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       group = group_fixture(account: account)
       conn = get(conn, "/groups/#{group.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns a single actor group", %{conn: conn, account: account, actor: actor} do
@@ -145,12 +160,41 @@ defmodule PortalAPI.GroupControllerTest do
                }
              }
     end
+
+    test "returns not found when group does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      service_account = actor_fixture(type: :service_account, account: account)
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}")
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
   end
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/groups", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, actor: actor} do
@@ -160,8 +204,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/groups")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns error on invalid attrs", %{conn: conn, actor: actor} do
@@ -173,15 +217,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/groups", group: attrs)
 
-      assert resp = json_response(conn, 422)
-
-      assert resp ==
-               %{
-                 "error" => %{
-                   "reason" => "Unprocessable Content",
-                   "validation_errors" => %{"name" => ["can't be blank"]}
-                 }
-               }
+      assert %{"status" => 422, "validation_errors" => %{"name" => ["can't be blank"]}} =
+               json_response(conn, 422)
     end
 
     test "creates an actor group with valid attrs", %{conn: conn, actor: actor} do
@@ -229,7 +266,8 @@ defmodule PortalAPI.GroupControllerTest do
     test "returns error when not authorized", %{conn: conn, account: account} do
       group = group_fixture(account: account)
       conn = put(conn, "/groups/#{group.id}", %{})
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
@@ -241,8 +279,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/groups/#{group.id}")
 
-      assert resp = json_response(conn, 400)
-      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns error when attempting to edit a synced group", %{
@@ -258,9 +296,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/groups/#{group.id}", group: %{"name" => "New Name"})
 
-      assert json_response(conn, 403) == %{
-               "error" => %{"reason" => "Cannot update a synced Group"}
-             }
+      assert %{"type" => "about:blank", "status" => 403, "detail" => "Cannot update a synced Group"} =
+               json_response(conn, 403)
     end
 
     test "updates an actor group", %{conn: conn, account: account, actor: actor} do
@@ -279,13 +316,69 @@ defmodule PortalAPI.GroupControllerTest do
       assert resp["data"]["id"] == group.id
       assert resp["data"]["name"] == attrs["name"]
     end
+
+    test "keeps current name when name is omitted", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}", group: %{})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == group.name
+    end
+
+    test "returns not found when group does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{Ecto.UUID.generate()}", group: %{"name" => "New Name"})
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns not found for a body without group params when group does not exist", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      service_account = actor_fixture(type: :service_account, account: account)
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}", group: %{"name" => "New Name"})
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
   end
 
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       group = group_fixture(account: account)
       conn = delete(conn, "/groups/#{group.id}")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
 
     test "deletes an actor group", %{conn: conn, account: account, actor: actor} do
@@ -312,6 +405,34 @@ defmodule PortalAPI.GroupControllerTest do
              }
 
       refute Repo.get_by(Group, id: group.id, account_id: group.account_id)
+    end
+
+    test "returns not found when group does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/groups/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns unauthorized when actor cannot read the group", %{
+      conn: conn,
+      account: account
+    } do
+      service_account = actor_fixture(type: :service_account, account: account)
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(service_account)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/groups/#{group.id}")
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
     end
   end
 end

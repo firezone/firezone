@@ -49,6 +49,7 @@ private final class MockTunnelProviderManager: TunnelProviderManager {
   var localizedDescription: String?
   var protocolConfiguration: NEVPNProtocol?
   let connection: NEVPNConnection = NETunnelProviderManager().connection
+  var tunnelSession: (any TunnelSessionProtocol)? { nil }
   var saveCount = 0
   var loadCount = 0
 

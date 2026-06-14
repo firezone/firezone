@@ -57,7 +57,7 @@
               }
             } else {
               Button(displayAddress) {
-                copyToClipboard(displayAddress)
+                Clipboard.copy(displayAddress)
               }
             }
           }
@@ -68,12 +68,12 @@
             .foregroundStyle(.secondary)
 
           Button(resource.name) {
-            copyToClipboard(resource.name)
+            Clipboard.copy(resource.name)
           }
 
           if let address = resource.address {
             Button("Copy address") {
-              copyToClipboard(address)
+              Clipboard.copy(address)
             }
           }
 
@@ -90,11 +90,11 @@
             .foregroundStyle(.secondary)
 
           Button(site.name) {
-            copyToClipboard(site.name)
+            Clipboard.copy(site.name)
           }
 
           Button {
-            copyToClipboard(resource.status.toSiteStatus())
+            Clipboard.copy(resource.status.toSiteStatus())
           } label: {
             HStack {
               if let icon = resource.status.statusIcon {
@@ -122,12 +122,6 @@
       } else {
         store.favorites.add(resource.id)
       }
-    }
-
-    func copyToClipboard(_ string: String) {
-      let pasteboard = NSPasteboard.general
-      pasteboard.clearContents()
-      pasteboard.setString(string, forType: .string)
     }
   }
 

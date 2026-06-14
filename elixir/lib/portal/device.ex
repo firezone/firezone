@@ -45,7 +45,7 @@ defmodule Portal.Device do
 
     field :firezone_id, :string
     field :name, :string
-    field :psk_base, :binary, read_after_writes: true
+    field :psk_base, :binary, read_after_writes: true, redact: true
 
     field :ipv4, Portal.Types.IP, read_after_writes: true
     field :ipv6, Portal.Types.IP, read_after_writes: true

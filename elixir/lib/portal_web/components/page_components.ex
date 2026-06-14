@@ -70,7 +70,7 @@ defmodule PortalWeb.PageComponents do
   end
 
   @doc """
-  Renders a page header with icon, title, description, action, and filter slots.
+  Renders a page header with icon, title, description, action, and stats slots.
 
   ## Examples
 
@@ -81,13 +81,19 @@ defmodule PortalWeb.PageComponents do
         <:action>
           <.add_button navigate={~p"/resources/new"}>Add Resource</.add_button>
         </:action>
+        <:stats>
+          <.dual_badge type="primary">
+            <:left>{@resources_count}</:left>
+            <:right>Total</:right>
+          </.dual_badge>
+        </:stats>
       </.page_header>
   """
   slot :icon, required: false, doc: "Large icon displayed beside the title"
   slot :title, required: true, doc: "The page title"
   slot :description, required: false, doc: "Short description below the title"
   slot :action, required: false, doc: "Action button(s) shown in the top-right"
-  slot :filters, required: false, doc: "Status/type filter chips shown below the title row"
+  slot :stats, required: false, doc: "Count badges or other stats shown below the title row"
 
   def page_header(assigns) do
     ~H"""
@@ -114,8 +120,8 @@ defmodule PortalWeb.PageComponents do
               {render_slot(@action)}
             </div>
           </div>
-          <div :if={not Enum.empty?(@filters)} class="mt-3 flex items-center gap-2 flex-wrap">
-            {render_slot(@filters)}
+          <div :if={not Enum.empty?(@stats)} class="mt-2 flex items-center gap-2 flex-wrap">
+            {render_slot(@stats)}
           </div>
         </div>
       </div>

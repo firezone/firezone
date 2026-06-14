@@ -11,7 +11,7 @@ path = "lib.rs"
 bytes = { workspace = true }
 crossbeam-queue = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
-tracing = { workspace = true }
+otel-instruments = { workspace = true }
 
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }

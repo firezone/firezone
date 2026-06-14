@@ -3,11 +3,13 @@ defmodule PortalAPI.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
   alias Portal.Presence
 
   tags ["Gateways"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Gateways",
     parameters: [
@@ -20,23 +22,20 @@ defmodule PortalAPI.GatewayController do
       limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}
-    ]
+    responses:
+      [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
+    # Gateways are always nested under /sites/:site_id, so site_id is always present.
     list_opts =
       params
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, [:online?])
-
-    list_opts =
-      if site_id = params["site_id"] do
-        Keyword.put(list_opts, :filter, site_id: site_id)
-      else
-        list_opts
-      end
+      |> Keyword.put(:filter, site_id: params["site_id"])
 
     with {:ok, gateways, metadata} <- Database.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
@@ -45,6 +44,7 @@ defmodule PortalAPI.GatewayController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Gateway",
     parameters: [
@@ -61,9 +61,11 @@ defmodule PortalAPI.GatewayController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
-    ]
+    responses:
+      [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -75,6 +77,7 @@ defmodule PortalAPI.GatewayController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Gateway",
     parameters: [
@@ -91,9 +94,11 @@ defmodule PortalAPI.GatewayController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}
-    ]
+    responses:
+      [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -157,9 +162,11 @@ defmodule PortalAPI.GatewayController do
         |> Safe.one()
 
       case result do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        gateway -> {:ok, gateway}
+        nil ->
+          {:error, :not_found}
+
+        gateway ->
+          {:ok, gateway}
       end
     end
 

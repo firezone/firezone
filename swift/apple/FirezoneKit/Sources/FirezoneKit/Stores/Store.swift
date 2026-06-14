@@ -19,6 +19,7 @@ public final class Store: ObservableObject {
   @Published private(set) var actorName: String
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
+  @Published private(set) var connectedDevices: [ConnectedDevice] = []
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
@@ -615,6 +616,7 @@ public final class Store: ObservableObject {
     resourceList = ResourceList.loading
     connlibStateHash = Data()
     unreachableResources.removeAll()
+    connectedDevices.removeAll()
     Log.setStreamingActive(false)
   }
 
@@ -630,7 +632,7 @@ public final class Store: ObservableObject {
   ///
   /// - Parameter session: The tunnel provider session to communicate with
   /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchState(session: NETunnelProviderSession) async throws {
+  private func fetchState(session: any TunnelSessionProtocol) async throws {
     // Capture current hash before IPC call
     let currentHash = self.connlibStateHash
 
@@ -656,6 +658,8 @@ public final class Store: ObservableObject {
     if let resources = state.resources {
       resourceList = ResourceList.loaded(resources)
     }
+
+    connectedDevices = state.connectedDevices
 
     let newlyUnreachableResources = Set(state.unreachableResources).subtracting(
       self.unreachableResources)

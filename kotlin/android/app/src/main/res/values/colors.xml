@@ -40,4 +40,7 @@
     <color name="neutral_700">#766a60</color>
     <color name="neutral_800">#4c3e33</color>
     <color name="neutral_900">#1b140e</color>
+
+    <!-- Status Colors -->
+    <color name="live_green">#22a559</color>
 </resources>

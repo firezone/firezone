@@ -372,14 +372,14 @@ defmodule PortalWeb.SitesTest do
     } do
       site = system_site_fixture(%{account: account, name: "Internet"})
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/sites/#{site.id}")
 
-      assert html =~ "system managed"
-      refute html =~ "Delete site"
-      refute html =~ "Add resource"
+      assert has_element?(lv, "span.whitespace-nowrap", "system")
+      refute has_element?(lv, "button", "Delete site")
+      refute has_element?(lv, "button", "Add resource")
     end
   end
 

@@ -6,17 +6,27 @@ defmodule PortalWeb.ServiceAccounts do
 
   alias Portal.Actor
   alias Portal.Authentication
-  alias Portal.Presence
+  alias Portal.Changes.Change
   alias Portal.ClientToken
+  alias Portal.Presence
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
 
   import Ecto.Changeset
 
   require Logger
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+    end
+
     socket =
       socket
       |> assign(page_title: "Service Accounts")
+      |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -552,6 +562,24 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
+  def handle_info(%Change{op: :insert, struct: %Actor{type: :service_account}}, socket) do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: :service_account}}, socket) do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{}, socket), do: {:noreply, socket}
+
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
 
@@ -593,6 +621,15 @@ defmodule PortalWeb.ServiceAccounts do
             New Service Account
           </.button>
         </:action>
+        <:stats>
+          <.async_result :let={count} assign={@actors_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -626,7 +663,7 @@ defmodule PortalWeb.ServiceAccounts do
             </div>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
+            <.actor_status_badge disabled_at={actor.disabled_at} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
@@ -798,7 +835,7 @@ defmodule PortalWeb.ServiceAccounts do
         Database.remove_group_member(group_id, actor, subject)
       end)
 
-    groups = Database.get_groups_for_actor(actor.id, subject)
+    groups = Database.get_groups_for_actor(actor.id, subject, repo: :primary)
 
     errors =
       (addition_results ++ removal_results)
@@ -856,6 +893,13 @@ defmodule PortalWeb.ServiceAccounts do
     alias Portal.Safe
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
+
+    def count_actors(subject) do
+      from(a in Actor, as: :actors)
+      |> where([actors: a], a.type == :service_account)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
+    end
 
     defp index_query do
       from(actors in Actor, as: :actors)

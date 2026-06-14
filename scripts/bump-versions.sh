@@ -13,36 +13,27 @@ else
     SEDARG=(-i)
 fi
 
+# Version source of truth. These are managed by `update_version_variables`
+# (invoked from scripts/open-version-bump-pr.sh during a release) and consumed by
+# the bump (`version`).
+current_apple_client_version="1.5.17"
+next_apple_client_version="1.5.18"
+current_android_client_version="1.5.10"
+next_android_client_version="1.5.11"
+current_gui_client_version="1.5.13"
+next_gui_client_version="1.5.14"
+current_headless_client_version="1.5.9"
+next_headless_client_version="1.5.10"
+current_gateway_version="1.5.2"
+next_gateway_version="1.5.3"
+
 function cargo_update_workspace() {
     pushd rust >/dev/null
     cargo update --workspace
     popd >/dev/null
 }
 
-function update_changelog() {
-    local changelog_file="$1"
-    local current_version="$2"
-    local current_date
-    current_date=$(date +%Y-%m-%d)
-
-    # Be idempotent: Do nothing if we already have a changelog entry for this version.
-    if grep -q "<Entry version=\"${current_version}\"" "$changelog_file"; then
-        return
-    fi
-
-    # Replace the <Unreleased> section with an <Entry> for the current version
-    sed "${SEDARG[@]}" -e "
-        s|<Unreleased>|<Entry version=\"${current_version}\" date={new Date(\"${current_date}\")}>|g;
-        s|</Unreleased>|</Entry>|g;
-    " "$changelog_file"
-
-    # Add a new empty <Unreleased> section above the newly added <Entry>
-    sed "${SEDARG[@]}" -e "
-      /<Entry version=\"${current_version}\"/i\\
-      <Unreleased></Unreleased>
-    " "$changelog_file"
-}
-
+# Update a `mark:`-annotated version, searching tracked files in this repo.
 function update_version_marker() {
     local marker="$1"
     local new_version="$2"
@@ -123,14 +114,12 @@ function update_version_variables() {
 #    DISABLED.
 # 3. Once *both* are approved, publish them in the app stores.
 # 4. Publish the macOS standalone drafted release on GitHub.
-# 5. Come back here and bump the current and next versions.
+# 5. Bump current_apple_client_version / next_apple_client_version at the top
+#    of this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.15"
-    next_apple_client_version="1.5.16"
-
-    update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     update_version_marker "mark:current-apple-version" "$current_apple_client_version"
     update_version_marker "mark:next-apple-version" "$next_apple_client_version"
 
@@ -157,14 +146,12 @@ function apple() {
 #    release.
 # 4. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
-# 5. Come back here and bump the current and next versions.
+# 5. Bump current_android_client_version / next_android_client_version at the
+#    top of this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.10"
-    next_android_client_version="1.5.11"
-
-    update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
     update_version_marker "mark:current-android-version" "$current_android_client_version"
     update_version_marker "mark:next-android-version" "$next_android_client_version"
 
@@ -180,14 +167,12 @@ function android() {
 #    the drafted release on GitHub.
 # 2. Perform any final QA testing on the new release assets, then publish the
 #    release.
-# 3. Come back here and bump the current and next versions.
+# 3. Bump current_gui_client_version / next_gui_client_version at the top of
+#    this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.12"
-    next_gui_client_version="1.5.13"
-
-    update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     update_version_marker "mark:current-gui-version" "$current_gui_client_version"
     update_version_marker "mark:next-gui-version" "$next_gui_client_version"
 
@@ -202,14 +187,12 @@ function gui() {
 # Instructions:
 # 1. Perform any final QA testing on the new release assets, then publish the
 #    drafted release.
-# 2. Come back here and bump the current and next versions.
+# 2. Bump current_headless_client_version / next_headless_client_version at the
+#    top of this script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.8"
-    next_headless_client_version="1.5.9"
-
-    update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     update_version_marker "mark:current-headless-version" "$current_headless_client_version"
     update_version_marker "mark:next-headless-version" "$next_headless_client_version"
 
@@ -224,20 +207,19 @@ function headless() {
 # Instructions:
 # 1. Perform any final QA testing on the new release assets, then publish the
 #    drafted release.
-# 2. Come back here and bump the current and next versions.
+# 2. Bump current_gateway_version / next_gateway_version at the top of this
+#    script (the release pipeline does this automatically via
+#    `update_version_variables`).
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.5.2"
-    next_gateway_version="1.5.3"
-
-    update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     update_version_marker "mark:current-gateway-version" "$current_gateway_version"
     update_version_marker "mark:next-gateway-version" "$next_gateway_version"
 
     cargo_update_workspace
 }
 
+# Bump versions across the monorepo (product version markers + Cargo.lock).
 function version() {
     apple
     android
