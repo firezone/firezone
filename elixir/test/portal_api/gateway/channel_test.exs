@@ -317,6 +317,85 @@ defmodule PortalAPI.Gateway.ChannelTest do
                ipv6: gateway.ipv6
              }
     end
+
+    test "init includes inbound authorizations with policy_id from the hydrated cache", %{
+      account: account,
+      actor: actor,
+      client: client,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token,
+      group: group
+    } do
+      pa =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          gateway: gateway,
+          group: group
+        )
+
+      join_channel(gateway, site, token)
+
+      client_id = client.id
+      resource_id = resource.id
+      policy_id = pa.policy_id
+      expires_at = DateTime.to_unix(pa.expires_at, :second)
+
+      assert_push "init", %{authorizations: [authorization]}
+
+      assert authorization == %{
+               client_id: client_id,
+               resource_id: resource_id,
+               policy_id: policy_id,
+               expires_at: expires_at
+             }
+    end
+  end
+
+  describe "revoke_pair_access/3" do
+    test "pushes reject_access and clears cached entries for the pair", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      client: client,
+      resource: resource
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      paid = Ecto.UUID.generate()
+      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        cache =
+          Cache.Gateway.put(
+            state.assigns.cache,
+            paid,
+            client.id,
+            resource.id,
+            Ecto.UUID.generate(),
+            expires_at
+          )
+
+        put_in(state.assigns.cache, cache)
+      end)
+
+      PortalAPI.Gateway.Channel.revoke_pair_access(gateway.id, client.id, resource.id)
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
+      assert client_id == client.id
+      assert resource_id == resource.id
+
+      refute Map.has_key?(
+               :sys.get_state(socket.channel_pid).assigns.cache,
+               Ecto.UUID.dump!(paid)
+             )
+    end
   end
 
   describe "handle_info/2 pg scope crash" do
@@ -632,6 +711,66 @@ defmodule PortalAPI.Gateway.ChannelTest do
     # `on_failed` never fires (node crash, OOM, hard kill, netsplit) and
     # avoids leaving a phantom authz cached on the receiver until the next
     # gateway reconnect.
+
+    test "arms an authz durability timer when the allow message carries a policy_authorization",
+         %{
+           account: account,
+           gateway: gateway,
+           site: site,
+           token: token,
+           client: client,
+           resource: resource,
+           subject: subject
+         } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        initiating_device_id: client.id,
+        receiving_device_id: gateway.id,
+        resource_id: resource.id,
+        policy_id: Ecto.UUID.generate(),
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      preshared_key = "PSK"
+      public_key = Portal.DeviceFixtures.generate_public_key()
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:authorize_policy, {self(), make_ref()},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: pa.id,
+           policy_id: pa.policy_id,
+           authorization_expires_at: pa.expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key,
+           policy_authorization: pa
+         }}
+      )
+
+      assert_push "authorize_flow", _
+
+      state = :sys.get_state(socket.channel_pid)
+      assert Map.has_key?(state.assigns.authz_durability, pa.id)
+    end
 
     test "on :confirm_authz_durability, cancels the timer so no revoke fires",
          %{gateway: gateway, site: site, token: token, client: client, resource: resource} do
