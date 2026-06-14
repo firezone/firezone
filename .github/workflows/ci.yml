@@ -100,7 +100,7 @@ jobs:
 
           # The Nix packages build the Rust workspace from source, so any
           # rust/ change can affect them.
-          if grep -qE '^(rust/|nix/|flake\.nix|flake\.lock)' changed_files.txt; then
+          if grep -qE '^(rust/|scripts/nix/|flake\.nix|flake\.lock)' changed_files.txt; then
             jobs="${jobs},nix"
           fi
 

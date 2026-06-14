@@ -4,7 +4,7 @@ rec {
   # Pin the Rust toolchain to the same channel the rest of the repo uses.
   # Bumping rust-toolchain.toml therefore needs no Nix changes (at most a
   # `nix flake update rust-overlay` if the release is very recent).
-  toolchainChannel = (lib.importTOML ../rust/rust-toolchain.toml).toolchain.channel;
+  toolchainChannel = (lib.importTOML ../../rust/rust-toolchain.toml).toolchain.channel;
 
   toolchain = pkgs.rust-bin.stable.${toolchainChannel}.minimal;
 
@@ -23,7 +23,7 @@ rec {
   # builtin git fetching keeps the Rust dependency set hash-free: revs are
   # pinned by Cargo.lock and fetched at evaluation time.
   cargoLock = {
-    lockFile = ../rust/Cargo.lock;
+    lockFile = ../../rust/Cargo.lock;
     allowBuiltinFetchGit = true;
   };
 

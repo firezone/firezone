@@ -21,7 +21,7 @@
 
 mkShell {
   packages = [
-    (rust-bin.fromRustupToolchainFile ../rust/rust-toolchain.toml)
+    (rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
     cargo-tauri
     nodejs
     pnpm_10

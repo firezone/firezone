@@ -2,7 +2,7 @@
   description = "Firezone, a zero-trust access platform built on WireGuard";
 
   # Convenience hints for the first-party binary cache. Nix only honors these
-  # for trusted users (or with --accept-flake-config); the docs in nix/README.md
+  # for trusted users (or with --accept-flake-config); the docs in scripts/nix/README.md
   # lead with the explicit `nix.settings` form.
   nixConfig = {
     extra-substituters = [ "https://artifacts.firezone.dev/nix" ];
@@ -45,7 +45,7 @@
     {
       overlays.default = lib.composeManyExtensions [
         rust-overlay.overlays.default
-        (import ./nix/overlay.nix)
+        (import ./scripts/nix/overlay.nix)
       ];
 
       packages = forAllSystems (pkgs: {
@@ -58,9 +58,9 @@
       });
 
       nixosModules = {
-        gateway = import ./nix/modules/gateway.nix self;
-        headless-client = import ./nix/modules/headless-client.nix self;
-        gui-client = import ./nix/modules/gui-client.nix self;
+        gateway = import ./scripts/nix/modules/gateway.nix self;
+        headless-client = import ./scripts/nix/modules/headless-client.nix self;
+        gui-client = import ./scripts/nix/modules/gui-client.nix self;
         default = {
           imports = [
             self.nixosModules.gateway
@@ -71,7 +71,7 @@
       };
 
       devShells = forAllSystems (pkgs: {
-        default = pkgs.callPackage ./nix/devshell.nix { };
+        default = pkgs.callPackage ./scripts/nix/devshell.nix { };
       });
 
       checks = forAllSystems (
@@ -83,7 +83,7 @@
             firezone-gui-client
             ;
         }
-        // import ./nix/checks.nix {
+        // import ./scripts/nix/checks.nix {
           inherit self nixpkgs pkgs;
         }
       );

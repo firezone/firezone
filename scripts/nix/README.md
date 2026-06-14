@@ -84,7 +84,7 @@ Design goal: **zero Nix edits per release.**
   an unknown-toolchain error right after a toolchain bump, run
   `nix flake update rust-overlay`.
 - The **single maintained hash** is `pnpmDeps.hash` in
-  `nix/packages/firezone-gui-client/frontend.nix`. It must be bumped
+  `scripts/nix/packages/firezone-gui-client/frontend.nix`. It must be bumped
   whenever `gui-client/pnpm-lock.yaml` changes; the CI failure message
   prints the expected value, paste it and re-run.
 - Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and
