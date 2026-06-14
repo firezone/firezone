@@ -172,7 +172,7 @@ impl PairState {
 /// comparison priority and every axis is phrased as a penalty, so
 /// `false` always sorts ahead of `true`. These are categorical: a
 /// strict win here switches the primary regardless of RTT (see
-/// [`Agent::select_primary`]). Pairs in the same bucket are separated
+/// `select_primary`). Pairs in the same bucket are separated
 /// only by RTT.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct Bucket {
