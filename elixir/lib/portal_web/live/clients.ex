@@ -529,6 +529,8 @@ defmodule PortalWeb.Clients do
     end
   end
 
+  def handle_info(message, socket), do: super(message, socket)
+
   defmodule Database do
     import Ecto.Changeset
     import Ecto.Query

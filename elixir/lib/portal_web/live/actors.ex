@@ -794,6 +794,9 @@ defmodule PortalWeb.Actors do
     {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: false)}
   end
 
+  def handle_info(:directories_changed, socket), do: {:noreply, socket}
+  def handle_info(message, socket), do: super(message, socket)
+
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
 
