@@ -33,6 +33,7 @@ fn smoke() {
             .send_query(
                 resolver_addr,
                 Query::new("example.com".parse().unwrap(), RecordType::A).with_id(id),
+                u64::from(id),
             )
             .unwrap();
     }
@@ -73,12 +74,14 @@ fn no_panic_after_set_listen_address() {
         .send_query(
             resolver_addr1,
             Query::new("foo.example.com".parse().unwrap(), RecordType::A),
+            1,
         )
         .unwrap();
     dns_client
         .send_query(
             resolver_addr2,
             Query::new("bar.example.com".parse().unwrap(), RecordType::A),
+            2,
         )
         .unwrap();
 

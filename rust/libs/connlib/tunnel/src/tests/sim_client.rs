@@ -194,7 +194,7 @@ impl SimClient {
             }
             DnsTransport::Tcp => {
                 self.tcp_dns_client
-                    .send_query(SocketAddr::new(sentinel, 53), query)
+                    .send_query(SocketAddr::new(sentinel, 53), query, u64::from(query_id))
                     .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
 
