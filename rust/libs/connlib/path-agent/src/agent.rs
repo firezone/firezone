@@ -607,7 +607,7 @@ impl PathAgent {
         pair: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), ip_packet::IpPacket> {
-        let Some(probe) = crate::icmpv6::try_parse(&packet) else {
+        let Some(probe) = crate::icmpv6::Probe::try_parse(&packet) else {
             return ControlFlow::Continue(packet);
         };
 
