@@ -2091,9 +2091,18 @@ defmodule PortalAPI.Client.Channel do
   # flow. Deletes of already-expired authorizations (the
   # `DeleteExpiredPolicyAuthorizations` reaper) are dropped silently — connlib
   # has already expired them locally.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{id: id}) do
-    case Cache.Client.Authorizations.delete(socket.assigns.authorizations_cache, id) do
-      {:ok, initiating_client_id, resource_id, expires_at_unix, authorizations_cache} ->
+  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
+         id: id,
+         initiating_device_id: initiating_client_id,
+         resource_id: resource_id
+       }) do
+    case Cache.Client.Authorizations.delete(
+           socket.assigns.authorizations_cache,
+           id,
+           initiating_client_id,
+           resource_id
+         ) do
+      {:ok, expires_at_unix, authorizations_cache} ->
         now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
         if expires_at_unix > now_unix do

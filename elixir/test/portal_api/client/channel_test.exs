@@ -7260,7 +7260,7 @@ defmodule PortalAPI.Client.ChannelTest do
              )
     end
 
-    test "policy_authorization delete rejects the active pair and keeps the sibling authorization",
+    test "ignores a superseded authorization delete and rejects when the current one is deleted",
          %{
            target_client: target_client,
            target_subject: target_subject,
@@ -7272,7 +7272,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor_token =
         Portal.TokenFixtures.client_token_fixture(account: account, actor: target_actor)
 
-      preexisting =
+      current =
         Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
           account: account,
           client: initiating_client,
@@ -7281,42 +7281,45 @@ defmodule PortalAPI.Client.ChannelTest do
           token: target_actor_token
         )
 
-      preloaded = Portal.Repo.preload(preexisting, [:resource, :policy])
-
-      second =
-        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
-          account: account,
-          client: initiating_client,
-          gateway: target_client,
-          resource: preloaded.resource,
-          policy: preloaded.policy,
-          token: target_actor_token
-        )
-
       socket = join_channel(target_client, target_subject)
       assert_push "init", _
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :delete,
-        old_struct: second
-      })
 
       initiating_client_id = initiating_client.id
       pool_resource_id = pool_resource.id
 
-      # Deleting an active authorization always pushes reject_access; the client
-      # recovers by tripping ICMP and requesting a fresh flow. The sibling
-      # authorization for the same pair stays cached.
+      # A superseded authorization for the same pair (different id) — last-one-wins
+      # means the cache holds `current`, so deleting the superseded one is a no-op.
+      superseded = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        initiating_device_id: initiating_client.id,
+        receiving_device_id: target_client.id,
+        resource_id: pool_resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: superseded})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "reject_access", _
+
+      assert Portal.Cache.Client.Authorizations.has_resource?(
+               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               pool_resource.id
+             )
+
+      # Deleting the current authorization rejects the pair.
+      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: current})
+      :sys.get_state(socket.channel_pid)
+
       assert_push "reject_access", %{
         client_id: ^initiating_client_id,
         resource_id: ^pool_resource_id
       }
 
-      state = :sys.get_state(socket.channel_pid)
-
-      assert Map.has_key?(state.assigns.authorizations_cache, Ecto.UUID.dump!(preexisting.id))
-      refute Map.has_key?(state.assigns.authorizations_cache, Ecto.UUID.dump!(second.id))
+      refute Portal.Cache.Client.Authorizations.has_resource?(
+               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               pool_resource.id
+             )
     end
 
     test "policy_authorization delete for an unknown entry is a no-op", %{

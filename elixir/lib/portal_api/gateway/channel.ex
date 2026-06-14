@@ -503,22 +503,20 @@ defmodule PortalAPI.Gateway.Channel do
   def handle_info({:revoke_pair_access, client_id, resource_id}, socket) do
     push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
 
-    cid_bytes = Ecto.UUID.dump!(client_id)
-    rid_bytes = Ecto.UUID.dump!(resource_id)
+    key = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
 
-    matching_ids =
-      for {id, {cid, rid, _pid, _exp}} <- socket.assigns.cache,
-          cid == cid_bytes and rid == rid_bytes,
-          do: id
-
-    # Cancel any pending authz durability timers for authz_ids in this pair
-    # so they don't fire later, find the cache empty, and log spurious warnings.
+    # Cancel any pending authz durability timer for the cached authz of this pair
+    # so it doesn't fire later, find the cache empty, and log a spurious warning.
     socket =
-      Enum.reduce(matching_ids, socket, fn id, socket ->
-        cancel_authz_durability_timer(socket, Ecto.UUID.load!(id))
-      end)
+      case Map.get(socket.assigns.cache, key) do
+        {pa_id_bytes, _policy_id, _exp} ->
+          cancel_authz_durability_timer(socket, Ecto.UUID.load!(pa_id_bytes))
 
-    cache = Map.drop(socket.assigns.cache, matching_ids)
+        nil ->
+          socket
+      end
+
+    cache = Map.delete(socket.assigns.cache, key)
     {:noreply, assign(socket, cache: cache)}
   end
 
@@ -883,9 +881,13 @@ defmodule PortalAPI.Gateway.Channel do
   # prohibited" and requesting a fresh flow. Deletes of already-expired
   # authorizations (the `DeleteExpiredPolicyAuthorizations` reaper) are dropped
   # silently — connlib has already expired them locally.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{id: id}) do
-    case Cache.Gateway.delete(socket.assigns.cache, id) do
-      {:ok, client_id, resource_id, expires_at_unix, cache} ->
+  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
+         id: id,
+         initiating_device_id: client_id,
+         resource_id: resource_id
+       }) do
+    case Cache.Gateway.delete(socket.assigns.cache, id, client_id, resource_id) do
+      {:ok, expires_at_unix, cache} ->
         now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
         if expires_at_unix > now_unix do

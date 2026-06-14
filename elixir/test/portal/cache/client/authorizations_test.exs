@@ -19,7 +19,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
       assert Authorizations.hydrate(client) == %{}
     end
 
-    test "loads matching policy_authorizations into the cache keyed by id" do
+    test "loads a policy_authorization keyed by {client, resource}" do
       account = account_fixture()
       actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: actor)
@@ -36,17 +36,16 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
 
       cache = Authorizations.hydrate(target_client)
 
-      key = dump!(policy_authorization.id)
+      key = {dump!(initiating_client.id), dump!(policy_authorization.resource_id)}
 
       assert %{^key => entry} = cache
 
       assert entry ==
-               {dump!(initiating_client.id), dump!(policy_authorization.resource_id),
-                dump!(policy_authorization.policy_id),
+               {dump!(policy_authorization.id), dump!(policy_authorization.policy_id),
                 DateTime.to_unix(policy_authorization.expires_at, :second)}
     end
 
-    test "keeps a separate entry per policy_authorization for the same pair" do
+    test "keeps the longest-expiring authorization when a pair has more than one" do
       account = account_fixture()
       actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: actor)
@@ -54,29 +53,35 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
       initiating_actor = actor_fixture(account: account)
       initiating_client = client_fixture(account: account, actor: initiating_actor)
 
-      pa1 =
+      now = DateTime.utc_now()
+
+      shorter =
         policy_authorization_fixture(
           account: account,
           client: initiating_client,
-          gateway: target_client
+          gateway: target_client,
+          expires_at: DateTime.add(now, 3600, :second)
         )
 
-      preloaded = Portal.Repo.preload(pa1, [:resource, :policy])
+      preloaded = Portal.Repo.preload(shorter, [:resource, :policy])
 
-      pa2 =
+      longer =
         policy_authorization_fixture(
           account: account,
           client: initiating_client,
           gateway: target_client,
           resource: preloaded.resource,
-          policy: preloaded.policy
+          policy: preloaded.policy,
+          expires_at: DateTime.add(now, 7200, :second)
         )
 
       cache = Authorizations.hydrate(target_client)
 
-      assert map_size(cache) == 2
-      assert Map.has_key?(cache, dump!(pa1.id))
-      assert Map.has_key?(cache, dump!(pa2.id))
+      key = {dump!(initiating_client.id), dump!(longer.resource_id)}
+
+      assert map_size(cache) == 1
+      assert {pa_id_bytes, _policy_id, _exp} = cache[key]
+      assert pa_id_bytes == dump!(longer.id)
     end
 
     test "ignores expired policy_authorizations" do
@@ -112,7 +117,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
   end
 
   describe "put/6" do
-    test "inserts a new policy_authorization entry keyed by id" do
+    test "inserts an entry keyed by {client, resource}" do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
@@ -121,13 +126,43 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
 
       cache = Authorizations.put(%{}, pa_id, client_id, resource_id, policy_id, expires_at)
 
-      key = dump!(pa_id)
+      key = {dump!(client_id), dump!(resource_id)}
 
       assert %{^key => entry} = cache
 
       assert entry ==
-               {dump!(client_id), dump!(resource_id), dump!(policy_id),
-                DateTime.to_unix(expires_at, :second)}
+               {dump!(pa_id), dump!(policy_id), DateTime.to_unix(expires_at, :second)}
+    end
+
+    test "is last-one-wins: a newer authorization supersedes the previous for the same pair" do
+      client_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+      now = DateTime.utc_now()
+      pa_id_a = Ecto.UUID.generate()
+      pa_id_b = Ecto.UUID.generate()
+
+      cache =
+        %{}
+        |> Authorizations.put(
+          pa_id_a,
+          client_id,
+          resource_id,
+          Ecto.UUID.generate(),
+          DateTime.add(now, 3600, :second)
+        )
+        |> Authorizations.put(
+          pa_id_b,
+          client_id,
+          resource_id,
+          Ecto.UUID.generate(),
+          DateTime.add(now, 60, :second)
+        )
+
+      key = {dump!(client_id), dump!(resource_id)}
+
+      assert map_size(cache) == 1
+      assert {pa_id_bytes, _policy_id, _exp} = cache[key]
+      assert pa_id_bytes == dump!(pa_id_b)
     end
 
     test "accepts already-dumped 16-byte binary ids (Cacheable resources)" do
@@ -147,26 +182,29 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
           expires_at
         )
 
-      key = dump!(pa_id)
+      key = {dump!(client_id), dump!(resource_id)}
 
       assert %{^key => entry} = cache
 
       assert entry ==
-               {dump!(client_id), dump!(resource_id), dump!(policy_id),
-                DateTime.to_unix(expires_at, :second)}
+               {dump!(pa_id), dump!(policy_id), DateTime.to_unix(expires_at, :second)}
 
       assert Authorizations.has_resource?(cache, dump!(resource_id))
-      assert [{^client_id, ^resource_id}] = Authorizations.all_pairs_for_resource(cache, dump!(resource_id))
-      assert {:ok, ^client_id, ^resource_id, _exp, %{}} = Authorizations.delete(cache, dump!(pa_id))
+      assert {:ok, _exp, %{}} = Authorizations.delete(cache, dump!(pa_id), client_id, resource_id)
     end
   end
 
-  describe "delete/2" do
-    test "returns :error when the policy_authorization is not in the cache" do
-      assert Authorizations.delete(%{}, Ecto.UUID.generate()) == :error
+  describe "delete/4" do
+    test "returns :error when the pair is not in the cache" do
+      assert Authorizations.delete(
+               %{},
+               Ecto.UUID.generate(),
+               Ecto.UUID.generate(),
+               Ecto.UUID.generate()
+             ) == :error
     end
 
-    test "returns the pair, expiration and updated cache, removing the entry" do
+    test "returns the expiration and removes the entry when it is the cached authorization" do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
@@ -175,29 +213,42 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
 
       cache = Authorizations.put(%{}, pa_id, client_id, resource_id, policy_id, expires_at)
 
-      assert {:ok, ^client_id, ^resource_id, expires_at_unix, updated} =
-               Authorizations.delete(cache, pa_id)
+      assert {:ok, expires_at_unix, updated} =
+               Authorizations.delete(cache, pa_id, client_id, resource_id)
 
       assert expires_at_unix == DateTime.to_unix(expires_at, :second)
       assert updated == %{}
     end
 
-    test "only removes the targeted authorization for a shared pair" do
+    test "is a no-op for a superseded authorization (different pa_id for the pair)" do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      pa_id_a = Ecto.UUID.generate()
-      pa_id_b = Ecto.UUID.generate()
-      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
+      now = DateTime.utc_now()
+      old_pa_id = Ecto.UUID.generate()
+      current_pa_id = Ecto.UUID.generate()
 
       cache =
         %{}
-        |> Authorizations.put(pa_id_a, client_id, resource_id, Ecto.UUID.generate(), expires_at)
-        |> Authorizations.put(pa_id_b, client_id, resource_id, Ecto.UUID.generate(), expires_at)
+        |> Authorizations.put(
+          old_pa_id,
+          client_id,
+          resource_id,
+          Ecto.UUID.generate(),
+          DateTime.add(now, 3600, :second)
+        )
+        |> Authorizations.put(
+          current_pa_id,
+          client_id,
+          resource_id,
+          Ecto.UUID.generate(),
+          DateTime.add(now, 3600, :second)
+        )
 
-      assert {:ok, ^client_id, ^resource_id, _exp, updated} = Authorizations.delete(cache, pa_id_a)
+      assert Authorizations.delete(cache, old_pa_id, client_id, resource_id) == :error
 
-      assert Map.has_key?(updated, dump!(pa_id_b))
-      refute Map.has_key?(updated, dump!(pa_id_a))
+      key = {dump!(client_id), dump!(resource_id)}
+      assert {pa_id_bytes, _policy_id, _exp} = cache[key]
+      assert pa_id_bytes == dump!(current_pa_id)
     end
   end
 
@@ -225,42 +276,10 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
 
       assert Authorizations.prune(cache) == cache
     end
-
-    test "drops only the expired entries on a shared pair" do
-      client_id = Ecto.UUID.generate()
-      resource_id = Ecto.UUID.generate()
-      policy_id = Ecto.UUID.generate()
-      pa_id_valid = Ecto.UUID.generate()
-      pa_id_expired = Ecto.UUID.generate()
-      now = DateTime.utc_now()
-
-      cache =
-        %{}
-        |> Authorizations.put(
-          pa_id_valid,
-          client_id,
-          resource_id,
-          policy_id,
-          DateTime.add(now, 3600, :second)
-        )
-        |> Authorizations.put(
-          pa_id_expired,
-          client_id,
-          resource_id,
-          policy_id,
-          DateTime.add(now, -3600, :second)
-        )
-
-      pruned = Authorizations.prune(cache)
-
-      assert map_size(pruned) == 1
-      assert Map.has_key?(pruned, dump!(pa_id_valid))
-      refute Map.has_key?(pruned, dump!(pa_id_expired))
-    end
   end
 
   describe "has_resource?/2" do
-    test "returns true when the cache holds at least one entry for the resource" do
+    test "returns true when the cache holds an entry for the resource" do
       client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
@@ -284,7 +303,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
   end
 
   describe "all_pairs_for_resource/2" do
-    test "returns every {client, resource} pair matching the resource deduplicated" do
+    test "returns every {client, resource} pair matching the resource" do
       resource_id = Ecto.UUID.generate()
       other_resource_id = Ecto.UUID.generate()
       client_a = Ecto.UUID.generate()
@@ -294,7 +313,6 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
 
       cache =
         %{}
-        |> Authorizations.put(Ecto.UUID.generate(), client_a, resource_id, policy_id, expires_at)
         |> Authorizations.put(Ecto.UUID.generate(), client_a, resource_id, policy_id, expires_at)
         |> Authorizations.put(Ecto.UUID.generate(), client_b, resource_id, policy_id, expires_at)
         |> Authorizations.put(
