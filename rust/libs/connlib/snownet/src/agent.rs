@@ -356,15 +356,15 @@ impl Agent {
     }
 
     /// Inbound WG bytes. See [`path_agent::PathAgent::handle_inbound_network`].
-    /// Always `Continue(())` on the `Ice` arm.
-    pub(crate) fn handle_inbound_network(
+    /// The `Ice` arm never absorbs WG bytes, so it hands them straight back.
+    pub(crate) fn handle_inbound_network<'b>(
         &mut self,
-        bytes: &[u8],
+        bytes: &'b [u8],
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
-    ) -> ControlFlow<()> {
+    ) -> ControlFlow<(), &'b [u8]> {
         match self {
-            Self::Ice(_) => ControlFlow::Continue(()),
+            Self::Ice(_) => ControlFlow::Continue(bytes),
             Self::Path { path: agent, .. } => agent.handle_inbound_network(bytes, path, now),
         }
     }

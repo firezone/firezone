@@ -1929,13 +1929,13 @@ where
         // Path-agent gets first crack at handshake bytes (dedup, replay).
         // It only queues work — `Connection::handle_timeout` is what
         // actually drives boringtun and drains transmits.
-        if self
+        let packet = match self
             .agent
             .handle_inbound_network(packet, (destination, from), now)
-            .is_break()
         {
-            return ControlFlow::Break(Ok(()));
-        }
+            ControlFlow::Break(()) => return ControlFlow::Break(Ok(())),
+            ControlFlow::Continue(packet) => packet,
+        };
 
         let mut ip_packet = IpPacketBuf::new();
 

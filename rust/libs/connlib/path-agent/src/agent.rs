@@ -461,18 +461,15 @@ impl PathAgent {
         }
     }
 
-    /// Inspect an inbound WG packet on `path`. `Break(())` if owned
-    /// here (handshake deduped or forwarded via [`Event::ForwardInbound`]);
-    /// `Continue(())` for non-handshake bytes the caller must feed to
-    /// `Tunn::decapsulate_at`.
-    pub fn handle_inbound_network(
+    /// Inspect an inbound WG packet on `path`.
+    pub fn handle_inbound_network<'b>(
         &mut self,
-        bytes: &[u8],
+        bytes: &'b [u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> ControlFlow<()> {
+    ) -> ControlFlow<(), &'b [u8]> {
         let Ok(parsed) = Tunn::parse_incoming_packet(bytes) else {
-            return ControlFlow::Continue(());
+            return ControlFlow::Continue(bytes);
         };
 
         let is_handshake = matches!(
@@ -539,7 +536,7 @@ impl PathAgent {
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
                 ControlFlow::Break(())
             }
-            Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(()),
+            Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(bytes),
         }
     }
 

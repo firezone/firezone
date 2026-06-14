@@ -102,8 +102,10 @@ fn pairs_yields_local_remote_addresses() {
 #[test]
 fn inbound_unparseable_bytes_return_false() {
     let mut a = agent_with_relay_pairs();
-    let handled = a.handle_inbound_network(&[1, 2, 3], (addr(2), addr(4)), Instant::now());
-    assert!(matches!(handled, ControlFlow::Continue(())));
+    assert!(
+        a.handle_inbound_network(&[1, 2, 3], (addr(2), addr(4)), Instant::now())
+            .is_continue()
+    );
 }
 
 #[test]
@@ -152,8 +154,10 @@ fn outbound_handshake_response_replays_on_recv_path_of_last_inbound_init() {
     let mut a = agent_with_relay_pairs();
     let recv_path = (addr(2), addr(4));
 
-    let handled = a.handle_inbound_network(&handshake_init_bytes(), recv_path, Instant::now());
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_init_bytes(), recv_path, Instant::now())
+            .is_break()
+    );
     let _ = a.poll_event();
 
     a.handle_outbound(handshake_response_bytes(), Instant::now());
@@ -167,8 +171,10 @@ fn outbound_handshake_response_replays_on_recv_path_of_last_inbound_init() {
 #[test]
 fn inbound_handshake_init_returns_true_and_emits_forward_event() {
     let mut a = agent_with_relay_pairs();
-    let handled = a.handle_inbound_network(&handshake_init_bytes(), (addr(2), addr(4)), Instant::now());
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_init_bytes(), (addr(2), addr(4)), Instant::now())
+            .is_break()
+    );
 
     // `ForwardInbound` is queued before `PrimaryChanged` so the consumer
     // hands the handshake to boringtun (creating the WG session) before
@@ -188,12 +194,10 @@ fn inbound_handshake_init_returns_true_and_emits_forward_event() {
 #[test]
 fn inbound_handshake_response_returns_true_and_emits_forward_event() {
     let mut a = agent_with_relay_pairs();
-    let handled = a.handle_inbound_network(
-        &handshake_response_bytes(),
-        (addr(2), addr(4)),
-        Instant::now(),
+    assert!(
+        a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), Instant::now())
+            .is_break()
     );
-    assert!(matches!(handled, ControlFlow::Break(())));
 
     // Same shape as the init case: forward to boringtun first, then
     // adopt the bootstrap primary.
@@ -212,8 +216,10 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
 #[test]
 fn inbound_data_packet_returns_false_and_emits_no_event() {
     let mut a = agent_with_relay_pairs();
-    let handled = a.handle_inbound_network(&data_packet_bytes(), (addr(2), addr(4)), Instant::now());
-    assert!(matches!(handled, ControlFlow::Continue(())));
+    assert!(
+        a.handle_inbound_network(&data_packet_bytes(), (addr(2), addr(4)), Instant::now())
+            .is_continue()
+    );
     assert!(a.poll_event().is_none());
 }
 
@@ -457,8 +463,10 @@ fn duplicate_inbound_init_replays_cached_response_on_new_path() {
     populate_responder_cache(&mut a, (addr(2), addr(4)), now);
 
     let new_path = (addr(1), addr(3));
-    let handled = a.handle_inbound_network(&handshake_init_bytes(), new_path, now);
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_init_bytes(), new_path, now)
+            .is_break()
+    );
 
     let t = a.poll_transmit().expect("replay transmit");
     assert_eq!(t.local, new_path.0);
@@ -474,8 +482,10 @@ fn duplicate_inbound_init_after_ttl_falls_back_to_forward() {
     populate_responder_cache(&mut a, (addr(2), addr(4)), now);
 
     let later = now + Duration::from_secs(11);
-    let handled = a.handle_inbound_network(&handshake_init_bytes(), (addr(1), addr(3)), later);
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_init_bytes(), (addr(1), addr(3)), later)
+            .is_break()
+    );
 
     match a.poll_event() {
         Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
@@ -489,14 +499,18 @@ fn duplicate_inbound_response_is_dropped_after_first_forward() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let handled = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now)
+            .is_break()
+    );
     // Drain the bootstrap-primary event the first response produces so we
     // can assert "no further events" on the second.
     while a.poll_event().is_some() {}
 
-    let handled = a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(3)), now);
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(3)), now)
+            .is_break()
+    );
     assert!(a.poll_event().is_none());
     assert!(a.poll_transmit().is_none());
 }
@@ -512,8 +526,10 @@ fn fresh_outbound_init_resets_initiator_response_dedup() {
     a.handle_outbound(handshake_init_bytes(), now);
     while a.poll_transmit().is_some() {}
 
-    let handled = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
-    assert!(matches!(handled, ControlFlow::Break(())));
+    assert!(
+        a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now)
+            .is_break()
+    );
     match a.poll_event() {
         Some(Event::ForwardInbound { .. }) => {}
         other => panic!("expected ForwardInbound after re-init, got {other:?}"),
