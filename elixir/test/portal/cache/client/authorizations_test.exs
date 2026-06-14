@@ -129,6 +129,36 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
                {dump!(client_id), dump!(resource_id), dump!(policy_id),
                 DateTime.to_unix(expires_at, :second)}
     end
+
+    test "accepts already-dumped 16-byte binary ids (Cacheable resources)" do
+      client_id = Ecto.UUID.generate()
+      resource_id = Ecto.UUID.generate()
+      policy_id = Ecto.UUID.generate()
+      paid = Ecto.UUID.generate()
+      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
+
+      cache =
+        Authorizations.put(
+          %{},
+          dump!(paid),
+          dump!(client_id),
+          dump!(resource_id),
+          dump!(policy_id),
+          expires_at
+        )
+
+      key = dump!(paid)
+
+      assert %{^key => entry} = cache
+
+      assert entry ==
+               {dump!(client_id), dump!(resource_id), dump!(policy_id),
+                DateTime.to_unix(expires_at, :second)}
+
+      assert Authorizations.has_resource?(cache, dump!(resource_id))
+      assert [{^client_id, ^resource_id}] = Authorizations.all_pairs_for_resource(cache, dump!(resource_id))
+      assert {:ok, ^client_id, ^resource_id, _exp, %{}} = Authorizations.delete(cache, dump!(paid))
+    end
   end
 
   describe "delete/2" do
