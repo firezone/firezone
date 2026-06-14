@@ -100,9 +100,6 @@ jobs:
             rust/${{ matrix.binary }}
             rust/${{ matrix.binary }}.sha256sum.txt
 
-      # Authenticate to the dedicated QA artifacts storage via GitHub OIDC. The
-      # loadtest binaries are QA-only and live in their own account, separate
-      # from the production `firezoneartifacts` (firezone/infra#687).
       - name: Azure login (OIDC)
         if: github.ref == 'refs/heads/main'
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
