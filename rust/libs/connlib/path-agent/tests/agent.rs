@@ -121,7 +121,7 @@ fn outbound_data_after_primary_selected_sends_on_primary() {
     let host_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
 
     let reply = build_echo_reply(host_probe.id, host_probe.seq);
-    let _ = a.handle_inbound_decrypted(&reply, (addr(1), addr(3)), now);
+    let _ = a.handle_inbound_decrypted(reply, (addr(1), addr(3)), now);
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
@@ -568,7 +568,7 @@ fn probe_seq_advances_per_pair_per_fire() {
     // this, `drive_probes` would skip the next fire while a probe is
     // still inflight (until `PROBE_TIMEOUT`).
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(first_probe.id, first_probe.seq),
+        build_echo_reply(first_probe.id, first_probe.seq),
         (addr(1), addr(3)),
         now + Duration::from_millis(50),
     );
@@ -595,7 +595,7 @@ fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
 
     let reply = build_echo_reply(probe_on_host_pair.id, probe_on_host_pair.seq);
     let later = now + Duration::from_millis(50);
-    let handled = a.handle_inbound_decrypted(&reply, (addr(1), addr(3)), later);
+    let handled = a.handle_inbound_decrypted(reply, (addr(1), addr(3)), later);
     assert!(matches!(handled, ControlFlow::Break(())));
 
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
@@ -613,7 +613,7 @@ fn inbound_echo_request_queues_reply_on_same_pair() {
     let now = Instant::now();
 
     let request = build_echo_request(0, 42);
-    let handled = a.handle_inbound_decrypted(&request, (addr(2), addr(4)), now);
+    let handled = a.handle_inbound_decrypted(request, (addr(2), addr(4)), now);
     assert!(matches!(handled, ControlFlow::Break(())));
 
     let reply_transmit = a.poll_transmit().expect("queued reply");
@@ -638,8 +638,12 @@ fn inbound_decrypted_non_probe_returns_continue() {
         b"hello",
     )
     .unwrap();
-    let handled = a.handle_inbound_decrypted(&packet, (addr(2), addr(4)), Instant::now());
-    assert!(matches!(handled, ControlFlow::Continue(())));
+    let handled = a.handle_inbound_decrypted(packet, (addr(2), addr(4)), Instant::now());
+    let ControlFlow::Continue(returned) = handled else {
+        panic!("non-probe packet must be handed back, got {handled:?}");
+    };
+    // Handed back unchanged for the caller to deliver to the TUN.
+    assert_eq!(returned.source(), IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
     assert!(a.poll_transmit().is_none());
 }
 
@@ -657,7 +661,7 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
 
     let relay_probe = extract_probe_for(&outbound, (addr(2), addr(4)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(relay_probe.id, relay_probe.seq),
+        build_echo_reply(relay_probe.id, relay_probe.seq),
         (addr(2), addr(4)),
         now + Duration::from_millis(100),
     );
@@ -666,7 +670,7 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
     let host_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
     while a.poll_event().is_some() {}
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(host_probe.id, host_probe.seq),
+        build_echo_reply(host_probe.id, host_probe.seq),
         (addr(1), addr(3)),
         now + Duration::from_millis(150),
     );
@@ -701,7 +705,7 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     // Reply on the *remote-relay* pair first (LocalHost → RemoteRelay).
     let remote_relay_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(remote_relay_probe.id, remote_relay_probe.seq),
+        build_echo_reply(remote_relay_probe.id, remote_relay_probe.seq),
         (addr(1), addr(4)),
         now + Duration::from_millis(50),
     );
@@ -712,7 +716,7 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     while a.poll_event().is_some() {}
     let local_relay_probe = extract_probe_for(&outbound, (addr(2), addr(3)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(local_relay_probe.id, local_relay_probe.seq),
+        build_echo_reply(local_relay_probe.id, local_relay_probe.seq),
         (addr(2), addr(3)),
         now + Duration::from_millis(100),
     );
@@ -744,7 +748,7 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     // Reply on the v4 host×host pair first.
     let v4_probe = extract_probe_for(&outbound, (addr(1), addr(2)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(v4_probe.id, v4_probe.seq),
+        build_echo_reply(v4_probe.id, v4_probe.seq),
         (addr(1), addr(2)),
         now + Duration::from_millis(50),
     );
@@ -756,7 +760,7 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     // should swap the primary.
     let v6_probe = extract_probe_for(&outbound, (addr_v6(11), addr_v6(12)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(v6_probe.id, v6_probe.seq),
+        build_echo_reply(v6_probe.id, v6_probe.seq),
         (addr_v6(11), addr_v6(12)),
         now + Duration::from_millis(100),
     );
@@ -796,7 +800,7 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     let mismatched_pair = (mismatched_local_alloc, addr_v6(20));
     let mismatched_probe = extract_probe_for(&outbound, mismatched_pair);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(mismatched_probe.id, mismatched_probe.seq),
+        build_echo_reply(mismatched_probe.id, mismatched_probe.seq),
         mismatched_pair,
         now + Duration::from_millis(50),
     );
@@ -808,7 +812,7 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     let matched_pair = (matched_local_alloc, addr_v6(20));
     let matched_probe = extract_probe_for(&outbound, matched_pair);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(matched_probe.id, matched_probe.seq),
+        build_echo_reply(matched_probe.id, matched_probe.seq),
         matched_pair,
         now + Duration::from_millis(100),
     );
@@ -849,7 +853,7 @@ fn family_match_dominates_ipv6_preference() {
     let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
     let v6_probe = extract_probe_for(&outbound, v6_pair);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(v6_probe.id, v6_probe.seq),
+        build_echo_reply(v6_probe.id, v6_probe.seq),
         v6_pair,
         now + Duration::from_millis(50),
     );
@@ -860,7 +864,7 @@ fn family_match_dominates_ipv6_preference() {
     let v4_pair = (v4_matched_local_alloc, addr(30));
     let v4_probe = extract_probe_for(&outbound, v4_pair);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(v4_probe.id, v4_probe.seq),
+        build_echo_reply(v4_probe.id, v4_probe.seq),
         v4_pair,
         now + Duration::from_millis(100),
     );
@@ -894,7 +898,7 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
 
     let incumbent_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
+        build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
         (addr(1), addr(3)),
         now + Duration::from_millis(50),
     );
@@ -904,7 +908,7 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
     // Challenger replies at 45 ms — a sub-margin gain.
     let challenger_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(challenger_probe.id, challenger_probe.seq),
+        build_echo_reply(challenger_probe.id, challenger_probe.seq),
         (addr(1), addr(4)),
         now + Duration::from_millis(45),
     );
@@ -939,7 +943,7 @@ fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
 
     let incumbent_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
+        build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
         (addr(1), addr(3)),
         now + Duration::from_millis(50),
     );
@@ -949,7 +953,7 @@ fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
     // Challenger replies at 30 ms — clear of the margin.
     let challenger_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(challenger_probe.id, challenger_probe.seq),
+        build_echo_reply(challenger_probe.id, challenger_probe.seq),
         (addr(1), addr(4)),
         now + Duration::from_millis(30),
     );
@@ -980,7 +984,7 @@ fn stale_echo_reply_is_ignored() {
     while a.poll_transmit().is_some() {}
 
     let stale_reply = build_echo_reply(0, 0xdead);
-    let _ = a.handle_inbound_decrypted(&stale_reply, (addr(1), addr(3)), now);
+    let _ = a.handle_inbound_decrypted(stale_reply, (addr(1), addr(3)), now);
 
     // The bootstrap-primary already adopted the relay-relay path the
     // handshake landed on; a stale reply doesn't unseat it (no RTT
@@ -1025,7 +1029,7 @@ fn drive_probes_only_emits_on_primary_after_settle() {
 
     let host_probe = extract_probe_for(&inside, primary);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(host_probe.id, host_probe.seq),
+        build_echo_reply(host_probe.id, host_probe.seq),
         primary,
         now + Duration::from_millis(50),
     );
@@ -1062,7 +1066,7 @@ fn settle_keeps_poll_timeout_armed_for_primary_probes() {
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     let host_probe = extract_probe_for(&outbound, primary);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(host_probe.id, host_probe.seq),
+        build_echo_reply(host_probe.id, host_probe.seq),
         primary,
         now + Duration::from_millis(50),
     );
@@ -1092,7 +1096,7 @@ fn settle_is_sticky_across_later_handshakes() {
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     let host_probe = extract_probe_for(&outbound, primary);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(host_probe.id, host_probe.seq),
+        build_echo_reply(host_probe.id, host_probe.seq),
         primary,
         now + Duration::from_millis(50),
     );
@@ -1134,7 +1138,7 @@ fn inbound_handshake_reopens_bootstrap_window_after_settle() {
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     let host_probe = extract_probe_for(&outbound, primary);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(host_probe.id, host_probe.seq),
+        build_echo_reply(host_probe.id, host_probe.seq),
         primary,
         now + Duration::from_millis(50),
     );
@@ -1186,7 +1190,7 @@ fn duplicate_inbound_handshake_does_not_reopen_bootstrap_window() {
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     let host_probe = extract_probe_for(&outbound, primary);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(host_probe.id, host_probe.seq),
+        build_echo_reply(host_probe.id, host_probe.seq),
         primary,
         now + Duration::from_millis(50),
     );
@@ -1289,7 +1293,7 @@ fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     let initial_probe = extract_probe_for(&outbound, initial_path);
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(initial_probe.id, initial_probe.seq),
+        build_echo_reply(initial_probe.id, initial_probe.seq),
         initial_path,
         now + Duration::from_millis(40),
     );
@@ -1310,7 +1314,7 @@ fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
     // its inflight slot was cleared by the topology reset, so the
     // reply is ignored and primary doesn't swing back.
     let _ = a.handle_inbound_decrypted(
-        &build_echo_reply(initial_probe.id, initial_probe.seq),
+        build_echo_reply(initial_probe.id, initial_probe.seq),
         initial_path,
         roam_at + Duration::from_millis(10),
     );

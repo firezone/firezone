@@ -603,16 +603,15 @@ impl PathAgent {
         event
     }
 
-    /// Inspect a decrypted inner-IP packet. `Break(())` for probes
-    /// (caller drops), `Continue(())` for user traffic.
+    /// Take ownership of a decrypted inner-IP packet.
     pub fn handle_inbound_decrypted(
         &mut self,
-        packet: &ip_packet::IpPacket,
+        packet: ip_packet::IpPacket,
         pair: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> ControlFlow<()> {
-        let Some(probe) = crate::icmpv6::try_parse(packet) else {
-            return ControlFlow::Continue(());
+    ) -> ControlFlow<(), ip_packet::IpPacket> {
+        let Some(probe) = crate::icmpv6::try_parse(&packet) else {
+            return ControlFlow::Continue(packet);
         };
 
         match probe.kind {

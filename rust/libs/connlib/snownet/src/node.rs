@@ -2030,21 +2030,17 @@ where
             }
         };
 
-        if let ControlFlow::Continue(packet) = &control_flow {
-            self.state
-                .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
+        match control_flow {
+            ControlFlow::Continue(packet) => {
+                self.state
+                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
-            // Iceless probes ride the WG envelope; absorb before tun.
-            if self
-                .agent
-                .handle_inbound_decrypted(packet, (destination, from), now)
-                .is_break()
-            {
-                return ControlFlow::Break(Ok(()));
+                self.agent
+                    .handle_inbound_decrypted(packet, (destination, from), now)
+                    .map_break(Ok)
             }
+            ControlFlow::Break(b) => ControlFlow::Break(b),
         }
-
-        control_flow
     }
 
     /// Classify an outbound `(local, from)` socket pair into the

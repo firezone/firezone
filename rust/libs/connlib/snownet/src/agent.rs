@@ -370,16 +370,16 @@ impl Agent {
     }
 
     /// Decrypted inner-IP packet. See
-    /// [`path_agent::PathAgent::handle_inbound_decrypted`]. Always
-    /// `Continue(())` on the `Ice` arm.
+    /// [`path_agent::PathAgent::handle_inbound_decrypted`]. The `Ice` arm
+    /// never absorbs inner traffic, so it hands the packet straight back.
     pub(crate) fn handle_inbound_decrypted(
         &mut self,
-        packet: &ip_packet::IpPacket,
+        packet: ip_packet::IpPacket,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
-    ) -> ControlFlow<()> {
+    ) -> ControlFlow<(), ip_packet::IpPacket> {
         match self {
-            Self::Ice(_) => ControlFlow::Continue(()),
+            Self::Ice(_) => ControlFlow::Continue(packet),
             Self::Path { path: agent, .. } => agent.handle_inbound_decrypted(packet, path, now),
         }
     }
