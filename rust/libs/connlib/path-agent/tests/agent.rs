@@ -872,6 +872,102 @@ fn family_match_dominates_ipv6_preference() {
 }
 
 #[test]
+fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
+    // Two host×host pairs in the same discrete bucket. The incumbent
+    // settles at 50 ms; a challenger that is only marginally faster
+    // (45 ms — a 5 ms gain, inside the 10 ms floor) must NOT displace it,
+    // or probe jitter would flap the primary between effectively-tied
+    // pairs, each flap churning the peer socket.
+    let mut a = PathAgent::new();
+    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_remote_candidate(Candidate::host(addr(3)));
+    a.add_remote_candidate(Candidate::host(addr(4)));
+    let now = Instant::now();
+
+    // Adopt (1,3) as the bootstrap primary, then give it a measured RTT.
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(1), addr(3)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    let incumbent_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
+        (addr(1), addr(3)),
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+    while a.poll_event().is_some() {}
+
+    // Challenger replies at 45 ms — a sub-margin gain.
+    let challenger_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(challenger_probe.id, challenger_probe.seq),
+        (addr(1), addr(4)),
+        now + Duration::from_millis(45),
+    );
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(1), addr(3))),
+        "a sub-margin RTT gain must not unseat the incumbent primary",
+    );
+    assert!(
+        a.poll_event().is_none(),
+        "no PrimaryChanged should be emitted while the primary holds",
+    );
+}
+
+#[test]
+fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
+    // Same setup, but the challenger is decisively faster (30 ms vs
+    // 50 ms — a 20 ms gain, past the margin), so the primary moves.
+    let mut a = PathAgent::new();
+    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_remote_candidate(Candidate::host(addr(3)));
+    a.add_remote_candidate(Candidate::host(addr(4)));
+    let now = Instant::now();
+
+    let _ = a.handle_inbound(&handshake_response_bytes(), (addr(1), addr(3)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    let incumbent_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
+        (addr(1), addr(3)),
+        now + Duration::from_millis(50),
+    );
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+    while a.poll_event().is_some() {}
+
+    // Challenger replies at 30 ms — clear of the margin.
+    let challenger_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
+    let _ = a.handle_inbound_decrypted(
+        &build_echo_reply(challenger_probe.id, challenger_probe.seq),
+        (addr(1), addr(4)),
+        now + Duration::from_millis(30),
+    );
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(1), addr(4))),
+        "an RTT gain past the margin should switch the primary",
+    );
+    match a.poll_event() {
+        Some(Event::PrimaryChanged { local, remote }) => {
+            assert_eq!((local, remote), (addr(1), addr(4)));
+        }
+        other => panic!("expected PrimaryChanged, got {other:?}"),
+    }
+}
+
+#[test]
 fn stale_echo_reply_is_ignored() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();

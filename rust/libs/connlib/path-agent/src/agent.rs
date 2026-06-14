@@ -126,6 +126,16 @@ pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
 
 pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 
+/// Within the same discrete bucket (same tier / relay-first /
+/// family-match / v6-first), a challenger pair must beat the current
+/// primary's smoothed RTT by `max(FLOOR, FRACTION * primary_rtt)` before
+/// we switch to it. Without this, probe jitter flaps the primary between
+/// effectively-tied pairs, each flap churning the peer socket and
+/// flushing buffers. Categorical improvements (a better discrete axis)
+/// bypass the margin and switch immediately.
+const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
+const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
+
 struct PairRetransmit {
     next_fire_at: Instant,
     step: usize,
@@ -157,24 +167,47 @@ impl PairState {
     }
 }
 
-/// Smaller-is-better sort key for primary selection. Ranks by:
-/// worse-of-pair tier, local-relay-first (Relayed tier only),
-/// relay-family-matched, IPv6-first, smoothed RTT.
-fn pair_score(
-    pair: (SocketAddr, SocketAddr),
-    state: &PairState,
-) -> (crate::CandidateKind, u8, u8, u8, Option<Duration>) {
-    let tier = state.kinds.0.max(state.kinds.1);
-    let local_relay_first = u8::from(!matches!(state.kinds.0, crate::CandidateKind::Relayed));
-    let family_match = u8::from(!state.local_family_matched);
-    let v6_first = u8::from(!pair.0.is_ipv6());
-    (
-        tier,
-        local_relay_first,
-        family_match,
-        v6_first,
-        state.smoothed_rtt,
-    )
+/// Smaller-is-better discrete preference bucket. Field order is the
+/// comparison priority and every axis is phrased as a penalty, so
+/// `false` always sorts ahead of `true`. These are categorical: a
+/// strict win here switches the primary regardless of RTT (see
+/// [`Agent::select_primary`]). Pairs in the same bucket are separated
+/// only by RTT.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct Bucket {
+    /// Worse-of-pair candidate kind. `Host < ServerReflexive < Relayed`,
+    /// so direct beats relayed.
+    tier: crate::CandidateKind,
+    /// `true` when the *local* end isn't the relay. Within the Relayed
+    /// tier this prefers routing through our relay, keeping a relay
+    /// rotation a local-only concern.
+    local_is_not_relay: bool,
+    /// `true` when the relay has to bridge address families.
+    family_mismatch: bool,
+    /// `true` when the local end is IPv4 (v6 paths are preferred).
+    is_v4: bool,
+}
+
+/// Smaller-is-better sort key for primary selection: the discrete
+/// [`Bucket`] followed by smoothed RTT. Derived `Ord` compares the
+/// bucket first and only races on latency once every categorical
+/// preference ties.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct PairScore {
+    bucket: Bucket,
+    rtt: Option<Duration>,
+}
+
+fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
+    PairScore {
+        bucket: Bucket {
+            tier: state.kinds.0.max(state.kinds.1),
+            local_is_not_relay: !matches!(state.kinds.0, crate::CandidateKind::Relayed),
+            family_mismatch: !state.local_family_matched,
+            is_v4: !pair.0.is_ipv6(),
+        },
+        rtt: state.smoothed_rtt,
+    }
 }
 
 /// Outbound transmit. snownet picks the wire transport (host send vs.
@@ -794,13 +827,37 @@ impl PathAgent {
             .pairs
             .iter()
             .filter(|(_, s)| s.smoothed_rtt.is_some())
-            .min_by(|(ka, a), (kb, b)| pair_score(**ka, a).cmp(&pair_score(**kb, b)))
+            .min_by_key(|(k, s)| pair_score(**k, s))
             .map(|(k, _)| *k);
 
         let Some(new) = best else { return };
         if self.primary == Some(new) {
             return;
         }
+
+        // Hysteresis on the RTT axis only. `new` is the global minimum by
+        // `pair_score`, so against the incumbent it can only tie or win on
+        // the discrete prefix. A strict discrete win switches immediately
+        // (e.g. a direct path appearing must displace a relay path). Within
+        // the same bucket, require `new` to beat the incumbent's RTT by a
+        // margin so probe jitter doesn't flap between near-tied pairs. A
+        // missing / unmeasured / dropped incumbent leaves nothing to be
+        // sticky about — adopt `new` so bootstrap and re-key still converge.
+        if let Some(primary) = self.primary
+            && let Some(prev) = self.pairs.get(&primary)
+            && let Some(prev_rtt) = prev.smoothed_rtt
+        {
+            let new_state = &self.pairs[&new];
+            if pair_score(new, new_state).bucket == pair_score(primary, prev).bucket {
+                let new_rtt = new_state.smoothed_rtt.unwrap_or_default();
+                let margin =
+                    PRIMARY_HYSTERESIS_FLOOR.max(prev_rtt.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
+                if new_rtt + margin >= prev_rtt {
+                    return;
+                }
+            }
+        }
+
         let new_rtt = self
             .pairs
             .get(&new)
