@@ -1,7 +1,7 @@
 ARG PACKAGE
 
 # Base image which is used to run the application binary
-FROM alpine:3.23 AS runtime_base
+FROM alpine:3.24 AS runtime_base
 
 ENV LANG=C.UTF-8 \
     TERM=xterm \
