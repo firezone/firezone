@@ -195,8 +195,12 @@ fn inbound_handshake_init_returns_true_and_emits_forward_event() {
 fn inbound_handshake_response_returns_true_and_emits_forward_event() {
     let mut a = agent_with_relay_pairs();
     assert!(
-        a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), Instant::now())
-            .is_break()
+        a.handle_inbound_network(
+            &handshake_response_bytes(),
+            (addr(2), addr(4)),
+            Instant::now()
+        )
+        .is_break()
     );
 
     // Same shape as the init case: forward to boringtun first, then

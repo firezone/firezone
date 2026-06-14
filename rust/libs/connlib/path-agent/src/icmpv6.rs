@@ -28,8 +28,7 @@ pub(crate) struct Probe {
 impl Probe {
     /// `Some` iff `packet` is an ICMPv6 echo between the magic addresses.
     pub(crate) fn try_parse(packet: &IpPacket) -> Option<Self> {
-        if packet.source() != IpAddr::V6(PROBE_SRC)
-            || packet.destination() != IpAddr::V6(PROBE_DST)
+        if packet.source() != IpAddr::V6(PROBE_SRC) || packet.destination() != IpAddr::V6(PROBE_DST)
         {
             return None;
         }
