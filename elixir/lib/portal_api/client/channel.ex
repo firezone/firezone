@@ -2194,15 +2194,15 @@ defmodule PortalAPI.Client.Channel do
          cache,
          client_id,
          %{id: resource_id},
-         paid,
+         pa_id,
          policy_id,
          %DateTime{} = expires_at
        )
-       when not is_nil(client_id) and not is_nil(paid) do
-    Cache.Client.Authorizations.put(cache, paid, client_id, resource_id, policy_id, expires_at)
+       when not is_nil(client_id) and not is_nil(pa_id) do
+    Cache.Client.Authorizations.put(cache, pa_id, client_id, resource_id, policy_id, expires_at)
   end
 
-  defp maybe_put_authorization(cache, _client_id, _resource, _paid, _policy_id, _expires_at),
+  defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _policy_id, _expires_at),
     do: cache
 
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok
