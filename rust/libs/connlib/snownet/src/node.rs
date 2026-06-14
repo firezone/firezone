@@ -1593,16 +1593,6 @@ where
         // Drain path-agent events: feed forwarded handshake bytes
         // through boringtun, hand the response back to the agent for
         // outbound routing, transition state on `PrimaryChanged`.
-        //
-        // After a successful HandshakeResponse decapsulation, boringtun
-        // may have queued packets (from earlier `encapsulate_at` calls
-        // that ran before a session was current). The drain loop below
-        // catches them — same pattern as the regular decapsulate path.
-        //
-        // We pass `None` to `decapsulate_at` (no source IP). Source-tracking
-        // is for replay protection, and the responder dedup cache
-        // prevents duplicate inits from reaching this point in the
-        // first place — so the loss of source tracking is benign.
         while let Some(event) = self.agent.poll_path_event() {
             match event {
                 path_agent::Event::ForwardHandshake { bytes } => {
