@@ -283,6 +283,16 @@ jobs:
 
           # Used for release artifact
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
+      - name: Azure login (OIDC)
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          # The artifacts principal holds only a data-plane role on the storage
+          # account, not subscription-wide Reader.
+          allow-no-subscriptions: true
       - name: Copy binary to Azure Blob Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.artifact == 'firezone-relay' || matrix.name.artifact == 'firezone-gateway') }}
         run: |
@@ -294,7 +304,8 @@ jobs:
             --file "${{ matrix.name.package }}" \
             --overwrite true \
             --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --auth-mode login \
+            --account-name firezoneartifacts
 
           az storage blob upload \
             --container-name binaries \
@@ -302,7 +313,8 @@ jobs:
             --file "${{ matrix.name.package }}.sha256sum.txt" \
             --overwrite true \
             --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --auth-mode login \
+            --account-name firezoneartifacts
 
       - name: Create Firezone Gateway .deb package
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
@@ -328,7 +340,8 @@ jobs:
             --destination-path import-preview \
             --overwrite \
             --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --auth-mode login \
+            --account-name firezoneartifacts
       - name: Upload `.deb` artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

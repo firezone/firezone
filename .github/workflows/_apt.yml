@@ -8,6 +8,10 @@ concurrency:
   group: "create-apt-repository" # Unique group name to force only a single job at a time.
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  id-token: write # OIDC auth for Azure Storage
+
 jobs:
   create-apt-repository-metadata:
     runs-on: ubuntu-24.04
@@ -18,6 +22,14 @@ jobs:
 
       - uses: ./.github/actions/setup-azure-cli
 
+      - name: Azure login (OIDC)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
       - uses: ./.github/actions/setup-gpg
         id: setup-gpg
         with:
@@ -26,5 +38,5 @@ jobs:
 
       - run: scripts/sync-apt.sh
         env:
-          AZURERM_ARTIFACTS_CONNECTION_STRING: ${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}
+          AZURE_STORAGE_ACCOUNT: firezoneartifacts
           GPG_KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}

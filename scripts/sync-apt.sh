@@ -14,8 +14,8 @@ COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
 DISTS_DIR="${WORK_DIR}/dists"
 
-if [ -z "${AZURERM_ARTIFACTS_CONNECTION_STRING:-}" ]; then
-    echo "Error: AZURERM_ARTIFACTS_CONNECTION_STRING not set"
+if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
+    echo "Error: AZURE_STORAGE_ACCOUNT not set"
     exit 1
 fi
 
@@ -43,7 +43,8 @@ for DISTRIBUTION in "stable" "preview"; do
         --destination "${WORK_DIR}" \
         --source apt \
         --pattern "pool-${DISTRIBUTION}/*.deb" \
-        --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
         2>&1 | grep -v "WARNING" || true
 
     echo "Downloading import packages for distribution $DISTRIBUTION..."
@@ -52,7 +53,8 @@ for DISTRIBUTION in "stable" "preview"; do
         --destination "${WORK_DIR}" \
         --source apt \
         --pattern "import-${DISTRIBUTION}/*.deb" \
-        --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
         2>&1 | grep -v "WARNING" || true
 
     if [ "$(ls -A "${IMPORT_DIR}")" ]; then
@@ -136,7 +138,8 @@ EOF
         --destination apt \
         --destination-path "pool-${DISTRIBUTION}" \
         --source "${POOL_DIR}" \
-        --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
         --overwrite \
         --output table
 done
@@ -146,7 +149,8 @@ az storage blob upload-batch \
     --destination apt \
     --source "${DISTS_DIR}" \
     --destination-path dists \
-    --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
+    --auth-mode login \
+    --account-name "${AZURE_STORAGE_ACCOUNT}" \
     --overwrite \
     --output table
 
@@ -154,5 +158,6 @@ az storage blob upload-batch \
 az storage blob delete-batch \
     --source apt \
     --pattern "import-*/*.deb" \
-    --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
+    --auth-mode login \
+    --account-name "${AZURE_STORAGE_ACCOUNT}" \
     --output table
