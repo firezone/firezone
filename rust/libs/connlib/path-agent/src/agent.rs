@@ -22,7 +22,7 @@ use crate::candidate::Candidate;
 ///    probing on every pair and adopts the receive path as the
 ///    bootstrap primary.
 /// 2. **Probing.** ICMPv6 echo round-trips populate per-pair smoothed
-///    RTTs; the primary is selected by [`pair_score`].
+///    RTTs; the primary is selected by `pair_score`.
 /// 3. **Settle.** After [`BOOTSTRAP_WINDOW`], probing winds down to
 ///    [`PROBE_INTERVAL_LIVE`] on the primary only — just enough to
 ///    keep its NAT binding alive.
