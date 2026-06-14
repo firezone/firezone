@@ -1611,7 +1611,7 @@ where
                         }
                         TunnResult::Done => {}
                         TunnResult::Err(e) => {
-                            tracing::debug!(error = ?e, "Forwarded handshake rejected by boringtun");
+                            tracing::debug!("Forwarded handshake rejected by boringtun: {e}");
                         }
                         TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
                             tracing::warn!("Unexpected data packet from forwarded handshake");
