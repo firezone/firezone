@@ -2,7 +2,10 @@
 //! path selection. `agent::pair_score` maps a pair's state into a
 //! [`PairScore`]; `PathAgent::select_primary` picks the minimum.
 
+use std::net::SocketAddr;
 use std::time::Duration;
+
+use crate::agent::PairState;
 
 /// Which end of the pair carries the relay. Within the Relayed tier,
 /// prefer our own relay so a relay rotation stays a local-only concern
@@ -52,4 +55,29 @@ pub(crate) struct Bucket {
 pub(crate) struct PairScore {
     pub(crate) bucket: Bucket,
     pub(crate) rtt: Option<Duration>,
+}
+
+/// Map a pair's current state into its [`PairScore`] ranking key.
+pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
+    PairScore {
+        bucket: Bucket {
+            tier: state.kinds.0.max(state.kinds.1),
+            relay_end: if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
+                RelayEnd::Local
+            } else {
+                RelayEnd::Remote
+            },
+            family_match: if state.local_family_matched {
+                FamilyMatch::Matched
+            } else {
+                FamilyMatch::Mismatched
+            },
+            local_family: if pair.0.is_ipv6() {
+                LocalFamily::V6
+            } else {
+                LocalFamily::V4
+            },
+        },
+        rtt: state.smoothed_rtt,
+    }
 }

@@ -9,7 +9,7 @@ use boringtun::noise::{Packet, Tunn, TunnResult};
 use crate::candidate::Candidate;
 use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
-use crate::score::{Bucket, FamilyMatch, LocalFamily, PairScore, RelayEnd};
+use crate::score::pair_score;
 
 /// Path-selection state machine for ICE-less snownet connections.
 ///
@@ -101,14 +101,14 @@ struct Responder {
     dedup: Option<ResponderDedup>,
 }
 
-struct PairState {
-    kinds: (crate::CandidateKind, crate::CandidateKind),
+pub(crate) struct PairState {
+    pub(crate) kinds: (crate::CandidateKind, crate::CandidateKind),
     /// `true` for non-relay pairs by construction. For relay pairs,
     /// `false` iff the allocation and the local TURN socket use
     /// different IP families — drives a within-tier penalty in
-    /// [`pair_score`].
-    local_family_matched: bool,
-    smoothed_rtt: Option<Duration>,
+    /// [`crate::score::pair_score`].
+    pub(crate) local_family_matched: bool,
+    pub(crate) smoothed_rtt: Option<Duration>,
     inflight_probe: Option<InflightProbe>,
     /// `None` means "not yet seeded"; `drive_probes` lazy-seeds during
     /// the open window.
@@ -164,31 +164,6 @@ impl PairState {
     fn involves_relay(&self) -> bool {
         matches!(self.kinds.0, crate::CandidateKind::Relayed)
             || matches!(self.kinds.1, crate::CandidateKind::Relayed)
-    }
-}
-
-/// Map a pair's current state into its [`PairScore`] ranking key.
-fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
-    PairScore {
-        bucket: Bucket {
-            tier: state.kinds.0.max(state.kinds.1),
-            relay_end: if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
-                RelayEnd::Local
-            } else {
-                RelayEnd::Remote
-            },
-            family_match: if state.local_family_matched {
-                FamilyMatch::Matched
-            } else {
-                FamilyMatch::Mismatched
-            },
-            local_family: if pair.0.is_ipv6() {
-                LocalFamily::V6
-            } else {
-                LocalFamily::V4
-            },
-        },
-        rtt: state.smoothed_rtt,
     }
 }
 
