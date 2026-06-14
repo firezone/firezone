@@ -259,9 +259,6 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
-      # The preview MSI is consumed only by the QA clients, so it goes to the
-      # dedicated QA artifacts storage account (firezone/infra#687),
-      # authenticated via GitHub OIDC.
       - name: Azure login (OIDC) for QA artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
