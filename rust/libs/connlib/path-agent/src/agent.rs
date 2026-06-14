@@ -237,7 +237,7 @@ pub enum Event {
         remote: SocketAddr,
     },
     /// Inbound handshake bytes the caller must feed to `Tunn::decapsulate_at`.
-    ForwardInbound { bytes: Vec<u8> },
+    ForwardHandshake { bytes: Vec<u8> },
 }
 
 impl Default for PathAgent {
@@ -506,7 +506,7 @@ impl PathAgent {
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
                 self.queue_event(
-                    Event::ForwardInbound {
+                    Event::ForwardHandshake {
                         bytes: bytes.to_vec(),
                     },
                     now,
@@ -527,7 +527,7 @@ impl PathAgent {
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
                 self.queue_event(
-                    Event::ForwardInbound {
+                    Event::ForwardHandshake {
                         bytes: bytes.to_vec(),
                     },
                     now,
@@ -567,7 +567,7 @@ impl PathAgent {
 
     /// Adopt `path` as primary on a fresh inbound handshake — strictly
     /// stronger evidence than smoothed RTT. Must fire *after*
-    /// `ForwardInbound` is queued so the WG session exists before
+    /// `ForwardHandshake` is queued so the WG session exists before
     /// the consumer flushes buffered data on `PrimaryChanged`.
     fn maybe_adopt_handshake_primary(
         &mut self,

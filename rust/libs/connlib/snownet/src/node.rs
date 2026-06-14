@@ -1605,7 +1605,7 @@ where
         // first place — so the loss of source tracking is benign.
         while let Some(event) = self.agent.poll_path_event() {
             match event {
-                path_agent::Event::ForwardInbound { bytes } => {
+                path_agent::Event::ForwardHandshake { bytes } => {
                     match self
                         .tunnel
                         .decapsulate_at(None, &bytes, self.buffer.as_mut(), now)

@@ -176,12 +176,12 @@ fn inbound_handshake_init_returns_true_and_emits_forward_event() {
             .is_break()
     );
 
-    // `ForwardInbound` is queued before `PrimaryChanged` so the consumer
+    // `ForwardHandshake` is queued before `PrimaryChanged` so the consumer
     // hands the handshake to boringtun (creating the WG session) before
     // any user-data flush triggered by the primary update.
     match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
-        other => panic!("expected ForwardInbound, got {other:?}"),
+        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
+        other => panic!("expected ForwardHandshake, got {other:?}"),
     }
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
@@ -202,8 +202,8 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
     // Same shape as the init case: forward to boringtun first, then
     // adopt the bootstrap primary.
     match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
-        other => panic!("expected ForwardInbound, got {other:?}"),
+        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
+        other => panic!("expected ForwardHandshake, got {other:?}"),
     }
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
@@ -438,7 +438,7 @@ fn duplicate_inbound_init_in_flight_does_not_re_forward_to_boringtun() {
     let mut events = std::iter::from_fn(|| a.poll_event()).collect::<Vec<_>>();
     let forwarded_count = events
         .iter()
-        .filter(|e| matches!(e, Event::ForwardInbound { .. }))
+        .filter(|e| matches!(e, Event::ForwardHandshake { .. }))
         .count();
     assert_eq!(forwarded_count, 1);
     events.clear();
@@ -451,8 +451,8 @@ fn duplicate_inbound_init_in_flight_does_not_re_forward_to_boringtun() {
     assert!(
         !events
             .iter()
-            .any(|e| matches!(e, Event::ForwardInbound { .. })),
-        "duplicate in-flight init must not produce another ForwardInbound: {events:?}"
+            .any(|e| matches!(e, Event::ForwardHandshake { .. })),
+        "duplicate in-flight init must not produce another ForwardHandshake: {events:?}"
     );
 }
 
@@ -488,8 +488,8 @@ fn duplicate_inbound_init_after_ttl_falls_back_to_forward() {
     );
 
     match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
-        other => panic!("expected ForwardInbound, got {other:?}"),
+        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
+        other => panic!("expected ForwardHandshake, got {other:?}"),
     }
     assert!(a.poll_transmit().is_none());
 }
@@ -531,8 +531,8 @@ fn fresh_outbound_init_resets_initiator_response_dedup() {
             .is_break()
     );
     match a.poll_event() {
-        Some(Event::ForwardInbound { .. }) => {}
-        other => panic!("expected ForwardInbound after re-init, got {other:?}"),
+        Some(Event::ForwardHandshake { .. }) => {}
+        other => panic!("expected ForwardHandshake after re-init, got {other:?}"),
     }
 }
 
@@ -1241,8 +1241,8 @@ fn different_inbound_init_bytes_skip_dedup_cache() {
     assert!(matches!(handled, ControlFlow::Break(())));
 
     match a.poll_event() {
-        Some(Event::ForwardInbound { bytes }) => assert_eq!(bytes, different_init),
-        other => panic!("expected ForwardInbound, got {other:?}"),
+        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, different_init),
+        other => panic!("expected ForwardHandshake, got {other:?}"),
     }
     assert!(a.poll_transmit().is_none());
 }
