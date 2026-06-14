@@ -393,8 +393,27 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       refute Map.has_key?(
                :sys.get_state(socket.channel_pid).assigns.cache,
-               Ecto.UUID.dump!(pa_id)
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
              )
+    end
+
+    test "pushes reject_access even when the pair is not cached", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      client: client,
+      resource: resource
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      PortalAPI.Gateway.Channel.revoke_pair_access(gateway.id, client.id, resource.id)
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
+      assert client_id == client.id
+      assert resource_id == resource.id
+      assert Process.alive?(socket.channel_pid)
     end
   end
 
@@ -564,7 +583,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
              "expected the deleted authorization to be removed from the cache"
     end
 
-    test "removes only the targeted authorization and still rejects the active pair",
+    test "ignores a delete for an authorization superseded by a newer one for the same pair",
          %{
            gateway: gateway,
            site: site,
@@ -576,52 +595,51 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _
 
-      # Two authz_ids for the same pair. Deleting one active authz pushes
-      # reject_access (the client recovers via ICMP) and leaves the sibling
-      # cached.
-      target_pa_id = Ecto.UUID.generate()
-      surviving_pa_id = Ecto.UUID.generate()
-      target_expiry = DateTime.utc_now() |> DateTime.add(1800, :second)
-      surviving_expiry = DateTime.utc_now() |> DateTime.add(3600, :second)
+      # A newer authorization (current_pa_id) supersedes an older one for the
+      # same pair — last-one-wins, mirroring the data plane. A late delete of the
+      # superseded authorization must NOT tear down the active flow.
+      old_pa_id = Ecto.UUID.generate()
+      current_pa_id = Ecto.UUID.generate()
+      expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           state.assigns.cache
           |> Cache.Gateway.put(
-            target_pa_id,
+            old_pa_id,
             client.id,
             resource.id,
             Ecto.UUID.generate(),
-            target_expiry
+            expires_at
           )
           |> Cache.Gateway.put(
-            surviving_pa_id,
+            current_pa_id,
             client.id,
             resource.id,
             Ecto.UUID.generate(),
-            surviving_expiry
+            expires_at
           )
 
         put_in(state.assigns.cache, cache)
       end)
 
       policy_authorization = %Portal.PolicyAuthorization{
-        id: target_pa_id,
+        id: old_pa_id,
         account_id: account.id,
         initiating_device_id: client.id,
         receiving_device_id: gateway.id,
         resource_id: resource.id,
-        expires_at: target_expiry
+        expires_at: expires_at
       }
 
       send(socket.channel_pid, {:reject_access, policy_authorization})
       :sys.get_state(socket.channel_pid)
 
-      assert_push "reject_access", _
+      refute_push "reject_access", _
 
-      cache = :sys.get_state(socket.channel_pid).assigns.cache
-      assert Map.has_key?(cache, Ecto.UUID.dump!(surviving_pa_id))
-      refute Map.has_key?(cache, Ecto.UUID.dump!(target_pa_id))
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
+      assert {pa_id_bytes, _policy_id, _exp} = :sys.get_state(socket.channel_pid).assigns.cache[key]
+      assert pa_id_bytes == Ecto.UUID.dump!(current_pa_id)
     end
 
     test "does not reject when the deleted authorization is already expired (reaper)",
@@ -911,10 +929,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert client_id == client.id
       assert resource_id == resource.id
 
-      # Cache entry for the authorization is gone.
+      # Cache entry for the pair is gone.
       refute Map.has_key?(
                :sys.get_state(socket.channel_pid).assigns.cache,
-               Ecto.UUID.dump!(pa.id)
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
              )
     end
 
@@ -966,10 +984,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Must NOT have pushed reject — the message was stale.
       refute_push "reject_access", _
 
-      # Cache entry for the authorization must still be present.
+      # Cache entry for the pair must still be present.
       assert Map.has_key?(
                :sys.get_state(socket.channel_pid).assigns.cache,
-               Ecto.UUID.dump!(pa.id)
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
              )
     end
   end
@@ -1225,12 +1243,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "authorize_flow", _payload
 
-      pa_id_bytes = Ecto.UUID.dump!(expired_policy_authorization.id)
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
 
       assert %{
                assigns: %{
                  cache: %{
-                   ^pa_id_bytes => _entry
+                   ^key => _entry
                  }
                }
              } = :sys.get_state(socket.channel_pid)
@@ -1258,6 +1276,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
+      # Two distinct pairs (different resources) so both have their own cache
+      # entry — only the expired one should be pruned.
+      other_resource = resource_fixture(account: account, site: site)
+
       expired_policy_authorization =
         policy_authorization_fixture(
           account: account,
@@ -1273,7 +1295,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
           account: account,
           actor: actor,
           client: client,
-          resource: resource,
+          resource: other_resource,
           gateway: gateway,
           group: group
         )
@@ -1327,8 +1349,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
                @test_user_agent
              ),
            subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(other_resource)),
+           resource_id: to_cache(other_resource).id,
            policy_authorization_id: unexpired_policy_authorization.id,
            policy_id: unexpired_policy_authorization.policy_id,
            authorization_expires_at: unexpired_expiration,
@@ -1337,26 +1359,31 @@ defmodule PortalAPI.Gateway.ChannelTest do
          }}
       )
 
+      assert_push "authorize_flow", _payload
+
       cid_bytes = Ecto.UUID.dump!(client.id)
-      rid_bytes = Ecto.UUID.dump!(resource.id)
+      expired_key = {cid_bytes, Ecto.UUID.dump!(resource.id)}
+      unexpired_key = {cid_bytes, Ecto.UUID.dump!(other_resource.id)}
 
       expired_entry =
-        {cid_bytes, rid_bytes, Ecto.UUID.dump!(expired_policy_authorization.policy_id),
+        {Ecto.UUID.dump!(expired_policy_authorization.id),
+         Ecto.UUID.dump!(expired_policy_authorization.policy_id),
          DateTime.to_unix(expired_expiration, :second)}
 
       unexpired_entry =
-        {cid_bytes, rid_bytes, Ecto.UUID.dump!(unexpired_policy_authorization.policy_id),
+        {Ecto.UUID.dump!(unexpired_policy_authorization.id),
+         Ecto.UUID.dump!(unexpired_policy_authorization.policy_id),
          DateTime.to_unix(unexpired_expiration, :second)}
 
       assert :sys.get_state(socket.channel_pid).assigns.cache == %{
-               Ecto.UUID.dump!(expired_policy_authorization.id) => expired_entry,
-               Ecto.UUID.dump!(unexpired_policy_authorization.id) => unexpired_entry
+               expired_key => expired_entry,
+               unexpired_key => unexpired_entry
              }
 
       send(socket.channel_pid, :prune_cache)
 
       assert :sys.get_state(socket.channel_pid).assigns.cache == %{
-               Ecto.UUID.dump!(unexpired_policy_authorization.id) => unexpired_entry
+               unexpired_key => unexpired_entry
              }
     end
 
@@ -1716,7 +1743,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute_push "allow_access", _
     end
 
-    test "sends reject_access on deletion even when another authorization exists for the pair",
+    test "ignores a superseded authorization delete and rejects when the current one is deleted",
          %{
            account: account,
            actor: actor,
@@ -1796,6 +1823,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
+      # PA2 superseded PA1 for the same pair (last-one-wins). Deleting the
+      # superseded PA1 must NOT reject — the data plane is authorized under PA2.
       lsn = System.unique_integer([:positive, :monotonic])
 
       send(socket.channel_pid, %Changes.Change{
@@ -1807,16 +1836,31 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :sys.get_state(socket.channel_pid)
 
       refute_push "allow_access", _payload
+      refute_push "reject_access", _
+
+      key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
+
+      assert {pa_id_bytes, _policy_id, _exp} =
+               :sys.get_state(socket.channel_pid).assigns.cache[key]
+
+      assert pa_id_bytes == Ecto.UUID.dump!(policy_authorization2.id)
+
+      # Deleting the current authorization (PA2) rejects the pair.
+      lsn = System.unique_integer([:positive, :monotonic])
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: lsn,
+        op: :delete,
+        old_struct: policy_authorization2
+      })
+
+      :sys.get_state(socket.channel_pid)
 
       assert_push "reject_access", %{client_id: client_id, resource_id: resource_id}
       assert client_id == client.id
       assert resource_id == resource.id
 
-      # Deleting one authorization removes only its own entry; the sibling
-      # authorization for the same pair stays cached.
-      cache = :sys.get_state(socket.channel_pid).assigns.cache
-      assert Map.has_key?(cache, Ecto.UUID.dump!(policy_authorization2.id))
-      refute Map.has_key?(cache, Ecto.UUID.dump!(policy_authorization1.id))
+      refute Map.has_key?(:sys.get_state(socket.channel_pid).assigns.cache, key)
     end
 
     test "handles policy authorization deletion event when access is removed", %{
@@ -2046,14 +2090,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at_unix = DateTime.to_unix(expires_at, :second)
 
       assert cache == %{
-               Ecto.UUID.dump!(policy_authorization.id) =>
-                 {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id),
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)} =>
+                 {Ecto.UUID.dump!(policy_authorization.id),
                   Ecto.UUID.dump!(policy_authorization.policy_id), expires_at_unix},
-               Ecto.UUID.dump!(other_policy_authorization1.id) =>
-                 {Ecto.UUID.dump!(other_client.id), Ecto.UUID.dump!(resource.id),
+               {Ecto.UUID.dump!(other_client.id), Ecto.UUID.dump!(resource.id)} =>
+                 {Ecto.UUID.dump!(other_policy_authorization1.id),
                   Ecto.UUID.dump!(other_policy_authorization1.policy_id), expires_at_unix},
-               Ecto.UUID.dump!(other_policy_authorization2.id) =>
-                 {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(other_resource.id),
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(other_resource.id)} =>
+                 {Ecto.UUID.dump!(other_policy_authorization2.id),
                   Ecto.UUID.dump!(other_policy_authorization2.policy_id), expires_at_unix}
              }
 
@@ -2159,7 +2203,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert %{
                assigns: %{
-                 cache: %{^pa_id_bytes => {^cid_bytes, ^rid_bytes, ^pid_bytes, ^expires_at_unix}}
+                 cache: %{{^cid_bytes, ^rid_bytes} => {^pa_id_bytes, ^pid_bytes, ^expires_at_unix}}
                }
              } = :sys.get_state(socket.channel_pid)
 
