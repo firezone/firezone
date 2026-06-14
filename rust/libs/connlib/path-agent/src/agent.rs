@@ -273,7 +273,9 @@ impl PathAgent {
         if self.locals.contains(&c) {
             return;
         }
+
         self.locals.push(c);
+
         for &remote in &self.remotes.clone() {
             self.add_pair(c, remote);
         }
@@ -283,7 +285,9 @@ impl PathAgent {
         if self.remotes.contains(&c) {
             return;
         }
+
         self.remotes.push(c);
+
         for &local in &self.locals.clone() {
             self.add_pair(local, c);
         }
@@ -300,6 +304,7 @@ impl PathAgent {
         if pair.0.is_ipv4() != pair.1.is_ipv4() {
             return;
         }
+
         self.pairs.insert(
             pair,
             PairState {
@@ -320,14 +325,17 @@ impl PathAgent {
         let Some(i) = self.locals.iter().position(|x| x == c) else {
             return false;
         };
+
         let removed_local = self.locals.remove(i).local();
         self.pairs.retain(|(local, _), _| *local != removed_local);
+
         if let Some((local, _)) = self.primary
             && local == removed_local
         {
             self.primary = None;
             self.reopen_bootstrap_window(now);
         }
+
         true
     }
 
@@ -336,14 +344,17 @@ impl PathAgent {
         let Some(i) = self.remotes.iter().position(|x| x == c) else {
             return false;
         };
+
         let removed_addr = self.remotes.remove(i).addr();
         self.pairs.retain(|(_, remote), _| *remote != removed_addr);
+
         if let Some((_, remote)) = self.primary
             && remote == removed_addr
         {
             self.primary = None;
             self.reopen_bootstrap_window(now);
         }
+
         true
     }
 
@@ -377,13 +388,16 @@ impl PathAgent {
     pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, force_resend: bool, now: Instant) {
         // Largest WG handshake message; responses are smaller.
         const MAX_SCRATCH_SPACE: usize = 148;
+
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
         let TunnResult::WriteToNetwork(bytes) =
             tunnel.format_handshake_initiation_at(&mut buf, force_resend, now)
         else {
             tracing::debug!("boringtun declined to emit a HandshakeInit");
             return;
         };
+
         self.handle_outbound(bytes.to_vec(), now);
     }
 
@@ -402,7 +416,9 @@ impl PathAgent {
             Ok(Packet::HandshakeInit(_)) if !self.established => {
                 // Fresh init starts a fresh session.
                 self.forwarded_response = None;
+
                 tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
+
                 self.outbound_init = Some(OutboundInit {
                     bytes,
                     retransmits: BTreeMap::new(),
@@ -416,7 +432,9 @@ impl PathAgent {
                     bytes = bytes.len(),
                     "Re-key HandshakeInit; restarting probes"
                 );
+
                 self.reopen_bootstrap_window(now);
+
                 if let Some((local, remote)) = self.primary {
                     self.pending_transmits.push_back(Transmit {
                         local,
@@ -435,6 +453,7 @@ impl PathAgent {
                         remote = %path.1,
                         "Sending HandshakeResponse on init's recv path",
                     );
+
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
@@ -485,11 +504,13 @@ impl PathAgent {
                     && d.init_bytes == bytes
                 {
                     tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
+
                     self.pending_transmits.push_back(Transmit {
                         local: path.0,
                         remote: path.1,
                         payload: Payload::Ciphertext(d.response_bytes.clone()),
                     });
+
                     return ControlFlow::Break(());
                 }
 
@@ -499,12 +520,15 @@ impl PathAgent {
                 // boringtun rejects as `WrongTai64nTimestamp`.
                 if self.responder.last_init.as_deref() == Some(bytes) {
                     tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
+
                     return ControlFlow::Break(());
                 }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit, forwarding to boringtun");
+
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
+
                 self.queue_event(
                     Event::ForwardHandshake {
                         bytes: bytes.to_vec(),
@@ -513,6 +537,7 @@ impl PathAgent {
                 );
                 self.reopen_bootstrap_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
+
                 ControlFlow::Break(())
             }
             Packet::HandshakeResponse(_) => {
@@ -520,12 +545,15 @@ impl PathAgent {
                 // the session index and desync state.
                 if self.forwarded_response.as_deref() == Some(bytes) {
                     tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
+
                     return ControlFlow::Break(());
                 }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse, forwarding to boringtun");
+
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
+
                 self.queue_event(
                     Event::ForwardHandshake {
                         bytes: bytes.to_vec(),
@@ -534,6 +562,7 @@ impl PathAgent {
                 );
                 self.reopen_bootstrap_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
+
                 ControlFlow::Break(())
             }
             Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(bytes),
@@ -555,13 +584,16 @@ impl PathAgent {
         {
             return;
         }
+
         for state in self.pairs.values_mut() {
             state.smoothed_rtt = None;
             // Pre-reset in-flight replies will be ignored by seq mismatch.
             state.inflight_probe = None;
         }
+
         self.bootstrap.settled = false;
         self.bootstrap.until = None;
+
         self.seed_probe_schedule(now);
     }
 
@@ -578,7 +610,9 @@ impl PathAgent {
         if !is_handshake || self.primary == Some(path) {
             return;
         }
+
         self.primary = Some(path);
+
         self.queue_event(
             Event::PrimaryChanged {
                 local: path.0,
@@ -594,9 +628,11 @@ impl PathAgent {
 
     pub fn poll_event(&mut self) -> Option<Event> {
         let event = self.events.pop_front();
+
         if self.events.is_empty() {
             self.events_queued_at = None;
         }
+
         event
     }
 
@@ -614,6 +650,7 @@ impl PathAgent {
         match probe.kind {
             crate::icmpv6::Echo::Request => {
                 tracing::trace!(local = %pair.0, remote = %pair.1, seq = probe.seq, "Probe request received");
+
                 self.pending_transmits.push_back(Transmit {
                     local: pair.0,
                     remote: pair.1,
@@ -628,13 +665,16 @@ impl PathAgent {
                     && inflight.seq == probe.seq
                 {
                     let rtt = now.saturating_duration_since(inflight.sent_at);
+
                     state.inflight_probe = None;
                     // Light EMA; sufficient for selection inside the 10 s window.
                     state.smoothed_rtt = Some(match state.smoothed_rtt {
                         None => rtt,
                         Some(prev) => (prev + rtt) / 2,
                     });
+
                     tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
+
                     self.select_primary(now);
                 }
             }
@@ -683,16 +723,20 @@ impl PathAgent {
         let Some(deadline) = self.bootstrap.until else {
             return;
         };
+
         if now < deadline {
             return;
         }
+
         for (pair, state) in self.pairs.iter_mut() {
             state.inflight_probe = None;
             state.next_probe_at =
                 (Some(*pair) == self.primary).then_some(now + PROBE_INTERVAL_LIVE);
         }
+
         self.bootstrap.until = None;
         self.bootstrap.settled = true;
+
         tracing::info!(
             primary = ?self.primary,
             interval = ?PROBE_INTERVAL_LIVE,
@@ -720,11 +764,14 @@ impl PathAgent {
             })
             .map(|(addrs, _)| *addrs)
             .collect();
+
         if !new_relay_pairs.is_empty() && outbound.retransmits.is_empty() {
             outbound.started_at = now;
         }
+
         for (local, remote) in new_relay_pairs {
             tracing::debug!(%local, %remote, "Fanning out HandshakeInit on relay pair");
+
             pending.push_back(Transmit {
                 local,
                 remote,
@@ -738,11 +785,13 @@ impl PathAgent {
         for ((local, remote), state) in outbound.retransmits.iter_mut() {
             if now >= state.next_fire_at {
                 tracing::trace!(%local, %remote, step = state.step, "WG init retransmit");
+
                 pending.push_back(Transmit {
                     local: *local,
                     remote: *remote,
                     payload: Payload::Ciphertext(outbound.bytes.clone()),
                 });
+
                 state.advance(now);
             }
         }
@@ -752,14 +801,17 @@ impl PathAgent {
         if self.bootstrap.settled {
             return;
         }
+
         if self.bootstrap.until.is_none() {
             self.bootstrap.until = Some(now + BOOTSTRAP_WINDOW);
+
             tracing::info!(
                 pairs = self.pairs.len(),
                 window = ?BOOTSTRAP_WINDOW,
                 "Iceless bootstrap window opened",
             );
         }
+
         for state in self.pairs.values_mut() {
             if state.next_probe_at.is_none() {
                 state.next_probe_at = Some(now);
@@ -773,6 +825,7 @@ impl PathAgent {
         } else {
             (PROBE_INTERVAL, false)
         };
+
         // Lazy seed: pairs added after `seed_probe_schedule` ran (typical
         // for trickled host/srflx candidates landing after the relay
         // bootstrap) have `next_probe_at == None`. Treat as due now
@@ -780,13 +833,16 @@ impl PathAgent {
         let window_open = self.bootstrap.until.is_some();
         let primary = self.primary;
         let pending = &mut self.pending_transmits;
+
         for ((local, remote), state) in self.pairs.iter_mut() {
             if only_primary && primary != Some((*local, *remote)) {
                 continue;
             }
+
             let Some(deadline) = state.next_probe_at.or(window_open.then_some(now)) else {
                 continue;
             };
+
             if now < deadline {
                 continue;
             }
@@ -808,6 +864,7 @@ impl PathAgent {
             state.next_probe_at = Some(now + interval);
 
             tracing::trace!(%local, %remote, seq, "Probe send");
+
             pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
@@ -827,6 +884,7 @@ impl PathAgent {
             .map(|(k, _)| *k);
 
         let Some(new) = best else { return };
+
         if self.primary == Some(new) {
             return;
         }
@@ -844,10 +902,12 @@ impl PathAgent {
             && let Some(prev_rtt) = prev.smoothed_rtt
         {
             let new_state = &self.pairs[&new];
+
             if pair_score(new, new_state).bucket == pair_score(primary, prev).bucket {
                 let new_rtt = new_state.smoothed_rtt.unwrap_or_default();
                 let margin =
                     PRIMARY_HYSTERESIS_FLOOR.max(prev_rtt.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
+
                 if new_rtt + margin >= prev_rtt {
                     return;
                 }
@@ -860,7 +920,9 @@ impl PathAgent {
             .and_then(|s| s.smoothed_rtt)
             .unwrap_or_default();
         let from = self.primary;
+
         self.primary = Some(new);
+
         tracing::debug!(
             ?from,
             local = %new.0,
@@ -868,6 +930,7 @@ impl PathAgent {
             rtt = ?new_rtt,
             "Iceless primary changed",
         );
+
         self.queue_event(
             Event::PrimaryChanged {
                 local: new.0,
