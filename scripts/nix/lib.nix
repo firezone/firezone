@@ -16,7 +16,7 @@ rec {
   # Only the Rust workspace; changes elsewhere in the monorepo don't rebuild.
   # Flake sources contain only git-tracked files, so build artifacts like
   # gui-client/dist and target/ are already excluded.
-  src = ../rust;
+  src = ../../rust;
 
   # `cargo update --workspace` runs on every release, so any fixed-output
   # vendor hash would need bumping each time. Importing the lockfile with
