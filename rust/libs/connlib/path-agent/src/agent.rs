@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 use boringtun::noise::{Packet, Tunn, TunnResult};
 
 use crate::candidate::Candidate;
+use crate::event::{Event, Payload, Transmit};
+use crate::retransmit::PairRetransmit;
+use crate::score::{Bucket, FamilyMatch, LocalFamily, PairScore, RelayEnd};
 
 /// Path-selection state machine for ICE-less snownet connections.
 ///
@@ -17,18 +20,18 @@ use crate::candidate::Candidate;
 ///
 /// # Lifecycle
 ///
-/// 1. **Bootstrap.** First outbound `HandshakeInit` fans out across
+/// 1. **Handshake.** First outbound `HandshakeInit` fans out across
 ///    every relay-involved pair with a per-pair retransmit ladder.
 ///    The first inbound handshake seeds [`PROBE_INTERVAL`]-cadence
 ///    probing on every pair and adopts the receive path as the
-///    bootstrap primary.
+///    initial primary.
 /// 2. **Probing.** ICMPv6 echo round-trips populate per-pair smoothed
 ///    RTTs; the primary is selected by `pair_score`.
-/// 3. **Settle.** After [`BOOTSTRAP_WINDOW`], probing winds down to
+/// 3. **Settle.** After [`EVALUATION_WINDOW`], probing winds down to
 ///    [`PROBE_INTERVAL_LIVE`] on the primary only — just enough to
 ///    keep its NAT binding alive.
 /// 4. **Re-key.** A WG re-key (outbound `HandshakeInit` while
-///    `established`) reopens the bootstrap window so probes restart
+///    `established`) reopens the path-evaluation window so probes restart
 ///    immediately; the same reset fires on every inbound handshake.
 pub struct PathAgent {
     locals: Vec<Candidate>,
@@ -41,7 +44,7 @@ pub struct PathAgent {
     /// Subsequent inits from boringtun are re-keys.
     established: bool,
 
-    bootstrap: Bootstrap,
+    window: EvaluationWindow,
     responder: Responder,
 
     /// In-flight outbound `HandshakeInit` plus per-pair retransmits.
@@ -57,13 +60,33 @@ pub struct PathAgent {
     events_queued_at: Option<Instant>,
 }
 
-#[derive(Default)]
-struct Bootstrap {
-    /// Window deadline. `Some` while open; cleared on settle.
-    until: Option<Instant>,
-    /// Sticky: once the deadline elapses, later events don't reopen
-    /// the window.
-    settled: bool,
+/// Lifecycle of the aggressive-probing window each fresh handshake
+/// opens. `Pending` before the first handshake (and briefly after a
+/// reset); `Open` while every pair is probed at [`PROBE_INTERVAL`] up
+/// to the deadline; `Settled` once it elapses and probing drops to
+/// [`PROBE_INTERVAL_LIVE`] on the primary only. Settling is sticky —
+/// only [`PathAgent::reopen_evaluation_window`] returns to `Pending`.
+enum EvaluationWindow {
+    Pending,
+    Open { until: Instant },
+    Settled,
+}
+
+impl EvaluationWindow {
+    fn deadline(&self) -> Option<Instant> {
+        match self {
+            Self::Open { until } => Some(*until),
+            Self::Pending | Self::Settled => None,
+        }
+    }
+
+    fn is_open(&self) -> bool {
+        matches!(self, Self::Open { .. })
+    }
+
+    fn is_settled(&self) -> bool {
+        matches!(self, Self::Settled)
+    }
 }
 
 #[derive(Default)]
@@ -103,7 +126,7 @@ struct OutboundInit {
     bytes: Vec<u8>,
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
     /// First emission timestamp. Reset when relay pairs arrive late
-    /// so `BOOTSTRAP_WINDOW` doesn't count waiting time.
+    /// so `EVALUATION_WINDOW` doesn't count waiting time.
     started_at: Instant,
 }
 
@@ -125,7 +148,7 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// persistent-keepalive default.
 pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
 
-pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
+pub const EVALUATION_WINDOW: Duration = Duration::from_secs(10);
 
 /// Within the same discrete bucket (same tier / relay-first /
 /// family-match / v6-first), a challenger pair must beat the current
@@ -137,30 +160,6 @@ pub const BOOTSTRAP_WINDOW: Duration = Duration::from_secs(10);
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
 
-struct PairRetransmit {
-    next_fire_at: Instant,
-    step: usize,
-}
-
-impl PairRetransmit {
-    /// 50/50/50 ms head covers the race where our init lands on a
-    /// relay before the *peer's* channel-bind is registered. Past
-    /// that, exponential doubling capped at 1.6 s.
-    const LADDER_MS: &'static [u64] = &[50, 50, 50, 100, 200, 400, 800, 1600];
-
-    fn new(now: Instant) -> Self {
-        Self {
-            next_fire_at: now + Duration::from_millis(Self::LADDER_MS[0]),
-            step: 0,
-        }
-    }
-
-    fn advance(&mut self, now: Instant) {
-        self.step = (self.step + 1).min(Self::LADDER_MS.len() - 1);
-        self.next_fire_at = now + Duration::from_millis(Self::LADDER_MS[self.step]);
-    }
-}
-
 impl PairState {
     fn involves_relay(&self) -> bool {
         matches!(self.kinds.0, crate::CandidateKind::Relayed)
@@ -168,57 +167,7 @@ impl PairState {
     }
 }
 
-/// Which end of the pair carries the relay. Within the Relayed tier,
-/// prefer our own relay so a relay rotation stays a local-only concern
-/// (no invalidated remote candidate to signal back to the peer).
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum RelayEnd {
-    Local,
-    Remote,
-}
-
-/// Whether the relay has to bridge address families internally.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum FamilyMatch {
-    Matched,
-    Mismatched,
-}
-
-/// Address family of the local send socket. v6 paths are generally
-/// shorter and our gear is dual-stack, so prefer them.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum LocalFamily {
-    V6,
-    V4,
-}
-
-/// Smaller-is-better discrete preference bucket. Field order is the
-/// comparison priority; each axis is an enum whose variants are
-/// declared best-first, so derived `Ord` ranks pairs without leaning
-/// on any `bool` ordering convention. These are categorical: a strict
-/// win here switches the primary regardless of RTT (see
-/// `select_primary`). Pairs in the same bucket are separated
-/// only by RTT.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-struct Bucket {
-    /// Worse-of-pair candidate kind. `Host < ServerReflexive < Relayed`,
-    /// so direct beats relayed.
-    tier: crate::CandidateKind,
-    relay_end: RelayEnd,
-    family_match: FamilyMatch,
-    local_family: LocalFamily,
-}
-
-/// Smaller-is-better sort key for primary selection: the discrete
-/// [`Bucket`] followed by smoothed RTT. Derived `Ord` compares the
-/// bucket first and only races on latency once every categorical
-/// preference ties.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-struct PairScore {
-    bucket: Bucket,
-    rtt: Option<Duration>,
-}
-
+/// Map a pair's current state into its [`PairScore`] ranking key.
 fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
     PairScore {
         bucket: Bucket {
@@ -243,36 +192,6 @@ fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
     }
 }
 
-/// Outbound transmit. snownet picks the wire transport (host send vs.
-/// TURN channel-data) from `local`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Transmit {
-    pub local: SocketAddr,
-    pub remote: SocketAddr,
-    pub payload: Payload,
-}
-
-/// `Ciphertext`: already-encrypted WG bytes (handshake fanout,
-/// retransmits, dedup replays). `Plaintext`: an inner IP packet
-/// snownet must run through `Tunn::encapsulate` first — probes only.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Payload {
-    Ciphertext(Vec<u8>),
-    Plaintext(ip_packet::IpPacket),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
-    /// Primary path set or re-selected. snownet adopts the pair as
-    /// its `peer_socket`.
-    PrimaryChanged {
-        local: SocketAddr,
-        remote: SocketAddr,
-    },
-    /// Inbound handshake bytes the caller must feed to `Tunn::decapsulate_at`.
-    ForwardHandshake { bytes: Vec<u8> },
-}
-
 impl Default for PathAgent {
     fn default() -> Self {
         Self::new()
@@ -287,7 +206,7 @@ impl PathAgent {
             pairs: BTreeMap::new(),
             primary: None,
             established: false,
-            bootstrap: Bootstrap::default(),
+            window: EvaluationWindow::Pending,
             responder: Responder::default(),
             outbound_init: None,
             forwarded_response: None,
@@ -353,7 +272,7 @@ impl PathAgent {
 
     /// Drop a local candidate and every pair using it. Clears
     /// `primary` if it pointed at a removed pair, and reopens the
-    /// bootstrap window so the survivors get re-probed.
+    /// path-evaluation window so the survivors get re-probed.
     pub fn remove_local_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         let Some(i) = self.locals.iter().position(|x| x == c) else {
             return false;
@@ -366,7 +285,7 @@ impl PathAgent {
             && local == removed_local
         {
             self.primary = None;
-            self.reopen_bootstrap_window(now);
+            self.reopen_evaluation_window(now);
         }
 
         true
@@ -385,7 +304,7 @@ impl PathAgent {
             && remote == removed_addr
         {
             self.primary = None;
-            self.reopen_bootstrap_window(now);
+            self.reopen_evaluation_window(now);
         }
 
         true
@@ -395,7 +314,7 @@ impl PathAgent {
         self.primary
     }
 
-    /// Iterate every relay-involved pair — the bootstrap fanout set.
+    /// Iterate every relay-involved pair — the handshake fanout set.
     pub fn relay_pairs(&self) -> impl Iterator<Item = (SocketAddr, SocketAddr)> + '_ {
         self.pairs
             .iter()
@@ -439,7 +358,7 @@ impl PathAgent {
     /// - First `HandshakeInit` (`!established`): stash and let
     ///   `handle_timeout` fan it out across relay pairs.
     /// - `HandshakeInit` while `established` (re-key): ride `primary`
-    ///   and reopen the bootstrap window so probes restart now
+    ///   and reopen the path-evaluation window so probes restart now
     ///   instead of waiting an RTT for the response.
     /// - `HandshakeResponse`: pair with the most recently forwarded
     ///   inbound init, send on its receive path, cache for replay.
@@ -450,7 +369,7 @@ impl PathAgent {
                 // Fresh init starts a fresh session.
                 self.forwarded_response = None;
 
-                tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
+                tracing::debug!(bytes = bytes.len(), "Buffered initial HandshakeInit");
 
                 self.outbound_init = Some(OutboundInit {
                     bytes,
@@ -466,7 +385,7 @@ impl PathAgent {
                     "Re-key HandshakeInit; restarting probes"
                 );
 
-                self.reopen_bootstrap_window(now);
+                self.reopen_evaluation_window(now);
 
                 if let Some((local, remote)) = self.primary {
                     self.pending_transmits.push_back(Transmit {
@@ -497,7 +416,7 @@ impl PathAgent {
                         response_bytes: bytes,
                         cached_at: now,
                     });
-                    // Responder side: bootstrap done; later inits are re-keys.
+                    // Responder side: initial handshake done; later inits are re-keys.
                     self.established = true;
                 }
             }
@@ -568,7 +487,7 @@ impl PathAgent {
                     },
                     now,
                 );
-                self.reopen_bootstrap_window(now);
+                self.reopen_evaluation_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
 
                 ControlFlow::Break(())
@@ -593,7 +512,7 @@ impl PathAgent {
                     },
                     now,
                 );
-                self.reopen_bootstrap_window(now);
+                self.reopen_evaluation_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
 
                 ControlFlow::Break(())
@@ -610,10 +529,9 @@ impl PathAgent {
     /// Idempotent within an open window: an outbound re-key reopens
     /// immediately; the inbound response 1 RTT later would otherwise
     /// re-wipe accumulated probe data.
-    fn reopen_bootstrap_window(&mut self, now: Instant) {
-        if let Some(deadline) = self.bootstrap.until
+    fn reopen_evaluation_window(&mut self, now: Instant) {
+        if let Some(deadline) = self.window.deadline()
             && now < deadline
-            && !self.bootstrap.settled
         {
             return;
         }
@@ -624,8 +542,7 @@ impl PathAgent {
             state.inflight_probe = None;
         }
 
-        self.bootstrap.settled = false;
-        self.bootstrap.until = None;
+        self.window = EvaluationWindow::Pending;
 
         self.seed_probe_schedule(now);
     }
@@ -734,7 +651,7 @@ impl PathAgent {
             .chain(self.events_queued_at)
             .chain(next_retransmit)
             .chain(next_probe)
-            .chain(self.bootstrap.until)
+            .chain(self.window.deadline())
             .chain(pending_fanout)
             .min()
     }
@@ -745,12 +662,12 @@ impl PathAgent {
         self.maybe_settle(now);
     }
 
-    /// At the bootstrap deadline, lock the primary in and scale to
+    /// At the evaluation deadline, lock the primary in and scale to
     /// [`PROBE_INTERVAL_LIVE`] on it only. Each side settles
     /// independently, so asymmetric primaries keep both directions
     /// alive.
     fn maybe_settle(&mut self, now: Instant) {
-        let Some(deadline) = self.bootstrap.until else {
+        let Some(deadline) = self.window.deadline() else {
             return;
         };
 
@@ -764,13 +681,12 @@ impl PathAgent {
                 (Some(*pair) == self.primary).then_some(now + PROBE_INTERVAL_LIVE);
         }
 
-        self.bootstrap.until = None;
-        self.bootstrap.settled = true;
+        self.window = EvaluationWindow::Settled;
 
         tracing::info!(
             primary = ?self.primary,
             interval = ?PROBE_INTERVAL_LIVE,
-            "Iceless bootstrap window closed; settling on primary",
+            "Iceless path-evaluation window closed; settling on primary",
         );
     }
 
@@ -785,7 +701,7 @@ impl PathAgent {
         // Fan out to relay pairs that arrived after the initial fanout
         // (or to all relay pairs if the init landed before any remote
         // candidates were known). First fan-out resets `started_at` so
-        // `BOOTSTRAP_WINDOW` doesn't count waiting-for-candidates time.
+        // `EVALUATION_WINDOW` doesn't count waiting-for-candidates time.
         let new_relay_pairs: Vec<_> = self
             .pairs
             .iter()
@@ -828,17 +744,19 @@ impl PathAgent {
     }
 
     fn seed_probe_schedule(&mut self, now: Instant) {
-        if self.bootstrap.settled {
+        if self.window.is_settled() {
             return;
         }
 
-        if self.bootstrap.until.is_none() {
-            self.bootstrap.until = Some(now + BOOTSTRAP_WINDOW);
+        if !self.window.is_open() {
+            self.window = EvaluationWindow::Open {
+                until: now + EVALUATION_WINDOW,
+            };
 
             tracing::info!(
                 pairs = self.pairs.len(),
-                window = ?BOOTSTRAP_WINDOW,
-                "Iceless bootstrap window opened",
+                window = ?EVALUATION_WINDOW,
+                "Iceless path-evaluation window opened",
             );
         }
 
@@ -850,7 +768,7 @@ impl PathAgent {
     }
 
     fn drive_probes(&mut self, now: Instant) {
-        let (interval, only_primary) = if self.bootstrap.settled {
+        let (interval, only_primary) = if self.window.is_settled() {
             (PROBE_INTERVAL_LIVE, true)
         } else {
             (PROBE_INTERVAL, false)
@@ -858,9 +776,9 @@ impl PathAgent {
 
         // Lazy seed: pairs added after `seed_probe_schedule` ran (typical
         // for trickled host/srflx candidates landing after the relay
-        // bootstrap) have `next_probe_at == None`. Treat as due now
+        // handshake) have `next_probe_at == None`. Treat as due now
         // while the window is open. Pre-handshake stays dormant.
-        let window_open = self.bootstrap.until.is_some();
+        let window_open = self.window.is_open();
         let primary = self.primary;
         let pending = &mut self.pending_transmits;
 
@@ -926,7 +844,7 @@ impl PathAgent {
         // the same bucket, require `new` to beat the incumbent's RTT by a
         // margin so probe jitter doesn't flap between near-tied pairs. A
         // missing / unmeasured / dropped incumbent leaves nothing to be
-        // sticky about — adopt `new` so bootstrap and re-key still converge.
+        // sticky about — adopt `new` so evaluation and re-key still converge.
         if let Some(primary) = self.primary
             && let Some(prev) = self.pairs.get(&primary)
             && let Some(prev_rtt) = prev.smoothed_rtt

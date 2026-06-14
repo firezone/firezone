@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    BOOTSTRAP_WINDOW, Candidate, Event, PROBE_DST, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_SRC,
+    EVALUATION_WINDOW, Candidate, Event, PROBE_DST, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_SRC,
     PROBE_TIMEOUT, PathAgent, Payload, Transmit,
 };
 
@@ -75,7 +75,7 @@ fn duplicate_candidates_are_ignored() {
 fn cross_family_pairs_are_skipped() {
     // A v4 socket can't send to a v6 destination (and vice versa), so
     // pairs that mix families never produce a working path. The
-    // bootstrap fanout would try to route a v6 destination through a
+    // handshake fanout would try to route a v6 destination through a
     // v4 relay channel binding, which TURN cannot do.
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::relayed(addr(1), addr(1)));
@@ -113,7 +113,7 @@ fn outbound_data_after_primary_selected_sends_on_primary() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    // Drive a real bootstrap → primary on the host×host pair (best tier).
+    // Drive a real handshake → primary on the host×host pair (best tier).
     let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
@@ -204,7 +204,7 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
     );
 
     // Same shape as the init case: forward to boringtun first, then
-    // adopt the bootstrap primary.
+    // adopt the initial primary.
     match a.poll_event() {
         Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
         other => panic!("expected ForwardHandshake, got {other:?}"),
@@ -321,7 +321,7 @@ fn handle_timeout_before_deadline_does_not_emit() {
 #[test]
 fn srflx_local_uses_base_as_send_from_address() {
     // Server-reflexive's `addr` is the NAT-mapped public face;
-    // `local` is the actual base socket we send from. The bootstrap
+    // `local` is the actual base socket we send from. The handshake
     // fanout must use `local` as `Transmit.local`, not `addr`, or the
     // outbound packet would target a socket we don't own.
     let mut a = PathAgent::new();
@@ -365,7 +365,7 @@ fn outbound_handshake_init_fans_out_on_every_relay_pair() {
 
 #[test]
 fn outbound_handshake_init_before_relay_pair_buffers_then_fans_out_on_handle_timeout() {
-    // snownet emits the bootstrap WG init from `upsert_connection`,
+    // snownet emits the initial WG init from `upsert_connection`,
     // before any remote candidates have arrived over signaling. The
     // path-agent buffers the bytes; `handle_timeout` fans them out
     // once a relay-involved pair shows up.
@@ -404,10 +404,10 @@ fn buffered_handshake_init_does_not_emit_events_while_awaiting_relay_pairs() {
     let now = Instant::now();
 
     a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
+    a.handle_timeout(now + EVALUATION_WINDOW + Duration::from_secs(1));
     assert!(
         a.poll_event().is_none(),
-        "bootstrap should not fail while still waiting for a relay pair"
+        "path evaluation should not fail while still waiting for a relay pair"
     );
 }
 
@@ -429,7 +429,7 @@ fn outbound_handshake_init_fanout_targets_match_relay_pairs() {
 
 #[test]
 fn duplicate_inbound_init_in_flight_does_not_re_forward_to_boringtun() {
-    // The peer's bootstrap fanout makes the same init reach us on
+    // The peer's handshake fanout makes the same init reach us on
     // multiple pairs within the same tick — before our response has
     // gone out, so `responder_dedup` isn't populated yet. The dedup
     // here drops the duplicate so it doesn't re-trip boringtun's
@@ -507,7 +507,7 @@ fn duplicate_inbound_response_is_dropped_after_first_forward() {
         a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now)
             .is_break()
     );
-    // Drain the bootstrap-primary event the first response produces so we
+    // Drain the initial-primary event the first response produces so we
     // can assert "no further events" on the second.
     while a.poll_event().is_some() {}
 
@@ -908,7 +908,7 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
     a.add_remote_candidate(Candidate::host(addr(4)));
     let now = Instant::now();
 
-    // Adopt (1,3) as the bootstrap primary, then give it a measured RTT.
+    // Adopt (1,3) as the initial primary, then give it a measured RTT.
     let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(3)), now);
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
@@ -1006,14 +1006,14 @@ fn stale_echo_reply_is_ignored() {
     let stale_reply = build_echo_reply(0, 0xdead);
     let _ = a.handle_inbound_tun(stale_reply, (addr(1), addr(3)), now);
 
-    // The bootstrap-primary already adopted the relay-relay path the
+    // The initial-primary already adopted the relay-relay path the
     // handshake landed on; a stale reply doesn't unseat it (no RTT
     // sample landed, so `select_primary` has nothing new to consider).
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
 }
 
 #[test]
-fn outbound_init_keeps_retransmitting_past_bootstrap_window_without_response() {
+fn outbound_init_keeps_retransmitting_past_evaluation_window_without_response() {
     // We no longer fail the connection on a missed handshake — boringtun's
     // `REKEY_ATTEMPT_TIME` is the source of truth. Verify retransmits
     // keep firing past the old give-up deadline.
@@ -1024,7 +1024,7 @@ fn outbound_init_keeps_retransmitting_past_bootstrap_window_without_response() {
     a.handle_timeout(now);
     while a.poll_transmit().is_some() {}
 
-    a.handle_timeout(now + BOOTSTRAP_WINDOW + Duration::from_secs(1));
+    a.handle_timeout(now + EVALUATION_WINDOW + Duration::from_secs(1));
     assert!(a.poll_event().is_none(), "no BootstrapFailed-style event");
     assert!(
         a.poll_transmit().is_some(),
@@ -1059,15 +1059,15 @@ fn drive_probes_only_emits_on_primary_after_settle() {
     // Settle. Bootstrap-cadence burst fires here for due pairs, then
     // settle re-baselines only the primary onto `PROBE_INTERVAL_LIVE`
     // and clears the rest.
-    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    a.handle_timeout(now + EVALUATION_WINDOW);
     while a.poll_transmit().is_some() {}
 
     // Within the live window — nothing fires yet.
-    a.handle_timeout(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE - Duration::from_millis(1));
+    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE - Duration::from_millis(1));
     assert!(a.poll_transmit().is_none(), "before live deadline");
 
     // At the live deadline — only the primary fires.
-    a.handle_timeout(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE);
+    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE);
     let live: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert_eq!(live.len(), 1, "expected primary-only probe: {live:?}");
     assert_eq!((live[0].local, live[0].remote), primary);
@@ -1093,13 +1093,13 @@ fn settle_keeps_poll_timeout_armed_for_primary_probes() {
     assert_eq!(a.primary(), Some(primary));
     while a.poll_event().is_some() {} // drain PrimaryChanged
 
-    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    a.handle_timeout(now + EVALUATION_WINDOW);
     while a.poll_transmit().is_some() {}
 
     // After settle, the only armed deadline is the primary's next live tick.
     assert_eq!(
         a.poll_timeout(),
-        Some(now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE),
+        Some(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE),
     );
 }
 
@@ -1122,7 +1122,7 @@ fn settle_is_sticky_across_later_handshakes() {
     );
     while a.poll_event().is_some() {}
 
-    a.handle_timeout(now + BOOTSTRAP_WINDOW); // settle
+    a.handle_timeout(now + EVALUATION_WINDOW); // settle
     while a.poll_transmit().is_some() {}
 
     let live_deadline = a.poll_timeout().expect("live cadence");
@@ -1130,7 +1130,7 @@ fn settle_is_sticky_across_later_handshakes() {
     let _ = a.handle_inbound_network(
         &handshake_response_bytes(),
         (addr(2), addr(4)),
-        now + BOOTSTRAP_WINDOW + Duration::from_secs(60),
+        now + EVALUATION_WINDOW + Duration::from_secs(60),
     );
     while a.poll_event().is_some() {}
 
@@ -1138,7 +1138,7 @@ fn settle_is_sticky_across_later_handshakes() {
 }
 
 #[test]
-fn inbound_handshake_reopens_bootstrap_window_after_settle() {
+fn inbound_handshake_reopens_evaluation_window_after_settle() {
     // Every fresh inbound handshake reopens the probing window so we
     // re-pick the best pair on the new topology. The reopen runs
     // *after* the dedup checks in `handle_inbound_network`, so duplicates of
@@ -1151,7 +1151,7 @@ fn inbound_handshake_reopens_bootstrap_window_after_settle() {
     let now = Instant::now();
     let primary = (addr(1), addr(3));
 
-    // Drive a real bootstrap, settle on the host×host primary.
+    // Drive a real handshake, settle on the host×host primary.
     let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
     a.handle_timeout(now);
@@ -1163,11 +1163,11 @@ fn inbound_handshake_reopens_bootstrap_window_after_settle() {
         now + Duration::from_millis(50),
     );
     while a.poll_event().is_some() {}
-    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    a.handle_timeout(now + EVALUATION_WINDOW);
     while a.poll_transmit().is_some() {}
 
     // Sanity: post-settle, only the primary probes.
-    let live_tick = now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE;
+    let live_tick = now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE;
     a.handle_timeout(live_tick);
     let live_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert_eq!(
@@ -1196,7 +1196,7 @@ fn inbound_handshake_reopens_bootstrap_window_after_settle() {
 }
 
 #[test]
-fn duplicate_inbound_handshake_does_not_reopen_bootstrap_window() {
+fn duplicate_inbound_handshake_does_not_reopen_evaluation_window() {
     // Reopen is gated on actually forwarding a handshake to boringtun:
     // dedup-hit duplicates don't count as "new session" and shouldn't
     // disturb the steady state.
@@ -1215,12 +1215,12 @@ fn duplicate_inbound_handshake_does_not_reopen_bootstrap_window() {
         now + Duration::from_millis(50),
     );
     while a.poll_event().is_some() {}
-    a.handle_timeout(now + BOOTSTRAP_WINDOW);
+    a.handle_timeout(now + EVALUATION_WINDOW);
     while a.poll_transmit().is_some() {}
 
     // Same response bytes as before -> hits `forwarded_response` dedup
     // and never triggers the reopen path.
-    let later = now + BOOTSTRAP_WINDOW + PROBE_INTERVAL_LIVE + Duration::from_secs(1);
+    let later = now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE + Duration::from_secs(1);
     let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), later);
     a.handle_timeout(later);
     let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -1292,7 +1292,7 @@ fn fresh_inbound_handshake_on_new_path_adopts_it_as_primary() {
 
 #[test]
 fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
-    // Roam scenario: bootstrap settles on `initial_path` with a recent
+    // Roam scenario: evaluation settles on `initial_path` with a recent
     // RTT measurement. After a fresh handshake on `roam_path`, a stale
     // probe reply for the *old* path can still arrive (peer's NAT
     // hadn't dropped the old binding yet). Without the topology reset,
@@ -1372,7 +1372,7 @@ fn duplicate_inbound_handshake_does_not_change_primary() {
 }
 
 #[test]
-fn first_inbound_handshake_adopts_bootstrap_primary_so_outbound_data_flows() {
+fn first_inbound_handshake_adopts_initial_primary_so_outbound_data_flows() {
     // Closes the user-data drop window between handshake completion and
     // the first probe RTT: the relay path the WG handshake landed on is
     // adopted as the primary immediately.
@@ -1383,7 +1383,7 @@ fn first_inbound_handshake_adopts_bootstrap_primary_so_outbound_data_flows() {
     let _ = a.handle_inbound_network(&handshake_response_bytes(), recv_path, now);
     assert_eq!(a.primary(), Some(recv_path));
 
-    // Outbound user data routes through the bootstrap primary.
+    // Outbound user data routes through the initial primary.
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
     a.handle_outbound(data_packet_bytes(), now);
@@ -1393,7 +1393,7 @@ fn first_inbound_handshake_adopts_bootstrap_primary_so_outbound_data_flows() {
 
 #[test]
 fn responder_rekey_init_rides_primary_after_initial_response_sent() {
-    // The Controlled side never fans out a bootstrap init — it only
+    // The Controlled side never fans out a handshake init — it only
     // responds to the Controlling side's. When it later acts as the
     // re-key initiator (boringtun's per-session timer can fire from
     // either side), the resulting `HandshakeInit` should ride `primary`,
@@ -1418,7 +1418,7 @@ fn responder_rekey_init_rides_primary_after_initial_response_sent() {
 
 #[test]
 fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
-    // After the first bootstrap fanout, `established` flips so any later
+    // After the first handshake fanout, `established` flips so any later
     // `HandshakeInit` boringtun emits (re-keys, every ~120 s) goes via
     // primary on a single pair instead of bursting across all relays.
     let mut a = agent_with_relay_pairs();
@@ -1429,7 +1429,7 @@ fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
     let initial: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    assert_eq!(initial.len(), 3, "bootstrap fans out on every relay pair");
+    assert_eq!(initial.len(), 3, "handshake fans out on every relay pair");
 
     // Inbound response → primary is set, retransmit ladder is cleared.
     let _ = a.handle_inbound_network(&handshake_response_bytes(), recv_path, now);
@@ -1492,11 +1492,11 @@ fn probe_skips_while_inflight_until_probe_timeout_lapses() {
 
 #[test]
 fn trickled_candidate_after_handshake_still_gets_probed() {
-    // Reproduces the trickle-ICE production case: bootstrap handshake
+    // Reproduces the trickle-ICE production case: initial handshake
     // completes when only relay pairs exist (host/srflx candidates
     // haven't arrived via signalling yet), then a remote host
     // candidate trickles in. The new pair must start probing within
-    // the same bootstrap window — otherwise it's invisible to
+    // the same path-evaluation window — otherwise it's invisible to
     // `select_primary` and `maybe_settle` locks it out for ~2 min
     // until the next re-key reopens the window.
     let mut a = PathAgent::new();
