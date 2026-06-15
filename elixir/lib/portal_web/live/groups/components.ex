@@ -301,9 +301,7 @@ defmodule PortalWeb.Groups.Components do
       <div class="flex items-center gap-4">
         <%!-- Left: icon + name + directory info --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
-          <div class="flex items-center justify-center w-8 h-8 shrink-0">
-            <.provider_icon type={provider_type_from_group(@group)} class="w-6 h-6" />
-          </div>
+          <.provider_icon provider={provider_type_from_group(@group)} size="lg" variant="circle" />
           <div class="min-w-0">
             <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
               {@group.name}

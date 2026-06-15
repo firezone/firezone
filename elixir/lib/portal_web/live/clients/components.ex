@@ -117,21 +117,21 @@ defmodule PortalWeb.Clients.Components do
   end
 
   def client_os_icon_name(nil), do: "ri-computer-line"
-  def client_os_icon_name("Windows/" <> _), do: "os-windows"
-  def client_os_icon_name("Mac OS/" <> _), do: "os-macos"
-  def client_os_icon_name("iOS/" <> _), do: "os-ios"
-  def client_os_icon_name("Android/" <> _), do: "os-android"
-  def client_os_icon_name("Ubuntu/" <> _), do: "os-ubuntu"
-  def client_os_icon_name("Debian/" <> _), do: "os-debian"
-  def client_os_icon_name("Manjaro/" <> _), do: "os-manjaro"
-  def client_os_icon_name("CentOS/" <> _), do: "os-linux"
-  def client_os_icon_name("Fedora/" <> _), do: "os-linux"
+  def client_os_icon_name("Windows/" <> _), do: "icon-os-windows"
+  def client_os_icon_name("Mac OS/" <> _), do: "icon-os-macos"
+  def client_os_icon_name("iOS/" <> _), do: "icon-os-ios"
+  def client_os_icon_name("Android/" <> _), do: "icon-os-android"
+  def client_os_icon_name("Ubuntu/" <> _), do: "icon-os-ubuntu"
+  def client_os_icon_name("Debian/" <> _), do: "icon-os-debian"
+  def client_os_icon_name("Manjaro/" <> _), do: "icon-os-manjaro"
+  def client_os_icon_name("CentOS/" <> _), do: "icon-os-linux"
+  def client_os_icon_name("Fedora/" <> _), do: "icon-os-linux"
 
   def client_os_icon_name(other) do
     if String.contains?(other, "linux") do
-      "os-linux"
+      "icon-os-linux"
     else
-      "os-other"
+      "ri-computer-line"
     end
   end
 

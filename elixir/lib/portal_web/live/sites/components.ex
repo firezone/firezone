@@ -656,7 +656,7 @@ defmodule PortalWeb.Sites.Components do
           deploy_tab={@deploy_tab}
           value="debian-instructions"
           label="Debian/Ubuntu"
-          icon="os-debian"
+          icon="icon-os-debian"
         />
         <.deploy_tab_button
           deploy_tab={@deploy_tab}
@@ -668,13 +668,13 @@ defmodule PortalWeb.Sites.Components do
           deploy_tab={@deploy_tab}
           value="docker-instructions"
           label="Docker"
-          icon="docker"
+          icon="icon-docker"
         />
         <.deploy_tab_button
           deploy_tab={@deploy_tab}
           value="terraform-instructions"
           label="Terraform"
-          icon="terraform"
+          icon="icon-terraform"
         />
         <.deploy_tab_button
           deploy_tab={@deploy_tab}
