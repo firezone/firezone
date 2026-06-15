@@ -130,13 +130,7 @@ defmodule PortalWeb.Actors.Components do
           <.button type="button" phx-click="open_actor_edit_form" size="xs">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.button>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -1196,13 +1190,7 @@ defmodule PortalWeb.Actors.Components do
               </p>
             </div>
           </div>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
 

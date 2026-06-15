@@ -274,13 +274,7 @@ defmodule PortalWeb.Clients.Components do
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-semibold text-heading">Edit Client</h2>
-        <button
-          phx-click="cancel_client_edit_form"
-          class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-          title="Close (Esc)"
-        >
-          <.icon name="ri-close-line" class="w-4 h-4" />
-        </button>
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_client_edit_form" />
       </div>
     </div>
     """
@@ -567,13 +561,7 @@ defmodule PortalWeb.Clients.Components do
           <.button phx-click="open_client_edit_form" size="xs">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.button>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>

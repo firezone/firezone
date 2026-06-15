@@ -92,13 +92,7 @@ defmodule PortalWeb.Settings.DNS do
               <h2 class="text-sm font-semibold text-heading">Edit DNS Settings</h2>
               <.docs_action path="/deploy/dns" />
             </div>
-            <button
-              phx-click="close_panel"
-              class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-              title="Close (Esc)"
-            >
-              <.icon name="ri-close-line" class="w-4 h-4" />
-            </button>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <.dns_form form={@form} />

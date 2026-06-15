@@ -103,13 +103,7 @@ defmodule PortalWeb.Groups.Components do
               {if @panel_view == :new_form, do: "New Group", else: "Edit #{@group && @group.name}"}
             </h2>
           </div>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors shrink-0"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" class="shrink-0" />
         </div>
       </div>
       <.form
@@ -330,13 +324,7 @@ defmodule PortalWeb.Groups.Components do
           >
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.link>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -483,22 +471,20 @@ defmodule PortalWeb.Groups.Components do
           <span class="text-muted">({@member_total} members)</span>
         </span>
         <div class="flex items-center gap-1">
-          <button
-            type="button"
+          <.icon_button
+            style="outline"
+            icon="ri-arrow-left-s-line"
+            title="Previous page"
             phx-click="prev_member_page"
             disabled={@member_page <= 1}
-            class="flex items-center justify-center w-7 h-7 rounded border border-border text-body hover:text-heading hover:border-border-emphasis disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
+          />
+          <.icon_button
+            style="outline"
+            icon="ri-arrow-right-s-line"
+            title="Next page"
             phx-click="next_member_page"
             disabled={@member_page >= @member_pages}
-            class="flex items-center justify-center w-7 h-7 rounded border border-border text-body hover:text-heading hover:border-border-emphasis disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <.icon name="ri-arrow-right-s-line" class="w-3.5 h-3.5" />
-          </button>
+          />
         </div>
       </div>
     </div>

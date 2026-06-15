@@ -959,13 +959,7 @@ defmodule PortalWeb.Resources.Components do
           <h2 class="text-sm font-semibold text-heading">
             {if @panel_view == :new_form, do: "Add Resource", else: "Edit Resource"}
           </h2>
-          <button
-            phx-click="cancel_resource_form"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_resource_form" />
         </div>
       </div>
       <.form
@@ -1073,13 +1067,7 @@ defmodule PortalWeb.Resources.Components do
             >
               Edit
             </.button>
-            <button
-              phx-click="close_panel"
-              class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-              title="Close (Esc)"
-            >
-              <.icon name="ri-close-line" class="w-4 h-4" />
-            </button>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
         </div>
       </div>

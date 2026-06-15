@@ -237,13 +237,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-heading">New API Token</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -301,13 +295,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-heading">Edit API Token</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 

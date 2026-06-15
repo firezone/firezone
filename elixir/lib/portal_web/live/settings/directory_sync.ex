@@ -484,13 +484,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <h2 class="text-sm font-semibold text-heading">Select Directory Type</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <p class="mb-4 text-xs text-subtle">
@@ -565,13 +559,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   <.docs_action path={"/directory-sync/#{@type}"} />
                 </div>
               </div>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.directory_form
@@ -619,13 +607,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 </h2>
                 <.docs_action path={"/directory-sync/#{@type}"} />
               </div>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">

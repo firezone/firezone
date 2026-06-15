@@ -687,6 +687,73 @@ defmodule PortalWeb.FormComponents do
   end
 
   @doc """
+  Renders an icon-only button. Use for actions that are obvious from context
+  (e.g., close/dismiss). Always provide `title` for hover tooltip and accessibility.
+
+  ## Examples
+
+      <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+      <.icon_button style="outline" icon="ri-arrow-left-s-line" title="Previous page" phx-click="prev_page" disabled={@page <= 1} />
+      <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" size="sm" class="shrink-0" />
+  """
+  attr :icon, :string, required: true, doc: "The remix icon name"
+  attr :title, :string, default: nil, doc: "Tooltip shown on hover (recommended for accessibility)"
+  attr :style, :string, default: nil, doc: "Visual style: nil (ghost) | \"outline\""
+  attr :size, :string, default: "md", doc: "Button size: xs | sm | md | lg | xl"
+  attr :class, :string, default: "", doc: "Extra CSS classes (e.g. shrink-0)"
+  attr :rest, :global, include: ~w(disabled form name value phx-target)
+
+  def icon_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class={
+        ["flex items-center justify-center rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"] ++
+          icon_button_container_size(@size) ++
+          icon_button_style(@style) ++
+          [@class]
+      }
+      title={@title}
+      {@rest}
+    >
+      <.icon name={@icon} class={icon_button_icon_size(@size)} />
+    </button>
+    """
+  end
+
+  defp icon_button_style(nil) do
+    ["text-subtle hover:text-heading hover:bg-raised"]
+  end
+
+  defp icon_button_style("outline") do
+    ["border border-border text-body hover:text-heading hover:border-border-emphasis"]
+  end
+
+  defp icon_button_container_size(size) do
+    container = %{
+      "xs" => "w-5 h-5",
+      "sm" => "w-6 h-6",
+      "md" => "w-7 h-7",
+      "lg" => "w-8 h-8",
+      "xl" => "w-9 h-9"
+    }
+
+    [container[size]]
+  end
+
+  defp icon_button_icon_size(size) do
+    icon = %{
+      "xs" => "w-3 h-3",
+      "sm" => "w-3.5 h-3.5",
+      "md" => "w-4 h-4",
+      "lg" => "w-5 h-5",
+      "xl" => "w-6 h-6"
+    }
+
+    icon[size]
+  end
+
+  @doc """
   Renders a button the is only seen when hovered over.
   """
   attr :type, :string, default: "button"

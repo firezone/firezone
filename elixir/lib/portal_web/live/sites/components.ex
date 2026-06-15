@@ -20,13 +20,7 @@ defmodule PortalWeb.Sites.Components do
       <div :if={@open} class="flex flex-col h-full overflow-hidden">
         <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 class="text-sm font-semibold text-heading">New Site</h2>
-          <button
-            phx-click="close_new_site_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
         </div>
         <div class="flex-1 overflow-y-auto px-5 py-4">
           <.form for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
@@ -187,13 +181,7 @@ defmodule PortalWeb.Sites.Components do
           <.button :if={@view == :gateways} phx-click="open_site_edit_form" size="sm">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.button>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -605,13 +593,7 @@ defmodule PortalWeb.Sites.Components do
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-semibold text-heading">Deploy a Gateway</h2>
-        <button
-          phx-click="close_deploy"
-          class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-          title="Close (Esc)"
-        >
-          <.icon name="ri-close-line" class="w-4 h-4" />
-        </button>
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_deploy" />
       </div>
     </div>
     """
@@ -908,13 +890,7 @@ defmodule PortalWeb.Sites.Components do
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-semibold text-heading">Add Resource</h2>
-        <button
-          phx-click="close_add_resource"
-          class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-          title="Close (Esc)"
-        >
-          <.icon name="ri-close-line" class="w-4 h-4" />
-        </button>
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_add_resource" />
       </div>
     </div>
     """
@@ -1295,13 +1271,7 @@ defmodule PortalWeb.Sites.Components do
       <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-sm font-semibold text-heading">Edit Site</h2>
-          <button
-            phx-click="cancel_site_edit_form"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_site_edit_form" />
         </div>
       </div>
       <.form

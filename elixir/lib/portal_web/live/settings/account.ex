@@ -391,14 +391,7 @@ defmodule PortalWeb.Settings.Account do
     ]}>
       <div class="flex items-center justify-between px-5 py-4 border-b border-border">
         <h2 class="text-sm font-semibold text-heading">Edit Account</h2>
-        <button
-          type="button"
-          phx-click="close_edit_account"
-          class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-          title="Close (Esc)"
-        >
-          <.icon name="ri-close-line" class="w-4 h-4" />
-        </button>
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_edit_account" />
       </div>
 
       <.form

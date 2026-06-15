@@ -287,13 +287,7 @@ defmodule PortalWeb.Policies.Components do
         <h2 class="text-sm font-semibold text-heading">
           {if @mode == :new, do: "Add Policy", else: "Edit Policy"}
         </h2>
-        <button
-          phx-click="cancel_policy_form"
-          class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-          title="Close (Esc)"
-        >
-          <.icon name="ri-close-line" class="w-4 h-4" />
-        </button>
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
       </div>
     </div>
     """
@@ -759,13 +753,7 @@ defmodule PortalWeb.Policies.Components do
           <.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
             Edit
           </.button>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>

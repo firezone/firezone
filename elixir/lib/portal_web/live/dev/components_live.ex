@@ -61,6 +61,48 @@ defmodule PortalWeb.Dev.ComponentsLive do
     },
     %{
       group: "Components",
+      id: "icon_button",
+      label: "Icon Button",
+      variants: [
+        %{
+          name: "Ghost",
+          props: %{"icon" => "ri-close-line", "title" => "Close (Esc)", "style" => "ghost", "size" => "md", "disabled" => false}
+        },
+        %{
+          name: "Outline",
+          props: %{"icon" => "ri-arrow-left-s-line", "title" => "Previous page", "style" => "outline", "size" => "md", "disabled" => false}
+        },
+        %{
+          name: "Extra Small",
+          props: %{"icon" => "ri-close-line", "title" => "Close (Esc)", "style" => "ghost", "size" => "xs", "disabled" => false}
+        },
+        %{
+          name: "Small",
+          props: %{"icon" => "ri-close-line", "title" => "Close (Esc)", "style" => "ghost", "size" => "sm", "disabled" => false}
+        },
+        %{
+          name: "Large",
+          props: %{"icon" => "ri-close-line", "title" => "Close (Esc)", "style" => "ghost", "size" => "lg", "disabled" => false}
+        },
+        %{
+          name: "Extra Large",
+          props: %{"icon" => "ri-close-line", "title" => "Close (Esc)", "style" => "ghost", "size" => "xl", "disabled" => false}
+        },
+        %{
+          name: "Disabled",
+          props: %{"icon" => "ri-close-line", "title" => "Close (Esc)", "style" => "ghost", "size" => "md", "disabled" => true}
+        }
+      ],
+      controls: [
+        %{name: "icon", type: "text"},
+        %{name: "title", type: "text"},
+        %{name: "style", type: "select", options: ~w[ghost outline]},
+        %{name: "size", type: "select", options: ~w[xs sm md lg xl]},
+        %{name: "disabled", type: "boolean"}
+      ]
+    },
+    %{
+      group: "Components",
       id: "status_badge",
       label: "Status Badge",
       variants: [
@@ -572,6 +614,21 @@ defmodule PortalWeb.Dev.ComponentsLive do
       <.icon :if={@props["icon"] not in [nil, ""]} name={@props["icon"]} class="w-4 h-4" />
       {@props["label"]}
     </.button>
+    """
+  end
+
+  defp canvas_component(%{component_id: "icon_button"} = assigns) do
+    style = if assigns.props["style"] == "outline", do: "outline", else: nil
+    assigns = assign(assigns, :style, style)
+
+    ~H"""
+    <.icon_button
+      icon={@props["icon"]}
+      title={@props["title"]}
+      style={@style}
+      size={@props["size"]}
+      disabled={@props["disabled"]}
+    />
     """
   end
 
