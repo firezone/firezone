@@ -346,7 +346,7 @@ defmodule PortalAPI.Client.Channel do
         # Flow already timed out — ignore late gateway response
         {:noreply, socket}
 
-      {timer_ref, remaining} ->
+      {{timer_ref, policy_id}, remaining} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -358,7 +358,8 @@ defmodule PortalAPI.Client.Channel do
             gateway_public_key: gateway_public_key,
             gateway_ipv4: gateway_ipv4,
             gateway_ipv6: gateway_ipv6,
-            gateway_ice_credentials: ice_credentials.receiver
+            gateway_ice_credentials: ice_credentials.receiver,
+            policy_id: policy_id
           }
           |> put_site_id(site_id, socket.assigns.session)
 
@@ -372,7 +373,7 @@ defmodule PortalAPI.Client.Channel do
       {nil, _} ->
         {:noreply, socket}
 
-      {_timer_ref, remaining} ->
+      {{_timer_ref, _policy_id}, remaining} ->
         push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
         {:noreply, assign(socket, :pending_flows, remaining)}
     end
@@ -389,6 +390,7 @@ defmodule PortalAPI.Client.Channel do
         payload[:client_id],
         payload[:resource],
         policy_authorization_id,
+        payload[:policy_id],
         authorization_expires_at
       )
 
@@ -427,8 +429,8 @@ defmodule PortalAPI.Client.Channel do
   # Delivered to the receiver (peer client, in the client-to-client case) via
   # `Portal.PG` when a policy_authorization fails to persist after the receiver
   # was already told it could accept the connection. Mirrors the gateway's
-  # reject_access handler: per-authz_id cache eviction via the same
-  # `reauthorize_deleted_policy_authorization` path used by CDC deletes.
+  # reject_access handler: drop the cached authorization and push `reject_access`
+  # via the same eviction path used for CDC deletes.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = cancel_authz_durability_timer(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
@@ -801,6 +803,7 @@ defmodule PortalAPI.Client.Channel do
            client_ipv6: socket.assigns.client.ipv6,
            resource: resource,
            policy_authorization_id: policy_authorization_id,
+           policy_id: policy_id,
            authorization_expires_at: expires_at,
            client_payload: payload
          }}
@@ -888,6 +891,7 @@ defmodule PortalAPI.Client.Channel do
              ),
            resource: resource,
            policy_authorization_id: policy_authorization_id,
+           policy_id: policy_id,
            authorization_expires_at: expires_at
          }}
 
@@ -1029,6 +1033,7 @@ defmodule PortalAPI.Client.Channel do
         build_client_device_access_authorized_messages(
           target_client_id,
           target_meta,
+          nil,
           nil,
           nil,
           nil,
@@ -1302,6 +1307,7 @@ defmodule PortalAPI.Client.Channel do
              subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
              resource: PortalAPI.Gateway.Views.Resource.render(resource),
              policy_authorization_id: policy_authorization_id,
+             policy_id: policy_id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key
@@ -1341,7 +1347,7 @@ defmodule PortalAPI.Client.Channel do
               assign(
                 socket,
                 :pending_flows,
-                Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
+                Map.put(socket.assigns.pending_flows, resource_id, {timer_ref, policy_id})
               )
 
             {:noreply, socket}
@@ -1553,6 +1559,7 @@ defmodule PortalAPI.Client.Channel do
         target_meta,
         resource,
         policy_authorization_id,
+        policy_id,
         expires_at,
         socket
       )
@@ -1594,6 +1601,7 @@ defmodule PortalAPI.Client.Channel do
          target_meta,
          resource,
          policy_authorization_id,
+         policy_id,
          expires_at,
          socket
        ) do
@@ -1647,6 +1655,7 @@ defmodule PortalAPI.Client.Channel do
          resource: rendered_resource,
          subject: rendered_subject,
          policy_authorization_id: policy_authorization_id,
+         policy_id: policy_id,
          authorization_expires_at: expires_at
        }}
 
@@ -1977,13 +1986,12 @@ defmodule PortalAPI.Client.Channel do
   # POLICY_AUTHORIZATIONS
 
   # When a policy_authorization is deleted where this client is the receiving device,
-  # mirror the gateway flow: try to reauthorize against another conforming policy. If
-  # we succeed, push the new expiry; if no policy still grants access, push
-  # reject_access with the {initiator, resource} pair so connlib tears down the
-  # inbound peer connection. The wire shape parallels the gateway's reject_access
-  # rather than client_device_access_denied (which is keyed on {ipv4, reason} for
-  # the controlling-side denial path) — the receiver doesn't need a reason, only
-  # the identity of the connection to drop.
+  # mirror the gateway flow: drop the cached authorization and push reject_access
+  # with the {initiator, resource} pair so connlib tears down the inbound peer
+  # connection. The wire shape parallels the gateway's reject_access rather than
+  # client_device_access_denied (which is keyed on {ipv4, reason} for the
+  # controlling-side denial path) — the receiver doesn't need a reason, only the
+  # identity of the connection to drop.
   defp handle_change(
          %Change{
            op: :delete,
@@ -2075,49 +2083,38 @@ defmodule PortalAPI.Client.Channel do
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
-  # Shared eviction path for both the CDC delete handler and the direct
-  # `:reject_access` from `Portal.Queue`'s on_failed callback. Per-authz_id:
-  # if other authorizations still grant the same `(initiator, resource)` access
-  # to this receiving client, we push an expiry update; if none do, we push
-  # `reject_access`.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{} = policy_authorization) do
-    %Portal.PolicyAuthorization{
-      initiating_device_id: initiating_client_id,
-      resource_id: resource_id
-    } = policy_authorization
-
-    socket.assigns.authorizations_cache
-    |> Cache.Client.Authorizations.reauthorize_deleted_policy_authorization(policy_authorization)
-    |> case do
+  # Shared eviction path for the CDC delete handler, the direct `:reject_access`
+  # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
+  # Drop the cached authorization and, if it was still active, push
+  # `reject_access` so connlib tears down the inbound peer connection. The peer
+  # recovers by tripping ICMP "destination prohibited" and requesting a fresh
+  # flow. Deletes of already-expired authorizations (the
+  # `DeleteExpiredPolicyAuthorizations` reaper) are dropped silently — connlib
+  # has already expired them locally.
+  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
+         id: id,
+         initiating_device_id: initiating_client_id,
+         resource_id: resource_id
+       }) do
+    case Cache.Client.Authorizations.delete(
+           socket.assigns.authorizations_cache,
+           id,
+           initiating_client_id,
+           resource_id
+         ) do
       {:ok, expires_at_unix, authorizations_cache} ->
-        Logger.info(
-          "Updating client-to-client authorization expiration for deleted policy authorization",
-          deleted_policy_authorization: inspect(policy_authorization),
-          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
-        )
+        now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
-        push(
-          socket,
-          "access_authorization_expiry_updated",
-          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
-        )
+        if expires_at_unix > now_unix do
+          push(socket, "reject_access", %{
+            client_id: initiating_client_id,
+            resource_id: resource_id
+          })
+        end
 
         {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
 
-      {:error, :unauthorized, authorizations_cache} ->
-        Logger.info(
-          "No client-to-client authorizations remaining for deleted policy authorization, revoking access",
-          deleted_policy_authorization: inspect(policy_authorization)
-        )
-
-        push(socket, "reject_access", %{
-          client_id: initiating_client_id,
-          resource_id: resource_id
-        })
-
-        {:noreply, assign(socket, authorizations_cache: authorizations_cache)}
-
-      {:error, :not_found} ->
+      :error ->
         {:noreply, socket}
     end
   end
@@ -2202,12 +2199,20 @@ defmodule PortalAPI.Client.Channel do
     :ok
   end
 
-  defp maybe_put_authorization(cache, client_id, %{id: resource_id}, paid, %DateTime{} = expires_at)
-       when not is_nil(client_id) and not is_nil(paid) do
-    Cache.Client.Authorizations.put(cache, client_id, resource_id, paid, expires_at)
+  defp maybe_put_authorization(
+         cache,
+         client_id,
+         %{id: resource_id},
+         pa_id,
+         policy_id,
+         %DateTime{} = expires_at
+       )
+       when not is_nil(client_id) and not is_nil(pa_id) do
+    Cache.Client.Authorizations.put(cache, pa_id, client_id, resource_id, policy_id, expires_at)
   end
 
-  defp maybe_put_authorization(cache, _client_id, _resource, _paid, _expires_at), do: cache
+  defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _policy_id, _expires_at),
+    do: cache
 
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok
 
@@ -2320,9 +2325,9 @@ defmodule PortalAPI.Client.Channel do
   #      (queue flush failure) arrives within the timeout window, the
   #      receiver fail-closes by running the same eviction path used for
   #      `:reject_access`.
-  #   2. On the per-authz_id eviction path itself (CDC delete, on_failed
-  #      reject, authz durability timer fire), reuse the struct for
-  #      `reauthorize_deleted_policy_authorization`.
+  #   2. On the eviction path itself (CDC delete, on_failed reject, authz
+  #      durability timer fire), reuse the struct's id to drop the cached
+  #      authorization and push `reject_access`.
   #
   # Accepts the two message shapes used by the gateway/peer-bound paths:
   # `{tag, {channel_pid, socket_ref}, payload}` (used by :allow_access,
