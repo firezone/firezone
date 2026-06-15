@@ -472,54 +472,65 @@ defmodule PortalWeb.Actors.Components do
                 </button>
               </div>
             </div>
-            <div
-              :if={@confirm_delete_token_id != token.id}
-              class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors"
-            >
-              <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-                <.ping_icon
-                  color={if token.online?, do: "success", else: "danger"}
-                  title={if token.online?, do: "Online", else: "Offline"}
-                />
-                <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                  <.icon
-                    name={
-                      client_os_icon_name(token.latest_session && token.latest_session.user_agent)
-                    }
-                    class="w-4 h-4 text-[var(--text-secondary)]"
+            <details :if={@confirm_delete_token_id != token.id} class="group/details">
+              <summary class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+                <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
+                  <.ping_icon
+                    color={if token.online?, do: "success", else: "danger"}
+                    title={if token.online?, do: "Online", else: "Offline"}
                   />
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-[var(--text-primary)]">
-                    {if token.online?, do: "Online", else: "Offline"}
-                  </p>
-                  <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
-                    <span>
-                      Connected
-                      <.relative_datetime datetime={
-                        token.latest_session && token.latest_session.inserted_at
-                      } />
-                    </span>
-                    <span :if={
-                      token_location(token) ||
-                        (token.latest_session && token.latest_session.remote_ip)
-                    }>
-                      Location: {token_location(token) ||
-                        (token.latest_session && token.latest_session.remote_ip)}
-                    </span>
+                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                    <.icon
+                      name={
+                        client_os_icon_name(token.latest_session && token.latest_session.user_agent)
+                      }
+                      class="w-4 h-4 text-[var(--text-secondary)]"
+                    />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-[var(--text-primary)]">
+                      {if token.online?, do: "Online", else: "Offline"}
+                    </p>
+                    <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
+                      <span>
+                        Connected
+                        <.relative_datetime datetime={
+                          token.latest_session && token.latest_session.inserted_at
+                        } />
+                      </span>
+                      <span :if={
+                        token_location(token) ||
+                          (token.latest_session && token.latest_session.remote_ip)
+                      }>
+                        Location: {token_location(token) ||
+                          (token.latest_session && token.latest_session.remote_ip)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <button
-                type="button"
-                phx-click="confirm_delete_token"
-                phx-value-id={token.id}
-                class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
-                title="Revoke session"
-              >
-                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
-              </button>
-            </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    phx-click="confirm_delete_token"
+                    phx-value-id={token.id}
+                    class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                    title="Revoke session"
+                  >
+                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                  </button>
+                  <.icon
+                    name="ri-arrow-right-s-line"
+                    class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                  />
+                </div>
+              </summary>
+              <.session_details session={token.latest_session} location={token_location(token)}>
+                <.detail_field label="Token ID" mono>{token.id}</.detail_field>
+                <.detail_field :if={token.expires_at} label="Token Expires">
+                  <.relative_datetime datetime={token.expires_at} />
+                </.detail_field>
+              </.session_details>
+            </details>
           </li>
         </ul>
       </div>
@@ -559,43 +570,75 @@ defmodule PortalWeb.Actors.Components do
                 </button>
               </div>
             </div>
-            <div
-              :if={@confirm_delete_session_id != session.id}
-              class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors"
-            >
-              <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-                <.ping_icon
-                  color={if session.online?, do: "success", else: "danger"}
-                  title={if session.online?, do: "Online", else: "Offline"}
-                />
-                <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                  <.icon
-                    name={session_user_agent_icon(session.user_agent)}
-                    class="w-4 h-4 text-[var(--text-secondary)]"
+            <details :if={@confirm_delete_session_id != session.id} class="group/details">
+              <summary class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+                <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
+                  <.ping_icon
+                    color={if session.online?, do: "success", else: "danger"}
+                    title={if session.online?, do: "Online", else: "Offline"}
                   />
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-[var(--text-primary)]">
-                    {if session.online?, do: "Online", else: "Offline"}
-                  </p>
-                  <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
-                    <span>Signed in <.relative_datetime datetime={session.inserted_at} /></span>
-                    <span :if={session_location(session) || session.remote_ip}>
-                      Location: {session_location(session) || session.remote_ip}
-                    </span>
+                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                    <.icon
+                      name={session_user_agent_icon(session.user_agent)}
+                      class="w-4 h-4 text-[var(--text-secondary)]"
+                    />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-[var(--text-primary)]">
+                      {if session.online?, do: "Online", else: "Offline"}
+                    </p>
+                    <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
+                      <span>Signed in <.relative_datetime datetime={session.inserted_at} /></span>
+                      <span :if={session_location(session) || session.remote_ip}>
+                        Location: {session_location(session) || session.remote_ip}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    phx-click="confirm_delete_session"
+                    phx-value-id={session.id}
+                    class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                    title="Revoke session"
+                  >
+                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                  </button>
+                  <.icon
+                    name="ri-arrow-right-s-line"
+                    class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                  />
+                </div>
+              </summary>
+              <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-[var(--surface-raised)]/50">
+                <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <.detail_field :if={session.remote_ip} label="IP Address" mono>
+                    {session.remote_ip}
+                  </.detail_field>
+                  <.detail_field :if={session_location(session)} label="Location">
+                    {session_location(session)}
+                  </.detail_field>
+                  <.detail_field
+                    :if={session.user_agent}
+                    label="User Agent"
+                    title={session.user_agent}
+                  >
+                    {session.user_agent}
+                  </.detail_field>
+                  <.detail_field :if={session.auth_provider_name} label="Auth Provider">
+                    {session.auth_provider_name}
+                  </.detail_field>
+                  <.detail_field label="Signed In">
+                    <.relative_datetime datetime={session.inserted_at} />
+                  </.detail_field>
+                  <.detail_field :if={session.expires_at} label="Expires">
+                    <.relative_datetime datetime={session.expires_at} />
+                  </.detail_field>
+                  <.detail_field label="Session ID" mono>{session.id}</.detail_field>
+                </dl>
               </div>
-              <button
-                type="button"
-                phx-click="confirm_delete_session"
-                phx-value-id={session.id}
-                class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
-                title="Revoke session"
-              >
-                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
-              </button>
-            </div>
+            </details>
           </li>
         </ul>
       </div>
@@ -706,52 +749,66 @@ defmodule PortalWeb.Actors.Components do
                   </button>
                 </div>
               </div>
-              <div
-                :if={@confirm_delete_token_id != token.id}
-                class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors"
-              >
-                <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-                  <.ping_icon
-                    color={if token.online?, do: "success", else: "danger"}
-                    title={if token.online?, do: "Active", else: "Inactive"}
-                  />
-                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                    <.icon name="ri-key-line" class="w-4 h-4 text-[var(--text-secondary)]" />
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-[var(--text-primary)]">
-                      {if token.online?, do: "Active", else: "Inactive"}
-                    </p>
-                    <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
-                      <span>
-                        Last used:
-                        <.relative_datetime datetime={
-                          token.latest_session && token.latest_session.inserted_at
-                        } />
-                      </span>
-                      <span :if={token.expires_at}>
-                        Expires: <.relative_datetime datetime={token.expires_at} />
-                      </span>
-                      <span :if={
-                        token_location(token) ||
-                          (token.latest_session && token.latest_session.remote_ip)
-                      }>
-                        Location: {token_location(token) ||
-                          (token.latest_session && token.latest_session.remote_ip)}
-                      </span>
+              <details :if={@confirm_delete_token_id != token.id} class="group/details">
+                <summary class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+                  <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
+                    <.ping_icon
+                      color={if token.online?, do: "success", else: "danger"}
+                      title={if token.online?, do: "Active", else: "Inactive"}
+                    />
+                    <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                      <.icon name="ri-key-line" class="w-4 h-4 text-[var(--text-secondary)]" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-[var(--text-primary)]">
+                        {if token.online?, do: "Active", else: "Inactive"}
+                      </p>
+                      <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
+                        <span>
+                          Last used:
+                          <.relative_datetime datetime={
+                            token.latest_session && token.latest_session.inserted_at
+                          } />
+                        </span>
+                        <span :if={token.expires_at}>
+                          Expires: <.relative_datetime datetime={token.expires_at} />
+                        </span>
+                        <span :if={
+                          token_location(token) ||
+                            (token.latest_session && token.latest_session.remote_ip)
+                        }>
+                          Location: {token_location(token) ||
+                            (token.latest_session && token.latest_session.remote_ip)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  phx-click="confirm_delete_token"
-                  phx-value-id={token.id}
-                  class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
-                  title="Delete token"
-                >
-                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      phx-click="confirm_delete_token"
+                      phx-value-id={token.id}
+                      class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                      title="Delete token"
+                    >
+                      <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                    </button>
+                    <.icon
+                      name="ri-arrow-right-s-line"
+                      class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                    />
+                  </div>
+                </summary>
+                <.session_details session={token.latest_session} location={token_location(token)}>
+                  <.detail_field label="Token ID" mono>{token.id}</.detail_field>
+                  <.detail_field :if={token.expires_at} label="Token Expires">
+                    <.relative_datetime datetime={token.expires_at} />
+                  </.detail_field>
+                  <.detail_field label="Created">
+                    <.relative_datetime datetime={token.inserted_at} />
+                  </.detail_field>
+                </.session_details>
+              </details>
             </li>
           </ul>
         </div>
@@ -1660,6 +1717,60 @@ defmodule PortalWeb.Actors.Components do
   defp actor_display_type(%{type: :account_admin_user}), do: "Admin"
   defp actor_display_type(%{type: :account_user}), do: "User"
   defp actor_display_type(_), do: "User"
+
+  attr :session, :any, required: true
+  attr :location, :string, default: nil
+  slot :inner_block
+
+  defp session_details(assigns) do
+    ~H"""
+    <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-[var(--surface-raised)]/50">
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
+        <.detail_field :if={@session && @session.remote_ip} label="IP Address" mono>
+          {@session.remote_ip}
+        </.detail_field>
+        <.detail_field :if={@location} label="Location">
+          {@location}
+        </.detail_field>
+        <.detail_field :if={@session && @session.version} label="Client Version">
+          {@session.version}
+        </.detail_field>
+        <.detail_field
+          :if={@session && @session.user_agent}
+          label="User Agent"
+          title={@session.user_agent}
+        >
+          {@session.user_agent}
+        </.detail_field>
+        <.detail_field :if={@session} label="Last Seen">
+          <.relative_datetime datetime={@session.inserted_at} />
+        </.detail_field>
+        {render_slot(@inner_block)}
+      </dl>
+    </div>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :mono, :boolean, default: false
+  attr :title, :string, default: nil
+  slot :inner_block, required: true
+
+  defp detail_field(assigns) do
+    ~H"""
+    <div>
+      <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        {@label}
+      </dt>
+      <dd
+        class={["text-xs text-[var(--text-primary)] truncate mt-0.5", if(@mono, do: "font-mono")]}
+        title={@title}
+      >
+        {render_slot(@inner_block)}
+      </dd>
+    </div>
+    """
+  end
 
   defp extract_idp_id(idp_id) do
     String.split(idp_id, ":", parts: 2) |> List.last()
