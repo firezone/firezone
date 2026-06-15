@@ -19,8 +19,8 @@ use std::{io, mem};
 use tokio::sync::mpsc;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
-    EgressMessages, IngressMessages, InitGateway, RejectAccess,
+    Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
+    InitGateway, RejectAccess,
 };
 use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
@@ -453,22 +453,6 @@ impl Eventloop {
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
-            }
-            IngressMessages::AccessAuthorizationExpiryUpdated(
-                AccessAuthorizationExpiryUpdated {
-                    client_id: cid,
-                    resource_id: rid,
-                    expires_at,
-                },
-            ) => {
-                if let Err(e) = tunnel.state_mut().update_access_authorization_expiry(
-                    cid,
-                    rid,
-                    expires_at,
-                    Instant::now(),
-                ) {
-                    tracing::debug!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
-                };
             }
         }
 

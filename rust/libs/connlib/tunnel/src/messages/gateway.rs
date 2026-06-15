@@ -124,7 +124,6 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
     AuthorizeFlow(AuthorizeFlow),
-    AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -177,15 +176,6 @@ pub struct AuthorizeFlow {
 
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
-}
-
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct AccessAuthorizationExpiryUpdated {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
 }
 
 /// A client's ice candidate message.
