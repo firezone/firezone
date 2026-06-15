@@ -162,7 +162,7 @@ defmodule Portal.Authentication do
   # Portal Sessions
 
   def create_portal_session(
-        %Portal.Actor{type: :account_admin_user, account_id: account_id, id: actor_id},
+        %Portal.Actor{type: :account_admin_user, account_id: account_id, id: actor_id} = actor,
         auth_provider_id,
         %Context{} = context,
         expires_at
@@ -170,6 +170,7 @@ defmodule Portal.Authentication do
     %PortalSession{
       account_id: account_id,
       actor_id: actor_id,
+      actor_email: actor.email,
       auth_provider_id: auth_provider_id,
       user_agent: context.user_agent,
       remote_ip: %Postgrex.INET{address: context.remote_ip},
@@ -177,7 +178,8 @@ defmodule Portal.Authentication do
       remote_ip_location_city: context.remote_ip_location_city,
       remote_ip_location_lat: context.remote_ip_location_lat,
       remote_ip_location_lon: context.remote_ip_location_lon,
-      expires_at: expires_at
+      expires_at: expires_at,
+      timestamp: DateTime.utc_now()
     }
     |> Database.insert_portal_session()
   end
@@ -266,7 +268,8 @@ defmodule Portal.Authentication do
     with {:ok, token} <- Database.fetch_gateway_token(account_id, id),
          :ok <- verify_secret_hash(token, nonce, fragment) do
       account = Database.get_account_by_id!(token.account_id)
-      {:ok, :gateway, account, token.id}
+      # No actor: a Gateway token authenticates a site, not an actor.
+      {:ok, :gateway, account, token.id, nil}
     else
       _ -> {:error, :invalid_token}
     end
@@ -278,7 +281,7 @@ defmodule Portal.Authentication do
 
     with {:ok, token} <- use_token(encoded_token, context),
          {:ok, subject} <- build_subject(token, context) do
-      {:ok, :client, subject.account, token.id}
+      {:ok, :client, subject.account, token.id, subject.actor}
     else
       _ -> {:error, :invalid_token}
     end

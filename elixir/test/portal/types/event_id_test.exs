@@ -63,6 +63,74 @@ defmodule Portal.Types.EventIdTest do
     end
   end
 
+  describe "build_session_log/0" do
+    test "produces a 24-character lowercase hex string" do
+      hex = EventId.build_session_log()
+      assert byte_size(hex) == 24
+      assert hex == String.downcase(hex)
+      assert hex =~ ~r/^[0-9a-f]{24}$/
+    end
+
+    test "encodes the 0x5 log_type in the high nibble" do
+      hex = EventId.build_session_log()
+      assert <<0x5::4, _random::92>> = Base.decode16!(hex, case: :mixed)
+      assert String.starts_with?(hex, "5")
+    end
+
+    test "successive calls produce distinct values" do
+      ids = for _ <- 1..100, do: EventId.build_session_log()
+      assert length(Enum.uniq(ids)) == 100
+    end
+  end
+
+  describe "build_flow_log/0" do
+    test "produces a 24-character lowercase hex string" do
+      hex = EventId.build_flow_log()
+      assert byte_size(hex) == 24
+      assert hex == String.downcase(hex)
+      assert hex =~ ~r/^[0-9a-f]{24}$/
+    end
+
+    test "encodes the 0xF log_type in the high nibble" do
+      hex = EventId.build_flow_log()
+      assert <<0xF::4, _random::92>> = Base.decode16!(hex, case: :mixed)
+      assert String.starts_with?(hex, "f")
+    end
+
+    test "successive calls produce distinct values" do
+      ids = for _ <- 1..100, do: EventId.build_flow_log()
+      assert length(Enum.uniq(ids)) == 100
+    end
+  end
+
+  describe "build_api_request_log/0" do
+    test "produces a 24-character lowercase hex string" do
+      hex = EventId.build_api_request_log()
+      assert byte_size(hex) == 24
+      assert hex == String.downcase(hex)
+      assert hex =~ ~r/^[0-9a-f]{24}$/
+    end
+
+    test "encodes the 0xA log_type in the high nibble" do
+      hex = EventId.build_api_request_log()
+      assert <<0xA::4, _random::92>> = Base.decode16!(hex, case: :mixed)
+      assert String.starts_with?(hex, "a")
+    end
+
+    test "successive calls produce distinct values" do
+      ids = for _ <- 1..100, do: EventId.build_api_request_log()
+      assert length(Enum.uniq(ids)) == 100
+    end
+
+    test "round-trips through cast, dump, and load" do
+      original = EventId.build_api_request_log()
+      {:ok, cast} = EventId.cast(original)
+      {:ok, dumped} = EventId.dump(cast)
+      {:ok, loaded} = EventId.load(dumped)
+      assert loaded == original
+    end
+  end
+
   describe "cast/1" do
     test "normalizes 24-char hex to lowercase" do
       assert {:ok, "abc" <> _} = EventId.cast("ABC" <> String.duplicate("0", 21))

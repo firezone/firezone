@@ -97,6 +97,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert session.remote_ip_location_lon == 30.5167
       assert session.version == @connlib_version
       assert session.device_id == gateway.id
+      assert DateTime.diff(DateTime.utc_now(), session.timestamp, :second) < 5
     end
 
     test "uses region code to put default coordinates" do

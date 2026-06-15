@@ -800,7 +800,8 @@ defmodule Portal.Dev.AccountPopulation do
         remote_ip_location_city: "San Francisco",
         remote_ip_location_lat: 37.7749,
         remote_ip_location_lon: -122.4194,
-        version: "1.4.0"
+        version: "1.4.0",
+        timestamp: DateTime.utc_now()
       },
       [
         :account_id,
@@ -813,7 +814,8 @@ defmodule Portal.Dev.AccountPopulation do
         :remote_ip_location_city,
         :remote_ip_location_lat,
         :remote_ip_location_lon,
-        :version
+        :version,
+        :timestamp
       ]
     )
     |> GatewaySession.changeset()
@@ -864,6 +866,8 @@ defmodule Portal.Dev.AccountPopulation do
       %{
         account_id: state.account.id,
         device_id: client.id,
+        actor_id: actor.id,
+        actor_email: actor.email,
         client_token_id: token.id,
         public_key: "client-public-key-#{index}",
         user_agent: @default_user_agent,
@@ -872,11 +876,14 @@ defmodule Portal.Dev.AccountPopulation do
         remote_ip_location_city: "New York",
         remote_ip_location_lat: 40.7128,
         remote_ip_location_lon: -74.0060,
-        version: "1.4.0"
+        version: "1.4.0",
+        timestamp: DateTime.utc_now()
       },
       [
         :account_id,
         :device_id,
+        :actor_id,
+        :actor_email,
         :client_token_id,
         :public_key,
         :user_agent,
@@ -885,7 +892,8 @@ defmodule Portal.Dev.AccountPopulation do
         :remote_ip_location_city,
         :remote_ip_location_lat,
         :remote_ip_location_lon,
-        :version
+        :version,
+        :timestamp
       ]
     )
     |> ClientSession.changeset()

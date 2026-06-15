@@ -167,14 +167,14 @@ defmodule Portal.Workers.OutdatedGateways do
           from(s in ClientSession,
             where: s.device_id == parent_as(:clients).id,
             where: s.account_id == parent_as(:clients).account_id,
-            order_by: [desc: s.inserted_at],
+            order_by: [desc_nulls_last: s.timestamp],
             limit: 1
           )
         ),
         on: true,
         as: :latest_session
       )
-      |> where([latest_session: s], s.inserted_at > ago(1, "week"))
+      |> where([latest_session: s], s.timestamp > ago(1, "week"))
       |> where(
         [latest_session: s],
         fragment("split_part(?, '.', 1)::int", s.version) < ^g_major or
@@ -211,7 +211,7 @@ defmodule Portal.Workers.OutdatedGateways do
           where: s.account_id in ^account_ids,
           where: s.device_id in ^gateway_ids,
           distinct: s.device_id,
-          order_by: [asc: s.device_id, desc: s.inserted_at]
+          order_by: [asc: s.device_id, desc_nulls_last: s.timestamp]
         )
         |> Safe.unscoped(:replica)
         |> Safe.all()

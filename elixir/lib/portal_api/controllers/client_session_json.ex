@@ -25,8 +25,8 @@ defmodule PortalAPI.ClientSessionJSON do
       last_seen_remote_ip_location_lat: session.remote_ip_location_lat,
       last_seen_remote_ip_location_lon: session.remote_ip_location_lon,
       last_seen_version: session.version,
-      last_seen_at: session.inserted_at,
-      created_at: session.inserted_at
+      last_seen_at: session.timestamp,
+      created_at: session.timestamp
     }
   end
 end

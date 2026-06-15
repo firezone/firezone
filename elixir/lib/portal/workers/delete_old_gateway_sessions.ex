@@ -35,10 +35,10 @@ defmodule Portal.Workers.DeleteOldGatewaySessions do
               row_number()
               # id is a UUID so its ordering is arbitrary, but it provides a
               # deterministic tiebreaker when multiple sessions share the same
-              # inserted_at (e.g. from a batch flush), ensuring exactly one is kept.
+              # timestamp (e.g. from a batch flush), ensuring exactly one is kept.
               |> over(
                 partition_by: s.device_id,
-                order_by: [desc: s.inserted_at, desc: s.id]
+                order_by: [desc_nulls_last: s.timestamp, desc: s.id]
               )
           }
         )
@@ -47,7 +47,7 @@ defmodule Portal.Workers.DeleteOldGatewaySessions do
       |> join(:inner, [gateway_sessions: s], r in subquery(latest_per_gateway),
         on: r.id == s.id and r.rn > 1
       )
-      |> where([gateway_sessions: s], s.inserted_at < ago(90, "day"))
+      |> where([gateway_sessions: s], s.timestamp < ago(90, "day"))
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
