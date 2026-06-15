@@ -106,20 +106,16 @@ defmodule PortalWeb.Dev.ComponentsLive do
       id: "status_badge",
       label: "Status Badge",
       variants: [
-        %{name: "Online", props: %{"status" => "online"}},
-        %{name: "Healthy", props: %{"status" => "healthy"}},
-        %{name: "Active", props: %{"status" => "active"}},
-        %{name: "Degraded", props: %{"status" => "degraded"}},
-        %{name: "Offline", props: %{"status" => "offline"}},
-        %{name: "Disabled", props: %{"status" => "disabled"}},
-        %{name: "Expired", props: %{"status" => "expired"}}
+        %{name: "Success", props: %{"style" => "success", "label" => "Active", "dot" => true}},
+        %{name: "Warning", props: %{"style" => "warning", "label" => "Degraded", "dot" => true}},
+        %{name: "Danger", props: %{"style" => "danger", "label" => "Offline", "dot" => true}},
+        %{name: "Neutral", props: %{"style" => "neutral", "label" => "Disabled", "dot" => true}},
+        %{name: "No dot", props: %{"style" => "success", "label" => "Active", "dot" => false}}
       ],
       controls: [
-        %{
-          name: "status",
-          type: "select",
-          options: ~w[online healthy active degraded offline disabled expired]
-        }
+        %{name: "style", type: "select", options: ~w[success warning danger neutral]},
+        %{name: "label", type: "text"},
+        %{name: "dot", type: "boolean"}
       ]
     },
     %{
@@ -633,10 +629,13 @@ defmodule PortalWeb.Dev.ComponentsLive do
   end
 
   defp canvas_component(%{component_id: "status_badge"} = assigns) do
-    assigns = assign(assigns, :status, String.to_existing_atom(assigns.props["status"]))
+    assigns =
+      assigns
+      |> assign(:style, String.to_existing_atom(assigns.props["style"]))
+      |> assign(:dot, Map.get(assigns.props, "dot", true))
 
     ~H"""
-    <.status_badge status={@status} />
+    <.status_badge style={@style} dot={@dot}>{@props["label"]}</.status_badge>
     """
   end
 
