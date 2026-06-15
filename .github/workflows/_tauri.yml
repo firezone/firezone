@@ -246,6 +246,15 @@ jobs:
         shell: bash
         run: ${{ env.UPLOAD_SCRIPT }}
 
+      - name: Azure login (OIDC)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
       - name: Upload to preview repository
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
         shell: bash
@@ -257,19 +266,32 @@ jobs:
             --destination-path import-preview \
             --overwrite \
             --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --auth-mode login \
+            --account-name firezoneartifacts
 
-      - name: Upload to preview repository
+      - name: Azure login (OIDC) for QA artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_QA_SUBSCRIPTION_ID }}
+          # The QA principal only holds a data-plane role on the storage account,
+          # not subscription-wide Reader, so don't fail on subscription enumeration.
+          allow-no-subscriptions: true
+
+      - name: Upload preview MSI to QA artifacts storage
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
         shell: bash
         run: |
           az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
             --container-name binaries \
             --name "windows-gui-client/preview/${{ matrix.arch }}" \
             --file "${{ env.BINARY_DEST_PATH }}.msi" \
             --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --no-progress
 
   regenerate-apt-index:
     needs: build-gui

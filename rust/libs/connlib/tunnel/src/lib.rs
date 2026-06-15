@@ -142,10 +142,7 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             buffers: Buffers::default(),
-            packet_counter: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packets")
-                .with_description("The number of packets processed.")
-                .build(),
+            packet_counter: otel_instruments::network_packets(),
         }
     }
 
@@ -349,10 +346,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             buffers: Buffers::default(),
-            packet_counter: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packets")
-                .with_description("The number of packets processed.")
-                .build(),
+            packet_counter: otel_instruments::network_packets(),
         }
     }
 

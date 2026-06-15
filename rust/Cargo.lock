@@ -707,6 +707,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
+ "otel-instruments",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -894,7 +895,9 @@ dependencies = [
  "crossbeam-queue",
  "opentelemetry",
  "opentelemetry_sdk",
+ "otel-instruments",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1235,6 +1238,7 @@ dependencies = [
  "logging",
  "opentelemetry",
  "oslog",
+ "otel-instruments",
  "phoenix-channel",
  "rustls",
  "rustls-platform-verifier",
@@ -1261,6 +1265,7 @@ dependencies = [
  "futures",
  "logging",
  "opentelemetry",
+ "otel-instruments",
  "parking_lot",
  "phoenix-channel",
  "snownet",
@@ -2208,6 +2213,7 @@ name = "eventloop-budget"
 version = "0.1.0"
 dependencies = [
  "opentelemetry",
+ "otel-instruments",
 ]
 
 [[package]]
@@ -2314,6 +2320,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
+ "otel-instruments",
  "phoenix-channel",
  "resolv-conf",
  "rustls",
@@ -5108,6 +5115,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "otel-instruments"
+version = "0.1.0"
+dependencies = [
+ "opentelemetry",
+ "tokio",
+]
+
+[[package]]
 name = "output_vt100"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6718,6 +6733,7 @@ dependencies = [
  "itertools",
  "logging",
  "opentelemetry",
+ "otel-instruments",
  "rand 0.10.1",
  "ringbuffer",
  "smallvec",
@@ -6739,6 +6755,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "opentelemetry",
+ "otel-instruments",
  "quinn-udp",
  "socket2",
  "tokio",
@@ -7489,6 +7506,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
+ "rand 0.10.1",
  "reqwest",
  "rustls",
  "sentry",
@@ -8162,6 +8180,8 @@ dependencies = [
  "anyhow-ext",
  "ip-packet",
  "libc",
+ "opentelemetry",
+ "otel-instruments",
  "tokio",
  "tracing",
 ]
@@ -8220,6 +8240,7 @@ dependencies = [
  "logging",
  "lru",
  "opentelemetry",
+ "otel-instruments",
  "proptest",
  "proptest-state-machine",
  "rand 0.10.1",

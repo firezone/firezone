@@ -13,6 +13,7 @@ etc-hosts-dns-client = { workspace = true }
 futures = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 snownet = { workspace = true }

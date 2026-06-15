@@ -217,7 +217,7 @@ impl ClientState {
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
-            dns_lookup_duration: otel::metrics::dns_lookup_duration(),
+            dns_lookup_duration: otel_instruments::dns_lookup_duration(),
         }
     }
 

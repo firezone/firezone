@@ -193,11 +193,8 @@ impl Io {
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packets")
-                .with_description("The number of packets processed.")
-                .build(),
-            dropped_packets: otel::metrics::network_packet_dropped(),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 

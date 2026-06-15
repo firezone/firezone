@@ -143,7 +143,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             cmd_rx,
             logged_permission_denied: false,
-            tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
+            tunnel_errors: otel_instruments::tunnel_errors(),
             portal_event_rx,
             portal_cmd_tx,
             resource_list_sender,
@@ -736,7 +736,7 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
-    let hiccups = telemetry::otel::metrics::portal_connection_hiccups();
+    let hiccups = otel_instruments::portal_connection_hiccups();
 
     loop {
         // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
