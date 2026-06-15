@@ -60,10 +60,6 @@ pub fn iceless() -> bool {
     FEATURE_FLAGS.iceless()
 }
 
-pub fn export_metrics() -> bool {
-    false // Placeholder until we actually deploy an OTEL collector.
-}
-
 pub fn show_connected_devices() -> bool {
     FEATURE_FLAGS.show_connected_devices()
 }
