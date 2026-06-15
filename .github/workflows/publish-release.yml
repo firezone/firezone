@@ -277,6 +277,9 @@ jobs:
 
   promote-deb-packages:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage
     strategy:
       matrix:
         include:
@@ -290,6 +293,14 @@ jobs:
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-azure-cli
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
 
       - name: Copy preview archive to import-stable
         if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
@@ -306,9 +317,13 @@ jobs:
             --source-container apt \
             --pattern "pool-preview/${{ matrix.deb_name }}_$version*" \
             --destination-path import-stable \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --auth-mode login \
+            --account-name firezoneartifacts
 
   regenerate-apt-index:
     needs: promote-deb-packages
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/_apt.yml
     secrets: inherit
