@@ -148,34 +148,22 @@ impl SocketPool {
             return Poll::Ready(Ok(iter));
         }
 
-        // Rotate the polling order by one slot per call - with the catch-all socket occupying
-        // a virtual slot - so that no socket can starve the others under sustained traffic.
+        // Rotate the polling order by one slot per call so no socket can starve the others
+        // under sustained traffic. The catch-all socket takes part as one slot among the flows.
         let position = inner.round_robin % (inner.flows.len() + 1);
         inner.round_robin = inner.round_robin.wrapping_add(1);
 
-        let catch_all_first = position == 0;
-        let wildcard = self.wildcard.as_socket();
-
-        if catch_all_first && let Poll::Ready(result) = poll_recv_ready(cx, wildcard, &mut try_recv)
-        {
-            return Poll::Ready(result);
-        }
-
-        for flow in inner.rotated_flows(position) {
-            if let Poll::Ready(result) = poll_recv_ready(cx, flow.socket.as_socket(), &mut try_recv)
-            {
-                if result.is_ok() {
+        for (socket, flow) in inner.rotated_recv_order(self.wildcard.as_socket(), position) {
+            if let Poll::Ready(result) = poll_recv_ready(cx, socket, &mut try_recv) {
+                // Only flow sockets track a last-received time (for eviction); the wildcard is `None`.
+                if result.is_ok()
+                    && let Some(flow) = flow
+                {
                     flow.record_received(Instant::now());
                 }
 
                 return Poll::Ready(result);
             }
-        }
-
-        if !catch_all_first
-            && let Poll::Ready(result) = poll_recv_ready(cx, wildcard, &mut try_recv)
-        {
-            return Poll::Ready(result);
         }
 
         Poll::Pending
@@ -253,13 +241,25 @@ impl SocketPool {
 }
 
 impl Inner {
-    /// The flow sockets, rotated so that `position` (a virtual slot that includes the
-    /// catch-all socket at index 0) starts the round.
-    fn rotated_flows(&self, position: usize) -> impl Iterator<Item = &Flow> {
-        let num_flows = self.flows.len();
-        let offset = position.saturating_sub(1);
-
-        self.flows.values().cycle().skip(offset).take(num_flows)
+    /// All receive sockets - the catch-all `wildcard` plus the flow sockets - rotated so that
+    /// `position` starts the round.
+    ///
+    /// Each flow socket carries its [`Flow`] so the receive path can refresh its last-received
+    /// timestamp; the wildcard carries `None`.
+    fn rotated_recv_order<'a>(
+        &'a self,
+        wildcard: Socket<'a>,
+        position: usize,
+    ) -> impl Iterator<Item = (Socket<'a>, Option<&'a Flow>)> {
+        std::iter::once((wildcard, None))
+            .chain(
+                self.flows
+                    .values()
+                    .map(|flow| (flow.socket.as_socket(), Some(flow))),
+            )
+            .cycle()
+            .skip(position)
+            .take(self.flows.len() + 1)
     }
 }
 
