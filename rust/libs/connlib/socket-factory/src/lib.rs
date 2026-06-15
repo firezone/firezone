@@ -444,16 +444,6 @@ impl PerfUdpSocket {
                     offset = end;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
-                #[cfg(apple)]
-                Err(e) if socket.connected && is_icmp_unreachable(&e) => {
-                    self.record_send_retries(attempt);
-
-                    // The kernel received an ICMP error for this path; the error is one-shot.
-                    // Drop the packet: either the path recovers or connlib migrates / times out.
-                    tracing::debug!(%dst, "Dropping packet for unreachable destination: {e}");
-
-                    return Ok(());
-                }
                 // Connected sockets get a write-readiness wakeup from the kernel's flow advisory
                 // once the interface queue drains, so we park until then.
                 #[cfg(apple)]
@@ -466,6 +456,16 @@ impl PerfUdpSocket {
                 Err(e) if should_retry(&e, attempt) => {
                     spin_and_yield(attempt).await;
                     attempt += 1;
+                }
+                #[cfg(apple)]
+                Err(e) if socket.connected && is_icmp_unreachable(&e) => {
+                    self.record_send_retries(attempt);
+
+                    // The kernel received an ICMP error for this path; the error is one-shot.
+                    // Drop the packet: either the path recovers or connlib migrates / times out.
+                    tracing::debug!(%dst, "Dropping packet for unreachable destination: {e}");
+
+                    return Ok(());
                 }
                 Err(e) => {
                     self.record_send_retries(attempt);
