@@ -29,12 +29,12 @@ in
 
     allowedUsers = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
       example = [ "alice" ];
       description = ''
         Users allowed to control the tunnel daemon. They are added to the
         firezone-client group, which may connect to the daemon's IPC
-        socket.
+        socket. Mandatory: an empty list leaves the daemon usable by
+        nobody, so the value has no default and must be set explicitly.
       '';
     };
 
@@ -46,16 +46,6 @@ in
       ];
       default = "systemd-resolved";
       description = "Mechanism the tunnel daemon uses to take control of system DNS.";
-    };
-
-    provisionKeyring = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Enable gnome-keyring as a Secret Service provider for storing the
-        session token. Disable if your desktop already provides one (e.g.
-        KWallet on Plasma).
-      '';
     };
 
     extraEnvironment = lib.mkOption {
@@ -80,7 +70,10 @@ in
       members = cfg.allowedUsers;
     };
 
-    services.gnome.gnome-keyring.enable = lib.mkIf cfg.provisionKeyring (lib.mkDefault true);
+    # A Secret Service provider is needed to store the session token. Default
+    # to gnome-keyring; desktops that ship their own (e.g. KWallet) can
+    # override this with lib.mkForce false.
+    services.gnome.gnome-keyring.enable = lib.mkDefault true;
 
     systemd.services.firezone-client-tunnel = {
       description = "Firezone Client Tunnel Service";

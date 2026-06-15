@@ -48,8 +48,7 @@ in
       default = null;
       description = ''
         Unique identifier for this Gateway. When null, a deterministic ID
-        is derived from /etc/machine-id (same derivation as the deb/rpm
-        packages use).
+        is derived from /etc/machine-id.
       '';
     };
 
@@ -77,12 +76,10 @@ in
         default = true;
         description = ''
           Configure NAT masquerading for tunnel traffic via
-          networking.nat (equivalent to the masquerade rules
-          firezone-gateway-init sets up on deb/rpm systems). Disable to
-          manage masquerading yourself. Packet-forwarding sysctls are
-          applied separately and unconditionally because the Gateway
-          requires forwarding to route at all; override them via
-          boot.kernel.sysctl if you manage forwarding yourself.
+          networking.nat. Disable to manage masquerading yourself.
+          Packet-forwarding sysctls are applied unconditionally because
+          the Gateway requires forwarding to route at all; override them
+          via boot.kernel.sysctl if you manage forwarding yourself.
         '';
       };
 
@@ -153,6 +150,11 @@ in
       # The Gateway reads $CREDENTIALS_DIRECTORY/FIREZONE_TOKEN natively
       # when FIREZONE_TOKEN is unset, so the token never enters the
       # environment.
+      # Derive the same deterministic ID the deb/rpm packages use and pass
+      # it explicitly. The binary can self-derive from /etc/machine-id, but
+      # only after create_dir_all("/var/lib/firezone"), which this hardened
+      # unit (DynamicUser, ProtectSystem = "strict", no StateDirectory)
+      # forbids, so it would fail to start. Precomputing keeps it stateless.
       script = ''
         ${lib.optionalString (cfg.id == null) ''
           FIREZONE_ID="$(${pkgs.systemd}/bin/systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 machine-id)"

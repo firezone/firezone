@@ -6,11 +6,13 @@
   # lead with the explicit `nix.settings` form.
   nixConfig = {
     extra-substituters = [ "https://artifacts.firezone.dev/nix" ];
-    extra-trusted-public-keys = [ "artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=" ];
+    extra-trusted-public-keys = [
+      "artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI="
+    ];
   };
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";

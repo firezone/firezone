@@ -29,6 +29,8 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     hash = "sha256-IflKPJMznh7xIpUfAHdw+pfNQ7n5Rx1fmPyLqjdaneM=";
   };
 
+  # nixpkgs packages pnpm by major version only, not the exact patch in
+  # rust/.tool-versions. Bump pnpm_10 here if that file's pnpm major changes.
   nativeBuildInputs = [
     nodejs
     pnpm_10
