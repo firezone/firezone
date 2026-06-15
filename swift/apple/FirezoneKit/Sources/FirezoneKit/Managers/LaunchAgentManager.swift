@@ -9,18 +9,12 @@ enum LaunchAgentManager {
     #if os(macOS)
       // `SMAppService.status` and `register()` block on a synchronous XPC round-trip
       // to `smd`. With approachable concurrency, `nonisolated async` functions run on
-      // the caller's executor (the MainActor), so hop onto a detached task to keep the
-      // blocking work off the main thread and avoid freezing the UI.
-      let isRegistered = await Task.detached(priority: .userInitiated) {
-        keepAppRunningService().status.isRegistered
-      }.value
-
-      if isRegistered {
-        return
-      }
-
+      // the caller's executor (the MainActor), so run the check-and-register on a
+      // single detached task to keep the blocking work off the main thread.
       try await Task.detached(priority: .userInitiated) {
-        try keepAppRunningService().register()
+        let service = keepAppRunningService()
+        guard !service.status.isRegistered else { return }
+        try service.register()
       }.value
     #endif
   }
