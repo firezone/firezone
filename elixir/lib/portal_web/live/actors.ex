@@ -795,7 +795,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_info(:directories_changed, socket), do: {:noreply, socket}
-  def handle_info(message, socket), do: super(message, socket)
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)

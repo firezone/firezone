@@ -529,7 +529,7 @@ defmodule PortalWeb.Clients do
     end
   end
 
-  def handle_info(message, socket), do: super(message, socket)
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defmodule Database do
     import Ecto.Changeset

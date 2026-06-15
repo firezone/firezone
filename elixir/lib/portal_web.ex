@@ -67,23 +67,6 @@ defmodule PortalWeb do
         end
       end
 
-      def handle_info(message, socket) do
-        require Logger
-
-        Logger.warning("Unhandled handle_info message in LiveView",
-          liveview: __MODULE__,
-          message_tag: lv_message_tag(message)
-        )
-
-        {:noreply, socket}
-      end
-
-      defp lv_message_tag(message) when is_struct(message), do: message.__struct__
-      defp lv_message_tag(message) when is_tuple(message) and tuple_size(message) > 0, do: elem(message, 0)
-      defp lv_message_tag(message) when is_atom(message), do: message
-      defp lv_message_tag(_message), do: :unknown
-
-      defoverridable handle_info: 2
     end
   end
 

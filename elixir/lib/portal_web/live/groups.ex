@@ -124,7 +124,7 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_info(%Change{}, socket), do: {:noreply, socket}
-  def handle_info(message, socket), do: super(message, socket)
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_event(event, params, socket)
       when event in [

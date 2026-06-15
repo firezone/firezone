@@ -596,7 +596,7 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
-  def handle_info(message, socket), do: super(message, socket)
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_actors_update!(socket, list_opts) do
     with {:ok, actors, metadata} <- Database.list_actors(socket.assigns.subject, list_opts) do

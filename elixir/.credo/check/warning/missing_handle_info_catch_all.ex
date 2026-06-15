@@ -5,17 +5,18 @@ defmodule Credo.Check.Warning.MissingHandleInfoCatchAll do
     explanations: [
       check: """
       LiveView modules that define `handle_info/2` clauses must include a catch-all
-      clause that delegates to `super/2`.
+      clause as the final clause.
 
-      The `PortalWeb` live_view macro injects a generic catch-all `handle_info/2`
-      that logs unrecognized messages and returns `{:noreply, socket}`. However,
-      when a LiveView defines its own `handle_info/2` clauses, they completely
-      override the injected catch-all, meaning unhandled messages will crash the
-      LiveView process with a `FunctionClauseError`.
+      Without a catch-all, any unexpected message will crash the LiveView process
+      with a `FunctionClauseError`. From the user's perspective this causes a silent
+      page reload that wipes any in-progress form edits — a confusing and broken
+      experience.
 
-      Add a catch-all as the final `handle_info/2` clause that delegates to `super`:
+      Add a catch-all as the final `handle_info/2` clause:
 
-          def handle_info(message, socket), do: super(message, socket)
+          def handle_info(message, socket) do
+            PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+          end
 
       ## Examples
 
@@ -31,7 +32,9 @@ defmodule Credo.Check.Warning.MissingHandleInfoCatchAll do
             {:noreply, socket}
           end
 
-          def handle_info(message, socket), do: super(message, socket)
+          def handle_info(message, socket) do
+            PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+          end
       """,
       params: []
     ]
@@ -60,6 +63,11 @@ defmodule Credo.Check.Warning.MissingHandleInfoCatchAll do
   end
 
   # use PortalWeb, :live_view  or  use SomeModule, :live_view
+  # Skip quote blocks — they are macro templates, not real module definitions
+  defp collect_info({:quote, _, _}, state) do
+    {:skipped, state}
+  end
+
   defp collect_info({:use, _, [{:__aliases__, _, _}, :live_view]} = ast, state) do
     {ast, %{state | uses_live_view: true}}
   end
@@ -105,7 +113,7 @@ defmodule Credo.Check.Warning.MissingHandleInfoCatchAll do
       issue_meta,
       message:
         "LiveView defines handle_info/2 clauses but is missing a catch-all. " <>
-          "Add `def handle_info(message, socket), do: super(message, socket)` as the final clause.",
+          "Add `def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)` as the final clause.",
       trigger: "handle_info",
       line_no: line_no
     )
