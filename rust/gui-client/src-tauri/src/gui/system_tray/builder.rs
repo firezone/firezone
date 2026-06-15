@@ -2,6 +2,7 @@
 
 use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use url::Url;
 
 pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
@@ -92,20 +93,29 @@ pub enum Window {
     Settings,
 }
 
-fn resource_header(res: &ResourceView) -> Item {
-    let Some(address_description) = res.address_description() else {
-        return copyable(&res.pastable());
+/// The single detail line shown for a Resource: its description if present,
+/// otherwise its address. Returns `None` when that value is empty or identical
+/// to the `name` already shown by the parent menu item, so nothing is repeated.
+///
+/// A description that parses as a URL becomes a clickable link; anything else is
+/// shown greyed-out, since the address is copied via the explicit "Copy address"
+/// action instead.
+pub(crate) fn resource_detail(res: &ResourceView) -> Option<Item> {
+    let detail = match res.address_description() {
+        Some(description) if !description.is_empty() => Cow::from(description),
+        _ => res.pastable(),
     };
 
-    if address_description.is_empty() {
-        return copyable(&res.pastable());
+    if detail.is_empty() || &*detail == res.name() {
+        return None;
     }
 
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
+    let detail = match Url::parse(&detail) {
+        Ok(url) => item(Event::Url(url), format!("<{detail}>")),
+        Err(_) => item(None, detail.into_owned()),
     };
 
-    item(Event::Url(url), format!("<{address_description}>"))
+    Some(detail)
 }
 
 impl Menu {
@@ -154,26 +164,6 @@ impl Menu {
     pub(crate) fn separator(mut self) -> Self {
         self.add_separator();
         self
-    }
-
-    fn internet_resource(self) -> Self {
-        self.disabled(INTERNET_RESOURCE_DESCRIPTION)
-    }
-
-    fn resource_body(self, resource: &ResourceView) -> Self {
-        self.separator()
-            .disabled("Resource")
-            .copyable(resource.name())
-            .copyable(resource.pastable().as_ref())
-    }
-
-    pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
-        if resource.is_internet_resource() {
-            self.internet_resource()
-        } else {
-            self.add_item(resource_header(resource));
-            self.resource_body(resource)
-        }
     }
 }
 
