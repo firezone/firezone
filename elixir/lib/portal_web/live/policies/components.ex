@@ -377,7 +377,7 @@ defmodule PortalWeb.Policies.Components do
       <:options_group :let={options_group}>{options_group}</:options_group>
       <:option :let={row}>
         <div class="flex items-center gap-2">
-          <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4 shrink-0" />
+          <.provider_icon provider={provider_type_from_group(row)} size="sm" />
           <span>{row.group.name}</span>
         </div>
       </:option>
@@ -812,9 +812,7 @@ defmodule PortalWeb.Policies.Components do
         navigate={~p"/#{@account}/groups/#{@policy.group}"}
         class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] transition-colors text-left group"
       >
-        <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--icon-bg)] border border-[var(--border)] shrink-0">
-          <.provider_icon type={provider_type_from_group(@policy.group)} class="w-4 h-4" />
-        </div>
+        <.provider_icon provider={provider_type_from_group(@policy.group)} size="sm" variant="circle" />
         <div class="min-w-0">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
             Group

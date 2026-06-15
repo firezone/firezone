@@ -1227,9 +1227,7 @@ defmodule PortalWeb.Resources.Components do
               navigate={~p"/#{@account}/groups/#{row.group.id}"}
               class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0"
             >
-              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
-              </div>
+              <.provider_icon provider={provider_type_from_group(row)} size="sm" variant="circle" />
               <div class="flex-1 min-w-0 flex items-center gap-2">
                 <p class="text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
                   {row.group.name}
@@ -1407,9 +1405,7 @@ defmodule PortalWeb.Resources.Components do
                       phx-value-group_id={row.group.id}
                       class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-[var(--surface)] cursor-pointer"
                     >
-                      <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                        <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
-                      </div>
+                      <.provider_icon provider={provider_type_from_group(row)} size="xs" variant="circle" />
                       <span class="text-xs text-[var(--text-primary)] truncate">
                         {row.group.name}
                       </span>
@@ -1446,9 +1442,7 @@ defmodule PortalWeb.Resources.Components do
                       phx-value-group_id={row.group.id}
                       class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors cursor-pointer group"
                     >
-                      <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                        <.provider_icon type={provider_type_from_group(row)} class="w-3 h-3" />
-                      </div>
+                      <.provider_icon provider={provider_type_from_group(row)} size="xs" variant="circle" />
                       <span class="flex-1 text-xs text-[var(--text-primary)] truncate">
                         {row.group.name}
                       </span>
