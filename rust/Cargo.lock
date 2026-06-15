@@ -897,6 +897,7 @@ dependencies = [
  "opentelemetry_sdk",
  "otel-instruments",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
