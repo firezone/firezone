@@ -101,21 +101,6 @@ impl ClientOnClient {
         self.recompute_inbound_filter();
     }
 
-    /// Update the recorded expiry for an active resource.
-    pub(crate) fn update_resource_expiry(
-        &mut self,
-        resource_id: ResourceId,
-        new_expiry: Instant,
-        now: Instant,
-    ) {
-        let expires_in = new_expiry.saturating_duration_since(now);
-        if !self.resources.update_expiry(&resource_id, now, expires_in) {
-            tracing::debug!(%resource_id, "Unknown resource");
-            return;
-        }
-        tracing::info!(%resource_id, ?expires_in, "Updated peer authorization expiry");
-    }
-
     /// Drop a previously-active resource.
     pub(crate) fn remove_resource(&mut self, resource_id: &ResourceId) {
         let Some(_entry) = self.resources.remove(resource_id) else {

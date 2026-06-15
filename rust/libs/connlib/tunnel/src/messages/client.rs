@@ -218,16 +218,6 @@ pub struct ClientRejectAccess {
     pub resource_id: ResourceId,
 }
 
-/// Sent by the portal when an authorization's expiry time changes.
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct ClientAccessAuthorizationExpiryUpdated {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
-}
-
 /// Portal's denial of a `create_flow` toward a static device pool peer.
 ///
 /// Either or both of `ipv4` / `ipv6` may be absent depending on the denial reason.
@@ -324,9 +314,6 @@ pub enum IngressMessages {
 
     /// A previously-authorized peer-to-peer access has been revoked.
     RejectAccess(ClientRejectAccess),
-
-    /// An authorization's expiry time has changed.
-    AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
 
 #[serde_with::serde_as]
