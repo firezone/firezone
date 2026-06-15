@@ -90,6 +90,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
     with:
       push_to_cache: true
 

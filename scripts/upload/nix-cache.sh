@@ -5,8 +5,10 @@
 # storage account, served at https://artifacts.firezone.dev/nix.
 #
 # Required environment:
-#   NIX_CACHE_SIGNING_KEY                  ed25519 secret key (nix key generate-secret)
-#   AZURERM_ARTIFACTS_CONNECTION_STRING    write access to the storage account
+#   NIX_CACHE_SIGNING_KEY    ed25519 secret key (nix key generate-secret)
+#
+# Azure auth comes from a prior `azure/login` (OIDC); the commands below use
+# --auth-mode login against the firezoneartifacts account.
 
 set -euo pipefail
 
@@ -29,7 +31,8 @@ printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 41\n' >"$staging_dir/n
 # matrix job. The cache is content-addressed and shared across releases,
 # so it must never be pruned by sync.
 az storage blob sync \
+    --account-name firezoneartifacts \
+    --auth-mode login \
     --container nix \
     --source "$staging_dir" \
-    --delete-destination false \
-    --connection-string "$AZURERM_ARTIFACTS_CONNECTION_STRING"
+    --delete-destination false

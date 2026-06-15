@@ -110,6 +110,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
     with:
       sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
       push_to_cache: true

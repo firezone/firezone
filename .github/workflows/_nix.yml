@@ -36,6 +36,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # OIDC auth for the Azure binary cache upload
 
 jobs:
   build:
@@ -75,9 +76,18 @@ jobs:
             .#firezone-headless-client \
             .#firezone-gui-client \
             --print-build-logs
+      - name: Azure login (OIDC)
+        if: ${{ inputs.push_to_cache }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          # The artifacts principal holds only a data-plane role on the storage
+          # account, not subscription-wide Reader.
+          allow-no-subscriptions: true
       - name: Sign and push to binary cache
         if: ${{ inputs.push_to_cache }}
         env:
           NIX_CACHE_SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
-          AZURERM_ARTIFACTS_CONNECTION_STRING: ${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}
         run: ./scripts/upload/nix-cache.sh
