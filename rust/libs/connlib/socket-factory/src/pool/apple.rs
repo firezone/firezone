@@ -156,8 +156,8 @@ impl SocketPool {
         for (socket, flow) in inner.rotated_recv_order(self.wildcard.as_socket(), position) {
             if let Poll::Ready(result) = poll_recv_ready(cx, socket, &mut try_recv) {
                 // Only flow sockets track a last-received time (for eviction); the wildcard is `None`.
-                if result.is_ok()
-                    && let Some(flow) = flow
+                if let Some(flow) = flow
+                    && result.is_ok()
                 {
                     flow.record_received(Instant::now());
                 }
@@ -251,7 +251,8 @@ impl Inner {
         wildcard: Socket<'a>,
         position: usize,
     ) -> impl Iterator<Item = (Socket<'a>, Option<&'a Flow>)> {
-        std::iter::once((wildcard, None))
+        std::iter::empty()
+            .chain((wildcard, None))
             .chain(
                 self.flows
                     .values()
