@@ -112,12 +112,8 @@ jobs:
           fail-on-error: false
 
   tunnel_test:
-    name: tunnel-test-iceless-${{ matrix.iceless }}
+    name: tunnel-test
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
-      matrix:
-        iceless: [true, false]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/setup-rust-stable
@@ -139,13 +135,8 @@ jobs:
           PROPTEST_CASES: 256
           RUST_BACKTRACE: 0
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
-          # Coverage enforcement is iceless-only: that run randomizes the
-          # per-peer capability 50/50, so both the iceless and the ICE code
-          # paths are exercised. The non-iceless run can't produce the
-          # "Using iceless path-agent" pattern, so the check would always
-          # fail there.
-          TUNNEL_TEST_ENFORCE_COVERAGE: ${{ matrix.iceless && '1' || '0' }}
-          FZFF_ICELESS: ${{ matrix.iceless }}
+          TUNNEL_TEST_ENFORCE_COVERAGE: 1 # Fail the test if we don't hit all intended codepaths.
+          FZFF_ICELESS: true
 
       - name: Extract missing coverage patterns
         id: missing
@@ -176,7 +167,7 @@ jobs:
         if: failure() && steps.missing.outputs.patterns != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: proptest-harvest-seeds-iceless-${{ matrix.iceless }}
+          name: proptest-harvest-seeds
           path: rust/libs/connlib/tunnel/harvest-output/
           if-no-files-found: warn
 
@@ -185,7 +176,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: rust/lcov.info
           format: lcov
-          flag-name: rust-tunnel-test-iceless-${{ matrix.iceless }}
+          flag-name: rust-tunnel-test
           parallel: true
           fail-on-error: false
 
