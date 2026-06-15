@@ -4,24 +4,6 @@ defmodule PortalWeb.Dev.ComponentsLive do
   @components [
     %{
       group: "Components",
-      id: "badge",
-      label: "Badge",
-      variants: [
-        %{name: "Success", props: %{"type" => "success", "label" => "Success"}},
-        %{name: "Danger", props: %{"type" => "danger", "label" => "Danger"}},
-        %{name: "Warning", props: %{"type" => "warning", "label" => "Warning"}},
-        %{name: "Info", props: %{"type" => "info", "label" => "Info"}},
-        %{name: "Primary", props: %{"type" => "primary", "label" => "Primary"}},
-        %{name: "Accent", props: %{"type" => "accent", "label" => "Accent"}},
-        %{name: "Neutral", props: %{"type" => "neutral", "label" => "Neutral"}}
-      ],
-      controls: [
-        %{name: "type", type: "select", options: ~w[success danger warning info primary accent neutral]},
-        %{name: "label", type: "text"}
-      ]
-    },
-    %{
-      group: "Components",
       id: "button",
       label: "Button",
       variants: [
@@ -103,6 +85,24 @@ defmodule PortalWeb.Dev.ComponentsLive do
     },
     %{
       group: "Components",
+      id: "badge",
+      label: "Badge",
+      variants: [
+        %{name: "Success", props: %{"type" => "success", "label" => "Success"}},
+        %{name: "Danger", props: %{"type" => "danger", "label" => "Danger"}},
+        %{name: "Warning", props: %{"type" => "warning", "label" => "Warning"}},
+        %{name: "Info", props: %{"type" => "info", "label" => "Info"}},
+        %{name: "Primary", props: %{"type" => "primary", "label" => "Primary"}},
+        %{name: "Accent", props: %{"type" => "accent", "label" => "Accent"}},
+        %{name: "Neutral", props: %{"type" => "neutral", "label" => "Neutral"}}
+      ],
+      controls: [
+        %{name: "type", type: "select", options: ~w[success danger warning info primary accent neutral]},
+        %{name: "label", type: "text"}
+      ]
+    },
+    %{
+      group: "Components",
       id: "status_badge",
       label: "Status Badge",
       variants: [
@@ -116,6 +116,25 @@ defmodule PortalWeb.Dev.ComponentsLive do
         %{name: "style", type: "select", options: ~w[success warning danger neutral]},
         %{name: "label", type: "text"},
         %{name: "dot", type: "boolean"}
+      ]
+    },
+    %{
+      group: "Components",
+      id: "dual_badge",
+      label: "Dual Badge",
+      variants: [
+        %{name: "Success", props: %{"type" => "success", "left" => "Status", "right" => "Active"}},
+        %{name: "Danger", props: %{"type" => "danger", "left" => "Error", "right" => "Failed"}},
+        %{name: "Warning", props: %{"type" => "warning", "left" => "Alert", "right" => "Degraded"}},
+        %{name: "Info", props: %{"type" => "info", "left" => "Info", "right" => "Pending"}},
+        %{name: "Neutral", props: %{"type" => "neutral", "left" => "Tag", "right" => "Value"}},
+        %{name: "Primary", props: %{"type" => "primary", "left" => "Tag", "right" => "Value"}},
+        %{name: "Accent", props: %{"type" => "accent", "left" => "Tag", "right" => "Value"}},
+      ],
+      controls: [
+        %{name: "type", type: "select", options: ~w[success danger warning info primary accent neutral]},
+        %{name: "left", type: "text"},
+        %{name: "right", type: "text"}
       ]
     },
     %{
@@ -177,45 +196,6 @@ defmodule PortalWeb.Dev.ComponentsLive do
       ]
     },
     %{
-      group: "Typography",
-      id: "code",
-      label: "Code",
-      variants: [
-        %{name: "Default", props: %{"content" => "mix phx.server"}}
-      ],
-      controls: [
-        %{name: "content", type: "text"}
-      ]
-    },
-    %{
-      group: "Typography",
-      id: "code_block",
-      label: "Code Block",
-      variants: [
-        %{name: "Default", props: %{"content" => "mix deps.get\nmix ecto.setup\nmix phx.server"}}
-      ],
-      controls: [
-        %{name: "content", type: "text"}
-      ]
-    },
-    %{
-      group: "Components",
-      id: "dual_badge",
-      label: "Dual Badge",
-      variants: [
-        %{name: "Success", props: %{"type" => "success", "left" => "Status", "right" => "Active"}},
-        %{name: "Danger", props: %{"type" => "danger", "left" => "Error", "right" => "Failed"}},
-        %{name: "Warning", props: %{"type" => "warning", "left" => "Alert", "right" => "Degraded"}},
-        %{name: "Info", props: %{"type" => "info", "left" => "Info", "right" => "Pending"}},
-        %{name: "Neutral", props: %{"type" => "neutral", "left" => "Tag", "right" => "Value"}}
-      ],
-      controls: [
-        %{name: "type", type: "select", options: ~w[success danger warning info primary accent neutral]},
-        %{name: "left", type: "text"},
-        %{name: "right", type: "text"}
-      ]
-    },
-    %{
       group: "Components",
       id: "connection_status",
       label: "Connection Status",
@@ -244,16 +224,38 @@ defmodule PortalWeb.Dev.ComponentsLive do
       id: "icon",
       label: "Icon",
       variants: [
-        %{name: "Resources", props: %{"name" => "ri-git-branch-line"}},
+        %{name: "Resources", props: %{"name" => "ri-server-line"}},
         %{name: "Sites", props: %{"name" => "ri-map-pin-2-line"}},
         %{name: "Policies", props: %{"name" => "ri-shield-check-line"}},
-        %{name: "Actors", props: %{"name" => "ri-group-line"}},
-        %{name: "Clients", props: %{"name" => "ri-device-line"}},
+        %{name: "Actors", props: %{"name" => "ri-user-line"}},
+        %{name: "Clients", props: %{"name" => "ri-computer-line"}},
         %{name: "Gateways", props: %{"name" => "ri-server-line"}},
         %{name: "Settings", props: %{"name" => "ri-settings-4-line"}}
       ],
       controls: [
         %{name: "name", type: "text"}
+      ]
+    },
+    %{
+      group: "Typography",
+      id: "code",
+      label: "Code",
+      variants: [
+        %{name: "Default", props: %{"content" => "mix phx.server"}}
+      ],
+      controls: [
+        %{name: "content", type: "text"}
+      ]
+    },
+    %{
+      group: "Typography",
+      id: "code_block",
+      label: "Code Block",
+      variants: [
+        %{name: "Default", props: %{"content" => "mix deps.get\nmix ecto.setup\nmix phx.server"}}
+      ],
+      controls: [
+        %{name: "content", type: "text"}
       ]
     },
     %{
@@ -272,9 +274,29 @@ defmodule PortalWeb.Dev.ComponentsLive do
       id: "page_header",
       label: "Page Header",
       variants: [
-        %{name: "Default", props: %{}}
+        %{
+          name: "Gateways",
+          props: %{"icon" => "ri-server-line", "title" => "Gateways", "description" => "Servers that route traffic between clients and resources.", "show_action" => false}
+        },
+        %{
+          name: "With action",
+          props: %{"icon" => "ri-server-line", "title" => "Gateways", "description" => "Servers that route traffic between clients and resources.", "show_action" => true}
+        },
+        %{
+          name: "No description",
+          props: %{"icon" => "ri-shield-line", "title" => "Policies", "description" => "", "show_action" => false}
+        },
+        %{
+          name: "No icon",
+          props: %{"icon" => "", "title" => "API Clients", "description" => "Programmatic access tokens for the Firezone API.", "show_action" => false}
+        }
       ],
-      controls: []
+      controls: [
+        %{name: "icon", type: "text"},
+        %{name: "title", type: "text"},
+        %{name: "description", type: "text"},
+        %{name: "show_action", type: "boolean"}
+      ]
     },
     %{
       group: "Layout",
@@ -284,56 +306,51 @@ defmodule PortalWeb.Dev.ComponentsLive do
         %{name: "Default", props: %{}}
       ],
       controls: []
-    },
-    %{
-      group: "Layout",
-      id: "step",
-      label: "Step",
-      variants: [
-        %{name: "Default", props: %{"title" => "Deploy a Gateway"}}
-      ],
-      controls: [
-        %{name: "title", type: "text"}
-      ]
     }
   ]
 
   @impl true
   def mount(_params, _session, socket) do
-    first = hd(@components)
-    first_variant = hd(first.variants)
-
     {:ok,
      assign(socket,
        components: @components,
        search: "",
-       selected_id: first.id,
+       selected_id: nil,
        selected_variant: 0,
-       props: first_variant.props,
+       props: %{},
        controls_open: true,
        dark_canvas: false
      )}
   end
 
   @impl true
-  def handle_event("select_component", %{"id" => id}, socket) do
+  def handle_params(params, _uri, socket) do
+    first = hd(@components)
+    id = Map.get(params, "id", first.id)
+    variant_index = params |> Map.get("v", "0") |> String.to_integer()
+
     component = find_component(id)
-    variant = hd(component.variants)
+    variant_index = min(variant_index, length(component.variants) - 1)
+    variant = Enum.at(component.variants, variant_index)
 
     {:noreply,
      assign(socket,
        selected_id: id,
-       selected_variant: 0,
+       selected_variant: variant_index,
        props: variant.props
      )}
   end
 
-  def handle_event("select_variant", %{"index" => index}, socket) do
-    index = String.to_integer(index)
-    component = find_component(socket.assigns.selected_id)
-    variant = Enum.at(component.variants, index)
+  @impl true
+  def handle_event("select_component", %{"id" => id}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/dev/components?id=#{id}")}
+  end
 
-    {:noreply, assign(socket, selected_variant: index, props: variant.props)}
+  def handle_event("select_variant", %{"index" => index}, socket) do
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/dev/components?id=#{socket.assigns.selected_id}&v=#{index}"
+     )}
   end
 
   def handle_event("toggle_bool_prop", %{"name" => name}, socket) do
@@ -727,9 +744,16 @@ defmodule PortalWeb.Dev.ComponentsLive do
     ~H"""
     <div class="w-full max-w-2xl rounded overflow-hidden border border-border">
       <.page_header>
-        <:icon><.icon name="ri-server-line" class="w-8 h-8 text-brand" /></:icon>
-        <:title>Gateways</:title>
-        <:description>Servers that route traffic between clients and resources.</:description>
+        <:icon :if={@props["icon"] not in [nil, ""]}>
+          <.icon name={@props["icon"]} class="w-8 h-8 text-brand" />
+        </:icon>
+        <:title>{@props["title"]}</:title>
+        <:description :if={@props["description"] not in [nil, ""]}>
+          {@props["description"]}
+        </:description>
+        <:action :if={@props["show_action"]}>
+          <.button style="primary" icon="ri-add-line">Add</.button>
+        </:action>
       </.page_header>
     </div>
     """
@@ -745,7 +769,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
         </.vertical_table_row>
         <.vertical_table_row>
           <:label>Status</:label>
-          <:value><.status_badge status={:online} /></:value>
+          <:value><.status_badge style={:success}>Online</.status_badge></:value>
         </.vertical_table_row>
         <.vertical_table_row>
           <:label>Version</:label>
