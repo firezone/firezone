@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
+use std::{fs, path::PathBuf};
 
 /// `Name` half of the Package Family Name. Must match
 /// `<Identity Name="…"/>` in `win_files/AppxManifest.xml`.
@@ -16,6 +17,11 @@ const PUBLISHER_DN: &str = "CN=\"Firezone, Inc.\", \
     OID.1.3.6.1.4.1.311.60.2.1.3=US, \
     SERIALNUMBER=6383880, \
     OID.2.5.4.15=Private Organization";
+
+/// Must match `<Application Id="…"/>` in `win_files/AppxManifest.xml`.
+const PACKAGE_APPLICATION_ID: &str = "Firezone";
+
+const WIX_PACKAGE_IDENTITY: &str = "firezone-package-identity.wxi";
 
 fn main() -> Result<()> {
     // Release builds embed our own SXS / fusion manifest below -- only
@@ -67,8 +73,30 @@ fn main() -> Result<()> {
 
     let pfn = format!("{PACKAGE_NAME}_{}", publisher_id(PUBLISHER_DN));
     println!("cargo:rustc-env=FIREZONE_PACKAGE_FAMILY_NAME={pfn}");
+    write_wix_package_identity(&pfn)?;
 
     Ok(())
+}
+
+fn write_wix_package_identity(package_family_name: &str) -> Result<()> {
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").context("OUT_DIR not set")?);
+    let profile_dir = out_dir
+        .ancestors()
+        .nth(3)
+        .context("OUT_DIR is not under target/<profile>/build/<package>/out")?;
+    let wix_include = profile_dir.join(WIX_PACKAGE_IDENTITY);
+
+    fs::write(
+        wix_include,
+        format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<Include>
+  <?define FirezonePackageAppUserModelId = "{package_family_name}!{PACKAGE_APPLICATION_ID}" ?>
+</Include>
+"#
+        ),
+    )
+    .context("write WiX package identity include")
 }
 
 /// SHA-256 of the input encoded as UTF-16 LE (no null terminator).

@@ -24,7 +24,7 @@
   <Identity Version="1.5.14.0"
             Name="Firezone.Client.GUI"
             Publisher="CN=&quot;Firezone, Inc.&quot;, O=&quot;Firezone, Inc.&quot;, STREET=&quot;2261 Market Street, Suite 4574&quot;, L=San Francisco, S=California, C=US, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, SERIALNUMBER=6383880, OID.2.5.4.15=Private Organization"
-            ProcessorArchitecture="x64"/>
+            ProcessorArchitecture="neutral"/>
 
   <Properties>
     <DisplayName>Firezone</DisplayName>
@@ -45,8 +45,8 @@
 
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop"
-                        MinVersion="10.0.19044.0"
-                        MaxVersionTested="10.0.22631.0"/>
+                        MinVersion="10.0.19041.0"
+                        MaxVersionTested="10.0.26100.0"/>
   </Dependencies>
 
   <Resources>
@@ -62,7 +62,8 @@
   <Applications>
     <Application Id="Firezone"
                  Executable="Firezone.exe"
-                 EntryPoint="Windows.FullTrustApplication">
+                 uap10:TrustLevel="mediumIL"
+                 uap10:RuntimeBehavior="win32App">
       <uap:VisualElements
         DisplayName="Firezone"
         Description="Firezone GUI Client"
