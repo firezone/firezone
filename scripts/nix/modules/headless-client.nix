@@ -131,7 +131,10 @@ in
 
         LoadCredential = [ "firezone-token:${cfg.tokenFile}" ];
 
-        TimeoutStartSec = "15s";
+        # No TimeoutStartSec: this Type=notify unit only sends READY=1
+        # after the first tunnel-up, which can take a while on slow
+        # portals. Rely on systemd's 90s default rather than risk a
+        # restart loop on a client that is still making progress.
         TimeoutStopSec = "15s";
         Restart = "always";
         RestartSec = 7;
@@ -159,6 +162,10 @@ in
         ProtectKernelTunables = true;
         ProtectProc = "invisible";
         ProtectSystem = "strict";
+        # etc-resolv-conf mode rewrites /etc/resolv.conf in place and
+        # atomic-writes a backup as a temp sibling in /etc, both of which
+        # need /etc writable under ProtectSystem = "strict".
+        ReadWritePaths = lib.optionals (cfg.dnsControl == "etc-resolv-conf") [ "/etc" ];
         # Netlink for the tunnel interface, Unix for systemd-resolved.
         RestrictAddressFamilies = [
           "AF_INET"

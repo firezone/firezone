@@ -76,10 +76,13 @@ in
         type = lib.types.bool;
         default = true;
         description = ''
-          Configure NAT masquerading and packet forwarding for tunnel
-          traffic via networking.nat (equivalent to what
-          firezone-gateway-init does on deb/rpm systems). Disable to
-          manage firewall rules yourself.
+          Configure NAT masquerading for tunnel traffic via
+          networking.nat (equivalent to the masquerade rules
+          firezone-gateway-init sets up on deb/rpm systems). Disable to
+          manage masquerading yourself. Packet-forwarding sysctls are
+          applied separately and unconditionally because the Gateway
+          requires forwarding to route at all; override them via
+          boot.kernel.sysctl if you manage forwarding yourself.
         '';
       };
 
@@ -112,6 +115,9 @@ in
       }
     ];
 
+    # The Gateway routes client traffic to Resources, so IP forwarding is
+    # always required, independent of nat.enable. These are mkDefault so a
+    # user who manages forwarding themselves can still override them.
     boot.kernel.sysctl = {
       "net.ipv4.ip_forward" = lib.mkDefault 1;
       "net.ipv4.conf.all.src_valid_mark" = lib.mkDefault 1;

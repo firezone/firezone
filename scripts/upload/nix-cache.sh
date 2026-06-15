@@ -23,10 +23,13 @@ nix copy --to "file://$staging_dir?compression=zstd" ./result*
 # shared paths.
 printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 41\n' >"$staging_dir/nix-cache-info"
 
-# Incremental: already-present blobs are skipped. azcopy's
-# --delete-destination defaults to false; the cache must never be pruned
-# by sync (NARs are shared across releases).
+# Incremental: already-present blobs are skipped. `az storage blob sync`
+# defaults --delete-destination to true, which would prune every NAR not
+# in this single-closure staging dir: prior releases and the other arch's
+# matrix job. The cache is content-addressed and shared across releases,
+# so it must never be pruned by sync.
 az storage blob sync \
     --container nix \
     --source "$staging_dir" \
+    --delete-destination false \
     --connection-string "$AZURERM_ARTIFACTS_CONNECTION_STRING"

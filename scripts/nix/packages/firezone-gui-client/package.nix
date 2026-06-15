@@ -126,6 +126,14 @@ fzLib.rustPlatform.buildRustPackage {
         ]
       }
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ libayatana-appindicator ]}
+      # Suppress runtime deep-link self-registration. On startup the GUI
+      # otherwise writes a per-user handler pointing at the unwrapped
+      # .firezone-client-gui-wrapped ELF, which overrides the packaged
+      # wrapper-based handler and drops the wrapper environment on
+      # cold-start callbacks. The packaged desktop item is the only
+      # handler we want; this flag gates only registration, not callback
+      # handling, so browser sign-in still works.
+      --add-flags "--no-deep-links"
     )
   '';
 

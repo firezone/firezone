@@ -148,6 +148,10 @@ in
         ProtectKernelTunables = true;
         ProtectProc = "invisible";
         ProtectSystem = "strict";
+        # etc-resolv-conf mode rewrites /etc/resolv.conf in place and
+        # atomic-writes a backup as a temp sibling in /etc, both of which
+        # need /etc writable under ProtectSystem = "strict".
+        ReadWritePaths = lib.optionals (cfg.dnsControl == "etc-resolv-conf") [ "/etc" ];
         RestrictAddressFamilies = [
           "AF_INET"
           "AF_INET6"
