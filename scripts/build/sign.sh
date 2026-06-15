@@ -15,5 +15,6 @@ do
         --azure-key-vault-client-secret "$AZURE_CLIENT_SECRET" \
         --azure-key-vault-certificate "$AZURE_CERT_NAME" \
         --timestamp-rfc3161 "http://timestamp.digicert.com" \
+        --page-hashing \
         --verbose "$exe"
 done
