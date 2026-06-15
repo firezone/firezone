@@ -35,7 +35,8 @@ use crate::DatagramSegmentIter;
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
-/// How many flow sockets we maintain at most, per address family.
+/// How many flow sockets a pool keeps at most. connlib runs one pool per address family,
+/// so this is effectively the per-family cap.
 ///
 /// Apple devices only ever run Clients, so the steady-state working set is tiny:
 /// the connected gateway(s) and possibly a relay. The cap mainly bounds the burst
@@ -61,9 +62,10 @@ struct Inner {
     ///
     /// A failure means the environment (e.g. the iOS Network Extension sandbox) doesn't permit
     /// the `SO_REUSEPORT`-bind + `connect` we rely on. That is a property of the environment, not
-    /// the destination, so we stop trying entirely - all traffic uses the catch-all socket - and
-    /// avoid re-running the failing syscalls on the send path. A `reset()` rebuilds the pool and
-    /// gives it another chance.
+    /// the destination, so we stop connecting *new* flow sockets - new destinations fall back to
+    /// the catch-all socket - and avoid re-running the failing syscalls on the send path. Any flow
+    /// sockets already connected keep working. Re-binding the sockets on a network change builds a
+    /// fresh [`SocketPool`], giving connecting another chance.
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
     /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
