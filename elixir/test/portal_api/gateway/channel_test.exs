@@ -318,7 +318,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
-    test "init includes inbound authorizations with policy_id from the hydrated cache", %{
+    test "init includes inbound authorizations from the hydrated cache", %{
       account: account,
       actor: actor,
       client: client,
@@ -342,7 +342,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       client_id = client.id
       resource_id = resource.id
-      policy_id = pa.policy_id
       expires_at = DateTime.to_unix(pa.expires_at, :second)
 
       assert_push "init", %{authorizations: [authorization]}
@@ -350,7 +349,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert authorization == %{
                client_id: client_id,
                resource_id: resource_id,
-               policy_id: policy_id,
                expires_at: expires_at
              }
     end
@@ -377,7 +375,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
             pa_id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             expires_at
           )
 
@@ -553,7 +550,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
             pa_id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             expires_at
           )
 
@@ -609,14 +605,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
             old_pa_id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             expires_at
           )
           |> Cache.Gateway.put(
             current_pa_id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             expires_at
           )
 
@@ -638,7 +632,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute_push "reject_access", _
 
       key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
-      assert {pa_id_bytes, _policy_id, _exp} = :sys.get_state(socket.channel_pid).assigns.cache[key]
+      assert {pa_id_bytes, _exp} = :sys.get_state(socket.channel_pid).assigns.cache[key]
       assert pa_id_bytes == Ecto.UUID.dump!(current_pa_id)
     end
 
@@ -664,7 +658,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
             pa_id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             expired
           )
 
@@ -776,7 +769,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
            policy_authorization_id: pa.id,
-           policy_id: pa.policy_id,
            authorization_expires_at: pa.expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
@@ -853,7 +845,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
             pa.id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             pa.expires_at
           )
 
@@ -901,7 +892,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
             pa.id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             pa.expires_at
           )
 
@@ -966,7 +956,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
             pa.id,
             client.id,
             resource.id,
-            Ecto.UUID.generate(),
             pa.expires_at
           )
 
@@ -1234,7 +1223,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
            policy_authorization_id: expired_policy_authorization.id,
-           policy_id: expired_policy_authorization.policy_id,
            authorization_expires_at: expired_expiration,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -1328,7 +1316,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
            policy_authorization_id: expired_policy_authorization.id,
-           policy_id: expired_policy_authorization.policy_id,
            authorization_expires_at: expired_expiration,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -1352,7 +1339,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(other_resource)),
            resource_id: to_cache(other_resource).id,
            policy_authorization_id: unexpired_policy_authorization.id,
-           policy_id: unexpired_policy_authorization.policy_id,
            authorization_expires_at: unexpired_expiration,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -1367,12 +1353,10 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       expired_entry =
         {Ecto.UUID.dump!(expired_policy_authorization.id),
-         Ecto.UUID.dump!(expired_policy_authorization.policy_id),
          DateTime.to_unix(expired_expiration, :second)}
 
       unexpired_entry =
         {Ecto.UUID.dump!(unexpired_policy_authorization.id),
-         Ecto.UUID.dump!(unexpired_policy_authorization.policy_id),
          DateTime.to_unix(unexpired_expiration, :second)}
 
       assert :sys.get_state(socket.channel_pid).assigns.cache == %{
@@ -1590,7 +1574,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -1664,7 +1647,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -1733,7 +1715,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: "DNS_Q"
          }}
@@ -1798,7 +1779,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization1.id,
-           policy_id: policy_authorization1.policy_id,
            authorization_expires_at: policy_authorization1.expires_at,
            client_payload: client_payload
          }}
@@ -1815,7 +1795,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization2.id,
-           policy_id: policy_authorization2.policy_id,
            authorization_expires_at: policy_authorization2.expires_at,
            client_payload: client_payload
          }}
@@ -1840,7 +1819,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       key = {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)}
 
-      assert {pa_id_bytes, _policy_id, _exp} =
+      assert {pa_id_bytes, _exp} =
                :sys.get_state(socket.channel_pid).assigns.cache[key]
 
       assert pa_id_bytes == Ecto.UUID.dump!(policy_authorization2.id)
@@ -1904,7 +1883,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2042,7 +2020,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2059,7 +2036,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: other_client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: other_policy_authorization1.id,
-           policy_id: other_policy_authorization1.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2076,7 +2052,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(other_resource),
            policy_authorization_id: other_policy_authorization2.id,
-           policy_id: other_policy_authorization2.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2091,14 +2066,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert cache == %{
                {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)} =>
-                 {Ecto.UUID.dump!(policy_authorization.id),
-                  Ecto.UUID.dump!(policy_authorization.policy_id), expires_at_unix},
+                 {Ecto.UUID.dump!(policy_authorization.id), expires_at_unix},
                {Ecto.UUID.dump!(other_client.id), Ecto.UUID.dump!(resource.id)} =>
-                 {Ecto.UUID.dump!(other_policy_authorization1.id),
-                  Ecto.UUID.dump!(other_policy_authorization1.policy_id), expires_at_unix},
+                 {Ecto.UUID.dump!(other_policy_authorization1.id), expires_at_unix},
                {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(other_resource.id)} =>
-                 {Ecto.UUID.dump!(other_policy_authorization2.id),
-                  Ecto.UUID.dump!(other_policy_authorization2.policy_id), expires_at_unix}
+                 {Ecto.UUID.dump!(other_policy_authorization2.id), expires_at_unix}
              }
 
       lsn = System.unique_integer([:positive, :monotonic])
@@ -2178,7 +2150,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2197,13 +2168,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       cid_bytes = Ecto.UUID.dump!(client.id)
       rid_bytes = Ecto.UUID.dump!(resource.id)
-      pid_bytes = Ecto.UUID.dump!(policy_authorization.policy_id)
       pa_id_bytes = Ecto.UUID.dump!(policy_authorization.id)
       expires_at_unix = DateTime.to_unix(expires_at, :second)
 
       assert %{
                assigns: %{
-                 cache: %{{^cid_bytes, ^rid_bytes} => {^pa_id_bytes, ^pid_bytes, ^expires_at_unix}}
+                 cache: %{{^cid_bytes, ^rid_bytes} => {^pa_id_bytes, ^expires_at_unix}}
                }
              } = :sys.get_state(socket.channel_pid)
 
@@ -2247,7 +2217,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2310,7 +2279,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            client_ipv6: client.ipv6,
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -2878,7 +2846,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
              ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at
          }}
       )
@@ -2967,7 +2934,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
              ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at
          }}
       )
@@ -3022,7 +2988,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
              ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at
          }}
       )
@@ -3097,7 +3062,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -3193,7 +3157,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -3340,7 +3303,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
            resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
            resource_id: to_cache(resource).id,
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -3428,7 +3390,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
              ),
            resource: to_cache(resource),
            policy_authorization_id: policy_authorization.id,
-           policy_id: policy_authorization.policy_id,
            authorization_expires_at: expires_at
          }}
       )

@@ -289,7 +289,6 @@ defmodule PortalAPI.Gateway.Channel do
       subject: subject,
       resource: resource,
       policy_authorization_id: policy_authorization_id,
-      policy_id: policy_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key
@@ -313,7 +312,6 @@ defmodule PortalAPI.Gateway.Channel do
       client: client,
       client_ice_credentials: ice_credentials.initiator,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
-      policy_id: policy_id,
       subject: subject
     })
 
@@ -323,7 +321,6 @@ defmodule PortalAPI.Gateway.Channel do
         policy_authorization_id,
         client.id,
         resource.id,
-        policy_id,
         authorization_expires_at
       )
 
@@ -343,7 +340,6 @@ defmodule PortalAPI.Gateway.Channel do
       client_ipv6: client_ipv6,
       resource: %Cache.Cacheable.Resource{} = resource,
       policy_authorization_id: policy_authorization_id,
-      policy_id: policy_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
@@ -375,7 +371,6 @@ defmodule PortalAPI.Gateway.Channel do
             policy_authorization_id,
             client_id,
             resource.id,
-            policy_id,
             authorization_expires_at
           )
 
@@ -394,7 +389,6 @@ defmodule PortalAPI.Gateway.Channel do
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
       policy_authorization_id: policy_authorization_id,
-      policy_id: policy_id,
       authorization_expires_at: authorization_expires_at
     } = attrs
 
@@ -422,7 +416,6 @@ defmodule PortalAPI.Gateway.Channel do
             policy_authorization_id,
             client.id,
             resource.id,
-            policy_id,
             authorization_expires_at
           )
 
@@ -509,7 +502,7 @@ defmodule PortalAPI.Gateway.Channel do
     # so it doesn't fire later, find the cache empty, and log a spurious warning.
     socket =
       case Map.get(socket.assigns.cache, key) do
-        {pa_id_bytes, _policy_id, _exp} ->
+        {pa_id_bytes, _exp} ->
           cancel_authz_durability_timer(socket, Ecto.UUID.load!(pa_id_bytes))
 
         nil ->

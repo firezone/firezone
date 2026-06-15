@@ -346,7 +346,7 @@ defmodule PortalAPI.Client.Channel do
         # Flow already timed out — ignore late gateway response
         {:noreply, socket}
 
-      {{timer_ref, policy_id}, remaining} ->
+      {timer_ref, remaining} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -358,8 +358,7 @@ defmodule PortalAPI.Client.Channel do
             gateway_public_key: gateway_public_key,
             gateway_ipv4: gateway_ipv4,
             gateway_ipv6: gateway_ipv6,
-            gateway_ice_credentials: ice_credentials.receiver,
-            policy_id: policy_id
+            gateway_ice_credentials: ice_credentials.receiver
           }
           |> put_site_id(site_id, socket.assigns.session)
 
@@ -413,7 +412,6 @@ defmodule PortalAPI.Client.Channel do
         payload[:client_id],
         payload[:resource],
         policy_authorization_id,
-        payload[:policy_id],
         authorization_expires_at
       )
 
@@ -833,7 +831,6 @@ defmodule PortalAPI.Client.Channel do
            client_ipv6: socket.assigns.client.ipv6,
            resource: resource,
            policy_authorization_id: policy_authorization_id,
-           policy_id: policy_id,
            authorization_expires_at: expires_at,
            client_payload: payload
          }}
@@ -921,7 +918,6 @@ defmodule PortalAPI.Client.Channel do
              ),
            resource: resource,
            policy_authorization_id: policy_authorization_id,
-           policy_id: policy_id,
            authorization_expires_at: expires_at
          }}
 
@@ -1066,7 +1062,6 @@ defmodule PortalAPI.Client.Channel do
         build_client_device_access_authorized_messages(
           target_client_id,
           target_meta,
-          nil,
           nil,
           nil,
           nil,
@@ -1350,7 +1345,6 @@ defmodule PortalAPI.Client.Channel do
              subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
              resource: PortalAPI.Gateway.Views.Resource.render(resource),
              policy_authorization_id: policy_authorization_id,
-             policy_id: policy_id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key
@@ -1390,7 +1384,7 @@ defmodule PortalAPI.Client.Channel do
               assign(
                 socket,
                 :pending_flows,
-                Map.put(socket.assigns.pending_flows, resource_id, {timer_ref, policy_id})
+                Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
               )
 
             {:noreply, socket}
@@ -1610,7 +1604,6 @@ defmodule PortalAPI.Client.Channel do
         target_meta,
         resource,
         policy_authorization_id,
-        policy_id,
         expires_at,
         ref,
         socket
@@ -1667,7 +1660,6 @@ defmodule PortalAPI.Client.Channel do
          target_meta,
          resource,
          policy_authorization_id,
-         policy_id,
          expires_at,
          ref,
          socket
@@ -1722,7 +1714,6 @@ defmodule PortalAPI.Client.Channel do
          resource: rendered_resource,
          subject: rendered_subject,
          policy_authorization_id: policy_authorization_id,
-         policy_id: policy_id,
          authorization_expires_at: expires_at
        }}
 
@@ -2271,14 +2262,13 @@ defmodule PortalAPI.Client.Channel do
          client_id,
          %{id: resource_id},
          pa_id,
-         policy_id,
          %DateTime{} = expires_at
        )
        when not is_nil(client_id) and not is_nil(pa_id) do
-    Cache.Client.Authorizations.put(cache, pa_id, client_id, resource_id, policy_id, expires_at)
+    Cache.Client.Authorizations.put(cache, pa_id, client_id, resource_id, expires_at)
   end
 
-  defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _policy_id, _expires_at),
+  defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _expires_at),
     do: cache
 
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok

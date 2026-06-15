@@ -17,7 +17,7 @@ defmodule Portal.Cache.Gateway do
     Data structure:
 
       %{{client_id:uuidv4:16, resource_id:uuidv4:16} =>
-          {policy_authorization_id:uuidv4:16, policy_id:uuidv4:16, expires_at:integer:8}}
+          {policy_authorization_id:uuidv4:16, expires_at:integer:8}}
   """
 
   alias Portal.{Cache, Device}
@@ -31,7 +31,7 @@ defmodule Portal.Cache.Gateway do
            resource_id :: Cache.Cacheable.uuid_binary()}
   @type entry ::
           {policy_authorization_id :: Cache.Cacheable.uuid_binary(),
-           policy_id :: Cache.Cacheable.uuid_binary(), expires_at_unix :: non_neg_integer()}
+           expires_at_unix :: non_neg_integer()}
   @type t :: %{client_resource_key() => entry()}
 
   @doc """
@@ -51,16 +51,16 @@ defmodule Portal.Cache.Gateway do
     end
   end
 
-  defp put_hydrated({id, client_id, resource_id, policy_id, expires_at}, acc) do
+  defp put_hydrated({id, client_id, resource_id, expires_at}, acc) do
     key = {dump!(client_id), dump!(resource_id)}
     expires_at_unix = DateTime.to_unix(expires_at, :second)
 
     case acc do
-      %{^key => {_pa_id, _policy_id, prev_expires_at}} when prev_expires_at >= expires_at_unix ->
+      %{^key => {_pa_id, prev_expires_at}} when prev_expires_at >= expires_at_unix ->
         acc
 
       _ ->
-        Map.put(acc, key, {dump!(id), dump!(policy_id), expires_at_unix})
+        Map.put(acc, key, {dump!(id), expires_at_unix})
     end
   end
 
@@ -71,7 +71,7 @@ defmodule Portal.Cache.Gateway do
   def prune(cache) do
     now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
-    for {key, {_pa_id, _policy_id, expires_at_unix} = entry} <- cache,
+    for {key, {_pa_id, expires_at_unix} = entry} <- cache,
         expires_at_unix >= now_unix,
         into: %{} do
       {key, entry}
@@ -82,20 +82,18 @@ defmodule Portal.Cache.Gateway do
     Record the authorization currently granting access to a `(client, resource)` pair. Last-one-wins:
     a newer authorization for the same pair supersedes the previous one.
   """
-  @spec put(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: t()
+  @spec put(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: t()
   def put(
         %{} = cache,
         policy_authorization_id,
         client_id,
         resource_id,
-        policy_id,
         %DateTime{} = expires_at
       ) do
     Map.put(
       cache,
       {dump_uuid(client_id), dump_uuid(resource_id)},
-      {dump_uuid(policy_authorization_id), dump_uuid(policy_id),
-       DateTime.to_unix(expires_at, :second)}
+      {dump_uuid(policy_authorization_id), DateTime.to_unix(expires_at, :second)}
     )
   end
 
@@ -111,7 +109,7 @@ defmodule Portal.Cache.Gateway do
     pa_id_bytes = dump_uuid(policy_authorization_id)
 
     case Map.get(cache, key) do
-      {^pa_id_bytes, _policy_id, expires_at_unix} ->
+      {^pa_id_bytes, expires_at_unix} ->
         {:ok, expires_at_unix, Map.delete(cache, key)}
 
       _ ->
@@ -161,7 +159,7 @@ defmodule Portal.Cache.Gateway do
       |> order_by([policy_authorizations: f], desc: f.expires_at)
       |> select(
         [policy_authorizations: f],
-        {f.id, f.initiating_device_id, f.resource_id, f.policy_id, f.expires_at}
+        {f.id, f.initiating_device_id, f.resource_id, f.expires_at}
       )
       |> Safe.unscoped(:replica)
       |> Safe.all()
