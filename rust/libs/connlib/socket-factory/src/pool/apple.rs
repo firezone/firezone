@@ -252,7 +252,7 @@ impl Inner {
         position: usize,
     ) -> impl Iterator<Item = (Socket<'a>, Option<&'a Flow>)> {
         std::iter::empty()
-            .chain((wildcard, None))
+            .chain(Some((wildcard, None)))
             .chain(
                 self.flows
                     .values()
