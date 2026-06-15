@@ -218,11 +218,18 @@ impl UdpSocket {
             quinn_state.set_apple_fast_path();
         }
 
+        // A single `recv` may receive several datagrams coalesced into one buffer via
+        // generic receive offload (GRO). The kernel coalesces up to `gro_segments`
+        // datagrams of at most `MAX_FZ_PAYLOAD` bytes each, so the buffer must be large
+        // enough to hold that entire batch. On platforms without GRO `gro_segments` is 1,
+        // sizing the buffer to a single datagram.
+        let recv_buf_size = ip_packet::MAX_FZ_PAYLOAD * quinn_state.gro_segments();
+
         Ok(PerfUdpSocket {
             inner: self.inner,
             state: quinn_state,
             buffer_pool: BufferPool::new(
-                u16::MAX as usize,
+                recv_buf_size,
                 match socket_addr.ip() {
                     IpAddr::V4(_) => "udp-socket-v4",
                     IpAddr::V6(_) => "udp-socket-v6",
