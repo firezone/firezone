@@ -25,7 +25,14 @@ public enum Telemetry {
       options.environment = "entrypoint"  // will be reconfigured in VPNConfigurationManager
       options.releaseName = releaseName()
       options.dist = distributionType()
-      options.enableAppHangTracking = enableAppHangTracking
+      // Use AppHang V2 instead of V1. V1 sampled the main-thread stack ~2s after a
+      // stall was detected, which usually captured the run loop parked in mach_msg
+      // and produced noisy, non-actionable reports. V2 captures the stack at the
+      // start of the hang, and disabling non-fully-blocking reports limits events
+      // to hangs where the app is genuinely frozen.
+      options.enableAppHangTracking = false
+      options.enableAppHangTrackingV2 = enableAppHangTracking
+      options.enableReportNonFullyBlockingAppHangs = false
       options.enableLogs = true
     }
   }
