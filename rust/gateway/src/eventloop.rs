@@ -571,7 +571,7 @@ async fn phoenix_channel_event_loop(
             Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
                 if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::local()),
                 ) {
                     tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
                 }
