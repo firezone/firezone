@@ -5754,6 +5754,87 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
+    test "intersects iceless snownet_capabilities across both clients", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      # Both clients advertise iceless capability before the flow.
+      push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
+      push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlling,
+        snownet_capabilities: %{"iceless" => true}
+      }
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlled,
+        snownet_capabilities: %{"iceless" => true}
+      }
+    end
+
+    test "client_device_access_authorized intersects to false when target lacks iceless", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      # Initiating client advertises iceless; target does not.
+      push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
+      push(target_socket, "set_snownet_capabilities", %{"iceless" => false})
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlling,
+        snownet_capabilities: %{"iceless" => false}
+      }
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlled,
+        snownet_capabilities: %{"iceless" => false}
+      }
+    end
+
+    test "client_device_access_authorized defaults snownet_capabilities to false when unset", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      # Neither side calls `set_snownet_capabilities`.
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        snownet_capabilities: %{"iceless" => false}
+      }
+    end
+
     test "sends denied with :offline when target is in pool but not online", %{
       client: client,
       subject: subject,

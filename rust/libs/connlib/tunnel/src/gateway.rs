@@ -7,7 +7,7 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
 use crate::messages::gateway::{Client, ResourceDescription, Subject};
-use crate::messages::{IceCredentials, ResolveRequest};
+use crate::messages::{IceCredentials, ResolveRequest, SnownetCapabilities};
 use crate::peer_store::PeerStore;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
@@ -283,6 +283,7 @@ impl GatewayState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %client.id))]
+    #[allow(clippy::too_many_arguments)]
     pub fn authorize_flow(
         &mut self,
         client: Client,
@@ -291,6 +292,7 @@ impl GatewayState {
         gateway_ice: IceCredentials,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
+        capabilities: SnownetCapabilities,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
@@ -302,6 +304,7 @@ impl GatewayState {
             IceRole::Controlled,
             IceConfig::server_default(),
             IceConfig::server_idle(),
+            capabilities.into(),
             now,
         )?;
 
