@@ -664,26 +664,6 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
     }
 }
 
-/// Parks until the kernel signals send capacity on the given (connected) socket, bounded by a timeout.
-///
-/// After a flow-advisory `ENOBUFS`, the kernel marks the socket not-writable and fires
-/// `EVFILT_WRITE` once the interface queue drains. tokio's cached write-readiness is stale
-/// at that point (UDP sends never return `EWOULDBLOCK` on Darwin, so it is never cleared),
-/// which is why we clear it explicitly before parking.
-///
-/// The timeout is a liveness backstop: `ENOBUFS` without a flow advisory (e.g. from mbuf
-/// exhaustion) never produces a wakeup. An early timeout merely costs one failed send
-/// before we park again.
-#[cfg(apple)]
-async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
-    let _ = socket.try_io(Interest::WRITABLE, || {
-        Err::<(), io::Error>(io::ErrorKind::WouldBlock.into())
-    });
-
-    let timeout = std::time::Duration::from_millis(10);
-    let _ = tokio::time::timeout(timeout, socket.writable()).await;
-}
-
 /// Whether the error originates from an ICMP message for a connected socket's path.
 #[cfg(apple)]
 fn is_icmp_unreachable(e: &io::Error) -> bool {
@@ -700,9 +680,6 @@ fn is_icmp_unreachable(e: &io::Error) -> bool {
 }
 
 /// Whether a failed send should be retried for the given attempt.
-///
-/// This only classifies the error and bounds the number of attempts; how we wait between
-/// attempts (park vs spin) is decided per socket in [`backoff_send`].
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     let Some(raw_os_error) = e.raw_os_error() else {
         return false;
@@ -716,8 +693,6 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
     }
 
     // On MacOS / iOS, the kernel returns `ENOBUFS` when the interface queue fills up.
-    // It's transient: for connected sockets the kernel signals recovery via write-readiness
-    // (see [`backoff_send`]); for the unconnected catch-all it just clears off-thread.
     #[cfg(apple)]
     if raw_os_error == libc::ENOBUFS && attempt < MAX_ENOBUFS_RETRIES {
         return true;
@@ -745,6 +720,26 @@ async fn spin_and_yield(attempt: u32) {
     }
 
     tokio::task::yield_now().await;
+}
+
+/// Parks until the kernel signals send capacity on the given (connected) socket, bounded by a timeout.
+///
+/// After a flow-advisory `ENOBUFS`, the kernel marks the socket not-writable and fires
+/// `EVFILT_WRITE` once the interface queue drains. tokio's cached write-readiness is stale
+/// at that point (UDP sends never return `EWOULDBLOCK` on Darwin, so it is never cleared),
+/// which is why we clear it explicitly before parking.
+///
+/// The timeout is a liveness backstop: `ENOBUFS` without a flow advisory (e.g. from mbuf
+/// exhaustion) never produces a wakeup. An early timeout merely costs one failed send
+/// before we park again.
+#[cfg(apple)]
+async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
+    let _ = socket.try_io(Interest::WRITABLE, || {
+        Err::<(), io::Error>(io::ErrorKind::WouldBlock.into())
+    });
+
+    let timeout = std::time::Duration::from_millis(10);
+    let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
