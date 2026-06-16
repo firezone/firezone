@@ -3,7 +3,7 @@
   <id>dev.firezone.client</id>
 
   <name>Firezone</name>
-  <summary>Zero-trust access to your network</summary>
+  <summary>Zero-trust access to your organization's resources</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
