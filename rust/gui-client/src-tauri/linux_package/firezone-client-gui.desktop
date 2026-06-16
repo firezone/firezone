@@ -1,8 +1,9 @@
 [Desktop Entry]
-Categories=
-Comment=Firezone
+Categories=Network;Security;
+Comment=Zero-trust access to your organization's resources
 Exec={{exec}}
 Icon={{icon}}
+Keywords=VPN;WireGuard;zero-trust;tunnel;
 Name=Firezone
 Terminal=false
 Type=Application
