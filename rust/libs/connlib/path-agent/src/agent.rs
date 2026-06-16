@@ -58,6 +58,11 @@ pub struct PathAgent {
     /// Pushed-at timestamp of the oldest queued event. Surfaced via
     /// `poll_timeout` so the next tick drains promptly.
     events_queued_at: Option<Instant>,
+
+    /// Number of peer-reflexive remote candidates we've registered
+    /// from inbound probes. Caps unbounded growth if the peer's NAT
+    /// mapping flaps (or an adversarial peer spoofs source addresses).
+    peer_reflexive_count: usize,
 }
 
 /// Lifecycle of the aggressive-probing window each fresh handshake
@@ -150,6 +155,15 @@ pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
 
 pub const EVALUATION_WINDOW: Duration = Duration::from_secs(10);
 
+/// Cap on peer-reflexive remote candidates we'll register from
+/// inbound Echo Requests on otherwise-unknown source addresses.
+/// Peer-reflexive discovery handles the symmetric-NAT case where the
+/// peer reaches us from a mapping they didn't advertise; the cap
+/// bounds growth if NAT mapping flaps or a malicious peer spoofs
+/// many sources. Reset implicitly on roam / relay rebuild via
+/// [`PathAgent::new`].
+const MAX_PEER_REFLEXIVE: usize = 4;
+
 /// Within the same discrete bucket (same tier / relay-first /
 /// family-match / v6-first), a challenger pair must beat the current
 /// primary's smoothed RTT by `max(FLOOR, FRACTION * primary_rtt)` before
@@ -188,6 +202,7 @@ impl PathAgent {
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
             events_queued_at: None,
+            peer_reflexive_count: 0,
         }
     }
 
@@ -583,6 +598,25 @@ impl PathAgent {
                         probe.id, probe.seq,
                     ))),
                 });
+
+                // Peer-reflexive discovery: an Echo Request from a
+                // remote we never registered (peer reached us from a
+                // NAT mapping they didn't advertise) becomes a new
+                // server-reflexive candidate. `drive_probes` measures
+                // the pair on the current open window — or the next
+                // reopen if we're settled — and `select_primary` can
+                // then promote it. Bounded by [`MAX_PEER_REFLEXIVE`].
+                if self.peer_reflexive_count < MAX_PEER_REFLEXIVE
+                    && !self.remotes.iter().any(|c| c.addr() == pair.1)
+                {
+                    tracing::debug!(
+                        local = %pair.0,
+                        remote = %pair.1,
+                        "Discovered peer-reflexive remote candidate",
+                    );
+                    self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1));
+                    self.peer_reflexive_count += 1;
+                }
             }
             crate::icmpv6::Echo::Reply => {
                 if let Some(state) = self.pairs.get_mut(&pair)

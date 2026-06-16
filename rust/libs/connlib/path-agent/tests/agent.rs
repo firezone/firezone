@@ -648,6 +648,35 @@ fn inbound_echo_request_queues_reply_on_same_pair() {
 }
 
 #[test]
+fn inbound_echo_request_from_unknown_source_registers_peer_reflexive() {
+    // Arrange: agent has remotes (host, relay) at addr(3) / addr(4).
+    // A probe arrives from addr(99) — an address the peer never
+    // signalled (their NAT picked a different mapping). The path-
+    // agent should register it as a remote candidate and create the
+    // pair so `drive_probes` measures it on the open window.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    let request = build_echo_request(0, 1);
+    let _ = a.handle_inbound_tun(request, (addr(1), addr(99)), now);
+
+    // Drain the immediate echo reply.
+    while a.poll_transmit().is_some() {}
+
+    // Act: drive probes. The new (host_local, peer_reflexive) pair
+    // should be due immediately (lazy seed during open window) and
+    // emit a probe alongside the previously-known pairs.
+    a.handle_timeout(now);
+    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+
+    // Will panic if the pair didn't fire — exactly what we want.
+    let _ = extract_probe_for(&probes, (addr(1), addr(99)));
+}
+
+#[test]
 fn inbound_decrypted_non_probe_returns_continue() {
     let mut a = agent_with_relay_pairs();
     let packet = ip_packet::make::udp_packet(
