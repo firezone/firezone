@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::SocketAddr;
 use std::ops::ControlFlow;
@@ -59,10 +59,13 @@ pub struct PathAgent {
     /// `poll_timeout` so the next tick drains promptly.
     events_queued_at: Option<Instant>,
 
-    /// Number of peer-reflexive remote candidates we've registered
-    /// from inbound probes. Caps unbounded growth if the peer's NAT
-    /// mapping flaps (or an adversarial peer spoofs source addresses).
-    peer_reflexive_count: usize,
+    /// Addresses we registered as peer-reflexive remote candidates.
+    /// Lets [`Self::add_remote_candidate`] promote a peer-reflexive
+    /// entry to the signaled candidate when the latter arrives, ICE-
+    /// style — replacing the entry in place so accumulated RTT on
+    /// the pair survives. Size doubles as a soft cap on growth via
+    /// [`MAX_PEER_REFLEXIVE`].
+    peer_reflexive_addrs: BTreeSet<SocketAddr>,
 }
 
 /// Lifecycle of the aggressive-probing window each fresh handshake
@@ -202,7 +205,7 @@ impl PathAgent {
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
             events_queued_at: None,
-            peer_reflexive_count: 0,
+            peer_reflexive_addrs: BTreeSet::new(),
         }
     }
 
@@ -224,6 +227,30 @@ impl PathAgent {
     }
 
     pub fn add_remote_candidate(&mut self, c: Candidate) {
+        // ICE-style peer-reflexive promotion. If the signaled
+        // candidate matches an address we previously registered as
+        // peer-reflexive, replace the entry in place — the pair-key
+        // is `(local, remote.addr())` so the existing `PairState`
+        // (smoothed RTT, inflight probe, schedule) survives. Just
+        // refresh `kinds.1` in case the signaled kind differs from
+        // the assumed `ServerReflexive`.
+        if self.peer_reflexive_addrs.remove(&c.addr())
+            && let Some(i) = self.remotes.iter().position(|x| x.addr() == c.addr())
+        {
+            tracing::debug!(
+                remote = %c.addr(),
+                kind = ?c.kind(),
+                "Promoting peer-reflexive remote to signaled candidate",
+            );
+            self.remotes[i] = c;
+            for ((_, remote_addr), state) in self.pairs.iter_mut() {
+                if *remote_addr == c.addr() {
+                    state.kinds.1 = c.kind();
+                }
+            }
+            return;
+        }
+
         if self.remotes.contains(&c) {
             return;
         }
@@ -289,6 +316,7 @@ impl PathAgent {
 
         let removed_addr = self.remotes.remove(i).addr();
         self.pairs.retain(|(_, remote), _| *remote != removed_addr);
+        self.peer_reflexive_addrs.remove(&removed_addr);
 
         if let Some((_, remote)) = self.primary
             && remote == removed_addr
@@ -606,7 +634,9 @@ impl PathAgent {
                 // the pair on the current open window — or the next
                 // reopen if we're settled — and `select_primary` can
                 // then promote it. Bounded by [`MAX_PEER_REFLEXIVE`].
-                if self.peer_reflexive_count < MAX_PEER_REFLEXIVE
+                // If the peer later signals the matching candidate,
+                // `add_remote_candidate` promotes the entry in place.
+                if self.peer_reflexive_addrs.len() < MAX_PEER_REFLEXIVE
                     && !self.remotes.iter().any(|c| c.addr() == pair.1)
                 {
                     tracing::debug!(
@@ -614,8 +644,8 @@ impl PathAgent {
                         remote = %pair.1,
                         "Discovered peer-reflexive remote candidate",
                     );
+                    self.peer_reflexive_addrs.insert(pair.1);
                     self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1));
-                    self.peer_reflexive_count += 1;
                 }
             }
             crate::icmpv6::Echo::Reply => {

@@ -677,6 +677,53 @@ fn inbound_echo_request_from_unknown_source_registers_peer_reflexive() {
 }
 
 #[test]
+fn signaled_candidate_promotes_peer_reflexive_in_place() {
+    // Arrange: register a peer-reflexive remote at addr(99) via an
+    // Echo Request, then accumulate RTT on the (addr(1), addr(99))
+    // pair through one probe round-trip.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    let _ = a.handle_inbound_tun(build_echo_request(0, 1), (addr(1), addr(99)), now);
+    while a.poll_transmit().is_some() {}
+
+    a.handle_timeout(now);
+    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let probe = extract_probe_for(&probes, (addr(1), addr(99)));
+    let later = now + Duration::from_millis(50);
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(probe.id, probe.seq),
+        (addr(1), addr(99)),
+        later,
+    );
+
+    // Confirm the peer-reflexive pair now has RTT, and is among
+    // primary candidates.
+    assert!(a.pairs().any(|p| p == (addr(1), addr(99))));
+
+    // Act: the peer later signals the matching srflx via
+    // `add_remote_candidate`. The path-agent should promote the
+    // peer-reflexive entry in place.
+    a.add_remote_candidate(Candidate::server_reflexive(addr(99), addr(98)));
+
+    // Assert: the pair still exists (same key, RTT preserved by
+    // virtue of pair-state survival), and the candidate count
+    // didn't double — no duplicate at addr(99).
+    assert!(a.pairs().any(|p| p == (addr(1), addr(99))));
+    let count_at_99 = a.pairs().filter(|(_, r)| *r == addr(99)).count();
+    assert_eq!(count_at_99, 2, "pairs at addr(99): one per local");
+
+    // A second signaled candidate at the same addr is now a no-op
+    // (struct-equal dedup applies after promotion clears the set).
+    a.add_remote_candidate(Candidate::server_reflexive(addr(99), addr(98)));
+    let count_at_99_again = a.pairs().filter(|(_, r)| *r == addr(99)).count();
+    assert_eq!(count_at_99_again, 2, "second signal must not duplicate");
+}
+
+#[test]
 fn inbound_decrypted_non_probe_returns_continue() {
     let mut a = agent_with_relay_pairs();
     let packet = ip_packet::make::udp_packet(
