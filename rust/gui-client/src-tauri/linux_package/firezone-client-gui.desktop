@@ -1,6 +1,6 @@
 [Desktop Entry]
 Categories=Network;Security;
-Comment=Zero-trust access to your network
+Comment=Zero-trust access to your organization's resources
 Exec={{exec}}
 Icon={{icon}}
 Keywords=VPN;WireGuard;zero-trust;tunnel;
