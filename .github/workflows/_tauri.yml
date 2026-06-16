@@ -270,7 +270,7 @@ jobs:
             --account-name firezoneartifacts
 
       - name: Azure login (OIDC) for QA artifacts
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Windows' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
           client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
@@ -290,6 +290,32 @@ jobs:
             --container-name binaries \
             --name "windows-gui-client/preview/${{ matrix.arch }}" \
             --file "${{ env.BINARY_DEST_PATH }}.msi" \
+            --overwrite true \
+            --no-progress
+
+      - name: Upload preview deb to QA artifacts storage
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
+            --container-name binaries \
+            --name "linux-gui-client/preview/${{ matrix.arch }}.deb" \
+            --file "${{ env.BINARY_DEST_PATH }}.deb" \
+            --overwrite true \
+            --no-progress
+
+      - name: Upload preview rpm to QA artifacts storage
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
+            --container-name binaries \
+            --name "linux-gui-client/preview/${{ matrix.arch }}.rpm" \
+            --file "${{ env.BINARY_DEST_PATH }}.rpm" \
             --overwrite true \
             --no-progress
 
