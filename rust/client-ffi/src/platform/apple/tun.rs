@@ -1,9 +1,6 @@
-use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
-use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
-use std::{
-    io,
-    os::fd::{AsRawFd as _, RawFd},
-};
+use ip_packet::IpPacket;
+use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
+use std::{io, os::fd::RawFd};
 use telemetry::otel;
 use tokio::sync::mpsc;
 
@@ -83,11 +80,13 @@ impl Tun {
             ],
         ));
 
+        // `tun::apple` picks batched vs. per-packet I/O internally based on syscall
+        // availability, so we just spawn the send / receive loops here.
         std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_send(fd, outbound_rx, write),
+                    tun::apple::send(fd, outbound_rx),
                     "Failed to send to TUN device: {}"
                 )
             })
@@ -96,7 +95,7 @@ impl Tun {
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::apple::recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
             })
@@ -138,7 +137,8 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
     }
 }
 
-/// Raises the limit of packets the kernel buffers on the utun socket, allowing it to run ahead of our reads instead of in lock-step.
+/// Raises the limit of packets the kernel buffers on the utun socket so it can run
+/// ahead of our reads instead of in lock-step.
 fn raise_max_pending_packets(fd: RawFd) {
     let current = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_MAX_PENDING_PACKETS)
     {
@@ -227,75 +227,6 @@ fn get_sockopt<T>(fd: RawFd, level: libc::c_int, name: libc::c_int) -> io::Resul
 
     // Safety: `getsockopt` succeeded; these integer options return a fully-initialized `T`.
     Ok(unsafe { value.assume_init() })
-}
-
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
-    let mut hdr = [0u8; 4];
-
-    let mut iov = [
-        iovec {
-            iov_base: hdr.as_mut_ptr() as _,
-            iov_len: hdr.len(),
-        },
-        iovec {
-            iov_base: dst.as_mut_ptr() as _,
-            iov_len: dst.len(),
-        },
-    ];
-
-    let mut msg_hdr = msghdr {
-        msg_name: std::ptr::null_mut(),
-        msg_namelen: 0,
-        msg_iov: &mut iov[0],
-        msg_iovlen: iov.len() as _,
-        msg_control: std::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
-
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { recvmsg(fd, &mut msg_hdr, 0) } {
-        -1 => Err(io::Error::last_os_error()),
-        0..=4 => Ok(0),
-        n => Ok((n - 4) as usize),
-    }
-}
-
-fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
-    let af = match src.version() {
-        IpVersion::V4 => AF_INET,
-        IpVersion::V6 => AF_INET6,
-    };
-    let src = src.packet();
-
-    let mut hdr = [0, 0, 0, af];
-    let mut iov = [
-        iovec {
-            iov_base: hdr.as_mut_ptr() as _,
-            iov_len: hdr.len(),
-        },
-        iovec {
-            iov_base: src.as_ptr() as _,
-            iov_len: src.len(),
-        },
-    ];
-
-    let msg_hdr = msghdr {
-        msg_name: std::ptr::null_mut(),
-        msg_namelen: 0,
-        msg_iov: &mut iov[0],
-        msg_iovlen: iov.len() as _,
-        msg_control: std::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
-
-    match unsafe { libc::sendmsg(fd.as_raw_fd(), &msg_hdr, 0) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
-    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]

@@ -5,6 +5,9 @@ pub mod ioctl;
 #[cfg(target_family = "unix")]
 pub mod unix;
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub mod apple;
+
 pub trait Tun: Send + Sync + 'static {
     /// Get a reference to the sender for outbound packets.
     fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket>;
