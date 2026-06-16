@@ -1019,7 +1019,7 @@ defmodule PortalWeb.FormComponents do
       ]
   end
 
-  def action_button_style() do
+  def action_button_style do
     [
       "flex items-center gap-2",
       "rounded",

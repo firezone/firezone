@@ -65,21 +65,6 @@ defmodule PortalWeb.CoreComponents do
     do: ~p"/#{account}"
 
   @doc """
-  Renders a generic <p> tag using our color scheme.
-
-  ## Examples
-
-    <.p>
-      Hello world
-    </.p>
-  """
-  def p(assigns) do
-    ~H"""
-    <p class="text-neutral-700">{render_slot(@inner_block)}</p>
-    """
-  end
-
-  @doc """
   Renders an inline code tag with formatting.
 
   ## Examples
@@ -96,7 +81,7 @@ defmodule PortalWeb.CoreComponents do
       assign(
         assigns,
         :class,
-        "#{assigns.class} font-semibold p-[0.15rem] bg-neutral-100 rounded-sm"
+        "#{assigns.class} font-semibold px-2 p-[0.15rem] bg-neutral-100 rounded-sm"
       )
 
     # Important: leave the </code> on the same line as the render_slot call, otherwise there will be
