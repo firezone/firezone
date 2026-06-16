@@ -809,9 +809,9 @@ defmodule PortalWeb.Clients.Components do
         :if={not @confirm_delete_client}
         type="button"
         phx-click="confirm_delete_client"
-        class="w-full text-left px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
       >
-        Delete client
+        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete client
       </button>
       <div
         :if={@confirm_delete_client}

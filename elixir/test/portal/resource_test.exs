@@ -168,6 +168,46 @@ defmodule Portal.ResourceTest do
       assert %{filters: [%{protocol: ["can't be blank"]}]} = errors_on(changeset)
     end
 
+    test "accepts ports at the boundaries of the valid range" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["1", "65535", "80-443"]}]})
+      refute Map.has_key?(errors_on(changeset), :filters)
+    end
+
+    test "rejects a port below the valid range" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["0"]}]})
+      assert %{filters: [%{ports: ["must be between 1 and 65535"]}]} = errors_on(changeset)
+    end
+
+    test "rejects a port above the valid range" do
+      changeset = build_changeset(%{filters: [%{protocol: :udp, ports: ["65536"]}]})
+      assert %{filters: [%{ports: ["must be between 1 and 65535"]}]} = errors_on(changeset)
+    end
+
+    test "rejects a range whose upper bound exceeds the valid range" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["1-70000"]}]})
+      assert %{filters: [%{ports: ["must be between 1 and 65535"]}]} = errors_on(changeset)
+    end
+
+    test "rejects a negative port instead of coercing it to a positive value" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["-1"]}]})
+      assert %{filters: [%{ports: ["must be between 1 and 65535"]}]} = errors_on(changeset)
+    end
+
+    test "rejects overlapping port ranges" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["80-100", "90-110"]}]})
+      assert %{filters: [%{ports: ["port ranges must not overlap"]}]} = errors_on(changeset)
+    end
+
+    test "rejects duplicate single ports as overlapping" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["443", "443"]}]})
+      assert %{filters: [%{ports: ["port ranges must not overlap"]}]} = errors_on(changeset)
+    end
+
+    test "accepts adjacent non-overlapping port ranges" do
+      changeset = build_changeset(%{filters: [%{protocol: :tcp, ports: ["80-90", "91-100"]}]})
+      refute Map.has_key?(errors_on(changeset), :filters)
+    end
+
     test "trims whitespace from name, address, and address_description" do
       changeset =
         build_changeset(%{

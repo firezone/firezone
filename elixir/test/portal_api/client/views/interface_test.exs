@@ -70,5 +70,26 @@ defmodule PortalAPI.Client.Views.InterfaceTest do
       assert result.upstream_do53 == []
       assert result.upstream_dns == []
     end
+
+    test "preserves the order of custom resolvers as entered" do
+      addresses = ["9.9.9.9", "1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"]
+
+      account =
+        account_fixture(
+          config: %{
+            clients_upstream_dns: %{
+              type: :custom,
+              addresses: Enum.map(addresses, &%{address: &1})
+            }
+          }
+        )
+
+      client = client_fixture(account: account)
+      device = fetch_device!(client) |> Repo.preload(:account)
+
+      result = Interface.render(device)
+
+      assert Enum.map(result.upstream_do53, & &1.ip) == addresses
+    end
   end
 end

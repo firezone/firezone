@@ -89,6 +89,7 @@ defmodule Portal.Accounts.Config do
       sort_param: :addresses_sort,
       drop_param: :addresses_drop
     )
+    |> validate_length(:addresses, max: 8, message: "cannot exceed 8 resolvers")
     |> validate_doh_provider_for_secure()
     |> validate_addresses_for_type()
     |> validate_custom_has_addresses()
