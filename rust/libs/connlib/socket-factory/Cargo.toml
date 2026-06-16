@@ -29,5 +29,9 @@ libc = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]
+bufferpool = { workspace = true }
+bytes = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
+gat-lending-iterator = { workspace = true }
+ip-packet = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }

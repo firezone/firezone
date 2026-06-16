@@ -374,6 +374,15 @@ impl PerfUdpSocket {
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
 
+    /// The number of connected per-destination "flow" sockets currently cached.
+    ///
+    /// Exposed for integration tests. Always `0` on non-Apple platforms, where all
+    /// traffic uses the single catch-all socket.
+    #[doc(hidden)]
+    pub fn flow_socket_count(&self) -> usize {
+        self.pool.flow_socket_count()
+    }
+
     pub fn set_buffer_sizes(
         &mut self,
         requested_send_buffer_size: usize,
@@ -961,51 +970,6 @@ mod tests {
         ));
 
         assert!(is_equal_modulo_scope_for_ipv6_link_local(left, right))
-    }
-
-    /// A datagram sent to a fresh destination must connect a flow socket,
-    /// and the reply must arrive through it.
-    #[tokio::test]
-    #[cfg(apple)]
-    async fn sends_and_receives_via_flow_socket() {
-        let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let peer_addr = peer.local_addr().unwrap();
-
-        let socket = udp("127.0.0.1:0".parse().unwrap())
-            .unwrap()
-            .into_perf()
-            .unwrap();
-
-        let pool = BufferPool::<BytesMut>::new(2048, "test");
-
-        socket
-            .send(DatagramOut {
-                src: None,
-                dst: peer_addr,
-                packet: pool.pull_initialised(b"hello"),
-                segment_size: 5,
-                ecn: Ecn::NonEct,
-            })
-            .await
-            .unwrap();
-
-        // The send must actually go out over a connected flow socket - not silently fall back to
-        // the catch-all. A count of 0 means `connect()` failed (e.g. the catch-all lacked
-        // `SO_REUSEPORT`) and the fast path latched off.
-        assert_eq!(socket.pool.flow_socket_count(), 1);
-
-        let mut buf = [0u8; 16];
-        let (len, from) = peer.recv_from(&mut buf).await.unwrap();
-        assert_eq!(&buf[..len], b"hello");
-
-        // The reply matches the connected socket's 4-tuple exactly and must be delivered via it.
-        peer.send_to(b"world", from).await.unwrap();
-
-        let mut iter = socket.recv_from().await.unwrap();
-        let datagram = iter.next().unwrap();
-
-        assert_eq!(datagram.packet, b"world");
-        assert_eq!(datagram.from, peer_addr);
     }
 
     #[test]

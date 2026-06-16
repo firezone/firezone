@@ -241,7 +241,6 @@ impl SocketPool {
         self.inner.lock()
     }
 
-    #[cfg(test)]
     pub(crate) fn flow_socket_count(&self) -> usize {
         self.lock().flows.len()
     }

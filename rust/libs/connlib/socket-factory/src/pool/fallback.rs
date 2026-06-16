@@ -51,4 +51,9 @@ impl SocketPool {
     pub(crate) fn set_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
         self.wildcard.apply_buffer_sizes(send, recv, port);
     }
+
+    /// There are no flow sockets on non-Apple platforms; all traffic uses the catch-all.
+    pub(crate) fn flow_socket_count(&self) -> usize {
+        0
+    }
 }
