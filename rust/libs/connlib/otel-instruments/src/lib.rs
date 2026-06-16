@@ -113,7 +113,12 @@ pub fn queue_length() -> Gauge<u64> {
 
 /// The number of buffers allocated in a buffer pool.
 pub fn buffer_count() -> UpDownCounter<i64> {
-    meter()
+    buffer_count_with(&meter())
+}
+
+/// [`buffer_count`] recorded through the given `meter` rather than the global meter.
+pub fn buffer_count_with(meter: &Meter) -> UpDownCounter<i64> {
+    meter
         .i64_up_down_counter("system.buffer.count")
         .with_description("The number of buffers allocated in the pool.")
         .with_unit("{buffers}")
