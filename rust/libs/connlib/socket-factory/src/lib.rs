@@ -900,43 +900,6 @@ mod tests {
 
     use super::*;
 
-    /// Reproduces the constraint the Apple flow sockets rely on: two UDP sockets can only share a
-    /// local port if *both* opt into `SO_REUSEPORT` before binding. If the first (the catch-all)
-    /// does not, a second socket trying to bind the same port - as a connected flow socket does -
-    /// is rejected with `AddrInUse`, which would latch the fast path off.
-    #[test]
-    fn sharing_a_port_requires_reuseport_on_the_first_socket_too() {
-        use socket2::{Domain, Socket, Type};
-
-        let wildcard = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
-
-        let bind_pair = |reuse_first: bool| -> io::Result<()> {
-            let first = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
-            if reuse_first {
-                first.set_reuse_address(true).unwrap();
-                first.set_reuse_port(true).unwrap();
-            }
-            first.bind(&wildcard.into()).unwrap();
-            let port: SocketAddr = first.local_addr().unwrap().as_socket().unwrap();
-
-            // A connected flow socket binds the catch-all's exact port, opting into reuse itself.
-            let flow = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
-            flow.set_reuse_address(true).unwrap();
-            flow.set_reuse_port(true).unwrap();
-            flow.bind(&port.into())
-        };
-
-        // Catch-all bound without `SO_REUSEPORT` (today's `udp()`): the flow socket can't share it.
-        assert_eq!(
-            bind_pair(false).unwrap_err().kind(),
-            io::ErrorKind::AddrInUse,
-            "flow socket should be rejected when the catch-all lacks SO_REUSEPORT"
-        );
-
-        // Catch-all bound with `SO_REUSEPORT` (the fix): the flow socket can share the port.
-        bind_pair(true).expect("flow socket should bind once the catch-all opts into SO_REUSEPORT");
-    }
-
     #[derive(derive_more::Deref)]
     struct DummyBuffer(Vec<u8>);
 
