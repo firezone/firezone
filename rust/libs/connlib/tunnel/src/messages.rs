@@ -105,16 +105,8 @@ pub struct SnownetCapabilities {
 }
 
 impl SnownetCapabilities {
-    /// Capabilities of the local snownet implementation, derived at
-    /// runtime from the per-account feature flag. The portal AND-
-    /// intersects this against the peer's report, so partial rollouts
-    /// — where only one side has the flag on — converge on the lowest
-    /// common denominator (ICE) instead of mismatching modes.
-    pub fn local() -> Self {
-        Self {
-            iceless: telemetry::feature_flags::iceless(),
-        }
-    }
+    /// Capabilities of the local snownet implementation, hard-coded at compile time.
+    pub const LOCAL: Self = Self { iceless: true };
 }
 
 impl From<SnownetCapabilities> for snownet::Capabilities {
@@ -306,6 +298,10 @@ mod tests {
             SnownetCapabilities { iceless: false }
         );
     }
+
+    // Compile-time guard so future edits to `LOCAL` don't accidentally turn
+    // off iceless support without us noticing.
+    const _: () = assert!(SnownetCapabilities::LOCAL.iceless);
 
     #[test]
     fn snownet_capabilities_deserialize_empty_object_is_default() {

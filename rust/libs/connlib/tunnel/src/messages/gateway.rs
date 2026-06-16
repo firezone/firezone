@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn serialize_set_snownet_capabilities_message() {
-        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities { iceless: true });
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
         let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
