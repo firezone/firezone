@@ -7,7 +7,10 @@ use std::{
 
 use bytes::BytesMut;
 use crossbeam_queue::SegQueue;
-use opentelemetry::{KeyValue, metrics::UpDownCounter};
+use opentelemetry::{
+    KeyValue,
+    metrics::{Meter, UpDownCounter},
+};
 
 /// A lock-free pool of buffers that are all equal in size.
 ///
@@ -33,8 +36,19 @@ where
     B: Buf,
 {
     pub fn new(capacity: usize, tag: &'static str) -> Self {
-        let buffer_counter = otel_instruments::buffer_count();
+        Self::with_counter(capacity, tag, otel_instruments::buffer_count())
+    }
 
+    /// Like [`BufferPool::new`], but records the buffer count through the given `meter`.
+    pub fn with_meter(capacity: usize, tag: &'static str, meter: &Meter) -> Self {
+        Self::with_counter(capacity, tag, otel_instruments::buffer_count_with(meter))
+    }
+
+    fn with_counter(
+        capacity: usize,
+        tag: &'static str,
+        buffer_counter: UpDownCounter<i64>,
+    ) -> Self {
         Self {
             inner: Arc::new(SegQueue::new()),
 
@@ -317,7 +331,7 @@ impl<B> DerefMut for BufferStorage<B> {
 mod tests {
     use std::time::Duration;
 
-    use opentelemetry::global;
+    use opentelemetry::metrics::MeterProvider;
     use opentelemetry_sdk::metrics::{
         InMemoryMetricExporter, PeriodicReader, SdkMeterProvider,
         data::{AggregatedMetrics, MetricData},
@@ -401,9 +415,10 @@ mod tests {
 
     #[tokio::test]
     async fn buffer_pool_metrics() {
-        let (_provider, exporter) = init_meter_provider();
+        let (provider, exporter) = init_meter_provider();
+        let meter = provider.meter("connlib");
 
-        let pool = BufferPool::<Vec<u8>>::new(1024, "test");
+        let pool = BufferPool::<Vec<u8>>::with_meter(1024, "test", &meter);
 
         let buffer1 = pool.pull_initialised(b"hello world");
         let buffer2 = pool.pull_initialised(b"hello world");
@@ -449,7 +464,6 @@ mod tests {
                     .build(),
             )
             .build();
-        global::set_meter_provider(provider.clone());
 
         (provider, exporter)
     }
