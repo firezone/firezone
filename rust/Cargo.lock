@@ -707,6 +707,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
+ "opentelemetry",
  "otel-instruments",
  "resolv-conf",
  "ring",
