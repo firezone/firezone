@@ -4,7 +4,7 @@ defmodule PortalWeb.Live.Helpers do
   @spec handle_info_fallback(term(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_info_fallback(message, socket) do
-    Logger.warning("Unhandled handle_info message in LiveView",
+    Logger.error("Unhandled handle_info message in LiveView",
       liveview: socket.view,
       message_tag: message_tag(message)
     )
