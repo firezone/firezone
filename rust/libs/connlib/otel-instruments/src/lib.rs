@@ -116,7 +116,7 @@ pub fn buffer_count() -> UpDownCounter<i64> {
     buffer_count_with(&meter())
 }
 
-/// [`buffer_count`] recorded through the given `meter` rather than the global provider.
+/// [`buffer_count`] recorded through the given `meter` rather than the global meter.
 pub fn buffer_count_with(meter: &Meter) -> UpDownCounter<i64> {
     meter
         .i64_up_down_counter("system.buffer.count")
