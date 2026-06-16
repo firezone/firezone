@@ -6756,6 +6756,7 @@ dependencies = [
  "libc",
  "opentelemetry",
  "otel-instruments",
+ "parking_lot",
  "quinn-udp",
  "socket2",
  "tokio",
