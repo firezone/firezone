@@ -17,7 +17,7 @@ defmodule Portal.Changes.Hooks.PolicyAuthorizationsTest do
 
   describe "delete/1" do
     test "delete broadcasts deleted policy_authorization" do
-      :ok = PubSub.Changes.subscribe("00000000-0000-0000-0000-000000000000")
+      :ok = PubSub.Changes.subscribe("00000000-0000-0000-0000-000000000000", :policy_authorizations)
 
       old_data = %{
         "id" => "00000000-0000-0000-0000-000000000001",

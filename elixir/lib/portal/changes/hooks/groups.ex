@@ -7,7 +7,7 @@ defmodule Portal.Changes.Hooks.Groups do
   def on_insert(lsn, data) do
     group = struct_from_params(Portal.Group, data)
     change = %Change{lsn: lsn, op: :insert, struct: group}
-    PubSub.Changes.broadcast(group.account_id, change)
+    PubSub.Changes.broadcast(group.account_id, :groups, change)
   end
 
   @impl true
@@ -17,6 +17,6 @@ defmodule Portal.Changes.Hooks.Groups do
   def on_delete(lsn, old_data) do
     group = struct_from_params(Portal.Group, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: group}
-    PubSub.Changes.broadcast(group.account_id, change)
+    PubSub.Changes.broadcast(group.account_id, :groups, change)
   end
 end

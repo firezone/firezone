@@ -14,7 +14,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "broadcasts created policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       data = %{
         "id" => policy.id,
@@ -39,7 +39,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
       account = account_fixture()
       resource = resource_fixture(account: account)
       policy = policy_fixture(account: account, resource: resource)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,
@@ -71,7 +71,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "enable policy broadcasts created policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,
@@ -95,7 +95,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "non-breaking update broadcasts updated policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,
@@ -192,7 +192,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "broadcasts deleted policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,

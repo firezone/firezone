@@ -32,7 +32,7 @@ defmodule PortalWeb.Resources do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :resources)
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
     end
 

@@ -9,7 +9,7 @@ defmodule Portal.Changes.Hooks.Policies do
     policy = struct_from_params(Policy, data)
     change = %Change{lsn: lsn, op: :insert, struct: policy}
 
-    PubSub.Changes.broadcast(policy.account_id, change)
+    PubSub.Changes.broadcast(policy.account_id, :policies, change)
   end
 
   @impl true
@@ -59,7 +59,7 @@ defmodule Portal.Changes.Hooks.Policies do
       Database.delete_policy_authorizations_for_policy(old_policy)
     end
 
-    PubSub.Changes.broadcast(policy.account_id, change)
+    PubSub.Changes.broadcast(policy.account_id, :policies, change)
   end
 
   @impl true
@@ -67,7 +67,7 @@ defmodule Portal.Changes.Hooks.Policies do
     policy = struct_from_params(Policy, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: policy}
 
-    PubSub.Changes.broadcast(policy.account_id, change)
+    PubSub.Changes.broadcast(policy.account_id, :policies, change)
   end
 
   defmodule Database do

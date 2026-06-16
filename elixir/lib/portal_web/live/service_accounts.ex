@@ -20,7 +20,7 @@ defmodule PortalWeb.ServiceAccounts do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :actors)
     end
 
     socket =
@@ -577,8 +577,6 @@ defmodule PortalWeb.ServiceAccounts do
        ar -> ar
      end)}
   end
-
-  def handle_info(%Change{}, socket), do: {:noreply, socket}
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor

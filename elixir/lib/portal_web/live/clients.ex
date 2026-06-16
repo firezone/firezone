@@ -13,7 +13,7 @@ defmodule PortalWeb.Clients do
 
     if connected?(socket) do
       :ok = Clients.Account.subscribe(subject.account.id)
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :devices)
     end
 
     socket =
@@ -509,10 +509,6 @@ defmodule PortalWeb.Clients do
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
        ar -> ar
      end)}
-  end
-
-  def handle_info(%Change{}, socket) do
-    {:noreply, socket}
   end
 
   def handle_info(

@@ -7,7 +7,7 @@ defmodule Portal.Changes.Hooks.PortalSessions do
   def on_insert(lsn, data) do
     session = struct_from_params(Portal.PortalSession, data)
     change = %Change{lsn: lsn, op: :insert, struct: session}
-    PubSub.Changes.broadcast(session.account_id, change)
+    PubSub.Changes.broadcast(session.account_id, :portal_sessions, change)
   end
 
   @impl true
@@ -17,7 +17,7 @@ defmodule Portal.Changes.Hooks.PortalSessions do
   def on_delete(lsn, old_data) do
     session = struct_from_params(Portal.PortalSession, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: session}
-    PubSub.Changes.broadcast(session.account_id, change)
+    PubSub.Changes.broadcast(session.account_id, :portal_sessions, change)
 
     # Disconnect all sockets using this portal session
     disconnect_socket(session)

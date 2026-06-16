@@ -11,7 +11,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
     test "broadcasts created actor" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :actors)
 
       data = %{
         "id" => actor.id,
@@ -36,7 +36,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
     test "broadcasts deleted actor" do
       account = account_fixture()
       actor = actor_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :actors)
 
       old_data = %{
         "id" => actor.id,

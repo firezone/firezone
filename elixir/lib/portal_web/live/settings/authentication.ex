@@ -51,7 +51,8 @@ defmodule PortalWeb.Settings.Authentication do
     socket = assign(socket, page_title: "Authentication")
 
     if connected?(socket) do
-      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :client_tokens)
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :portal_sessions)
     end
 
     {:ok, init(socket)}
