@@ -18,7 +18,7 @@ pub struct Transmit {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     Ciphertext(Vec<u8>),
-    Plaintext(ip_packet::IpPacket),
+    Plaintext(Box<ip_packet::IpPacket>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -579,9 +579,9 @@ impl PathAgent {
                 self.pending_transmits.push_back(Transmit {
                     local: pair.0,
                     remote: pair.1,
-                    payload: Payload::Plaintext(crate::icmpv6::build_echo_reply(
+                    payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
                         probe.id, probe.seq,
-                    )),
+                    ))),
                 });
             }
             crate::icmpv6::Echo::Reply => {
@@ -791,7 +791,7 @@ impl PathAgent {
             pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
-                payload: Payload::Plaintext(crate::icmpv6::build_echo_request(0, seq)),
+                payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(0, seq))),
             });
         }
     }
