@@ -9,6 +9,9 @@
 //! `transmit` = egress). For the TUN device this is the inverse of connlib's
 //! own `connlib.network.*` counters: a packet connlib writes into the TUN is an
 //! ingress packet from the interface's perspective.
+//!
+//! Loopback and common virtual/container interfaces (Docker, veth, bridges) are
+//! skipped to keep cardinality and noise down.
 
 /// Reports per-interface OS network counters until the future is dropped.
 ///
@@ -30,7 +33,7 @@ pub async fn run() {}
 mod linux {
     use anyhow::{Context as _, Result};
     use futures::TryStreamExt as _;
-    use netlink_packet_route::link::{LinkAttribute, Stats64};
+    use netlink_packet_route::link::{LinkAttribute, LinkFlags, Stats64};
     use opentelemetry::KeyValue;
     use opentelemetry::metrics::Counter;
     use rtnetlink::{Handle, new_connection};
@@ -96,6 +99,11 @@ mod linux {
             }) else {
                 continue;
             };
+
+            // Loopback and virtual/container interfaces are noise; skip them.
+            if link.header.flags.contains(LinkFlags::Loopback) || is_virtual(&name) {
+                continue;
+            }
 
             let Some(current) = link.attributes.iter().find_map(|attr| match attr {
                 LinkAttribute::Stats64(stats) => Some(*stats),
@@ -198,6 +206,16 @@ mod linux {
         current.checked_sub(previous).unwrap_or(current)
     }
 
+    /// Whether `name` is a virtual or container interface whose counters are noise.
+    ///
+    /// A name-prefix heuristic covering the common cases (Docker, container veth
+    /// pairs, Docker/libvirt bridges); loopback is handled separately via flags.
+    fn is_virtual(name: &str) -> bool {
+        const PREFIXES: [&str; 4] = ["docker", "veth", "br-", "virbr"];
+
+        PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+    }
+
     struct Instruments {
         packets: Counter<u64>,
         bytes: Counter<u64>,
@@ -218,7 +236,7 @@ mod linux {
 
     #[cfg(test)]
     mod tests {
-        use super::delta;
+        use super::{delta, is_virtual};
 
         #[test]
         fn delta_is_difference_when_counter_increases() {
@@ -233,6 +251,23 @@ mod linux {
         #[test]
         fn delta_is_current_value_when_counter_resets() {
             assert_eq!(delta(100, 30), 30);
+        }
+
+        #[test]
+        fn virtual_interfaces_are_filtered() {
+            assert!(is_virtual("docker0"));
+            assert!(is_virtual("veth1a2b3c"));
+            assert!(is_virtual("br-9f3a"));
+            assert!(is_virtual("virbr0"));
+        }
+
+        #[test]
+        fn real_interfaces_are_kept() {
+            assert!(!is_virtual("eth0"));
+            assert!(!is_virtual("enp3s0"));
+            assert!(!is_virtual("tun-firezone"));
+            assert!(!is_virtual("wg0"));
+            assert!(!is_virtual("br0"));
         }
     }
 }
