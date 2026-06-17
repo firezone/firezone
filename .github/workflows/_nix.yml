@@ -70,12 +70,74 @@ jobs:
       - name: Check flake
         run: nix flake check --no-build
       - name: Build packages
+        id: build
+        shell: bash
         run: |
-          nix build \
-            .#firezone-gateway \
-            .#firezone-headless-client \
-            .#firezone-gui-client \
-            --print-build-logs
+          set -o pipefail
+
+          build() {
+            nix build \
+              .#firezone-gateway \
+              .#firezone-headless-client \
+              .#firezone-gui-client \
+              --print-build-logs 2>&1 | tee build.log
+          }
+
+          if build; then
+            exit 0
+          fi
+
+          # The frontend's fetchPnpmDeps hash drifts whenever
+          # rust/gui-client/pnpm-lock.yaml changes (dependabot bumps, or merge
+          # skew between a lockfile PR and an unrelated one). Recompute it and
+          # rebuild so the build stays green and the cache stays warm. The
+          # cache-publish run then opens a PR to commit the corrected value.
+          if grep -q 'hash mismatch in fixed-output derivation' build.log \
+            && grep -q 'pnpm-deps' build.log; then
+            echo "pnpm-deps hash drifted; recomputing and rebuilding."
+            ./scripts/nix/update-pnpm-hash.sh
+            echo "hash_changed=true" >> "$GITHUB_OUTPUT"
+            build
+          else
+            echo "Nix build failed for a non-hash reason." >&2
+            exit 1
+          fi
+      - name: Set up GnuPG for the bump commit
+        # Only the cache-publish context (main / release tags) is trusted with
+        # the bot credentials, and one matrix leg is enough to open the PR.
+        if: ${{ inputs.push_to_cache && steps.build.outputs.hash_changed == 'true' && matrix.system == 'x86_64-linux' }}
+        uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          email: github-bot@firezone.dev
+      - name: Open pnpm-deps hash bump PR
+        if: ${{ inputs.push_to_cache && steps.build.outputs.hash_changed == 'true' && matrix.system == 'x86_64-linux' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
+          git config --local commit.gpgsign true
+
+          branch="chore/nix-pnpm-hash"
+          git checkout -b "$branch"
+          git commit -am "fix(nix): bump gui-client pnpm-deps hash"
+
+          # The checkout persists the default GITHUB_TOKEN; push as the bot so
+          # the PR's checks run (a GITHUB_TOKEN push would not trigger them).
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -u origin HEAD --force
+
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create \
+              --title "fix(nix): bump gui-client pnpm-deps hash" \
+              --body "rust/gui-client/pnpm-lock.yaml changed; refreshing the fetchPnpmDeps pin so local Nix builds match CI." \
+              --reviewer firezone/engineering
+          fi
       - name: Azure login (OIDC)
         if: ${{ inputs.push_to_cache }}
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
