@@ -37,7 +37,7 @@ jobs:
         run: |
           set -e
 
-          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest";
+          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest,nix";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -96,6 +96,12 @@ jobs:
 
           if grep -q '^rust/' changed_files.txt; then
             jobs="${jobs},rust"
+          fi
+
+          # The Nix packages build the Rust workspace from source, so any
+          # rust/ change can affect them.
+          if grep -qE '^(rust/|scripts/nix/|flake\.nix|flake\.lock)' changed_files.txt; then
+            jobs="${jobs},nix"
           fi
 
           # The data plane (client/gateway/relay/http-test-server images) and the
@@ -169,6 +175,7 @@ jobs:
         data-plane,
         integration-tests,
         compatibility-tests,
+        nix,
       ]
     if: always()
     runs-on: ubuntu-latest
@@ -287,6 +294,28 @@ jobs:
   monitor-tauri:
     needs: [tauri]
     if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - run: gh run cancel ${{ github.run_id }}
+
+  nix:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'nix')
+    uses: ./.github/workflows/_nix.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
+    with:
+      # Build only x86_64 on PRs to control cost; both systems elsewhere.
+      systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
+
+  monitor-nix:
+    needs: [nix]
+    if: "!cancelled() && needs.nix.result == 'failure' && github.event_name == 'merge_group'"
     runs-on: ubuntu-latest
     permissions:
       actions: write # gh run cancel

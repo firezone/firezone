@@ -186,7 +186,7 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "text-xs py-1 pl-2.5 pr-6 rounded",
+          "text-sm py-2 pl-3 pr-8 rounded",
           "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
           "border border-[var(--border)]",
           "outline-none transition-colors cursor-pointer",
@@ -233,7 +233,7 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "text-xs py-1 pl-2.5 pr-6 rounded",
+          "text-sm py-2 pl-3 pr-8 rounded",
           "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
           "border border-[var(--border)]",
           "outline-none transition-colors cursor-pointer",

@@ -639,6 +639,7 @@ defmodule PortalWeb.Resources.Components do
   attr :active_protocols, :list, default: []
   attr :filters_dropdown_open, :boolean, default: false
   attr :filter_ports, :map, default: %{}
+  attr :filter_errors, :map, default: %{}
 
   def resource_traffic_restrictions_section(assigns) do
     assigns =
@@ -746,8 +747,20 @@ defmodule PortalWeb.Resources.Components do
                 name={"resource[filters][#{protocol}][ports]"}
                 value={Map.get(@filter_ports, protocol, "")}
                 placeholder="All ports"
-                class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors border-[var(--control-border)] focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30"
+                class={[
+                  "w-full px-3 py-2 text-sm rounded-md border font-mono bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors focus:ring-1 focus:ring-[var(--control-focus)]/30",
+                  if(Map.has_key?(@filter_errors, protocol),
+                    do: "border-[var(--status-error)] focus:border-[var(--status-error)]",
+                    else: "border-[var(--control-border)] focus:border-[var(--control-focus)]"
+                  )
+                ]}
               />
+              <p
+                :if={Map.has_key?(@filter_errors, protocol)}
+                class="mt-1 text-xs text-[var(--status-error)]"
+              >
+                {Map.get(@filter_errors, protocol)}
+              </p>
             </div>
             <span
               :if={protocol == :icmp}
@@ -988,6 +1001,7 @@ defmodule PortalWeb.Resources.Components do
             active_protocols={@resource_form_active_protocols}
             filters_dropdown_open={@resource_form_filters_dropdown_open}
             filter_ports={@filter_ports}
+            filter_errors={@filter_errors}
           />
 
           <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
@@ -1015,6 +1029,8 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :pool_member_ids, :list, default: []
+  attr :online_client_ids, :any, default: %MapSet{}
   attr :presence_tick, :integer, default: 0
   attr :groups, :list, default: []
   attr :policy_authorizations, :list, default: []
@@ -1039,7 +1055,12 @@ defmodule PortalWeb.Resources.Components do
               <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
                 {@resource.name}
               </h2>
-              <.resource_status_badge resource={@resource} presence_tick={@presence_tick} />
+              <.resource_status_badge
+                resource={@resource}
+                presence_tick={@presence_tick}
+                pool_member_ids={@pool_member_ids}
+                online_client_ids={@online_client_ids}
+              />
             </div>
             <p
               :if={@resource.type != :internet}
@@ -1829,9 +1850,9 @@ defmodule PortalWeb.Resources.Components do
           :if={not @confirm_delete_resource}
           type="button"
           phx-click="confirm_delete_resource"
-          class="w-full text-left px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
         >
-          Delete resource
+          <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete resource
         </button>
         <div
           :if={@confirm_delete_resource}
@@ -1896,6 +1917,19 @@ defmodule PortalWeb.Resources.Components do
 
   attr :resource, :any, required: true
   attr :presence_tick, :integer, default: 0
+  attr :pool_member_ids, :list, default: []
+  attr :online_client_ids, :any, default: %MapSet{}
+
+  def resource_status_badge(%{resource: %{type: :static_device_pool}} = assigns) do
+    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_client_ids, &1))
+    assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
+
+    ~H"""
+    <.status_badge style={if @online > 0, do: :success, else: :neutral}>
+      {@online} / {@total} online
+    </.status_badge>
+    """
+  end
 
   def resource_status_badge(assigns) do
     assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.presence_tick))

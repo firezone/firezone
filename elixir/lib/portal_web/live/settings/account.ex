@@ -174,9 +174,9 @@ defmodule PortalWeb.Settings.Account do
               :if={not @confirm_delete_account}
               type="button"
               phx-click="confirm_delete_account"
-              class="w-full text-left px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+              class="w-full flex items-center gap-2 px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
             >
-              Delete account
+              <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete account
             </button>
 
             <div
