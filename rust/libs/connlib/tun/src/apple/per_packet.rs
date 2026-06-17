@@ -51,10 +51,13 @@ pub fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
     };
     let src = src.packet();
 
-    let mut hdr = [0, 0, 0, af];
+    // The legacy (non-netif) utun path reads the address family straight from
+    // this 4-byte header, so it must be the family in network byte order. (A
+    // plain `[0, 0, 0, af]` infers to `[i32; 4]` and sends only zeros.)
+    let hdr = (af as u32).to_be_bytes();
     let mut iov = [
         iovec {
-            iov_base: hdr.as_mut_ptr() as _,
+            iov_base: hdr.as_ptr() as _,
             iov_len: hdr.len(),
         },
         iovec {
