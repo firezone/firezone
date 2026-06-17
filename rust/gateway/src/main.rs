@@ -176,7 +176,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             ),
         }
 
-        bin_shared::network_stats::spawn();
+        tokio::spawn(bin_shared::network_stats::run());
     }
 
     let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)

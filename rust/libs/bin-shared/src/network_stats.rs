@@ -10,16 +10,21 @@
 //! own `connlib.network.*` counters: a packet connlib writes into the TUN is an
 //! ingress packet from the interface's perspective.
 
-/// Spawns a background task reporting per-interface OS network counters.
+/// Reports per-interface OS network counters until the future is dropped.
 ///
-/// Implemented on Linux via rtnetlink; a no-op on other platforms.
+/// Meant to be spawned as a background task. Implemented on Linux via
+/// rtnetlink; a no-op on other platforms.
 #[cfg(target_os = "linux")]
-pub fn spawn() {
-    tokio::spawn(linux::run());
+pub async fn run() {
+    linux::run().await;
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn spawn() {}
+#[expect(
+    clippy::unused_async,
+    reason = "Mirrors the Linux signature so callers can spawn it uniformly."
+)]
+pub async fn run() {}
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -27,7 +32,7 @@ mod linux {
     use futures::TryStreamExt as _;
     use netlink_packet_route::link::{LinkAttribute, Stats64};
     use opentelemetry::KeyValue;
-    use opentelemetry::metrics::{Counter, Meter};
+    use opentelemetry::metrics::Counter;
     use rtnetlink::{Handle, new_connection};
     use std::collections::{HashMap, HashSet};
     use std::time::Duration;
@@ -44,8 +49,14 @@ mod linux {
                 return;
             }
         };
-        let _connection = tokio::spawn(connection);
 
+        // Drive the netlink connection and the sampling loop together on this
+        // task instead of spawning the connection separately. Neither future
+        // resolves on its own.
+        futures::future::join(connection, sample_forever(handle)).await;
+    }
+
+    async fn sample_forever(handle: Handle) {
         let instruments = Instruments::new();
         let mut previous = HashMap::new();
         let mut interval = tokio::time::interval(POLL_INTERVAL);
@@ -196,35 +207,13 @@ mod linux {
 
     impl Instruments {
         fn new() -> Self {
-            let meter = meter();
-
             Self {
-                packets: meter
-                    .u64_counter("system.network.packets")
-                    .with_description("Count of packets transferred on a network interface.")
-                    .with_unit("{packet}")
-                    .build(),
-                bytes: meter
-                    .u64_counter("system.network.io")
-                    .with_description("Count of bytes transferred on a network interface.")
-                    .with_unit("By")
-                    .build(),
-                errors: meter
-                    .u64_counter("system.network.errors")
-                    .with_description("Count of errors encountered on a network interface.")
-                    .with_unit("{error}")
-                    .build(),
-                dropped: meter
-                    .u64_counter("system.network.dropped")
-                    .with_description("Count of packets dropped on a network interface.")
-                    .with_unit("{packet}")
-                    .build(),
+                packets: otel_instruments::system_network_packets(),
+                bytes: otel_instruments::system_network_io(),
+                errors: otel_instruments::system_network_errors(),
+                dropped: otel_instruments::system_network_dropped(),
             }
         }
-    }
-
-    fn meter() -> Meter {
-        opentelemetry::global::meter("system")
     }
 
     #[cfg(test)]
