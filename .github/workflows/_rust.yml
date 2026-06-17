@@ -200,6 +200,52 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_LTO: false
 
+  ebpf-benchmark:
+    name: ebpf-benchmark
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-nightly
+      - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install bpftool
+        id: bpftool
+        shell: bash
+        run: |
+          if ! bpftool version >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y linux-tools-common "linux-tools-$(uname -r)" \
+              || sudo apt-get install -y linux-tools-common linux-tools-generic
+          fi
+          # The /usr/sbin/bpftool wrapper resolves to the running kernel's build; if
+          # that build isn't packaged (common on the runners' Azure kernels), fall back
+          # to the newest versioned binary. `prog run` only needs syscalls the running
+          # kernel already supports, so a version-skewed bpftool is fine.
+          bt="$(command -v bpftool || true)"
+          if [ -z "$bt" ] || ! "$bt" version >/dev/null 2>&1; then
+            bt="$(ls -1 /usr/lib/linux-tools*/bpftool 2>/dev/null | sort -V | tail -1)"
+          fi
+          "$bt" version
+          echo "path=$bt" >> "$GITHUB_OUTPUT"
+      - name: Build benchmark (incl. eBPF object)
+        run: cargo build -p ebpf-benchmark
+        shell: bash
+      # Doubles as a smoke test that `handle_turn` still loads: the harness exits
+      # non-zero unless every run returns `XDP_TX`. A short repeat keeps CI quick;
+      # the kernel-side average is stable enough for a regression guard.
+      - name: Run handle_turn benchmark
+        shell: bash
+        run: |
+          sudo ./target/debug/ebpf-benchmark \
+            --bpftool "${{ steps.bpftool.outputs.path }}" \
+            --repeat 100000 \
+            --invocations 3
+
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
     strategy:
