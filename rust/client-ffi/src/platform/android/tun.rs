@@ -41,14 +41,14 @@ impl Tun {
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
-        runtime.spawn(otel_instruments::periodic_system_queue_length(
+        runtime.spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        runtime.spawn(otel_instruments::periodic_system_queue_length(
+        runtime.spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),

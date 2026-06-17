@@ -19,6 +19,7 @@ pub fn network_packets() -> Counter<u64> {
     meter()
         .u64_counter("connlib.network.packets")
         .with_description("The number of packets processed.")
+        .with_unit("{packet}")
         .build()
 }
 
@@ -148,7 +149,7 @@ pub fn eventloop_poll_duration() -> Histogram<f64> {
 }
 
 /// Periodically records the length of a queue to the [`queue_length`] gauge until the queue is gone.
-pub async fn periodic_system_queue_length<const N: usize>(
+pub async fn periodic_queue_length<const N: usize>(
     queue: impl QueueLength,
     attributes: [KeyValue; N],
 ) {
