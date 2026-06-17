@@ -253,12 +253,16 @@ impl ClientTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
+                        let id = packet.buffer_id();
+                        packet_timing::transmit::arrived(id);
+
                         match self
                             .role_state
                             .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
                             Ok(Some(transmit)) => {
+                                packet_timing::transmit::encrypted(id, transmit.payload.id());
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
@@ -290,6 +294,9 @@ impl ClientTunnel {
                             ],
                         );
 
+                        let received_at = received.received_at;
+                        let arrived = packet_timing::Instant::now();
+
                         match self
                             .role_state
                             .handle_network_input(
@@ -302,9 +309,15 @@ impl ClientTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(packet)) => self
-                                .io
-                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
+                                packet_timing::receive::decrypted(
+                                    packet.buffer_id(),
+                                    received_at,
+                                    arrived,
+                                );
+                                self.io.send_tun(packet);
+                            }
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };
@@ -448,12 +461,16 @@ impl GatewayTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
+                        let id = packet.buffer_id();
+                        packet_timing::transmit::arrived(id);
+
                         match self
                             .role_state
                             .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
                             Ok(Some(transmit)) => {
+                                packet_timing::transmit::encrypted(id, transmit.payload.id());
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
@@ -498,6 +515,9 @@ impl GatewayTunnel {
                             ],
                         );
 
+                        let received_at = received.received_at;
+                        let arrived = packet_timing::Instant::now();
+
                         match self
                             .role_state
                             .handle_network_input(
@@ -510,9 +530,15 @@ impl GatewayTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(packet)) => self
-                                .io
-                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
+                                packet_timing::receive::decrypted(
+                                    packet.buffer_id(),
+                                    received_at,
+                                    arrived,
+                                );
+                                self.io.send_tun(packet);
+                            }
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };

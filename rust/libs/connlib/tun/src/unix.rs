@@ -48,6 +48,7 @@ where
                     {
                         Ok(_) => {
                             record_write_retries(&write_retry_histogram, attempt);
+                            packet_timing::receive::written_to_tun(packet.buffer_id());
 
                             break;
                         }
@@ -185,6 +186,8 @@ where
                 match next_inbound_packet.context("Failed to read from TUN FD") {
                     Ok(None) => bail!("TUN file descriptor is closed"),
                     Ok(Some(packet)) => {
+                        packet_timing::transmit::tun_read(packet.buffer_id());
+
                         #[cfg(debug_assertions)]
                         tracing::trace!(target: "wire::dev::recv", ?packet);
 

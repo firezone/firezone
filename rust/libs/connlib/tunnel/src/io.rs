@@ -11,6 +11,7 @@ pub use device::{Device, TunChannelClosed};
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{Context as _, ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
+use bufferpool::Buffer;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
@@ -498,7 +499,7 @@ impl Io {
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
-        payload: &[u8],
+        payload: &Buffer<Vec<u8>>,
         ecn: Ecn,
     ) {
         self.gso_queue.enqueue(src, dst, payload, ecn);
@@ -506,7 +507,7 @@ impl Io {
         self.packet_counter.add(
             1,
             &[
-                otel::attr::network_protocol_name(payload),
+                otel::attr::network_protocol_name(payload.as_slice()),
                 otel::attr::network_transport_udp(),
                 otel::attr::network_io_direction_transmit(),
             ],

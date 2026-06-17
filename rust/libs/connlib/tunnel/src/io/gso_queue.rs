@@ -30,8 +30,15 @@ impl GsoQueue {
         }
     }
 
-    pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let payload_len = payload.len();
+    pub fn enqueue(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        payload: &Buffer<Vec<u8>>,
+        ecn: Ecn,
+    ) {
+        let bytes = payload.as_slice();
+        let payload_len = bytes.len();
 
         debug_assert!(
             payload_len <= MAX_SEGMENT_SIZE,
@@ -41,7 +48,9 @@ impl GsoQueue {
         let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
 
         let Some((batch_size, buffer)) = batches.back_mut() else {
-            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+            let buffer = self.buffer_pool.pull_initialised(bytes);
+            packet_timing::transmit::enqueued(payload.id(), buffer.id());
+            batches.push_back((payload_len, buffer));
 
             return;
         };
@@ -51,11 +60,14 @@ impl GsoQueue {
         let batch_is_ongoing = buffer.len() % batch_size == 0;
 
         if batch_is_ongoing && payload_len <= batch_size {
-            buffer.extend_from_slice(payload);
+            buffer.extend_from_slice(bytes);
+            packet_timing::transmit::enqueued(payload.id(), buffer.id());
             return;
         }
 
-        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+        let buffer = self.buffer_pool.pull_initialised(bytes);
+        packet_timing::transmit::enqueued(payload.id(), buffer.id());
+        batches.push_back((payload_len, buffer));
     }
 
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
@@ -110,11 +122,15 @@ mod tests {
 
     use super::*;
 
+    fn payload(bytes: &[u8]) -> Buffer<Vec<u8>> {
+        BufferPool::<Vec<u8>>::new(MAX_SEGMENT_SIZE, "test").pull_initialised(bytes)
+    }
+
     #[test]
     fn dropping_datagram_iterator_does_not_drop_items() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobar"), Ecn::NonEct);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -130,10 +146,10 @@ mod tests {
     fn appends_items_of_same_batch() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobar"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"barbaz"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobaz"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foo"), Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -146,11 +162,11 @@ mod tests {
     fn starts_new_batch_for_new_dst() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobar"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"barbaz"), Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, &payload(b"barbarba"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, &payload(b"foofoo"), Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -167,14 +183,14 @@ mod tests {
     fn continues_batch_for_old_dst() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobar"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"barbaz"), Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, &payload(b"barbarba"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, &payload(b"foofoo"), Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bazfoo", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobaz"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"bazfoo"), Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -191,11 +207,11 @@ mod tests {
     fn starts_new_batch_after_single_item_less_than_segment_length() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"foobar"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"barbaz"), Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"bar"), Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, &payload(b"barbaz"), Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 

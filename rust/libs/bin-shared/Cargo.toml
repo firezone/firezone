@@ -23,6 +23,7 @@ ip_network = { workspace = true, features = ["serde"] }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 otel-instruments = { workspace = true }
+packet-timing = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

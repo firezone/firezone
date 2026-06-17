@@ -12,6 +12,7 @@ bytes = { workspace = true }
 crossbeam-queue = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
+packet-timing = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

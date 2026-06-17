@@ -282,6 +282,7 @@ impl FeatureFlags {
             enabled: stream_metrics,
             reservoir_size: MetricsConfig::parse(&payloads.stream_metrics).reservoir_size(),
         };
+        packet_timing::set_enabled(stream_metrics);
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
