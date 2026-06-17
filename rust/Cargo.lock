@@ -2052,6 +2052,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 
 [[package]]
+name = "ebpf-benchmark"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "aya",
+ "aya-build",
+ "clap",
+ "ebpf-shared",
+ "etherparse",
+ "ip-packet",
+ "serde_json",
+]
+
+[[package]]
 name = "ebpf-shared"
 version = "0.1.0"
 dependencies = [

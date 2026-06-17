@@ -1,0 +1,28 @@
+[package]
+name = "ebpf-benchmark"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+description = "Microbenchmark for the `handle_turn` XDP program using `bpftool prog run`"
+
+[[bin]]
+name = "ebpf-benchmark"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+etherparse = { workspace = true, features = ["std"] }
+ip-packet = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+aya = { workspace = true }
+ebpf-shared = { workspace = true, features = ["std"] }
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+anyhow = { workspace = true }
+aya-build = { workspace = true }
+
+[lints]
+workspace = true
