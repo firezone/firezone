@@ -7,6 +7,7 @@ defmodule PortalWeb.ActorsTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -408,6 +409,73 @@ defmodule PortalWeb.ActorsTest do
       render_click(lv, "delete_session", %{"id" => session.id})
 
       refute Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+    end
+
+    test "shows client session details in the client sessions tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: other_actor)
+
+      client_session_fixture(
+        account: account,
+        actor: other_actor,
+        token: token,
+        remote_ip: {198, 51, 100, 23},
+        remote_ip_location_city: "San Francisco",
+        remote_ip_location_region: "US",
+        user_agent: "iOS/17.0 apple-client/1.4.0",
+        version: "1.4.0"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=client_sessions")
+
+      assert html =~ "IP Address"
+      assert html =~ "198.51.100.23"
+      assert html =~ "User Agent"
+      assert html =~ "iOS/17.0 apple-client/1.4.0"
+      assert html =~ "Client Version"
+      assert html =~ "1.4.0"
+      assert html =~ "San Francisco, US"
+      assert html =~ token.id
+    end
+
+    test "shows portal session details in the portal sessions tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      session =
+        portal_session_fixture(
+          account: account,
+          actor: other_actor,
+          auth_provider: auth_provider,
+          remote_ip: %Postgrex.INET{address: {203, 0, 113, 5}},
+          remote_ip_location_city: "Berlin",
+          remote_ip_location_region: "DE",
+          user_agent: "Mozilla/5.0 (Macintosh)"
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=portal_sessions")
+
+      assert html =~ "IP Address"
+      assert html =~ "203.0.113.5"
+      assert html =~ "User Agent"
+      assert html =~ "Mozilla/5.0 (Macintosh)"
+      assert html =~ "Berlin, DE"
+      assert html =~ "Session ID"
+      assert html =~ session.id
     end
 
     test "opens and cancels actor edit form", %{conn: conn, account: account, actor: actor} do
