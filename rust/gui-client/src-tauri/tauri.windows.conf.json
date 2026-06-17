@@ -2,6 +2,14 @@
   "build": {
     "beforeBundleCommand": "bash ../../scripts/build/tauri-pre-bundle-windows.sh"
   },
+  "bundle": {
+    "windows": {
+      "signCommand": {
+        "cmd": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "args": ["-NoProfile", "-File", "../../../scripts/build/sign.ps1", "%1"]
+      }
+    }
+  },
   "mainBinaryName": "Firezone",
   "productName": "Firezone"
 }

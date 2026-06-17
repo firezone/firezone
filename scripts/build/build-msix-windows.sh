@@ -8,7 +8,7 @@
 # Requires:
 #
 # - MakeAppx.exe in PATH (or under `WIX_PATH`/`WindowsSdkPath`)
-# - AzureSignTool configured via `scripts/build/sign.sh`'s env vars.
+# - AzureSignTool configured via `scripts/build/sign.ps1`'s env vars.
 
 set -euxo pipefail
 
@@ -16,7 +16,7 @@ set -euxo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SRC_TAURI_DIR="$WORKSPACE_ROOT/rust/gui-client/src-tauri"
-SIGN_SCRIPT="$SCRIPT_DIR/sign.sh"
+SIGN_SCRIPT="$SCRIPT_DIR/sign.ps1"
 TARGET_DIR="$WORKSPACE_ROOT/rust/target/release"
 OUTPUT_MSIX="$TARGET_DIR/firezone.msix"
 MANIFEST="$SRC_TAURI_DIR/win_files/AppxManifest.xml"
@@ -86,8 +86,8 @@ done
     //nv \
     //o
 
-if [ -x "$SIGN_SCRIPT" ]; then
-    "$SIGN_SCRIPT" "$OUTPUT_MSIX"
+if [ -f "$SIGN_SCRIPT" ]; then
+    powershell.exe -NoProfile -File "$SIGN_SCRIPT" "$OUTPUT_MSIX"
 fi
 
 echo "Built $OUTPUT_MSIX"

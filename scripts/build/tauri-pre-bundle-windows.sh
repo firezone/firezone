@@ -13,7 +13,7 @@
 # Sequence:
 #   1. Diagnostic: print cwd + contents of `target/release/` so any
 #      missing-binary case is obvious in the CI log.
-#   2. Sign the three EXEs that ship in the MSI bundle.
+#   2. Sign the side EXEs that ship in the MSI bundle.
 #   3. Build (and sign) the sparse MSIX that WiX picks up.
 set -euxo pipefail
 
@@ -25,8 +25,7 @@ echo "tauri-pre-bundle-windows.sh: PWD=$(pwd)"
 echo "tauri-pre-bundle-windows.sh: TARGET_DIR=$TARGET_DIR"
 ls -la "$TARGET_DIR" 2>&1 | head -n 60 || true
 
-"$SCRIPT_DIR/sign.sh" \
-    "$TARGET_DIR/Firezone.exe" \
+powershell.exe -NoProfile -File "$SCRIPT_DIR/sign.ps1" \
     "$TARGET_DIR/firezone-client-tunnel.exe" \
     "$TARGET_DIR/register-sparse.exe"
 
