@@ -80,8 +80,6 @@ impl Tun {
             ],
         ));
 
-        // `tun::apple` picks batched vs. per-packet I/O internally based on syscall
-        // availability, so we just spawn the send / receive loops here.
         std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn(move || {
