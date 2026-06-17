@@ -1,0 +1,93 @@
+name: Nix
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: "Commit to build. Defaults to the workflow sha."
+        required: false
+        type: string
+      push_to_cache:
+        description: "Sign and push the built closures to the binary cache"
+        required: false
+        type: boolean
+        default: false
+      systems:
+        description: "JSON list of Nix systems to build"
+        required: false
+        type: string
+        default: '["x86_64-linux", "aarch64-linux"]'
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to build. Defaults to the workflow sha."
+        required: false
+        type: string
+      push_to_cache:
+        description: "Sign and push the built closures to the binary cache"
+        required: false
+        type: boolean
+        default: false
+      systems:
+        description: "JSON list of Nix systems to build"
+        required: false
+        type: string
+        default: '["x86_64-linux", "aarch64-linux"]'
+
+permissions:
+  contents: read
+  id-token: write # OIDC auth for the Azure binary cache upload
+
+jobs:
+  build:
+    name: build-${{ matrix.system }}
+    # The nix-cache-publish environment holds NIX_CACHE_SIGNING_KEY and is
+    # restricted to main and release tags; PR builds never push or sign.
+    environment: ${{ inputs.push_to_cache && 'nix-cache-publish' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # An `include` with runner mappings would re-add excluded systems
+        # (non-matching include entries become new combinations), so the
+        # runner is derived from the system instead.
+        system: ${{ fromJSON(inputs.systems) }}
+    runs-on: ${{ matrix.system == 'aarch64-linux' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: ./.github/actions/free-disk-space
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+          # Substitute from the first-party cache (kept warm by main and
+          # release builds) instead of rebuilding.
+          extra-conf: |
+            extra-substituters = https://artifacts.firezone.dev/nix
+            extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
+      - name: Check flake
+        run: nix flake check --no-build
+      - name: Build packages
+        run: |
+          nix build \
+            .#firezone-gateway \
+            .#firezone-headless-client \
+            .#firezone-gui-client \
+            --print-build-logs
+      - name: Azure login (OIDC)
+        if: ${{ inputs.push_to_cache }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          # The artifacts principal holds only a data-plane role on the storage
+          # account, not subscription-wide Reader.
+          allow-no-subscriptions: true
+      - name: Sign and push to binary cache
+        if: ${{ inputs.push_to_cache }}
+        env:
+          NIX_CACHE_SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+        run: ./scripts/upload/nix-cache.sh

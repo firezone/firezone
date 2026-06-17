@@ -14,10 +14,16 @@ pub struct AllowedPeer {
 impl AllowedPeer {
     /// The packaged GUI binary — the only peer the tunnel daemon accepts
     /// in production.
+    ///
+    /// `FIREZONE_GUI_PEER_EXE` overrides the path at compile time for
+    /// packaging schemes that don't install to `/usr/bin` (e.g. NixOS,
+    /// where the GUI binary lives in the Nix store).
     #[cfg(not(test))]
     pub fn firezone_gui_client() -> Self {
         Self {
-            exe: PathBuf::from("/usr/bin/firezone-client-gui"),
+            exe: PathBuf::from(
+                option_env!("FIREZONE_GUI_PEER_EXE").unwrap_or("/usr/bin/firezone-client-gui"),
+            ),
         }
     }
 
