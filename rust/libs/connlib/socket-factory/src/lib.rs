@@ -207,7 +207,17 @@ pub struct PerfUdpSocket {
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
+
+    // TEMP send-path diagnostics: aggregate batch size & ENOBUFS retries and log a
+    // summary every `DBG_SEND_WINDOW` syscalls (keeps the per-packet hot path cheap).
+    dbg_calls: std::sync::atomic::AtomicU64,
+    dbg_segments: std::sync::atomic::AtomicU64,
+    dbg_singletons: std::sync::atomic::AtomicU64,
+    dbg_retries: std::sync::atomic::AtomicU64,
 }
+
+/// TEMP: how many `sendmsg_x` calls to aggregate before logging a send-path summary.
+const DBG_SEND_WINDOW: u64 = 8192;
 
 impl UdpSocket {
     fn new(inner: tokio::net::UdpSocket) -> io::Result<Self> {
@@ -256,6 +266,10 @@ impl UdpSocket {
             send_retry_histogram: otel_instruments::network_retries(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
+            dbg_calls: std::sync::atomic::AtomicU64::new(0),
+            dbg_segments: std::sync::atomic::AtomicU64::new(0),
+            dbg_singletons: std::sync::atomic::AtomicU64::new(0),
+            dbg_retries: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -513,6 +527,29 @@ impl PerfUdpSocket {
                 KeyValue::new("network.io.direction", "transmit"),
             ],
         );
+
+        // TEMP send-path diagnostics.
+        use std::sync::atomic::Ordering::Relaxed;
+        self.dbg_segments.fetch_add(num_segments as u64, Relaxed);
+        if num_segments <= 1 {
+            self.dbg_singletons.fetch_add(1, Relaxed);
+        }
+        let calls = self.dbg_calls.fetch_add(1, Relaxed) + 1;
+        if calls % DBG_SEND_WINDOW == 0 {
+            let segments = self.dbg_segments.swap(0, Relaxed);
+            let singletons = self.dbg_singletons.swap(0, Relaxed);
+            let retries = self.dbg_retries.swap(0, Relaxed);
+            self.dbg_calls.store(0, Relaxed);
+
+            tracing::info!(
+                target: "wire::net::send_stats",
+                syscalls = DBG_SEND_WINDOW,
+                avg_segments_per_syscall = segments as f64 / DBG_SEND_WINDOW as f64,
+                single_segment_pct = singletons as f64 / DBG_SEND_WINDOW as f64 * 100.0,
+                enobufs_retry_events = retries,
+                "UDP send batch stats"
+            );
+        }
     }
 
     /// Records how many times a single batch had to be retried before it went through or was dropped.
@@ -522,6 +559,10 @@ impl PerfUdpSocket {
         if attempt == 0 {
             return;
         }
+
+        // TEMP send-path diagnostics: count batches that had to retry (ENOBUFS / flow advisory).
+        self.dbg_retries
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         self.send_retry_histogram.record(
             attempt as u64,

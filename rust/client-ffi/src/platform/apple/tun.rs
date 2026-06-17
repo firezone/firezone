@@ -83,24 +83,55 @@ impl Tun {
             ],
         ));
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::unix::tun_send(fd, outbound_rx, write),
-                    "Failed to send to TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
-                    "Failed to recv from TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
+        // Use Apple's batched syscalls when available, falling back to the per-packet
+        // path otherwise. They are present on all supported OS versions, so the fallback
+        // is not expected to be taken.
+        match super::sys::batch_syscalls() {
+            Some(syscalls) => {
+                tracing::info!("Using batched TUN I/O (recvmsg_x/sendmsg_x)");
+
+                std::thread::Builder::new()
+                    .name("TUN send".to_owned())
+                    .spawn(move || {
+                        logging::unwrap_or_warn!(
+                            super::batched::tun_send_batched(fd, syscalls, outbound_rx),
+                            "Failed to send to TUN device: {}"
+                        )
+                    })
+                    .map_err(io::Error::other)?;
+                std::thread::Builder::new()
+                    .name("TUN recv".to_owned())
+                    .spawn(move || {
+                        logging::unwrap_or_warn!(
+                            super::batched::tun_recv_batched(fd, syscalls, inbound_tx),
+                            "Failed to recv from TUN device: {}"
+                        )
+                    })
+                    .map_err(io::Error::other)?;
+            }
+            None => {
+                tracing::info!("Batched TUN I/O unavailable; using per-packet I/O");
+
+                std::thread::Builder::new()
+                    .name("TUN send".to_owned())
+                    .spawn(move || {
+                        logging::unwrap_or_warn!(
+                            tun::unix::tun_send(fd, outbound_rx, write),
+                            "Failed to send to TUN device: {}"
+                        )
+                    })
+                    .map_err(io::Error::other)?;
+                std::thread::Builder::new()
+                    .name("TUN recv".to_owned())
+                    .spawn(move || {
+                        logging::unwrap_or_warn!(
+                            tun::unix::tun_recv(fd, inbound_tx, read),
+                            "Failed to recv from TUN device: {}"
+                        )
+                    })
+                    .map_err(io::Error::other)?;
+            }
+        }
 
         Ok(Tun {
             name,
@@ -138,7 +169,8 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
     }
 }
 
-/// Raises the limit of packets the kernel buffers on the utun socket, allowing it to run ahead of our reads instead of in lock-step.
+/// Raises the limit of packets the kernel buffers on the utun socket so it can run
+/// ahead of our reads instead of in lock-step.
 fn raise_max_pending_packets(fd: RawFd) {
     let mut current = 0u32;
     let mut len = size_of::<u32>() as libc::socklen_t;

@@ -24,7 +24,16 @@ pub struct Device {
 
     outbound_buffer: SmallVec<[IpPacket; MAX_BUFFERED_PACKETS]>,
     flush_future: Option<BoxFuture<'static, Result<()>>>,
+
+    // TEMP read-path diagnostics: aggregate how many packets each `poll_read_many`
+    // returns and log a summary every `DBG_READ_WINDOW` reads.
+    dbg_reads: u64,
+    dbg_packets: u64,
+    dbg_singletons: u64,
 }
+
+/// TEMP: how many `poll_read_many` calls to aggregate before logging a read-path summary.
+const DBG_READ_WINDOW: u64 = 8192;
 
 impl Device {
     pub(crate) fn new() -> Self {
@@ -33,6 +42,9 @@ impl Device {
             waker: None,
             outbound_buffer: SmallVec::new(),
             flush_future: None,
+            dbg_reads: 0,
+            dbg_packets: 0,
+            dbg_singletons: 0,
         }
     }
 
@@ -61,6 +73,25 @@ impl Device {
 
         if n == 0 {
             return Poll::Ready(Err(anyhow::Error::new(TunChannelClosed)));
+        }
+
+        // TEMP read-path diagnostics.
+        self.dbg_packets += n as u64;
+        if n <= 1 {
+            self.dbg_singletons += 1;
+        }
+        self.dbg_reads += 1;
+        if self.dbg_reads % DBG_READ_WINDOW == 0 {
+            tracing::info!(
+                target: "wire::dev::read_stats",
+                reads = DBG_READ_WINDOW,
+                avg_packets_per_read = self.dbg_packets as f64 / DBG_READ_WINDOW as f64,
+                single_packet_pct = self.dbg_singletons as f64 / DBG_READ_WINDOW as f64 * 100.0,
+                max_batch = max,
+                "TUN read batch stats"
+            );
+            self.dbg_packets = 0;
+            self.dbg_singletons = 0;
         }
 
         Poll::Ready(Ok(n))

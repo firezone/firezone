@@ -1,7 +1,9 @@
 use std::time::Duration;
 use telemetry::Dsn;
 
+mod batched;
 mod make_writer;
+mod sys;
 mod tun;
 
 // mark:next-apple-version
