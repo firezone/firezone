@@ -125,7 +125,7 @@ pub struct Args {
     #[arg(long, value_parser = parse_payload_size)]
     payload_size: Option<usize>,
 
-    /// Target send bitrate (e.g. 2mbps, 500kbps)
+    /// Target send bitrate per flow (e.g. 2mbps, 500kbps)
     #[arg(long, value_parser = cli::parse_bitrate)]
     bitrate: Option<u64>,
 
@@ -214,6 +214,7 @@ fn build_config(
         .bitrate
         .or_else(|| base.map(|b| b.bitrate_bps))
         .context("--bitrate is required (or add [turn] to the config)")?;
+    anyhow::ensure!(bitrate_bps > 0, "--bitrate must be greater than zero");
     let duration = args
         .duration
         .or_else(|| base.map(|b| b.duration))
@@ -1297,7 +1298,7 @@ fn build_summary(
         peer_addresses: flow_meta.iter().map(|(_, peer)| peer.to_string()).collect(),
         flows: flow_meta.len(),
         payload_size: config.payload_size,
-        target_bitrate_bps: config.bitrate_bps * config.flows.get() as u64,
+        target_bitrate_bps: config.bitrate_bps.saturating_mul(config.flows.get() as u64),
         duration_secs,
         packets_sent: send.packets_sent,
         packets_received: recv.packets_received,
@@ -1522,6 +1523,23 @@ mod tests {
         let error = build_config(args, None, None).unwrap_err();
         assert!(
             format!("{error:#}").contains("--flows exceeds the maximum"),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn merge_rejects_zero_bitrate() {
+        let args = Args {
+            server: Some("2.2.2.2:3478".parse().unwrap()),
+            username: Some("u".to_owned()),
+            password: Some("p".to_owned()),
+            bitrate: Some(0),
+            ..empty_args()
+        };
+
+        let error = build_config(args, None, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--bitrate must be greater than zero"),
             "{error:#}"
         );
     }
