@@ -28,6 +28,7 @@ defmodule PortalAPI.ResourceJSON do
       type: resource.type
     }
     |> maybe_put_ip_stack(resource)
+    |> maybe_put_site_id(resource)
   end
 
   defp maybe_put_ip_stack(attrs, %{ip_stack: nil}) do
@@ -36,5 +37,13 @@ defmodule PortalAPI.ResourceJSON do
 
   defp maybe_put_ip_stack(attrs, resource) do
     Map.put(attrs, :ip_stack, resource.ip_stack)
+  end
+
+  defp maybe_put_site_id(attrs, %{site_id: nil}) do
+    attrs
+  end
+
+  defp maybe_put_site_id(attrs, resource) do
+    Map.put(attrs, :site_id, resource.site_id)
   end
 end
