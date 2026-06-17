@@ -1,22 +1,25 @@
-//! Periodic sampling of per-interface network statistics reported by the OS.
+//! Periodic sampling of host network statistics reported by the OS.
 //!
-//! The kernel keeps cumulative per-interface counters (packets, bytes, errors,
-//! drops). We sample them periodically and report the increments as
-//! OpenTelemetry counters under the `system.network.*` namespace, tagged with
-//! the interface name and direction.
+//! Two sources are sampled periodically and reported as increments on
+//! OpenTelemetry counters in the `system.network.*` namespace:
 //!
-//! Directions are from the interface's point of view (`receive` = ingress,
-//! `transmit` = egress). For the TUN device this is the inverse of connlib's
-//! own `connlib.network.*` counters: a packet connlib writes into the TUN is an
-//! ingress packet from the interface's perspective.
+//! - Per-interface error and drop counters, via rtnetlink (`IFLA_STATS64`),
+//!   tagged with the interface name and direction.
+//! - UDP receive/send buffer errors, from `/proc/net/snmp` and
+//!   `/proc/net/snmp6`, tagged with direction and IP version. These are
+//!   host-wide UDP MIB counters, not specific to Firezone's sockets.
+//!
+//! Interface directions are from the interface's point of view (`receive` =
+//! ingress, `transmit` = egress) — the inverse of connlib's own
+//! `connlib.network.*` counters for the TUN device.
 //!
 //! Loopback and common virtual/container interfaces (Docker, veth, bridges) are
 //! skipped to keep cardinality and noise down.
 
-/// Reports per-interface OS network counters until the future is dropped.
+/// Reports host network counters until the future is dropped.
 ///
-/// Meant to be spawned as a background task. Implemented on Linux via
-/// rtnetlink; a no-op on other platforms.
+/// Meant to be spawned as a background task. Implemented on Linux via rtnetlink
+/// and `/proc`; a no-op on other platforms.
 #[cfg(target_os = "linux")]
 pub async fn run() {
     linux::run().await;
@@ -41,7 +44,7 @@ mod linux {
     use std::time::Duration;
     use telemetry::otel;
 
-    /// How often the kernel's interface counters are sampled.
+    /// How often the OS counters are sampled.
     const POLL_INTERVAL: Duration = Duration::from_secs(60);
 
     pub(super) async fn run() {
@@ -61,15 +64,18 @@ mod linux {
 
     async fn sample_forever(handle: Handle) {
         let instruments = Instruments::new();
-        let mut previous = HashMap::new();
+        let mut interfaces = HashMap::new();
+        let mut udp = UdpState::default();
         let mut interval = tokio::time::interval(POLL_INTERVAL);
 
         loop {
             interval.tick().await;
 
-            if let Err(e) = poll(&handle, &instruments, &mut previous).await {
+            if let Err(e) = sample_interfaces(&handle, &instruments, &mut interfaces).await {
                 tracing::debug!("Failed to sample interface statistics: {e:#}");
             }
+
+            sample_udp(&instruments.udp_buffer_errors, &mut udp);
         }
     }
 
@@ -78,7 +84,7 @@ mod linux {
         clippy::wildcard_enum_match_arm,
         reason = "We don't want to match all attributes."
     )]
-    async fn poll(
+    async fn sample_interfaces(
         handle: &Handle,
         instruments: &Instruments,
         previous: &mut HashMap<u32, Stats64>,
@@ -120,7 +126,7 @@ mod linux {
                 continue;
             };
 
-            record(instruments, &name, previous, current);
+            record_interface(instruments, &name, previous, current);
         }
 
         // Forget interfaces that have gone away so a reused index restarts from a fresh baseline.
@@ -129,7 +135,12 @@ mod linux {
         Ok(())
     }
 
-    fn record(instruments: &Instruments, name: &str, previous: Stats64, current: Stats64) {
+    fn record_interface(
+        instruments: &Instruments,
+        name: &str,
+        previous: Stats64,
+        current: Stats64,
+    ) {
         let receive = [
             KeyValue::new("network.interface.name", name.to_owned()),
             otel::attr::network_io_direction_receive(),
@@ -139,30 +150,6 @@ mod linux {
             otel::attr::network_io_direction_transmit(),
         ];
 
-        record_delta(
-            &instruments.packets,
-            &receive,
-            previous.rx_packets,
-            current.rx_packets,
-        );
-        record_delta(
-            &instruments.packets,
-            &transmit,
-            previous.tx_packets,
-            current.tx_packets,
-        );
-        record_delta(
-            &instruments.bytes,
-            &receive,
-            previous.rx_bytes,
-            current.rx_bytes,
-        );
-        record_delta(
-            &instruments.bytes,
-            &transmit,
-            previous.tx_bytes,
-            current.tx_bytes,
-        );
         record_delta(
             &instruments.errors,
             &receive,
@@ -187,6 +174,103 @@ mod linux {
             previous.tx_dropped,
             current.tx_dropped,
         );
+    }
+
+    /// Samples the host-wide UDP send/receive buffer error counters for both IP versions.
+    fn sample_udp(counter: &Counter<u64>, previous: &mut UdpState) {
+        if let Some(current) = std::fs::read_to_string("/proc/net/snmp")
+            .ok()
+            .as_deref()
+            .and_then(parse_snmp_udp)
+        {
+            record_udp(
+                counter,
+                otel::attr::network_type_ipv4(),
+                previous.v4.replace(current),
+                current,
+            );
+        }
+
+        if let Some(current) = std::fs::read_to_string("/proc/net/snmp6")
+            .ok()
+            .as_deref()
+            .and_then(parse_snmp6_udp)
+        {
+            record_udp(
+                counter,
+                otel::attr::network_type_ipv6(),
+                previous.v6.replace(current),
+                current,
+            );
+        }
+    }
+
+    fn record_udp(
+        counter: &Counter<u64>,
+        network_type: KeyValue,
+        previous: Option<UdpBufferErrors>,
+        current: UdpBufferErrors,
+    ) {
+        // The first sample establishes the baseline; see `sample_interfaces`.
+        let Some(previous) = previous else {
+            return;
+        };
+
+        record_delta(
+            counter,
+            &[
+                otel::attr::network_io_direction_receive(),
+                network_type.clone(),
+            ],
+            previous.receive,
+            current.receive,
+        );
+        record_delta(
+            counter,
+            &[otel::attr::network_io_direction_transmit(), network_type],
+            previous.transmit,
+            current.transmit,
+        );
+    }
+
+    /// Parses the `Udp:` line of `/proc/net/snmp` (IPv4).
+    ///
+    /// The file pairs a header row of column names with a row of values, both
+    /// prefixed `Udp:`; columns are matched by name to tolerate ordering changes.
+    fn parse_snmp_udp(contents: &str) -> Option<UdpBufferErrors> {
+        let mut udp = contents.lines().filter(|line| line.starts_with("Udp:"));
+        let columns = udp.next()?.split_whitespace().collect::<Vec<_>>();
+        let values = udp.next()?.split_whitespace().collect::<Vec<_>>();
+
+        let value_of = |field: &str| -> Option<u64> {
+            let index = columns.iter().position(|&column| column == field)?;
+            values.get(index)?.parse().ok()
+        };
+
+        Some(UdpBufferErrors {
+            receive: value_of("RcvbufErrors")?,
+            transmit: value_of("SndbufErrors")?,
+        })
+    }
+
+    /// Parses the `Udp6*` lines of `/proc/net/snmp6` (IPv6), one `name value` pair per line.
+    fn parse_snmp6_udp(contents: &str) -> Option<UdpBufferErrors> {
+        let value_of = |field: &str| -> Option<u64> {
+            contents.lines().find_map(|line| {
+                let (name, value) = line.split_once(char::is_whitespace)?;
+
+                if name == field {
+                    value.trim().parse().ok()
+                } else {
+                    None
+                }
+            })
+        };
+
+        Some(UdpBufferErrors {
+            receive: value_of("Udp6RcvbufErrors")?,
+            transmit: value_of("Udp6SndbufErrors")?,
+        })
     }
 
     /// Records the increment of one cumulative counter since the last sample.
@@ -217,26 +301,37 @@ mod linux {
     }
 
     struct Instruments {
-        packets: Counter<u64>,
-        bytes: Counter<u64>,
         errors: Counter<u64>,
         dropped: Counter<u64>,
+        udp_buffer_errors: Counter<u64>,
     }
 
     impl Instruments {
         fn new() -> Self {
             Self {
-                packets: otel_instruments::system_network_packets(),
-                bytes: otel_instruments::system_network_io(),
                 errors: otel_instruments::system_network_errors(),
                 dropped: otel_instruments::system_network_dropped(),
+                udp_buffer_errors: otel_instruments::system_network_udp_buffer_errors(),
             }
         }
     }
 
+    /// Last-seen UDP buffer error counters per IP version, for delta computation.
+    #[derive(Default)]
+    struct UdpState {
+        v4: Option<UdpBufferErrors>,
+        v6: Option<UdpBufferErrors>,
+    }
+
+    #[derive(Default, Clone, Copy)]
+    struct UdpBufferErrors {
+        receive: u64,
+        transmit: u64,
+    }
+
     #[cfg(test)]
     mod tests {
-        use super::{delta, is_virtual};
+        use super::{UdpBufferErrors, delta, is_virtual, parse_snmp_udp, parse_snmp6_udp};
 
         #[test]
         fn delta_is_difference_when_counter_increases() {
@@ -268,6 +363,50 @@ mod linux {
             assert!(!is_virtual("tun-firezone"));
             assert!(!is_virtual("wg0"));
             assert!(!is_virtual("br0"));
+        }
+
+        #[test]
+        fn parses_udp_buffer_errors_from_snmp() {
+            let contents = "\
+Ip: Forwarding DefaultTTL InReceives
+Ip: 1 64 1000
+Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors
+Udp: 1000 2 3 1100 7 9
+UdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors
+UdpLite: 0 0 0 0 0 0
+";
+            let parsed = parse_snmp_udp(contents).expect("a Udp line");
+
+            assert_eq!(parsed.receive, 7);
+            assert_eq!(parsed.transmit, 9);
+        }
+
+        #[test]
+        fn parses_udp_buffer_errors_from_snmp6() {
+            let contents = "\
+Udp6InDatagrams                 \t500
+Udp6RcvbufErrors                \t4
+Udp6SndbufErrors                \t5
+UdpLite6RcvbufErrors            \t99
+";
+            let parsed = parse_snmp6_udp(contents).expect("a Udp6 line");
+
+            assert_eq!(parsed.receive, 4);
+            assert_eq!(parsed.transmit, 5);
+        }
+
+        #[test]
+        fn snmp_parsers_handle_missing_fields() {
+            assert!(parse_snmp_udp("Udp: InDatagrams NoPorts\nUdp: 1 2\n").is_none());
+            assert!(parse_snmp6_udp("Udp6InDatagrams\t1\n").is_none());
+        }
+
+        #[test]
+        fn udp_buffer_errors_default_to_zero() {
+            let errors = UdpBufferErrors::default();
+
+            assert_eq!(errors.receive, 0);
+            assert_eq!(errors.transmit, 0);
         }
     }
 }

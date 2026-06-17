@@ -70,24 +70,6 @@ pub fn network_packets_batch_count() -> Histogram<u64> {
         .build()
 }
 
-/// Count of packets transferred on a network interface, as reported by the OS.
-pub fn system_network_packets() -> Counter<u64> {
-    system_meter()
-        .u64_counter("system.network.packets")
-        .with_description("Count of packets transferred on a network interface.")
-        .with_unit("{packet}")
-        .build()
-}
-
-/// Count of bytes transferred on a network interface, as reported by the OS.
-pub fn system_network_io() -> Counter<u64> {
-    system_meter()
-        .u64_counter("system.network.io")
-        .with_description("Count of bytes transferred on a network interface.")
-        .with_unit("By")
-        .build()
-}
-
 /// Count of errors encountered on a network interface, as reported by the OS.
 pub fn system_network_errors() -> Counter<u64> {
     system_meter()
@@ -103,6 +85,15 @@ pub fn system_network_dropped() -> Counter<u64> {
         .u64_counter("system.network.dropped")
         .with_description("Count of packets dropped on a network interface.")
         .with_unit("{packet}")
+        .build()
+}
+
+/// Count of UDP datagrams dropped because the socket buffer was full, as reported by the OS.
+pub fn system_network_udp_buffer_errors() -> Counter<u64> {
+    system_meter()
+        .u64_counter("system.network.udp.buffer.errors")
+        .with_description("UDP datagrams dropped because the socket buffer was full.")
+        .with_unit("{datagram}")
         .build()
 }
 
