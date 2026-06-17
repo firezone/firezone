@@ -56,10 +56,15 @@ mod linux {
             }
         };
 
-        // Drive the netlink connection and the sampling loop together on this
-        // task instead of spawning the connection separately. Neither future
-        // resolves on its own.
-        futures::future::join(connection, sample_forever(handle)).await;
+        // Drive the netlink connection alongside the sampling loop on this task
+        // rather than spawning it. `sample_forever` never returns, so this
+        // resolves only when the connection ends, which then stops sampling too.
+        // (`select` needs `Unpin`, hence the `Box::pin`.)
+        let connection = Box::pin(connection);
+        let sampling = Box::pin(sample_forever(handle));
+        futures::future::select(connection, sampling).await;
+
+        tracing::debug!("Netlink connection ended; stopped sampling interface statistics");
     }
 
     async fn sample_forever(handle: Handle) {
@@ -75,7 +80,7 @@ mod linux {
                 tracing::debug!("Failed to sample interface statistics: {e:#}");
             }
 
-            sample_udp(&instruments.udp_buffer_errors, &mut udp);
+            sample_udp(&instruments.udp_buffer_errors, &mut udp).await;
         }
     }
 
@@ -177,8 +182,9 @@ mod linux {
     }
 
     /// Samples the host-wide UDP send/receive buffer error counters for both IP versions.
-    fn sample_udp(counter: &Counter<u64>, previous: &mut UdpState) {
-        if let Some(current) = std::fs::read_to_string("/proc/net/snmp")
+    async fn sample_udp(counter: &Counter<u64>, previous: &mut UdpState) {
+        if let Some(current) = tokio::fs::read_to_string("/proc/net/snmp")
+            .await
             .ok()
             .as_deref()
             .and_then(parse_snmp_udp)
@@ -191,7 +197,8 @@ mod linux {
             );
         }
 
-        if let Some(current) = std::fs::read_to_string("/proc/net/snmp6")
+        if let Some(current) = tokio::fs::read_to_string("/proc/net/snmp6")
+            .await
             .ok()
             .as_deref()
             .and_then(parse_snmp6_udp)
