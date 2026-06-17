@@ -237,7 +237,7 @@ defmodule PortalWeb.Settings.DNS do
                   <label
                     for="dns-type--system"
                     class={[
-                      "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                      "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
                       "peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)]",
                       "border-[var(--border)] hover:border-[var(--border-emphasis)]"
                     ]}
@@ -245,7 +245,7 @@ defmodule PortalWeb.Settings.DNS do
                     <span class="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-1.5">
                       <.icon name="ri-computer-line" class="w-4 h-4 shrink-0" /> System
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-[var(--text-secondary)] my-auto">
                       Use the device's default DNS resolvers.
                     </span>
                   </label>
@@ -263,7 +263,7 @@ defmodule PortalWeb.Settings.DNS do
                   <label
                     for="dns-type--secure"
                     class={[
-                      "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                      "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
                       "peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)]",
                       "border-[var(--border)] hover:border-[var(--border-emphasis)]"
                     ]}
@@ -271,7 +271,7 @@ defmodule PortalWeb.Settings.DNS do
                     <span class="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-1.5">
                       <.icon name="ri-lock-line" class="w-4 h-4 shrink-0" /> Secure
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-[var(--text-secondary)] my-auto">
                       Use DNS-over-HTTPS from trusted providers.
                     </span>
                   </label>
@@ -289,7 +289,7 @@ defmodule PortalWeb.Settings.DNS do
                   <label
                     for="dns-type--custom"
                     class={[
-                      "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                      "flex flex-col h-full p-3 border rounded cursor-pointer transition-all",
                       "peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)]",
                       "border-[var(--border)] hover:border-[var(--border-emphasis)]"
                     ]}
@@ -297,7 +297,7 @@ defmodule PortalWeb.Settings.DNS do
                     <span class="text-sm font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-1.5">
                       <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Custom
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-[var(--text-secondary)] my-auto">
                       Configure your own DNS server addresses.
                     </span>
                   </label>
@@ -388,6 +388,7 @@ defmodule PortalWeb.Settings.DNS do
                 />
 
                 <button
+                  :if={length(dns_form[:addresses].value || []) < 8}
                   type="button"
                   name="account[config][clients_upstream_dns][addresses_sort][]"
                   value="new"
@@ -396,6 +397,12 @@ defmodule PortalWeb.Settings.DNS do
                 >
                   <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add Resolver
                 </button>
+                <p
+                  :if={length(dns_form[:addresses].value || []) >= 8}
+                  class="text-xs text-[var(--text-tertiary)]"
+                >
+                  Maximum of 8 upstream resolvers reached.
+                </p>
 
                 <p class="text-xs text-[var(--text-tertiary)]">
                   <strong>Note:</strong>

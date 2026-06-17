@@ -1226,6 +1226,9 @@ defmodule PortalWeb.Settings.Authentication do
                 placeholder="28800"
                 phx-debounce="300"
               />
+              <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+                Portal default: 8 hours
+              </p>
             </div>
             <div>
               <label
@@ -1240,11 +1243,11 @@ defmodule PortalWeb.Settings.Authentication do
                 placeholder="604800"
                 phx-debounce="300"
               />
+              <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+                Client default: 7 days
+              </p>
             </div>
           </div>
-          <p class="mt-2 text-xs text-[var(--text-tertiary)]">
-            Portal default: 8 hours · Client default: 7 days
-          </p>
         </div>
 
         <%!-- Entra-specific config --%>
