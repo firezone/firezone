@@ -1030,6 +1030,7 @@ defmodule PortalWeb.Resources.Components do
   attr :account, :any, required: true
   attr :resource, :any, required: true
   attr :pool_member_ids, :list, default: []
+  attr :online_client_ids, :any, default: %MapSet{}
   attr :presence_tick, :integer, default: 0
   attr :groups, :list, default: []
   attr :policy_authorizations, :list, default: []
@@ -1058,6 +1059,7 @@ defmodule PortalWeb.Resources.Components do
                 resource={@resource}
                 presence_tick={@presence_tick}
                 pool_member_ids={@pool_member_ids}
+                online_client_ids={@online_client_ids}
               />
             </div>
             <p
@@ -1916,14 +1918,10 @@ defmodule PortalWeb.Resources.Components do
   attr :resource, :any, required: true
   attr :presence_tick, :integer, default: 0
   attr :pool_member_ids, :list, default: []
+  attr :online_client_ids, :any, default: %MapSet{}
 
   def resource_status_badge(%{resource: %{type: :static_device_pool}} = assigns) do
-    online_ids =
-      assigns.resource.account_id
-      |> Presence.Clients.online_client_ids()
-      |> MapSet.new()
-
-    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(online_ids, &1))
+    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_client_ids, &1))
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
     ~H"""

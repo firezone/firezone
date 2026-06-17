@@ -45,6 +45,7 @@ defmodule PortalWeb.Resources do
       |> assign(
         selected_resource: nil,
         selected_resource_pool_member_ids: [],
+        online_client_ids: MapSet.new(),
         selected_groups: [],
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -346,6 +347,7 @@ defmodule PortalWeb.Resources do
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
          device_pool_members: device_pool_members,
+         online_client_ids: online_client_ids(socket.assigns.account.id),
          resources_metadata: metadata
        )}
     end
@@ -539,6 +541,7 @@ defmodule PortalWeb.Resources do
               resource={resource}
               presence_tick={@presence_tick}
               pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
+              online_client_ids={@online_client_ids}
             />
           </:col>
           <:empty>
@@ -579,6 +582,7 @@ defmodule PortalWeb.Resources do
             account={@account}
             resource={@selected_resource}
             pool_member_ids={@selected_resource_pool_member_ids}
+            online_client_ids={@online_client_ids}
             presence_tick={@presence_tick}
             groups={@selected_groups}
             policy_authorizations={@policy_authorizations}
@@ -1226,11 +1230,20 @@ defmodule PortalWeb.Resources do
 
   def handle_info(%Phoenix.Socket.Broadcast{event: event}, socket)
       when event in ["presence_diff", "presence_state"] do
-    {:noreply, update(socket, :presence_tick, &(&1 + 1))}
+    {:noreply,
+     socket
+     |> update(:presence_tick, &(&1 + 1))
+     |> assign(online_client_ids: online_client_ids(socket.assigns.account.id))}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  defp online_client_ids(account_id) do
+    account_id
+    |> Presence.Clients.online_client_ids()
+    |> MapSet.new()
   end
 
   defp resource_filter_ports(nil), do: %{}
