@@ -395,6 +395,7 @@ fn resolve_turn(config: &TurnConfig) -> turn::TestConfig {
         payload_size: config.payload_size,
         bitrate_bps: config.bitrate_bps,
         duration: Duration::from_secs(config.duration_secs),
+        flows: config.flows,
         max_loss_percent: config.max_loss_percent,
     }
 }

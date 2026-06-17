@@ -5,12 +5,13 @@
 //! and picks parameters from its config.
 
 use crate::cli::parse_bitrate;
-use crate::turn::TURN_HEADER_SIZE;
+use crate::turn::{MAX_FLOWS, TURN_HEADER_SIZE};
 use anyhow::{Context as _, Result, bail};
 use rand::distr::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use url::Url;
 
@@ -208,6 +209,9 @@ pub struct TurnConfig {
     /// How long to stream datagrams for, in seconds.
     #[serde(default = "default_turn_duration_secs")]
     pub duration_secs: u64,
+    /// Number of parallel flows (distinct peer ports fed from one allocation).
+    #[serde(default = "default_turn_flows")]
+    pub flows: NonZeroUsize,
     /// Fail the test if packet loss exceeds this percentage.
     pub max_loss_percent: Option<f64>,
 }
@@ -220,6 +224,11 @@ fn default_turn_payload_size() -> usize {
 /// Default TURN test duration in seconds.
 fn default_turn_duration_secs() -> u64 {
     30
+}
+
+/// Default number of parallel flows.
+fn default_turn_flows() -> NonZeroUsize {
+    NonZeroUsize::MIN
 }
 
 fn deserialize_bitrate<'de, D>(d: D) -> Result<u64, D::Error>
@@ -254,6 +263,12 @@ impl TurnConfig {
         }
         if self.bitrate_bps == 0 {
             bail!("[turn] bitrate must be greater than zero");
+        }
+        if self.flows.get() > MAX_FLOWS {
+            bail!(
+                "[turn] flows ({}) exceeds the maximum of {MAX_FLOWS}",
+                self.flows
+            );
         }
 
         Ok(())
@@ -533,7 +548,43 @@ mod tests {
         assert_eq!(turn.bitrate_bps, 2_000_000);
         assert_eq!(turn.payload_size, 1280); // default
         assert_eq!(turn.duration_secs, 30); // default
+        assert_eq!(turn.flows.get(), 1); // default
         assert_eq!(turn.address, "1.2.3.4:3478".parse().unwrap());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_with_flows() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_flows.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"2mbps\"\nflows = 4\n",
+        )
+        .unwrap();
+
+        let config = LoadTestConfig::load(&path).unwrap();
+        assert_eq!(config.turn.unwrap().flows.get(), 4);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_rejects_too_many_flows() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_too_many_flows.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"1mbps\"\nflows = 99999\n",
+        )
+        .unwrap();
+
+        let result = LoadTestConfig::load(&path);
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "[turn] flows (99999) exceeds the maximum of 16384"
+        );
 
         std::fs::remove_file(&path).ok();
     }
