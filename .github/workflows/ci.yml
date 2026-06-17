@@ -308,6 +308,7 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
     with:
       # Build only x86_64 on PRs to control cost; both systems elsewhere.
       systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
