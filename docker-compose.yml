@@ -510,8 +510,8 @@ services:
 
   otel:
     # All-in-one OpenTelemetry backend (Collector + Prometheus + Tempo + Loki + Grafana).
-    # Browse traces, logs and metrics at http://localhost:3000; the metrics explorer renders
-    # histograms as heatmaps without any manual dashboard setup.
+    # Browse everything at http://localhost:3000; the pre-provisioned "Firezone — Data Plane"
+    # dashboard charts every metric the data plane exposes, rendering histograms as heatmaps.
     image: grafana/otel-lgtm:0.28.0
     environment:
       # The relay exports histograms with delta temporality (`LowMemory`). Prometheus drops
@@ -519,6 +519,10 @@ services:
       PROMETHEUS_EXTRA_ARGS: "--enable-feature=otlp-deltatocumulative"
     ports:
       - 3000:3000/tcp
+    volumes:
+      # Auto-provision a Grafana dashboard that charts every metric the data plane exposes.
+      - ./scripts/compose/otel-lgtm/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/firezone.yaml:ro
+      - ./scripts/compose/otel-lgtm/dashboards:/firezone-dashboards:ro
     # Attached to every data-plane LAN so `otel:4317` resolves from each component. The
     # collector is a passive sink and does not route, so it leaves the test topology intact.
     networks:

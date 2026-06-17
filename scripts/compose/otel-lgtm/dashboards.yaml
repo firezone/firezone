@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: Firezone
+    type: file
+    allowUiUpdates: true
+    options:
+      # Matches the bind-mount target of the dashboards directory in docker-compose.yml.
+      # Kept outside /otel-lgtm so the image's own (recursive) dashboard providers don't
+      # also pick up this dashboard and fight over its UID.
+      path: /firezone-dashboards
+      foldersFromFilesStructure: false
