@@ -129,6 +129,8 @@ services:
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: 2606a54a327020a1285cc141aeceb5737a91625e5e1a85c234682266f45820bf
+      FIREZONE_METRICS: otel-collector
+      OTLP_GRPC_ENDPOINT: otel:4317
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
       - sh
@@ -201,6 +203,8 @@ services:
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: *pool-member-firezone-id
+      FIREZONE_METRICS: otel-collector
+      OTLP_GRPC_ENDPOINT: otel:4317
       FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
       - sh
@@ -273,6 +277,8 @@ services:
       FIREZONE_FLOW_LOGS: true
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: c9cc2a8a01f9d3d6b2c26719965709196ae2c79214a837e28f0a751af1e2f2ca
+      FIREZONE_METRICS: otel-collector
+      OTLP_GRPC_ENDPOINT: otel:4317
     command:
       - sh
       - -c
@@ -503,9 +509,25 @@ services:
         condition: "service_healthy"
 
   otel:
-    image: otel/opentelemetry-collector:latest
+    # All-in-one OpenTelemetry backend (Collector + Prometheus + Tempo + Loki + Grafana).
+    # Browse traces, logs and metrics at http://localhost:3000; the metrics explorer renders
+    # histograms as heatmaps without any manual dashboard setup.
+    image: grafana/otel-lgtm:0.28.0
+    environment:
+      # The relay exports histograms with delta temporality (`LowMemory`). Prometheus drops
+      # delta metrics unless it converts them to cumulative on ingest.
+      PROMETHEUS_EXTRA_ARGS: "--enable-feature=otlp-deltatocumulative"
+    ports:
+      - 3000:3000/tcp
+    # Attached to every data-plane LAN so `otel:4317` resolves from each component. The
+    # collector is a passive sink and does not route, so it leaves the test topology intact.
     networks:
       app-internal:
+      relay-1-internal:
+      relay-2-internal:
+      gateway-internal:
+      client-1-internal:
+      client-2-internal:
 
 networks:
   # Internet network - where all public IPs live
