@@ -17,7 +17,7 @@ fn meter() -> Meter {
 /// How many packets we have processed.
 pub fn network_packets() -> Counter<u64> {
     meter()
-        .u64_counter("system.network.packets")
+        .u64_counter("connlib.network.packets")
         .with_description("The number of packets processed.")
         .build()
 }
@@ -25,7 +25,7 @@ pub fn network_packets() -> Counter<u64> {
 /// How many packets were dropped or discarded.
 pub fn network_packet_dropped() -> Counter<u64> {
     meter()
-        .u64_counter("network.packet.dropped")
+        .u64_counter("connlib.network.dropped")
         .with_description("Count of packets that are dropped or discarded")
         .with_unit("{packet}")
         .build()
@@ -34,7 +34,7 @@ pub fn network_packet_dropped() -> Counter<u64> {
 /// How many IO errors we have encountered.
 pub fn network_errors() -> Counter<u64> {
     meter()
-        .u64_counter("system.network.errors")
+        .u64_counter("connlib.network.errors")
         .with_description("Number of IO errors encountered")
         .with_unit("{error}")
         .build()
@@ -45,7 +45,7 @@ pub fn network_errors() -> Counter<u64> {
 /// Shared across IO paths (UDP sockets, the TUN device); distinguish them via attributes.
 pub fn network_retries() -> Histogram<u64> {
     meter()
-        .u64_histogram("system.network.retries")
+        .u64_histogram("connlib.network.retries")
         .with_description(
             "How many times a network write was retried (spun) after a transient queue-full error before it succeeded or was dropped.",
         )
@@ -57,7 +57,7 @@ pub fn network_retries() -> Histogram<u64> {
 /// How many batches of packets we have processed in a single syscall.
 pub fn network_packets_batch_count() -> Histogram<u64> {
     meter()
-        .u64_histogram("system.network.packets.batch_count")
+        .u64_histogram("connlib.network.packets.batch_count")
         .with_description("How many batches of packets we have processed in a single syscall.")
         .with_unit("{batches}")
         .with_boundaries((1..32_u64).map(|i| i as f64).collect())
@@ -106,7 +106,7 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
 /// The length of a queue.
 pub fn queue_length() -> Gauge<u64> {
     meter()
-        .u64_gauge("system.queue.length")
+        .u64_gauge("connlib.queue.length")
         .with_description("The length of a queue.")
         .build()
 }
@@ -119,7 +119,7 @@ pub fn buffer_count() -> UpDownCounter<i64> {
 /// [`buffer_count`] recorded through the given `meter` rather than the global meter.
 pub fn buffer_count_with(meter: &Meter) -> UpDownCounter<i64> {
     meter
-        .i64_up_down_counter("system.buffer.count")
+        .i64_up_down_counter("connlib.buffer.count")
         .with_description("The number of buffers allocated in the pool.")
         .with_unit("{buffers}")
         .build()
