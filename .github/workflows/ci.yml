@@ -135,6 +135,11 @@ jobs:
           if grep -q '^rust/tests/gui-smoke-test/' changed_files.txt; then
             jobs="${jobs},tauri"
           fi
+          # The install canary (scripts/tests/gui-client-install-*) runs inside
+          # the tauri build, so re-run that build when the canary changes.
+          if grep -q '^scripts/tests/gui-client-install' changed_files.txt; then
+            jobs="${jobs},tauri"
+          fi
           if grep -q '^elixir/' changed_files.txt; then
             jobs="${jobs},elixir,codeql,control-plane,data-plane"
           fi
