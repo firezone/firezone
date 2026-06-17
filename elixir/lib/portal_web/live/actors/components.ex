@@ -495,7 +495,7 @@ defmodule PortalWeb.Actors.Components do
                     <span>
                       Connected
                       <.relative_datetime datetime={
-                        token.latest_session && token.latest_session.inserted_at
+                        token.latest_session && token.latest_session.timestamp
                       } />
                     </span>
                     <span :if={
@@ -577,7 +577,7 @@ defmodule PortalWeb.Actors.Components do
                     {if session.online?, do: "Online", else: "Offline"}
                   </p>
                   <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
-                    <span>Signed in <.relative_datetime datetime={session.inserted_at} /></span>
+                    <span>Signed in <.relative_datetime datetime={session.timestamp} /></span>
                     <span :if={session_location(session) || session.remote_ip}>
                       Location: {session_location(session) || session.remote_ip}
                     </span>
@@ -724,7 +724,7 @@ defmodule PortalWeb.Actors.Components do
                       <span>
                         Last used:
                         <.relative_datetime datetime={
-                          token.latest_session && token.latest_session.inserted_at
+                          token.latest_session && token.latest_session.timestamp
                         } />
                       </span>
                       <span :if={token.expires_at}>

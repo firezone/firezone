@@ -88,6 +88,8 @@ defmodule PortalAPI.Client.Socket do
       id: Ecto.UUID.generate(),
       device_id: client.id,
       account_id: client.account_id,
+      actor_id: subject.actor.id,
+      actor_email: subject.actor.email,
       client_token_id: token_id,
       public_key: public_key,
       user_agent: subject.context.user_agent,
@@ -96,7 +98,8 @@ defmodule PortalAPI.Client.Socket do
       remote_ip_location_city: subject.context.remote_ip_location_city,
       remote_ip_location_lat: subject.context.remote_ip_location_lat,
       remote_ip_location_lon: subject.context.remote_ip_location_lon,
-      version: version
+      version: version,
+      timestamp: DateTime.utc_now()
     }
   end
 

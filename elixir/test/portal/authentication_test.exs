@@ -796,7 +796,9 @@ defmodule Portal.AuthenticationTest do
       assert session.id != nil
       assert session.account_id == account.id
       assert session.actor_id == actor.id
+      assert session.actor_email == actor.email
       assert session.auth_provider_id == auth_provider.id
+      assert DateTime.diff(DateTime.utc_now(), session.timestamp, :second) < 5
     end
 
     test "creates a portal session for disabled account" do

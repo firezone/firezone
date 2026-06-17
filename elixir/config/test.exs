@@ -75,6 +75,14 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
+config :portal, Portal.SessionLogs.ReplicationConnection,
+  replication_slot_name: "test_session_logs_slot",
+  publication_name: "test_session_logs_publication",
+  enabled: false,
+  connection_opts: [
+    database: "firezone_test#{partition_suffix}"
+  ]
+
 config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
@@ -129,6 +137,7 @@ config :portal, Portal.Telemetry, enabled: false
 config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
+config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
