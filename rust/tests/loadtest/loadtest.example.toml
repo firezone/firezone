@@ -66,9 +66,11 @@ max_echo_interval_secs = 10
 # password = "<password>"
 # UDP payload size in bytes (default 1280)
 # payload_size = 1280
-# Target send bitrate (e.g. "2mbps", "500kbps", or a raw bits/sec value)
+# Target send bitrate per flow (e.g. "2mbps", "500kbps", or a raw bits/sec value)
 # bitrate = "2mbps"
 # How long to stream datagrams, in seconds (default 30)
 # duration_secs = 30
+# Number of parallel flows: distinct peer ports fed from one allocation (default 1)
+# flows = 1
 # Fail the test if packet loss exceeds this percentage (optional)
 # max_loss_percent = 1.0
