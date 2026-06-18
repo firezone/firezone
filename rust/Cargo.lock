@@ -2342,7 +2342,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.14"
+version = "1.5.15"
 dependencies = [
  "admx-macro",
  "anyhow-ext",

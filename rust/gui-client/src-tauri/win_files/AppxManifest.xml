@@ -21,7 +21,7 @@
   IgnorableNamespaces="uap uap10 rescap desktop6">
 
   <!-- mark:next-gui-version -->
-  <Identity Version="1.5.14.0"
+  <Identity Version="1.5.15.0"
             Name="Firezone.Client.GUI"
             Publisher="CN=&quot;Firezone, Inc.&quot;, O=&quot;Firezone, Inc.&quot;, STREET=&quot;2261 Market Street, Suite 4574&quot;, L=San Francisco, S=California, C=US, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, SERIALNUMBER=6383880, OID.2.5.4.15=Private Organization"
             ProcessorArchitecture="neutral"/>
