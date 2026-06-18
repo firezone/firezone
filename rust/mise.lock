@@ -193,6 +193,45 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392416"
 provenance = "github-attestations"
 
+[[tools."github:libbpf/bpftool"]]
+version = "7.7.0"
+backend = "github:libbpf/bpftool"
+
+[tools."github:libbpf/bpftool"."platforms.linux-arm64"]
+checksum = "sha256:d68443d945c146080151eb215bebaa400294ab7ada22af4f5d0a940f5992b9d9"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-arm64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367467"
+
+[tools."github:libbpf/bpftool"."platforms.linux-arm64-musl"]
+checksum = "sha256:d68443d945c146080151eb215bebaa400294ab7ada22af4f5d0a940f5992b9d9"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-arm64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367467"
+
+[tools."github:libbpf/bpftool"."platforms.linux-x64"]
+checksum = "sha256:09150596f09356b0ff632dd7f9856e0ea86bf96b269e9bc94278d9a9432a268c"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-amd64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367465"
+
+[tools."github:libbpf/bpftool"."platforms.linux-x64-musl"]
+checksum = "sha256:09150596f09356b0ff632dd7f9856e0ea86bf96b269e9bc94278d9a9432a268c"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-amd64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367465"
+
+[tools."github:libbpf/bpftool"."platforms.macos-arm64"]
+checksum = "sha256:d68443d945c146080151eb215bebaa400294ab7ada22af4f5d0a940f5992b9d9"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-arm64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367467"
+
+[tools."github:libbpf/bpftool"."platforms.macos-x64"]
+checksum = "sha256:09150596f09356b0ff632dd7f9856e0ea86bf96b269e9bc94278d9a9432a268c"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-amd64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367465"
+
+[tools."github:libbpf/bpftool"."platforms.windows-x64"]
+checksum = "sha256:09150596f09356b0ff632dd7f9856e0ea86bf96b269e9bc94278d9a9432a268c"
+url = "https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-amd64.tar.gz"
+url_api = "https://api.github.com/repos/libbpf/bpftool/releases/assets/377367465"
+
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"
 backend = "github:taiki-e/cargo-llvm-cov"

@@ -14,6 +14,7 @@ RUSTFLAGS = "--cfg tokio_unstable"
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+"github:libbpf/bpftool" = { version = "7.7.0", os = ["linux"] }
 
 # =============================================================================
 # Individual checks (matching CI)
