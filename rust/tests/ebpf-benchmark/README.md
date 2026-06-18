@@ -8,10 +8,11 @@ sizes up to the maximum Firezone relays.
 ## Run
 
 ```sh
-cargo build -p ebpf-benchmark
-sudo ./target/debug/ebpf-benchmark   # --help for options
+cargo run -p ebpf-benchmark   # --help for options
 ```
 
-Requires Linux with `CONFIG_BPF_JIT=y`, root (for `BPF_PROG_TEST_RUN`), `bpftool` on
-`PATH`, and the eBPF build toolchain — `nightly-2025-05-30` + `bpf-linker` via `mise`
-(see [`rust/README.md`](../../README.md)).
+The binary re-execs itself under `sudo` (it needs `CAP_BPF`/`CAP_PERFMON` to load the
+program and run `BPF_PROG_TEST_RUN`), so no manual `sudo` is needed. Requires a
+`CONFIG_BPF_JIT=y` kernel and the eBPF toolchain — `nightly-2025-05-30`, `bpf-linker`
+and `bpftool`, all via `mise` (see [`rust/README.md`](../../README.md)). When `bpftool`
+is the mise shim, pass `--bpftool "$(mise which bpftool)"` since `sudo` strips mise's env.

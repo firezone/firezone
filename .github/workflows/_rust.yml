@@ -213,34 +213,16 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install bpftool
-        id: bpftool
-        shell: bash
-        run: |
-          # bpftool ships with linux-tools. On GitHub runners the running-kernel
-          # package is preinstalled; if the /usr/sbin/bpftool wrapper can't locate
-          # the versioned binary, fall back to the one under /usr/lib directly.
-          bt="$(command -v bpftool || true)"
-          if [ -z "$bt" ] || ! "$bt" version >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y linux-tools-common "linux-tools-$(uname -r)" || true
-            bt="$(find /usr/lib -type f -name bpftool 2>/dev/null | sort -V | tail -n1)"
-          fi
-          "$bt" version
-          echo "path=$bt" >> "$GITHUB_OUTPUT"
-      - name: Build benchmark (incl. eBPF object)
-        run: cargo build -p ebpf-benchmark
-        shell: bash
-      # Doubles as a smoke test that `handle_turn` still loads: the harness exits
-      # non-zero unless every run returns `XDP_TX`. A short repeat keeps CI quick;
-      # the kernel-side average is stable enough for a regression guard.
+      # bpftool comes from mise; resolve the real binary (the mise shim needs mise's
+      # env, which sudo strips) and pass it explicitly. The benchmark self-elevates via
+      # sudo, so there is no `sudo` prefix here. Doubles as a smoke test that
+      # `handle_turn` still loads: the harness exits non-zero unless every run is XDP_TX.
       - name: Run handle_turn benchmark
         shell: bash
         run: |
-          sudo ./target/debug/ebpf-benchmark \
-            --bpftool "${{ steps.bpftool.outputs.path }}" \
-            --repeat 100000 \
-            --invocations 3
+          bpftool="$(find "$HOME/.local/share/mise/installs" -type f -name bpftool 2>/dev/null | sort -V | tail -n1)"
+          test -x "$bpftool" || { echo "bpftool not installed via mise"; exit 1; }
+          cargo run -p ebpf-benchmark -- --bpftool "$bpftool" --repeat 100000 --invocations 3
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

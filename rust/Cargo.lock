@@ -2062,6 +2062,7 @@ dependencies = [
  "ebpf-shared",
  "etherparse",
  "ip-packet",
+ "libc",
  "serde_json",
 ]
 

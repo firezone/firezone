@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = { workspace = true }
 ebpf-shared = { workspace = true, features = ["std"] }
+libc = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
 anyhow = { workspace = true }

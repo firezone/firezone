@@ -28,6 +28,7 @@ fn main() -> anyhow::Result<()> {
 mod linux {
     use std::{
         net::{Ipv4Addr, Ipv6Addr, SocketAddrV4},
+        os::unix::process::CommandExt as _,
         path::{Path, PathBuf},
         process::Command,
     };
@@ -132,6 +133,8 @@ mod linux {
     pub fn main() -> Result<()> {
         let args = <Args as clap::Parser>::parse();
 
+        reexec_as_root()?;
+
         let sizes = sizes(&args.sizes)?;
 
         let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
@@ -164,6 +167,28 @@ mod linux {
         report(&rows, args.csv);
 
         Ok(())
+    }
+
+    /// Re-exec under `sudo` when not already root.
+    ///
+    /// Loading the program and `BPF_PROG_TEST_RUN` require `CAP_BPF`/`CAP_PERFMON`, so the
+    /// benchmark elevates itself — `cargo run -p ebpf-benchmark` works without a manual `sudo`.
+    fn reexec_as_root() -> Result<()> {
+        // SAFETY: `geteuid` has no preconditions and is always safe to call.
+        if unsafe { libc::geteuid() } == 0 {
+            return Ok(());
+        }
+
+        let exe = std::env::current_exe().context("failed to resolve current executable")?;
+
+        // `exec` replaces the process image and only returns if it fails.
+        let error = Command::new("sudo")
+            .arg("--preserve-env=PATH")
+            .arg(exe)
+            .args(std::env::args_os().skip(1))
+            .exec();
+
+        bail!("failed to re-exec under sudo: {error}")
     }
 
     /// Inserts the IPv4 channel binding (populating both lookup directions) and the public addresses.
