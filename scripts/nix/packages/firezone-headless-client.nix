@@ -2,7 +2,7 @@
 
 fzLib.rustPlatform.buildRustPackage {
   pname = "firezone-headless-client";
-  version = fzLib.crateVersion "headless-client";
+  version = fzLib.versions.headless;
 
   inherit (fzLib) src cargoLock;
 
