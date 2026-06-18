@@ -751,14 +751,14 @@ defmodule PortalWeb.Resources.Components do
                 class={[
                   "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
                   if(Map.has_key?(@filter_errors, protocol),
-                    do: "border-[var(--status-error)] focus:border-[var(--status-error)]",
-                    else: "border-[var(--control-border)] focus:border-[var(--control-focus)]"
+                    do: "border-error focus:border-error",
+                    else: "border-input-border focus:border-border-focus"
                   )
                 ]}
               />
               <p
                 :if={Map.has_key?(@filter_errors, protocol)}
-                class="mt-1 text-xs text-[var(--status-error)]"
+                class="mt-1 text-xs text-error"
               >
                 {Map.get(@filter_errors, protocol)}
               </p>

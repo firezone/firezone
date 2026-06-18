@@ -387,7 +387,7 @@ defmodule PortalWeb.Settings.DNS do
                 </.button>
                 <p
                   :if={length(dns_form[:addresses].value || []) >= 8}
-                  class="text-xs text-[var(--text-tertiary)]"
+                  class="text-xs text-subtle"
                 >
                   Maximum of 8 upstream resolvers reached.
                 </p>

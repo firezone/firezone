@@ -27,7 +27,7 @@ defmodule PortalWeb.Actors.Components do
       id="actor-panel"
       class={[
         "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+        "bg-elevated border-l border-border-strong",
         "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
         "transition-transform duration-200 ease-in-out",
         if(@actor || @creating_actor, do: "translate-x-0", else: "translate-x-full")
@@ -85,7 +85,7 @@ defmodule PortalWeb.Actors.Components do
     <div class="flex flex-col h-full overflow-hidden">
       <.actor_detail_header actor={@actor} groups={@groups} tokens={@tokens} />
 
-      <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
+      <div class="flex flex-1 min-h-0 divide-x divide-border">
         <div class="flex-1 flex flex-col overflow-hidden">
           <.actor_detail_tabs actor={@actor} active_tab={@active_tab} adding_token={@adding_token} />
           <.actor_detail_content
@@ -110,17 +110,17 @@ defmodule PortalWeb.Actors.Components do
 
   def actor_detail_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
       <div class="flex items-center gap-4">
         <%!-- Left: icon + name + status + email --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <.actor_type_icon_circle actor={@actor} />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">{@actor.name}</h2>
+              <h2 class="text-sm font-semibold text-heading truncate">{@actor.name}</h2>
               <.actor_status_badge disabled_at={@actor.disabled_at} />
             </div>
-            <p :if={@actor.email} class="text-xs text-[var(--text-tertiary)] truncate mt-0.5">
+            <p :if={@actor.email} class="text-xs text-subtle truncate mt-0.5">
               {@actor.email}
             </p>
           </div>
@@ -143,7 +143,7 @@ defmodule PortalWeb.Actors.Components do
 
   def actor_detail_tabs(assigns) do
     ~H"""
-    <div class="flex shrink-0 border-b border-[var(--border)] bg-[var(--surface-raised)] overflow-x-auto items-center">
+    <div class="flex shrink-0 border-b border-border bg-raised overflow-x-auto items-center">
       <div class="flex flex-1 px-1 gap-0.5">
         <button
           :if={@actor.type != :service_account}
@@ -153,8 +153,8 @@ defmodule PortalWeb.Actors.Components do
           class={[
             "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
             if(@active_tab == "identities",
-              do: "border-[var(--brand)] text-[var(--brand)]",
-              else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
             )
           ]}
         >
@@ -170,8 +170,8 @@ defmodule PortalWeb.Actors.Components do
           class={[
             "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
             if(@active_tab == "client_sessions",
-              do: "border-[var(--brand)] text-[var(--brand)]",
-              else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
             )
           ]}
         >
@@ -187,8 +187,8 @@ defmodule PortalWeb.Actors.Components do
           class={[
             "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
             if(@active_tab == "portal_sessions",
-              do: "border-[var(--brand)] text-[var(--brand)]",
-              else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
             )
           ]}
         >
@@ -204,8 +204,8 @@ defmodule PortalWeb.Actors.Components do
           class={[
             "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
             if(@active_tab == "tokens",
-              do: "border-[var(--brand)] text-[var(--brand)]",
-              else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
             )
           ]}
         >
@@ -220,8 +220,8 @@ defmodule PortalWeb.Actors.Components do
           class={[
             "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
             if(@active_tab == "groups",
-              do: "border-[var(--brand)] text-[var(--brand)]",
-              else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
             )
           ]}
         >
@@ -263,19 +263,19 @@ defmodule PortalWeb.Actors.Components do
       <div :if={@actor.type != :service_account and @active_tab == "identities"}>
         <div
           :if={@identities == []}
-          class="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]"
+          class="flex items-center justify-center h-32 text-sm text-subtle"
         >
           No identity provider accounts linked.
         </div>
         <ul :if={@identities != []}>
-          <li :for={identity <- @identities} class="border-b border-[var(--border)] group/item">
+          <li :for={identity <- @identities} class="border-b border-border group/item">
             <div
               :if={@confirm_delete_identity_id == identity.id}
-              class="flex items-center justify-between gap-2 px-5 py-2.5 bg-[var(--surface-raised)]"
+              class="flex items-center justify-between gap-2 px-5 py-2.5 bg-raised"
             >
-              <span class="text-xs text-[var(--text-secondary)] truncate">
+              <span class="text-xs text-body truncate">
                 Delete this identity?
-                <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
+                <span class="block text-subtle">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
                 <.button type="button" phx-click="cancel_delete_identity" size="xs">
@@ -293,20 +293,20 @@ defmodule PortalWeb.Actors.Components do
               </div>
             </div>
             <details :if={@confirm_delete_identity_id != identity.id} class="group/details">
-              <summary class="flex items-center gap-4 px-5 py-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+              <summary class="flex items-center gap-4 px-5 py-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                 <.provider_icon provider={provider_type_from_issuer(identity.issuer)} size="sm" variant="circle" />
                 <div class="flex-1 min-w-0">
                   <p
-                    class="text-sm font-medium text-[var(--text-primary)] truncate"
+                    class="text-sm font-medium text-heading truncate"
                     title={identity.issuer}
                   >
                     {identity.issuer}
                   </p>
                   <div class="flex items-center gap-3 mt-0.5">
-                    <span :if={identity.email} class="text-xs text-[var(--text-tertiary)] truncate">
+                    <span :if={identity.email} class="text-xs text-subtle truncate">
                       {identity.email}
                     </span>
-                    <span class="font-mono text-xs text-[var(--text-tertiary)] truncate">
+                    <span class="font-mono text-xs text-subtle truncate">
                       {extract_idp_id(identity.idp_id)}
                     </span>
                   </div>
@@ -316,102 +316,102 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_identity"
                     phx-value-id={identity.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
                     title="Delete identity"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
                     name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
                   />
                 </div>
               </summary>
-              <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-[var(--surface-raised)]/50">
+              <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-raised/50">
                 <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
                   <div :if={identity.directory_name}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Directory
                     </dt>
                     <dd
-                      class="text-xs text-[var(--text-primary)] truncate mt-0.5"
+                      class="text-xs text-heading truncate mt-0.5"
                       title={identity.directory_name}
                     >
                       {identity.directory_name}
                     </dd>
                   </div>
                   <div>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       IDP ID
                     </dt>
                     <dd
-                      class="font-mono text-xs text-[var(--text-primary)] truncate mt-0.5"
+                      class="font-mono text-xs text-heading truncate mt-0.5"
                       title={identity.idp_id}
                     >
                       {extract_idp_id(identity.idp_id)}
                     </dd>
                   </div>
                   <div :if={identity.email}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Email
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.email}
                     </dd>
                   </div>
                   <div :if={identity.name}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Name
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.name}
                     </dd>
                   </div>
                   <div :if={identity.given_name}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Given Name
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.given_name}
                     </dd>
                   </div>
                   <div :if={identity.family_name}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Family Name
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.family_name}
                     </dd>
                   </div>
                   <div :if={identity.middle_name}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Middle Name
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.middle_name}
                     </dd>
                   </div>
                   <div :if={identity.nickname}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Nickname
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.nickname}
                     </dd>
                   </div>
                   <div :if={identity.preferred_username}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Preferred Username
                     </dt>
-                    <dd class="text-xs text-[var(--text-primary)] truncate mt-0.5">
+                    <dd class="text-xs text-heading truncate mt-0.5">
                       {identity.preferred_username}
                     </dd>
                   </div>
                   <div :if={Ecto.assoc_loaded?(identity.sync_state) && identity.sync_state && identity.sync_state.synced_at}>
-                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                    <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Last Synced
                     </dt>
-                    <dd class="text-xs text-[var(--text-secondary)] mt-0.5">
+                    <dd class="text-xs text-body mt-0.5">
                       <.relative_datetime datetime={identity.sync_state.synced_at} />
                     </dd>
                   </div>
@@ -425,19 +425,19 @@ defmodule PortalWeb.Actors.Components do
       <div :if={@actor.type != :service_account and @active_tab == "client_sessions"}>
         <div
           :if={@tokens == []}
-          class="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]"
+          class="flex items-center justify-center h-32 text-sm text-subtle"
         >
           No active client sessions.
         </div>
         <ul :if={@tokens != []}>
-          <li :for={token <- @tokens} class="border-b border-[var(--border)] group/item">
+          <li :for={token <- @tokens} class="border-b border-border group/item">
             <div
               :if={@confirm_delete_token_id == token.id}
-              class="flex items-center justify-between gap-2 px-5 py-2.5 bg-[var(--surface-raised)]"
+              class="flex items-center justify-between gap-2 px-5 py-2.5 bg-raised"
             >
-              <span class="text-xs text-[var(--text-secondary)] truncate">
+              <span class="text-xs text-body truncate">
                 Revoke this session?
-                <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
+                <span class="block text-subtle">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
                 <.button type="button" phx-click="cancel_delete_token" size="xs">
@@ -455,25 +455,25 @@ defmodule PortalWeb.Actors.Components do
               </div>
             </div>
             <details :if={@confirm_delete_token_id != token.id} class="group/details">
-              <summary class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+              <summary class="flex items-center gap-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                 <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
                   <.ping_icon
                     color={if token.online?, do: "success", else: "danger"}
                     title={if token.online?, do: "Online", else: "Offline"}
                   />
-                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
                     <.icon
                       name={
                         client_os_icon_name(token.latest_session && token.latest_session.user_agent)
                       }
-                      class="w-4 h-4 text-[var(--text-secondary)]"
+                      class="w-4 h-4 text-body"
                     />
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-[var(--text-primary)]">
+                    <p class="text-sm font-medium text-heading">
                       {if token.online?, do: "Online", else: "Offline"}
                     </p>
-                    <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
+                    <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
                       <span>
                         Connected
                         <.relative_datetime datetime={
@@ -495,14 +495,14 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_token"
                     phx-value-id={token.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
                     title="Revoke session"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
                     name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
                   />
                 </div>
               </summary>
@@ -520,19 +520,19 @@ defmodule PortalWeb.Actors.Components do
       <div :if={@actor.type != :service_account and @active_tab == "portal_sessions"}>
         <div
           :if={@sessions == []}
-          class="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]"
+          class="flex items-center justify-center h-32 text-sm text-subtle"
         >
           No active portal sessions.
         </div>
         <ul :if={@sessions != []}>
-          <li :for={session <- @sessions} class="border-b border-[var(--border)] group/item">
+          <li :for={session <- @sessions} class="border-b border-border group/item">
             <div
               :if={@confirm_delete_session_id == session.id}
-              class="flex items-center justify-between gap-2 px-5 py-2.5 bg-[var(--surface-raised)]"
+              class="flex items-center justify-between gap-2 px-5 py-2.5 bg-raised"
             >
-              <span class="text-xs text-[var(--text-secondary)] truncate">
+              <span class="text-xs text-body truncate">
                 Revoke this session?
-                <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
+                <span class="block text-subtle">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
                 <.button type="button" phx-click="cancel_delete_session" size="xs">
@@ -550,23 +550,23 @@ defmodule PortalWeb.Actors.Components do
               </div>
             </div>
             <details :if={@confirm_delete_session_id != session.id} class="group/details">
-              <summary class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+              <summary class="flex items-center gap-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                 <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
                   <.ping_icon
                     color={if session.online?, do: "success", else: "danger"}
                     title={if session.online?, do: "Online", else: "Offline"}
                   />
-                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
+                  <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
                     <.icon
                       name={session_user_agent_icon(session.user_agent)}
-                      class="w-4 h-4 text-[var(--text-secondary)]"
+                      class="w-4 h-4 text-body"
                     />
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-[var(--text-primary)]">
+                    <p class="text-sm font-medium text-heading">
                       {if session.online?, do: "Online", else: "Offline"}
                     </p>
-                    <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
+                    <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
                       <span>Signed in <.relative_datetime datetime={session.inserted_at} /></span>
                       <span :if={session_location(session) || session.remote_ip}>
                         Location: {session_location(session) || session.remote_ip}
@@ -579,18 +579,18 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_session"
                     phx-value-id={session.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
                     title="Revoke session"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
                     name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
                   />
                 </div>
               </summary>
-              <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-[var(--surface-raised)]/50">
+              <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-raised/50">
                 <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
                   <.detail_field :if={session.remote_ip} label="IP Address" mono>
                     {session.remote_ip}
@@ -626,15 +626,15 @@ defmodule PortalWeb.Actors.Components do
         <div :if={@created_token} class="px-5 py-5 space-y-4">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <p class="text-sm font-semibold text-[var(--text-primary)]">Token Created</p>
-              <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+              <p class="text-sm font-semibold text-heading">Token Created</p>
+              <p class="text-xs text-subtle mt-0.5">
                 Save this token - you won't be able to see it again.
               </p>
             </div>
             <button
               type="button"
               phx-click="dismiss_created_token"
-              class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
+              class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors shrink-0"
               title="Dismiss"
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
@@ -643,7 +643,7 @@ defmodule PortalWeb.Actors.Components do
           <div id="tab-token-copy" class="relative" phx-hook="CopyClipboard">
             <code
               id="tab-token-copy-code"
-              class="block font-mono text-[11px] break-all bg-[var(--surface-raised)] border border-[var(--border)] rounded px-3 py-2.5 pr-9 text-[var(--text-primary)]"
+              class="block font-mono text-[11px] break-all bg-raised border border-border rounded px-3 py-2.5 pr-9 text-heading"
             >
               {@created_token}
             </code>
@@ -652,7 +652,7 @@ defmodule PortalWeb.Actors.Components do
               data-copy-to-clipboard-target="tab-token-copy-code"
               data-copy-to-clipboard-content-type="innerHTML"
               data-copy-to-clipboard-html-entities="true"
-              class="absolute top-2 right-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              class="absolute top-2 right-2 text-subtle hover:text-heading transition-colors"
               title="Copy token"
             >
               <.icon name="ri-clipboard-line" class="w-4 h-4" />
@@ -661,10 +661,10 @@ defmodule PortalWeb.Actors.Components do
         </div>
 
         <div :if={is_nil(@created_token) and @adding_token} class="px-5 py-4 space-y-4">
-          <p class="text-sm font-medium text-[var(--text-primary)]">New Token</p>
+          <p class="text-sm font-medium text-heading">New Token</p>
           <form phx-change="validate_token" phx-submit="create_token" class="space-y-4">
             <div>
-              <label class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+              <label class="block text-xs font-medium text-body mb-1.5">
                 Token expiration
               </label>
               <input
@@ -689,19 +689,19 @@ defmodule PortalWeb.Actors.Components do
         <div :if={is_nil(@created_token) and not @adding_token}>
           <div
             :if={@tokens == []}
-            class="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]"
+            class="flex items-center justify-center h-32 text-sm text-subtle"
           >
             No tokens. Add one to authenticate this service account.
           </div>
           <ul :if={@tokens != []}>
-            <li :for={token <- @tokens} class="border-b border-[var(--border)] group/item">
+            <li :for={token <- @tokens} class="border-b border-border group/item">
               <div
                 :if={@confirm_delete_token_id == token.id}
-                class="flex items-center justify-between gap-2 px-5 py-2.5 bg-[var(--surface-raised)]"
+                class="flex items-center justify-between gap-2 px-5 py-2.5 bg-raised"
               >
-                <span class="text-xs text-[var(--text-secondary)] truncate">
+                <span class="text-xs text-body truncate">
                   Delete this token?
-                  <span class="block text-[var(--text-tertiary)]">This cannot be undone.</span>
+                  <span class="block text-subtle">This cannot be undone.</span>
                 </span>
                 <div class="flex items-center gap-1.5 shrink-0">
                   <.button type="button" phx-click="cancel_delete_token" size="xs">
@@ -719,20 +719,20 @@ defmodule PortalWeb.Actors.Components do
                 </div>
               </div>
               <details :if={@confirm_delete_token_id != token.id} class="group/details">
-                <summary class="flex items-center gap-3 pr-4 hover:bg-[var(--surface-raised)] transition-colors cursor-pointer list-none">
+                <summary class="flex items-center gap-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                   <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
                     <.ping_icon
                       color={if token.online?, do: "success", else: "danger"}
                       title={if token.online?, do: "Active", else: "Inactive"}
                     />
-                    <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                      <.icon name="ri-key-line" class="w-4 h-4 text-[var(--text-secondary)]" />
+                    <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
+                      <.icon name="ri-key-line" class="w-4 h-4 text-body" />
                     </div>
                     <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-[var(--text-primary)]">
+                      <p class="text-sm font-medium text-heading">
                         {if token.online?, do: "Active", else: "Inactive"}
                       </p>
-                      <div class="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-tertiary)]">
+                      <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
                         <span>
                           Last used:
                           <.relative_datetime datetime={
@@ -757,14 +757,14 @@ defmodule PortalWeb.Actors.Components do
                       type="button"
                       phx-click="confirm_delete_token"
                       phx-value-id={token.id}
-                      class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-[var(--surface)] transition-colors opacity-0 group-hover/item:opacity-100"
+                      class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
                       title="Delete token"
                     >
                       <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                     </button>
                     <.icon
                       name="ri-arrow-right-s-line"
-                      class="w-4 h-4 text-[var(--text-muted)] transition-transform group-open/details:rotate-90"
+                      class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
                     />
                   </div>
                 </summary>
@@ -786,23 +786,23 @@ defmodule PortalWeb.Actors.Components do
       <div :if={@active_tab == "groups"}>
         <div
           :if={@groups == []}
-          class="flex items-center justify-center h-32 text-sm text-[var(--text-tertiary)]"
+          class="flex items-center justify-center h-32 text-sm text-subtle"
         >
           Not a member of any groups.
         </div>
         <ul :if={@groups != []}>
-          <li :for={row <- @groups} class="border-b border-[var(--border)] transition-colors">
+          <li :for={row <- @groups} class="border-b border-border transition-colors">
             <.link
               navigate={~p"/#{@account}/groups/#{row.group.id}"}
-              class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0 hover:bg-[var(--surface-raised)] group/item"
+              class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0 hover:bg-raised group/item"
             >
               <.provider_icon provider={provider_type_from_group(row)} size="sm" variant="circle" />
-              <span class="flex-1 text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
+              <span class="flex-1 text-sm font-medium text-heading group-hover/item:text-brand transition-colors truncate">
                 {row.group.name}
               </span>
               <.icon
                 name="ri-arrow-right-s-line"
-                class="w-4 h-4 text-[var(--text-muted)] shrink-0"
+                class="w-4 h-4 text-muted shrink-0"
               />
             </.link>
           </li>
@@ -822,32 +822,32 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <section>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
           Details
         </h3>
         <dl class="space-y-3">
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Actor ID</dt>
-            <dd class="font-mono text-[11px] text-[var(--text-secondary)] break-all">{@actor.id}</dd>
+            <dt class="text-[10px] text-subtle mb-0.5">Actor ID</dt>
+            <dd class="font-mono text-[11px] text-body break-all">{@actor.id}</dd>
           </div>
           <div :if={@actor.email}>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Email</dt>
-            <dd class="text-xs text-[var(--text-primary)] break-all">{@actor.email}</dd>
+            <dt class="text-[10px] text-subtle mb-0.5">Email</dt>
+            <dd class="text-xs text-heading break-all">{@actor.email}</dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Created</dt>
-            <dd class="text-xs text-[var(--text-secondary)]">
+            <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
+            <dd class="text-xs text-body">
               <.relative_datetime datetime={@actor.inserted_at} />
             </dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Updated</dt>
-            <dd class="text-xs text-[var(--text-secondary)]">
+            <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
+            <dd class="text-xs text-body">
               <.relative_datetime datetime={@actor.updated_at} />
             </dd>
           </div>
           <div :if={@actor.type != :service_account}>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Email OTP Sign In</dt>
+            <dt class="text-[10px] text-subtle mb-0.5">Email OTP Sign In</dt>
             <dd>
               <span class={[
                 "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium",
@@ -869,15 +869,15 @@ defmodule PortalWeb.Actors.Components do
             </dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Role</dt>
+            <dt class="text-[10px] text-subtle mb-0.5">Role</dt>
             <dd><.actor_type_badge actor={@actor} /></dd>
           </div>
         </dl>
       </section>
 
-      <div class="border-t border-[var(--border)]"></div>
+      <div class="border-t border-border"></div>
       <section>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
           Actions
         </h3>
         <div class="space-y-1.5">
@@ -889,7 +889,7 @@ defmodule PortalWeb.Actors.Components do
             type="button"
             phx-click="send_welcome_email"
             phx-value-id={@actor.id}
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
             <.icon name="ri-mail-line" class="w-3.5 h-3.5" /> Send Welcome Email
           </button>
@@ -910,7 +910,7 @@ defmodule PortalWeb.Actors.Components do
             }
             type="button"
             phx-click="confirm_disable_actor"
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-warning)] hover:bg-[var(--surface-raised)] transition-colors"
+            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-warning hover:bg-raised transition-colors"
           >
             <.icon name="ri-pause-line" class="w-3.5 h-3.5" /> Disable
           </button>
@@ -918,10 +918,10 @@ defmodule PortalWeb.Actors.Components do
             :if={
               is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and @confirm_disable_actor
             }
-            class="px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)]"
+            class="px-3 py-2.5 rounded border border-border bg-raised"
           >
-            <p class="text-xs font-medium text-[var(--text-primary)] mb-1">Disable this actor?</p>
-            <p class="text-xs text-[var(--text-secondary)] mb-3">
+            <p class="text-xs font-medium text-heading mb-1">Disable this actor?</p>
+            <p class="text-xs text-body mb-3">
               All active sessions will be immediately revoked.
             </p>
             <div class="flex items-center gap-1.5">
@@ -938,32 +938,32 @@ defmodule PortalWeb.Actors.Components do
             type="button"
             phx-click="enable"
             phx-value-id={@actor.id}
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-active)] hover:bg-[var(--surface-raised)] transition-colors"
+            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-success hover:bg-raised transition-colors"
           >
             <.icon name="ri-play-line" class="w-3.5 h-3.5" /> Enable
           </button>
         </div>
       </section>
 
-      <div :if={@actor.id != @subject.actor.id} class="border-t border-[var(--border)]"></div>
+      <div :if={@actor.id != @subject.actor.id} class="border-t border-border"></div>
       <section :if={@actor.id != @subject.actor.id}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--status-error)]/60 mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
           Danger Zone
         </h3>
         <button
           :if={not @confirm_delete_actor}
           type="button"
           phx-click="confirm_delete_actor"
-          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
         >
           <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete actor
         </button>
         <div
           :if={@confirm_delete_actor}
-          class="px-3 py-2.5 rounded border border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+          class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
         >
-          <p class="text-xs font-medium text-[var(--status-error)] mb-1">Delete this actor?</p>
-          <p class="text-xs text-[var(--status-error)]/70 mb-3">
+          <p class="text-xs font-medium text-error mb-1">Delete this actor?</p>
+          <p class="text-xs text-error/70 mb-3">
             All active sessions will be immediately revoked and this cannot be undone.
           </p>
           <div class="flex items-center gap-1.5">
@@ -1030,7 +1030,7 @@ defmodule PortalWeb.Actors.Components do
           required
         />
         <div :if={@actor.type != :service_account}>
-          <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">Role</label>
+          <label class="block text-sm font-medium text-body mb-2">Role</label>
           <div class="grid grid-cols-2 gap-2">
             <div>
               <.input
@@ -1044,17 +1044,17 @@ defmodule PortalWeb.Actors.Components do
               <label
                 for={"#{@form[:type].id}--user"}
                 class={[
-                  "flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] transition-colors",
+                  "flex flex-col gap-1 p-3 rounded-lg border border-border peer-checked:border-brand peer-checked:bg-raised transition-colors",
                   if(@is_last_admin,
                     do: "opacity-50 cursor-not-allowed",
-                    else: "cursor-pointer hover:bg-[var(--surface-raised)]"
+                    else: "cursor-pointer hover:bg-raised"
                   )
                 ]}
               >
-                <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
                   <.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
                 </span>
-                <span class="text-[11px] text-[var(--text-tertiary)]">
+                <span class="text-[11px] text-subtle">
                   Sign in to Firezone Client apps
                 </span>
               </label>
@@ -1070,12 +1070,12 @@ defmodule PortalWeb.Actors.Components do
               />
               <label
                 for={"#{@form[:type].id}--admin"}
-                class="flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] cursor-pointer peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)] transition-colors"
+                class="flex flex-col gap-1 p-3 rounded-lg border border-border cursor-pointer peer-checked:border-brand peer-checked:bg-raised hover:bg-raised transition-colors"
               >
-                <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
                   <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
                 </span>
-                <span class="text-[11px] text-[var(--text-tertiary)]">
+                <span class="text-[11px] text-subtle">
                   Full access to manage this account
                 </span>
               </label>
@@ -1092,8 +1092,8 @@ defmodule PortalWeb.Actors.Components do
           >
             <div class="flex items-center justify-between py-1">
               <div>
-                <p class="text-sm font-medium text-[var(--text-secondary)]">Email OTP Sign In</p>
-                <p class="text-[11px] text-[var(--text-tertiary)]">
+                <p class="text-sm font-medium text-body">Email OTP Sign In</p>
+                <p class="text-[11px] text-subtle">
                   Allow sign in via one-time email codes
                 </p>
               </div>
@@ -1122,7 +1122,7 @@ defmodule PortalWeb.Actors.Components do
       </div>
       <div
         :if={is_nil(@pending_email_change)}
-        class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]"
+        class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated"
       >
         <.button type="button" phx-click="cancel_actor_edit_form" size="xs">
           Cancel
@@ -1133,15 +1133,15 @@ defmodule PortalWeb.Actors.Components do
       </div>
       <div
         :if={not is_nil(@pending_email_change)}
-        class="shrink-0 px-5 py-3 border-t border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+        class="shrink-0 px-5 py-3 border-t border-error/20 bg-error-light"
       >
         <div class="flex items-start gap-2 mb-3">
-          <.icon name="ri-alert-line" class="w-4 h-4 text-[var(--status-error)] mt-0.5 shrink-0" />
+          <.icon name="ri-alert-line" class="w-4 h-4 text-error mt-0.5 shrink-0" />
           <div>
-            <p class="text-xs font-medium text-[var(--status-error)] mb-0.5">
+            <p class="text-xs font-medium text-error mb-0.5">
               Changing this actor's email will remove ALL external identities for this actor.
             </p>
-            <p class="text-xs text-[var(--status-error)]/80">
+            <p class="text-xs text-error/80">
               Any active sessions created through these identities will be ended, signing them out immediately. Are you sure?
             </p>
           </div>
@@ -1175,15 +1175,15 @@ defmodule PortalWeb.Actors.Components do
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <div class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800">
               <.icon name="ri-add-line" class="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
             </div>
             <div>
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">New Actor</h2>
-              <p class="text-xs text-[var(--text-tertiary)]">
+              <h2 class="text-sm font-semibold text-heading">New Actor</h2>
+              <p class="text-xs text-subtle">
                 {if @new_actor_type,
                   do: if(@new_actor_type == :user, do: "User", else: "Service Account"),
                   else: "Select a type to continue"}
@@ -1200,11 +1200,11 @@ defmodule PortalWeb.Actors.Components do
             type="button"
             phx-click="select_new_actor_type"
             phx-value-type="user"
-            class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-[var(--border)] hover:border-[var(--brand)] hover:bg-[var(--surface-raised)] transition-all text-center"
+            class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-border hover:border-brand hover:bg-raised transition-all text-center"
           >
-            <.icon name="ri-user-line" class="w-8 h-8 text-[var(--text-secondary)]" />
-            <span class="text-sm font-semibold text-[var(--text-primary)]">User</span>
-            <span class="text-xs text-[var(--text-tertiary)]">
+            <.icon name="ri-user-line" class="w-8 h-8 text-body" />
+            <span class="text-sm font-semibold text-heading">User</span>
+            <span class="text-xs text-subtle">
               Can sign in to Firezone Client apps or the admin portal
             </span>
           </button>
@@ -1212,11 +1212,11 @@ defmodule PortalWeb.Actors.Components do
             type="button"
             phx-click="select_new_actor_type"
             phx-value-type="service_account"
-            class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-[var(--border)] hover:border-[var(--brand)] hover:bg-[var(--surface-raised)] transition-all text-center"
+            class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-border hover:border-brand hover:bg-raised transition-all text-center"
           >
-            <.icon name="ri-server-line" class="w-8 h-8 text-[var(--text-secondary)]" />
-            <span class="text-sm font-semibold text-[var(--text-primary)]">Service Account</span>
-            <span class="text-xs text-[var(--text-tertiary)]">
+            <.icon name="ri-server-line" class="w-8 h-8 text-body" />
+            <span class="text-sm font-semibold text-heading">Service Account</span>
+            <span class="text-xs text-subtle">
               Used to authenticate headless Clients
             </span>
           </button>
@@ -1251,7 +1251,7 @@ defmodule PortalWeb.Actors.Components do
             required
           />
           <div>
-            <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">Role</label>
+            <label class="block text-sm font-medium text-body mb-2">Role</label>
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <.input
@@ -1264,12 +1264,12 @@ defmodule PortalWeb.Actors.Components do
                 />
                 <label
                   for={"#{@form[:type].id}--user"}
-                  class="flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] cursor-pointer peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex flex-col gap-1 p-3 rounded-lg border border-border cursor-pointer peer-checked:border-brand peer-checked:bg-raised hover:bg-raised transition-colors"
                 >
-                  <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                  <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
                     <.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
                   </span>
-                  <span class="text-[11px] text-[var(--text-tertiary)]">
+                  <span class="text-[11px] text-subtle">
                     Sign in to Client apps and portal
                   </span>
                 </label>
@@ -1285,12 +1285,12 @@ defmodule PortalWeb.Actors.Components do
                 />
                 <label
                   for={"#{@form[:type].id}--admin"}
-                  class="flex flex-col gap-1 p-3 rounded-lg border border-[var(--border)] cursor-pointer peer-checked:border-[var(--brand)] peer-checked:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex flex-col gap-1 p-3 rounded-lg border border-border cursor-pointer peer-checked:border-brand peer-checked:bg-raised hover:bg-raised transition-colors"
                 >
-                  <span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                  <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
                     <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
                   </span>
-                  <span class="text-[11px] text-[var(--text-tertiary)]">
+                  <span class="text-[11px] text-subtle">
                     Full access to manage this account
                   </span>
                 </label>
@@ -1300,8 +1300,8 @@ defmodule PortalWeb.Actors.Components do
           <div id="new-allow-email-otp-checkbox" phx-update="ignore">
             <div class="flex items-center justify-between py-1">
               <div>
-                <p class="text-sm font-medium text-[var(--text-secondary)]">Email OTP Sign In</p>
-                <p class="text-[11px] text-[var(--text-tertiary)]">
+                <p class="text-sm font-medium text-body">Email OTP Sign In</p>
+                <p class="text-[11px] text-subtle">
                   Allow sign in via one-time email codes
                 </p>
               </div>
@@ -1415,17 +1415,17 @@ defmodule PortalWeb.Actors.Components do
     <div>
       <% visible_count =
         length(@current_groups) + length(@pending_additions) %>
-      <h3 class="text-sm font-medium text-[var(--text-secondary)] mb-2">
+      <h3 class="text-sm font-medium text-body mb-2">
         Groups ({visible_count})
       </h3>
       <div
-        class="p-3 bg-[var(--surface-raised)] border-b border-[var(--border)] relative"
+        class="p-3 bg-raised border-b border-border relative"
         phx-click-away="blur_group_search"
       >
         <div class="relative">
           <.icon
             name="ri-search-line"
-            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
           />
           <input
             type="text"
@@ -1436,25 +1436,25 @@ defmodule PortalWeb.Actors.Components do
             phx-debounce="300"
             autocomplete="off"
             data-1p-ignore
-            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
           />
         </div>
         <div
           :if={@search_results != nil}
-          class="absolute z-10 left-3 right-3 mt-1 bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto"
+          class="absolute z-10 left-3 right-3 mt-1 bg-elevated border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto"
         >
           <button
             :for={group <- @search_results}
             type="button"
             phx-click="add_pending_group"
             phx-value-group_id={group.id}
-            class="w-full text-left px-3 py-2 hover:bg-[var(--surface-raised)] border-b border-[var(--border)] last:border-b-0 transition-colors text-xs text-[var(--text-primary)]"
+            class="w-full text-left px-3 py-2 hover:bg-raised border-b border-border last:border-b-0 transition-colors text-xs text-heading"
           >
             {group.name}
           </button>
           <div
             :if={@search_results == []}
-            class="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
+            class="px-3 py-4 text-center text-xs text-subtle"
           >
             No static groups found
           </div>
@@ -1472,7 +1472,7 @@ defmodule PortalWeb.Actors.Components do
               type="button"
               phx-click="add_pending_group_removal"
               phx-value-group_id={group.id}
-              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+              class="shrink-0 text-subtle hover:text-error transition-colors"
               title="Remove from current groups"
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
@@ -1492,7 +1492,7 @@ defmodule PortalWeb.Actors.Components do
               type="button"
               phx-click="remove_pending_group_addition"
               phx-value-group_id={group.id}
-              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+              class="shrink-0 text-subtle hover:text-error transition-colors"
               title="Remove from pending additions"
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
@@ -1512,7 +1512,7 @@ defmodule PortalWeb.Actors.Components do
               type="button"
               phx-click="undo_pending_group_removal"
               phx-value-group_id={group.id}
-              class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              class="shrink-0 text-subtle hover:text-heading transition-colors"
               title="Remove from pending removals"
             >
               <.icon name="ri-close-line" class="w-4 h-4" />
@@ -1533,23 +1533,23 @@ defmodule PortalWeb.Actors.Components do
 
   defp group_bucket(assigns) do
     ~H"""
-    <section class="min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
-      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
-        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-[var(--text-tertiary)]"]}>
+    <section class="min-w-0 rounded border border-border bg-surface overflow-hidden">
+      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
+        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-subtle"]}>
           {@title}
         </h4>
-        <span class="text-[10px] text-[var(--text-muted)]">{@count}</span>
+        <span class="text-[10px] text-muted">{@count}</span>
       </div>
       <ul :if={@groups != []} class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5">
         <li :for={group <- @groups}>
-          <div class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors group">
-            <span class="flex-1 text-xs text-[var(--text-primary)] truncate">{group.name}</span>
+          <div class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-surface transition-colors group">
+            <span class="flex-1 text-xs text-heading truncate">{group.name}</span>
             {render_slot(@actions, group)}
           </div>
         </li>
       </ul>
       <div :if={@groups == []} class="flex items-center justify-center h-16 px-3 text-center">
-        <p class="text-xs text-[var(--text-tertiary)]">
+        <p class="text-xs text-subtle">
           {@empty_message}
         </p>
       </div>
@@ -1644,7 +1644,7 @@ defmodule PortalWeb.Actors.Components do
 
   defp session_details(assigns) do
     ~H"""
-    <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-[var(--surface-raised)]/50">
+    <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-raised/50">
       <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
         <.detail_field :if={@session && @session.remote_ip} label="IP Address" mono>
           {@session.remote_ip}
@@ -1679,11 +1679,11 @@ defmodule PortalWeb.Actors.Components do
   defp detail_field(assigns) do
     ~H"""
     <div>
-      <dt class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+      <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
         {@label}
       </dt>
       <dd
-        class={["text-xs text-[var(--text-primary)] truncate mt-0.5", if(@mono, do: "font-mono")]}
+        class={["text-xs text-heading truncate mt-0.5", if(@mono, do: "font-mono")]}
         title={@title}
       >
         {render_slot(@inner_block)}

@@ -703,7 +703,7 @@ defmodule PortalWeb.Clients.Components do
           />
         </.client_detail_row>
         <.client_detail_row label="Last Seen">
-          <span class="text-xs text-[var(--text-secondary)]">
+          <span class="text-xs text-body">
             <.relative_datetime
               datetime={@client.latest_session && @client.latest_session.inserted_at}
             />
