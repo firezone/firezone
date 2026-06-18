@@ -13,7 +13,7 @@ defmodule PortalWeb.Clients do
 
     if connected?(socket) do
       :ok = Clients.Account.subscribe(subject.account.id)
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :devices)
     end
 
     socket =
@@ -511,10 +511,6 @@ defmodule PortalWeb.Clients do
      end)}
   end
 
-  def handle_info(%Change{}, socket) do
-    {:noreply, socket}
-  end
-
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
         socket
@@ -528,6 +524,8 @@ defmodule PortalWeb.Clients do
       {:noreply, socket}
     end
   end
+
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defmodule Database do
     import Ecto.Changeset

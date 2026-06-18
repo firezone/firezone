@@ -10,7 +10,7 @@ defmodule Portal.Changes.Hooks.PortalSessionsTest do
       session = portal_session_fixture()
       session_id = session.id
       account_id = session.account_id
-      :ok = PubSub.Changes.subscribe(account_id)
+      :ok = PubSub.Changes.subscribe(account_id, :portal_sessions)
 
       assert :ok == on_insert(0, Map.from_struct(session))
 

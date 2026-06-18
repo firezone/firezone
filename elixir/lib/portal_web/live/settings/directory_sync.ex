@@ -46,7 +46,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket = assign(socket, page_title: "Directory Sync")
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
     end
 
     {:ok, init(socket, new: true)}

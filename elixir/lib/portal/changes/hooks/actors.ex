@@ -8,7 +8,7 @@ defmodule Portal.Changes.Hooks.Actors do
   def on_insert(lsn, data) do
     actor = struct_from_params(Portal.Actor, data)
     change = %Change{lsn: lsn, op: :insert, struct: actor}
-    PubSub.Changes.broadcast(actor.account_id, change)
+    PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
 
   @impl true
@@ -55,7 +55,7 @@ defmodule Portal.Changes.Hooks.Actors do
   def on_delete(lsn, old_data) do
     actor = struct_from_params(Portal.Actor, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: actor}
-    PubSub.Changes.broadcast(actor.account_id, change)
+    PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
 
   defmodule Database do

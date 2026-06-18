@@ -24,7 +24,7 @@ defmodule PortalWeb.Policies do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :policies)
     end
 
     socket =

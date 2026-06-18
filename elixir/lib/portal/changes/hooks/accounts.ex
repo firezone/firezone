@@ -37,7 +37,7 @@ defmodule Portal.Changes.Hooks.Accounts do
       end)
     end
 
-    PubSub.Changes.broadcast(account.id, change)
+    PubSub.Changes.broadcast(account.id, :accounts, change)
   end
 
   @impl true
@@ -46,7 +46,7 @@ defmodule Portal.Changes.Hooks.Accounts do
     account = struct_from_params(Portal.Account, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: account}
 
-    PubSub.Changes.broadcast(account.id, change)
+    PubSub.Changes.broadcast(account.id, :accounts, change)
   end
 
   defmodule Database do

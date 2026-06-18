@@ -12,7 +12,7 @@ defmodule Portal.Changes.Hooks.Sites do
     site = struct_from_params(Portal.Site, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_site, struct: site}
 
-    PubSub.Changes.broadcast(site.account_id, change)
+    PubSub.Changes.broadcast(site.account_id, :sites, change)
   end
 
   @impl true

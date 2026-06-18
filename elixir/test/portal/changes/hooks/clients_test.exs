@@ -18,7 +18,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
     test "update broadcasts updated client" do
       account = account_fixture()
       client = client_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(client.account_id)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
 
       old_data = %{"id" => client.id, "name" => "Old Name", "account_id" => client.account_id}
       data = %{"id" => client.id, "name" => "New Name", "account_id" => client.account_id}
@@ -40,7 +40,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
     test "update unverifies client and deletes associated policy authorizations" do
       account = account_fixture()
       client = client_fixture(account: account, verified_at: DateTime.utc_now())
-      :ok = PubSub.Changes.subscribe(client.account_id)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
 
       old_data = %{
         "id" => client.id,
@@ -78,7 +78,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
     test "broadcasts deleted client" do
       account = account_fixture()
       client = client_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(client.account_id)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
 
       old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
 

@@ -31,7 +31,7 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
       account = account_fixture()
       gateway = gateway_fixture(account: account)
 
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :devices)
 
       old_data = %{
         "id" => gateway.id,

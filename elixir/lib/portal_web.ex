@@ -66,6 +66,7 @@ defmodule PortalWeb do
           {:noreply, socket}
         end
       end
+
     end
   end
 

@@ -897,6 +897,8 @@ defmodule PortalWeb.Sites do
     {:noreply, socket}
   end
 
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
   defp selected_site_matches?(socket, id) do
     match?(%{id: ^id}, socket.assigns.selected_site)
   end

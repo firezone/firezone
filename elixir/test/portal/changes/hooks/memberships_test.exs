@@ -11,7 +11,7 @@ defmodule Portal.Changes.Hooks.MembershipsTest do
       actor_id = "00000000-0000-0000-0000-000000000002"
       group_id = "00000000-0000-0000-0000-000000000003"
 
-      :ok = PubSub.Changes.subscribe(account_id)
+      :ok = PubSub.Changes.subscribe(account_id, :memberships)
 
       data = %{
         "account_id" => account_id,
@@ -36,7 +36,7 @@ defmodule Portal.Changes.Hooks.MembershipsTest do
   describe "delete/1" do
     test "broadcasts deleted membership" do
       account_id = "00000000-0000-0000-0000-000000000001"
-      :ok = PubSub.Changes.subscribe(account_id)
+      :ok = PubSub.Changes.subscribe(account_id, :memberships)
 
       old_data = %{
         "id" => "00000000-0000-0000-0000-000000000000",

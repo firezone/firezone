@@ -23,7 +23,7 @@ defmodule PortalWeb.Groups do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :groups)
     end
 
     socket =
@@ -123,8 +123,7 @@ defmodule PortalWeb.Groups do
      end)}
   end
 
-  def handle_info(%Change{}, socket), do: {:noreply, socket}
-  def handle_info(:directories_changed, socket), do: {:noreply, socket}
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_event(event, params, socket)
       when event in [

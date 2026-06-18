@@ -1491,5 +1491,23 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "1"
       assert html =~ "Total"
     end
+
+    test "does not crash on unexpected messages", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      pid = lv.pid
+      ref = Process.monitor(pid)
+
+      send(pid, :directories_changed)
+      send(pid, {:unknown_tuple_message, "some data"})
+      send(pid, {})
+
+      render(lv)
+
+      refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 500
+    end
   end
 end

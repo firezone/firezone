@@ -19,7 +19,7 @@ defmodule Portal.Changes.Hooks.Devices do
       Database.delete_policy_authorizations_for_device(device)
     end
 
-    PubSub.Changes.broadcast(device.account_id, change)
+    PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
 
   @impl true
@@ -27,7 +27,7 @@ defmodule Portal.Changes.Hooks.Devices do
     device = struct_from_params(Portal.Device, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: device}
 
-    PubSub.Changes.broadcast(device.account_id, change)
+    PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
 
   defmodule Database do
