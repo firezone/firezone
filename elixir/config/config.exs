@@ -485,7 +485,8 @@ config :esbuild,
       "--target=es2022",
       "--outdir=../priv/static/assets",
       "--external:/fonts/*",
-      "--external:/images/*"
+      "--external:/images/*",
+      "--define:__DEV__=#{Mix.env() == :dev}"
     ],
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => System.get_env("MIX_DEPS_PATH", Path.expand("../deps", __DIR__))}
