@@ -714,6 +714,7 @@ defmodule PortalWeb.FormComponents do
           [@class]
       }
       title={@title}
+      aria-label={@title}
       {@rest}
     >
       <.icon name={@icon} class={icon_button_icon_size(@size)} />
@@ -772,7 +773,8 @@ defmodule PortalWeb.FormComponents do
       class={action_button_style(@style) ++ button_size(@size) ++ [@class]}
       {@rest}
     >
-      <.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" /> {render_slot(@inner_block)}
+      <.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" />
+      <span>{render_slot(@inner_block)}</span>
     </button>
     """
   end

@@ -300,7 +300,7 @@ defmodule PortalWeb.Sites do
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     <div class="w-2 h-2 rounded-full bg-border-strong"></div>
-                    <div class="h-2.5 rounded bg-border-strong w-18"></div>
+                    <div class="h-2.5 rounded bg-border-strong w-20"></div>
                   </div>
                 </td>
               </tr>

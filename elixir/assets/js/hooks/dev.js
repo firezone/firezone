@@ -14,7 +14,7 @@ const ColorEditor = {
   },
 
   destroyed() {
-    // Restore the currently edited CSS vars when the editor is dismissed
+    // Restore the currently edited CSS var when the editor is dismissed
     if (this._cssVar) {
       document.documentElement.style.removeProperty(this._cssVar);
     }
