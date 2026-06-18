@@ -108,7 +108,7 @@ defmodule PortalAPI.Client.Channel do
         cache: cache,
         authorizations_cache: authorizations_cache,
         pending_flows: %{},
-        snownet_capabilities: %{}
+        iceless: false
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -336,7 +336,7 @@ defmodule PortalAPI.Client.Channel do
   end
 
   # Backwards-compat: tolerate the pre-snownet-capabilities tuple from older
-  # gateway nodes during a rolling deploy. Default capabilities to `%{}`.
+  # gateway nodes during a rolling deploy. Default the iceless capability to `false`.
   def handle_info(
         {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
          gateway_ipv6, preshared_key, ice_credentials},
@@ -344,14 +344,14 @@ defmodule PortalAPI.Client.Channel do
       ) do
     handle_info(
       {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-       gateway_ipv6, preshared_key, ice_credentials, %{}},
+       gateway_ipv6, preshared_key, ice_credentials, false},
       socket
     )
   end
 
   def handle_info(
         {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, snownet_capabilities},
+         gateway_ipv6, preshared_key, ice_credentials, iceless},
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
@@ -374,7 +374,7 @@ defmodule PortalAPI.Client.Channel do
             gateway_ipv4: gateway_ipv4,
             gateway_ipv6: gateway_ipv6,
             gateway_ice_credentials: ice_credentials.receiver,
-            snownet_capabilities: snownet_capabilities
+            snownet_capabilities: %{iceless: iceless}
           }
           |> put_site_id(site_id, socket.assigns.session)
 
@@ -405,13 +405,26 @@ defmodule PortalAPI.Client.Channel do
   # the initiator, because the target's data plane is guaranteed to receive
   # (and process) the authorization before any relayed ICE candidate, which
   # travels the same socket behind it. See `deliver_pool_target_authorized/8`.
+  # Backwards-compat: tolerate the pre-snownet-capabilities ack from older
+  # initiator targets during a rolling deploy. Default the iceless capability
+  # to `false`.
   def handle_info({:device_access_acked, ref}, socket) do
+    handle_info({:device_access_acked, ref, false}, socket)
+  end
+
+  def handle_info({:device_access_acked, ref, target_iceless}, socket) do
     case Map.pop(socket.assigns.pending_flows, ref) do
       {nil, _} ->
         {:noreply, socket}
 
       {%{timer_ref: timer_ref, initiator_payload: initiator_payload}, remaining} ->
         Process.cancel_timer(timer_ref)
+
+        iceless = socket.assigns.iceless == true and target_iceless == true
+
+        initiator_payload =
+          Map.put(initiator_payload, :snownet_capabilities, %{iceless: iceless})
+
         push(socket, "client_device_access_authorized", initiator_payload)
         {:noreply, assign(socket, :pending_flows, remaining)}
     end
@@ -421,6 +434,10 @@ defmodule PortalAPI.Client.Channel do
     {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
     {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
     {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
+    {initiator_iceless, payload} = Map.pop(payload, :initiator_iceless, false)
+
+    iceless = socket.assigns.iceless == true and initiator_iceless == true
+    payload = Map.put(payload, :snownet_capabilities, %{iceless: iceless})
 
     authorizations_cache =
       maybe_put_authorization(
@@ -443,8 +460,9 @@ defmodule PortalAPI.Client.Channel do
     # Ack back to the initiator's channel that the authorization is on this
     # target's websocket. The initiator is released only after this, so the
     # initiator's ICE candidates (which traverse the same socket) can never
-    # overtake the authorization at the target's data plane.
-    send(ack_to, {:device_access_acked, ref})
+    # overtake the authorization at the target's data plane. We report our own
+    # capabilities so the initiator can negotiate the same set on its side.
+    send(ack_to, {:device_access_acked, ref, socket.assigns.iceless})
 
     cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
 
@@ -1177,9 +1195,7 @@ defmodule PortalAPI.Client.Channel do
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
-    capabilities = Portal.Snownet.Capabilities.normalize(payload)
-    socket = assign(socket, snownet_capabilities: capabilities)
-    {:noreply, track_presence(socket)}
+    {:noreply, assign(socket, iceless: payload["iceless"] == true)}
   end
 
   def handle_in("no_relays", _payload, socket) do
@@ -1370,7 +1386,7 @@ defmodule PortalAPI.Client.Channel do
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
-             client_snownet_capabilities: socket.assigns.snownet_capabilities
+             client_iceless: socket.assigns.iceless
            }}
 
         attrs =
@@ -1723,12 +1739,6 @@ defmodule PortalAPI.Client.Channel do
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
-    snownet_capabilities =
-      Portal.Snownet.Capabilities.intersect(
-        socket.assigns.snownet_capabilities,
-        Map.get(target_meta, :snownet_capabilities, %{})
-      )
-
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
        %{
@@ -1744,7 +1754,7 @@ defmodule PortalAPI.Client.Channel do
          subject: rendered_subject,
          policy_authorization_id: policy_authorization_id,
          authorization_expires_at: expires_at,
-         snownet_capabilities: snownet_capabilities
+         initiator_iceless: socket.assigns.iceless
        }}
 
     initiator_payload = %{
@@ -1755,8 +1765,7 @@ defmodule PortalAPI.Client.Channel do
       preshared_key: preshared_key,
       local_ice_credentials: ice_credentials.initiator,
       remote_ice_credentials: ice_credentials.receiver,
-      ice_role: :controlling,
-      snownet_capabilities: snownet_capabilities
+      ice_role: :controlling
     }
 
     {receiver_message, initiator_payload}
@@ -2487,8 +2496,7 @@ defmodule PortalAPI.Client.Channel do
           psk_base: socket.assigns.client.psk_base,
           remote_ip: socket.assigns.session.remote_ip,
           version: socket.assigns.session.version,
-          user_agent: socket.assigns.session.user_agent,
-          snownet_capabilities: Map.get(socket.assigns, :snownet_capabilities, %{})
+          user_agent: socket.assigns.session.user_agent
         }
 
         :ok =

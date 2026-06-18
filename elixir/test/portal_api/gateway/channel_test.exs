@@ -3109,7 +3109,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ^gateway_ipv6,
         ^preshared_key,
         ^ice_credentials,
-        _snownet_capabilities
+        _iceless
       }
     end
 
@@ -3169,20 +3169,20 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_snownet_capabilities: %{"iceless" => true}
+           client_iceless: true
          }}
       )
 
       assert_push "authorize_flow", %{
         ref: ref,
-        snownet_capabilities: %{"iceless" => true}
+        snownet_capabilities: %{iceless: true}
       }
 
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, snownet_capabilities}
-      assert snownet_capabilities == %{"iceless" => true}
+      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, iceless}
+      assert iceless == true
     end
 
     test "authorize_policy with mismatched iceless flag intersects to false", %{
@@ -3240,17 +3240,17 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_snownet_capabilities: %{"iceless" => false}
+           client_iceless: false
          }}
       )
 
       assert_push "authorize_flow", %{
         ref: _,
-        snownet_capabilities: %{"iceless" => false}
+        snownet_capabilities: %{iceless: false}
       }
     end
 
-    test "authorize_policy without client_snownet_capabilities defaults to false", %{
+    test "authorize_policy without client_iceless defaults to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3310,7 +3310,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "authorize_flow", %{
         ref: _,
-        snownet_capabilities: %{"iceless" => false}
+        snownet_capabilities: %{iceless: false}
       }
     end
 

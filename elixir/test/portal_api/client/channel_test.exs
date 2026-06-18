@@ -5775,12 +5775,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlling,
-        snownet_capabilities: %{"iceless" => true}
+        snownet_capabilities: %{iceless: true}
       }
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlled,
-        snownet_capabilities: %{"iceless" => true}
+        snownet_capabilities: %{iceless: true}
       }
     end
 
@@ -5805,12 +5805,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlling,
-        snownet_capabilities: %{"iceless" => false}
+        snownet_capabilities: %{iceless: false}
       }
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlled,
-        snownet_capabilities: %{"iceless" => false}
+        snownet_capabilities: %{iceless: false}
       }
     end
 
@@ -5831,7 +5831,7 @@ defmodule PortalAPI.Client.ChannelTest do
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
 
       assert_push "client_device_access_authorized", %{
-        snownet_capabilities: %{"iceless" => false}
+        snownet_capabilities: %{iceless: false}
       }
     end
 
