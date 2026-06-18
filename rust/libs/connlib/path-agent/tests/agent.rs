@@ -24,14 +24,6 @@ struct StubValidator {
     seen: Vec<Vec<u8>>,
 }
 
-impl StubValidator {
-    fn with_response(bytes: Vec<u8>) -> Self {
-        let mut s = Self::default();
-        s.outbound.push_back(bytes);
-        s
-    }
-}
-
 impl HandshakeValidator for StubValidator {
     fn validate(
         &mut self,
@@ -1562,18 +1554,12 @@ fn fresh_inbound_handshake_on_new_path_adopts_it_as_primary() {
     );
     assert_eq!(a.primary(), Some(new_path));
 
-    // The PrimaryChanged event reflects the new path.
-    let mut events = std::iter::from_fn(|| a.poll_event()).collect::<Vec<_>>();
-    let primary_changed = events
-        .iter()
-        .rev()
-        .find_map(|e| match e {
-            Event::PrimaryChanged { local, remote } => Some((*local, *remote)),
-            _ => None,
-        })
-        .expect("PrimaryChanged event");
-    assert_eq!(primary_changed, new_path);
-    events.clear();
+    // The most recent PrimaryChanged event reflects the new path.
+    let events = std::iter::from_fn(|| a.poll_event()).collect::<Vec<_>>();
+    let Some(Event::PrimaryChanged { local, remote }) = events.last() else {
+        panic!("expected at least one PrimaryChanged event, got {events:?}");
+    };
+    assert_eq!((*local, *remote), new_path);
 }
 
 #[test]
