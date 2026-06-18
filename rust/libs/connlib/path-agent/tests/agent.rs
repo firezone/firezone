@@ -38,9 +38,9 @@ impl HandshakeValidator for StubValidator {
         bytes: &[u8],
         _now: Instant,
         on_outbound: &mut dyn FnMut(Vec<u8>),
-    ) -> Result<(), ()> {
+    ) -> Result<(), path_agent::Rejected> {
         if self.reject {
-            return Err(());
+            return Err(path_agent::Rejected);
         }
         self.seen.push(bytes.to_vec());
         if let Some(b) = self.outbound.pop_front() {

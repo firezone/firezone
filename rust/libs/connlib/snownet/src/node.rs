@@ -2348,7 +2348,7 @@ impl path_agent::HandshakeValidator for BoringtunValidator<'_> {
         bytes: &[u8],
         now: Instant,
         on_outbound: &mut dyn FnMut(Vec<u8>),
-    ) -> Result<(), ()> {
+    ) -> Result<(), path_agent::Rejected> {
         match self.tunnel.decapsulate_at(None, bytes, self.buf, now) {
             TunnResult::Done => Ok(()),
             TunnResult::WriteToNetwork(first) => {
@@ -2362,11 +2362,11 @@ impl path_agent::HandshakeValidator for BoringtunValidator<'_> {
             }
             TunnResult::Err(e) => {
                 tracing::debug!(error = ?e, "Handshake rejected by boringtun");
-                Err(())
+                Err(path_agent::Rejected)
             }
             TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
                 tracing::warn!("Unexpected data packet emitted from handshake decapsulation");
-                Err(())
+                Err(path_agent::Rejected)
             }
         }
     }
