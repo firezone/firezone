@@ -410,7 +410,7 @@ defmodule PortalWeb.Sites do
                 Create a Site in order to deploy Gateways and attach Resources.
               </p>
             </div>
-            <.button patch={~p"/#{@account}/sites/new"} icon="ri-add-line" size="xs">Add a Site </.button>
+            <.button patch={~p"/#{@account}/sites/new"} icon="ri-add-line" size="xs">Add a Site</.button>
           </div>
         </div>
       </div>

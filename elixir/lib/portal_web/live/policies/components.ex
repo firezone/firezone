@@ -1137,7 +1137,7 @@ defmodule PortalWeb.Policies.Components do
           style="warning"
           icon="ri-pause-line"
         >
-            Disable policy
+          Disable policy
         </.action_button>
         <div
           :if={is_nil(@policy.disabled_at) and @confirm_disable_policy}
@@ -1164,7 +1164,7 @@ defmodule PortalWeb.Policies.Components do
           style="success"
           icon="ri-play-line"
         >
-            Enable policy
+          Enable policy
         </.action_button>
       </div>
     </section>

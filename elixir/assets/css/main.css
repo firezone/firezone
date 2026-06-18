@@ -151,18 +151,18 @@ html {
 
 :root {
   /* Brand — orange (heat-wave-500 / heat-wave-600) */
-  --brand: oklch(71.74% 0.1920 48.75);
-  --brand-secondary: oklch(77.69% 0.1540 56.87);
-  --brand-tertiary: oklch(96.59% 0.0220 63.21);
+  --brand: oklch(71.74% 0.192 48.75);
+  --brand-secondary: oklch(77.69% 0.154 56.87);
+  --brand-tertiary: oklch(96.59% 0.022 63.21);
   --brand-muted: oklch(98.56% 0.0084 56.32);
   --brand-hover: oklch(58.23% 0.1574 48.48);
 
   /* Accent - purple */
   --accent: oklch(48.06% 0.2976 276);
-  --accent-secondary: oklch(81.30% 0.2950 276);
-  --accent-tertiary: oklch(91.90% 0.1930 276);
-  --accent-muted: oklch(97.90% 0.1930 276);
-  --accent-hover: oklch(0.3098 0.1931 276);
+  --accent-secondary: oklch(81.3% 0.295 276);
+  --accent-tertiary: oklch(91.9% 0.193 276);
+  --accent-muted: oklch(97.9% 0.193 276);
+  --accent-hover: oklch(30.98% 0.1931 276);
 
   /* Surfaces */
   --canvas: oklch(95.73% 0.0074 260.73);
@@ -178,10 +178,9 @@ html {
   /* Text */
   --text-primary: oklch(20.77% 0.0398 265.75);
   --text-secondary: oklch(44.55% 0.0374 257.28);
-  --text-tertiary: oklch(59.60% 0.0404 252.26);
-  --text-muted: oklch(75.17% 0.0190 245.46);
+  --text-tertiary: oklch(59.6% 0.0404 252.26);
+  --text-muted: oklch(75.17% 0.019 245.46);
   --text-inverse: oklch(98.42% 0.0034 247.86);
-
 
   /* Status */
   --success: oklch(62.71% 0.1699 149.21);
@@ -199,17 +198,17 @@ html {
 
   /* Toast backgrounds (opaque — used when flash floats over page content) */
   --toast-bg-success: oklch(98.19% 0.0181 155.83);
-  --toast-bg-info: oklch(97.05% 0.0142 254.60);
+  --toast-bg-info: oklch(97.05% 0.0142 254.6);
   --toast-bg-warn: oklch(98.69% 0.0214 95.28);
   --toast-bg-error: oklch(97.05% 0.0129 17.38);
 
   /* Controls */
   --control-bg: oklch(100% 0 0);
   --control-border: oklch(20.77% 0.0398 265.75 / 16%);
-  --control-focus: oklch(71.74% 0.1920 48.75);
+  --control-focus: oklch(71.74% 0.192 48.75);
 
   /* Badge variants */
-  --badge-dns-bg: oklch(97.05% 0.0142 254.60);
+  --badge-dns-bg: oklch(97.05% 0.0142 254.6);
   --badge-dns-text: oklch(48.82% 0.2172 264.38);
   --badge-ip-bg: oklch(98.19% 0.0181 155.83);
   --badge-ip-text: oklch(52.73% 0.1371 150.07);
@@ -259,26 +258,26 @@ html[data-theme="system"] .theme-check-system {
   /* Surfaces */
   --canvas: oklch(15.42% 0.0185 263.23);
   --surface: oklch(20.01% 0.0284 262.33);
-  --surface-raised: oklch(24.42% 0.0370 263.53);
+  --surface-raised: oklch(24.42% 0.037 263.53);
   --surface-overlay: oklch(28.45% 0.0423 261.22);
 
   /* Borders */
-  --border: oklch(96.83% 0.0069 247.90 / 7%);
-  --border-strong: oklch(96.83% 0.0069 247.90 / 12%);
-  --border-emphasis: oklch(96.83% 0.0069 247.90 / 22%);
+  --border: oklch(96.83% 0.0069 247.9 / 7%);
+  --border-strong: oklch(96.83% 0.0069 247.9 / 12%);
+  --border-emphasis: oklch(96.83% 0.0069 247.9 / 22%);
 
   /* Text */
-  --text-primary: oklch(96.83% 0.0069 247.90);
+  --text-primary: oklch(96.83% 0.0069 247.9);
   --text-secondary: oklch(71.07% 0.0351 256.79);
-  --text-tertiary: oklch(49.17% 0.0450 251.05);
+  --text-tertiary: oklch(49.17% 0.045 251.05);
   --text-muted: oklch(36.07% 0.0404 250.33);
   --text-inverse: oklch(20.77% 0.0398 265.75);
 
   /* Brand */
-  --brand: oklch(77.69% 0.1540 56.87);
-  --brand-secondary: oklch(71.74% 0.1920 48.75 / 60%);
-  --brand-tertiary: oklch(71.74% 0.1920 48.75 / 30%);
-  --brand-muted: oklch(71.74% 0.1920 48.75 / 12%);
+  --brand: oklch(77.69% 0.154 56.87);
+  --brand-secondary: oklch(71.74% 0.192 48.75 / 60%);
+  --brand-tertiary: oklch(71.74% 0.192 48.75 / 30%);
+  --brand-muted: oklch(71.74% 0.192 48.75 / 12%);
   --brand-hover: oklch(82.64% 0.1259 64.15);
 
   /* Status */
@@ -298,9 +297,9 @@ html[data-theme="system"] .theme-check-system {
   --toast-bg-error: oklch(21.69% 0.0465 21.67);
 
   /* Controls */
-  --control-bg: oklch(24.42% 0.0370 263.53);
-  --control-border: oklch(96.83% 0.0069 247.90 / 12%);
-  --control-focus: oklch(77.69% 0.1540 56.87);
+  --control-bg: oklch(24.42% 0.037 263.53);
+  --control-border: oklch(96.83% 0.0069 247.9 / 12%);
+  --control-focus: oklch(77.69% 0.154 56.87);
 
   /* Icons */
   --icon-bg: oklch(92.88% 0.0126 255.51);

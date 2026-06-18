@@ -468,7 +468,7 @@ Hooks.ColorEditor = {
   },
 
   destroyed() {
-    // Restore any overridden CSS vars when the editor is dismissed
+    // Restore the currently edited CSS vars when the editor is dismissed
     if (this._cssVar) {
       document.documentElement.style.removeProperty(this._cssVar);
     }
@@ -534,7 +534,8 @@ Hooks.ColorEditor = {
     const copyBtn = this.el.querySelector("[data-copy-value]");
     if (copyBtn) {
       copyBtn.addEventListener("click", () => {
-        const raw = this.el.querySelector("[data-raw-value]")?.textContent ?? "";
+        const raw =
+          this.el.querySelector("[data-raw-value]")?.textContent ?? "";
         navigator.clipboard.writeText(raw).then(() => {
           copyBtn.textContent = "Copied!";
           setTimeout(() => (copyBtn.textContent = "Copy"), 1500);

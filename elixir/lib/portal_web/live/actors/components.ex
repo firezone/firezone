@@ -881,18 +881,17 @@ defmodule PortalWeb.Actors.Components do
           Actions
         </h3>
         <div class="space-y-1.5">
-          <button
+          <.action_button
             :if={
               @actor.type in [:account_user, :account_admin_user] and not is_nil(@actor.email) and
                 not @welcome_email_sent
             }
-            type="button"
+            icon="ri-mail-line"
             phx-click="send_welcome_email"
             phx-value-id={@actor.id}
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
-            <.icon name="ri-mail-line" class="w-3.5 h-3.5" /> Send Welcome Email
-          </button>
+            Send Welcome Email
+          </.action_button>
           <div
             :if={
               @actor.type in [:account_user, :account_admin_user] and not is_nil(@actor.email) and
@@ -903,17 +902,17 @@ defmodule PortalWeb.Actors.Components do
             <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" />
             Email sent to {@actor.email}
           </div>
-          <button
+          <.action_button
             :if={
               is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and
                 not @confirm_disable_actor
             }
-            type="button"
+            style="warning"
+            icon="ri-pause-line"
             phx-click="confirm_disable_actor"
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-warning hover:bg-raised transition-colors"
           >
-            <.icon name="ri-pause-line" class="w-3.5 h-3.5" /> Disable
-          </button>
+            Disable
+          </.action_button>
           <div
             :if={
               is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and @confirm_disable_actor
@@ -933,15 +932,15 @@ defmodule PortalWeb.Actors.Components do
               </.button>
             </div>
           </div>
-          <button
+          <.action_button
             :if={not is_nil(@actor.disabled_at)}
-            type="button"
+            style="success"
+            icon="ri-play-line"
             phx-click="enable"
             phx-value-id={@actor.id}
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-success hover:bg-raised transition-colors"
           >
-            <.icon name="ri-play-line" class="w-3.5 h-3.5" /> Enable
-          </button>
+            Enable
+          </.action_button>
         </div>
       </section>
 
@@ -950,14 +949,14 @@ defmodule PortalWeb.Actors.Components do
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
           Danger Zone
         </h3>
-        <button
+        <.action_button
           :if={not @confirm_delete_actor}
-          type="button"
+          style="danger"
+          icon="ri-delete-bin-line"
           phx-click="confirm_delete_actor"
-          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
         >
-          <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete actor
-        </button>
+          Delete actor
+        </.action_button>
         <div
           :if={@confirm_delete_actor}
           class="px-3 py-2.5 rounded border border-error/20 bg-error-light"

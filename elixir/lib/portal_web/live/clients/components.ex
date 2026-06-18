@@ -727,22 +727,20 @@ defmodule PortalWeb.Clients.Components do
     <section>
       <.section_heading title="Actions" />
       <div class="space-y-1.5">
-        <button
+        <.action_button
           :if={is_nil(@client.verified_at)}
-          type="button"
+          icon="ri-shield-check-line"
           phx-click="verify_client"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-body hover:text-heading hover:bg-raised transition-colors"
         >
-          <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Verify
-        </button>
-        <button
+          Verify
+        </.action_button>
+        <.action_button
           :if={not is_nil(@client.verified_at) and not @confirm_unverify_client}
-          type="button"
+          icon="ri-prohibited-line"
           phx-click="confirm_unverify_client"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-body hover:text-heading hover:bg-raised transition-colors"
         >
-          <.icon name="ri-prohibited-line" class="w-3.5 h-3.5" /> Revoke verification
-        </button>
+          Revoke verification
+        </.action_button>
         <div
           :if={not is_nil(@client.verified_at) and @confirm_unverify_client}
           class="px-3 py-2.5 rounded border border-border bg-raised"

@@ -754,19 +754,18 @@ defmodule PortalWeb.FormComponents do
   end
 
   @doc """
-  Renders a button the is only seen when hovered over.
+  Renders a full-width action button with an optional leading icon and style variants.
   """
   attr :type, :string, default: "button"
   attr :icon, :string, default: nil
   attr :style, :string, default: nil
   attr :size, :string, default: "sm"
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
-  attr :rest, :global, include: ~w(disabled form name value navigate href patch title)
+  attr :rest, :global, include: ~w(disabled form name value title)
 
   slot :inner_block, required: true, doc: "The label for the button"
 
   def action_button(assigns) do
-    #"flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-warning hover:bg-raised transition-colors"
     ~H"""
     <button
       type={@type}
@@ -776,7 +775,6 @@ defmodule PortalWeb.FormComponents do
       <.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" /> {render_slot(@inner_block)}
     </button>
     """
-
   end
 
   @doc """
@@ -1019,33 +1017,17 @@ defmodule PortalWeb.FormComponents do
       ]
   end
 
-  def action_button_style do
-    [
-      "flex items-center gap-2",
-      "rounded",
-      "w-full",
-      "bg-surface",
-      "hover:bg-raised"
-    ]
+  def action_button_style(nil), do: action_button_base() ++ ["text-body", "hover:text-heading", "hover:bg-raised"]
+  def action_button_style("info"), do: action_button_base() ++ ["text-info", "hover:bg-raised"]
+  def action_button_style("success"), do: action_button_base() ++ ["text-success", "hover:bg-raised"]
+  def action_button_style("warning"), do: action_button_base() ++ ["text-warning", "hover:bg-raised"]
+
+  def action_button_style(style) when style in ["error", "danger"] do
+    action_button_base() ++ ["text-error", "border", "border-error/20", "hover:bg-error-light"]
   end
 
-  def action_button_style("info") do
-    action_button_style() ++
-      [
-        "text-info"
-      ]
-  end
-
-  def action_button_style(style) do
-    types = %{
-      "success" => "text-success",
-      "info" => "text-info",
-      "warning" => "text-warning",
-      "error" => "text-error",
-      "danger" => "text-error"
-    }
-
-    action_button_style() ++ [Map.get(types, style, "")]
+  defp action_button_base do
+    ["flex items-center gap-2", "rounded", "w-full", "bg-surface", "transition-colors"]
   end
 
   def button_size(size) do
