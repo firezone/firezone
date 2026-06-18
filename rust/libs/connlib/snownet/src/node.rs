@@ -1,4 +1,5 @@
 mod allocations;
+mod buffered_remote_candidates;
 mod connection_state;
 mod connections;
 mod inflight_stun_requests;
@@ -9,6 +10,7 @@ pub use connections::UnknownConnection;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
+use crate::node::buffered_remote_candidates::BufferedRemoteCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
@@ -98,6 +100,9 @@ pub struct Node<TId, RId> {
 
     connections: Connections<TId, RId>,
     inflight_stun_requests: InflightStunRequests<TId>,
+
+    /// Remote candidates that arrived before their connection was created.
+    buffered_remote_candidates: BufferedRemoteCandidates<TId>,
 
     pending_events: VecDeque<Event<TId>>,
 
@@ -194,6 +199,7 @@ where
             allocations: Default::default(),
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
+            buffered_remote_candidates: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
             connection_count: otel_instruments::connection_count(),
@@ -232,6 +238,7 @@ where
         self.connections.clear();
         self.buffered_transmits.clear();
         self.inflight_stun_requests.clear();
+        self.buffered_remote_candidates.clear();
 
         self.private_key = StaticSecret::random_from_rng(&mut self.rng);
         self.public_key = (&self.private_key).into();
@@ -362,6 +369,11 @@ where
 
         self.connections.insert_established(cid, index, connection);
 
+        // Feed any remote candidates that were buffered before the connection was created.
+        for candidate in self.buffered_remote_candidates.drain(cid) {
+            self.add_remote_candidate(cid, candidate, now);
+        }
+
         Ok(())
     }
 
@@ -441,7 +453,8 @@ where
         tracing::debug!(?candidate, "Received candidate from remote");
 
         let Ok(c) = self.connections.get_mut(&cid, now) else {
-            tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
+            tracing::debug!(%candidate, "Buffering candidate for not-yet-created connection");
+            self.buffered_remote_candidates.push(cid, candidate);
             return;
         };
 
@@ -567,6 +580,7 @@ where
 
         if let Event::ConnectionClosed(id) | Event::ConnectionFailed(id) = &event {
             self.inflight_stun_requests.remove_by_conn_id(*id);
+            self.buffered_remote_candidates.remove(*id);
         }
 
         Some(event)
@@ -2149,5 +2163,98 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn buffered_remote_candidate_is_drained_into_new_connection() {
+        let mut node = new_test_node();
+        let now = Instant::now();
+        add_relay(&mut node, 1, now);
+
+        let candidate = host_candidate(1234);
+
+        // The candidate arrives before the connection has been created.
+        node.add_remote_candidate(1, candidate.clone(), now);
+        create_connection(&mut node, 1, now);
+
+        let connection = node.connections.get_mut(&1, now).unwrap();
+        let remote_candidates = connection.agent.remote_candidates().collect::<Vec<_>>();
+        assert_eq!(remote_candidates, vec![candidate]);
+    }
+
+    #[test]
+    fn reset_clears_buffered_remote_candidates() {
+        let mut node = new_test_node();
+        let now = Instant::now();
+
+        node.add_remote_candidate(1, host_candidate(1234), now);
+        node.reset(now);
+
+        add_relay(&mut node, 1, now);
+        create_connection(&mut node, 1, now);
+
+        let connection = node.connections.get_mut(&1, now).unwrap();
+        let remote_candidates = connection.agent.remote_candidates().collect::<Vec<_>>();
+        assert_eq!(remote_candidates, vec![]);
+    }
+
+    #[test]
+    fn connection_failure_clears_buffered_remote_candidates() {
+        let mut node = new_test_node();
+        let now = Instant::now();
+        add_relay(&mut node, 1, now);
+
+        node.add_remote_candidate(1, host_candidate(1234), now);
+        node.pending_events.push_back(Event::ConnectionFailed(1));
+        while node.poll_event().is_some() {}
+
+        create_connection(&mut node, 1, now);
+
+        let connection = node.connections.get_mut(&1, now).unwrap();
+        let remote_candidates = connection.agent.remote_candidates().collect::<Vec<_>>();
+        assert_eq!(remote_candidates, vec![]);
+    }
+
+    fn new_test_node() -> Node<u32, u32> {
+        Node::new(rand::random(), Instant::now(), Duration::ZERO)
+    }
+
+    fn add_relay(node: &mut Node<u32, u32>, rid: u32, now: Instant) {
+        let mut to_add = BTreeSet::new();
+        to_add.insert((
+            rid,
+            RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478)),
+            "user".to_owned(),
+            "pass".to_owned(),
+            "firezone".to_owned(),
+        ));
+
+        node.update_relays(BTreeSet::default(), &to_add, now);
+        node.allocations
+            .get_mut_by_id(&rid)
+            .unwrap()
+            .set_rtt(Duration::from_millis(20));
+    }
+
+    fn create_connection(node: &mut Node<u32, u32>, cid: u32, now: Instant) {
+        let remote = PublicKey::from(&StaticSecret::random_from_rng(&mut rand::rng()));
+        let preshared_key = StaticSecret::random_from_rng(&mut rand::rng());
+
+        node.upsert_connection(
+            cid,
+            remote,
+            preshared_key,
+            Credentials::from(is::IceCreds::new()),
+            Credentials::from(is::IceCreds::new()),
+            IceRole::Controlling,
+            IceConfig::client_default(),
+            IceConfig::client_idle(),
+            now,
+        )
+        .unwrap();
+    }
+
+    fn host_candidate(port: u16) -> Candidate {
+        Candidate::host(SocketAddr::from(([1, 1, 1, 1], port)), "udp").unwrap()
     }
 }
