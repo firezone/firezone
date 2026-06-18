@@ -2,7 +2,7 @@
 
 fzLib.rustPlatform.buildRustPackage {
   pname = "firezone-gateway";
-  version = fzLib.crateVersion "gateway";
+  version = fzLib.versions.gateway;
 
   inherit (fzLib) src cargoLock;
 

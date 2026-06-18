@@ -23,7 +23,7 @@
 
 fzLib.rustPlatform.buildRustPackage {
   pname = "firezone-gui-client";
-  version = fzLib.crateVersion "gui-client/src-tauri";
+  version = fzLib.versions.gui;
 
   inherit (fzLib) src cargoLock;
 
