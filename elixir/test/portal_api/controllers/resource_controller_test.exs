@@ -222,6 +222,7 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
       assert resp["data"]["ip_stack"] == attrs["ip_stack"]
+      assert resp["data"]["site_id"] == site.id
     end
 
     test "creates a static device pool without site_id or address", %{
@@ -247,6 +248,7 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
       assert resp["data"]["address"] == nil
+      refute Map.has_key?(resp["data"], "site_id")
     end
 
     test "creates a resource with filters when feature enabled", %{
