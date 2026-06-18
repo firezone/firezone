@@ -30,6 +30,12 @@ defmodule PortalAPI.Schemas.Resource do
             "Site to connect the Resource to. Required for all types except `static_device_pool`.",
           type: :string,
           format: :uuid
+        },
+        filters: %Schema{
+          type: :array,
+          description:
+            "Traffic filters restricting the protocols and ports the Resource exposes",
+          items: PortalAPI.Schemas.Resource.Filter
         }
       },
       required: [:name, :type],
@@ -38,7 +44,10 @@ defmodule PortalAPI.Schemas.Resource do
         "name" => "Prod DB",
         "address" => "10.0.0.10",
         "address_description" => "Production Database",
-        "type" => "ip"
+        "type" => "ip",
+        "filters" => [
+          %{"protocol" => "tcp", "ports" => ["5432"]}
+        ]
       }
     })
   end
