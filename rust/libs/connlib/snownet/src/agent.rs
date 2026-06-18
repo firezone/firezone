@@ -359,13 +359,16 @@ impl Agent {
     /// The `Ice` arm never absorbs WG bytes, so it hands them straight back.
     pub(crate) fn handle_inbound_network<'b>(
         &mut self,
+        validator: &mut dyn path_agent::HandshakeValidator,
         bytes: &'b [u8],
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), &'b [u8]> {
         match self {
             Self::Ice(_) => ControlFlow::Continue(bytes),
-            Self::Path { path: agent, .. } => agent.handle_inbound_network(bytes, path, now),
+            Self::Path { path: agent, .. } => {
+                agent.handle_inbound_network(validator, bytes, path, now)
+            }
         }
     }
 

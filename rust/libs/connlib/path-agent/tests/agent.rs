@@ -6,9 +6,53 @@ use std::time::{Duration, Instant};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, EVALUATION_WINDOW, Event, PROBE_DST, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_SRC,
-    PROBE_TIMEOUT, PathAgent, Payload, Transmit,
+    Candidate, EVALUATION_WINDOW, Event, HandshakeValidator, PROBE_DST, PROBE_INTERVAL,
+    PROBE_INTERVAL_LIVE, PROBE_SRC, PROBE_TIMEOUT, PathAgent, Payload, Transmit,
 };
+
+/// Stand-in for boringtun in unit tests: never actually decrypts,
+/// just lets us drive the validate-then-commit logic with synthetic
+/// fixtures. Default behaviour is "accept, no outbound packets".
+#[derive(Default)]
+struct StubValidator {
+    /// Drains FIFO on each accepted call.
+    outbound: std::collections::VecDeque<Vec<u8>>,
+    /// `true` makes every call reject.
+    reject: bool,
+    /// Bytes passed to each accepted call, in order — mirrors what
+    /// the previous architecture's `Event::ForwardHandshake` did.
+    seen: Vec<Vec<u8>>,
+}
+
+impl StubValidator {
+    fn with_response(bytes: Vec<u8>) -> Self {
+        let mut s = Self::default();
+        s.outbound.push_back(bytes);
+        s
+    }
+}
+
+impl HandshakeValidator for StubValidator {
+    fn validate(
+        &mut self,
+        bytes: &[u8],
+        _now: Instant,
+        on_outbound: &mut dyn FnMut(Vec<u8>),
+    ) -> Result<(), ()> {
+        if self.reject {
+            return Err(());
+        }
+        self.seen.push(bytes.to_vec());
+        if let Some(b) = self.outbound.pop_front() {
+            on_outbound(b);
+        }
+        Ok(())
+    }
+}
+
+fn accept_all() -> StubValidator {
+    StubValidator::default()
+}
 
 fn addr(p: u16) -> SocketAddr {
     format!("127.0.0.1:{p}").parse().unwrap()
@@ -103,8 +147,13 @@ fn pairs_yields_local_remote_addresses() {
 fn inbound_unparseable_bytes_return_false() {
     let mut a = agent_with_relay_pairs();
     assert!(
-        a.handle_inbound_network(&[1, 2, 3], (addr(2), addr(4)), Instant::now())
-            .is_continue()
+        a.handle_inbound_network(
+            &mut accept_all(),
+            &[1, 2, 3],
+            (addr(2), addr(4)),
+            Instant::now()
+        )
+        .is_continue()
     );
 }
 
@@ -114,7 +163,12 @@ fn outbound_data_after_primary_selected_sends_on_primary() {
     let now = Instant::now();
 
     // Drive a real handshake → primary on the host×host pair (best tier).
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -155,8 +209,13 @@ fn outbound_handshake_response_replays_on_recv_path_of_last_inbound_init() {
     let recv_path = (addr(2), addr(4));
 
     assert!(
-        a.handle_inbound_network(&handshake_init_bytes(), recv_path, Instant::now())
-            .is_break()
+        a.handle_inbound_network(
+            &mut accept_all(),
+            &handshake_init_bytes(),
+            recv_path,
+            Instant::now()
+        )
+        .is_break()
     );
     let _ = a.poll_event();
 
@@ -169,20 +228,23 @@ fn outbound_handshake_response_replays_on_recv_path_of_last_inbound_init() {
 }
 
 #[test]
-fn inbound_handshake_init_returns_true_and_emits_forward_event() {
+fn inbound_handshake_init_validates_then_adopts_primary() {
     let mut a = agent_with_relay_pairs();
+    let mut v = accept_all();
     assert!(
-        a.handle_inbound_network(&handshake_init_bytes(), (addr(2), addr(4)), Instant::now())
-            .is_break()
+        a.handle_inbound_network(
+            &mut v,
+            &handshake_init_bytes(),
+            (addr(2), addr(4)),
+            Instant::now()
+        )
+        .is_break()
     );
 
-    // `ForwardHandshake` is queued before `PrimaryChanged` so the consumer
-    // hands the handshake to boringtun (creating the WG session) before
-    // any user-data flush triggered by the primary update.
-    match a.poll_event() {
-        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
-        other => panic!("expected ForwardHandshake, got {other:?}"),
-    }
+    // Validation happens before primary adoption so the WG session
+    // exists by the time the consumer flushes buffered user data on
+    // `PrimaryChanged`.
+    assert_eq!(v.seen, vec![handshake_init_bytes()]);
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
             assert_eq!((local, remote), (addr(2), addr(4)));
@@ -192,10 +254,41 @@ fn inbound_handshake_init_returns_true_and_emits_forward_event() {
 }
 
 #[test]
-fn inbound_handshake_response_returns_true_and_emits_forward_event() {
+fn rejected_handshake_leaves_state_untouched() {
+    // Sanity: when validation fails, none of the responder dedup,
+    // evaluation-window reopen, primary adoption, or outbound routing
+    // should fire — those are reserved for known-good bytes.
     let mut a = agent_with_relay_pairs();
+    let mut v = StubValidator {
+        reject: true,
+        ..Default::default()
+    };
+    let now = Instant::now();
+
+    let _ = a.handle_inbound_network(&mut v, &handshake_init_bytes(), (addr(2), addr(4)), now);
+
+    assert!(
+        a.poll_event().is_none(),
+        "rejected bytes must not adopt a primary"
+    );
+    assert!(
+        a.poll_transmit().is_none(),
+        "rejected bytes must not queue any outbound"
+    );
+    // A subsequent legitimate arrival of the same bytes must still
+    // be validated (we didn't pollute the in-flight dedup).
+    let mut v2 = accept_all();
+    let _ = a.handle_inbound_network(&mut v2, &handshake_init_bytes(), (addr(2), addr(4)), now);
+    assert_eq!(v2.seen, vec![handshake_init_bytes()]);
+}
+
+#[test]
+fn inbound_handshake_response_validates_then_adopts_primary() {
+    let mut a = agent_with_relay_pairs();
+    let mut v = accept_all();
     assert!(
         a.handle_inbound_network(
+            &mut v,
             &handshake_response_bytes(),
             (addr(2), addr(4)),
             Instant::now()
@@ -203,12 +296,8 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
         .is_break()
     );
 
-    // Same shape as the init case: forward to boringtun first, then
-    // adopt the initial primary.
-    match a.poll_event() {
-        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_response_bytes()),
-        other => panic!("expected ForwardHandshake, got {other:?}"),
-    }
+    // Same shape as the init case: validate first, then adopt.
+    assert_eq!(v.seen, vec![handshake_response_bytes()]);
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
             assert_eq!((local, remote), (addr(2), addr(4)));
@@ -221,8 +310,13 @@ fn inbound_handshake_response_returns_true_and_emits_forward_event() {
 fn inbound_data_packet_returns_false_and_emits_no_event() {
     let mut a = agent_with_relay_pairs();
     assert!(
-        a.handle_inbound_network(&data_packet_bytes(), (addr(2), addr(4)), Instant::now())
-            .is_continue()
+        a.handle_inbound_network(
+            &mut accept_all(),
+            &data_packet_bytes(),
+            (addr(2), addr(4)),
+            Instant::now()
+        )
+        .is_continue()
     );
     assert!(a.poll_event().is_none());
 }
@@ -296,7 +390,12 @@ fn inbound_handshake_response_clears_retransmits() {
     while a.poll_transmit().is_some() {}
     let init_deadline = a.poll_timeout().expect("init armed retransmits");
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
 
     let post_deadline = a.poll_timeout();
@@ -435,28 +534,20 @@ fn duplicate_inbound_init_in_flight_does_not_re_forward_to_boringtun() {
     // here drops the duplicate so it doesn't re-trip boringtun's
     // anti-replay (WrongTai64nTimestamp).
     let mut a = agent_with_relay_pairs();
+    let mut v = accept_all();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_init_bytes(), (addr(2), addr(4)), now);
-    // First arrival: forwarded for boringtun to chew on.
-    let mut events = std::iter::from_fn(|| a.poll_event()).collect::<Vec<_>>();
-    let forwarded_count = events
-        .iter()
-        .filter(|e| matches!(e, Event::ForwardHandshake { .. }))
-        .count();
-    assert_eq!(forwarded_count, 1);
-    events.clear();
+    let _ = a.handle_inbound_network(&mut v, &handshake_init_bytes(), (addr(2), addr(4)), now);
+    // First arrival: forwarded for boringtun to validate.
+    assert_eq!(v.seen.len(), 1);
 
-    // Same bytes, different path — must not re-forward.
-    let _ = a.handle_inbound_network(&handshake_init_bytes(), (addr(1), addr(3)), now);
-    while let Some(e) = a.poll_event() {
-        events.push(e);
-    }
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, Event::ForwardHandshake { .. })),
-        "duplicate in-flight init must not produce another ForwardHandshake: {events:?}"
+    // Same bytes, different path — dedup short-circuits before the
+    // validator runs.
+    let _ = a.handle_inbound_network(&mut v, &handshake_init_bytes(), (addr(1), addr(3)), now);
+    assert_eq!(
+        v.seen.len(),
+        1,
+        "duplicate in-flight init must not re-invoke the validator"
     );
 }
 
@@ -468,7 +559,7 @@ fn duplicate_inbound_init_replays_cached_response_on_new_path() {
 
     let new_path = (addr(1), addr(3));
     assert!(
-        a.handle_inbound_network(&handshake_init_bytes(), new_path, now)
+        a.handle_inbound_network(&mut accept_all(), &handshake_init_bytes(), new_path, now)
             .is_break()
     );
 
@@ -486,15 +577,13 @@ fn duplicate_inbound_init_after_ttl_falls_back_to_forward() {
     populate_responder_cache(&mut a, (addr(2), addr(4)), now);
 
     let later = now + Duration::from_secs(11);
+    let mut v = accept_all();
     assert!(
-        a.handle_inbound_network(&handshake_init_bytes(), (addr(1), addr(3)), later)
+        a.handle_inbound_network(&mut v, &handshake_init_bytes(), (addr(1), addr(3)), later)
             .is_break()
     );
 
-    match a.poll_event() {
-        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, handshake_init_bytes()),
-        other => panic!("expected ForwardHandshake, got {other:?}"),
-    }
+    assert_eq!(v.seen, vec![handshake_init_bytes()]);
     assert!(a.poll_transmit().is_none());
 }
 
@@ -504,16 +593,26 @@ fn duplicate_inbound_response_is_dropped_after_first_forward() {
     let now = Instant::now();
 
     assert!(
-        a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now)
-            .is_break()
+        a.handle_inbound_network(
+            &mut accept_all(),
+            &handshake_response_bytes(),
+            (addr(2), addr(4)),
+            now
+        )
+        .is_break()
     );
     // Drain the initial-primary event the first response produces so we
     // can assert "no further events" on the second.
     while a.poll_event().is_some() {}
 
     assert!(
-        a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(3)), now)
-            .is_break()
+        a.handle_inbound_network(
+            &mut accept_all(),
+            &handshake_response_bytes(),
+            (addr(1), addr(3)),
+            now
+        )
+        .is_break()
     );
     assert!(a.poll_event().is_none());
     assert!(a.poll_transmit().is_none());
@@ -524,20 +623,25 @@ fn fresh_outbound_init_resets_initiator_response_dedup() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let mut v = accept_all();
+    let _ = a.handle_inbound_network(&mut v, &handshake_response_bytes(), (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
 
     a.handle_outbound(handshake_init_bytes(), now);
     while a.poll_transmit().is_some() {}
 
+    // After we send a fresh init, an inbound response must be
+    // re-validated (the initiator-side dedup was cleared).
+    let seen_before = v.seen.len();
     assert!(
-        a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now)
+        a.handle_inbound_network(&mut v, &handshake_response_bytes(), (addr(2), addr(4)), now)
             .is_break()
     );
-    match a.poll_event() {
-        Some(Event::ForwardHandshake { .. }) => {}
-        other => panic!("expected ForwardHandshake after re-init, got {other:?}"),
-    }
+    assert_eq!(
+        v.seen.len(),
+        seen_before + 1,
+        "fresh init must reset the dedup so the next response validates again"
+    );
 }
 
 #[test]
@@ -545,7 +649,12 @@ fn inbound_handshake_seeds_probe_schedule_for_all_pairs() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -557,7 +666,12 @@ fn handle_timeout_emits_one_probe_per_pair() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -575,7 +689,12 @@ fn probe_seq_advances_per_pair_per_fire() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -605,7 +724,12 @@ fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -656,7 +780,12 @@ fn inbound_echo_request_from_unknown_source_registers_peer_reflexive() {
     // pair so `drive_probes` measures it on the open window.
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -683,7 +812,12 @@ fn signaled_candidate_promotes_peer_reflexive_in_place() {
     // pair through one probe round-trip.
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -748,7 +882,12 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -791,7 +930,12 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -834,7 +978,12 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     a.add_remote_candidate(Candidate::host(addr_v6(12))); // v6
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(2)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(1), addr(2)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -882,6 +1031,7 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     let now = Instant::now();
 
     let _ = a.handle_inbound_network(
+        &mut accept_all(),
         &handshake_response_bytes(),
         (mismatched_local_alloc, addr_v6(20)),
         now,
@@ -936,6 +1086,7 @@ fn family_match_dominates_ipv6_preference() {
     let now = Instant::now();
 
     let _ = a.handle_inbound_network(
+        &mut accept_all(),
         &handshake_response_bytes(),
         (v6_mismatched_local_alloc, addr_v6(20)),
         now,
@@ -985,7 +1136,12 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
     let now = Instant::now();
 
     // Adopt (1,3) as the initial primary, then give it a measured RTT.
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(3)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(1), addr(3)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1030,7 +1186,12 @@ fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
     a.add_remote_candidate(Candidate::host(addr(4)));
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(1), addr(3)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(1), addr(3)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1072,7 +1233,12 @@ fn stale_echo_reply_is_ignored() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1115,7 +1281,12 @@ fn drive_probes_only_emits_on_primary_after_settle() {
     let primary = (addr(1), addr(3)); // host×host wins on best tier
 
     // Bootstrap with a probe round-trip that promotes host×host to primary.
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1155,7 +1326,12 @@ fn settle_keeps_poll_timeout_armed_for_primary_probes() {
     let now = Instant::now();
     let primary = (addr(1), addr(3));
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
 
     a.handle_timeout(now);
@@ -1185,7 +1361,12 @@ fn settle_is_sticky_across_later_handshakes() {
     let now = Instant::now();
     let primary = (addr(1), addr(3));
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
 
     a.handle_timeout(now);
@@ -1204,6 +1385,7 @@ fn settle_is_sticky_across_later_handshakes() {
     let live_deadline = a.poll_timeout().expect("live cadence");
 
     let _ = a.handle_inbound_network(
+        &mut accept_all(),
         &handshake_response_bytes(),
         (addr(2), addr(4)),
         now + EVALUATION_WINDOW + Duration::from_secs(60),
@@ -1228,7 +1410,12 @@ fn inbound_handshake_reopens_evaluation_window_after_settle() {
     let primary = (addr(1), addr(3));
 
     // Drive a real handshake, settle on the host×host primary.
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -1261,7 +1448,12 @@ fn inbound_handshake_reopens_evaluation_window_after_settle() {
     let mut fresh_resp = handshake_response_bytes();
     fresh_resp[10] = 0x42;
     let reopen_at = live_tick + Duration::from_secs(1);
-    let _ = a.handle_inbound_network(&fresh_resp, (addr(2), addr(4)), reopen_at);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &fresh_resp,
+        (addr(2), addr(4)),
+        reopen_at,
+    );
     while a.poll_event().is_some() {}
     a.handle_timeout(reopen_at);
     let reopened_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -1280,7 +1472,12 @@ fn duplicate_inbound_handshake_does_not_reopen_evaluation_window() {
     let now = Instant::now();
     let primary = (addr(1), addr(3));
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -1297,7 +1494,12 @@ fn duplicate_inbound_handshake_does_not_reopen_evaluation_window() {
     // Same response bytes as before -> hits `forwarded_response` dedup
     // and never triggers the reopen path.
     let later = now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE + Duration::from_secs(1);
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), later);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        later,
+    );
     a.handle_timeout(later);
     let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     assert_eq!(
@@ -1317,13 +1519,11 @@ fn different_inbound_init_bytes_skip_dedup_cache() {
     let mut different_init = handshake_init_bytes();
     different_init[100] = 0x42;
 
-    let handled = a.handle_inbound_network(&different_init, (addr(2), addr(4)), now);
+    let mut v = accept_all();
+    let handled = a.handle_inbound_network(&mut v, &different_init, (addr(2), addr(4)), now);
     assert!(matches!(handled, ControlFlow::Break(())));
 
-    match a.poll_event() {
-        Some(Event::ForwardHandshake { bytes }) => assert_eq!(bytes, different_init),
-        other => panic!("expected ForwardHandshake, got {other:?}"),
-    }
+    assert_eq!(v.seen, vec![different_init]);
     assert!(a.poll_transmit().is_none());
 }
 
@@ -1340,7 +1540,12 @@ fn fresh_inbound_handshake_on_new_path_adopts_it_as_primary() {
     let initial_path = (addr(2), addr(4));
 
     // Bootstrap on the initial path.
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), initial_path, now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        initial_path,
+        now,
+    );
     assert_eq!(a.primary(), Some(initial_path));
     while a.poll_event().is_some() {}
 
@@ -1349,7 +1554,12 @@ fn fresh_inbound_handshake_on_new_path_adopts_it_as_primary() {
     let mut roam_resp = handshake_response_bytes();
     roam_resp[10] = 0xab;
     let new_path = (addr(1), addr(3));
-    let _ = a.handle_inbound_network(&roam_resp, new_path, now + Duration::from_secs(60));
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &roam_resp,
+        new_path,
+        now + Duration::from_secs(60),
+    );
     assert_eq!(a.primary(), Some(new_path));
 
     // The PrimaryChanged event reflects the new path.
@@ -1383,7 +1593,12 @@ fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
 
     // Bootstrap and settle: get a low RTT on `initial_path`, mark it
     // primary.
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), initial_path, now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        initial_path,
+        now,
+    );
     while a.poll_event().is_some() {}
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
@@ -1402,7 +1617,7 @@ fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
     let mut roam_resp = handshake_response_bytes();
     roam_resp[10] = 0xab;
     let roam_at = now + Duration::from_secs(60);
-    let _ = a.handle_inbound_network(&roam_resp, roam_path, roam_at);
+    let _ = a.handle_inbound_network(&mut accept_all(), &roam_resp, roam_path, roam_at);
     assert_eq!(a.primary(), Some(roam_path));
     while a.poll_event().is_some() {}
 
@@ -1429,11 +1644,17 @@ fn duplicate_inbound_handshake_does_not_change_primary() {
     let now = Instant::now();
     let initial_path = (addr(2), addr(4));
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), initial_path, now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        initial_path,
+        now,
+    );
     while a.poll_event().is_some() {}
 
     // Same response bytes -> hits `forwarded_response` dedup.
     let _ = a.handle_inbound_network(
+        &mut accept_all(),
         &handshake_response_bytes(),
         (addr(1), addr(3)),
         now + Duration::from_secs(1),
@@ -1456,7 +1677,12 @@ fn first_inbound_handshake_adopts_initial_primary_so_outbound_data_flows() {
     let now = Instant::now();
     let recv_path = (addr(2), addr(4));
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), recv_path, now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        recv_path,
+        now,
+    );
     assert_eq!(a.primary(), Some(recv_path));
 
     // Outbound user data routes through the initial primary.
@@ -1480,7 +1706,7 @@ fn responder_rekey_init_rides_primary_after_initial_response_sent() {
     let recv_path = (addr(2), addr(4));
 
     // Receive an init, send a response.
-    let _ = a.handle_inbound_network(&handshake_init_bytes(), recv_path, now);
+    let _ = a.handle_inbound_network(&mut accept_all(), &handshake_init_bytes(), recv_path, now);
     while a.poll_event().is_some() {}
     a.handle_outbound(handshake_response_bytes(), now);
     while a.poll_transmit().is_some() {}
@@ -1508,7 +1734,12 @@ fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
     assert_eq!(initial.len(), 3, "handshake fans out on every relay pair");
 
     // Inbound response → primary is set, retransmit ladder is cleared.
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), recv_path, now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        recv_path,
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1530,7 +1761,12 @@ fn probe_skips_while_inflight_until_probe_timeout_lapses() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1581,7 +1817,12 @@ fn trickled_candidate_after_handshake_still_gets_probed() {
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
 
     let now = Instant::now();
-    let _ = a.handle_inbound_network(&handshake_response_bytes(), (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(
+        &mut accept_all(),
+        &handshake_response_bytes(),
+        (addr(2), addr(4)),
+        now,
+    );
     while a.poll_event().is_some() {}
     while a.poll_transmit().is_some() {}
 
@@ -1631,7 +1872,7 @@ fn data_packet_bytes() -> Vec<u8> {
 /// Drive the responder side through a full inbound init → outbound
 /// response cycle so the dedup cache is populated.
 fn populate_responder_cache(a: &mut PathAgent, recv_path: (SocketAddr, SocketAddr), now: Instant) {
-    let _ = a.handle_inbound_network(&handshake_init_bytes(), recv_path, now);
+    let _ = a.handle_inbound_network(&mut accept_all(), &handshake_init_bytes(), recv_path, now);
     while a.poll_event().is_some() {}
     a.handle_outbound(handshake_response_bytes(), now);
     while a.poll_transmit().is_some() {}

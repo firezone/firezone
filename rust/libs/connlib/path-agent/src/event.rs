@@ -29,6 +29,4 @@ pub enum Event {
         local: SocketAddr,
         remote: SocketAddr,
     },
-    /// Inbound handshake bytes the caller must feed to `Tunn::decapsulate_at`.
-    ForwardHandshake { bytes: Vec<u8> },
 }

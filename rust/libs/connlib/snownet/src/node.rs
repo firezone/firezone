@@ -1590,34 +1590,11 @@ where
             }
         }
 
-        // Drain path-agent events: feed forwarded handshake bytes
-        // through boringtun, hand the response back to the agent for
-        // outbound routing, transition state on `PrimaryChanged`.
+        // Drain path-agent events: transition state on `PrimaryChanged`.
+        // Handshake validation now runs inside `handle_inbound_network`
+        // so `ForwardHandshake` no longer fires.
         while let Some(event) = self.agent.poll_path_event() {
             match event {
-                path_agent::Event::ForwardHandshake { bytes } => {
-                    match self
-                        .tunnel
-                        .decapsulate_at(None, &bytes, self.buffer.as_mut(), now)
-                    {
-                        TunnResult::WriteToNetwork(response) => {
-                            self.agent.handle_outbound(response.to_vec(), now);
-                            while let TunnResult::WriteToNetwork(more) =
-                                self.tunnel
-                                    .decapsulate_at(None, &[], self.buffer.as_mut(), now)
-                            {
-                                self.agent.handle_outbound(more.to_vec(), now);
-                            }
-                        }
-                        TunnResult::Done => {}
-                        TunnResult::Err(e) => {
-                            tracing::debug!("Forwarded handshake rejected by boringtun: {e}");
-                        }
-                        TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                            tracing::warn!("Unexpected data packet from forwarded handshake");
-                        }
-                    }
-                }
                 path_agent::Event::PrimaryChanged { local, remote } => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, local, remote);
                     self.adopt_iceless_peer_socket(peer_socket, allocations, transmits, cid, now);
@@ -1916,13 +1893,20 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        // Path-agent gets first crack at handshake bytes (dedup, replay).
-        // It only queues work — `Connection::handle_timeout` is what
-        // actually drives boringtun and drains transmits.
-        let packet = match self
-            .agent
-            .handle_inbound_network(packet, (destination, from), now)
-        {
+        // Path-agent gets first crack at handshake bytes (dedup, replay,
+        // validation). We hand it a `BoringtunValidator` so it can
+        // confirm the bytes with `Tunn::decapsulate_at` before mutating
+        // any of its own state — rejected bytes leave it untouched.
+        let mut validator = BoringtunValidator {
+            tunnel: &mut self.tunnel,
+            buf: self.buffer.as_mut(),
+        };
+        let packet = match self.agent.handle_inbound_network(
+            &mut validator,
+            packet,
+            (destination, from),
+            now,
+        ) {
             ControlFlow::Break(()) => return ControlFlow::Break(Ok(())),
             ControlFlow::Continue(packet) => packet,
         };
@@ -2344,6 +2328,48 @@ fn new_agent(role: IceRole) -> IceAgent {
     agent.set_timing_advance(Duration::ZERO);
 
     agent
+}
+
+/// Plugs `Tunn` into the path-agent's [`path_agent::HandshakeValidator`]
+/// hook. The path-agent reaches through here when it needs to confirm
+/// inbound handshake bytes; any outbound packets boringtun produces
+/// during decapsulation (the `HandshakeResponse` for an accepted init,
+/// or data packets it had buffered while handshake-pending) flow back
+/// via `on_outbound`, which the path-agent then routes through its
+/// normal outbound path.
+struct BoringtunValidator<'a> {
+    tunnel: &'a mut Tunn,
+    buf: &'a mut [u8],
+}
+
+impl path_agent::HandshakeValidator for BoringtunValidator<'_> {
+    fn validate(
+        &mut self,
+        bytes: &[u8],
+        now: Instant,
+        on_outbound: &mut dyn FnMut(Vec<u8>),
+    ) -> Result<(), ()> {
+        match self.tunnel.decapsulate_at(None, bytes, self.buf, now) {
+            TunnResult::Done => Ok(()),
+            TunnResult::WriteToNetwork(first) => {
+                on_outbound(first.to_vec());
+                while let TunnResult::WriteToNetwork(more) =
+                    self.tunnel.decapsulate_at(None, &[], self.buf, now)
+                {
+                    on_outbound(more.to_vec());
+                }
+                Ok(())
+            }
+            TunnResult::Err(e) => {
+                tracing::debug!(error = ?e, "Handshake rejected by boringtun");
+                Err(())
+            }
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                tracing::warn!("Unexpected data packet emitted from handshake decapsulation");
+                Err(())
+            }
+        }
+    }
 }
 
 #[cfg(test)]

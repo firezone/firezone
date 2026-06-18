@@ -451,8 +451,15 @@ impl PathAgent {
     }
 
     /// Inspect an inbound WG packet on `path`.
+    ///
+    /// `validator` is the authoritative source for whether the bytes
+    /// represent a real handshake. Dedup checks short-circuit before
+    /// it runs; for everything else, no state mutation (responder
+    /// dedup, evaluation-window reopen, primary adoption, outbound
+    /// routing) happens until validation succeeds.
     pub fn handle_inbound_network<'b>(
         &mut self,
+        validator: &mut dyn crate::HandshakeValidator,
         bytes: &'b [u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
@@ -469,6 +476,8 @@ impl PathAgent {
         match parsed {
             Packet::HandshakeInit(_) => {
                 // Cached-response replay against a bytes-exact dup init.
+                // Cheap and pre-validated: the cache entry was populated
+                // from a previously-accepted handshake.
                 if let Some(d) = self.responder.dedup.as_ref()
                     && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
                     && d.init_bytes == bytes
@@ -488,50 +497,73 @@ impl PathAgent {
                 // several pairs in one tick. Drop dups until the response
                 // goes out and `responder.dedup` takes over — otherwise
                 // boringtun rejects as `WrongTai64nTimestamp`.
+                //
+                // `last_init` was set on a previous accepted call, so
+                // matching here means we already validated these bytes.
                 if self.responder.last_init.as_deref() == Some(bytes) {
                     tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
 
                     return ControlFlow::Break(());
                 }
 
-                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit, forwarding to boringtun");
+                let mut outbound = Vec::<Vec<u8>>::new();
+                if validator
+                    .validate(bytes, now, &mut |b| outbound.push(b))
+                    .is_err()
+                {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit rejected by validator");
+                    return ControlFlow::Break(());
+                }
 
+                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
+
+                // Commit: bytes are now known-good. `handle_outbound`
+                // for the `HandshakeResponse` pairs against
+                // `responder.last_init`/`last_init_path`, so set those
+                // before routing.
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
-
-                self.queue_event(
-                    Event::ForwardHandshake {
-                        bytes: bytes.to_vec(),
-                    },
-                    now,
-                );
                 self.reopen_evaluation_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
+
+                for b in outbound {
+                    self.handle_outbound(b, now);
+                }
 
                 ControlFlow::Break(())
             }
             Packet::HandshakeResponse(_) => {
-                // Re-feeding the same response to boringtun would advance
-                // the session index and desync state.
+                // Bytes-exact dup of a response we already processed.
+                // Was previously validated, so safe to drop here.
                 if self.forwarded_response.as_deref() == Some(bytes) {
                     tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
 
                     return ControlFlow::Break(());
                 }
 
-                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse, forwarding to boringtun");
+                let mut outbound = Vec::<Vec<u8>>::new();
+                if validator
+                    .validate(bytes, now, &mut |b| outbound.push(b))
+                    .is_err()
+                {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse rejected by validator");
+                    return ControlFlow::Break(());
+                }
+
+                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
 
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
-
-                self.queue_event(
-                    Event::ForwardHandshake {
-                        bytes: bytes.to_vec(),
-                    },
-                    now,
-                );
                 self.reopen_evaluation_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
+
+                // Any bytes the validator surfaced (queued data
+                // packets boringtun was holding while handshake-pending)
+                // ride the now-primary path via the regular outbound
+                // routing.
+                for b in outbound {
+                    self.handle_outbound(b, now);
+                }
 
                 ControlFlow::Break(())
             }
