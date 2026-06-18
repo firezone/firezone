@@ -213,15 +213,25 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # bpftool comes from mise; resolve the real binary (the mise shim needs mise's
-      # env, which sudo strips) and pass it explicitly. The benchmark self-elevates via
-      # sudo, so there is no `sudo` prefix here. Doubles as a smoke test that
-      # `handle_turn` still loads: the harness exits non-zero unless every run is XDP_TX.
+      # bpftool comes from mise's github backend, which extracts a single 0644
+      # `bpftool` binary and registers no shim — so resolve it via `mise where`
+      # (not `mise which`) and add the execute bit. The benchmark self-elevates
+      # via sudo, hence no `sudo` prefix. Doubles as a smoke test that
+      # `handle_turn` loads: the harness exits non-zero unless every run is XDP_TX.
       - name: Run handle_turn benchmark
         shell: bash
         run: |
-          bpftool="$(find "$HOME/.local/share/mise/installs" -type f -name bpftool 2>/dev/null | sort -V | tail -n1)"
-          test -x "$bpftool" || { echo "bpftool not installed via mise"; exit 1; }
+          mise install "github:libbpf/bpftool"
+          bpftool="$(mise where 'github:libbpf/bpftool')/bpftool"
+          if [ ! -f "$bpftool" ]; then
+            echo "::group::mise diagnostics"
+            mise ls || true
+            find "$HOME/.local/share/mise/installs" -maxdepth 4 2>/dev/null || true
+            echo "::endgroup::"
+            echo "bpftool not found at: $bpftool"; exit 1
+          fi
+          chmod +x "$bpftool"
+          "$bpftool" version
           cargo run -p ebpf-benchmark -- --bpftool "$bpftool" --repeat 100000 --invocations 3
 
   headless-client:

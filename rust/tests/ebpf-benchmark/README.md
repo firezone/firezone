@@ -14,5 +14,12 @@ cargo run -p ebpf-benchmark   # --help for options
 The binary re-execs itself under `sudo` (it needs `CAP_BPF`/`CAP_PERFMON` to load the
 program and run `BPF_PROG_TEST_RUN`), so no manual `sudo` is needed. Requires a
 `CONFIG_BPF_JIT=y` kernel and the eBPF toolchain — `nightly-2025-05-30`, `bpf-linker`
-and `bpftool`, all via `mise` (see [`rust/README.md`](../../README.md)). When `bpftool`
-is the mise shim, pass `--bpftool "$(mise which bpftool)"` since `sudo` strips mise's env.
+and `bpftool`, all via `mise` (see [`rust/README.md`](../../README.md)). `bpftool` comes
+from mise's github backend, which installs no shim, so resolve and pass it explicitly
+(`sudo` strips mise's env regardless):
+
+```sh
+bpftool="$(mise where github:libbpf/bpftool)/bpftool"
+chmod +x "$bpftool"   # the release tarball is mode 0644
+cargo run -p ebpf-benchmark -- --bpftool "$bpftool"
+```
