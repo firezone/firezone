@@ -24,7 +24,7 @@ defmodule PortalWeb.Policies do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :policies)
     end
 
     socket =
@@ -280,9 +280,7 @@ defmodule PortalWeb.Policies do
           <:col :let={policy} label="Group" class="w-36 lg:w-72">
             <%= if policy.group do %>
               <div class="flex items-center gap-2">
-                <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--icon-bg)] border border-[var(--border)] shrink-0">
-                  <.provider_icon type={provider_type_from_group(policy.group)} class="w-3 h-3" />
-                </div>
+                <.provider_icon provider={provider_type_from_group(policy.group)} size="xs" variant="circle" />
                 <.link
                   navigate={~p"/#{@account}/groups/#{policy.group}"}
                   class="text-sm text-[var(--text-secondary)] truncate hover:text-[var(--text-primary)] transition-colors"

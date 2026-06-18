@@ -1,0 +1,34 @@
+services:
+  client:
+    environment:
+      FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
+      RUST_LOG: ${RUST_LOG:-wire=trace,debug}
+      FIREZONE_API_URL: ws://portal:8081
+      FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
+    init: true
+    build:
+      target: ${DOCKER_BUILD_TARGET:-debug}
+      context: ../../rust
+      dockerfile: Dockerfile
+      args:
+        PACKAGE: firezone-headless-client
+    image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
+    privileged: true # Needed to tune `sysctl` inside container.
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    healthcheck:
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+      interval: 1s
+      retries: 15
+      timeout: 1s
+    depends_on:
+      portal:
+        condition: "service_healthy"
+    extra_hosts:
+      - "portal:203.0.113.10"
+      - "portal:203:0:113::10"

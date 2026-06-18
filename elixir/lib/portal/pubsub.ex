@@ -43,26 +43,49 @@ defmodule Portal.PubSub do
   end
 
   defmodule Changes do
+    @type entity ::
+            :accounts
+            | :actors
+            | :client_tokens
+            | :devices
+            | :directories
+            | :groups
+            | :memberships
+            | :policies
+            | :policy_authorizations
+            | :portal_sessions
+            | :resources
+            | :sites
+            | :static_device_pool_members
+
+    @spec subscribe(String.t()) :: :ok | {:error, term()}
     def subscribe(account_id) do
       account_id
-      |> topic()
+      |> account_topic()
       |> Portal.PubSub.subscribe()
     end
 
-    def broadcast(account_id, payload) do
-      topic = topic(account_id)
+    @spec subscribe(String.t(), entity()) :: :ok | {:error, term()}
+    def subscribe(account_id, entity) do
+      account_id
+      |> entity_topic(entity)
+      |> Portal.PubSub.subscribe()
+    end
+
+    @spec broadcast(String.t(), entity(), term()) :: :ok
+    def broadcast(account_id, entity, payload) do
       region = Portal.Config.get_env(:portal, :region, "")
 
-      for node <- target_nodes(region) do
+      for topic <- [account_topic(account_id), entity_topic(account_id, entity)],
+          node <- target_nodes(region) do
         Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, topic, payload)
       end
 
       :ok
     end
 
-    defp topic(account_id) do
-      Atom.to_string(__MODULE__) <> ":" <> account_id
-    end
+    defp account_topic(account_id), do: "account:#{account_id}"
+    defp entity_topic(account_id, entity), do: "account:#{account_id}:#{entity}"
 
     # In dev / test region we don't have a cluster / region; send to self
     defp target_nodes(""), do: [Node.self()]

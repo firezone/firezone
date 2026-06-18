@@ -186,7 +186,7 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "text-xs py-1 pl-2.5 pr-6 rounded",
+          "text-sm py-2 pl-3 pr-8 rounded",
           "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
           "border border-[var(--border)]",
           "outline-none transition-colors cursor-pointer",
@@ -233,7 +233,7 @@ defmodule PortalWeb.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "text-xs py-1 pl-2.5 pr-6 rounded",
+          "text-sm py-2 pl-3 pr-8 rounded",
           "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
           "border border-[var(--border)]",
           "outline-none transition-colors cursor-pointer",
@@ -410,7 +410,7 @@ defmodule PortalWeb.FormComponents do
     doc: "The title attribute (tooltip) for the confirm button"
 
   slot :title, doc: "The title of the modal" do
-    attr :icon, :atom, doc: "Optional icon to display before the title"
+    attr :provider, :string, doc: "Optional provider icon to display before the title"
   end
 
   slot :body, required: true, doc: "The content of the modal"
@@ -447,9 +447,9 @@ defmodule PortalWeb.FormComponents do
             <h3 class="text-xl font-semibold text-neutral-900 flex items-center gap-3">
               <.provider_icon
                 :for={title_slot <- @title}
-                :if={Map.get(title_slot, :icon)}
-                type={Map.get(title_slot, :icon)}
-                class="w-8 h-8"
+                :if={Map.get(title_slot, :provider)}
+                provider={Map.get(title_slot, :provider)}
+                size="xl"
               />
               {render_slot(@title)}
             </h3>

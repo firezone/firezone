@@ -7,7 +7,10 @@ use std::{
 
 use bytes::BytesMut;
 use crossbeam_queue::SegQueue;
-use opentelemetry::{KeyValue, metrics::UpDownCounter};
+use opentelemetry::{
+    KeyValue,
+    metrics::{Meter, UpDownCounter},
+};
 
 /// A lock-free pool of buffers that are all equal in size.
 ///
@@ -33,8 +36,19 @@ where
     B: Buf,
 {
     pub fn new(capacity: usize, tag: &'static str) -> Self {
-        let buffer_counter = otel_instruments::buffer_count();
+        Self::with_counter(capacity, tag, otel_instruments::buffer_count())
+    }
 
+    /// Like [`BufferPool::new`], but records the buffer count through the given `meter`.
+    pub fn with_meter(capacity: usize, tag: &'static str, meter: &Meter) -> Self {
+        Self::with_counter(capacity, tag, otel_instruments::buffer_count_with(meter))
+    }
+
+    fn with_counter(
+        capacity: usize,
+        tag: &'static str,
+        buffer_counter: UpDownCounter<i64>,
+    ) -> Self {
         Self {
             inner: Arc::new(SegQueue::new()),
 
@@ -43,11 +57,9 @@ where
             new_buffer_fn: Arc::new(move || {
                 BufferStorage::new(
                     B::with_capacity(capacity),
+                    capacity,
+                    tag,
                     buffer_counter.clone(),
-                    [
-                        KeyValue::new("system.buffer.pool.name", tag),
-                        KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
-                    ],
                 )
             }),
         }
@@ -187,14 +199,30 @@ impl<B> Drop for Buffer<B> {
     fn drop(&mut self) {
         let buffer_storage = self.inner.take().expect("should have storage in `Drop`");
 
+        let actual = (buffer_storage.capacity_of)(&buffer_storage.inner);
+        if let Some(actual) = deviating_capacity(buffer_storage.capacity, actual) {
+            tracing::warn!(
+                pool = %buffer_storage.tag,
+                expected_capacity = %buffer_storage.capacity,
+                actual_capacity = %actual,
+                "Buffer returned to pool with a different capacity than it was allocated with"
+            );
+        }
+
         self.pool.push(buffer_storage);
     }
+}
+
+/// Returns the `actual` capacity if it deviates from the `expected` one a pool allocates its buffers with.
+fn deviating_capacity(expected: usize, actual: usize) -> Option<usize> {
+    (expected != actual).then_some(actual)
 }
 
 pub trait Buf: Sized {
     fn with_capacity(capacity: usize) -> Self;
     fn clone(&self, dst: &mut Self);
     fn resize_to(&mut self, len: usize);
+    fn capacity(&self) -> usize;
 }
 
 impl Buf for Vec<u8> {
@@ -209,6 +237,10 @@ impl Buf for Vec<u8> {
 
     fn resize_to(&mut self, len: usize) {
         self.resize(len, 0);
+    }
+
+    fn capacity(&self) -> usize {
+        Vec::capacity(self)
     }
 }
 
@@ -225,11 +257,28 @@ impl Buf for BytesMut {
     fn resize_to(&mut self, len: usize) {
         self.resize(len, 0);
     }
+
+    fn capacity(&self) -> usize {
+        BytesMut::capacity(self)
+    }
 }
 
 /// A wrapper around a buffer `B` that keeps track of how many buffers there are in a counter.
 struct BufferStorage<B> {
     inner: B,
+
+    /// The size every buffer in the pool is allocated with.
+    ///
+    /// A returned buffer whose capacity deviates from this no longer fits the pool's
+    /// "all buffers are equal in size" invariant and indicates an accidental reallocation.
+    capacity: usize,
+    /// The pool's name, used to attribute a capacity deviation to a specific pool.
+    tag: &'static str,
+    /// Reads the current capacity of `inner`.
+    ///
+    /// Captured as a function pointer so the capacity can be inspected in `Buffer`'s
+    /// `Drop`, which cannot itself require the [`Buf`] bound.
+    capacity_of: fn(&B) -> usize,
 
     attributes: [KeyValue; 2],
     counter: UpDownCounter<i64>,
@@ -242,11 +291,22 @@ impl<B> Drop for BufferStorage<B> {
 }
 
 impl<B> BufferStorage<B> {
-    fn new(inner: B, counter: UpDownCounter<i64>, attributes: [KeyValue; 2]) -> Self {
+    fn new(inner: B, capacity: usize, tag: &'static str, counter: UpDownCounter<i64>) -> Self
+    where
+        B: Buf,
+    {
+        let attributes = [
+            KeyValue::new("system.buffer.pool.name", tag),
+            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
+        ];
+
         counter.add(1, &attributes);
 
         Self {
             inner,
+            capacity,
+            tag,
+            capacity_of: B::capacity,
             counter,
             attributes,
         }
@@ -271,7 +331,7 @@ impl<B> DerefMut for BufferStorage<B> {
 mod tests {
     use std::time::Duration;
 
-    use opentelemetry::global;
+    use opentelemetry::metrics::MeterProvider;
     use opentelemetry_sdk::metrics::{
         InMemoryMetricExporter, PeriodicReader, SdkMeterProvider,
         data::{AggregatedMetrics, MetricData},
@@ -313,6 +373,23 @@ mod tests {
     }
 
     #[test]
+    fn deviating_capacity_flags_only_changed_sizes() {
+        assert_eq!(deviating_capacity(1024, 1024), None);
+        assert_eq!(deviating_capacity(1024, 2048), Some(2048));
+        assert_eq!(deviating_capacity(1024, 512), Some(512));
+    }
+
+    #[test]
+    fn returning_a_reallocated_buffer_does_not_panic() {
+        let pool = BufferPool::<Vec<u8>>::new(8, "test");
+
+        let mut buffer = pool.pull();
+        buffer.resize_to(8 * 1024); // Force a reallocation beyond the pool's capacity.
+
+        drop(buffer); // Exercises the capacity-deviation check on return to the pool.
+    }
+
+    #[test]
     fn shift_start_right() {
         let pool = BufferPool::<Vec<u8>>::new(1024, "test");
 
@@ -338,9 +415,10 @@ mod tests {
 
     #[tokio::test]
     async fn buffer_pool_metrics() {
-        let (_provider, exporter) = init_meter_provider();
+        let (provider, exporter) = init_meter_provider();
+        let meter = provider.meter("connlib");
 
-        let pool = BufferPool::<Vec<u8>>::new(1024, "test");
+        let pool = BufferPool::<Vec<u8>>::with_meter(1024, "test", &meter);
 
         let buffer1 = pool.pull_initialised(b"hello world");
         let buffer2 = pool.pull_initialised(b"hello world");
@@ -386,7 +464,6 @@ mod tests {
                     .build(),
             )
             .build();
-        global::set_meter_provider(provider.clone());
 
         (provider, exporter)
     }

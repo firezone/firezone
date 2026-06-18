@@ -23,7 +23,7 @@ defmodule PortalWeb.Groups do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :groups)
     end
 
     socket =
@@ -123,7 +123,7 @@ defmodule PortalWeb.Groups do
      end)}
   end
 
-  def handle_info(%Change{}, socket), do: {:noreply, socket}
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_event(event, params, socket)
       when event in [
@@ -838,9 +838,7 @@ defmodule PortalWeb.Groups do
         >
           <:col :let={row} field={{:groups, :name}} label="Name" class="w-full">
             <div class="flex items-center gap-3">
-              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
-              </div>
+              <.provider_icon provider={provider_type_from_group(row)} size="md" variant="circle" />
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
                   <span class="truncate">{row.group.name}</span>

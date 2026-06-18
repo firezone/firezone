@@ -1,13 +1,35 @@
-use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
-use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
-use std::{
-    io,
-    os::fd::{AsRawFd as _, RawFd},
-};
+use ip_packet::IpPacket;
+use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
+use std::{io, os::fd::RawFd};
 use telemetry::otel;
 use tokio::sync::mpsc;
 
 const QUEUE_SIZE: usize = 10_000;
+
+/// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
+///
+/// The kernel default (`ctl_recvsize`) is 512 KiB, only a few hundred MTU-sized
+/// packets, after which inbound packets are backpressured. A larger buffer lets the kernel
+/// queue more while we drain it. 8 MiB matches the default `kern.ipc.maxsockbuf`
+/// ceiling — the most the kernel grants without raising that system-wide limit.
+const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
+    2 * 1024 * 1024
+} else {
+    8 * 1024 * 1024
+};
+
+/// How many packets the kernel may park in the socket receive buffer before it pauses
+/// the interface's output queue until we read them.
+///
+/// XNU defaults this to 1, so every packet costs a full read + flow-control roundtrip
+/// before the kernel hands us the next one. We size it to [`RECV_BUFFER_SIZE`] at the
+/// TUN MTU ([`ip_packet::MAX_IP_SIZE`]), rounded up to a power of two, leaving the byte
+/// buffer as the limit that actually governs how much is queued.
+const MAX_PENDING_PACKETS: u32 =
+    (RECV_BUFFER_SIZE as u32 / ip_packet::MAX_IP_SIZE as u32).next_power_of_two();
+
+/// From XNU's `bsd/net/if_utun.h`.
+const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
 
 pub struct Tun {
     name: String,
@@ -37,17 +59,20 @@ impl Tun {
     fn from_fd_inner(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
         let name = name(fd)?;
 
+        raise_recv_buffer(fd);
+        raise_max_pending_packets(fd);
+
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
-        runtime.spawn(otel_instruments::periodic_system_queue_length(
+        runtime.spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        runtime.spawn(otel_instruments::periodic_system_queue_length(
+        runtime.spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
@@ -59,7 +84,7 @@ impl Tun {
             .name("TUN send".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_send(fd, outbound_rx, write),
+                    tun::apple::send(fd, outbound_rx),
                     "Failed to send to TUN device: {}"
                 )
             })
@@ -68,7 +93,7 @@ impl Tun {
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::apple::recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
             })
@@ -110,73 +135,96 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
     }
 }
 
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
-    let mut hdr = [0u8; 4];
-
-    let mut iov = [
-        iovec {
-            iov_base: hdr.as_mut_ptr() as _,
-            iov_len: hdr.len(),
-        },
-        iovec {
-            iov_base: dst.as_mut_ptr() as _,
-            iov_len: dst.len(),
-        },
-    ];
-
-    let mut msg_hdr = msghdr {
-        msg_name: std::ptr::null_mut(),
-        msg_namelen: 0,
-        msg_iov: &mut iov[0],
-        msg_iovlen: iov.len() as _,
-        msg_control: std::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
+/// Raises the limit of packets the kernel buffers on the utun socket so it can run
+/// ahead of our reads instead of in lock-step.
+fn raise_max_pending_packets(fd: RawFd) {
+    let current = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_MAX_PENDING_PACKETS)
+    {
+        Ok(current) => current,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get `UTUN_OPT_MAX_PENDING_PACKETS`");
+            return;
+        }
     };
 
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { recvmsg(fd, &mut msg_hdr, 0) } {
-        -1 => Err(io::Error::last_os_error()),
-        0..=4 => Ok(0),
-        n => Ok((n - 4) as usize),
+    tracing::debug!(current, "Queried `UTUN_OPT_MAX_PENDING_PACKETS`");
+
+    if current >= MAX_PENDING_PACKETS {
+        return;
+    }
+
+    if let Err(e) = set_sockopt(
+        fd,
+        libc::SYSPROTO_CONTROL,
+        UTUN_OPT_MAX_PENDING_PACKETS,
+        &MAX_PENDING_PACKETS,
+    ) {
+        tracing::warn!(error = %e, "Failed to set `UTUN_OPT_MAX_PENDING_PACKETS`");
+        return;
+    }
+
+    tracing::debug!(
+        previous = current,
+        new = MAX_PENDING_PACKETS,
+        "Raised `UTUN_OPT_MAX_PENDING_PACKETS`"
+    );
+}
+
+/// Raises the utun socket's receive buffer so the kernel can queue more inbound
+/// packets between our reads.
+fn raise_recv_buffer(fd: RawFd) {
+    if let Err(e) = set_sockopt(fd, libc::SOL_SOCKET, libc::SO_RCVBUF, &RECV_BUFFER_SIZE) {
+        tracing::warn!(error = %e, "Failed to set TUN socket receive buffer");
+        return;
+    }
+
+    // The kernel clamps to `kern.ipc.maxsockbuf`; read back what it actually applied.
+    match get_sockopt::<libc::c_int>(fd, libc::SOL_SOCKET, libc::SO_RCVBUF) {
+        Ok(actual) => {
+            tracing::debug!(
+                requested = RECV_BUFFER_SIZE,
+                actual,
+                "Set TUN socket receive buffer"
+            )
+        }
+        Err(e) => tracing::warn!(error = %e, "Failed to read back TUN socket receive buffer"),
     }
 }
 
-fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
-    let af = match src.version() {
-        IpVersion::V4 => AF_INET,
-        IpVersion::V6 => AF_INET6,
-    };
-    let src = src.packet();
-
-    let mut hdr = [0, 0, 0, af];
-    let mut iov = [
-        iovec {
-            iov_base: hdr.as_mut_ptr() as _,
-            iov_len: hdr.len(),
-        },
-        iovec {
-            iov_base: src.as_ptr() as _,
-            iov_len: src.len(),
-        },
-    ];
-
-    let msg_hdr = msghdr {
-        msg_name: std::ptr::null_mut(),
-        msg_namelen: 0,
-        msg_iov: &mut iov[0],
-        msg_iovlen: iov.len() as _,
-        msg_control: std::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
+/// Sets an integer-valued socket option.
+fn set_sockopt<T>(fd: RawFd, level: libc::c_int, name: libc::c_int, value: &T) -> io::Result<()> {
+    // Safety: `value` points to a `T`, matching the `size_of::<T>()` length we pass.
+    let ret = unsafe {
+        libc::setsockopt(
+            fd,
+            level,
+            name,
+            (value as *const T).cast(),
+            size_of::<T>() as libc::socklen_t,
+        )
     };
 
-    match unsafe { libc::sendmsg(fd.as_raw_fd(), &msg_hdr, 0) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
+    if ret < 0 {
+        return Err(get_last_error());
     }
+
+    Ok(())
+}
+
+/// Reads an integer-valued socket option.
+fn get_sockopt<T>(fd: RawFd, level: libc::c_int, name: libc::c_int) -> io::Result<T> {
+    let mut value = std::mem::MaybeUninit::<T>::uninit();
+    let mut len = size_of::<T>() as libc::socklen_t;
+
+    // Safety: `value` has room for the `size_of::<T>()` length we pass.
+    let ret = unsafe { libc::getsockopt(fd, level, name, value.as_mut_ptr().cast(), &mut len) };
+
+    if ret < 0 {
+        return Err(get_last_error());
+    }
+
+    // Safety: `getsockopt` succeeded; these integer options return a fully-initialized `T`.
+    Ok(unsafe { value.assume_init() })
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]

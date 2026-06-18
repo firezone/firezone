@@ -6234,7 +6234,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "ipv4" => target_ip
       })
 
-      assert_receive {:client_device_access_authorized, _allow_payload}, 500
+      assert_receive {:client_device_access_authorized, {_ack_to, _ref}, _allow_payload}, 500
 
       # Force the queued insert to fail by deleting the policy that grants this
       # authorization. After flush, on_failed must fire reject_access for the
@@ -6253,6 +6253,100 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:reject_access, %Portal.PolicyAuthorization{} = pa}, 500
       assert pa.initiating_device_id == client_id
       assert pa.resource_id == pool_resource_id
+    end
+
+    test "does not release the initiator until the target channel acks", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16"
+      }
+
+      :ok = Presence.Clients.connect(target_client, target_subject.credential.id, session_meta)
+      # Test pid stands in for the target's channel so we can capture (and
+      # withhold) the ack.
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => target_ip
+      })
+
+      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+
+      # The initiator must not be released before the target acks.
+      refute_push "client_device_access_authorized", _, 200
+
+      send(ack_to, {:device_access_acked, ref})
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^target_client_id,
+        ice_role: :controlling
+      }
+    end
+
+    test "denies the initiator with :offline when the target never acks", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16"
+      }
+
+      :ok = Presence.Clients.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => target_ip
+      })
+
+      assert_receive {:client_device_access_authorized, {_ack_to, ref}, _payload}, 500
+
+      # Simulate the ack-wait timeout firing before any ack arrives.
+      send(initiating_socket.channel_pid, {:flow_creation_timeout, ref})
+
+      assert_push "client_device_access_denied", %{
+        client_id: ^target_client_id,
+        reason: :offline
+      }
+
+      refute_push "client_device_access_authorized", _, 100
     end
   end
 
@@ -7091,6 +7185,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(socket.channel_pid, {
         :client_device_access_authorized,
+        {self(), make_ref()},
         %{
           client_id: initiating_client.id,
           client_public_key: "pk",
@@ -7133,6 +7228,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(socket.channel_pid, {
         :client_device_access_authorized,
+        {self(), make_ref()},
         %{
           client_id: initiating_client.id,
           client_public_key: "pk",
@@ -7245,6 +7341,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Seed an entry that is already expired into the in-memory cache
       send(socket.channel_pid, {
         :client_device_access_authorized,
+        {self(), make_ref()},
         %{
           client_id: initiating_client.id,
           client_public_key: "pk",

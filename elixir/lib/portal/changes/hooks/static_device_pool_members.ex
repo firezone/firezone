@@ -8,7 +8,7 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembers do
     member = struct_from_params(Portal.StaticDevicePoolMember, data)
     change = %Change{lsn: lsn, op: :insert, struct: member}
 
-    PubSub.Changes.broadcast(member.account_id, change)
+    PubSub.Changes.broadcast(member.account_id, :static_device_pool_members, change)
   end
 
   @impl true
@@ -17,7 +17,7 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembers do
     member = struct_from_params(Portal.StaticDevicePoolMember, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_member, struct: member}
 
-    PubSub.Changes.broadcast(member.account_id, change)
+    PubSub.Changes.broadcast(member.account_id, :static_device_pool_members, change)
   end
 
   @impl true
@@ -25,6 +25,6 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembers do
     member = struct_from_params(Portal.StaticDevicePoolMember, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: member}
 
-    PubSub.Changes.broadcast(member.account_id, change)
+    PubSub.Changes.broadcast(member.account_id, :static_device_pool_members, change)
   end
 end

@@ -105,6 +105,25 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "No Site Associated"
     end
 
+    test "shows online member count instead of offline for device pools", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_one = client_fixture(account: account, actor: actor)
+      client_two = client_fixture(account: account, actor: actor)
+
+      _resource =
+        static_device_pool_resource_fixture(account: account, clients: [client_one, client_two])
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "0 / 2 online"
+    end
+
     test "hides device pool option from the type filter when client_to_client is disabled",
          %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =

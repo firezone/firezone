@@ -22,7 +22,7 @@ defmodule PortalWeb.Actors do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :actors)
     end
 
     socket =
@@ -768,8 +768,6 @@ defmodule PortalWeb.Actors do
      end)}
   end
 
-  def handle_info(%Change{}, socket), do: {:noreply, socket}
-
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
 
@@ -793,6 +791,8 @@ defmodule PortalWeb.Actors do
   def handle_info(:clear_welcome_email_sent, socket) do
     {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: false)}
   end
+
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)

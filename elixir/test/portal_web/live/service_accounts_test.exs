@@ -6,6 +6,7 @@ defmodule PortalWeb.ServiceAccountsTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.TokenFixtures
@@ -388,6 +389,40 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       assert html =~ "Last used:"
       refute html =~ "No tokens. Add one to authenticate this service account."
+    end
+
+    test "shows token session details in the tokens tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+
+      client_session_fixture(
+        account: account,
+        actor: service_account,
+        token: token,
+        remote_ip: {198, 51, 100, 42},
+        remote_ip_location_city: "Tokyo",
+        remote_ip_location_region: "JP",
+        user_agent: "Linux/6.0 headless-client/1.4.0",
+        version: "1.4.0"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      assert html =~ "IP Address"
+      assert html =~ "198.51.100.42"
+      assert html =~ "User Agent"
+      assert html =~ "Linux/6.0 headless-client/1.4.0"
+      assert html =~ "Client Version"
+      assert html =~ "Tokyo, JP"
+      assert html =~ "Token ID"
+      assert html =~ token.id
     end
 
     test "shows empty token state when no tokens", %{

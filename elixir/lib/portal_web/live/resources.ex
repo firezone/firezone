@@ -32,7 +32,7 @@ defmodule PortalWeb.Resources do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :resources)
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
     end
 
@@ -44,6 +44,8 @@ defmodule PortalWeb.Resources do
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
+        selected_resource_pool_member_ids: [],
+        online_client_ids: MapSet.new(),
         selected_groups: [],
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -83,11 +85,16 @@ defmodule PortalWeb.Resources do
 
         filter_site = filter_site_from_params(params, socket.assigns.subject)
 
+        pool_member_ids =
+          Database.pool_member_ids_for_resources([resource], socket.assigns.subject)
+          |> Map.get(resource.id, [])
+
         {:noreply,
          socket
          |> assign(
            filter_site: filter_site,
            selected_resource: resource,
+           selected_resource_pool_member_ids: pool_member_ids,
            selected_groups: groups,
            policy_authorizations: policy_authorizations,
            policy_authorizations_page: page,
@@ -331,11 +338,16 @@ defmodule PortalWeb.Resources do
       resource_policy_counts =
         Database.count_policies_for_resources(all_resources, socket.assigns.subject)
 
+      device_pool_members =
+        Database.pool_member_ids_for_resources(all_resources, socket.assigns.subject)
+
       {:ok,
        assign(socket,
          resources: resources,
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
+         device_pool_members: device_pool_members,
+         online_client_ids: online_client_ids(socket.assigns.account.id),
          resources_metadata: metadata
        )}
     end
@@ -525,7 +537,12 @@ defmodule PortalWeb.Resources do
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.resource_status_badge resource={resource} presence_tick={@presence_tick} />
+            <.resource_status_badge
+              resource={resource}
+              presence_tick={@presence_tick}
+              pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
+              online_client_ids={@online_client_ids}
+            />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
@@ -564,6 +581,8 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
+            pool_member_ids={@selected_resource_pool_member_ids}
+            online_client_ids={@online_client_ids}
             presence_tick={@presence_tick}
             groups={@selected_groups}
             policy_authorizations={@policy_authorizations}
@@ -1211,11 +1230,20 @@ defmodule PortalWeb.Resources do
 
   def handle_info(%Phoenix.Socket.Broadcast{event: event}, socket)
       when event in ["presence_diff", "presence_state"] do
-    {:noreply, update(socket, :presence_tick, &(&1 + 1))}
+    {:noreply,
+     socket
+     |> update(:presence_tick, &(&1 + 1))
+     |> assign(online_client_ids: online_client_ids(socket.assigns.account.id))}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  defp online_client_ids(account_id) do
+    account_id
+    |> Presence.Clients.online_client_ids()
+    |> MapSet.new()
   end
 
   defp resource_filter_ports(nil), do: %{}
@@ -1230,6 +1258,26 @@ defmodule PortalWeb.Resources do
 
   defp resource_filter_ports(_), do: %{}
 
+  defp resource_filter_errors(nil), do: %{}
+
+  defp resource_filter_errors(%Phoenix.HTML.Form{source: nil}), do: %{}
+
+  defp resource_filter_errors(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = source}) do
+    source
+    |> Ecto.Changeset.get_change(:filters, [])
+    |> Enum.flat_map(fn filter ->
+      protocol = Ecto.Changeset.get_field(filter, :protocol)
+
+      case Keyword.get(filter.errors, :ports) do
+        {msg, _opts} -> [{protocol, msg}]
+        nil -> []
+      end
+    end)
+    |> Map.new()
+  end
+
+  defp resource_filter_errors(_), do: %{}
+
   defp resource_form_panel_state(assigns) do
     %{
       resource_form: assigns.resource_form.form,
@@ -1240,7 +1288,8 @@ defmodule PortalWeb.Resources do
       resource_form_client_search: assigns.resource_form.client_search,
       resource_form_client_search_results: assigns.resource_form.client_search_results,
       client_to_client_enabled: assigns.resource_panel.client_to_client_enabled?,
-      filter_ports: resource_filter_ports(assigns.resource_form.form)
+      filter_ports: resource_filter_ports(assigns.resource_form.form),
+      filter_errors: resource_filter_errors(assigns.resource_form.form)
     }
   end
 
@@ -1527,6 +1576,30 @@ defmodule PortalWeb.Resources do
       |> case do
         {:error, _} -> %{}
         counts -> Map.new(counts)
+      end
+    end
+
+    def pool_member_ids_for_resources(resources, subject) do
+      ids =
+        resources
+        |> Enum.filter(&(&1.type == :static_device_pool))
+        |> Enum.map(& &1.id)
+        |> Enum.uniq()
+
+      from(m in StaticDevicePoolMember, as: :members)
+      |> where([members: m], m.resource_id in ^ids)
+      |> select([members: m], {m.resource_id, m.device_id})
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          %{}
+
+        rows ->
+          Enum.group_by(rows, fn {resource_id, _device_id} -> resource_id end, fn {_resource_id,
+                                                                                   device_id} ->
+            device_id
+          end)
       end
     end
 

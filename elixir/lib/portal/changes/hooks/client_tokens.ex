@@ -9,7 +9,7 @@ defmodule Portal.Changes.Hooks.ClientTokens do
   def on_insert(lsn, data) do
     token = struct_from_params(Portal.ClientToken, data)
     change = %Change{lsn: lsn, op: :insert, struct: token}
-    PubSub.Changes.broadcast(token.account_id, change)
+    PubSub.Changes.broadcast(token.account_id, :client_tokens, change)
   end
 
   @impl true
@@ -21,6 +21,6 @@ defmodule Portal.Changes.Hooks.ClientTokens do
     PG.deliver(token.id, :disconnect)
 
     change = %Change{lsn: lsn, op: :delete, old_struct: token}
-    PubSub.Changes.broadcast(token.account_id, change)
+    PubSub.Changes.broadcast(token.account_id, :client_tokens, change)
   end
 end

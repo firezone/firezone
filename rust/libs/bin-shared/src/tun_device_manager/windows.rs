@@ -6,6 +6,8 @@ use anyhow::{Context as _, Result};
 use ip_network::IpNetwork;
 use ip_packet::{IpPacket, IpPacketBuf};
 use logging::err_with_src;
+use opentelemetry::KeyValue;
+use opentelemetry::metrics::Histogram;
 use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
@@ -304,14 +306,14 @@ impl Tun {
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE); // We want to be able to batch-receive from this.
 
-        tokio::spawn(otel_instruments::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        tokio::spawn(otel_instruments::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
@@ -364,21 +366,25 @@ impl tun::Tun for Tun {
     }
 }
 
+/// How many times we at most try to re-write a packet if the WinTUN ring buffer is full.
+///
+/// This is the WinTUN twin of the `ENOBUFS` (UDP) and `ENOSPC` (TUN on MacOS / iOS) conditions:
+/// transient, clears off-thread, and not observable via a readiness signal. Kept in sync with
+/// the retry budgets of those paths.
+const MAX_RING_FULL_RETRIES: u32 = 24;
+
+/// Upper bound (as a power of two) for how many times we busy-spin between write retries.
+///
+/// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
+const SPIN_LIMIT: u32 = 6;
+
 // Moves packets from Internet towards the user
 fn start_send_thread(
     mut packet_rx: mpsc::Receiver<IpPacket>,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
-    // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
-    const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
-
-    /// How many attempts we make at passing the IP packet to WinTUN.
-    ///
-    /// 1000 attempts where we suspend for 100 microseconds results in a total wait of 100ms.
-    /// That delay will hopefully throttle the remote's congestion controller to stop sending us that many packets.
-    const MAX_ATTEMPTS: u32 = 1000 + SPIN_ATTEMPTS;
-    /// How many times we busy-loop before suspending the thread temporarily.
-    const SPIN_ATTEMPTS: u32 = 10;
+    let write_retry_histogram = otel_instruments::network_retries();
+    let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
     std::thread::Builder::new()
         .name("TUN send".into())
@@ -397,7 +403,9 @@ fn start_send_thread(
                 continue 'next_packet;
             };
 
-            'next_attempt: for attempt in 0..MAX_ATTEMPTS {
+            let mut attempt = 0;
+
+            loop {
                 let Some(session) = session.upgrade() else {
                     tracing::debug!(
                         "Stopping TUN send worker thread because the `wintun::Session` was dropped"
@@ -414,36 +422,93 @@ fn start_send_thread(
                         tracing::trace!(target: "wire::dev::send", ?packet);
                         session.send_packet(pkt);
 
-                        if attempt > 0 {
-                            tracing::trace!(%attempt, "Sent packet with delay");
-                        }
+                        record_write_retries(&write_retry_histogram, attempt);
 
                         continue 'next_packet;
                     }
-                    Err(wintun::Error::Io(e))
-                        if e.raw_os_error()
-                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                    {
+                    Err(e) if is_ring_full(&e) && attempt < MAX_RING_FULL_RETRIES => {
                         if attempt == 0 {
                             tracing::trace!("WinTUN ring buffer is full");
                         }
 
-                        if attempt < SPIN_ATTEMPTS {
-                            std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
-                            continue 'next_attempt;
-                        }
+                        spin_and_yield(attempt);
 
-                        std::thread::sleep(Duration::from_micros(100));
+                        attempt += 1;
                     }
                     Err(e) => {
-                        tracing::error!("Failed to allocate WinTUN packet: {e}");
+                        record_write_retries(&write_retry_histogram, attempt);
+                        dropped_packets_counter.add(1, &drop_attributes(&e));
+
+                        if is_ring_full(&e) {
+                            // The ring buffer is still full after all retries; dropping is by design, like for any congested network device.
+                            tracing::debug!("Failed to write to WinTUN ring buffer: {e}");
+                        } else {
+                            tracing::warn!("Failed to allocate WinTUN packet: {e}");
+                        }
+
                         continue 'next_packet;
                     }
                 }
             }
-
-            tracing::warn!(num_attempts = %MAX_ATTEMPTS, "Exhausted all attempts to pass IP packet to WinTUN");
         })
+}
+
+/// Whether the write failed because the WinTUN ring buffer is full.
+///
+/// Dropping in this case is expected back-pressure; any other error is a genuine failure.
+fn is_ring_full(e: &wintun::Error) -> bool {
+    // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
+    const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
+
+    matches!(e, wintun::Error::Io(io) if io.raw_os_error() == Some(ERROR_BUFFER_OVERFLOW))
+}
+
+/// Briefly back off after a full ring buffer before trying again.
+///
+/// We avoid [`std::thread::sleep`]: on Windows the timer resolution rounds sub-millisecond
+/// durations up to ~15ms, far longer than the microseconds the ring buffer needs to drain.
+/// Instead we busy-spin an escalating number of times and then yield the thread, letting the
+/// OS run whichever thread is draining the ring buffer.
+fn spin_and_yield(attempt: u32) {
+    for _ in 0..(1u32 << attempt.min(SPIN_LIMIT)) {
+        std::hint::spin_loop();
+    }
+
+    std::thread::yield_now();
+}
+
+/// Records how many times a single packet write had to be retried before it went through or was dropped.
+///
+/// Writes that succeed on the first try (the common case) are not recorded, keeping the hot path cheap.
+fn record_write_retries(histogram: &Histogram<u64>, attempt: u32) {
+    if attempt == 0 {
+        return;
+    }
+
+    histogram.record(attempt as u64, &metric_attributes());
+}
+
+fn metric_attributes() -> [KeyValue; 2] {
+    [
+        KeyValue::new("system.device", "tun"),
+        KeyValue::new("network.io.direction", "transmit"),
+    ]
+}
+
+/// Attributes for a dropped packet, including the OS error code so ring-full
+/// drops can be told apart from other write failures.
+fn drop_attributes(e: &wintun::Error) -> [KeyValue; 3] {
+    let error_code = if let wintun::Error::Io(io) = e {
+        io.raw_os_error().unwrap_or_default() as i64
+    } else {
+        0
+    };
+
+    [
+        KeyValue::new("system.device", "tun"),
+        KeyValue::new("network.io.direction", "transmit"),
+        KeyValue::new("error.code", error_code),
+    ]
 }
 
 fn start_recv_thread(

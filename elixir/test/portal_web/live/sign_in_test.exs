@@ -34,6 +34,20 @@ defmodule PortalWeb.SignInTest do
       refute html =~ "Send code"
     end
 
+    test "shows the client sign-in hint for browser sign-in", %{conn: conn, account: account} do
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert html =~ "Meant to sign in from a client instead?"
+    end
+
+    test "hides the client sign-in hint during client sign-in", %{conn: conn, account: account} do
+      for client <- @client_sign_in_types do
+        {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in?as=#{client}")
+
+        refute html =~ "Meant to sign in from a client instead?"
+      end
+    end
+
     test "redirects missing client account slug to root /sign_in with params preserved", %{conn: conn} do
       for client <- @client_sign_in_types do
         params = %{

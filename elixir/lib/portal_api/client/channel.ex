@@ -383,18 +383,41 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  def handle_info({:flow_creation_timeout, resource_id}, socket) do
-    case Map.pop(socket.assigns.pending_flows, resource_id) do
+  def handle_info({:flow_creation_timeout, key}, socket) do
+    case Map.pop(socket.assigns.pending_flows, key) do
       {nil, _} ->
         {:noreply, socket}
 
+      # Client-to-client: the target's channel never acked that it pushed the
+      # authorization to its data plane (e.g. it disconnected in the window).
+      {%{deny_payload: deny_payload}, remaining} ->
+        push(socket, "client_device_access_denied", deny_payload)
+        {:noreply, assign(socket, :pending_flows, remaining)}
+
       {_timer_ref, remaining} ->
-        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+        push(socket, "flow_creation_failed", %{resource_id: key, reason: :offline})
         {:noreply, assign(socket, :pending_flows, remaining)}
     end
   end
 
-  def handle_info({:client_device_access_authorized, payload}, socket) do
+  # Client-to-client: the target's channel confirmed it pushed the
+  # authorization onto the target's websocket. Only now is it safe to release
+  # the initiator, because the target's data plane is guaranteed to receive
+  # (and process) the authorization before any relayed ICE candidate, which
+  # travels the same socket behind it. See `deliver_pool_target_authorized/8`.
+  def handle_info({:device_access_acked, ref}, socket) do
+    case Map.pop(socket.assigns.pending_flows, ref) do
+      {nil, _} ->
+        {:noreply, socket}
+
+      {%{timer_ref: timer_ref, initiator_payload: initiator_payload}, remaining} ->
+        Process.cancel_timer(timer_ref)
+        push(socket, "client_device_access_authorized", initiator_payload)
+        {:noreply, assign(socket, :pending_flows, remaining)}
+    end
+  end
+
+  def handle_info({:client_device_access_authorized, {ack_to, ref}, payload}, socket) do
     {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
     {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
     {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
@@ -416,6 +439,13 @@ defmodule PortalAPI.Client.Channel do
       end
 
     push(socket, "client_device_access_authorized", payload)
+
+    # Ack back to the initiator's channel that the authorization is on this
+    # target's websocket. The initiator is released only after this, so the
+    # initiator's ICE candidates (which traverse the same socket) can never
+    # overtake the authorization at the target's data plane.
+    send(ack_to, {:device_access_acked, ref})
+
     cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
 
     socket =
@@ -1039,8 +1069,11 @@ defmodule PortalAPI.Client.Channel do
            find_online_client_by_address(account_id, target),
          :ok <- check_peer_compatibility(target_meta, socket) do
       # PoC shim: bypass the Queue entirely because we don't persist a
-      # `policy_authorization` row here. Deliver to the target first; only
-      # push the initiator-side confirmation if the target was reachable.
+      # `policy_authorization` row here. Deliver to the target first; the
+      # initiator is released only once the target's channel acks (same
+      # ordering guarantee as the `create_flow` pool path).
+      ref = make_ref()
+
       {receiver_message, initiator_payload} =
         build_client_device_access_authorized_messages(
           target_client_id,
@@ -1048,13 +1081,23 @@ defmodule PortalAPI.Client.Channel do
           nil,
           nil,
           nil,
+          ref,
           socket
         )
 
       case PG.deliver(target_client_id, receiver_message) do
         :ok ->
-          push(socket, "client_device_access_authorized", initiator_payload)
-          {:noreply, socket}
+          timer_ref =
+            Process.send_after(self(), {:flow_creation_timeout, ref}, flow_creation_timeout())
+
+          pending =
+            Map.put(socket.assigns.pending_flows, ref, %{
+              timer_ref: timer_ref,
+              initiator_payload: initiator_payload,
+              deny_payload: %{client_id: target_client_id, ipv4: ipv4_string, reason: :offline}
+            })
+
+          {:noreply, assign(socket, :pending_flows, pending)}
 
         {:error, :not_found} ->
           push(socket, "client_device_access_denied", %{
@@ -1567,9 +1610,17 @@ defmodule PortalAPI.Client.Channel do
     # the Queue dispatch callback. This keeps the dispatch callback minimal
     # (just `PG.deliver/2`) so it can't raise mid-execution: any crash in
     # crypto/render code happens up front, before any allow-equivalent message
-    # is on the wire, and before the queue buffers an entry. The initiator-side
-    # push happens AFTER `Queue.enqueue/3` returns `:ok`, so we never end up in
-    # a state where the receiver got allow but the queue didn't buffer.
+    # is on the wire, and before the queue buffers an entry.
+    #
+    # `ref` correlates the target channel's ack back to this request. The
+    # initiator is NOT released on `Queue.enqueue/3` returning `:ok` — it is
+    # released only once the target's channel acks that it has pushed the
+    # authorization onto the target's websocket (`{:device_access_acked, ref}`).
+    # Until then the initiator must not start ICE, because its candidates
+    # travel the same socket as the authorization and would otherwise race
+    # ahead of it at the target's data plane.
+    ref = make_ref()
+
     {receiver_message, initiator_payload} =
       build_client_device_access_authorized_messages(
         target_client_id,
@@ -1577,6 +1628,7 @@ defmodule PortalAPI.Client.Channel do
         resource,
         policy_authorization_id,
         expires_at,
+        ref,
         socket
       )
 
@@ -1591,8 +1643,22 @@ defmodule PortalAPI.Client.Channel do
            end
          ) do
       :ok ->
-        push(socket, "client_device_access_authorized", initiator_payload)
-        {:noreply, socket}
+        timer_ref =
+          Process.send_after(self(), {:flow_creation_timeout, ref}, flow_creation_timeout())
+
+        pending =
+          Map.put(socket.assigns.pending_flows, ref, %{
+            timer_ref: timer_ref,
+            initiator_payload: initiator_payload,
+            deny_payload: %{
+              client_id: target_client_id,
+              ipv4: payload["ipv4"],
+              ipv6: payload["ipv6"],
+              reason: :offline
+            }
+          })
+
+        {:noreply, assign(socket, :pending_flows, pending)}
 
       {:error, _} ->
         push(socket, "client_device_access_denied", %{
@@ -1608,16 +1674,17 @@ defmodule PortalAPI.Client.Channel do
 
   # Returns `{receiver_message, initiator_payload}`. The receiver_message goes
   # to the target client via PG (delivered inside the Queue's dispatch
-  # callback so it shares a sender pid with any later `:reject_access`). The
-  # initiator_payload is pushed back to the originating client's socket only
-  # after Queue.enqueue returns `:ok`, so the initiator never gets a
-  # confirmation that the queue didn't durably accept.
+  # callback so it shares a sender pid with any later `:reject_access`). It
+  # carries `{ack_to, ref}` so the target's channel can ack back once it has
+  # pushed the authorization onto the target's websocket; the initiator_payload
+  # is released to the originating client only after that ack arrives.
   defp build_client_device_access_authorized_messages(
          target_client_id,
          target_meta,
          resource,
          policy_authorization_id,
          expires_at,
+         ref,
          socket
        ) do
     client = socket.assigns.client
@@ -1663,7 +1730,7 @@ defmodule PortalAPI.Client.Channel do
       )
 
     receiver_message =
-      {:client_device_access_authorized,
+      {:client_device_access_authorized, {self(), ref},
        %{
          client_id: client.id,
          client_public_key: client_public_key,
@@ -2355,18 +2422,12 @@ defmodule PortalAPI.Client.Channel do
   #      reject, authz durability timer fire), reuse the struct for
   #      `reauthorize_deleted_policy_authorization`.
   #
-  # Accepts the two message shapes used by the gateway/peer-bound paths:
-  # `{tag, {channel_pid, socket_ref}, payload}` (used by :allow_access,
-  # :authorize_policy, :request_connection) and `{tag, payload}` (used by
-  # :client_device_access_authorized in the c2c flow).
-  defp attach_policy_authorization(message, %Portal.PolicyAuthorization{} = pa) do
-    case message do
-      {tag, ref_tuple, payload} when is_tuple(ref_tuple) ->
-        {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
-
-      {tag, payload} when is_map(payload) ->
-        {tag, Map.put(payload, :policy_authorization, pa)}
-    end
+  # All peer-bound messages carry a `{channel_pid, ref}` reply tuple:
+  # `{tag, {channel_pid, ref}, payload}` (used by :allow_access,
+  # :authorize_policy, :request_connection, and :client_device_access_authorized).
+  defp attach_policy_authorization({tag, ref_tuple, payload}, %Portal.PolicyAuthorization{} = pa)
+       when is_tuple(ref_tuple) do
+    {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
   end
 
   defp flow_creation_timeout do

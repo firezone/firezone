@@ -46,7 +46,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket = assign(socket, page_title: "Directory Sync")
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
     end
 
     {:ok, init(socket, new: true)}
@@ -503,7 +503,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="google" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="google" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">Google</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -517,7 +517,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="entra" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="entra" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">Entra</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -531,7 +531,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="okta" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="okta" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">Okta</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -558,7 +558,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
+                  <.provider_icon provider={@type} size="md" />
                   <h2 class="text-sm font-semibold text-[var(--text-primary)]">
                     Add {titleize(@type)} Directory
                   </h2>
@@ -621,7 +621,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
               <div class="flex items-center gap-2">
-                <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
+                <.provider_icon provider={@type} size="md" />
                 <h2 class="text-sm font-semibold text-[var(--text-primary)]">
                   Edit {assigns[:directory_name]}
                 </h2>
@@ -713,7 +713,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   <tr class="border-b border-[var(--border)]">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon type="google" class="w-6 h-6 shrink-0" />
+                        <.provider_icon provider="google" size="lg" />
                         <div class="min-w-0">
                           <span class="text-sm font-medium text-[var(--text-primary)]">
                             Google Workspace
@@ -740,7 +740,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   <tr class="border-b border-[var(--border)]">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon type="entra" class="w-6 h-6 shrink-0" />
+                        <.provider_icon provider="entra" size="lg" />
                         <div class="min-w-0">
                           <span class="text-sm font-medium text-[var(--text-primary)]">
                             Microsoft Entra
@@ -815,7 +815,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     <tr class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)]">
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon type={@type} class="w-6 h-6 shrink-0" />
+          <.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span

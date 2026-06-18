@@ -189,14 +189,14 @@ impl ThreadedUdpSocket {
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (error_tx, error_rx) = std::sync::mpsc::sync_channel(0);
 
-        tokio::spawn(otel_instruments::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_gso_batch(),
                 otel::attr::network_type_for_addr(preferred_addr),
             ],
         ));
-        tokio::spawn(otel_instruments::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_gro_batch(),

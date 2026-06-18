@@ -11,7 +11,7 @@ defmodule Portal.Changes.Hooks.GroupsTest do
     test "broadcasts created group" do
       account = account_fixture()
       group = group_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :groups)
 
       data = %{
         "id" => group.id,
@@ -35,7 +35,7 @@ defmodule Portal.Changes.Hooks.GroupsTest do
     test "broadcasts deleted group" do
       account = account_fixture()
       group = group_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :groups)
 
       old_data = %{
         "id" => group.id,

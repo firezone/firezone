@@ -13,7 +13,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
       token = client_token_fixture(account: account)
       token_id = token.id
       account_id = account.id
-      :ok = Portal.PubSub.Changes.subscribe(account.id)
+      :ok = Portal.PubSub.Changes.subscribe(account.id, :client_tokens)
 
       assert :ok == ClientTokens.on_insert(0, Map.from_struct(token))
 

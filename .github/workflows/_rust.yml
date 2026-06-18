@@ -94,6 +94,8 @@ jobs:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+          # Needed to create utun devices in the Apple TUN integration tests
+          CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: "sudo --preserve-env"
           # Minimise DWARF debuginfo for the coverage build: source-based
           # coverage data lives in __llvm_covmap, independent of debug info, so
           # lcov.info / Coveralls are unaffected while target/ shrinks ~60%.

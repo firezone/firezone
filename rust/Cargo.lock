@@ -707,6 +707,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
+ "opentelemetry",
  "otel-instruments",
  "resolv-conf",
  "ring",
@@ -897,6 +898,7 @@ dependencies = [
  "opentelemetry_sdk",
  "otel-instruments",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2355,7 +2357,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.14"
+version = "1.5.15"
 dependencies = [
  "admx-macro",
  "anyhow-ext",
@@ -6781,6 +6783,7 @@ dependencies = [
  "libc",
  "opentelemetry",
  "otel-instruments",
+ "parking_lot",
  "quinn-udp",
  "socket2",
  "tokio",

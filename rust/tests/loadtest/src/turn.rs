@@ -1,16 +1,19 @@
 //! TURN relay load testing.
 //!
 //! Stresses a TURN relay (specifically Firezone's eBPF relay) by streaming UDP
-//! datagrams through a channel binding and observing packet loss at the peer.
+//! datagrams through one or more channel bindings and observing packet loss at the peers.
 //!
-//! The topology uses two UDP sockets:
+//! The topology uses one *client* socket plus one *peer* socket per flow:
 //!
-//! - the *client* socket creates an allocation and binds a channel to the *peer*,
-//! - the *peer* socket receives the relayed datagrams.
+//! - the *client* socket creates a single allocation and binds one channel per flow,
+//!   each to a distinct peer port,
+//! - each *peer* socket receives the datagrams relayed on its channel.
 //!
-//! Each datagram carries a sequence number and a send timestamp, so the peer can
-//! detect loss, reordering and one-way latency (both sockets share this process'
-//! clock).
+//! Driving multiple channels to distinct peer ports from the same allocation exercises
+//! the relay's parallel per-flow forwarding.
+//!
+//! Each datagram carries a sequence number and a send timestamp, so the peers can
+//! detect loss, reordering and one-way latency (all sockets share this process' clock).
 //!
 //! The TURN protocol handling is sans-IO (pure [`stun_codec`] message building and
 //! parsing); all IO goes through [`socket_factory`]'s GSO-enabled [`PerfUdpSocket`].
@@ -29,6 +32,7 @@ use rand::random;
 use serde::Serialize;
 use socket_factory::{DatagramOut, PerfUdpSocket};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -53,6 +57,12 @@ const CHANNEL_DATA_HEADER_SIZE: usize = 4;
 
 /// First valid channel number per RFC 5766.
 const FIRST_CHANNEL: u16 = 0x4000;
+
+/// Last valid channel number per RFC 5766 (matching the relay's accepted range).
+const LAST_CHANNEL: u16 = 0x7FFF;
+
+/// Maximum number of parallel flows, bounded by the channel-number space.
+pub(crate) const MAX_FLOWS: usize = (LAST_CHANNEL - FIRST_CHANNEL + 1) as usize;
 
 /// UDP transport number used in `REQUESTED-TRANSPORT`.
 const UDP_TRANSPORT: u8 = 17;
@@ -115,13 +125,19 @@ pub struct Args {
     #[arg(long, value_parser = parse_payload_size)]
     payload_size: Option<usize>,
 
-    /// Target send bitrate (e.g. 2mbps, 500kbps)
+    /// Target send bitrate per flow (e.g. 2mbps, 500kbps)
     #[arg(long, value_parser = cli::parse_bitrate)]
     bitrate: Option<u64>,
 
     /// How long to stream datagrams (e.g. 30s, 5m); default 30s
     #[arg(long, value_parser = cli::parse_duration)]
     duration: Option<Duration>,
+
+    /// Number of parallel flows: distinct peer ports fed from one allocation (default 1).
+    ///
+    /// High values may require a raised file-descriptor limit (`ulimit -n`).
+    #[arg(long, value_name = "N")]
+    flows: Option<NonZeroUsize>,
 
     /// Fail the invocation if packet loss exceeds this percentage.
     #[arg(long, value_name = "PERCENT")]
@@ -158,6 +174,7 @@ pub struct TestConfig {
     pub payload_size: usize,
     pub bitrate_bps: u64,
     pub duration: Duration,
+    pub flows: NonZeroUsize,
     pub max_loss_percent: Option<f64>,
 }
 
@@ -197,10 +214,19 @@ fn build_config(
         .bitrate
         .or_else(|| base.map(|b| b.bitrate_bps))
         .context("--bitrate is required (or add [turn] to the config)")?;
+    anyhow::ensure!(bitrate_bps > 0, "--bitrate must be greater than zero");
     let duration = args
         .duration
         .or_else(|| base.map(|b| b.duration))
         .unwrap_or(DEFAULT_DURATION);
+    let flows = args
+        .flows
+        .or_else(|| base.map(|b| b.flows))
+        .unwrap_or(NonZeroUsize::MIN);
+    anyhow::ensure!(
+        flows.get() <= MAX_FLOWS,
+        "--flows exceeds the maximum of {MAX_FLOWS}"
+    );
     let max_loss_percent = args
         .max_loss
         .or_else(|| base.and_then(|b| b.max_loss_percent));
@@ -212,6 +238,7 @@ fn build_config(
         payload_size,
         bitrate_bps,
         duration,
+        flows,
         max_loss_percent,
     })
 }
@@ -276,6 +303,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
         server = %config.server,
         payload_size = config.payload_size,
         bitrate_bps = config.bitrate_bps,
+        flows = config.flows.get(),
         duration = ?config.duration,
         %seed,
         "Starting TURN relay load test"
@@ -283,43 +311,53 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
 
     let bind_addr = unspecified_addr(config.server);
     let client = bind_socket(bind_addr).context("Failed to bind client socket")?;
-    let peer = bind_socket(bind_addr).context("Failed to bind peer socket")?;
 
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
     let pool = BufferPool::<BytesMut>::new(MAX_BATCH * frame_size, "turn-loadtest");
 
-    // 1. Learn the peer socket's relay-visible (reflexive) address.
-    let peer_address = stun_binding(&peer, config.server, &pool)
-        .await
-        .context("STUN binding for peer socket failed")?;
-    tracing::info!(%peer_address, "Resolved peer reflexive address");
-
-    // 2. Create an authenticated allocation on the client socket.
+    // Create a single authenticated allocation on the client socket; all flows share it.
     let allocation = allocate(&client, config.server, &config, &pool)
         .await
         .context("TURN allocation failed")?;
     tracing::info!(relayed = %allocation.relayed_address, "Created TURN allocation");
 
-    // 3. Bind a channel from the client to the peer.
-    let channel = FIRST_CHANNEL;
-    channel_bind(
-        &client,
-        config.server,
-        &allocation.credentials,
-        channel,
-        peer_address,
-        &pool,
-    )
-    .await
-    .context("TURN channel bind failed")?;
-    tracing::info!(channel, %peer_address, "Bound channel to peer");
+    // Set up one flow per peer port: each peer socket learns its reflexive address, the
+    // client binds a dedicated channel to it, and the peer opens its NAT mapping toward the
+    // relayed address. Sequential because every channel bind shares the one client socket,
+    // whose responses are matched by source address.
+    let mut flows = Vec::with_capacity(config.flows.get());
+    for index in 0..config.flows.get() {
+        let peer = bind_socket(bind_addr).context("Failed to bind peer socket")?;
 
-    // 4. Open the peer's NAT mapping toward the relayed address so the relay can reach it.
-    punch(&peer, allocation.relayed_address, &pool)
+        let peer_address = stun_binding(&peer, config.server, &pool)
+            .await
+            .context("STUN binding for peer socket failed")?;
+
+        let channel = FIRST_CHANNEL + index as u16;
+        channel_bind(
+            &client,
+            config.server,
+            &allocation.credentials,
+            channel,
+            peer_address,
+            &pool,
+        )
         .await
-        .context("Failed to open peer NAT mapping")?;
+        .context("TURN channel bind failed")?;
 
-    // 5. Stream datagrams and observe loss at the peer, reporting progress live.
+        punch(&peer, allocation.relayed_address, &pool)
+            .await
+            .context("Failed to open peer NAT mapping")?;
+
+        tracing::info!(channel, %peer_address, "Bound channel to peer");
+        flows.push(Flow {
+            channel,
+            peer,
+            peer_address,
+        });
+    }
+
+    // Stream datagrams and observe loss at the peers, reporting progress live.
     let counters = Arc::new(Counters::default());
     let data_start = Instant::now();
     let recv_deadline = data_start + config.duration + DRAIN_GRACE;
@@ -330,15 +368,29 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
         data_start,
         recv_deadline,
     ));
-    let receiver = {
-        let counters = Arc::clone(&counters);
-        tokio::spawn(async move { receive(peer, payload_size, recv_deadline, counters).await })
-    };
 
-    let send_stats = send(&client, &pool, channel, &config, data_start, &counters)
+    let flow_meta = flows
+        .iter()
+        .map(|flow| (flow.channel, flow.peer_address))
+        .collect::<Vec<_>>();
+    let receivers = flows
+        .into_iter()
+        .map(|flow| {
+            let counters = Arc::clone(&counters);
+            tokio::spawn(
+                async move { receive(flow.peer, payload_size, recv_deadline, counters).await },
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let send_stats = send(&client, &pool, config.flows, &config, data_start, &counters)
         .await
         .context("Failed while sending datagrams")?;
-    let recv_stats = receiver.await.context("Receiver task panicked")?;
+
+    let mut recv_stats = RecvStats::default();
+    for receiver in receivers {
+        recv_stats = recv_stats.merge(receiver.await.context("Receiver task panicked")?);
+    }
     reporter.abort();
 
     // Clean exit: delete the allocation. Best-effort, as it would otherwise expire
@@ -350,8 +402,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
 
     Ok(build_summary(
         &config,
-        channel,
-        peer_address,
+        &flow_meta,
         allocation.relayed_address,
         send_stats,
         recv_stats,
@@ -362,6 +413,13 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
 struct Allocation {
     credentials: Credentials,
     relayed_address: SocketAddr,
+}
+
+/// A single flow: a channel bound to a distinct peer socket / reflexive address.
+struct Flow {
+    channel: u16,
+    peer: PerfUdpSocket,
+    peer_address: SocketAddr,
 }
 
 /// Resolve the peer socket's reflexive address via an unauthenticated STUN binding.
@@ -519,19 +577,21 @@ struct SendStats {
 
 /// Stream `ChannelData` datagrams to the relay at the configured bitrate.
 ///
-/// Datagrams are coalesced into GSO batches and paced against wall-clock time so
-/// the long-term average matches the target bitrate even across timer jitter.
+/// Frames are spread round-robin across the `flows` channels, so the offered load
+/// is `bitrate × flows` (each flow streams at the configured bitrate). Datagrams are
+/// coalesced into GSO batches and paced against wall-clock time so the long-term
+/// average matches the target even across timer jitter.
 async fn send(
     socket: &PerfUdpSocket,
     pool: &BufferPool<BytesMut>,
-    channel: u16,
+    flows: NonZeroUsize,
     config: &TestConfig,
     data_start: Instant,
     counters: &Counters,
 ) -> Result<SendStats> {
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
     let frame_bits = (frame_size * 8) as f64;
-    let packets_per_second = config.bitrate_bps as f64 / frame_bits;
+    let packets_per_second = config.bitrate_bps as f64 * flows.get() as f64 / frame_bits;
     let send_end = data_start + config.duration;
 
     let mut sequence = 0u64;
@@ -557,7 +617,12 @@ async fn send(
         let count = ((target - sequence) as usize).min(MAX_BATCH);
         batch.clear();
         for _ in 0..count {
-            write_frame(&mut batch, channel, sequence, config.payload_size);
+            write_frame(
+                &mut batch,
+                channel_for(sequence, flows),
+                sequence,
+                config.payload_size,
+            );
             sequence += 1;
         }
 
@@ -608,12 +673,25 @@ async fn pace_until(deadline: Instant) {
 }
 
 /// Statistics gathered by the receiver.
+#[derive(Default)]
 struct RecvStats {
     packets_received: u64,
     bytes_received: u64,
     highest_sequence: Option<u64>,
     reordered: u64,
     latency: StreamingStats,
+}
+
+impl RecvStats {
+    /// Combine another flow's receiver statistics into this aggregate.
+    fn merge(mut self, other: Self) -> Self {
+        self.packets_received += other.packets_received;
+        self.bytes_received += other.bytes_received;
+        self.reordered += other.reordered;
+        self.highest_sequence = self.highest_sequence.max(other.highest_sequence);
+        self.latency.merge(&other.latency);
+        self
+    }
 }
 
 /// Receive relayed datagrams until `deadline`, recording loss / reorder / latency.
@@ -623,13 +701,7 @@ async fn receive(
     deadline: Instant,
     counters: Arc<Counters>,
 ) -> RecvStats {
-    let mut stats = RecvStats {
-        packets_received: 0,
-        bytes_received: 0,
-        highest_sequence: None,
-        reordered: 0,
-        latency: StreamingStats::new(),
-    };
+    let mut stats = RecvStats::default();
 
     loop {
         tokio::select! {
@@ -685,6 +757,11 @@ fn record_datagram(stats: &mut RecvStats, counters: &Counters, packet: &[u8], pa
     if let Some(latency) = latency_since(sent_nanos) {
         stats.latency.record(latency);
     }
+}
+
+/// The channel a given (global) sequence number is sent on, round-robin across flows.
+fn channel_for(sequence: u64, flows: NonZeroUsize) -> u16 {
+    FIRST_CHANNEL + (sequence % flows.get() as u64) as u16
 }
 
 /// Append a `ChannelData` frame (header + sequenced payload) to `batch`.
@@ -757,10 +834,11 @@ fn print_summary(summary: &TurnTestSummary) {
 
     tracing::info!("- - - - - - - - - - - - - - - - - - - - - - - - -");
     tracing::info!(
-        "[SND]   0.00-{secs:5.2} sec  {:>11}  {:>14}  {} sent  sender",
+        "[SND]   0.00-{secs:5.2} sec  {:>11}  {:>14}  {} sent  sender ({} flows)",
         format_bytes(summary.bytes_sent),
         format_bitrate(summary.send_bitrate_bps as f64),
         summary.packets_sent,
+        summary.flows,
     );
     tracing::info!(
         "[RCV]   0.00-{secs:5.2} sec  {:>11}  {:>14}  {}/{} ({:.2}%)  receiver",
@@ -1165,8 +1243,8 @@ pub struct TurnTestSummary {
     pub test_type: &'static str,
     pub server: String,
     pub relayed_address: String,
-    pub peer_address: String,
-    pub channel: u16,
+    pub peer_addresses: Vec<String>,
+    pub flows: usize,
     pub payload_size: usize,
     pub target_bitrate_bps: u64,
     pub duration_secs: u64,
@@ -1186,8 +1264,7 @@ pub struct TurnTestSummary {
 
 fn build_summary(
     config: &TestConfig,
-    channel: u16,
-    peer: SocketAddr,
+    flow_meta: &[(u16, SocketAddr)],
     relayed: SocketAddr,
     send: SendStats,
     recv: RecvStats,
@@ -1218,10 +1295,10 @@ fn build_summary(
         test_type: "turn",
         server: config.server.to_string(),
         relayed_address: relayed.to_string(),
-        peer_address: peer.to_string(),
-        channel,
+        peer_addresses: flow_meta.iter().map(|(_, peer)| peer.to_string()).collect(),
+        flows: flow_meta.len(),
         payload_size: config.payload_size,
-        target_bitrate_bps: config.bitrate_bps,
+        target_bitrate_bps: config.bitrate_bps.saturating_mul(config.flows.get() as u64),
         duration_secs,
         packets_sent: send.packets_sent,
         packets_received: recv.packets_received,
@@ -1264,6 +1341,70 @@ mod tests {
         assert!(parse_payload(&[0u8; 8]).is_none());
     }
 
+    #[test]
+    fn frame_round_trips_non_leading_channel() {
+        let mut batch = Vec::new();
+        write_frame(&mut batch, FIRST_CHANNEL + 2, 7, 1280);
+
+        assert_eq!(u16::from_be_bytes([batch[0], batch[1]]), FIRST_CHANNEL + 2);
+
+        let payload = &batch[CHANNEL_DATA_HEADER_SIZE..];
+        let (sequence, _sent_nanos) = parse_payload(payload).unwrap();
+        assert_eq!(sequence, 7);
+    }
+
+    #[test]
+    fn channel_for_distributes_round_robin() {
+        let flows = NonZeroUsize::new(3).unwrap();
+
+        assert_eq!(channel_for(0, flows), FIRST_CHANNEL);
+        assert_eq!(channel_for(1, flows), FIRST_CHANNEL + 1);
+        assert_eq!(channel_for(2, flows), FIRST_CHANNEL + 2);
+        assert_eq!(channel_for(3, flows), FIRST_CHANNEL); // wraps back to the first flow
+
+        // A single flow always uses the first channel.
+        assert_eq!(channel_for(0, NonZeroUsize::MIN), FIRST_CHANNEL);
+        assert_eq!(channel_for(7, NonZeroUsize::MIN), FIRST_CHANNEL);
+
+        // The channel never escapes this run's slice of the channel space.
+        let range = FIRST_CHANNEL..FIRST_CHANNEL + flows.get() as u16;
+        for sequence in 0..1000 {
+            assert!(range.contains(&channel_for(sequence, flows)));
+        }
+    }
+
+    #[test]
+    fn recv_stats_merge_sums_counters_and_latency() {
+        let mut latency_a = StreamingStats::new();
+        latency_a.record(Duration::from_millis(10));
+        let a = RecvStats {
+            packets_received: 10,
+            bytes_received: 1280,
+            reordered: 1,
+            highest_sequence: Some(9),
+            latency: latency_a,
+        };
+
+        let mut latency_b = StreamingStats::new();
+        latency_b.record(Duration::from_millis(30));
+        let b = RecvStats {
+            packets_received: 5,
+            bytes_received: 640,
+            reordered: 2,
+            highest_sequence: Some(20),
+            latency: latency_b,
+        };
+
+        let merged = a.merge(b);
+
+        assert_eq!(merged.packets_received, 15);
+        assert_eq!(merged.bytes_received, 1920);
+        assert_eq!(merged.reordered, 3);
+        assert_eq!(merged.highest_sequence, Some(20));
+        assert_eq!(merged.latency.count(), 2);
+        assert_eq!(merged.latency.avg(), Some(Duration::from_millis(20)));
+    }
+
     fn test_base() -> TestConfig {
         TestConfig {
             server: "1.1.1.1:3478".parse().unwrap(),
@@ -1272,6 +1413,7 @@ mod tests {
             payload_size: 1280,
             bitrate_bps: 1_000_000,
             duration: Duration::from_secs(30),
+            flows: NonZeroUsize::MIN,
             max_loss_percent: None,
         }
     }
@@ -1284,6 +1426,7 @@ mod tests {
             payload_size: None,
             bitrate: None,
             duration: None,
+            flows: None,
             max_loss: None,
             fetch_credentials: false,
             ipv4: false,
@@ -1319,6 +1462,86 @@ mod tests {
         };
 
         assert!(build_config(args, None, None).is_err());
+    }
+
+    #[test]
+    fn merge_resolves_flows() {
+        // CLI overrides config.
+        let merged = build_config(
+            Args {
+                flows: NonZeroUsize::new(8),
+                ..empty_args()
+            },
+            Some(TestConfig {
+                flows: NonZeroUsize::new(4).unwrap(),
+                ..test_base()
+            }),
+            None,
+        )
+        .unwrap();
+        assert_eq!(merged.flows.get(), 8);
+
+        // Filled from config when the CLI omits it.
+        let merged = build_config(
+            empty_args(),
+            Some(TestConfig {
+                flows: NonZeroUsize::new(4).unwrap(),
+                ..test_base()
+            }),
+            None,
+        )
+        .unwrap();
+        assert_eq!(merged.flows.get(), 4);
+
+        // Defaults to a single flow when absent everywhere.
+        let merged = build_config(
+            Args {
+                server: Some("2.2.2.2:3478".parse().unwrap()),
+                username: Some("u".to_owned()),
+                password: Some("p".to_owned()),
+                bitrate: Some(1_000_000),
+                ..empty_args()
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(merged.flows.get(), 1);
+    }
+
+    #[test]
+    fn merge_rejects_too_many_flows() {
+        let args = Args {
+            server: Some("2.2.2.2:3478".parse().unwrap()),
+            username: Some("u".to_owned()),
+            password: Some("p".to_owned()),
+            bitrate: Some(1_000_000),
+            flows: NonZeroUsize::new(MAX_FLOWS + 1),
+            ..empty_args()
+        };
+
+        let error = build_config(args, None, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--flows exceeds the maximum"),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn merge_rejects_zero_bitrate() {
+        let args = Args {
+            server: Some("2.2.2.2:3478".parse().unwrap()),
+            username: Some("u".to_owned()),
+            password: Some("p".to_owned()),
+            bitrate: Some(0),
+            ..empty_args()
+        };
+
+        let error = build_config(args, None, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--bitrate must be greater than zero"),
+            "{error:#}"
+        );
     }
 
     #[test]

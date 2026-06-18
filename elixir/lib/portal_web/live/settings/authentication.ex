@@ -51,7 +51,8 @@ defmodule PortalWeb.Settings.Authentication do
     socket = assign(socket, page_title: "Authentication")
 
     if connected?(socket) do
-      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :client_tokens)
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :portal_sessions)
     end
 
     {:ok, init(socket)}
@@ -654,7 +655,7 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="google" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="google" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">Google</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -668,7 +669,7 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="entra" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="entra" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">Entra</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -682,7 +683,7 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="okta" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="okta" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">Okta</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -696,7 +697,7 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="oidc" class="w-7 h-7 shrink-0" />
+                      <.provider_icon provider="oidc" size="xl" />
                       <span class="text-sm font-medium text-[var(--text-primary)]">OIDC</span>
                     </span>
                     <span class="text-xs text-[var(--text-secondary)]">
@@ -723,7 +724,7 @@ defmodule PortalWeb.Settings.Authentication do
                   <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
+                  <.provider_icon provider={@type} size="md" />
                   <h2 class="text-sm font-semibold text-[var(--text-primary)]">
                     Add {titleize(@type)} Provider
                   </h2>
@@ -786,7 +787,7 @@ defmodule PortalWeb.Settings.Authentication do
         >
           <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
             <div class="flex items-center gap-2">
-              <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
+              <.provider_icon provider={@type} size="md" />
               <h2 class="text-sm font-semibold text-[var(--text-primary)]">
                 Edit {@provider_name}
               </h2>
@@ -855,7 +856,7 @@ defmodule PortalWeb.Settings.Authentication do
     ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon type={@type} class="w-7 h-7 shrink-0" />
+          <.provider_icon provider={@type} size="lg" />
           <div>
             <div class="flex items-center gap-1.5">
               <span class={[
@@ -1226,6 +1227,9 @@ defmodule PortalWeb.Settings.Authentication do
                 placeholder="28800"
                 phx-debounce="300"
               />
+              <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+                Portal default: 8 hours
+              </p>
             </div>
             <div>
               <label
@@ -1240,11 +1244,11 @@ defmodule PortalWeb.Settings.Authentication do
                 placeholder="604800"
                 phx-debounce="300"
               />
+              <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+                Client default: 7 days
+              </p>
             </div>
           </div>
-          <p class="mt-2 text-xs text-[var(--text-tertiary)]">
-            Portal default: 8 hours · Client default: 7 days
-          </p>
         </div>
 
         <%!-- Entra-specific config --%>
