@@ -217,18 +217,14 @@ jobs:
         id: bpftool
         shell: bash
         run: |
-          if ! bpftool version >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y linux-tools-common "linux-tools-$(uname -r)" \
-              || sudo apt-get install -y linux-tools-common linux-tools-generic
-          fi
-          # The /usr/sbin/bpftool wrapper resolves to the running kernel's build; if
-          # that build isn't packaged (common on the runners' Azure kernels), fall back
-          # to the newest versioned binary. `prog run` only needs syscalls the running
-          # kernel already supports, so a version-skewed bpftool is fine.
+          # bpftool ships with linux-tools. On GitHub runners the running-kernel
+          # package is preinstalled; if the /usr/sbin/bpftool wrapper can't locate
+          # the versioned binary, fall back to the one under /usr/lib directly.
           bt="$(command -v bpftool || true)"
           if [ -z "$bt" ] || ! "$bt" version >/dev/null 2>&1; then
-            bt="$(ls -1 /usr/lib/linux-tools*/bpftool 2>/dev/null | sort -V | tail -1)"
+            sudo apt-get update
+            sudo apt-get install -y linux-tools-common "linux-tools-$(uname -r)" || true
+            bt="$(find /usr/lib -type f -name bpftool 2>/dev/null | sort -V | tail -n1)"
           fi
           "$bt" version
           echo "path=$bt" >> "$GITHUB_OUTPUT"
