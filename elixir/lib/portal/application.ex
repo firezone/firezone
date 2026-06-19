@@ -53,13 +53,7 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions,
-
-      # Shared HTTP pool for directory sync / IdP API clients. Finch keys pools
-      # per host, so each provider still gets an isolated pool; this just sizes
-      # them 10x larger than Req's default (50) to survive the long-lived
-      # paginated sync streams that were exhausting the pool.
-      {Finch, name: Portal.Finch, pools: %{default: [size: 500]}}
+      Portal.ComponentVersions
     ]
 
     endpoint_children = [
