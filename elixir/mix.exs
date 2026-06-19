@@ -151,7 +151,6 @@ defmodule Portal.MixProject do
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
       {:req, "~> 0.5.15"},
-      {:finch, "~> 0.22"},
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
