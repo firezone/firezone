@@ -25,9 +25,18 @@ defmodule PortalAPI.ResourceJSON do
       name: resource.name,
       address: resource.address,
       address_description: resource.address_description,
-      type: resource.type
+      type: resource.type,
+      filters: Enum.map(resource.filters, &filter/1)
     }
     |> maybe_put_ip_stack(resource)
+    |> maybe_put_site_id(resource)
+  end
+
+  defp filter(%Resource.Filter{} = filter) do
+    %{
+      protocol: filter.protocol,
+      ports: filter.ports
+    }
   end
 
   defp maybe_put_ip_stack(attrs, %{ip_stack: nil}) do
@@ -36,5 +45,13 @@ defmodule PortalAPI.ResourceJSON do
 
   defp maybe_put_ip_stack(attrs, resource) do
     Map.put(attrs, :ip_stack, resource.ip_stack)
+  end
+
+  defp maybe_put_site_id(attrs, %{site_id: nil}) do
+    attrs
+  end
+
+  defp maybe_put_site_id(attrs, resource) do
+    Map.put(attrs, :site_id, resource.site_id)
   end
 end

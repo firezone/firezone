@@ -30,6 +30,11 @@ defmodule PortalAPI.Schemas.Resource do
             "Site to connect the Resource to. Required for all types except `static_device_pool`.",
           type: :string,
           format: :uuid
+        },
+        filters: %Schema{
+          type: :array,
+          description: "Traffic filters restricting the protocols and ports the Resource exposes",
+          items: PortalAPI.Schemas.Resource.Filter
         }
       },
       required: [:name, :type],
@@ -38,7 +43,11 @@ defmodule PortalAPI.Schemas.Resource do
         "name" => "Prod DB",
         "address" => "10.0.0.10",
         "address_description" => "Production Database",
-        "type" => "ip"
+        "type" => "ip",
+        "filters" => [
+          %{"protocol" => "tcp", "ports" => ["5432"]}
+        ],
+        "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
       }
     })
   end
@@ -101,7 +110,8 @@ defmodule PortalAPI.Schemas.Resource do
             },
             type: %Schema{
               type: :string,
-              description: "Resource type. For `static_device_pool`, `address` is not applicable.",
+              description:
+                "Resource type. For `static_device_pool`, `address` is not applicable.",
               enum: ["cidr", "ip", "dns", "static_device_pool"]
             },
             ip_stack: %Schema{
@@ -172,7 +182,8 @@ defmodule PortalAPI.Schemas.Resource do
             },
             type: %Schema{
               type: :string,
-              description: "Resource type. For `static_device_pool`, `address` is not applicable.",
+              description:
+                "Resource type. For `static_device_pool`, `address` is not applicable.",
               enum: ["cidr", "ip", "dns", "static_device_pool"]
             },
             ip_stack: %Schema{
@@ -232,7 +243,8 @@ defmodule PortalAPI.Schemas.Resource do
           "name" => "Prod DB",
           "address" => "10.0.0.10",
           "address_description" => "Production Database",
-          "type" => "ip"
+          "type" => "ip",
+          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
         }
       }
     })
@@ -258,14 +270,16 @@ defmodule PortalAPI.Schemas.Resource do
             "name" => "Prod DB",
             "address" => "10.0.0.10",
             "address_description" => "Production Database",
-            "type" => "ip"
+            "type" => "ip",
+            "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
           },
           %{
             "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
             "name" => "Admin Dashboard",
             "address" => "10.0.0.20",
             "address_description" => "Production Admin Dashboard",
-            "type" => "ip"
+            "type" => "ip",
+            "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
           }
         ],
         "metadata" => %{
