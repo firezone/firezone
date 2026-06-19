@@ -488,6 +488,17 @@ impl PerfUdpSocket {
 
                     return Ok(());
                 }
+                // A pinned source IP that is no longer assigned to any interface (e.g. an IPv6
+                // privacy address that rotated away) makes `sendmsg` fail with `EINVAL`. Drop the
+                // packet rather than erroring: ICE connectivity checks share the same dead source,
+                // so the path fails its liveness checks and traffic re-nominates onto another pair.
+                Err(e) if src.is_some() && is_unassigned_source(&e) => {
+                    self.record_send_retries(attempt);
+
+                    tracing::debug!(?src, %dst, "Dropping packet: source address unavailable: {e}");
+
+                    return Ok(());
+                }
                 Err(e) => {
                     self.record_send_retries(attempt);
 
@@ -725,6 +736,18 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
         return true;
     }
 
+    false
+}
+
+/// Whether a send failed because the socket's pinned source address is no longer assigned to any
+/// interface, e.g. an IPv6 privacy address that the kernel rotated away.
+#[cfg(unix)]
+fn is_unassigned_source(e: &io::Error) -> bool {
+    e.raw_os_error() == Some(libc::EINVAL)
+}
+
+#[cfg(not(unix))]
+fn is_unassigned_source(_: &io::Error) -> bool {
     false
 }
 
