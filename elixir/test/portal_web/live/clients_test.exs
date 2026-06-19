@@ -601,7 +601,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Total"
     end
 
-    test "reflects client update change in the table", %{
+    test "marks the table stale on client update change", %{
       conn: conn,
       account: account,
       actor: actor
@@ -614,7 +614,7 @@ defmodule PortalWeb.ClientsTest do
         |> live(~p"/#{account}/clients")
 
       render_async(lv)
-      assert render(lv) =~ client.name
+      refute has_element?(lv, "#clients-reload-btn")
 
       {:ok, _updated} =
         client
@@ -623,6 +623,9 @@ defmodule PortalWeb.ClientsTest do
 
       send(lv.pid, %Change{op: :update, struct: %Device{type: :client, id: client.id}})
 
+      assert has_element?(lv, "#clients-reload-btn")
+
+      render_click(lv, "reload", %{"table_id" => "clients"})
       assert render(lv) =~ "Renamed Client"
     end
 
