@@ -377,6 +377,26 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.error_message == "plain okta failure"
     end
 
+    test "classifies unknown HTTP client errors as transient without crashing", %{
+      directory: directory
+    } do
+      job = sync_job("Portal.Okta.Sync", directory.id)
+
+      error = %Portal.Okta.SyncError{
+        error: %Req.HTTPError{protocol: :http2, reason: :pool_not_available},
+        directory_id: directory.id,
+        step: :get_access_token
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert is_binary(updated_directory.error_message)
+      assert updated_directory.error_message != ""
+    end
+
     test "handles generic exceptions and missing directories" do
       directory_id = Ecto.UUID.generate()
 
@@ -651,6 +671,26 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
       assert updated_directory.is_disabled == false
       assert updated_directory.error_message == "Connection timed out."
+    end
+
+    test "classifies unknown HTTP client errors as transient without crashing", %{
+      directory: directory
+    } do
+      job = sync_job("Portal.Entra.Sync", directory.id)
+
+      error = %Portal.Entra.SyncError{
+        error: %Req.HTTPError{protocol: :http2, reason: :pool_not_available},
+        directory_id: directory.id,
+        step: :get_access_token
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Entra.Directory, directory.id)
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert is_binary(updated_directory.error_message)
+      assert updated_directory.error_message != ""
     end
 
     test "formats HTTP 403 forbidden code responses", %{directory: directory} do
@@ -990,6 +1030,26 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.is_disabled == false
       assert updated_directory.errored_at != nil
       assert updated_directory.error_message == "Connection timed out."
+    end
+
+    test "classifies unknown HTTP client errors as transient without crashing", %{
+      directory: directory
+    } do
+      job = sync_job("Portal.Google.Sync", directory.id)
+
+      error = %Portal.Google.SyncError{
+        error: %Req.HTTPError{protocol: :http2, reason: :pool_not_available},
+        directory_id: directory.id,
+        step: :get_access_token
+      }
+
+      ErrorHandler.handle_error(%{reason: error, job: job})
+
+      updated_directory = Portal.Repo.get!(Portal.Google.Directory, directory.id)
+      assert updated_directory.is_disabled == false
+      assert updated_directory.errored_at != nil
+      assert is_binary(updated_directory.error_message)
+      assert updated_directory.error_message != ""
     end
 
     test "classifies tuple validation errors as client_error", %{directory: directory} do

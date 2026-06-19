@@ -44,6 +44,7 @@ defmodule Portal.Okta.ErrorHandler do
   defp classify({_tag, _msg, _body}), do: :transient
   defp classify(nil), do: :transient
   defp classify(msg) when is_binary(msg), do: :transient
+  defp classify(_unrecognized), do: :transient
 
   # Formatting
 
@@ -65,6 +66,7 @@ defmodule Portal.Okta.ErrorHandler do
   defp format({_tag, msg}) when is_binary(msg), do: msg
   defp format(nil), do: "Unknown error occurred"
   defp format(msg) when is_binary(msg), do: msg
+  defp format(other), do: format_generic(other)
 
   # Action
 
