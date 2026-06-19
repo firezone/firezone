@@ -429,11 +429,20 @@ impl PerfUdpSocket {
             let end = std::cmp::min(offset + chunk_size, total);
             let contents = &transmit.contents[offset..end];
 
+            // A chunk holding a single segment must not request GSO: some kernels reject the
+            // `UDP_SEGMENT` cmsg with `EINVAL` when there is nothing to segment, particularly
+            // on IPv6. Sending it as a plain datagram avoids the spurious failure.
+            let chunk_segment_size = if contents.len() <= segment_size {
+                None
+            } else {
+                Some(segment_size)
+            };
+
             let chunk = Transmit {
                 destination: dst,
                 ecn: transmit.ecn,
                 contents,
-                segment_size: Some(segment_size),
+                segment_size: chunk_segment_size,
                 src_ip: src,
             };
 
