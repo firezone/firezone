@@ -70,11 +70,22 @@ defmodule Portal.Application do
     # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
     # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
+      connection_warmer() ++
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
       rate_limit() ++
       telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
+  end
+
+  defp connection_warmer do
+    config = Application.get_env(:portal, Portal.ConnectionWarmer, [])
+
+    if Keyword.get(config, :enabled, false) do
+      [Portal.ConnectionWarmer]
+    else
+      []
+    end
   end
 
   defp configure_logger do

@@ -207,6 +207,8 @@ if config_env() == :prod do
 
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
+  config :portal, Portal.ConnectionWarmer, enabled: true
+
   config :portal,
          Portal.Billing,
          [

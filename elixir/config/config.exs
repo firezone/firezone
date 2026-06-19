@@ -222,6 +222,9 @@ config :portal, Portal.Health,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
+# Disabled outside of prod to avoid outbound requests at boot; enabled in runtime.exs.
+config :portal, Portal.ConnectionWarmer, enabled: false
+
 config :portal, Portal.Entra.APIClient,
   client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
   client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
