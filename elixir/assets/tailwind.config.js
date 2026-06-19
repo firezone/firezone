@@ -64,6 +64,7 @@ module.exports = {
     "./js/**/*.js",
     "../lib/portal_web.ex",
     "../lib/portal_web/**/*.*ex",
+    "../portal_dev/**/*.*ex",
   ],
   theme: {
     fontFamily: {

@@ -1,5 +1,5 @@
 defmodule PortalWeb.Dev.ComponentsLive do
-  use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :components_preview}}
+  use PortalWeb, {:live_view, layout: {PortalWeb.Dev.Layouts, :components_preview}}
 
   @components [
     %{
