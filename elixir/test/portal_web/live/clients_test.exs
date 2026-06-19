@@ -601,6 +601,31 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Total"
     end
 
+    test "reflects client update change in the table", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      render_async(lv)
+      assert render(lv) =~ client.name
+
+      {:ok, _updated} =
+        client
+        |> Ecto.Changeset.change(name: "Renamed Client")
+        |> Repo.update()
+
+      send(lv.pid, %Change{op: :update, struct: %Device{type: :client, id: client.id}})
+
+      assert render(lv) =~ "Renamed Client"
+    end
+
     test "ignores non-client device changes", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn

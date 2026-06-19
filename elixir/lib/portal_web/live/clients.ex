@@ -511,6 +511,17 @@ defmodule PortalWeb.Clients do
      end)}
   end
 
+  def handle_info(%Change{op: :update, struct: %Device{type: :client, id: id}}, socket) do
+    if Enum.any?(socket.assigns.clients, &(&1.id == id)) do
+      {:noreply, reload_live_table!(socket, "clients")}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
+  def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
+
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
         socket
