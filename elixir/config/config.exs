@@ -228,13 +228,13 @@ config :portal, Portal.Entra.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
   # 15 minutes in milliseconds
-  req_opts: [receive_timeout: 900_000]
+  req_opts: [receive_timeout: 900_000, finch: Portal.Finch]
 
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
   token_endpoint: "https://oauth2.googleapis.com/token",
-  req_opts: [receive_timeout: 60_000]
+  req_opts: [receive_timeout: 60_000, finch: Portal.Finch]
 
 config :portal, Portal.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console
@@ -250,7 +250,8 @@ config :portal, Portal.Okta.AuthProvider,
   scope: "openid email profile"
 
 # 15 minutes in milliseconds
-config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
+config :portal, Portal.Okta.APIClient,
+  req_opts: [receive_timeout: 900_000, finch: Portal.Finch]
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
