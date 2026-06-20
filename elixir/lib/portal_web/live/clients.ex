@@ -113,7 +113,7 @@ defmodule PortalWeb.Clients do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-computer-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Clients</:title>
         <:description>
@@ -131,7 +131,6 @@ defmodule PortalWeb.Clients do
             </.dual_badge>
           </.async_result>
         </:stats>
-
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -155,10 +154,10 @@ defmodule PortalWeb.Clients do
                 <.client_os_icon client={client} />
               </span>
               <div>
-                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {client.name}
                 </div>
-                <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {client.id}
                 </div>
               </div>
@@ -181,14 +180,14 @@ defmodule PortalWeb.Clients do
           <:col :let={client} label="Verified" class="w-28">
             <span
               :if={not is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--status-active)] bg-[var(--status-active-bg)]"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
               title="Device attributes of this client are manually verified"
             >
               <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
             </span>
             <span
               :if={is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--text-muted)] bg-[var(--surface-raised)]"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
             >
               Unverified
             </span>
@@ -202,7 +201,7 @@ defmodule PortalWeb.Clients do
             label="Last Started"
             class="hidden lg:table-cell"
           >
-            <span class="text-xs text-[var(--text-tertiary)]">
+            <span class="text-xs text-subtle">
               <.relative_datetime datetime={
                 client.latest_session && client.latest_session.inserted_at
               } />
@@ -214,18 +213,18 @@ defmodule PortalWeb.Clients do
             label="Created"
             class="hidden lg:table-cell"
           >
-            <span class="text-xs text-[var(--text-tertiary)]">
+            <span class="text-xs text-subtle">
               <.relative_datetime datetime={client.inserted_at} />
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-computer-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No clients yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No clients yet</p>
+                <p class="text-xs text-subtle mt-0.5">
                   No clients have connected yet.
                 </p>
               </div>

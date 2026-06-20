@@ -452,4 +452,8 @@ Hooks.ProgressBar = {
   },
 };
 
+if (__DEV__) {
+  Object.assign(Hooks, require("../../portal_dev/js/dev").default);
+}
+
 export default Hooks;

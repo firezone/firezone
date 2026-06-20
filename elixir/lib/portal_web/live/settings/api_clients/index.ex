@@ -142,10 +142,10 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       <.settings_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+        <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
-            <h2 class="text-xs font-semibold text-[var(--text-primary)]">API Tokens</h2>
-            <span class="text-xs text-[var(--text-tertiary)] tabular-nums">
+            <h2 class="text-xs font-semibold text-heading">API Tokens</h2>
+            <span class="text-xs text-subtle tabular-nums">
               {length(@actors_with_tokens)}
             </span>
           </div>
@@ -153,7 +153,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             <.docs_action path="/reference/rest-api" />
             <.link
               patch={~p"/#{@account}/settings/api_clients/new"}
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
               <.icon name="ri-add-line" class="w-3 h-3" /> Add
             </.link>
@@ -164,18 +164,18 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <%= if Enum.empty?(@actors_with_tokens) do %>
             <div class="flex items-center justify-center h-full">
               <div class="flex flex-col items-center gap-3 py-16">
-                <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
+                <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
                   <.icon name="ri-key-line" class="w-3 h-3" />
                 </div>
                 <div class="text-center">
-                  <p class="text-sm font-medium text-[var(--text-primary)]">No API tokens yet</p>
-                  <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  <p class="text-sm font-medium text-heading">No API tokens yet</p>
+                  <p class="text-xs text-subtle mt-0.5">
                     No API tokens have been configured.
                   </p>
                 </div>
                 <.link
                   patch={~p"/#{@account}/settings/api_clients/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                 >
                   <.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
                 </.link>
@@ -183,24 +183,24 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
           <% else %>
             <table class="w-full text-sm border-collapse">
-              <thead class="sticky top-0 z-10 bg-[var(--surface-raised)]">
-                <tr class="border-b border-[var(--border-strong)]">
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-56">
+              <thead class="sticky top-0 z-10 bg-raised">
+                <tr class="border-b border-border-strong">
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-56">
                     Name
                   </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                     Status
                   </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-36">
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Created
                   </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-36">
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Expires
                   </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-36">
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Last Used
                   </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-36">
+                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Last Used IP
                   </th>
                   <th class="px-6 py-2.5 w-10"></th>
@@ -226,7 +226,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         id="api-client-new-panel"
         class={[
           "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+          "bg-elevated border-l border-border-strong",
           "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
           "transition-transform duration-200 ease-in-out",
           (@live_action == :new && "translate-x-0") || "translate-x-full"
@@ -234,16 +234,10 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       >
         <div :if={@live_action == :new && @form} class="flex flex-col h-full overflow-hidden">
           <!-- Panel header -->
-          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">New API Token</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <h2 class="text-sm font-semibold text-heading">New API Token</h2>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -264,29 +258,18 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
 
     <!-- Panel footer -->
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
+            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
               <%= if is_nil(@encoded_token) do %>
-                <button
-                  type="button"
-                  phx-click="close_panel"
-                  class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-                >
+                <.button type="button" phx-click="close_panel" size="sm">
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-                >
+                </.button>
+                <.button type="submit" style="primary" size="sm">
                   Create Token
-                </button>
+                </.button>
               <% else %>
-                <button
-                  type="button"
-                  phx-click="close_reveal"
-                  class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-                >
+                <.button type="button" phx-click="close_reveal" size="sm">
                   Done
-                </button>
+                </.button>
               <% end %>
             </div>
           </.form>
@@ -298,7 +281,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         id="api-client-edit-panel"
         class={[
           "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+          "bg-elevated border-l border-border-strong",
           "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
           "transition-transform duration-200 ease-in-out",
           (@live_action == :edit && "translate-x-0") || "translate-x-full"
@@ -309,16 +292,10 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           class="flex flex-col h-full overflow-hidden"
         >
           <!-- Panel header -->
-          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+          <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">Edit API Token</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <h2 class="text-sm font-semibold text-heading">Edit API Token</h2>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -341,20 +318,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </div>
 
     <!-- Panel footer -->
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
-              <button
-                type="button"
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-              >
+            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
+              <.button type="button" phx-click="close_panel" size="sm">
                 Cancel
-              </button>
-              <button
-                type="submit"
-                class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-              >
+              </.button>
+              <.button type="submit" style="primary" size="sm">
                 Save
-              </button>
+              </.button>
             </div>
           </.form>
         </div>
@@ -383,95 +353,98 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       @is_pending_delete && "border-red-200 bg-red-50",
       @is_pending_toggle && "border-amber-200 bg-amber-50",
       !@is_pending_delete && !@is_pending_toggle &&
-        "border-[var(--border)] hover:bg-[var(--surface-raised)]"
+        "border-border hover:bg-raised"
     ]}>
       <%= if @is_pending_delete do %>
         <td class="px-6 py-3 w-56">
-          <div class="text-sm font-medium text-red-800 truncate">{@actor.name}</div>
-          <div class="font-mono text-[10px] text-red-400 mt-0.5 truncate">{@actor.id}</div>
+          <div class="text-sm font-medium text-danger truncate">{@actor.name}</div>
+          <div class="font-mono text-[10px] text-danger/80 mt-0.5 truncate">{@actor.id}</div>
         </td>
         <td colspan="6" class="px-6 py-3">
           <div class="flex items-center gap-4">
-            <span class="text-xs text-red-700">
+            <span class="text-xs text-danger">
               Delete this API Token? This will remove it along with all associated credentials and cannot be undone.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <button
+              <.button
                 phx-click="cancel_confirm"
-                class="px-2.5 py-1 text-xs rounded border border-red-300 bg-white text-red-800 hover:bg-red-100 transition-colors"
+                size="xs"
               >
-                Cancel
-              </button>
-              <button
+              Cancel
+              </.button>
+              <.button
                 phx-click="delete"
                 phx-value-id={@actor.id}
-                class="px-2.5 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                size="xs"
+                style="danger"
+                class="font-medium"
               >
                 Delete
-              </button>
+              </.button>
             </div>
           </div>
         </td>
       <% else %>
         <%= if @is_pending_toggle do %>
           <td class="px-6 py-3 w-56">
-            <div class="text-sm font-medium text-amber-800 truncate">{@actor.name}</div>
-            <div class="font-mono text-[10px] text-amber-400 mt-0.5 truncate">{@actor.id}</div>
+            <div class="text-sm font-medium text-warning truncate">{@actor.name}</div>
+            <div class="font-mono text-[10px] text-warning/80 mt-0.5 truncate">{@actor.id}</div>
           </td>
           <td colspan="6" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-amber-700">
+              <span class="text-xs text-warning">
                 {if is_nil(@actor.disabled_at),
                   do: "Disable this API Token? It will no longer be able to authenticate.",
                   else: "Re-enable this API Token?"}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <button
+                <.button
                   phx-click="cancel_confirm"
-                  class="px-2.5 py-1 text-xs rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 transition-colors"
+                  size="xs"
                 >
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   phx-click={if is_nil(@actor.disabled_at), do: "disable", else: "enable"}
                   phx-value-id={@actor.id}
-                  class="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                  size="xs"
+                  style="warning"
                 >
                   {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
-                </button>
+                </.button>
               </div>
             </div>
           </td>
         <% else %>
           <td class="px-6 py-3 w-56">
-            <div class="text-sm font-medium text-[var(--text-primary)] truncate">{@actor.name}</div>
-            <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5 truncate">
+            <div class="text-sm font-medium text-heading truncate">{@actor.name}</div>
+            <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
               {@actor.id}
             </div>
           </td>
           <td class="px-6 py-3 w-28">
             <%= if is_nil(@actor.disabled_at) do %>
-              <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+            <.badge type="success" class="text-[10px]">
                 Active
-              </span>
+            </.badge>
             <% else %>
-              <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--text-tertiary)]">
+            <.badge class="text-[10px]">
                 Disabled
-              </span>
+            </.badge>
             <% end %>
           </td>
           <td class="px-6 py-3 w-36">
-            <span class="text-sm text-[var(--text-secondary)]">
+            <span class="text-sm text-body">
               {PortalWeb.Format.short_date(@actor.inserted_at)}
             </span>
           </td>
           <td class="px-6 py-3 w-36">
-            <span class="text-sm text-[var(--text-secondary)]">
+            <span class="text-sm text-body">
               {if @token, do: PortalWeb.Format.short_date(@token.expires_at), else: "—"}
             </span>
           </td>
           <td class="px-6 py-3 w-36">
-            <span class="text-sm text-[var(--text-secondary)]">
+            <span class="text-sm text-body">
               <%= if @token && @token.last_seen_at do %>
                 <.relative_datetime datetime={@token.last_seen_at} />
               <% else %>
@@ -480,7 +453,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </span>
           </td>
           <td class="px-6 py-3 w-36">
-            <span class="text-sm text-[var(--text-secondary)]">
+            <span class="text-sm text-body">
               {if @token && @token.last_seen_remote_ip, do: @token.last_seen_remote_ip, else: "—"}
             </span>
           </td>
@@ -494,16 +467,16 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               >
                 <.link
                   patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                 >
                   <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
                 </.link>
-                <div class="my-1 border-t border-[var(--border)]"></div>
+                <div class="my-1 border-t border-border"></div>
                 <button
                   phx-click="request_confirm"
                   phx-value-id={@actor.id}
                   phx-value-action="toggle"
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                 >
                   <.icon
                     name={
@@ -515,12 +488,12 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   />
                   {if is_nil(@actor.disabled_at), do: "Disable", else: "Enable"}
                 </button>
-                <div class="my-1 border-t border-[var(--border)]"></div>
+                <div class="my-1 border-t border-border"></div>
                 <button
                   phx-click="request_confirm"
                   phx-value-id={@actor.id}
                   phx-value-action="delete"
-                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
+                  class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
                 >
                   <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                 </button>

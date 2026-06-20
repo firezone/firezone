@@ -161,14 +161,14 @@ defmodule PortalWeb.SignUp do
   defp sign_up_form(assigns) do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
-      <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="ri-building-line" class="w-6 h-6 text-[var(--brand)]" />
+      <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+        <.icon name="ri-building-line" class="w-6 h-6 text-brand" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Create your organization
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           Set up Firezone and become the admin for your team.
         </p>
       </div>
@@ -222,14 +222,14 @@ defmodule PortalWeb.SignUp do
       <button
         type="submit"
         phx-disable-with="Sending..."
-        class="w-full py-2.5 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors mt-1"
+        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1"
       >
         Create Account
       </button>
     </.form>
 
     <div class="mt-2 pt-2 text-center">
-      <p class="text-xs text-[var(--text-tertiary)] mt-1.5">
+      <p class="text-xs text-subtle mt-1.5">
         By signing up you agree to our <.link
           href="https://www.firezone.dev/terms"
           class={link_style()}
@@ -237,12 +237,12 @@ defmodule PortalWeb.SignUp do
       </p>
     </div>
 
-    <div class="mt-12 pt-4 border-t border-[var(--border)] text-center">
-      <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+    <div class="mt-12 pt-4 border-t border-border text-center">
+      <p class="text-xs text-subtle leading-relaxed">
         Organization already have an account?
         <.link href={~p"/sign_in"} class={[link_style()]}>Sign in here.</.link>
       </p>
-      <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+      <p class="text-xs text-subtle leading-relaxed">
         Not sure where to start?
         <.link href={~p"/getting_started"} class={[link_style()]}>Let's get started.</.link>
       </p>
@@ -253,51 +253,51 @@ defmodule PortalWeb.SignUp do
   defp email_sent(assigns) do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
-      <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="ri-mail-line" class="w-5 h-5 text-[var(--brand)]" />
+      <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+        <.icon name="ri-mail-line" class="w-5 h-5 text-brand" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">Check your email</h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <h1 class="text-xl font-bold text-heading tracking-tight">Check your email</h1>
+        <p class="text-xs text-subtle mt-0.5">
           We've sent a sign-up link to your inbox.
         </p>
       </div>
     </div>
 
-    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-6">
-      <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-4">
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-4">
         What happens next
       </p>
       <ol class="space-y-4">
         <li class="flex gap-3">
-          <div class="shrink-0 w-6 h-6 rounded-full bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center">
-            <span class="text-xs font-bold text-[var(--brand)]">1</span>
+          <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
+            <span class="text-xs font-bold text-brand">1</span>
           </div>
           <div>
-            <p class="text-sm font-medium text-[var(--text-primary)]">Open the email from Firezone</p>
-            <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            <p class="text-sm font-medium text-heading">Open the email from Firezone</p>
+            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
               Check your inbox (and spam folder) for a message with subject "Complete your Firezone sign up".
             </p>
           </div>
         </li>
         <li class="flex gap-3">
-          <div class="shrink-0 w-6 h-6 rounded-full bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center">
-            <span class="text-xs font-bold text-[var(--brand)]">2</span>
+          <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
+            <span class="text-xs font-bold text-brand">2</span>
           </div>
           <div>
-            <p class="text-sm font-medium text-[var(--text-primary)]">Click the verification link</p>
-            <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            <p class="text-sm font-medium text-heading">Click the verification link</p>
+            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
               The link will verify your email and automatically create your organization. It expires in 24 hours.
             </p>
           </div>
         </li>
         <li class="flex gap-3">
-          <div class="shrink-0 w-6 h-6 rounded-full bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center">
-            <span class="text-xs font-bold text-[var(--brand)]">3</span>
+          <div class="shrink-0 w-6 h-6 rounded-full bg-brand/10 border border-brand/20 flex items-center justify-center">
+            <span class="text-xs font-bold text-brand">3</span>
           </div>
           <div>
-            <p class="text-sm font-medium text-[var(--text-primary)]">Sign in and invite your team</p>
-            <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            <p class="text-sm font-medium text-heading">Sign in and invite your team</p>
+            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
               You'll land in your account, ready to add users and set up access.
             </p>
           </div>
@@ -305,8 +305,8 @@ defmodule PortalWeb.SignUp do
       </ol>
     </div>
 
-    <div class="pt-6 border-t border-[var(--border)] text-center">
-      <p class="text-xs text-[var(--text-tertiary)]">
+    <div class="pt-6 border-t border-border text-center">
+      <p class="text-xs text-subtle">
         Wrong address or didn't receive it?
         <.link href={~p"/sign_up"} class={[link_style()]}>Start over.</.link>
       </p>
@@ -317,31 +317,31 @@ defmodule PortalWeb.SignUp do
   defp welcome(assigns) do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
-      <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-[var(--brand)]" />
+      <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+        <.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-brand" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Your account has been created!
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           You're all set. Sign in to get started.
         </p>
       </div>
     </div>
 
-    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-4">
+    <div class="rounded border border-border bg-raised p-4 mb-4">
       <dl class="space-y-3">
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-[var(--text-secondary)]">Account Name</dt>
-          <dd class="text-sm text-[var(--text-primary)]">{@account.name}</dd>
+          <dt class="text-xs font-medium text-body">Account Name</dt>
+          <dd class="text-sm text-heading">{@account.name}</dd>
         </div>
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-[var(--text-secondary)]">Account Slug</dt>
-          <dd class="text-sm text-[var(--text-primary)]">{@account.slug}</dd>
+          <dt class="text-xs font-medium text-body">Account Slug</dt>
+          <dd class="text-sm text-heading">{@account.slug}</dd>
         </div>
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-[var(--text-secondary)]">Sign In URL</dt>
+          <dt class="text-xs font-medium text-body">Sign In URL</dt>
           <dd class="text-sm">
             <.link class={[link_style()]} href={~p"/#{@account}"}>
               {url(~p"/#{@account}")}
@@ -351,25 +351,25 @@ defmodule PortalWeb.SignUp do
       </dl>
     </div>
 
-    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-6">
-      <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-3">
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
         Next Steps
       </p>
       <ul class="space-y-2">
         <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-[var(--brand)]/10 text-[var(--brand)] rounded-full flex items-center justify-center text-xs font-semibold">
+          <span class="shrink-0 w-5 h-5 bg-brand/10 text-brand rounded-full flex items-center justify-center text-xs font-semibold">
             1
           </span>
-          <span class="text-sm text-[var(--text-secondary)]">
+          <span class="text-sm text-body">
             <.website_link path="/kb/client-apps">Download the Firezone Client</.website_link>
             for your platform
           </span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-[var(--brand)]/10 text-[var(--brand)] rounded-full flex items-center justify-center text-xs font-semibold">
+          <span class="shrink-0 w-5 h-5 bg-brand/10 text-brand rounded-full flex items-center justify-center text-xs font-semibold">
             2
           </span>
-          <span class="text-sm text-[var(--text-secondary)]">
+          <span class="text-sm text-body">
             <.website_link path="/kb/quickstart">View the Quickstart Guide</.website_link>
             to get started
           </span>
@@ -387,7 +387,7 @@ defmodule PortalWeb.SignUp do
       <.input type="hidden" name="email[email]" value={@actor.email} />
       <button
         type="submit"
-        class="w-full py-2.5 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
+        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
       >
         Sign In
       </button>
@@ -402,17 +402,17 @@ defmodule PortalWeb.SignUp do
         <.icon name="ri-prohibited-line" class="w-5 h-5 text-rose-500" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Sign-ups are currently disabled
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           Contact us to get access.
         </p>
       </div>
     </div>
 
-    <div class="pt-6 border-t border-[var(--border)] text-center">
-      <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+    <div class="pt-6 border-t border-border text-center">
+      <p class="text-xs text-subtle leading-relaxed">
         Please contact
         <a class={link_style()} href="mailto:sales@firezone.dev?subject=Firezone Sign Up Request">
           sales@firezone.dev
@@ -426,35 +426,35 @@ defmodule PortalWeb.SignUp do
   defp verifying(assigns) do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
-      <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <.icon name="ri-loader-4-line" class="w-5 h-5 text-[var(--brand)] animate-spin" />
+      <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+        <.icon name="ri-loader-4-line" class="w-5 h-5 text-brand animate-spin" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Verifying your sign-up link&hellip;
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           This will only take a moment.
         </p>
       </div>
     </div>
 
-    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-6">
-      <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-3">
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
         What's happening
       </p>
       <ol class="space-y-3">
         <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-[var(--brand)]/10 text-[var(--brand)] rounded-full flex items-center justify-center text-xs font-semibold">
+          <span class="shrink-0 w-5 h-5 bg-brand/10 text-brand rounded-full flex items-center justify-center text-xs font-semibold">
             1
           </span>
-          <span class="text-sm text-[var(--text-secondary)]">Verifying your sign-up link</span>
+          <span class="text-sm text-body">Verifying your sign-up link</span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-[var(--surface-sunken)] text-[var(--text-muted)] rounded-full flex items-center justify-center text-xs font-semibold">
+          <span class="shrink-0 w-5 h-5 bg-page text-muted rounded-full flex items-center justify-center text-xs font-semibold">
             2
           </span>
-          <span class="text-sm text-[var(--text-muted)]">Creating your account</span>
+          <span class="text-sm text-muted">Creating your account</span>
         </li>
       </ol>
     </div>
@@ -468,10 +468,10 @@ defmodule PortalWeb.SignUp do
         <.icon name="ri-error-warning-line" class="w-5 h-5 text-rose-500" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Something went wrong
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           We weren't able to complete your sign up.
         </p>
       </div>
@@ -481,26 +481,26 @@ defmodule PortalWeb.SignUp do
       <p class="text-sm text-rose-700 dark:text-rose-400">{@error_message}</p>
     </div>
 
-    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-6">
-      <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-3">
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
         What you can do
       </p>
       <ul class="space-y-2">
         <li class="flex items-start gap-2.5">
           <.icon
             name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--text-tertiary)]"
+            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
-          <span class="text-sm text-[var(--text-secondary)]">
+          <span class="text-sm text-body">
             Try signing up again — your verification link may have expired.
           </span>
         </li>
         <li class="flex items-start gap-2.5">
           <.icon
             name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--text-tertiary)]"
+            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
-          <span class="text-sm text-[var(--text-secondary)]">
+          <span class="text-sm text-body">
             If you already have an account,
             <.link href={~p"/"} class={link_style()}>sign in here.</.link>
           </span>
@@ -508,9 +508,9 @@ defmodule PortalWeb.SignUp do
         <li class="flex items-start gap-2.5">
           <.icon
             name="ri-arrow-right-s-line"
-            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--text-tertiary)]"
+            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
-          <span class="text-sm text-[var(--text-secondary)]">
+          <span class="text-sm text-body">
             Still having trouble?
             <a class={link_style()} href="mailto:support@firezone.dev">Contact support.</a>
           </span>
@@ -520,7 +520,7 @@ defmodule PortalWeb.SignUp do
 
     <.link
       href={~p"/sign_up"}
-      class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
+      class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
       Try again
     </.link>

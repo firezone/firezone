@@ -81,17 +81,17 @@ defmodule PortalWeb.FindAccount do
         <.icon name="ri-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Find your company's account
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           We'll send you a link to your organization's sign-in page.
         </p>
       </div>
     </div>
 
     <.form for={@form} phx-submit="submit_email" phx-change="validate_email">
-      <label class="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5">
+      <label class="block text-xs font-semibold text-body mb-1.5">
         Work email
       </label>
       <div class="flex gap-2">
@@ -115,8 +115,8 @@ defmodule PortalWeb.FindAccount do
       </div>
     </.form>
 
-    <div class="mt-8 pt-6 border-t border-[var(--border)] text-center space-y-1.5">
-      <p class="text-xs text-[var(--text-tertiary)]">
+    <div class="mt-8 pt-6 border-t border-border text-center space-y-1.5">
+      <p class="text-xs text-subtle">
         Not sure where to start?
         <.link href={~p"/getting_started"} class={[link_style()]}>Let's get started.</.link>
       </p>
@@ -133,15 +133,15 @@ defmodule PortalWeb.FindAccount do
         <.icon name="ri-mail-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">Check your inbox</h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
-          We've sent a message to <span class="font-medium text-[var(--text-secondary)]">{@email}</span>.
+        <h1 class="text-xl font-bold text-heading tracking-tight">Check your inbox</h1>
+        <p class="text-xs text-subtle mt-0.5">
+          We've sent a message to <span class="font-medium text-body">{@email}</span>.
         </p>
       </div>
     </div>
 
-    <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-6">
-      <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-4">
+    <div class="rounded border border-border bg-raised p-4 mb-6">
+      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-4">
         What to expect
       </p>
       <ol class="space-y-4">
@@ -150,8 +150,8 @@ defmodule PortalWeb.FindAccount do
             <span class="text-xs font-bold text-violet-500 dark:text-violet-400">1</span>
           </div>
           <div>
-            <p class="text-sm font-medium text-[var(--text-primary)]">Open the email from Firezone</p>
-            <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            <p class="text-sm font-medium text-heading">Open the email from Firezone</p>
+            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
               Check your inbox — and spam folder — for a message from Firezone. It should arrive within a minute or two.
             </p>
           </div>
@@ -161,10 +161,10 @@ defmodule PortalWeb.FindAccount do
             <span class="text-xs font-bold text-violet-500 dark:text-violet-400">2</span>
           </div>
           <div>
-            <p class="text-sm font-medium text-[var(--text-primary)]">
+            <p class="text-sm font-medium text-heading">
               Follow the instructions inside
             </p>
-            <p class="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+            <p class="text-xs text-subtle mt-0.5 leading-relaxed">
               If we found accounts linked to your email, you'll see direct sign-in links. If not, we'll explain your next options.
             </p>
           </div>
@@ -172,8 +172,8 @@ defmodule PortalWeb.FindAccount do
       </ol>
     </div>
 
-    <div class="pt-6 border-t border-[var(--border)] text-center">
-      <p class="text-xs text-[var(--text-tertiary)]">
+    <div class="pt-6 border-t border-border text-center">
+      <p class="text-xs text-subtle">
         Wrong address? <.link href={~p"/find_account"} class={[link_style()]}>Try again.</.link>
       </p>
     </div>

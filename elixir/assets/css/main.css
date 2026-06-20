@@ -3,6 +3,72 @@
 @plugin "@tailwindcss/forms";
 @import "./scrollbar.css";
 
+@theme {
+  /* BRAND */
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-hover);
+  --color-brand-light: var(--brand-secondary);
+  --color-brand-subtle: var(--brand-tertiary);
+  --color-brand-muted: var(--brand-muted);
+
+  /* ACCENT */
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-hover);
+  --color-accent-light: var(--accent-secondary);
+  --color-accent-subtle: var(--accent-tertiary);
+  --color-accent-muted: var(--accent-muted);
+
+  /* TEXT */
+  --color-heading: var(--text-primary);
+  --color-body: var(--text-secondary);
+  --color-subtle: var(--text-tertiary);
+  --color-muted: var(--text-muted);
+  --color-inverse: var(--text-inverse);
+
+  /* BACKGROUND */
+  --color-page: var(--canvas);
+  --color-surface: var(--surface);
+  --color-elevated: var(--surface-overlay);
+  --color-raised: var(--surface-raised);
+
+  /* BORDER */
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-emphasis: var(--border-emphasis);
+  --color-border-focus: var(--control-focus);
+
+  /* STATUS */
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-error: var(--error);
+  --color-error-light: var(--error-light);
+  --color-info: var(--info);
+  --color-info-light: var(--info-light);
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-light);
+  --color-neutral-status: var(--neutral-status);
+  --color-neutral-status-light: var(--neutral-status-light);
+
+  /* CONTROLS */
+  --color-input: var(--control-bg);
+  --color-input-border: var(--control-border);
+
+  /* BADGES */
+  --color-badge-dns: var(--badge-dns-bg);
+  --color-badge-dns-text: var(--badge-dns-text);
+  --color-badge-ip: var(--badge-ip-bg);
+  --color-badge-ip-text: var(--badge-ip-text);
+  --color-badge-cidr: var(--badge-cidr-bg);
+  --color-badge-cidr-text: var(--badge-cidr-text);
+  --color-badge-device-pool: var(--badge-device-pool-bg);
+  --color-badge-device-pool-text: var(--badge-device-pool-text);
+
+  /* ICONS */
+  --color-icon: var(--icon-bg);
+}
+
 /* Start: This may not be needed after UI refactor */
 @layer base {
   body {
@@ -84,67 +150,75 @@ html {
 }
 
 :root {
+  /* Brand — orange (heat-wave-500 / heat-wave-600) */
+  --brand: oklch(71.74% 0.192 48.75);
+  --brand-secondary: oklch(77.69% 0.154 56.87);
+  --brand-tertiary: oklch(96.59% 0.022 63.21);
+  --brand-muted: oklch(98.56% 0.0084 56.32);
+  --brand-hover: oklch(58.23% 0.1574 48.48);
+
+  /* Accent - purple */
+  --accent: oklch(48.06% 0.2976 276);
+  --accent-secondary: oklch(81.3% 0.295 276);
+  --accent-tertiary: oklch(91.9% 0.193 276);
+  --accent-muted: oklch(97.9% 0.193 276);
+  --accent-hover: oklch(30.98% 0.1931 276);
+
   /* Surfaces */
-  --canvas: #eef1f6;
-  --surface: #ffffff;
-  --surface-raised: #f7f9fc;
-  --surface-overlay: #ffffff;
+  --canvas: oklch(95.73% 0.0074 260.73);
+  --surface: oklch(100% 0 0);
+  --surface-raised: oklch(98.14% 0.0045 258.32);
+  --surface-overlay: oklch(100% 0 0);
 
   /* Borders */
-  --border: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.16);
-  --border-emphasis: rgba(15, 23, 42, 0.28);
+  --border: oklch(20.77% 0.0398 265.75 / 8%);
+  --border-strong: oklch(20.77% 0.0398 265.75 / 16%);
+  --border-emphasis: oklch(20.77% 0.0398 265.75 / 28%);
 
   /* Text */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #6e8197;
-  --text-muted: #a5b0ba;
-  --text-inverse: #f8fafc;
-
-  /* Brand — orange (heat-wave-500 / heat-wave-600) */
-  --brand: #ff7605;
-  --brand-secondary: #ff9a47;
-  --brand-tertiary: #fff1e5;
-  --brand-muted: #fff9f5;
-  --brand-hover: #c25700;
+  --text-primary: oklch(20.77% 0.0398 265.75);
+  --text-secondary: oklch(44.55% 0.0374 257.28);
+  --text-tertiary: oklch(59.6% 0.0404 252.26);
+  --text-muted: oklch(75.17% 0.019 245.46);
+  --text-inverse: oklch(98.42% 0.0034 247.86);
 
   /* Status */
-  --status-active: #16a34a;
-  --status-active-bg: rgba(22, 163, 74, 0.1);
-  --status-info: #2563eb;
-  --status-info-bg: rgba(37, 99, 235, 0.08);
-  --status-warn: #d97706;
-  --status-warn-bg: rgba(217, 119, 6, 0.1);
-  --status-neutral: #64748b;
-  --status-neutral-bg: rgba(100, 116, 139, 0.12);
-  --status-danger: #dc2626;
-  --status-error: #dc2626;
-  --status-error-bg: #fee2e2;
+  --success: oklch(62.71% 0.1699 149.21);
+  --success-light: oklch(62.71% 0.1699 149.21 / 10%);
+  --info: oklch(54.61% 0.2152 262.88);
+  --info-light: oklch(54.61% 0.2152 262.88 / 8%);
+  --warning: oklch(66.58% 0.1574 58.32);
+  --warning-light: oklch(66.58% 0.1574 58.32 / 10%);
+  --neutral-status: oklch(55.44% 0.0407 257.42);
+  --neutral-status-light: oklch(55.44% 0.0407 257.42 / 12%);
+  --danger: oklch(57.71% 0.2152 27.33);
+  --danger-light: oklch(57.71% 0.2152 27.33 / 10%);
+  --error: oklch(57.71% 0.2152 27.33);
+  --error-light: oklch(93.56% 0.0309 17.72);
 
   /* Toast backgrounds (opaque — used when flash floats over page content) */
-  --toast-bg-success: #f0fdf4;
-  --toast-bg-info: #eff6ff;
-  --toast-bg-warn: #fffbeb;
-  --toast-bg-error: #fef2f2;
+  --toast-bg-success: oklch(98.19% 0.0181 155.83);
+  --toast-bg-info: oklch(97.05% 0.0142 254.6);
+  --toast-bg-warn: oklch(98.69% 0.0214 95.28);
+  --toast-bg-error: oklch(97.05% 0.0129 17.38);
 
   /* Controls */
-  --control-bg: #ffffff;
-  --control-border: rgba(15, 23, 42, 0.16);
-  --control-focus: #ff7605;
+  --control-bg: oklch(100% 0 0);
+  --control-border: oklch(20.77% 0.0398 265.75 / 16%);
+  --control-focus: oklch(71.74% 0.192 48.75);
 
   /* Badge variants */
-  --badge-dns-bg: #eff6ff;
-  --badge-dns-text: #1d4ed8;
-  --badge-ip-bg: #f0fdf4;
-  --badge-ip-text: #15803d;
-  --badge-cidr-bg: #fff7ed;
-  --badge-cidr-text: #c25700;
-  --badge-device-pool-bg: #f0fdfa;
-  --badge-device-pool-text: #0f766e;
+  --badge-dns-bg: oklch(97.05% 0.0142 254.6);
+  --badge-dns-text: oklch(48.82% 0.2172 264.38);
+  --badge-ip-bg: oklch(98.19% 0.0181 155.83);
+  --badge-ip-text: oklch(52.73% 0.1371 150.07);
+  --badge-cidr-bg: oklch(97.96% 0.0158 73.68);
+  --badge-cidr-text: oklch(58.23% 0.1574 48.48);
+  --badge-device-pool-bg: oklch(98.36% 0.0142 180.72);
+  --badge-device-pool-text: oklch(51.09% 0.0861 186.39);
 
   /* Icons */
-  --icon-bg: #f8fafc;
+  --icon-bg: oklch(98.42% 0.0034 247.86);
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -181,36 +255,52 @@ html[data-theme="system"] .theme-check-system {
 }
 
 .dark {
-  --canvas: #080c14;
-  --surface: #0f1623;
-  --surface-raised: #172032;
-  --surface-overlay: #1e2a3f;
-  --border: rgba(241, 245, 249, 0.07);
-  --border-strong: rgba(241, 245, 249, 0.12);
-  --border-emphasis: rgba(241, 245, 249, 0.22);
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #4e637a;
-  --text-muted: #2d3f52;
-  --text-inverse: #0f172a;
-  --brand: #ff9a47;
-  --brand-secondary: rgba(255, 118, 5, 0.6);
-  --brand-tertiary: rgba(255, 118, 5, 0.3);
-  --brand-muted: rgba(255, 118, 5, 0.12);
-  --brand-hover: #ffb46a;
-  --status-active-bg: rgba(74, 222, 128, 0.1);
-  --status-warn-bg: rgba(251, 191, 36, 0.1);
-  --status-info: #60a5fa;
-  --status-info-bg: rgba(96, 165, 250, 0.1);
-  --status-error: #f87171;
-  --status-error-bg: rgba(248, 113, 113, 0.1);
-  --status-neutral-bg: rgba(100, 116, 139, 0.16);
-  --toast-bg-success: #162b22;
-  --toast-bg-info: #132040;
-  --toast-bg-warn: #2c1e0e;
-  --toast-bg-error: #2c1010;
-  --control-bg: #172032;
-  --control-border: rgba(241, 245, 249, 0.12);
-  --control-focus: #ff9a47;
-  --icon-bg: #e2e8f0;
+  /* Surfaces */
+  --canvas: oklch(15.42% 0.0185 263.23);
+  --surface: oklch(20.01% 0.0284 262.33);
+  --surface-raised: oklch(24.42% 0.037 263.53);
+  --surface-overlay: oklch(28.45% 0.0423 261.22);
+
+  /* Borders */
+  --border: oklch(96.83% 0.0069 247.9 / 7%);
+  --border-strong: oklch(96.83% 0.0069 247.9 / 12%);
+  --border-emphasis: oklch(96.83% 0.0069 247.9 / 22%);
+
+  /* Text */
+  --text-primary: oklch(96.83% 0.0069 247.9);
+  --text-secondary: oklch(71.07% 0.0351 256.79);
+  --text-tertiary: oklch(49.17% 0.045 251.05);
+  --text-muted: oklch(36.07% 0.0404 250.33);
+  --text-inverse: oklch(20.77% 0.0398 265.75);
+
+  /* Brand */
+  --brand: oklch(77.69% 0.154 56.87);
+  --brand-secondary: oklch(71.74% 0.192 48.75 / 60%);
+  --brand-tertiary: oklch(71.74% 0.192 48.75 / 30%);
+  --brand-muted: oklch(71.74% 0.192 48.75 / 12%);
+  --brand-hover: oklch(82.64% 0.1259 64.15);
+
+  /* Status */
+  --success-light: oklch(80.03% 0.1821 151.71 / 10%);
+  --info: oklch(71.37% 0.1434 254.62);
+  --info-light: oklch(71.37% 0.1434 254.62 / 10%);
+  --warning-light: oklch(83.69% 0.1644 84.43 / 10%);
+  --neutral-status-light: oklch(55.44% 0.0407 257.42 / 16%);
+  --danger-light: oklch(57.71% 0.2152 27.33 / 12%);
+  --error: oklch(71.06% 0.1661 22.22);
+  --error-light: oklch(71.06% 0.1661 22.22 / 10%);
+
+  /* Toast backgrounds (opaque — used when flash floats over page content) */
+  --toast-bg-success: oklch(26.81% 0.0322 164.96);
+  --toast-bg-info: oklch(25.11% 0.0633 265.46);
+  --toast-bg-warn: oklch(24.81% 0.0346 68.78);
+  --toast-bg-error: oklch(21.69% 0.0465 21.67);
+
+  /* Controls */
+  --control-bg: oklch(24.42% 0.037 263.53);
+  --control-border: oklch(96.83% 0.0069 247.9 / 12%);
+  --control-focus: oklch(77.69% 0.154 56.87);
+
+  /* Icons */
+  --icon-bg: oklch(92.88% 0.0126 255.51);
 }
