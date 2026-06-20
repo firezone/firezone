@@ -537,7 +537,23 @@ async fn phoenix_channel_event_loop(
 
     let hiccups = otel_instruments::portal_connection_hiccups();
 
+    // Last capabilities we successfully advertised. `None` forces a (re-)send,
+    // e.g. on first connect or after the feature flag flips mid-session.
+    let mut advertised_capabilities: Option<SnownetCapabilities> = None;
+
     loop {
+        let local_capabilities = SnownetCapabilities::local();
+        if advertised_capabilities != Some(local_capabilities)
+            && portal
+                .send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::SetSnownetCapabilities(local_capabilities),
+                )
+                .is_ok()
+        {
+            advertised_capabilities = Some(local_capabilities);
+        }
+
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
                 if event_tx.send(Ok(msg)).await.is_err() {
@@ -569,12 +585,9 @@ async fn phoenix_channel_event_loop(
                 portal.connect(ips, backoff, public_key.clone());
             }
             Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
-                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
-                ) {
-                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
-                }
+                // The reconnected channel has lost our capabilities; re-advertise
+                // on the next loop iteration.
+                advertised_capabilities = None;
             }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.

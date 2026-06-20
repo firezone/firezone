@@ -22,7 +22,6 @@ use std::{
     fmt, iter,
     net::{IpAddr, SocketAddr},
 };
-use telemetry::feature_flags;
 
 /// The reference state machine of the tunnel.
 ///
@@ -1327,10 +1326,6 @@ impl ReferenceState {
     /// would soft-reset (no `ConnectionClosed`, no site-status drop)
     /// instead of hard-resetting.
     fn all_iceless(&self, client_id: &ClientId) -> bool {
-        if !feature_flags::iceless() {
-            return false;
-        }
-
         let Some(client) = self.clients.get(client_id) else {
             return false;
         };

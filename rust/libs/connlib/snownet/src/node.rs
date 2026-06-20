@@ -275,10 +275,10 @@ where
     /// If we already have a connection with the same parameters, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
     ///
-    /// `capabilities` carries the negotiated capability flags from the
-    /// portal. When `capabilities.iceless` is set *and* the local PostHog
-    /// `iceless` flag is on, the new connection dispatches via the `Path`
-    /// variant of `Agent` instead of the classic ICE agent variant.
+    /// `capabilities` carries the capability flags the portal already
+    /// intersected across both peers. When `capabilities.iceless` is set,
+    /// the new connection dispatches via the `Path` variant of `Agent`
+    /// instead of the classic ICE agent variant.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[allow(clippy::too_many_arguments)]
     pub fn upsert_connection(
@@ -296,13 +296,13 @@ where
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
-        let want_iceless = capabilities.iceless && telemetry::feature_flags::iceless();
+        let want_iceless = capabilities.iceless;
 
         // Check if we already have a connection with the exact same parameters.
         // In order for the connection to be same, we need to compare:
         // - The agent's negotiation parameters (ICE creds + role for Ice mode;
         //   for iceless mode, only the mode itself — it always rebuilds creds)
-        // - Desired agent mode (ICE vs iceless), so a flag flip forces replace
+        // - Desired agent mode (ICE vs iceless), so a capability change forces replace
         // - Remote public key
         // - Preshared key
         //
