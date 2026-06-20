@@ -46,15 +46,25 @@ fn init_client() -> reqwest::Result<reqwest::Client> {
         .unwrap_or_default()
         .collect::<Vec<_>>();
 
-    tracing::debug!(host = %INGEST_HOST, addresses = ?ingest_host_addresses, "Resolved PostHog ingest host addresses");
-
-    reqwest::ClientBuilder::new()
+    let mut builder = reqwest::ClientBuilder::new()
         .connection_verbose(true)
         .pool_idle_timeout(None) // Never remove idle connections.
         .pool_max_idle_per_host(1)
         .http2_prior_knowledge() // We know PostHog supports HTTP/2.
         .http2_keep_alive_timeout(Duration::from_secs(1))
-        .http2_keep_alive_interval(Duration::from_secs(5)) // Use keep-alive to detect broken connections.
-        .resolve_to_addrs(INGEST_HOST, &ingest_host_addresses)
-        .build()
+        .http2_keep_alive_interval(Duration::from_secs(5)); // Use keep-alive to detect broken connections.
+
+    // Only pin the pre-resolved addresses if we actually got any. Passing an
+    // empty set to `resolve_to_addrs` overrides DNS with nothing, permanently
+    // breaking every request for the lifetime of the client. When resolution
+    // fails (e.g. no system DNS yet at start-up), fall back to the default
+    // resolver instead so later requests can still succeed.
+    if ingest_host_addresses.is_empty() {
+        tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host; falling back to the system resolver");
+    } else {
+        tracing::debug!(host = %INGEST_HOST, addresses = ?ingest_host_addresses, "Resolved PostHog ingest host addresses");
+        builder = builder.resolve_to_addrs(INGEST_HOST, &ingest_host_addresses);
+    }
+
+    builder.build()
 }
