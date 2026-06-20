@@ -171,8 +171,12 @@ async fn decide(
 ) -> Result<(FeatureFlagsResponse, FeatureFlagPayloadsResponse)> {
     let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
-    let response = posthog::CLIENT
-        .as_ref()?
+    let client = tokio::task::spawn_blocking(posthog::build_client)
+        .await
+        .context("Failed to join PostHog client build task")?
+        .context("Failed to build PostHog client")?;
+
+    let response = client
         .post(format!("https://{}/decide?v=3", posthog::INGEST_HOST))
         .json(&DecideRequest {
             api_key,

@@ -8,7 +8,7 @@ pub(crate) const API_KEY_STAGING: &str = "phc_tHOVtq183RpfKmzadJb4bxNpLM5jzeeb1G
 pub(crate) const API_KEY_ON_PREM: &str = "phc_4R9Ii6q4SEofVkH7LvajwuJ3nsGFhCj0ZlfysS2FNc";
 
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
-pub(crate) static CLIENT: LazyLock<reqwest::Result<reqwest::Client>> = LazyLock::new(init_client);
+pub(crate) static CLIENT: LazyLock<reqwest::Result<reqwest::Client>> = LazyLock::new(build_client);
 
 pub(crate) const INGEST_HOST: &str = "posthog.firezone.dev";
 
@@ -36,8 +36,9 @@ fn init_runtime() -> Runtime {
     runtime
 }
 
-/// Initialize the client to use for evaluating feature flags.
-fn init_client() -> reqwest::Result<reqwest::Client> {
+/// Builds an HTTP client for the PostHog ingest host, resolving its addresses
+/// fresh so DNS record changes are picked up between evaluations.
+pub(crate) fn build_client() -> reqwest::Result<reqwest::Client> {
     let ingest_host_addresses = (INGEST_HOST, 443u16)
         .to_socket_addrs()
         .inspect_err(|e| {
@@ -45,6 +46,8 @@ fn init_client() -> reqwest::Result<reqwest::Client> {
         })
         .unwrap_or_default()
         .collect::<Vec<_>>();
+
+    tracing::debug!(host = %INGEST_HOST, addresses = ?ingest_host_addresses, "Resolved PostHog ingest host");
 
     let mut builder = reqwest::ClientBuilder::new()
         .connection_verbose(true)
@@ -54,15 +57,8 @@ fn init_client() -> reqwest::Result<reqwest::Client> {
         .http2_keep_alive_timeout(Duration::from_secs(1))
         .http2_keep_alive_interval(Duration::from_secs(5)); // Use keep-alive to detect broken connections.
 
-    // Only pin the pre-resolved addresses if we actually got any. Passing an
-    // empty set to `resolve_to_addrs` overrides DNS with nothing, permanently
-    // breaking every request for the lifetime of the client. When resolution
-    // fails (e.g. no system DNS yet at start-up), fall back to the default
-    // resolver instead so later requests can still succeed.
-    if ingest_host_addresses.is_empty() {
-        tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host; falling back to the system resolver");
-    } else {
-        tracing::debug!(host = %INGEST_HOST, addresses = ?ingest_host_addresses, "Resolved PostHog ingest host addresses");
+    // An empty set would override DNS with nothing; fall back to the default resolver.
+    if !ingest_host_addresses.is_empty() {
         builder = builder.resolve_to_addrs(INGEST_HOST, &ingest_host_addresses);
     }
 
