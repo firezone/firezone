@@ -17,17 +17,34 @@ use std::time::Instant;
 #[derive(Debug)]
 pub struct Rejected;
 
+/// Outcome of a validator call that did not reject the bytes.
+#[derive(Debug)]
+pub enum Accepted {
+    /// The noise session advanced. Any bytes reported via `on_outbound`
+    /// are the `HandshakeResponse` and/or data packets the implementation
+    /// had buffered while handshake-pending; `PathAgent` commits its
+    /// session / path state and routes them.
+    Session,
+    /// The bytes only passed a MAC1 check and the implementation answered
+    /// with a cookie reply because it is under load. The sender's address
+    /// is unauthenticated, so `PathAgent` commits no state; it returns the
+    /// cookie reported via `on_outbound` to the sender on the receive path
+    /// so a legitimate peer can retry with a valid MAC2.
+    Cookie,
+}
+
 /// Validates inbound WG handshake bytes. Outbound packets the
 /// implementation produces during validation (typically the
-/// `HandshakeResponse` when accepting an `Init`, or any data packets
-/// the responder buffered while handshake-pending) are reported via
-/// `on_outbound`. Returns `Err(Rejected)` to abort the call without
-/// any path-agent state mutation.
+/// `HandshakeResponse` when accepting an `Init`, any data packets the
+/// responder buffered while handshake-pending, or a cookie reply under
+/// load) are reported via `on_outbound`. Returns `Err(Rejected)` to abort
+/// the call without any path-agent state mutation; see [`Accepted`] for
+/// how the success variants are routed.
 pub trait HandshakeValidator {
     fn validate(
         &mut self,
         bytes: &[u8],
         now: Instant,
         on_outbound: &mut dyn FnMut(Vec<u8>),
-    ) -> Result<(), Rejected>;
+    ) -> Result<Accepted, Rejected>;
 }

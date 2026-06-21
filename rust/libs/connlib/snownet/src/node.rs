@@ -1900,6 +1900,7 @@ where
         let mut validator = BoringtunValidator {
             tunnel: &mut self.tunnel,
             buf: self.buffer.as_mut(),
+            src_ip: from.ip(),
         };
         let packet = match self.agent.handle_inbound_network(
             &mut validator,
@@ -2340,6 +2341,10 @@ fn new_agent(role: IceRole) -> IceAgent {
 struct BoringtunValidator<'a> {
     tunnel: &'a mut Tunn,
     buf: &'a mut [u8],
+    /// Source IP of the datagram under validation. boringtun's
+    /// rate-limiter binds an under-load cookie to it, so a legitimate
+    /// peer can prove address ownership by echoing the cookie in a MAC2.
+    src_ip: IpAddr,
 }
 
 impl path_agent::HandshakeValidator for BoringtunValidator<'_> {
@@ -2348,17 +2353,32 @@ impl path_agent::HandshakeValidator for BoringtunValidator<'_> {
         bytes: &[u8],
         now: Instant,
         on_outbound: &mut dyn FnMut(Vec<u8>),
-    ) -> Result<(), path_agent::Rejected> {
-        match self.tunnel.decapsulate_at(None, bytes, self.buf, now) {
-            TunnResult::Done => Ok(()),
+    ) -> Result<path_agent::Accepted, path_agent::Rejected> {
+        match self
+            .tunnel
+            .decapsulate_at(Some(self.src_ip), bytes, self.buf, now)
+        {
+            TunnResult::Done => Ok(path_agent::Accepted::Session),
             TunnResult::WriteToNetwork(first) => {
+                // When the node is under load, boringtun answers a
+                // handshake whose only verified field is MAC1 with a
+                // cookie reply rather than processing it. MAC1 is keyed
+                // by our (public) static key, so the sender's address is
+                // unauthenticated and must not be adopted as a path.
+                // Return the cookie so a legitimate peer can retry with a
+                // MAC2, but report it as such.
+                if let Ok(Packet::PacketCookieReply(_)) = Tunn::parse_incoming_packet(first) {
+                    on_outbound(first.to_vec());
+                    return Ok(path_agent::Accepted::Cookie);
+                }
+
                 on_outbound(first.to_vec());
                 while let TunnResult::WriteToNetwork(more) =
                     self.tunnel.decapsulate_at(None, &[], self.buf, now)
                 {
                     on_outbound(more.to_vec());
                 }
-                Ok(())
+                Ok(path_agent::Accepted::Session)
             }
             TunnResult::Err(e) => {
                 tracing::debug!(error = ?e, "Handshake rejected by boringtun");

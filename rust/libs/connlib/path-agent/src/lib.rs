@@ -12,4 +12,4 @@ pub use agent::{EVALUATION_WINDOW, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_TI
 pub use candidate::{Candidate, CandidateKind};
 pub use event::{Event, Payload, Transmit};
 pub use icmpv6::{PROBE_DST, PROBE_SRC};
-pub use validator::{HandshakeValidator, Rejected};
+pub use validator::{Accepted, HandshakeValidator, Rejected};

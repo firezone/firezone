@@ -507,12 +507,17 @@ impl PathAgent {
                 }
 
                 let mut outbound = Vec::<Vec<u8>>::new();
-                if validator
-                    .validate(bytes, now, &mut |b| outbound.push(b))
-                    .is_err()
-                {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit rejected by validator");
-                    return ControlFlow::Break(());
+                match validator.validate(bytes, now, &mut |b| outbound.push(b)) {
+                    Err(crate::Rejected) => {
+                        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit rejected by validator");
+                        return ControlFlow::Break(());
+                    }
+                    Ok(crate::Accepted::Cookie) => {
+                        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit answered with cookie reply under load");
+                        self.send_on_path(outbound, path);
+                        return ControlFlow::Break(());
+                    }
+                    Ok(crate::Accepted::Session) => {}
                 }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
@@ -542,12 +547,17 @@ impl PathAgent {
                 }
 
                 let mut outbound = Vec::<Vec<u8>>::new();
-                if validator
-                    .validate(bytes, now, &mut |b| outbound.push(b))
-                    .is_err()
-                {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse rejected by validator");
-                    return ControlFlow::Break(());
+                match validator.validate(bytes, now, &mut |b| outbound.push(b)) {
+                    Err(crate::Rejected) => {
+                        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse rejected by validator");
+                        return ControlFlow::Break(());
+                    }
+                    Ok(crate::Accepted::Cookie) => {
+                        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse answered with cookie reply under load");
+                        self.send_on_path(outbound, path);
+                        return ControlFlow::Break(());
+                    }
+                    Ok(crate::Accepted::Session) => {}
                 }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
@@ -568,6 +578,19 @@ impl PathAgent {
                 ControlFlow::Break(())
             }
             Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(bytes),
+        }
+    }
+
+    /// Queue `packets` to go out on `path`'s send side. Used for cookie
+    /// replies, which must reach the sender on the receive path without
+    /// adopting that path or touching any session state.
+    fn send_on_path(&mut self, packets: Vec<Vec<u8>>, path: (SocketAddr, SocketAddr)) {
+        for bytes in packets {
+            self.pending_transmits.push_back(Transmit {
+                local: path.0,
+                remote: path.1,
+                payload: Payload::Ciphertext(bytes),
+            });
         }
     }
 

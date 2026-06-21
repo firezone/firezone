@@ -19,8 +19,10 @@ struct StubValidator {
     outbound: std::collections::VecDeque<Vec<u8>>,
     /// `true` makes every call reject.
     reject: bool,
-    /// Bytes passed to each accepted call, in order — mirrors what
-    /// the previous architecture's `Event::ForwardHandshake` did.
+    /// `true` makes every accepted call report a cookie reply instead of
+    /// advancing a session.
+    cookie: bool,
+    /// Bytes passed to each accepted call, in order.
     seen: Vec<Vec<u8>>,
 }
 
@@ -30,7 +32,7 @@ impl HandshakeValidator for StubValidator {
         bytes: &[u8],
         _now: Instant,
         on_outbound: &mut dyn FnMut(Vec<u8>),
-    ) -> Result<(), path_agent::Rejected> {
+    ) -> Result<path_agent::Accepted, path_agent::Rejected> {
         if self.reject {
             return Err(path_agent::Rejected);
         }
@@ -38,7 +40,10 @@ impl HandshakeValidator for StubValidator {
         if let Some(b) = self.outbound.pop_front() {
             on_outbound(b);
         }
-        Ok(())
+        if self.cookie {
+            return Ok(path_agent::Accepted::Cookie);
+        }
+        Ok(path_agent::Accepted::Session)
     }
 }
 
@@ -296,6 +301,51 @@ fn inbound_handshake_response_validates_then_adopts_primary() {
         }
         other => panic!("expected PrimaryChanged, got {other:?}"),
     }
+}
+
+#[test]
+fn cookie_reply_returns_on_recv_path_without_adopting_primary() {
+    // Under load, boringtun answers a MAC1-only-verified handshake with a
+    // cookie reply. The sender's address is unauthenticated, so it must
+    // not become the primary path; the cookie still goes back so a real
+    // peer can retry with a MAC2.
+    let mut a = agent_with_relay_pairs();
+    let mut v = StubValidator {
+        cookie: true,
+        outbound: std::collections::VecDeque::from([cookie_reply_bytes()]),
+        ..Default::default()
+    };
+    let now = Instant::now();
+
+    assert!(
+        a.handle_inbound_network(&mut v, &handshake_init_bytes(), (addr(2), addr(4)), now)
+            .is_break()
+    );
+
+    assert!(
+        a.primary().is_none(),
+        "a cookie reply must not adopt a path"
+    );
+    assert!(a.poll_event().is_none());
+
+    match a.poll_transmit() {
+        Some(Transmit {
+            local,
+            remote,
+            payload: Payload::Ciphertext(bytes),
+        }) => {
+            assert_eq!((local, remote), (addr(2), addr(4)));
+            assert_eq!(bytes, cookie_reply_bytes());
+        }
+        other => panic!("expected cookie reply transmit, got {other:?}"),
+    }
+    assert!(a.poll_transmit().is_none());
+
+    // The cookie left no dedup residue, so a subsequent legitimate init
+    // with the same bytes is still validated.
+    let mut v2 = accept_all();
+    let _ = a.handle_inbound_network(&mut v2, &handshake_init_bytes(), (addr(2), addr(4)), now);
+    assert_eq!(v2.seen, vec![handshake_init_bytes()]);
 }
 
 #[test]
@@ -1852,6 +1902,12 @@ fn handshake_response_bytes() -> Vec<u8> {
 fn data_packet_bytes() -> Vec<u8> {
     let mut bytes = vec![0u8; 32];
     bytes[0] = 4;
+    bytes
+}
+
+fn cookie_reply_bytes() -> Vec<u8> {
+    let mut bytes = vec![0u8; 64];
+    bytes[0] = 3;
     bytes
 }
 
