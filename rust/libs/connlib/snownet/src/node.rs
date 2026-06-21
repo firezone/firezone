@@ -56,6 +56,15 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
+/// How long an iceless connection may stay in `Connecting` before we
+/// fail it. Unlike ICE, iceless has no nomination timeout, and boringtun's
+/// own timers don't advance until a peer socket is selected, so without
+/// this a connection whose handshake never completes (peer down, relay
+/// blackhole) would hang forever instead of surfacing a failure. Aligned
+/// with [`WG_REKEY_ATTEMPT_TIME`] so it never trips a slow-but-succeeding
+/// relay handshake.
+const ICELESS_CONNECT_TIMEOUT: Duration = WG_REKEY_ATTEMPT_TIME;
+
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -1398,6 +1407,10 @@ where
                 self.disconnect_timeout()
                     .map(|instant| (instant, "disconnect timeout")),
             )
+            .chain(
+                self.iceless_bootstrap_deadline()
+                    .map(|instant| (instant, "iceless bootstrap timeout")),
+            )
             .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant);
 
@@ -1408,6 +1421,16 @@ where
         let disconnected_at = self.disconnected_at?;
 
         Some(disconnected_at + DISCONNECT_TIMEOUT)
+    }
+
+    /// Deadline by which an iceless connection must leave `Connecting`.
+    /// `None` for ICE connections and for connections already past
+    /// `Connecting`, neither of which rely on this backstop.
+    fn iceless_bootstrap_deadline(&self) -> Option<Instant> {
+        let connecting = matches!(self.state, ConnectionState::Connecting { .. });
+
+        (self.agent.is_iceless() && connecting)
+            .then(|| self.intent_sent_at + ICELESS_CONNECT_TIMEOUT)
     }
 
     fn handle_timeout<TId>(
@@ -1443,6 +1466,15 @@ where
             .is_some_and(|timeout| now >= timeout)
         {
             tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
+            self.state = ConnectionState::Failed;
+            return;
+        }
+
+        if self
+            .iceless_bootstrap_deadline()
+            .is_some_and(|deadline| now >= deadline)
+        {
+            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (iceless bootstrap timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -2396,6 +2428,100 @@ mod tests {
         IceConfig::client_default().apply(&mut agent);
 
         assert!(agent.ice_timeout() < WG_REKEY_ATTEMPT_TIME)
+    }
+
+    #[test]
+    fn iceless_connection_stuck_in_connecting_eventually_fails() {
+        let now = Instant::now();
+        let mut conn = connecting_connection(true, now);
+
+        drive_timeout(
+            &mut conn,
+            now + ICELESS_CONNECT_TIMEOUT - Duration::from_secs(1),
+        );
+        assert!(
+            matches!(conn.state, ConnectionState::Connecting { .. }),
+            "must not fail before the bootstrap deadline"
+        );
+
+        drive_timeout(
+            &mut conn,
+            now + ICELESS_CONNECT_TIMEOUT + Duration::from_secs(1),
+        );
+        assert!(
+            matches!(conn.state, ConnectionState::Failed),
+            "must fail once the bootstrap deadline elapses"
+        );
+    }
+
+    #[test]
+    fn ice_connection_in_connecting_ignores_iceless_bootstrap_timeout() {
+        let now = Instant::now();
+        let mut conn = connecting_connection(false, now);
+
+        drive_timeout(
+            &mut conn,
+            now + ICELESS_CONNECT_TIMEOUT + Duration::from_secs(1),
+        );
+
+        assert!(matches!(conn.state, ConnectionState::Connecting { .. }));
+    }
+
+    fn drive_timeout(conn: &mut Connection<u32>, now: Instant) {
+        // Populates the poll-timeout cache so `handle_timeout` doesn't
+        // early-return; the value itself is irrelevant to the test.
+        let _ = conn.poll_timeout();
+        conn.handle_timeout(
+            0u32,
+            now,
+            &mut Allocations::default(),
+            &mut VecDeque::default(),
+            &mut InflightStunRequests::default(),
+        );
+    }
+
+    fn connecting_connection(iceless: bool, now: Instant) -> Connection<u32> {
+        let agent = if iceless {
+            Agent::path()
+        } else {
+            Agent::ice(IceAgent::new(is::IceCreds::new()))
+        };
+        let index = Index::new_local(0);
+
+        Connection {
+            agent,
+            index,
+            tunnel: Tunn::new_at(
+                StaticSecret::random_from_rng(&mut rand::rng()),
+                PublicKey::from(rand::random::<[u8; 32]>()),
+                None,
+                None,
+                index,
+                None,
+                0,
+                now,
+                now,
+                Duration::ZERO,
+            ),
+            remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
+            next_wg_timer_update: now,
+            last_proactive_handshake_sent_at: None,
+            relay: SelectedRelay { id: 0 },
+            state: ConnectionState::Connecting {
+                wg_buffer: AllocRingBuffer::new(1),
+                ip_buffer: AllocRingBuffer::new(1),
+            },
+            disconnected_at: None,
+            stats: Default::default(),
+            intent_sent_at: now,
+            candidate_timeout: None,
+            first_handshake_completed_at: None,
+            buffer: Default::default(),
+            buffer_pool: BufferPool::new(0, "test"),
+            default_ice_config: IceConfig::client_default(),
+            idle_ice_config: IceConfig::client_idle(),
+            poll_timeout_cache: Default::default(),
+        }
     }
 
     #[test]
