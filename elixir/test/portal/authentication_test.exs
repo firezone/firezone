@@ -632,7 +632,7 @@ defmodule Portal.AuthenticationTest do
       assert passcode.account_id == account.id
       assert passcode.actor_id == actor.id
       assert passcode.code != nil
-      assert String.length(passcode.code) == 5
+      assert String.length(passcode.code) == 6
       assert passcode.code_hash != nil
       assert passcode.expires_at != nil
     end
