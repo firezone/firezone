@@ -137,7 +137,13 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp finish_resolved_identity(
-         %{conn: conn, context_type: context_type, account: account, provider: provider, params: params},
+         %{
+           conn: conn,
+           context_type: context_type,
+           account: account,
+           provider: provider,
+           params: params
+         },
          {:identity, identity},
          tokens
        ) do
@@ -151,7 +157,13 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp finish_resolved_identity(
-         %{conn: conn, context_type: context_type, account: account, provider: provider, params: params},
+         %{
+           conn: conn,
+           context_type: context_type,
+           account: account,
+           provider: provider,
+           params: params
+         },
          {:proof_required, actor, identity_profile},
          _tokens
        ) do
@@ -325,7 +337,8 @@ defmodule PortalWeb.OIDCController do
            identity_profile.idp_id
          ) do
       {:ok, identity} ->
-        with {:ok, identity} <- Database.update_identity_profile(identity, identity_profile.profile_attrs) do
+        with {:ok, identity} <-
+               Database.update_identity_profile(identity, identity_profile.profile_attrs) do
           {:ok, {:identity, identity}}
         end
 
@@ -349,8 +362,12 @@ defmodule PortalWeb.OIDCController do
   defp email_verification_method(_provider), do: :none
 
   defp enforce_verified_email(%IdentityProfile{email_verified: :verified}), do: :ok
-  defp enforce_verified_email(%IdentityProfile{email_verified: :unverified}), do: {:error, :email_not_verified}
-  defp enforce_verified_email(%IdentityProfile{email_verified: :missing}), do: {:error, :email_verified_missing}
+
+  defp enforce_verified_email(%IdentityProfile{email_verified: :unverified}),
+    do: {:error, :email_not_verified}
+
+  defp enforce_verified_email(%IdentityProfile{email_verified: :missing}),
+    do: {:error, :email_verified_missing}
 
   defp start_owner_verification(conn, account, provider, actor, identity_profile, params) do
     pending_identity_id = Ecto.UUID.generate()
@@ -474,25 +491,25 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp load_pending_identity_context(conn, params) do
-    case Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]) do
-      %Cookie.PendingIdentity{} = cookie ->
-        account = Database.get_account_by_id_or_slug!(params["account_id_or_slug"])
-        provider = Database.get_provider!(account.id, "oidc", params["auth_provider_id"])
-        sign_in_params = sanitize(cookie.params)
-        conn = put_pending_identity_error_context(conn, account, provider.id, sign_in_params)
+    with %Cookie.PendingIdentity{} = cookie <-
+           Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]),
+         {:ok, account} <- Database.fetch_account_by_id_or_slug(params["account_id_or_slug"]),
+         {:ok, provider} <-
+           Database.fetch_provider(account.id, "oidc", params["auth_provider_id"]) do
+      sign_in_params = sanitize(cookie.params)
+      conn = put_pending_identity_error_context(conn, account, provider.id, sign_in_params)
 
-        {:ok,
-         %{
-           conn: conn,
-           pending_identity_id: cookie.pending_identity_id,
-           account: account,
-           provider: provider,
-           params: sign_in_params,
-           context_type: context_type(sign_in_params)
-         }}
-
-      nil ->
-        {:error, :pending_identity_state_not_found}
+      {:ok,
+       %{
+         conn: conn,
+         pending_identity_id: cookie.pending_identity_id,
+         account: account,
+         provider: provider,
+         params: sign_in_params,
+         context_type: context_type(sign_in_params)
+       }}
+    else
+      _ -> {:error, :pending_identity_state_not_found}
     end
   end
 
@@ -863,7 +880,11 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
-  defp verify_oidc_callback({:ok, %{config: config, verifier: verifier} = pending}, code, lv_pid_string) do
+  defp verify_oidc_callback(
+         {:ok, %{config: config, verifier: verifier} = pending},
+         code,
+         lv_pid_string
+       ) do
     with {:ok, claims, userinfo_result} <- PortalWeb.OIDC.verify_callback(config, code, verifier),
          :ok <- verify_email_verified_claim(pending, claims, userinfo_result) do
       %{
@@ -1099,6 +1120,21 @@ defmodule PortalWeb.OIDCController do
       query |> Safe.unscoped(:replica) |> Safe.one!()
     end
 
+    def fetch_account_by_id_or_slug(id_or_slug) do
+      query =
+        if Portal.Repo.valid_uuid?(id_or_slug),
+          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
+          else: from(a in Account, where: a.slug == ^id_or_slug)
+
+      query
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
+      |> case do
+        nil -> {:error, :not_found}
+        account -> {:ok, account}
+      end
+    end
+
     def get_provider!(account_id, type, id) do
       schema = AuthProvider.module!(type)
 
@@ -1107,6 +1143,20 @@ defmodule PortalWeb.OIDCController do
       )
       |> Safe.unscoped(:replica)
       |> Safe.one!()
+    end
+
+    def fetch_provider(account_id, type, id) do
+      schema = AuthProvider.module!(type)
+
+      from(p in schema,
+        where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
+      |> case do
+        nil -> {:error, :not_found}
+        provider -> {:ok, provider}
+      end
     end
 
     def fetch_active_identity_by_idp(account_id, issuer, idp_id) do
@@ -1221,7 +1271,11 @@ defmodule PortalWeb.OIDCController do
         ) do
       Safe.transact(fn ->
         with {:ok, pending_identity} <-
-               fetch_pending_identity_for_update(account_id, pending_identity_id, auth_provider_id),
+               fetch_pending_identity_for_update(
+                 account_id,
+                 pending_identity_id,
+                 auth_provider_id
+               ),
              {:ok, passcode} <- fetch_pending_passcode_for_update(pending_identity),
              :ok <- verify_pending_identity_code(entered_code, passcode),
              pending_identity_ids <- fetch_related_pending_identity_ids(pending_identity),
