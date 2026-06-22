@@ -143,12 +143,13 @@ defmodule Portal.Authentication do
   end
 
   def verify_one_time_passcode(account_id, actor_id, passcode_id, entered_code) do
-    case Database.fetch_one_time_passcode(account_id, actor_id, passcode_id) do
+    case Database.consume_one_time_passcode_attempt(account_id, actor_id, passcode_id) do
       {:ok, passcode} ->
         if Portal.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
           :ok = Database.delete_one_time_passcode(passcode)
           {:ok, passcode}
         else
+          :ok = Database.delete_exhausted_one_time_passcode(passcode)
           {:error, :invalid_code}
         end
 
@@ -582,22 +583,24 @@ defmodule Portal.Authentication do
       |> Safe.insert()
     end
 
-    def fetch_one_time_passcode(account_id, actor_id, id) do
+    def consume_one_time_passcode_attempt(account_id, actor_id, id) do
       from(otp in OneTimePasscode,
         join: a in assoc(otp, :actor),
         where: otp.account_id == ^account_id,
         where: otp.actor_id == ^actor_id,
         where: otp.id == ^id,
         where: otp.expires_at > ^DateTime.utc_now(),
+        where: otp.attempts < ^OneTimePasscode.max_attempts(),
         where: is_nil(a.disabled_at),
         where: a.allow_email_otp_sign_in == true,
-        preload: [actor: a]
+        update: [inc: [attempts: 1]],
+        select: otp
       )
-      |> Safe.unscoped(:replica)
-      |> Safe.one()
+      |> Safe.unscoped()
+      |> Safe.update_all([])
       |> case do
-        nil -> {:error, :not_found}
-        otp -> {:ok, otp}
+        {1, [passcode]} -> {:ok, Safe.preload(passcode, :actor)}
+        {0, _} -> {:error, :not_found}
       end
     end
 
@@ -610,6 +613,14 @@ defmodule Portal.Authentication do
       |> Safe.delete_all()
 
       :ok
+    end
+
+    def delete_exhausted_one_time_passcode(%OneTimePasscode{} = passcode) do
+      if passcode.attempts >= OneTimePasscode.max_attempts() do
+        delete_one_time_passcode(passcode)
+      else
+        :ok
+      end
     end
 
     def delete_one_time_passcode(passcode) do
