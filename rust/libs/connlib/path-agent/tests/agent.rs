@@ -595,41 +595,48 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
 
 #[test]
 fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
-    // Setup: only "Relayed-tier" pairs exist, and they split into our
-    // relay vs. their relay.  We expect the locally-relayed one to win
-    // even when both reply at identical RTT.
+    // Within the Relayed tier, prefer the locally-relayed pair so a
+    // relay rotation stays a local-only concern (no invalidated
+    // remote candidate to signal back to the peer).
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::host(addr(1)));
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
     a.add_remote_candidate(Candidate::host(addr(3)));
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
     let now = Instant::now();
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
+
+    // Bootstrap on the remote-relay pair (LocalHost → RemoteRelay) so
+    // the incumbent sits in the worse `RelayEnd::Remote` bucket.
+    let remote_relay_pair = (addr(1), addr(4));
+    bootstrap_primary(&mut a, remote_relay_pair, now);
 
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
 
-    // Reply on the *remote-relay* pair first (LocalHost → RemoteRelay).
-    let remote_relay_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
+    // Give the incumbent an RTT measurement so the local-relay
+    // challenger can't sneak past on the no-RTT-incumbent path.
+    let remote_relay_probe = extract_probe_for(&outbound, remote_relay_pair);
     let _ = a.handle_inbound_tun(
         build_echo_reply(remote_relay_probe.id, remote_relay_probe.seq),
-        (addr(1), addr(4)),
+        remote_relay_pair,
         now + Duration::from_millis(50),
     );
-    assert_eq!(a.primary(), Some((addr(1), addr(4))));
-
-    // Now reply on the *local-relay* pair (LocalRelay → RemoteHost) at
-    // an identical RTT — the local-relay tie-break should swap primary.
+    assert_eq!(a.primary(), Some(remote_relay_pair));
     while a.poll_event().is_some() {}
-    let local_relay_probe = extract_probe_for(&outbound, (addr(2), addr(3)));
+
+    // Reply on the local-relay pair at identical RTT — the
+    // `RelayEnd::Local < RelayEnd::Remote` discrete win should swap
+    // primary regardless of RTT hysteresis.
+    let local_relay_pair = (addr(2), addr(3));
+    let local_relay_probe = extract_probe_for(&outbound, local_relay_pair);
     let _ = a.handle_inbound_tun(
         build_echo_reply(local_relay_probe.id, local_relay_probe.seq),
-        (addr(2), addr(3)),
+        local_relay_pair,
         now + Duration::from_millis(100),
     );
     assert_eq!(
         a.primary(),
-        Some((addr(2), addr(3))),
+        Some(local_relay_pair),
         "local-relay pair should beat remote-relay pair at the same tier",
     );
 }
@@ -672,6 +679,45 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
         a.primary(),
         Some((addr_v6(11), addr_v6(12))),
         "v6 pair should beat v4 pair at the same tier",
+    );
+}
+
+#[test]
+fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
+    // Regression: a fresh inbound handshake wipes per-pair RTTs and
+    // `maybe_adopt_handshake_primary` picks the recv path. The first
+    // probe to return RTT after that must NOT displace the incumbent
+    // if its bucket is strictly worse on the discrete prefix —
+    // otherwise dual-stack peers flop between v4 and v6 on every
+    // re-key while the v6 probe is still in flight.
+    let mut a = PathAgent::new();
+    a.add_local_candidate(Candidate::host(addr(1))); // v4
+    a.add_local_candidate(Candidate::host(addr_v6(11))); // v6
+    a.add_remote_candidate(Candidate::host(addr(2))); // v4
+    a.add_remote_candidate(Candidate::host(addr_v6(12))); // v6
+    let now = Instant::now();
+    let v6_pair = (addr_v6(11), addr_v6(12));
+
+    // Bootstrap adopts v6 as primary via the handshake recv path; no
+    // probes have round-tripped yet, so v6 has no RTT.
+    bootstrap_primary(&mut a, v6_pair, now);
+    assert_eq!(a.primary(), Some(v6_pair));
+
+    // The v4 probe returns first, in a strictly worse bucket
+    // (LocalFamily::V4). v6's probe hasn't come back yet.
+    a.handle_timeout(now);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let v4_probe = extract_probe_for(&outbound, (addr(1), addr(2)));
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(v4_probe.id, v4_probe.seq),
+        (addr(1), addr(2)),
+        now + Duration::from_millis(40),
+    );
+
+    assert_eq!(
+        a.primary(),
+        Some(v6_pair),
+        "v4 must not displace a no-RTT v6 incumbent — discrete prefix wins",
     );
 }
 

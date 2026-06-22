@@ -920,22 +920,34 @@ impl PathAgent {
             return;
         }
 
-        // Hysteresis on the RTT axis only. `new` is the global minimum by
-        // `pair_score`, so against the incumbent it can only tie or win on
-        // the discrete prefix. A strict discrete win switches immediately
-        // (e.g. a direct path appearing must displace a relay path). Within
-        // the same bucket, require `new` to beat the incumbent's RTT by a
-        // margin so probe jitter doesn't flap between near-tied pairs. A
-        // missing / unmeasured / dropped incumbent leaves nothing to be
-        // sticky about — adopt `new` so evaluation and re-key still converge.
+        // `new` is the global minimum among RTT-measured pairs. The
+        // incumbent may not be in that filter yet — a fresh handshake
+        // wipes per-pair RTTs and `maybe_adopt_handshake_primary`
+        // picks the recv path, so the incumbent commonly has no RTT
+        // until the next round-trip lands. We still want to honour the
+        // incumbent's discrete prefix: a freshly-measured pair with a
+        // strictly worse bucket must not displace it just because it
+        // got there first.
+        //
+        // Within the same bucket, fall through to RTT hysteresis if
+        // both pairs have an RTT to weigh against. A missing /
+        // unmeasured / dropped incumbent at the same bucket leaves
+        // nothing to be sticky about — adopt `new` so evaluation and
+        // re-key still converge.
         if let Some(primary) = self.primary
             && let Some(prev) = self.pairs.get(&primary)
-            && let Some(prev_rtt) = prev.smoothed_rtt
         {
-            let new_state = &self.pairs[&new];
+            let new_score = pair_score(new, &self.pairs[&new]);
+            let prev_score = pair_score(primary, prev);
 
-            if pair_score(new, new_state).bucket == pair_score(primary, prev).bucket {
-                let new_rtt = new_state.smoothed_rtt.unwrap_or_default();
+            if prev_score.bucket < new_score.bucket {
+                return;
+            }
+
+            if prev_score.bucket == new_score.bucket
+                && let Some(prev_rtt) = prev.smoothed_rtt
+            {
+                let new_rtt = new_score.rtt.unwrap_or_default();
                 let margin =
                     PRIMARY_HYSTERESIS_FLOOR.max(prev_rtt.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
 
