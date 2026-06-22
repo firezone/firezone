@@ -150,8 +150,7 @@ fn inbound_handshake_response_clears_retransmits() {
     let init_deadline = a.poll_timeout().expect("init armed retransmits");
 
     let mut hs = Handshake::new(now).with_response(now);
-    let _ =
-        a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
 
     let post_deadline = a.poll_timeout();
@@ -359,8 +358,7 @@ fn settle_is_sticky_across_later_handshakes() {
     let primary = (addr(1), addr(3));
     let mut hs = Handshake::new(now).with_response(now);
 
-    let _ =
-        a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
+    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
     while a.poll_event().is_some() {}
 
     a.handle_timeout(now);
@@ -1113,8 +1111,9 @@ impl Handshake {
     /// but `initiator` is positioned to authenticate `response`.
     fn with_response(mut self, now: Instant) -> Self {
         let mut buf = [0u8; 148];
-        let TunnResult::WriteToNetwork(response) =
-            self.responder.decapsulate_at(None, &self.init, &mut buf, now)
+        let TunnResult::WriteToNetwork(response) = self
+            .responder
+            .decapsulate_at(None, &self.init, &mut buf, now)
         else {
             panic!("expected response");
         };
