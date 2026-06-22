@@ -39,6 +39,7 @@ fn main() -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
+        telemetry::init_ingest_addresses();
         Telemetry::new()
     } else {
         Telemetry::disabled()

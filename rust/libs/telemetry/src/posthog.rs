@@ -1,5 +1,5 @@
 use std::{
-    net::IpAddr,
+    net::{IpAddr, ToSocketAddrs as _},
     sync::{Arc, LazyLock},
 };
 
@@ -38,7 +38,8 @@ pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
 /// Configures the socket factories used to reach the ingest host.
 ///
 /// The factories must bypass the tunnel so that telemetry traffic never loops
-/// back through connlib.
+/// back through connlib. Processes that do not run connlib themselves can skip
+/// this and fall back to [`default_socket_factories`].
 pub(crate) fn configure(
     tcp: Arc<dyn SocketFactory<TcpSocket>>,
     udp: Arc<dyn SocketFactory<UdpSocket>>,
@@ -49,6 +50,27 @@ pub(crate) fn configure(
 /// Updates the upstream resolvers used to look up the ingest host.
 pub(crate) fn update_system_resolvers(servers: Vec<IpAddr>) {
     *INGEST.servers.lock() = servers;
+}
+
+/// Seeds the ingest-host addresses using the system resolver.
+///
+/// Resolves the ingest host via the operating system and keeps the result as a
+/// fallback for when the bootstrap resolver has no servers or cannot resolve the
+/// host. Must run at startup, before connlib reconfigures the system resolver, so
+/// the lookup reaches the real upstream and not connlib itself.
+pub(crate) fn init_addresses() {
+    let addresses = (INGEST_HOST, 443u16)
+        .to_socket_addrs()
+        .inspect_err(|e| tracing::debug!("Failed to seed ingest host addresses: {e:#}"))
+        .map(|addresses| addresses.map(|addr| addr.ip()).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    tracing::debug!(
+        ?addresses,
+        "Seeded ingest host addresses from system resolver"
+    );
+
+    *INGEST.seed_addresses.lock() = addresses;
 }
 
 /// Drops the current connection so the next request re-resolves and reconnects.
@@ -99,7 +121,8 @@ where
 /// The connection is resolved via [`BootstrapDnsClient`] against the configured
 /// upstream resolvers and established through a tunnel-bypassing [`SocketFactory`].
 /// Resolving lazily on every (re-)connect — rather than once at startup — lets us
-/// recover from having no resolvers yet and from the network path breaking.
+/// recover from having no resolvers yet and from the network path breaking. When
+/// the bootstrap resolver yields nothing, we fall back to `seed_addresses`.
 #[derive(Default)]
 struct Ingest {
     sockets: Mutex<
@@ -109,6 +132,9 @@ struct Ingest {
         )>,
     >,
     servers: Mutex<Vec<IpAddr>>,
+    /// Addresses resolved via the system resolver at startup, before connlib took
+    /// over DNS. Used as a fallback when the bootstrap resolver yields nothing.
+    seed_addresses: Mutex<Vec<IpAddr>>,
     client: Mutex<Option<HttpClient>>,
     /// Serialises bootstrapping so concurrent senders share a single connection.
     bootstrap: tokio::sync::Mutex<()>,
@@ -146,17 +172,26 @@ async fn bootstrap() -> Result<HttpClient> {
         .sockets
         .lock()
         .clone()
-        .context("Ingest client is not configured with socket factories")?;
+        .unwrap_or_else(default_socket_factories);
     let servers = INGEST.servers.lock().clone();
+    let seed_addresses = INGEST.seed_addresses.lock().clone();
 
     // Anchor the connection task on our own runtime so it outlives the caller,
     // which may be a short-lived `block_on` on another runtime.
     RUNTIME
         .spawn(async move {
-            let addresses = BootstrapDnsClient::new(udp, tcp.clone(), servers)
+            // Prefer the bootstrap resolver, which never uses the system resolver
+            // (i.e. connlib). Fall back to the addresses seeded at startup so we can
+            // still connect before any resolvers are configured.
+            let mut addresses = BootstrapDnsClient::new(udp, tcp.clone(), servers)
                 .resolve(INGEST_HOST)
                 .await
-                .context("Failed to resolve ingest host")?;
+                .inspect_err(|e| tracing::debug!("Failed to resolve ingest host: {e:#}"))
+                .unwrap_or_default();
+
+            if addresses.is_empty() {
+                addresses = seed_addresses;
+            }
 
             anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host");
 
@@ -166,6 +201,15 @@ async fn bootstrap() -> Result<HttpClient> {
         })
         .await
         .context("Bootstrap task failed")?
+}
+
+/// Plain socket factories used when none have been configured via [`configure`],
+/// e.g. in the GUI process which does not run connlib itself.
+fn default_socket_factories() -> (
+    Arc<dyn SocketFactory<TcpSocket>>,
+    Arc<dyn SocketFactory<UdpSocket>>,
+) {
+    (Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))
 }
 
 /// Initialize the runtime to use for evaluating feature flags.

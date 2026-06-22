@@ -667,6 +667,7 @@ impl<'a> Handler<'a> {
                     std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
                 if !no_telemetry {
+                    telemetry::init_ingest_addresses();
                     self.telemetry
                         .start(&environment, &release, telemetry::GUI_DSN);
                     telemetry::configure_ingest(

@@ -47,6 +47,16 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
+/// Seeds the telemetry ingest-host addresses using the system resolver.
+///
+/// Call this as the very first thing during startup, before connlib reconfigures
+/// the system resolver, so the lookup reaches the real upstream and not connlib
+/// itself. The result is used as a fallback until the bootstrap resolver is
+/// configured (see [`update_system_resolvers`]).
+pub fn init_ingest_addresses() {
+    posthog::init_addresses();
+}
+
 /// Configures the socket factories used to reach our telemetry ingest hosts.
 ///
 /// These must be the same tunnel-bypassing factories that connlib uses, so that
@@ -61,16 +71,21 @@ pub fn configure_ingest(
 
 /// Updates the upstream DNS resolvers used to look up our telemetry ingest hosts.
 ///
-/// Call this wherever connlib's system resolvers are updated.
+/// Call this wherever connlib's system resolvers are updated. Triggers a
+/// feature-flag re-evaluation, since a prior attempt may have failed for lack of
+/// (working) resolvers.
 pub fn update_system_resolvers(servers: Vec<IpAddr>) {
     posthog::update_system_resolvers(servers);
+    feature_flags::reevaluate_current();
 }
 
 /// Drops the current telemetry ingest connection so it is re-established lazily.
 ///
-/// Call this on network changes, alongside resetting connlib.
+/// Call this on network changes, alongside resetting connlib. Triggers a
+/// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
     posthog::reset();
+    feature_flags::reevaluate_current();
 }
 
 pub struct Dsn {

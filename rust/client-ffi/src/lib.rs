@@ -514,6 +514,7 @@ fn connect(
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
     let mut telemetry = Telemetry::new();
+    telemetry::init_ingest_addresses();
     telemetry.start(&api_url, RELEASE, platform::DSN);
     telemetry::configure_ingest(tcp_socket_factory.clone(), udp_socket_factory.clone());
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));

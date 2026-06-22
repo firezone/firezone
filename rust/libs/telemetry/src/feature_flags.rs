@@ -143,25 +143,33 @@ pub(crate) fn reevaluate(user_id: String, env: &str) {
     posthog::RUNTIME.spawn(evaluate_now(user_id, env));
 }
 
+/// Re-evaluates feature flags using the current telemetry user and environment.
+///
+/// Does nothing until both are known. Lets us refresh flags promptly when the
+/// network situation changes instead of waiting for the next periodic re-evaluation.
+pub(crate) fn reevaluate_current() {
+    let Some(client) = sentry::Hub::main().client() else {
+        return;
+    };
+
+    let Some(env) = client.options().environment.as_ref() else {
+        return; // Nothing to do if we don't have an environment set.
+    };
+
+    let Some(user_id) =
+        sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
+    else {
+        return; // Nothing to do if we don't have a user-id set.
+    };
+
+    reevaluate(user_id, env);
+}
+
 pub(crate) async fn reeval_timer() {
     loop {
         tokio::time::sleep(RE_EVAL_DURATION).await;
 
-        let Some(client) = sentry::Hub::main().client() else {
-            continue;
-        };
-
-        let Some(env) = client.options().environment.as_ref() else {
-            continue; // Nothing to do if we don't have an environment set.
-        };
-
-        let Some(user_id) =
-            sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
-        else {
-            continue; // Nothing to do if we don't have a user-id set.
-        };
-
-        reevaluate(user_id, env);
+        reevaluate_current();
     }
 }
 
