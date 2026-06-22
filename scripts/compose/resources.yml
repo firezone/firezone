@@ -23,6 +23,9 @@ services:
     networks:
       dns_resources:
         ipv4_address: 172.21.0.101
+        aliases:
+          - alias.httpbin
+          - alias2.httpbin
 
   dns.httpbin.search.test:
     image: kennethreitz/httpbin

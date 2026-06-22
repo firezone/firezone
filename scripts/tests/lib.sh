@@ -84,6 +84,16 @@ function assert_gteq() {
     fi
 }
 
+function assert_lteq() {
+    local actual="$1"
+    local expected="$2"
+
+    if [ "$actual" -gt "$expected" ]; then
+        echo "Expected $actual to be less than or equal to $expected"
+        exit 1
+    fi
+}
+
 function process_state() {
     local container="$1"
 
