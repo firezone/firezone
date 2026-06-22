@@ -605,16 +605,12 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
     let now = Instant::now();
 
-    // Bootstrap on the remote-relay pair (LocalHost → RemoteRelay) so
-    // the incumbent sits in the worse `RelayEnd::Remote` bucket.
     let remote_relay_pair = (addr(1), addr(4));
     bootstrap_primary(&mut a, remote_relay_pair, now);
 
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
 
-    // Give the incumbent an RTT measurement so the local-relay
-    // challenger can't sneak past on the no-RTT-incumbent path.
     let remote_relay_probe = extract_probe_for(&outbound, remote_relay_pair);
     let _ = a.handle_inbound_tun(
         build_echo_reply(remote_relay_probe.id, remote_relay_probe.seq),
@@ -624,9 +620,6 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     assert_eq!(a.primary(), Some(remote_relay_pair));
     while a.poll_event().is_some() {}
 
-    // Reply on the local-relay pair at identical RTT — the
-    // `RelayEnd::Local < RelayEnd::Remote` discrete win should swap
-    // primary regardless of RTT hysteresis.
     let local_relay_pair = (addr(2), addr(3));
     let local_relay_probe = extract_probe_for(&outbound, local_relay_pair);
     let _ = a.handle_inbound_tun(
@@ -684,27 +677,17 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
 
 #[test]
 fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
-    // Regression: a fresh inbound handshake wipes per-pair RTTs and
-    // `maybe_adopt_handshake_primary` picks the recv path. The first
-    // probe to return RTT after that must NOT displace the incumbent
-    // if its bucket is strictly worse on the discrete prefix —
-    // otherwise dual-stack peers flop between v4 and v6 on every
-    // re-key while the v6 probe is still in flight.
     let mut a = PathAgent::new();
-    a.add_local_candidate(Candidate::host(addr(1))); // v4
-    a.add_local_candidate(Candidate::host(addr_v6(11))); // v6
-    a.add_remote_candidate(Candidate::host(addr(2))); // v4
-    a.add_remote_candidate(Candidate::host(addr_v6(12))); // v6
+    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_local_candidate(Candidate::host(addr_v6(11)));
+    a.add_remote_candidate(Candidate::host(addr(2)));
+    a.add_remote_candidate(Candidate::host(addr_v6(12)));
     let now = Instant::now();
     let v6_pair = (addr_v6(11), addr_v6(12));
 
-    // Bootstrap adopts v6 as primary via the handshake recv path; no
-    // probes have round-tripped yet, so v6 has no RTT.
     bootstrap_primary(&mut a, v6_pair, now);
     assert_eq!(a.primary(), Some(v6_pair));
 
-    // The v4 probe returns first, in a strictly worse bucket
-    // (LocalFamily::V4). v6's probe hasn't come back yet.
     a.handle_timeout(now);
     let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
     let v4_probe = extract_probe_for(&outbound, (addr(1), addr(2)));
