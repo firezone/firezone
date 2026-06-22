@@ -179,17 +179,22 @@ async fn bootstrap() -> Result<HttpClient> {
     // which may be a short-lived `block_on` on another runtime.
     RUNTIME
         .spawn(async move {
-            // Prefer the bootstrap resolver, which never uses the system resolver
-            // (i.e. connlib). Fall back to the addresses seeded at startup so we can
-            // still connect before any resolvers are configured.
+            // Resolve via the bootstrap resolver, which never uses the system
+            // resolver (i.e. connlib), and add the addresses seeded at startup as
+            // extra fallback candidates. `HttpClient` tries them in order and
+            // connects to the first that works, so freshly resolved addresses are
+            // preferred while the seed still lets us connect before any resolvers
+            // are configured or when the resolver returns unreachable addresses.
             let mut addresses = BootstrapDnsClient::new(udp, tcp.clone(), servers)
                 .resolve(INGEST_HOST)
                 .await
                 .inspect_err(|e| tracing::debug!("Failed to resolve ingest host: {e:#}"))
                 .unwrap_or_default();
 
-            if addresses.is_empty() {
-                addresses = seed_addresses;
+            for address in seed_addresses {
+                if !addresses.contains(&address) {
+                    addresses.push(address);
+                }
             }
 
             anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host");
