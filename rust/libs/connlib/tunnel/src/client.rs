@@ -845,6 +845,11 @@ impl ClientState {
             .matches(dst, Ok(dst_proto))
             .cloned()
         {
+            if !filter_allows(&entry.filter, dst_proto) {
+                self.reply_with_icmp_prohibited(packet);
+                return Ok(None);
+            }
+
             // Whether we are already authorized to send packets to this peer.
             let already_authorised = self
                 .authorized_resources
@@ -871,6 +876,11 @@ impl ClientState {
         let resource = self
             .get_resource_by_destination(dst, dst_proto)
             .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
+
+        if !self.resource_filter_allows(resource, dst_proto) {
+            self.reply_with_icmp_prohibited(packet);
+            return Ok(None);
+        }
 
         if let Some(gid) = self
             .authorized_resources
@@ -2461,6 +2471,24 @@ impl ClientState {
         self.pending_flows
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
+
+    /// Whether the resource's traffic filters permit a packet with the given protocol.
+    fn resource_filter_allows(&self, resource: ResourceId, protocol: Protocol) -> bool {
+        let Some(resource) = self.resources_by_id.get(&resource) else {
+            return false;
+        };
+
+        filter_allows(&FilterEngine::new(resource.filters()), protocol)
+    }
+
+    /// Generate an ICMP "administratively prohibited" error for `packet` and
+    /// buffer it for delivery back to the TUN device.
+    fn reply_with_icmp_prohibited(&mut self, packet: IpPacket) {
+        match ip_packet::make::icmp_dest_unreachable_prohibited(&packet) {
+            Ok(reply) => self.buffered_packets.push_back(reply),
+            Err(e) => tracing::debug!("Failed to create ICMP prohibited error: {e:#}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -2553,6 +2581,24 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
+}
+
+/// Whether `filter` permits a packet with the given protocol.
+///
+/// In tests, a malicious client can be configured to ignore its own filters,
+/// keeping the remote peer's filtering path (Gateway or target Client) exercised.
+fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
+    if filter.apply(Ok(protocol)).is_ok() {
+        return true;
+    }
+
+    #[cfg(test)]
+    if crate::malicious_behaviour::ignore_resource_filter() {
+        tracing::debug!("Malicious client: ignoring resource filter");
+        return true;
+    }
+
+    false
 }
 
 fn encapsulate_and_buffer(

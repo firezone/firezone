@@ -512,9 +512,7 @@ impl RefClient {
 
             tracing::Span::current().record("resource", tracing::field::display(resource));
 
-            if !self.connected_resources().contains(&resource)
-                && !self.resource_filter_allows(resource, proto)
-            {
+            if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 return;
             }
@@ -655,9 +653,7 @@ impl RefClient {
                 DnsTransport::Tcp => Protocol::Tcp(53),
             };
 
-            if !self.connected_resources().contains(&resource)
-                && !self.resource_filter_allows(resource, proto)
-            {
+            if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 return;
             }
