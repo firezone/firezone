@@ -1894,15 +1894,11 @@ where
         RId: Ord + fmt::Display + Copy,
     {
         // Path-agent gets first crack at handshake bytes (dedup, replay,
-        // validation). We hand it a `BoringtunValidator` so it can
-        // confirm the bytes with `Tunn::decapsulate_at` before mutating
-        // any of its own state — rejected bytes leave it untouched.
-        let mut validator = BoringtunValidator {
-            tunnel: &mut self.tunnel,
-            buf: self.buffer.as_mut(),
-        };
+        // validation): it runs `tunnel.decapsulate_at` to authenticate
+        // before mutating any of its own state — rejected bytes leave
+        // it untouched.
         let packet = match self.agent.handle_inbound_network(
-            &mut validator,
+            &mut self.tunnel,
             packet,
             (destination, from),
             now,
@@ -2328,48 +2324,6 @@ fn new_agent(role: IceRole) -> IceAgent {
     agent.set_timing_advance(Duration::ZERO);
 
     agent
-}
-
-/// Plugs `Tunn` into the path-agent's [`path_agent::HandshakeValidator`]
-/// hook. The path-agent reaches through here when it needs to confirm
-/// inbound handshake bytes; any outbound packets boringtun produces
-/// during decapsulation (the `HandshakeResponse` for an accepted init,
-/// or data packets it had buffered while handshake-pending) flow back
-/// via `on_outbound`, which the path-agent then routes through its
-/// normal outbound path.
-struct BoringtunValidator<'a> {
-    tunnel: &'a mut Tunn,
-    buf: &'a mut [u8],
-}
-
-impl path_agent::HandshakeValidator for BoringtunValidator<'_> {
-    fn validate(
-        &mut self,
-        bytes: &[u8],
-        now: Instant,
-        on_outbound: &mut dyn FnMut(Vec<u8>),
-    ) -> Result<(), path_agent::Rejected> {
-        match self.tunnel.decapsulate_at(None, bytes, self.buf, now) {
-            TunnResult::Done => Ok(()),
-            TunnResult::WriteToNetwork(first) => {
-                on_outbound(first.to_vec());
-                while let TunnResult::WriteToNetwork(more) =
-                    self.tunnel.decapsulate_at(None, &[], self.buf, now)
-                {
-                    on_outbound(more.to_vec());
-                }
-                Ok(())
-            }
-            TunnResult::Err(e) => {
-                tracing::debug!(error = ?e, "Handshake rejected by boringtun");
-                Err(path_agent::Rejected)
-            }
-            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                tracing::warn!("Unexpected data packet emitted from handshake decapsulation");
-                Err(path_agent::Rejected)
-            }
-        }
-    }
 }
 
 #[cfg(test)]

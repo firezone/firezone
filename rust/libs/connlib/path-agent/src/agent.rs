@@ -452,14 +452,13 @@ impl PathAgent {
 
     /// Inspect an inbound WG packet on `path`.
     ///
-    /// `validator` is the authoritative source for whether the bytes
-    /// represent a real handshake. Dedup checks short-circuit before
-    /// it runs; for everything else, no state mutation (responder
-    /// dedup, evaluation-window reopen, primary adoption, outbound
-    /// routing) happens until validation succeeds.
+    /// Handshake bytes are run through `tunnel` to confirm they
+    /// authenticate before any state mutation (responder dedup,
+    /// evaluation-window reopen, primary adoption, outbound routing).
+    /// Dedup hits short-circuit before the call.
     pub fn handle_inbound_network<'b>(
         &mut self,
-        validator: &mut dyn crate::HandshakeValidator,
+        tunnel: &mut Tunn,
         bytes: &'b [u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
@@ -497,23 +496,25 @@ impl PathAgent {
                 // several pairs in one tick. Drop dups until the response
                 // goes out and `responder.dedup` takes over — otherwise
                 // boringtun rejects as `WrongTai64nTimestamp`.
-                //
-                // `last_init` was set on a previous accepted call, so
-                // matching here means we already validated these bytes.
                 if self.responder.last_init.as_deref() == Some(bytes) {
                     tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
 
                     return ControlFlow::Break(());
                 }
 
-                let mut outbound = Vec::<Vec<u8>>::new();
-                if validator
-                    .validate(bytes, now, &mut |b| outbound.push(b))
-                    .is_err()
-                {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit rejected by validator");
-                    return ControlFlow::Break(());
-                }
+                let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
+                let outbound = match tunnel.decapsulate_at(None, bytes, &mut buf, now) {
+                    TunnResult::Done => Vec::new(),
+                    TunnResult::WriteToNetwork(response) => vec![response.to_vec()],
+                    TunnResult::Err(e) => {
+                        tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
+                        return ControlFlow::Break(());
+                    }
+                    TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                        tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeInit");
+                        return ControlFlow::Break(());
+                    }
+                };
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
@@ -541,13 +542,28 @@ impl PathAgent {
                     return ControlFlow::Break(());
                 }
 
+                let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
                 let mut outbound = Vec::<Vec<u8>>::new();
-                if validator
-                    .validate(bytes, now, &mut |b| outbound.push(b))
-                    .is_err()
-                {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse rejected by validator");
-                    return ControlFlow::Break(());
+                match tunnel.decapsulate_at(None, bytes, &mut buf, now) {
+                    TunnResult::Done => {}
+                    TunnResult::WriteToNetwork(first) => {
+                        outbound.push(first.to_vec());
+                        // Drain any data packets boringtun was holding
+                        // while the handshake was pending.
+                        while let TunnResult::WriteToNetwork(more) =
+                            tunnel.decapsulate_at(None, &[], &mut buf, now)
+                        {
+                            outbound.push(more.to_vec());
+                        }
+                    }
+                    TunnResult::Err(e) => {
+                        tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeResponse rejected");
+                        return ControlFlow::Break(());
+                    }
+                    TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                        tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeResponse");
+                        return ControlFlow::Break(());
+                    }
                 }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
@@ -557,10 +573,6 @@ impl PathAgent {
                 self.reopen_evaluation_window(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
 
-                // Any bytes the validator surfaced (queued data
-                // packets boringtun was holding while handshake-pending)
-                // ride the now-primary path via the regular outbound
-                // routing.
                 for b in outbound {
                     self.handle_outbound(b, now);
                 }
