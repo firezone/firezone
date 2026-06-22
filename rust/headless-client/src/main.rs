@@ -324,8 +324,6 @@ fn try_main() -> Result<()> {
     };
 
     let mut telemetry = if cli.is_telemetry_allowed() {
-        telemetry::init_ingest_addresses();
-
         let mut telemetry = Telemetry::new();
 
         telemetry.start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);

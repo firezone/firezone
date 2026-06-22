@@ -47,16 +47,6 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
-/// Seeds the telemetry ingest-host addresses using the system resolver.
-///
-/// Call this as the very first thing during startup, before connlib reconfigures
-/// the system resolver, so the lookup reaches the real upstream and not connlib
-/// itself. The result is used as a fallback until the bootstrap resolver is
-/// configured (see [`update_system_resolvers`]).
-pub fn init_ingest_addresses() {
-    posthog::init_addresses();
-}
-
 /// Configures the socket factories used to reach our telemetry ingest hosts.
 ///
 /// These must be the same tunnel-bypassing factories that connlib uses, so that
@@ -219,6 +209,12 @@ impl Default for Telemetry {
 
 impl Telemetry {
     pub fn new() -> Self {
+        // Seed the PostHog ingest addresses via the system resolver, mirroring how
+        // the Sentry transport resolves its host below. Both run here, at telemetry
+        // construction, so the lookup happens before connlib reconfigures the system
+        // resolver and would otherwise route it through connlib itself.
+        posthog::init_addresses();
+
         Self {
             inner: Default::default(),
             transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
