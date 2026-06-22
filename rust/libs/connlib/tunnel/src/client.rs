@@ -845,6 +845,11 @@ impl ClientState {
             .matches(dst, Ok(dst_proto))
             .cloned()
         {
+            if !filter_allows(&entry.filter, dst_proto) {
+                self.reply_with_icmp_prohibited(packet);
+                return Ok(None);
+            }
+
             // Whether we are already authorized to send packets to this peer.
             let already_authorised = self
                 .authorized_resources
@@ -872,14 +877,8 @@ impl ClientState {
             .get_resource_by_destination(dst, dst_proto)
             .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
 
-        // Evaluate the resource's traffic filters locally. A packet whose
-        // protocol the resource doesn't permit gets an ICMP "administratively
-        // prohibited" error generated right here and written back to the TUN
-        // device, exactly as the Gateway would. Filtering on the Client avoids a
-        // feedback loop where the Gateway's ICMP error would otherwise make us
-        // request a brand-new flow for traffic that can never be allowed.
         if !self.resource_filter_allows(resource, dst_proto) {
-            self.buffer_icmp_prohibited(&packet);
+            self.reply_with_icmp_prohibited(packet);
             return Ok(None);
         }
 
@@ -2474,34 +2473,18 @@ impl ClientState {
     }
 
     /// Whether the resource's traffic filters permit a packet with the given protocol.
-    ///
-    /// In tests, a malicious client can be configured to ignore its own filters,
-    /// keeping the Gateway's filtering path exercised.
     fn resource_filter_allows(&self, resource: ResourceId, protocol: Protocol) -> bool {
         let Some(resource) = self.resources_by_id.get(&resource) else {
             return false;
         };
 
-        if FilterEngine::new(resource.filters())
-            .apply(Ok(protocol))
-            .is_ok()
-        {
-            return true;
-        }
-
-        #[cfg(test)]
-        if crate::malicious_behaviour::ignore_resource_filter() {
-            tracing::debug!("Malicious client: ignoring resource filter");
-            return true;
-        }
-
-        false
+        filter_allows(&FilterEngine::new(resource.filters()), protocol)
     }
 
     /// Generate an ICMP "administratively prohibited" error for `packet` and
     /// buffer it for delivery back to the TUN device.
-    fn buffer_icmp_prohibited(&mut self, packet: &IpPacket) {
-        match ip_packet::make::icmp_dest_unreachable_prohibited(packet) {
+    fn reply_with_icmp_prohibited(&mut self, packet: IpPacket) {
+        match ip_packet::make::icmp_dest_unreachable_prohibited(&packet) {
             Ok(reply) => self.buffered_packets.push_back(reply),
             Err(e) => tracing::debug!("Failed to create ICMP prohibited error: {e:#}"),
         }
@@ -2598,6 +2581,24 @@ fn is_llmnr(dst: IpAddr) -> bool {
         IpAddr::V4(ip) => ip == LLMNR_IPV4,
         IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
+}
+
+/// Whether `filter` permits a packet with the given protocol.
+///
+/// In tests, a malicious client can be configured to ignore its own filters,
+/// keeping the remote peer's filtering path (Gateway or target Client) exercised.
+fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
+    if filter.apply(Ok(protocol)).is_ok() {
+        return true;
+    }
+
+    #[cfg(test)]
+    if crate::malicious_behaviour::ignore_resource_filter() {
+        tracing::debug!("Malicious client: ignoring resource filter");
+        return true;
+    }
+
+    false
 }
 
 fn encapsulate_and_buffer(

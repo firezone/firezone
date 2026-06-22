@@ -512,9 +512,6 @@ impl RefClient {
 
             tracing::Span::current().record("resource", tracing::field::display(resource));
 
-            // The Client evaluates resource filters on every outbound packet and
-            // replies with an ICMP error locally rather than forwarding traffic
-            // the resource doesn't permit.
             if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 return;
