@@ -37,9 +37,8 @@ pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
 
 /// Configures the socket factories used to reach the ingest host.
 ///
-/// The factories must bypass the tunnel so that telemetry traffic never loops
-/// back through connlib. Processes that do not run connlib themselves can skip
-/// this and fall back to [`default_socket_factories`].
+/// In connlib processes these must bypass the tunnel so that telemetry traffic
+/// never loops back through connlib; other processes pass plain socket factories.
 pub(crate) fn configure(
     tcp: Arc<dyn SocketFactory<TcpSocket>>,
     udp: Arc<dyn SocketFactory<UdpSocket>>,
@@ -172,7 +171,7 @@ async fn bootstrap() -> Result<HttpClient> {
         .sockets
         .lock()
         .clone()
-        .unwrap_or_else(default_socket_factories);
+        .context("Ingest client has no socket factories configured")?;
     let servers = INGEST.servers.lock().clone();
     let seed_addresses = INGEST.seed_addresses.lock().clone();
 
@@ -201,15 +200,6 @@ async fn bootstrap() -> Result<HttpClient> {
         })
         .await
         .context("Bootstrap task failed")?
-}
-
-/// Plain socket factories used when none have been configured via [`configure`],
-/// e.g. in the GUI process which does not run connlib itself.
-fn default_socket_factories() -> (
-    Arc<dyn SocketFactory<TcpSocket>>,
-    Arc<dyn SocketFactory<UdpSocket>>,
-) {
-    (Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))
 }
 
 /// Initialize the runtime to use for evaluating feature flags.

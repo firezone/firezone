@@ -324,13 +324,12 @@ fn try_main() -> Result<()> {
     };
 
     let mut telemetry = if cli.is_telemetry_allowed() {
-        let mut telemetry = Telemetry::new();
-
-        telemetry.start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
-        telemetry::configure_ingest(
+        let mut telemetry = Telemetry::new(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
         );
+
+        telemetry.start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
         rt.block_on(Telemetry::set_firezone_id(firezone_id.clone()));
 
         analytics::identify(RELEASE.to_owned(), None);

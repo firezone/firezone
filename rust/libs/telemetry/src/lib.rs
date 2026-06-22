@@ -47,18 +47,6 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
-/// Configures the socket factories used to reach our telemetry ingest hosts.
-///
-/// These must be the same tunnel-bypassing factories that connlib uses, so that
-/// telemetry resolves and connects outside the tunnel and never loops back
-/// through connlib itself.
-pub fn configure_ingest(
-    tcp: Arc<dyn SocketFactory<TcpSocket>>,
-    udp: Arc<dyn SocketFactory<UdpSocket>>,
-) {
-    posthog::configure(tcp, udp);
-}
-
 /// Updates the upstream DNS resolvers used to look up our telemetry ingest hosts.
 ///
 /// Call this wherever connlib's system resolvers are updated. Triggers a
@@ -201,18 +189,17 @@ pub struct Telemetry {
     transport: TransportFactory,
 }
 
-impl Default for Telemetry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Telemetry {
-    pub fn new() -> Self {
-        // Seed the PostHog ingest addresses via the system resolver, mirroring how
-        // the Sentry transport resolves its host below. Both run here, at telemetry
-        // construction, so the lookup happens before connlib reconfigures the system
-        // resolver and would otherwise route it through connlib itself.
+    pub fn new(
+        tcp: Arc<dyn SocketFactory<TcpSocket>>,
+        udp: Arc<dyn SocketFactory<UdpSocket>>,
+    ) -> Self {
+        // Configure and seed the PostHog ingest client. Resolving here, at telemetry
+        // construction, ensures the lookup happens before connlib reconfigures the
+        // system resolver (which would otherwise route it through connlib itself),
+        // mirroring how the Sentry transport resolves its host below. The socket
+        // factories must bypass the tunnel so telemetry never loops through connlib.
+        posthog::configure(tcp, udp);
         posthog::init_addresses();
 
         Self {

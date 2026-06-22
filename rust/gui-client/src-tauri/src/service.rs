@@ -332,7 +332,10 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        let telemetry = Telemetry::new();
+        let telemetry = Telemetry::new(
+            Arc::new(tcp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
+        );
 
         tracing::info!(
             server_pid = std::process::id(),
@@ -669,10 +672,6 @@ impl<'a> Handler<'a> {
                 if !no_telemetry {
                     self.telemetry
                         .start(&environment, &release, telemetry::GUI_DSN);
-                    telemetry::configure_ingest(
-                        Arc::new(tcp_socket_factory),
-                        Arc::new(UdpSocketFactory::default()),
-                    );
                     Telemetry::set_firezone_id(self.device_id.id.clone()).await;
 
                     opentelemetry::global::set_meter_provider(

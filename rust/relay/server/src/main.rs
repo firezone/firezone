@@ -141,7 +141,10 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     let mut telemetry = if args.telemetry {
-        Telemetry::new()
+        Telemetry::new(
+            std::sync::Arc::new(socket_factory::tcp),
+            std::sync::Arc::new(socket_factory::udp),
+        )
     } else {
         Telemetry::disabled()
     };

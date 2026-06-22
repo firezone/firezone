@@ -51,7 +51,10 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let mut telemetry = Telemetry::new();
+    let mut telemetry = Telemetry::new(
+        Arc::new(tcp_socket_factory),
+        Arc::new(UdpSocketFactory::default()),
+    );
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -141,10 +144,6 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     if cli.is_telemetry_allowed() {
         telemetry.start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
-        telemetry::configure_ingest(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
-        );
         Telemetry::set_firezone_id(firezone_id.clone()).await;
     }
 
