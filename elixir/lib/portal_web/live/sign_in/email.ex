@@ -111,7 +111,7 @@ defmodule PortalWeb.SignIn.Email do
         class="flex gap-3 justify-center mb-6"
       >
         <input
-          :for={i <- 0..4}
+          :for={i <- 0..5}
           data-pin-index={i}
           type="text"
           maxlength="1"

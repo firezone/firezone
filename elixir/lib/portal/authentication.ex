@@ -125,7 +125,7 @@ defmodule Portal.Authentication do
   @otp_expiration_seconds 15 * 60
 
   def create_one_time_passcode(%Portal.Account{} = account, %Portal.Actor{} = actor) do
-    code = Portal.Crypto.random_token(5, encoder: :user_friendly)
+    code = Portal.Crypto.random_token(6, encoder: :user_friendly)
     code_hash = Portal.Crypto.hash(:argon2, code)
     expires_at = DateTime.utc_now() |> DateTime.add(@otp_expiration_seconds, :second)
 
