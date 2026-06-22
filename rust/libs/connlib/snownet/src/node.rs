@@ -1682,11 +1682,6 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
     ) {
-        // Don't update wireguard timers until we are connected.
-        let Some(peer_socket) = self.socket() else {
-            return;
-        };
-
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -1694,6 +1689,13 @@ where
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
+        // Always run `update_timers_at` so boringtun's internal
+        // deadlines (`REKEY_TIMEOUT`, `REKEY_ATTEMPT_TIME`) keep
+        // advancing — even in `Connecting`, where no socket has been
+        // nominated yet. Without this, a stuck bootstrap (peer down,
+        // relay blackhole) would hang forever instead of surfacing
+        // `ConnectionExpired`. Any outbound bytes get dropped below
+        // if there's no socket to send on.
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
@@ -1719,7 +1721,7 @@ where
                     // practice. Accepted as a narrow loss window over
                     // the alternative of sending to a stale socket.
                     self.agent.handle_outbound(b.to_vec(), now);
-                } else {
+                } else if let Some(peer_socket) = self.socket() {
                     transmits.extend(make_owned_transmit(
                         self.relay.id,
                         peer_socket,
@@ -1729,6 +1731,9 @@ where
                         now,
                     ));
                 }
+                // Else: ICE in `Connecting` — drop. boringtun will
+                // retry on the next timer tick; if nomination never
+                // lands, `REKEY_ATTEMPT_TIME` eventually fires above.
             }
             TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
                 panic!("Unexpected result from update_timers")
