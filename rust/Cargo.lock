@@ -7502,7 +7502,11 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "bootstrap-dns-client",
+ "bytes",
  "hex",
+ "http",
+ "http-client",
  "ip-packet",
  "moka",
  "opentelemetry",
@@ -7516,6 +7520,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "smallvec",
+ "socket-factory",
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite",

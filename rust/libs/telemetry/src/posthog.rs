@@ -1,4 +1,16 @@
-use std::{net::ToSocketAddrs as _, sync::LazyLock, time::Duration};
+use std::{
+    net::IpAddr,
+    sync::{Arc, LazyLock},
+};
+
+use anyhow::{Context as _, ErrorExt as _, Result};
+use bootstrap_dns_client::BootstrapDnsClient;
+use bytes::Bytes;
+use http::{Method, Request, Response, header};
+use http_client::HttpClient;
+use parking_lot::Mutex;
+use serde::Serialize;
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use tokio::runtime::Runtime;
 
 use crate::Env;
@@ -7,10 +19,12 @@ pub(crate) const API_KEY_PROD: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdU
 pub(crate) const API_KEY_STAGING: &str = "phc_tHOVtq183RpfKmzadJb4bxNpLM5jzeeb1Gu8YSH3nsK";
 pub(crate) const API_KEY_ON_PREM: &str = "phc_4R9Ii6q4SEofVkH7LvajwuJ3nsGFhCj0ZlfysS2FNc";
 
-pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
-pub(crate) static CLIENT: LazyLock<reqwest::Result<reqwest::Client>> = LazyLock::new(init_client);
+const INGEST_HOST: &str = "posthog.firezone.dev";
 
-pub(crate) const INGEST_HOST: &str = "posthog.firezone.dev";
+pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
+
+/// Process-wide HTTP client for PostHog's ingest host.
+static INGEST: LazyLock<Ingest> = LazyLock::new(Ingest::default);
 
 pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
     match env {
@@ -19,6 +33,139 @@ pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
         Env::OnPrem => Some(API_KEY_ON_PREM),
         Env::Entrypoint | Env::DockerCompose | Env::Localhost => None,
     }
+}
+
+/// Configures the socket factories used to reach the ingest host.
+///
+/// The factories must bypass the tunnel so that telemetry traffic never loops
+/// back through connlib.
+pub(crate) fn configure(
+    tcp: Arc<dyn SocketFactory<TcpSocket>>,
+    udp: Arc<dyn SocketFactory<UdpSocket>>,
+) {
+    *INGEST.sockets.lock() = Some((tcp, udp));
+}
+
+/// Updates the upstream resolvers used to look up the ingest host.
+pub(crate) fn update_system_resolvers(servers: Vec<IpAddr>) {
+    *INGEST.servers.lock() = servers;
+}
+
+/// Drops the current connection so the next request re-resolves and reconnects.
+pub(crate) fn reset() {
+    if let Some((tcp, udp)) = INGEST.sockets.lock().as_ref() {
+        tcp.reset();
+        udp.reset();
+    }
+
+    *INGEST.client.lock() = None;
+}
+
+/// Sends a JSON `POST` to `path` on the ingest host and returns the response.
+pub(crate) async fn post_json<B>(path: &str, body: &B) -> Result<Response<Bytes>>
+where
+    B: Serialize,
+{
+    let client = ingest_client().await?;
+
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(format!("https://{INGEST_HOST}{path}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Bytes::from(
+            serde_json::to_vec(body).context("Failed to serialize request body")?,
+        ))
+        .context("Failed to build HTTP request")?;
+
+    let response = match client.send_request(request) {
+        Ok(response) => response.await,
+        Err(e) => Err(e),
+    };
+
+    // A closed connection means the path is broken; discard the client so the
+    // next request re-resolves and reconnects.
+    if response
+        .as_ref()
+        .is_err_and(|e| e.any_is::<http_client::Closed>())
+    {
+        *INGEST.client.lock() = None;
+    }
+
+    response
+}
+
+/// Holds the state needed to (re-)establish a connection to the ingest host.
+///
+/// The connection is resolved via [`BootstrapDnsClient`] against the configured
+/// upstream resolvers and established through a tunnel-bypassing [`SocketFactory`].
+/// Resolving lazily on every (re-)connect — rather than once at startup — lets us
+/// recover from having no resolvers yet and from the network path breaking.
+#[derive(Default)]
+struct Ingest {
+    sockets: Mutex<
+        Option<(
+            Arc<dyn SocketFactory<TcpSocket>>,
+            Arc<dyn SocketFactory<UdpSocket>>,
+        )>,
+    >,
+    servers: Mutex<Vec<IpAddr>>,
+    client: Mutex<Option<HttpClient>>,
+    /// Serialises bootstrapping so concurrent senders share a single connection.
+    bootstrap: tokio::sync::Mutex<()>,
+}
+
+/// Returns a live client, bootstrapping a new connection if there is none.
+async fn ingest_client() -> Result<HttpClient> {
+    if let Some(client) = live_client() {
+        return Ok(client);
+    }
+
+    let _guard = INGEST.bootstrap.lock().await;
+
+    if let Some(client) = live_client() {
+        return Ok(client);
+    }
+
+    let client = bootstrap().await?;
+    *INGEST.client.lock() = Some(client.clone());
+
+    Ok(client)
+}
+
+fn live_client() -> Option<HttpClient> {
+    INGEST
+        .client
+        .lock()
+        .as_ref()
+        .filter(|client| !client.is_closed())
+        .cloned()
+}
+
+async fn bootstrap() -> Result<HttpClient> {
+    let (tcp, udp) = INGEST
+        .sockets
+        .lock()
+        .clone()
+        .context("Ingest client is not configured with socket factories")?;
+    let servers = INGEST.servers.lock().clone();
+
+    // Anchor the connection task on our own runtime so it outlives the caller,
+    // which may be a short-lived `block_on` on another runtime.
+    RUNTIME
+        .spawn(async move {
+            let addresses = BootstrapDnsClient::new(udp, tcp.clone(), servers)
+                .resolve(INGEST_HOST)
+                .await
+                .context("Failed to resolve ingest host")?;
+
+            anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host");
+
+            HttpClient::new(INGEST_HOST.to_owned(), addresses, tcp)
+                .await
+                .context("Failed to connect to ingest host")
+        })
+        .await
+        .context("Bootstrap task failed")?
 }
 
 /// Initialize the runtime to use for evaluating feature flags.
@@ -34,27 +181,4 @@ fn init_runtime() -> Runtime {
     runtime.spawn(crate::feature_flags::reeval_timer());
 
     runtime
-}
-
-/// Initialize the client to use for evaluating feature flags.
-fn init_client() -> reqwest::Result<reqwest::Client> {
-    let ingest_host_addresses = (INGEST_HOST, 443u16)
-        .to_socket_addrs()
-        .inspect_err(|e| {
-            tracing::error!("Failed to resolve ingest host (`{INGEST_HOST}`) IPs: {e:#}")
-        })
-        .unwrap_or_default()
-        .collect::<Vec<_>>();
-
-    tracing::debug!(host = %INGEST_HOST, addresses = ?ingest_host_addresses, "Resolved PostHog ingest host addresses");
-
-    reqwest::ClientBuilder::new()
-        .connection_verbose(true)
-        .pool_idle_timeout(None) // Never remove idle connections.
-        .pool_max_idle_per_host(1)
-        .http2_prior_knowledge() // We know PostHog supports HTTP/2.
-        .http2_keep_alive_timeout(Duration::from_secs(1))
-        .http2_keep_alive_interval(Duration::from_secs(5)) // Use keep-alive to detect broken connections.
-        .resolve_to_addrs(INGEST_HOST, &ingest_host_addresses)
-        .build()
 }

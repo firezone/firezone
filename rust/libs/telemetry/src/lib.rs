@@ -4,7 +4,7 @@ use std::{
     borrow::Cow,
     collections::BTreeMap,
     fmt, mem,
-    net::{SocketAddr, ToSocketAddrs as _},
+    net::{IpAddr, SocketAddr, ToSocketAddrs as _},
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -19,6 +19,7 @@ use sentry::{
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -44,6 +45,32 @@ pub fn maybe_hash_device_id(id: String) -> String {
     } else {
         id
     }
+}
+
+/// Configures the socket factories used to reach our telemetry ingest hosts.
+///
+/// These must be the same tunnel-bypassing factories that connlib uses, so that
+/// telemetry resolves and connects outside the tunnel and never loops back
+/// through connlib itself.
+pub fn configure_ingest(
+    tcp: Arc<dyn SocketFactory<TcpSocket>>,
+    udp: Arc<dyn SocketFactory<UdpSocket>>,
+) {
+    posthog::configure(tcp, udp);
+}
+
+/// Updates the upstream DNS resolvers used to look up our telemetry ingest hosts.
+///
+/// Call this wherever connlib's system resolvers are updated.
+pub fn update_system_resolvers(servers: Vec<IpAddr>) {
+    posthog::update_system_resolvers(servers);
+}
+
+/// Drops the current telemetry ingest connection so it is re-established lazily.
+///
+/// Call this on network changes, alongside resetting connlib.
+pub fn reset_ingest() {
+    posthog::reset();
 }
 
 pub struct Dsn {

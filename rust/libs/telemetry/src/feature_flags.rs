@@ -171,26 +171,28 @@ async fn decide(
 ) -> Result<(FeatureFlagsResponse, FeatureFlagPayloadsResponse)> {
     let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
-    let response = posthog::CLIENT
-        .as_ref()?
-        .post(format!("https://{}/decide?v=3", posthog::INGEST_HOST))
-        .json(&DecideRequest {
+    let response = posthog::post_json(
+        "/decide?v=3",
+        &DecideRequest {
             api_key,
             distinct_id,
-        })
-        .send()
-        .await
-        .context("Failed to send POST request")?;
+        },
+    )
+    .await
+    .context("Failed to send POST request")?;
 
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = response.into_body();
 
     if !status.is_success() {
-        bail!("Failed to get feature flags; status={status}, body={body}")
+        bail!(
+            "Failed to get feature flags; status={status}, body={}",
+            String::from_utf8_lossy(&body)
+        )
     }
 
-    let decide_response =
-        serde_json::from_str::<DecideResponse>(&body).context("Failed to deserialize response")?;
+    let decide_response = serde_json::from_slice::<DecideResponse>(&body)
+        .context("Failed to deserialize response")?;
 
     Ok((
         decide_response.feature_flags,

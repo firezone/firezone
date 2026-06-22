@@ -327,6 +327,10 @@ fn try_main() -> Result<()> {
         let mut telemetry = Telemetry::new();
 
         telemetry.start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
+        telemetry::configure_ingest(
+            Arc::new(tcp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
+        );
         rt.block_on(Telemetry::set_firezone_id(firezone_id.clone()));
 
         analytics::identify(RELEASE.to_owned(), None);

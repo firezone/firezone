@@ -141,6 +141,10 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     if cli.is_telemetry_allowed() {
         telemetry.start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
+        telemetry::configure_ingest(
+            Arc::new(tcp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
+        );
         Telemetry::set_firezone_id(firezone_id.clone()).await;
     }
 
@@ -189,6 +193,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .into_iter()
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
+
+    telemetry::update_system_resolvers(nameservers.iter().copied().collect());
 
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),

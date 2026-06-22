@@ -106,23 +106,22 @@ where
         return Ok(());
     };
 
-    let response = posthog::CLIENT
-        .as_ref()?
-        .post(format!("https://{}/i/v0/e/", posthog::INGEST_HOST))
-        .json(&CaptureRequest {
+    let response = posthog::post_json(
+        "/i/v0/e/",
+        &CaptureRequest {
             api_key: api_key.to_string(),
             distinct_id,
             event: event.clone(),
             properties,
-        })
-        .send()
-        .await
-        .context("Failed to send POST request")?;
+        },
+    )
+    .await
+    .context("Failed to send POST request")?;
 
     let status = response.status();
 
     if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
+        let body = String::from_utf8_lossy(response.body());
 
         bail!("Failed to capture event; status={status}, body={body}")
     }
