@@ -618,6 +618,8 @@ impl Eventloop {
                     .state_mut()
                     .handle_reject_client_device_access(client_id, resource_id);
             }
+            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
+            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,
                 ipv6,

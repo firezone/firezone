@@ -454,6 +454,8 @@ impl Eventloop {
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
             }
+            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
+            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
         }
 
         Ok(())

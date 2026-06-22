@@ -124,6 +124,8 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
     AuthorizeFlow(AuthorizeFlow),
+    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
+    AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -176,6 +178,16 @@ pub struct AuthorizeFlow {
 
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
+}
+
+/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct AccessAuthorizationExpiryUpdated {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
 }
 
 /// A client's ice candidate message.
