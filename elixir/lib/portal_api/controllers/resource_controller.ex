@@ -67,7 +67,7 @@ defmodule PortalAPI.ResourceController do
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
        required: true},
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [created: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
