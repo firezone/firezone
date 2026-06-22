@@ -891,6 +891,7 @@ pub mod inbound_wg {
             };
 
             inner.dst_ip = packet.destination();
+            inner.src_proto = packet.source_protocol();
         });
     }
 
