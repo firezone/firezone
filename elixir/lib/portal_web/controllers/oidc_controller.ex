@@ -1360,6 +1360,7 @@ defmodule PortalWeb.OIDCController do
       account_id_bytes = Ecto.UUID.dump!(account_id)
 
       replace_fields = [
+        :idp_id,
         :email,
         :name,
         :given_name,
@@ -1382,6 +1383,13 @@ defmodule PortalWeb.OIDCController do
           limit: 1
         )
 
+      # Match the existing identity by idp_id (stable subject) or, since the
+      # email is verified on this path, by the actor's email. The latter lets a
+      # user who was deleted and recreated in the IdP (new idp_id, same email)
+      # overwrite their existing identity in place instead of inserting a second
+      # row, which would later collide with directory sync on the
+      # (account_id, actor_id, directory_id) unique index. Prefer the email
+      # match so a recreated user recycles their own row.
       existing_identity_cte =
         from(ei in "external_identities",
           join: a in "actors",
@@ -1389,9 +1397,10 @@ defmodule PortalWeb.OIDCController do
           where:
             ei.account_id == ^account_id_bytes and
               ei.issuer == ^issuer and
-              ei.idp_id == ^idp_id and
-              is_nil(a.disabled_at),
-          select: %{actor_id: ei.actor_id},
+              is_nil(a.disabled_at) and
+              (ei.idp_id == ^idp_id or a.email == ^email),
+          order_by: [desc: fragment("(? = ?)", a.email, ^email)],
+          select: %{id: ei.id, actor_id: ei.actor_id},
           limit: 1
         )
 
@@ -1403,7 +1412,7 @@ defmodule PortalWeb.OIDCController do
           on: true,
           where: not is_nil(al.id) or not is_nil(ei.actor_id),
           select: %{
-            id: fragment("uuid_generate_v4()"),
+            id: fragment("COALESCE(?.id, uuid_generate_v4())", ei),
             account_id: ^account_id_bytes,
             issuer: ^issuer,
             idp_id: ^idp_id,
@@ -1433,7 +1442,7 @@ defmodule PortalWeb.OIDCController do
           ExternalIdentity,
           query_with_ctes,
           on_conflict: {:replace, replace_fields},
-          conflict_target: [:account_id, :idp_id, :issuer],
+          conflict_target: [:account_id, :id],
           returning: true
         )
 

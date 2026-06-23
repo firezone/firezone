@@ -975,6 +975,39 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "recreated user with a new idp_id overwrites their identity in place", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-object-id",
+          email: actor.email
+        )
+
+      # The user is deleted and recreated in the IdP: same verified email, brand
+      # new object id. Sign-in must recycle the existing row instead of inserting
+      # a second identity for the same actor.
+      setup_successful_auth(ctx, actor, sub: "new-object-id", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "new-object-id"
+             ).id == existing_identity.id
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "old-object-id"
+             )
+    end
+
     test "successful client sign-in for admin user creates token and renders redirect page",
          ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
