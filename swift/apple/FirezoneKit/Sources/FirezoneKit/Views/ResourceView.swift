@@ -14,8 +14,16 @@ import SwiftUI
     var resource: Resource
     @Environment(\.openURL) var openURL
 
+    // Resolve the latest version from the store so the detail reflects live
+    // updates; fall back to the pushed value if the resource is no longer listed.
+    private var liveResource: Resource {
+      store.resourceList.asArray().first { $0.id == resource.id } ?? resource
+    }
+
     var body: some View {
-      List {
+      let resource = liveResource
+
+      return List {
         if resource.isInternetResource() {
           InternetResourceHeader(resource: resource)
         } else {
