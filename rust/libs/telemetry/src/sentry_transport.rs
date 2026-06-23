@@ -55,7 +55,7 @@ impl SentryTransport {
 
         let thread = TokioTransportThread::new(move |envelope, mut rate_limiter| {
             // The request is built outside the async block so that `url` and `auth`
-            // can be borrowed from the re-used closure.
+            // can be borrowed from the reused closure.
             let request = build_request(&url, &auth, &envelope);
 
             async move {
