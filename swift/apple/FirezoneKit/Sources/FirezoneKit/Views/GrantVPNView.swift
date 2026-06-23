@@ -186,6 +186,8 @@ struct GrantVPNView: View {
   #if os(iOS)
     func installVPNConfiguration() {
       Task {
+        errorHandler.clear()
+
         do {
           try await store.installVPNConfiguration()
         } catch {
