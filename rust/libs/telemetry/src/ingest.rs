@@ -120,10 +120,8 @@ impl Client {
     }
 
     async fn connection(&self) -> Result<HttpClient> {
-        if let Some(connection) = self.live_connection() {
-            return Ok(connection);
-        }
-
+        // Always serialise here: telemetry is low-volume, so this lock is
+        // effectively uncontended and a double-checked fast path isn't worth it.
         let _guard = self.bootstrap.lock().await;
 
         if let Some(connection) = self.live_connection() {
