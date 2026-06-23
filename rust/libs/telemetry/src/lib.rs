@@ -74,8 +74,6 @@ pub struct Dsn {
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
-pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
-
 pub const ANDROID_DSN: Dsn = Dsn {
     public_key: "928a6ee1f6af9734100b8bc89b2dc87d",
     project_id: 4508175126233088,
@@ -109,8 +107,10 @@ impl fmt::Display for Dsn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "https://{}@{INGEST_HOST}/{}",
-            self.public_key, self.project_id
+            "https://{}@{}/{}",
+            self.public_key,
+            sentry_transport::INGEST_HOST,
+            self.project_id
         )
     }
 }

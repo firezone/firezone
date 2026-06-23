@@ -10,7 +10,9 @@ use sentry::{
     transports::{RateLimiter, TokioTransportThread},
 };
 
-use crate::{INGEST_HOST, ingest};
+use crate::ingest;
+
+pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
 
 static CLIENT: LazyLock<ingest::Client> = LazyLock::new(|| ingest::Client::new(INGEST_HOST));
 
