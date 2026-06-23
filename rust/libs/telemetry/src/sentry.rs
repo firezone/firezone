@@ -1,16 +1,17 @@
 use std::{
+    borrow::Cow,
     sync::{Arc, LazyLock},
     time::Duration,
 };
 
-use ::sentry::{
-    ClientOptions, Envelope, Transport,
-    transports::{RateLimiter, TokioTransportThread},
-};
+use ::sentry::transports::{RateLimiter, TokioTransportThread};
 use bytes::Bytes;
 use http::{Method, Request, Response, StatusCode, header};
 
 use crate::ingest;
+
+// Re-export the Sentry SDK so the rest of the crate can reach it through this module.
+pub(crate) use ::sentry::*;
 
 pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
 
@@ -26,11 +27,53 @@ pub(crate) fn reset() {
     CLIENT.reset();
 }
 
+/// Builds the Sentry [`ClientOptions`] with our [`Factory`] transport and starts the SDK.
+pub(crate) fn init_sdk_client(
+    dsn: String,
+    environment: &'static str,
+    release: &str,
+) -> ClientInitGuard {
+    init((
+        dsn,
+        ClientOptions {
+            environment: Some(Cow::Borrowed(environment)),
+            // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
+            release: Some(release.to_owned().into()),
+            max_breadcrumbs: 500,
+            before_send: Some({
+                let rate_limit = crate::event_rate_limiter(Duration::from_secs(60 * 5));
+                Arc::new(move |event| {
+                    let event = rate_limit(event)?;
+                    let event = crate::insert_feature_flags_into_event(event);
+
+                    Some(event)
+                })
+            }),
+            enable_logs: true,
+            enable_metrics: true,
+            before_send_log: Some(Arc::new(|log| {
+                let log = crate::insert_user_account_slug_into_log(log);
+                let log = crate::append_tracing_fields_to_message(log);
+
+                Some(log)
+            })),
+            before_send_metric: Some(Arc::new(|metric| {
+                let metric = crate::insert_user_account_slug_into_metric(metric);
+                let metric = crate::insert_feature_flags_into_metric(metric);
+
+                Some(metric)
+            })),
+            transport: Some(Arc::new(Factory)),
+            ..Default::default()
+        },
+    ))
+}
+
 /// Creates [`SentryTransport`]s for the Sentry SDK.
 #[derive(Clone)]
-pub(crate) struct Factory;
+struct Factory;
 
-impl ::sentry::TransportFactory for Factory {
+impl TransportFactory for Factory {
     fn create_transport(&self, options: &ClientOptions) -> Arc<dyn Transport> {
         Arc::new(SentryTransport::new(options))
     }

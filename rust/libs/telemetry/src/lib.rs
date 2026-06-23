@@ -1,16 +1,13 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    borrow::Cow, collections::BTreeMap, fmt, mem, net::IpAddr, str::FromStr, sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt, mem, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
 
-use ::sentry::{
+use anyhow::{Context, Result, anyhow, bail};
+use api_url::ApiUrl;
+use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
 };
-use anyhow::{Context, Result, anyhow, bail};
-use api_url::ApiUrl;
 use sha2::Digest as _;
 use smallvec::SmallVec;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -183,7 +180,7 @@ impl fmt::Display for Env {
 }
 
 pub struct Telemetry {
-    inner: Option<::sentry::ClientInitGuard>,
+    inner: Option<sentry::ClientInitGuard>,
 }
 
 impl Telemetry {
@@ -241,55 +238,19 @@ impl Telemetry {
 
         tracing::info!(%environment, "Starting telemetry");
 
-        let client_options = ::sentry::ClientOptions {
-            environment: Some(Cow::Borrowed(environment.as_str())),
-            // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
-            release: Some(release.to_owned().into()),
-            max_breadcrumbs: 500,
-            before_send: Some({
-                let rate_limit = event_rate_limiter(Duration::from_secs(60 * 5));
-                Arc::new(move |event| {
-                    let event = rate_limit(event)?;
-                    let event = insert_feature_flags_into_event(event);
-
-                    Some(event)
-                })
-            }),
-            enable_logs: true,
-            enable_metrics: true,
-            before_send_log: Some(Arc::new(|log| {
-                let log = insert_user_account_slug_into_log(log);
-                let log = append_tracing_fields_to_message(log);
-
-                Some(log)
-            })),
-            before_send_metric: Some(Arc::new(|metric| {
-                let metric = insert_user_account_slug_into_metric(metric);
-                let metric = insert_feature_flags_into_metric(metric);
-
-                Some(metric)
-            })),
-            ..Default::default()
-        };
-        let inner = ::sentry::init((
-            dsn.to_string(),
-            ::sentry::ClientOptions {
-                transport: Some(Arc::new(sentry::Factory)),
-                ..client_options
-            },
-        ));
+        let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
         // Configure scope on the main hub so that all threads will get the tags.
         let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
-        ::sentry::Hub::main().configure_scope(move |scope| {
+        sentry::Hub::main().configure_scope(move |scope| {
             if let Some(api_url) = api_url {
                 scope.set_tag("api_url", api_url);
             }
-            let ctx = ::sentry::integrations::contexts::utils::device_context();
+            let ctx = sentry::integrations::contexts::utils::device_context();
             scope.set_context("device", ctx);
-            let ctx = ::sentry::integrations::contexts::utils::rust_context();
+            let ctx = sentry::integrations::contexts::utils::rust_context();
             scope.set_context("rust", ctx);
 
-            if let Some(ctx) = ::sentry::integrations::contexts::utils::os_context() {
+            if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
                 scope.set_context("os", ctx);
             }
         });
@@ -353,7 +314,7 @@ impl Telemetry {
 
     #[doc(hidden)] // Only public for testing.
     pub fn current_env() -> Option<Env> {
-        let client = ::sentry::Hub::main().client()?;
+        let client = sentry::Hub::main().client()?;
         let env = client.options().environment.as_deref()?;
         let env = Env::from_str(env).ok()?;
 
@@ -362,12 +323,12 @@ impl Telemetry {
 
     #[doc(hidden)] // Only public for testing.
     pub fn current_user() -> Option<String> {
-        ::sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
+        sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
     }
 
     #[doc(hidden)] // Only public for testing.
     pub fn current_account_slug() -> Option<String> {
-        ::sentry::Hub::main()
+        sentry::Hub::main()
             .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
     }
 }
@@ -496,7 +457,7 @@ fn insert_feature_flags_into_event(mut event: Event<'static>) -> Event<'static> 
         .map(|(flag, result)| serde_json::json!({ "flag": flag, "result": result }))
         .collect();
     let value = serde_json::json!({ "values": values.as_slice() });
-    let context = ::sentry::protocol::Context::Other(
+    let context = sentry::protocol::Context::Other(
         serde_json::from_value(value).expect("to and from json works"),
     );
 
@@ -515,8 +476,8 @@ fn insert_feature_flags_into_metric(mut metric: Metric) -> Metric {
     metric
 }
 
-fn update_user(update: impl FnOnce(&mut ::sentry::User)) {
-    ::sentry::Hub::main().configure_scope(|scope| {
+fn update_user(update: impl FnOnce(&mut sentry::User)) {
+    sentry::Hub::main().configure_scope(|scope| {
         let mut user = scope.user().cloned().unwrap_or_default();
         update(&mut user);
 
@@ -524,8 +485,8 @@ fn update_user(update: impl FnOnce(&mut ::sentry::User)) {
     });
 }
 
-fn set_current_user(user: Option<::sentry::User>) {
-    ::sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
+fn set_current_user(user: Option<sentry::User>) {
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
 #[cfg(test)]
@@ -628,7 +589,7 @@ mod tests {
 
     fn log(msg: &str, attrs: &[(&str, &str)]) -> Log {
         Log {
-            level: ::sentry::protocol::LogLevel::Info,
+            level: sentry::protocol::LogLevel::Info,
             body: msg.to_owned(),
             trace_id: None,
             timestamp: SystemTime::now(),
