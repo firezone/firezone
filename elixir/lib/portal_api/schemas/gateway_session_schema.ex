@@ -108,6 +108,7 @@ defmodule PortalAPI.Schemas.GatewaySession do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.GatewaySession
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "GatewaySessionsResponse",
@@ -119,7 +120,7 @@ defmodule PortalAPI.Schemas.GatewaySession do
           type: :array,
           items: GatewaySession.GetSchema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

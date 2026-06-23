@@ -150,6 +150,7 @@ defmodule PortalAPI.Schemas.Group do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Group
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "GroupListResponse",
@@ -157,7 +158,7 @@ defmodule PortalAPI.Schemas.Group do
       type: :object,
       properties: %{
         data: %Schema{description: "Group details", type: :array, items: Group.Schema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [
