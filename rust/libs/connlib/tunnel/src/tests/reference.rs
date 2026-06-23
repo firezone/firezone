@@ -1326,10 +1326,6 @@ impl ReferenceState {
     /// would soft-reset (no `ConnectionClosed`, no site-status drop)
     /// instead of hard-resetting.
     fn all_iceless(&self, client_id: &ClientId) -> bool {
-        if !crate::tests::sut::account_iceless_enabled() {
-            return false;
-        }
-
         let Some(client) = self.clients.get(client_id) else {
             return false;
         };

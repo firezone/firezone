@@ -1402,20 +1402,14 @@ fn address_from_destination(
     }
 }
 
-/// Mirror of the portal: ICE-less is used iff the account has it
-/// enabled and both peers advertise the capability.
+/// Mirror of the portal: ICE-less is used iff both peers advertise
+/// the capability. Each peer's capability is sampled by the
+/// proptest strategy, so coverage of both modes flows from that.
 fn resolve_use_iceless(
     a: crate::messages::SnownetCapabilities,
     b: crate::messages::SnownetCapabilities,
 ) -> bool {
-    account_iceless_enabled() && a.iceless && b.iceless
-}
-
-pub(crate) fn account_iceless_enabled() -> bool {
-    std::env::var("FEATURE_ICELESS_ENABLED")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(false)
+    a.iceless && b.iceless
 }
 
 fn make_preshared_key_and_ice(
