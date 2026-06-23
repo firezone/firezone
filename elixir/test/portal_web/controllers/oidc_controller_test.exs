@@ -1520,6 +1520,65 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
     end
 
+    test "verification with a non-existent provider redirects without raising", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(callback_conn)
+
+      # A valid pending cookie but a provider that does not exist must not raise:
+      # a raise would unwind past the constant-time padding. It redirects with a
+      # generic error instead.
+      conn =
+        callback_conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{Ecto.UUID.generate()}/verify_identity", %{
+          "secret" => "wrong",
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) == "/sign_in"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
+
+    test "verification with a non-existent account redirects without raising", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(callback_conn)
+
+      conn =
+        callback_conn
+        |> recycle()
+        |> post(~p"/nonexistent-account/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => "wrong",
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) == "/sign_in"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
+
     test "proof email verification requires the pending identity provider", ctx do
       Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 

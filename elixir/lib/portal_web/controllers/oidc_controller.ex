@@ -491,25 +491,25 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp load_pending_identity_context(conn, params) do
-    case Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]) do
-      %Cookie.PendingIdentity{} = cookie ->
-        account = Database.get_account_by_id_or_slug!(params["account_id_or_slug"])
-        provider = Database.get_provider!(account.id, "oidc", params["auth_provider_id"])
-        sign_in_params = sanitize(cookie.params)
-        conn = put_pending_identity_error_context(conn, account, provider.id, sign_in_params)
+    with %Cookie.PendingIdentity{} = cookie <-
+           Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]),
+         {:ok, account} <- Database.fetch_account_by_id_or_slug(params["account_id_or_slug"]),
+         {:ok, provider} <-
+           Database.fetch_provider(account.id, "oidc", params["auth_provider_id"]) do
+      sign_in_params = sanitize(cookie.params)
+      conn = put_pending_identity_error_context(conn, account, provider.id, sign_in_params)
 
-        {:ok,
-         %{
-           conn: conn,
-           pending_identity_id: cookie.pending_identity_id,
-           account: account,
-           provider: provider,
-           params: sign_in_params,
-           context_type: context_type(sign_in_params)
-         }}
-
-      nil ->
-        {:error, :pending_identity_state_not_found}
+      {:ok,
+       %{
+         conn: conn,
+         pending_identity_id: cookie.pending_identity_id,
+         account: account,
+         provider: provider,
+         params: sign_in_params,
+         context_type: context_type(sign_in_params)
+       }}
+    else
+      _ -> {:error, :pending_identity_state_not_found}
     end
   end
 
@@ -1120,6 +1120,21 @@ defmodule PortalWeb.OIDCController do
       query |> Safe.unscoped(:replica) |> Safe.one!()
     end
 
+    def fetch_account_by_id_or_slug(id_or_slug) do
+      query =
+        if Portal.Repo.valid_uuid?(id_or_slug),
+          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
+          else: from(a in Account, where: a.slug == ^id_or_slug)
+
+      query
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
+      |> case do
+        nil -> {:error, :not_found}
+        account -> {:ok, account}
+      end
+    end
+
     def get_provider!(account_id, type, id) do
       schema = AuthProvider.module!(type)
 
@@ -1128,6 +1143,20 @@ defmodule PortalWeb.OIDCController do
       )
       |> Safe.unscoped(:replica)
       |> Safe.one!()
+    end
+
+    def fetch_provider(account_id, type, id) do
+      schema = AuthProvider.module!(type)
+
+      from(p in schema,
+        where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
+      |> case do
+        nil -> {:error, :not_found}
+        provider -> {:ok, provider}
+      end
     end
 
     def fetch_active_identity_by_idp(account_id, issuer, idp_id) do
