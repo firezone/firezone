@@ -56,8 +56,8 @@ pub fn update_system_resolvers(servers: Vec<IpAddr>) {
 /// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
     ingest::reset_sockets();
-    posthog::reset();
-    sentry::reset();
+    posthog::reset_client();
+    sentry::reset_client();
     feature_flags::reevaluate_current();
 }
 

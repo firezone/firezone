@@ -23,7 +23,7 @@ pub(crate) fn init_addresses() {
 }
 
 /// Drops the current connection so the next request reconnects.
-pub(crate) fn reset() {
+pub(crate) fn reset_client() {
     CLIENT.reset();
 }
 
