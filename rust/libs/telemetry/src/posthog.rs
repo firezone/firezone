@@ -74,7 +74,8 @@ pub(crate) fn init_addresses() {
 
 /// Drops the current connection so the next request re-resolves and reconnects.
 pub(crate) fn reset() {
-    if let Some((tcp, udp)) = INGEST.sockets.lock().as_ref() {
+    let sockets = INGEST.sockets.lock().clone();
+    if let Some((tcp, udp)) = sockets {
         tcp.reset();
         udp.reset();
     }
