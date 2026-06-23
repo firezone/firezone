@@ -227,14 +227,25 @@ config :portal, Portal.Entra.APIClient,
   client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
-  # 15 minutes in milliseconds
-  req_opts: [receive_timeout: 900_000]
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
 
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
   token_endpoint: "https://oauth2.googleapis.com/token",
-  req_opts: [receive_timeout: 60_000]
+  req_opts: [
+    # 1 minute
+    receive_timeout: 60_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
 
 config :portal, Portal.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console
