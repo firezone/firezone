@@ -67,7 +67,7 @@ defmodule PortalAPI.ActorController do
       {"Actor attributes", "application/json", PortalAPI.Schemas.Actor.CreateRequest,
        required: true},
     responses:
-      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+      [created: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
