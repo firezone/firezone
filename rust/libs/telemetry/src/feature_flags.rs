@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{Metadata, level_filters::LevelFilter};
 use tracing_subscriber::filter::Targets;
 
-use crate::{Env, posthog};
+use crate::{Env, ingest, posthog};
 
 pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
@@ -140,7 +140,7 @@ pub(crate) fn reevaluate(user_id: String, env: &str) {
         return;
     };
 
-    posthog::RUNTIME.spawn(evaluate_now(user_id, env));
+    ingest::RUNTIME.spawn(evaluate_now(user_id, env));
 }
 
 /// Re-evaluates feature flags using the current telemetry user and environment.

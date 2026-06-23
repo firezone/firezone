@@ -1,12 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    fmt, mem,
-    net::{IpAddr, SocketAddr, ToSocketAddrs as _},
-    str::FromStr,
-    sync::Arc,
+    borrow::Cow, collections::BTreeMap, fmt, mem, net::IpAddr, str::FromStr, sync::Arc,
     time::Duration,
 };
 
@@ -15,7 +10,6 @@ use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
-    transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
@@ -26,9 +20,11 @@ pub mod feature_flags;
 pub mod otel;
 
 mod api_url;
+mod ingest;
 mod noop_push_metrics_exporter;
 mod posthog;
 mod sentry_instrument_provider;
+mod sentry_transport;
 
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
@@ -53,16 +49,18 @@ pub fn maybe_hash_device_id(id: String) -> String {
 /// feature-flag re-evaluation, since a prior attempt may have failed for lack of
 /// (working) resolvers.
 pub fn update_system_resolvers(servers: Vec<IpAddr>) {
-    posthog::update_system_resolvers(servers);
+    ingest::update_system_resolvers(servers);
     feature_flags::reevaluate_current();
 }
 
-/// Drops the current telemetry ingest connection so it is re-established lazily.
+/// Drops the current telemetry ingest connections so they are re-established lazily.
 ///
 /// Call this on network changes, alongside resetting connlib. Triggers a
 /// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
+    ingest::reset_sockets();
     posthog::reset();
+    sentry_transport::reset();
     feature_flags::reevaluate_current();
 }
 
@@ -76,7 +74,7 @@ pub struct Dsn {
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
-const INGEST_HOST: &str = "sentry.firezone.dev";
+pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
 
 pub const ANDROID_DSN: Dsn = Dsn {
     public_key: "928a6ee1f6af9734100b8bc89b2dc87d",
@@ -186,7 +184,6 @@ impl fmt::Display for Env {
 
 pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
-    transport: TransportFactory,
 }
 
 impl Telemetry {
@@ -194,29 +191,20 @@ impl Telemetry {
         tcp: Arc<dyn SocketFactory<TcpSocket>>,
         udp: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
-        // Configure and seed the PostHog ingest client. Resolving here, at telemetry
-        // construction, ensures the lookup happens before connlib reconfigures the
-        // system resolver (which would otherwise route it through connlib itself),
-        // mirroring how the Sentry transport resolves its host below. The socket
+        // Configure the shared ingest socket factories and seed each ingest host's
+        // addresses via the system resolver. Seeding here, at telemetry construction,
+        // ensures the lookup happens before connlib reconfigures the system resolver
+        // (which would otherwise route it through connlib itself). The socket
         // factories must bypass the tunnel so telemetry never loops through connlib.
-        posthog::configure(tcp, udp);
+        ingest::configure(tcp, udp);
         posthog::init_addresses();
+        sentry_transport::init_addresses();
 
-        Self {
-            inner: Default::default(),
-            transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
-                tracing::debug!("Failed to create telemetry transport factory: {e:#}");
-
-                TransportFactory::without_addresses()
-            }),
-        }
+        Self { inner: None }
     }
 
     pub fn disabled() -> Self {
-        Self {
-            inner: None,
-            transport: TransportFactory::without_addresses(),
-        }
+        Self { inner: None }
     }
 
     /// Starts a Sentry session.
@@ -286,7 +274,7 @@ impl Telemetry {
         let inner = sentry::init((
             dsn.to_string(),
             sentry::ClientOptions {
-                transport: Some(Arc::new(self.transport.clone())),
+                transport: Some(Arc::new(sentry_transport::Factory)),
                 ..client_options
             },
         ));
@@ -538,52 +526,6 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
-}
-
-#[derive(Debug, Clone)]
-pub struct TransportFactory {
-    ingest_domain_addresses: Vec<SocketAddr>,
-}
-
-impl TransportFactory {
-    pub fn resolve_ingest_host() -> Result<Self> {
-        let resolved_addresses = (INGEST_HOST, 443u16)
-            .to_socket_addrs()
-            .with_context(|| format!("Failed to resolve {INGEST_HOST}"))?
-            .collect();
-
-        tracing::debug!(host = %INGEST_HOST, addresses = ?resolved_addresses, "Resolved ingest host IPs");
-
-        Ok(Self {
-            ingest_domain_addresses: resolved_addresses,
-        })
-    }
-
-    fn without_addresses() -> Self {
-        Self {
-            ingest_domain_addresses: Default::default(),
-        }
-    }
-}
-
-impl sentry::TransportFactory for TransportFactory {
-    fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
-        let mut builder = reqwest::ClientBuilder::new()
-            .http2_prior_knowledge()
-            .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_timeout(Duration::from_secs(1))
-            .http2_keep_alive_interval(Duration::from_secs(5)); // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
-
-        if !self.ingest_domain_addresses.is_empty() {
-            builder = builder.resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses);
-        } else {
-            tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host");
-        }
-
-        let client = builder.build().expect("Failed to build HTTP client");
-
-        Arc::new(ReqwestHttpTransport::with_client(options, client))
-    }
 }
 
 #[cfg(test)]
