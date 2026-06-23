@@ -185,11 +185,19 @@ async fn bootstrap() -> Result<HttpClient> {
             // connects to the first that works, so freshly resolved addresses are
             // preferred while the seed still lets us connect before any resolvers
             // are configured or when the resolver returns unreachable addresses.
-            let mut addresses = BootstrapDnsClient::new(udp, tcp.clone(), servers)
-                .resolve(INGEST_HOST)
-                .await
-                .inspect_err(|e| tracing::debug!("Failed to resolve ingest host: {e:#}"))
-                .unwrap_or_default();
+            //
+            // Skip the resolver while we have no upstreams yet (e.g. before connlib
+            // reports the system DNS servers); it would only fail and the seed
+            // already covers that case.
+            let mut addresses = if servers.is_empty() {
+                Vec::new()
+            } else {
+                BootstrapDnsClient::new(udp, tcp.clone(), servers)
+                    .resolve(INGEST_HOST)
+                    .await
+                    .inspect_err(|e| tracing::debug!("Failed to resolve ingest host: {e:#}"))
+                    .unwrap_or_default()
+            };
 
             for address in seed_addresses {
                 if !addresses.contains(&address) {
