@@ -33,7 +33,7 @@ defmodule Portal.AccountFixtures do
         idp_sync: true,
         rest_api: true,
         client_to_client: false,
-        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true"
+        iceless: false
       },
       limits: %{
         monthly_active_users_count: 100

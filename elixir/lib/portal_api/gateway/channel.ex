@@ -310,8 +310,8 @@ defmodule PortalAPI.Gateway.Channel do
     # ICE-less is used only when both peers support it and the account has the
     # feature flag enabled. The portal resolves this once, here, and ships the
     # decision (rather than the raw capabilities) so client and gateway agree.
-    # The account flag is read fresh (not cached at join) so a mid-session toggle
-    # takes effect immediately and can't drift between peers.
+    # The account flag is read fresh per flow (not cached at join), subject to
+    # replica lag, so a mid-session toggle applies without reconnects.
     use_iceless =
       socket.assigns.iceless_capable == true and client_iceless_capable == true and
         Database.iceless_enabled?(socket.assigns.gateway.account_id)
