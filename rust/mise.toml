@@ -73,6 +73,45 @@ raw = true
 run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive"
 
 # =============================================================================
+# Profiling
+# =============================================================================
+
+[tasks.headless-client-perf-record]
+description = "Record a CPU-cycles profile of the running firezone-headless-client, with per-sample CPU id for migration analysis."
+raw = true
+run = """
+set -eu
+
+# `comm` is truncated to 15 chars in the kernel, so match the truncated name.
+pid="$(pgrep firezone-headl | head -n1 || true)"
+[ -n "${pid}" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }
+
+# perf needs root; chown the result back so profiler-cli can read it without sudo.
+trap : INT
+trap '[ -f perf.data ] && sudo chown "$(id -u):$(id -g)" perf.data 2>/dev/null || true' EXIT
+
+sudo perf record \\
+  --freq "4000" \\
+  --call-graph fp \\
+  --sample-cpu \\
+  --output perf.data \\
+  --pid "${pid}"
+"""
+
+[tasks.perf-sched]
+description = "Record scheduler events system-wide (sched_switch/wakeups/migrations) to measure cross-thread handoff latency and core migration."
+raw = true
+run = """
+set -eu
+
+# perf needs root; chown the result back so it can be read without sudo.
+trap : INT
+trap '[ -f perf-sched.data ] && sudo chown "$(id -u):$(id -g)" perf-sched.data 2>/dev/null || true' EXIT
+
+sudo perf sched record --output perf-sched.data
+"""
+
+# =============================================================================
 # Composite tasks
 # =============================================================================
 
