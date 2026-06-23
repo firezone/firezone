@@ -127,11 +127,20 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{}), do: true
 
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields) do
+  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :iceless do
     def unquote(:"#{feature}_enabled?")(account) do
       Config.global_feature_enabled?(unquote(feature)) and
         account_feature_enabled?(account, unquote(feature))
     end
+  end
+
+  # Unlike the other features, ICE-less is gated per-account only and has no
+  # global `enabled_features` flag, so it can be rolled out to individual
+  # accounts without a release. Keeping the toggle in the portal (rather than a
+  # device-local flag) makes it the single source of truth, so client and
+  # gateway can never disagree on whether to use it.
+  def iceless_enabled?(account) do
+    account_feature_enabled?(account, :iceless)
   end
 
   defp account_feature_enabled?(account, feature) do
