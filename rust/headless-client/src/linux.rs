@@ -11,15 +11,7 @@ const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
 /// Re-exec via `sudo` if we are not already root.
-///
-/// Lets `cargo run` prompt for elevation instead of failing later when opening
-/// the TUN device or controlling DNS. Only compiled into debug builds; in
-/// production we run as root under `systemd`.
 #[cfg(debug_assertions)]
-#[expect(
-    clippy::print_stderr,
-    reason = "No tracing subscriber is configured this early in startup"
-)]
 pub(crate) fn elevate_if_needed() -> Result<()> {
     use anyhow::Context as _;
     use std::os::unix::process::CommandExt as _;
@@ -38,9 +30,6 @@ pub(crate) fn elevate_if_needed() -> Result<()> {
     let exe = std::env::current_exe().context("Failed to find current executable")?;
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
 
-    // No tracing subscriber is configured this early, so print to stderr directly.
-    eprintln!("Not running as root, re-executing via `sudo` to elevate privileges");
-
     // `-E` preserves the environment (e.g. `FIREZONE_TOKEN`, `RUST_LOG`); `--`
     // ends `sudo`'s own flags. Setting the guard via `.env` configures only the
     // child's environment rather than mutating our own process env (`unsafe` in
@@ -56,15 +45,6 @@ pub(crate) fn elevate_if_needed() -> Result<()> {
         .exec();
 
     Err(err).context("Failed to re-execute via `sudo`; is it installed?")
-}
-
-#[cfg(not(debug_assertions))]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "A real implementation exists for debug builds"
-)]
-pub(crate) fn elevate_if_needed() -> Result<()> {
-    Ok(())
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {

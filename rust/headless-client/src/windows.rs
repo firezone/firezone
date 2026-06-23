@@ -8,6 +8,7 @@ use anyhow::{Context as _, Result};
 use std::path::Path;
 
 // Re-exec via `sudo` is only implemented on Linux for now.
+#[cfg(debug_assertions)]
 #[expect(clippy::unnecessary_wraps)]
 pub(crate) fn elevate_if_needed() -> Result<()> {
     Ok(())

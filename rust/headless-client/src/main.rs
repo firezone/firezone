@@ -209,13 +209,14 @@ fn main() {
 }
 
 fn try_main() -> Result<()> {
+    let cli = Cli::parse();
+
+    #[cfg(debug_assertions)]
+    platform::elevate_if_needed()?;
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .map_err(|_| anyhow!("Failed to install default crypto provider"))?;
-
-    let cli = Cli::parse();
-
-    platform::elevate_if_needed()?;
 
     match &cli._command {
         Some(Cmd::SignIn {
