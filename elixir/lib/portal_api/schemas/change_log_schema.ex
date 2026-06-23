@@ -112,6 +112,7 @@ defmodule PortalAPI.Schemas.ChangeLog do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ChangeLog
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "ChangeLogsResponse",
@@ -129,7 +130,7 @@ defmodule PortalAPI.Schemas.ChangeLog do
           type: :array,
           items: ChangeLog.GetSchema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [
