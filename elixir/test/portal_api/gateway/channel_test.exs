@@ -3109,7 +3109,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ^gateway_ipv6,
         ^preshared_key,
         ^ice_credentials,
-        _iceless
+        _use_iceless
       }
     end
 
@@ -3124,6 +3124,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       subject: subject,
       group: group
     } do
+      update_account(account, %{features: %{iceless: true}})
+
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
@@ -3169,20 +3171,20 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_iceless: true
+           client_iceless_capable: true
          }}
       )
 
       assert_push "authorize_flow", %{
         ref: ref,
-        snownet_capabilities: %{iceless: true}
+        use_iceless: true
       }
 
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, iceless}
-      assert iceless == true
+      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless}
+      assert use_iceless == true
     end
 
     test "authorize_policy with mismatched iceless flag intersects to false", %{
@@ -3240,17 +3242,17 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_iceless: false
+           client_iceless_capable: false
          }}
       )
 
       assert_push "authorize_flow", %{
         ref: _,
-        snownet_capabilities: %{iceless: false}
+        use_iceless: false
       }
     end
 
-    test "authorize_policy without client_iceless defaults to false", %{
+    test "authorize_policy without client_iceless_capable defaults to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3310,7 +3312,74 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert_push "authorize_flow", %{
         ref: _,
-        snownet_capabilities: %{iceless: false}
+        use_iceless: false
+      }
+    end
+
+    test "authorize_policy does not use iceless when account feature flag is disabled", %{
+      client: client,
+      account: account,
+      actor: actor,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      update_account(account, %{features: %{iceless: false}})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      # Both peers are iceless-capable, but the account flag is off → no iceless.
+      push(socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      public_key = Portal.DeviceFixtures.generate_public_key()
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:authorize_policy, {channel_pid, socket_ref},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key,
+           client_iceless_capable: true
+         }}
+      )
+
+      assert_push "authorize_flow", %{
+        ref: _,
+        use_iceless: false
       }
     end
 

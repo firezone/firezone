@@ -285,7 +285,9 @@ defmodule Portal.Repo.Seeds do
         idp_sync: true,
         rest_api: true,
         internet_resource: true,
-        client_to_client: true
+        client_to_client: true,
+        # Let CI integration tests opt into ICE-less per run without a code change.
+        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true"
       })
       |> put_change(:metadata, %{
         stripe: %{

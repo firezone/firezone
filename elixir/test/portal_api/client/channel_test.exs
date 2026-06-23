@@ -115,7 +115,8 @@ defmodule PortalAPI.Client.ChannelTest do
         },
         features: %{
           internet_resource: true,
-          client_to_client: true
+          client_to_client: true,
+          iceless: true
         }
       )
 
@@ -5754,7 +5755,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "intersects iceless snownet_capabilities across both clients", %{
+    test "resolves use_iceless across both clients when both are capable", %{
       client: client,
       subject: subject,
       target_client: target_client,
@@ -5775,12 +5776,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlling,
-        snownet_capabilities: %{iceless: true}
+        use_iceless: true
       }
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlled,
-        snownet_capabilities: %{iceless: true}
+        use_iceless: true
       }
     end
 
@@ -5805,16 +5806,16 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlling,
-        snownet_capabilities: %{iceless: false}
+        use_iceless: false
       }
 
       assert_push "client_device_access_authorized", %{
         ice_role: :controlled,
-        snownet_capabilities: %{iceless: false}
+        use_iceless: false
       }
     end
 
-    test "client_device_access_authorized defaults snownet_capabilities to false when unset", %{
+    test "client_device_access_authorized defaults use_iceless to false when unset", %{
       client: client,
       subject: subject,
       target_client: target_client,
@@ -5831,7 +5832,43 @@ defmodule PortalAPI.Client.ChannelTest do
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
 
       assert_push "client_device_access_authorized", %{
-        snownet_capabilities: %{iceless: false}
+        use_iceless: false
+      }
+    end
+
+    test "does not use iceless when the account feature flag is disabled", %{
+      account: account,
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject
+    } do
+      # Turn the account-wide iceless flag off in the DB; it is read fresh per flow.
+      update_account(account, %{
+        features: %{internet_resource: true, client_to_client: true, iceless: false}
+      })
+
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      # Both clients are iceless-capable, but the account flag gates it off.
+      push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
+      push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlling,
+        use_iceless: false
+      }
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlled,
+        use_iceless: false
       }
     end
 
@@ -6295,7 +6332,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # The initiator must not be released before the target acks.
       refute_push "client_device_access_authorized", _, 200
 
-      send(ack_to, {:device_access_acked, ref})
+      send(ack_to, {:device_access_acked, ref, false})
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
