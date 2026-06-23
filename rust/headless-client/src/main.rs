@@ -215,6 +215,8 @@ fn try_main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    platform::elevate_if_needed()?;
+
     match &cli._command {
         Some(Cmd::SignIn {
             auth_base_url,

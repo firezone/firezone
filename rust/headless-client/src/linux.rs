@@ -10,6 +10,56 @@ use std::path::Path;
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
+/// Re-exec via `sudo` if we are not already root.
+///
+/// Lets `cargo run` prompt for elevation instead of failing later when opening
+/// the TUN device or controlling DNS. Only compiled into debug builds; in
+/// production we run as root under `systemd`.
+#[cfg(debug_assertions)]
+pub(crate) fn elevate_if_needed() -> Result<()> {
+    use anyhow::Context as _;
+    use std::os::unix::process::CommandExt as _;
+
+    // Set on the re-exec'd child so we can detect and break a re-exec loop if
+    // `sudo` ever returns without actually elevating us.
+    const REEXEC_GUARD: &str = "FIREZONE_REEXEC_ELEVATED";
+
+    if nix::unistd::Uid::effective().is_root() {
+        return Ok(());
+    }
+    if std::env::var_os(REEXEC_GUARD).is_some() {
+        bail!("Re-executed via `sudo` but still not root");
+    }
+
+    let exe = std::env::current_exe().context("Failed to find current executable")?;
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+
+    tracing::info!("Not running as root, re-executing via `sudo`");
+
+    // `-E` preserves the environment (e.g. `FIREZONE_TOKEN`, `RUST_LOG`); `--`
+    // ends `sudo`'s own flags. The guard is set via `.env` so it only affects the
+    // child and we avoid `unsafe` `set_var`. `exec` replaces the current process,
+    // so `sudo`'s prompt uses our terminal and the exit code propagates.
+    let err = std::process::Command::new("sudo")
+        .arg("-E")
+        .arg("--")
+        .arg(&exe)
+        .args(&args)
+        .env(REEXEC_GUARD, "1")
+        .exec();
+
+    Err(err).context("Failed to re-execute via `sudo`; is it installed?")
+}
+
+#[cfg(not(debug_assertions))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "A real implementation exists for debug builds"
+)]
+pub(crate) fn elevate_if_needed() -> Result<()> {
+    Ok(())
+}
+
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     let Ok(stat) = nix::sys::stat::fstatat(AT_FDCWD, path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read

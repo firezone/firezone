@@ -7,6 +7,12 @@
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
+// Re-exec via `sudo` is only implemented on Linux for now.
+#[expect(clippy::unnecessary_wraps)]
+pub(crate) fn elevate_if_needed() -> Result<()> {
+    Ok(())
+}
+
 // The return value is useful on Linux
 #[expect(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
