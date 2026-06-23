@@ -601,6 +601,34 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Total"
     end
 
+    test "marks the table stale on client update change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      render_async(lv)
+      refute has_element?(lv, "#clients-reload-btn")
+
+      {:ok, _updated} =
+        client
+        |> Ecto.Changeset.change(name: "Renamed Client")
+        |> Repo.update()
+
+      send(lv.pid, %Change{op: :update, struct: %Device{type: :client, id: client.id}})
+
+      assert has_element?(lv, "#clients-reload-btn")
+
+      render_click(lv, "reload", %{"table_id" => "clients"})
+      assert render(lv) =~ "Renamed Client"
+    end
+
     test "ignores non-client device changes", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
