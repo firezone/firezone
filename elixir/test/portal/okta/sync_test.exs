@@ -2043,6 +2043,50 @@ defmodule Portal.Okta.SyncTest do
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
 
+    test "identity upsert recycles stale identity when user is recreated with a new idp_id" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      issuer = "https://okta.example"
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, email: "recreated@example.com")
+
+      stale_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: issuer,
+          idp_id: "old-okta-id",
+          email: "recreated@example.com",
+          synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+        )
+
+      assert {:ok, %{upserted_identities: 1}} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, DateTime.utc_now(), [
+                 %{
+                   idp_id: "new-okta-id",
+                   email: "recreated@example.com",
+                   name: "Recreated User",
+                   given_name: "Recreated",
+                   family_name: "User",
+                   preferred_username: "recreated@example.com"
+                 }
+               ])
+
+      identities =
+        from(ei in ExternalIdentity,
+          where: ei.account_id == ^account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == stale_identity.id
+      assert identity.idp_id == "new-okta-id"
+      assert identity.directory_id == directory.id
+    end
+
     test "group upsert rejects stale synced_at and accepts fresh" do
       account = account_fixture(features: %{idp_sync: true})
       directory = okta_directory_fixture(account: account)

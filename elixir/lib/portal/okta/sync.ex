@@ -779,7 +779,7 @@ defmodule Portal.Okta.Sync do
         SELECT ei.id, ei.account_id, ei.actor_id, ei.idp_id
         FROM external_identities ei
         WHERE ei.account_id = $#{account_id}
-          AND ei.directory_id = $#{directory_id}
+          AND ei.issuer = $#{issuer}
           AND ei.idp_id IN (SELECT idp_id FROM input_data)
       ),
       existing_actors_by_email AS (
@@ -789,6 +789,13 @@ defmodule Portal.Okta.Sync do
         WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
           AND id.email IS NOT NULL
         ORDER BY id.idp_id, a.inserted_at ASC
+      ),
+      existing_directory_identities AS (
+        SELECT ei.id, ei.actor_id
+        FROM external_identities ei
+        WHERE ei.account_id = $#{account_id}
+          AND ei.directory_id = $#{directory_id}
+          AND ei.actor_id IN (SELECT actor_id FROM existing_actors_by_email)
       ),
       actors_to_create AS (
         SELECT
@@ -833,7 +840,7 @@ defmodule Portal.Okta.Sync do
           account_id, inserted_at, updated_at
         )
         SELECT
-          COALESCE(ei.id, uuid_generate_v4()),
+          COALESCE(ei.id, edi.id, uuid_generate_v4()),
           aam.actor_id,
           $#{issuer},
           aam.idp_id,
@@ -848,8 +855,10 @@ defmodule Portal.Okta.Sync do
           $#{last_synced_at}
         FROM all_actor_mappings aam
         LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
-        ON CONFLICT (account_id, idp_id, issuer)
+        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        ON CONFLICT (account_id, id)
         DO UPDATE SET
+          idp_id = EXCLUDED.idp_id,
           directory_id = EXCLUDED.directory_id,
           email = EXCLUDED.email,
           name = EXCLUDED.name,
@@ -857,11 +866,11 @@ defmodule Portal.Okta.Sync do
           family_name = EXCLUDED.family_name,
           preferred_username = EXCLUDED.preferred_username,
           updated_at = EXCLUDED.updated_at
-        WHERE (external_identities.directory_id, external_identities.email, external_identities.name,
+        WHERE (external_identities.idp_id, external_identities.directory_id, external_identities.email, external_identities.name,
                external_identities.given_name, external_identities.family_name,
                external_identities.preferred_username)
               IS DISTINCT FROM
-              (EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
+              (EXCLUDED.idp_id, EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
                EXCLUDED.given_name, EXCLUDED.family_name,
                EXCLUDED.preferred_username)
           AND NOT EXISTS (
