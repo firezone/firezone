@@ -276,12 +276,12 @@ where
         ice_role: IceRole,
         default_ice_config: IceConfig,
         idle_ice_config: IceConfig,
-        capabilities: Capabilities,
+        use_iceless: bool,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
-        let want_iceless = capabilities.iceless && telemetry::feature_flags::iceless();
+        let want_iceless = use_iceless;
 
         // Reuse only if every parameter that feeds boringtun's
         // session matches, including the agent mode — a flag flip
@@ -1229,12 +1229,6 @@ impl From<Credentials> for is::IceCreds {
             pass: value.password,
         }
     }
-}
-
-/// Negotiated capabilities for a single connection.
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct Capabilities {
-    pub iceless: bool,
 }
 
 #[cfg(test)]

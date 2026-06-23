@@ -182,7 +182,7 @@ pub struct AuthorizeFlow {
     pub expires_at: Option<Duration>,
 
     #[serde(default)]
-    pub snownet_capabilities: SnownetCapabilities,
+    pub use_iceless: bool,
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
@@ -398,8 +398,8 @@ mod tests {
         let IngressMessages::AuthorizeFlow(flow) = message else {
             panic!("expected AuthorizeFlow");
         };
-        // Old portals don't send capabilities; we default to "feature not supported".
-        assert_eq!(flow.snownet_capabilities, SnownetCapabilities::default());
+        // Old portals don't send the flag; default is `false`.
+        assert!(!flow.use_iceless);
     }
 
     #[test]

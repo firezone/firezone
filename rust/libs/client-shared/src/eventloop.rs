@@ -494,7 +494,7 @@ impl Eventloop {
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
-                snownet_capabilities,
+                use_iceless,
             }) => {
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
@@ -508,7 +508,7 @@ impl Eventloop {
                     preshared_key,
                     client_ice_credentials,
                     gateway_ice_credentials,
-                    snownet_capabilities,
+                    use_iceless,
                     Instant::now(),
                 ) {
                     Ok(Ok(())) => {}
@@ -567,7 +567,7 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
-                snownet_capabilities,
+                use_iceless,
                 resource,
                 authorization_expires_at,
             }) => {
@@ -591,7 +591,7 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
-                    snownet_capabilities,
+                    use_iceless,
                     authorization,
                     Instant::now(),
                 ) {

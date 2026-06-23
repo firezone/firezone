@@ -1072,7 +1072,7 @@ impl TunnelTest {
                 let gateway_key = gateway.inner().sut.public_key();
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
-                let negotiated_capabilities = intersect_capabilities(
+                let use_iceless = resolve_use_iceless(
                     ref_state
                         .clients
                         .get(&src)
@@ -1114,7 +1114,7 @@ impl TunnelTest {
                             gateway_ice.clone(),
                             None,
                             resource,
-                            negotiated_capabilities,
+                            use_iceless,
                             now,
                         )
                     })
@@ -1135,7 +1135,7 @@ impl TunnelTest {
                             preshared_key,
                             client_ice,
                             gateway_ice,
-                            negotiated_capabilities,
+                            use_iceless,
                             now,
                         )
                     })
@@ -1177,7 +1177,7 @@ impl TunnelTest {
 
                         let (preshared_key, local_client_ice, remote_client_ice) =
                             make_preshared_key_and_ice(src_key, remote_key);
-                        let negotiated_capabilities = intersect_capabilities(
+                        let use_iceless = resolve_use_iceless(
                             ref_state
                                 .clients
                                 .get(&src)
@@ -1211,7 +1211,7 @@ impl TunnelTest {
                                     remote_client_ice.clone(),
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
-                                    negotiated_capabilities,
+                                    use_iceless,
                                     Some(remote_authorization),
                                     now,
                                 )
@@ -1236,7 +1236,7 @@ impl TunnelTest {
                                     local_client_ice,
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
-                                    negotiated_capabilities,
+                                    use_iceless,
                                     None,
                                     now,
                                 )
@@ -1402,14 +1402,20 @@ fn address_from_destination(
     }
 }
 
-/// Mirror of the portal's per-field boolean AND for negotiated capabilities.
-fn intersect_capabilities(
+/// Mirror of the portal: ICE-less is used iff the account has it
+/// enabled and both peers advertise the capability.
+fn resolve_use_iceless(
     a: crate::messages::SnownetCapabilities,
     b: crate::messages::SnownetCapabilities,
-) -> crate::messages::SnownetCapabilities {
-    crate::messages::SnownetCapabilities {
-        iceless: a.iceless && b.iceless,
-    }
+) -> bool {
+    account_iceless_enabled() && a.iceless && b.iceless
+}
+
+pub(crate) fn account_iceless_enabled() -> bool {
+    std::env::var("FEATURE_ICELESS_ENABLED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(false)
 }
 
 fn make_preshared_key_and_ice(

@@ -27,7 +27,7 @@ use crate::dns::{
 };
 use crate::filter_engine::FilterEngine;
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, SnownetCapabilities,
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
 };
 use crate::peer_store::{Peer, PeerStore};
@@ -928,7 +928,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        capabilities: SnownetCapabilities,
+        use_iceless: bool,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -950,7 +950,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
-            capabilities.into(),
+            use_iceless,
             now,
         ) {
             Ok(()) => {}
@@ -1031,7 +1031,7 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
-        capabilities: SnownetCapabilities,
+        use_iceless: bool,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -1048,7 +1048,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
-            capabilities.into(),
+            use_iceless,
             now,
         )?;
 

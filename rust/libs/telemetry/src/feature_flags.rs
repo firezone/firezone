@@ -68,10 +68,6 @@ pub fn stream_metrics() -> bool {
     FEATURE_FLAGS.stream_metrics()
 }
 
-pub fn iceless() -> bool {
-    FEATURE_FLAGS.iceless()
-}
-
 /// Number of raw samples retained per distribution series per flush interval,
 /// configured via the `stream_metrics` feature-flag payload.
 pub fn metrics_reservoir_size() -> usize {
@@ -91,7 +87,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
-        iceless,
         show_connected_devices,
     } = &*FEATURE_FLAGS;
 
@@ -110,7 +105,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
         ),
         ("stream_metrics", stream_metrics.read().enabled),
-        ("iceless", iceless.load(Ordering::Relaxed)),
         (
             "show_connected_devices",
             show_connected_devices.load(Ordering::Relaxed),
@@ -231,8 +225,6 @@ struct FeatureFlagsResponse {
     #[serde(default)]
     stream_metrics: bool,
     #[serde(default)]
-    iceless: bool,
-    #[serde(default)]
     show_connected_devices: bool,
 }
 
@@ -252,7 +244,6 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: RwLock<StreamMetrics>,
-    iceless: AtomicBool,
     show_connected_devices: AtomicBool,
 }
 
@@ -271,7 +262,6 @@ impl FeatureFlags {
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
-            iceless,
             show_connected_devices,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
@@ -285,7 +275,6 @@ impl FeatureFlags {
                 icmp_error_unreachable_prohibited_create_new_flow,
                 Ordering::Relaxed,
             );
-        self.iceless.store(iceless, Ordering::Relaxed);
         self.show_connected_devices
             .store(show_connected_devices, Ordering::Relaxed);
 
@@ -329,10 +318,6 @@ impl FeatureFlags {
         self.stream_metrics.read().reservoir_size
     }
 
-    fn iceless(&self) -> bool {
-        self.iceless.load(Ordering::Relaxed)
-    }
-
     fn show_connected_devices(&self) -> bool {
         self.show_connected_devices.load(Ordering::Relaxed)
     }
@@ -354,7 +339,6 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
-        iceless: env_or("FZFF_ICELESS", flags.iceless),
         show_connected_devices: env_or("FZFF_SHOW_CONNECTED_DEVICES", flags.show_connected_devices),
     }
 }

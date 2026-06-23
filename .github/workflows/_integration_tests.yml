@@ -256,7 +256,7 @@ jobs:
           fi
 
           if [[ "${{ matrix.test.iceless }}" == "true" ]]; then
-            export FZFF_ICELESS=true
+            export FEATURE_ICELESS_ENABLED=true
           fi
 
           docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
