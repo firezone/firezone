@@ -92,10 +92,7 @@ struct OutboundInit {
 struct ResponderDedup {
     init_bytes: Vec<u8>,
     response_bytes: Vec<u8>,
-    cached_at: Instant,
 }
-
-const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -332,7 +329,6 @@ impl PathAgent {
                     self.responder.dedup = Some(ResponderDedup {
                         init_bytes,
                         response_bytes: bytes,
-                        cached_at: now,
                     });
                     self.established = true;
                 }
@@ -370,7 +366,6 @@ impl PathAgent {
         match parsed {
             Packet::HandshakeInit(_) => {
                 if let Some(d) = self.responder.dedup.as_ref()
-                    && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
                     && d.init_bytes == bytes
                 {
                     tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
@@ -392,8 +387,10 @@ impl PathAgent {
                     return ControlFlow::Break(());
                 }
 
+                // Source IP must be set so boringtun can emit cookie replies under load.
                 let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-                let outbound = match tunnel.decapsulate_at(None, bytes, &mut buf, now) {
+                let outbound = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now)
+                {
                     TunnResult::Done => Vec::new(),
                     TunnResult::WriteToNetwork(response) => vec![response.to_vec()],
                     TunnResult::Err(e) => {
@@ -405,6 +402,24 @@ impl PathAgent {
                         return ControlFlow::Break(());
                     }
                 };
+
+                // Cookie replies don't establish a session; return them without touching state.
+                if let Some(reply) = outbound.first()
+                    && matches!(
+                        Tunn::parse_incoming_packet(reply),
+                        Ok(Packet::PacketCookieReply(_))
+                    )
+                {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Replying with cookie under load");
+
+                    self.pending_transmits.push_back(Transmit {
+                        local: path.0,
+                        remote: path.1,
+                        payload: Payload::Ciphertext(reply.clone()),
+                    });
+
+                    return ControlFlow::Break(());
+                }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
