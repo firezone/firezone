@@ -819,9 +819,21 @@ defmodule Portal.Entra.Sync do
           identity_attrs
         )
 
+      run_identity_upsert(query, params)
+    end
+
+    # A concurrent OIDC sign-in can insert an identity for the same
+    # (account_id, idp_id, issuer) after this statement's snapshot is taken,
+    # which the (account_id, id) conflict target does not handle. Re-running
+    # picks up the now-committed row via pre_existing_identities and recycles
+    # it, so we retry once before surfacing the error.
+    defp run_identity_upsert(query, params, retry? \\ true) do
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{rows: rows}} ->
           {:ok, %{upserted_identities: length(rows)}}
+
+        {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} when retry? ->
+          run_identity_upsert(query, params, false)
 
         {:error, reason} ->
           {:error, reason}
@@ -862,6 +874,11 @@ defmodule Portal.Entra.Sync do
           AND id.email IS NOT NULL
         ORDER BY id.idp_id, a.inserted_at ASC
       ),
+      -- Recycles the actor's existing directory identity when its idp_id changed
+      -- (e.g. the IdP user was deleted and recreated with the same email). The
+      -- LEFT JOIN below assumes at most one row per actor here, which is
+      -- guaranteed by the partial unique index on (account_id, actor_id,
+      -- directory_id) from migration 20260506124134.
       existing_directory_identities AS (
         SELECT ei.id, ei.actor_id
         FROM external_identities ei
@@ -932,6 +949,7 @@ defmodule Portal.Entra.Sync do
         ON CONFLICT (account_id, id)
         DO UPDATE SET
           idp_id = EXCLUDED.idp_id,
+          issuer = EXCLUDED.issuer,
           directory_id = EXCLUDED.directory_id,
           email = EXCLUDED.email,
           name = EXCLUDED.name,
@@ -940,11 +958,11 @@ defmodule Portal.Entra.Sync do
           preferred_username = EXCLUDED.preferred_username,
           profile = EXCLUDED.profile,
           updated_at = EXCLUDED.updated_at
-        WHERE (external_identities.idp_id, external_identities.directory_id, external_identities.email, external_identities.name,
+        WHERE (external_identities.idp_id, external_identities.issuer, external_identities.directory_id, external_identities.email, external_identities.name,
                external_identities.given_name, external_identities.family_name,
                external_identities.preferred_username, external_identities.profile)
               IS DISTINCT FROM
-              (EXCLUDED.idp_id, EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
+              (EXCLUDED.idp_id, EXCLUDED.issuer, EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
                EXCLUDED.given_name, EXCLUDED.family_name,
                EXCLUDED.preferred_username, EXCLUDED.profile)
           AND NOT EXISTS (

@@ -2593,6 +2593,56 @@ defmodule Portal.Entra.SyncTest do
       assert identity.directory_id == directory.id
     end
 
+    test "recycled identity keeps a fresh sync state when seen twice in one run" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, email: "recreated@example.com")
+
+      stale_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: issuer,
+          idp_id: "old-object-id",
+          email: "recreated@example.com",
+          synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+        )
+
+      synced_at = DateTime.utc_now()
+
+      attrs = [
+        %{
+          idp_id: "new-object-id",
+          email: "recreated@example.com",
+          name: "Recreated User",
+          given_name: "Recreated",
+          family_name: "User",
+          preferred_username: "recreated@example.com",
+          profile: nil
+        }
+      ]
+
+      # The same recreated user can appear in two batches of one sync run
+      # (e.g. direct assignment and group membership). The first call recycles
+      # the row; the second must still advance its sync state to the run's
+      # watermark so the later cleanup pass does not delete it.
+      assert {:ok, _} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, synced_at, attrs)
+
+      assert {:ok, _} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, synced_at, attrs)
+
+      sync_state =
+        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: stale_identity.id)
+
+      assert DateTime.compare(sync_state.synced_at, synced_at) == :eq
+    end
+
     test "group upsert rejects stale synced_at and accepts fresh" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account)
