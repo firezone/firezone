@@ -78,6 +78,13 @@ impl HttpClient {
         })
     }
 
+    /// Whether the underlying connection has been closed.
+    ///
+    /// A closed client is permanently unusable and should be discarded.
+    pub fn is_closed(&self) -> bool {
+        self.client.is_closed()
+    }
+
     pub fn send_request(
         &self,
         request: http::Request<Bytes>,

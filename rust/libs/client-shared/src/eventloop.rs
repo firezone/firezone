@@ -127,6 +127,7 @@ impl Eventloop {
             is_internet_resource_active,
         );
         tunnel.update_system_resolvers(dns_servers.clone());
+        telemetry::update_system_resolvers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
@@ -216,6 +217,7 @@ impl Eventloop {
                 };
 
                 let dns = tunnel.update_system_resolvers(dns);
+                telemetry::update_system_resolvers(dns.clone());
 
                 self.portal_cmd_tx
                     .send(PortalCommand::UpdateDnsServers(dns))
@@ -244,6 +246,7 @@ impl Eventloop {
                 };
 
                 tunnel.reset(&reason);
+                telemetry::reset_ingest();
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(
                         tunnel.public_key().to_bytes(),

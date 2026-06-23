@@ -332,7 +332,10 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        let telemetry = Telemetry::new();
+        let telemetry = Telemetry::new(
+            Arc::new(tcp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
+        );
 
         tracing::info!(
             server_pid = std::process::id(),

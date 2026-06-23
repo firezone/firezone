@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{Metadata, level_filters::LevelFilter};
 use tracing_subscriber::filter::Targets;
 
-use crate::{Env, posthog};
+use crate::{Env, ingest, posthog};
 
 pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
@@ -140,28 +140,36 @@ pub(crate) fn reevaluate(user_id: String, env: &str) {
         return;
     };
 
-    posthog::RUNTIME.spawn(evaluate_now(user_id, env));
+    ingest::RUNTIME.spawn(evaluate_now(user_id, env));
+}
+
+/// Re-evaluates feature flags using the current telemetry user and environment.
+///
+/// Does nothing until both are known. Lets us refresh flags promptly when the
+/// network situation changes instead of waiting for the next periodic re-evaluation.
+pub(crate) fn reevaluate_current() {
+    let Some(client) = sentry::Hub::main().client() else {
+        return;
+    };
+
+    let Some(env) = client.options().environment.as_ref() else {
+        return; // Nothing to do if we don't have an environment set.
+    };
+
+    let Some(user_id) =
+        sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
+    else {
+        return; // Nothing to do if we don't have a user-id set.
+    };
+
+    reevaluate(user_id, env);
 }
 
 pub(crate) async fn reeval_timer() {
     loop {
         tokio::time::sleep(RE_EVAL_DURATION).await;
 
-        let Some(client) = sentry::Hub::main().client() else {
-            continue;
-        };
-
-        let Some(env) = client.options().environment.as_ref() else {
-            continue; // Nothing to do if we don't have an environment set.
-        };
-
-        let Some(user_id) =
-            sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
-        else {
-            continue; // Nothing to do if we don't have a user-id set.
-        };
-
-        reevaluate(user_id, env);
+        reevaluate_current();
     }
 }
 
@@ -171,26 +179,28 @@ async fn decide(
 ) -> Result<(FeatureFlagsResponse, FeatureFlagPayloadsResponse)> {
     let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
-    let response = posthog::CLIENT
-        .as_ref()?
-        .post(format!("https://{}/decide?v=3", posthog::INGEST_HOST))
-        .json(&DecideRequest {
+    let response = posthog::post_json(
+        "/decide?v=3",
+        &DecideRequest {
             api_key,
             distinct_id,
-        })
-        .send()
-        .await
-        .context("Failed to send POST request")?;
+        },
+    )
+    .await
+    .context("Failed to send POST request")?;
 
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = response.into_body();
 
     if !status.is_success() {
-        bail!("Failed to get feature flags; status={status}, body={body}")
+        bail!(
+            "Failed to get feature flags; status={status}, body={}",
+            String::from_utf8_lossy(&body)
+        )
     }
 
-    let decide_response =
-        serde_json::from_str::<DecideResponse>(&body).context("Failed to deserialize response")?;
+    let decide_response = serde_json::from_slice::<DecideResponse>(&body)
+        .context("Failed to deserialize response")?;
 
     Ok((
         decide_response.feature_flags,
