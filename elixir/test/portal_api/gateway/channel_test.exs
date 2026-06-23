@@ -3171,7 +3171,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_iceless_capable: true
+           initiator_iceless_capable: true
          }}
       )
 
@@ -3242,7 +3242,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_iceless_capable: false
+           initiator_iceless_capable: false
          }}
       )
 
@@ -3252,7 +3252,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "authorize_policy without client_iceless_capable defaults to false", %{
+    test "authorize_policy without initiator_iceless_capable defaults to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3373,13 +3373,88 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           client_iceless_capable: true
+           initiator_iceless_capable: true
          }}
       )
 
       assert_push "authorize_flow", %{
         ref: _,
         use_iceless: false
+      }
+    end
+
+    test "use_iceless picks up an account flag toggled on after join", %{
+      client: client,
+      account: account,
+      actor: actor,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      updated_account = %{account | features: %{account.features | iceless: true}}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: updated_account
+      })
+
+      :sys.get_state(socket.channel_pid)
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      public_key = Portal.DeviceFixtures.generate_public_key()
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:authorize_policy, {channel_pid, socket_ref},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key,
+           initiator_iceless_capable: true
+         }}
+      )
+
+      assert_push "authorize_flow", %{
+        ref: _,
+        use_iceless: true
       }
     end
 

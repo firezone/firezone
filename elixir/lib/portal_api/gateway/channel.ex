@@ -4,6 +4,7 @@ defmodule PortalAPI.Gateway.Channel do
   alias __MODULE__.Database
 
   alias Portal.{
+    Account,
     Cache,
     Device,
     PG,
@@ -135,6 +136,8 @@ defmodule PortalAPI.Gateway.Channel do
     :ok = Presence.Relays.Global.subscribe()
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
+
+    socket = assign(socket, :account, account)
 
     init(socket, account, relays)
 
@@ -303,18 +306,13 @@ defmodule PortalAPI.Gateway.Channel do
       preshared_key: preshared_key
     } = payload
 
-    client_iceless_capable = Map.get(payload, :client_iceless_capable, false)
+    initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
-    # ICE-less is used only when both peers support it and the account has the
-    # feature flag enabled. The portal resolves this once, here, and ships the
-    # decision (rather than the raw capabilities) so client and gateway agree.
-    # The account flag is read fresh per flow (not cached at join), subject to
-    # replica lag, so a mid-session toggle applies without reconnects.
     use_iceless =
-      socket.assigns.iceless_capable == true and client_iceless_capable == true and
-        Database.iceless_enabled?(socket.assigns.gateway.account_id)
+      socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
+        Account.iceless_enabled?(socket.assigns.account)
 
     ref =
       encode_ref(socket, {
@@ -777,10 +775,13 @@ defmodule PortalAPI.Gateway.Channel do
            struct: %Portal.Account{slug: slug} = account
          },
          socket
-       )
-       when old_slug != slug do
-    {:ok, relays} = select_relays(socket)
-    init(socket, account, relays)
+       ) do
+    socket = assign(socket, :account, account)
+
+    if old_slug != slug do
+      {:ok, relays} = select_relays(socket)
+      init(socket, account, relays)
+    end
 
     {:noreply, socket}
   end
@@ -1136,12 +1137,6 @@ defmodule PortalAPI.Gateway.Channel do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped(:replica)
       |> Safe.one!()
-    end
-
-    def iceless_enabled?(account_id) do
-      account_id
-      |> get_account_by_id!()
-      |> Account.iceless_enabled?()
     end
   end
 end

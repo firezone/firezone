@@ -431,7 +431,7 @@ defmodule PortalAPI.Client.Channel do
 
     use_iceless =
       socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
-        Database.iceless_enabled?(socket.assigns.client.account_id)
+        Portal.Account.iceless_enabled?(socket.assigns.subject.account)
 
     payload = Map.put(payload, :use_iceless, use_iceless)
 
@@ -1383,7 +1383,7 @@ defmodule PortalAPI.Client.Channel do
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
-             client_iceless_capable: socket.assigns.iceless_capable
+             initiator_iceless_capable: socket.assigns.iceless_capable
            }}
 
         attrs =
@@ -2538,13 +2538,6 @@ defmodule PortalAPI.Client.Channel do
       account_feature_enabled? = account.features.client_to_client == true
 
       Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
-    end
-
-    def iceless_enabled?(account_id) do
-      from(a in Portal.Account, where: a.id == ^account_id)
-      |> Portal.Safe.unscoped(:replica)
-      |> Portal.Safe.one!()
-      |> Portal.Account.iceless_enabled?()
     end
 
     def all_compatible_gateways_for_client_and_resource(

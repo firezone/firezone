@@ -5843,10 +5843,13 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client: target_client,
       target_subject: target_subject
     } do
-      # Turn the account-wide iceless flag off in the DB; it is read fresh per flow.
-      update_account(account, %{
-        features: %{internet_resource: true, client_to_client: true, iceless: false}
-      })
+      account =
+        update_account(account, %{
+          features: %{internet_resource: true, client_to_client: true, iceless: false}
+        })
+
+      subject = %{subject | account: account}
+      target_subject = %{target_subject | account: account}
 
       initiating_socket = join_channel(client, subject)
       assert_push "init", _
@@ -5857,6 +5860,47 @@ defmodule PortalAPI.Client.ChannelTest do
       # Both clients are iceless-capable, but the account flag gates it off.
       push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
       push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlling,
+        use_iceless: false
+      }
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlled,
+        use_iceless: false
+      }
+    end
+
+    test "use_iceless picks up an account flag toggled off after join", %{
+      account: account,
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
+      push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      updated_account = %{account | features: %{account.features | iceless: false}}
+
+      send(target_socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: updated_account
+      })
+
+      :sys.get_state(target_socket.channel_pid)
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
