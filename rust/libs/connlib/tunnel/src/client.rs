@@ -1120,22 +1120,6 @@ impl ClientState {
         peer.remove_resource(&resource_id);
     }
 
-    /// Update the recorded expiry for an active authorization.
-    pub fn handle_client_device_access_authorization_expiry_updated(
-        &mut self,
-        cid: ClientId,
-        resource_id: ResourceId,
-        expires_at: Duration,
-        now: Instant,
-    ) {
-        let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
-        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
-            tracing::debug!(%cid, "Unknown peer for expiry update");
-            return;
-        };
-        peer.update_resource_expiry(resource_id, new_expiry, now);
-    }
-
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
     ///
     /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
