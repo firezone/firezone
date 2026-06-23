@@ -8,7 +8,7 @@
 
 import Foundation
 
-public struct ConnectedDevice: Codable, Identifiable, Equatable, Sendable {
+public struct ConnectedDevice: Codable, Identifiable, Hashable, Sendable {
   public let id: String
   public let tunIPv4: String
   public let pools: [String]
