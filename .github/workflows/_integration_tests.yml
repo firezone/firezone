@@ -163,7 +163,7 @@ jobs:
             script: systemd/dns-systemd-resolved
           - script: tcp-dns
           - script: download-concurrent
-            min_gateway_version: 1.4.18
+            min_gateway_version: 1.5.3
           - name: download-double-symmetric-nat
             script: download
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair

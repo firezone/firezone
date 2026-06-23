@@ -265,4 +265,37 @@ defmodule PortalWeb.Settings.DNSTest do
       assert html =~ "all addresses must be unique"
     end
   end
+
+  describe "custom resolvers with no net change" do
+    test "renders when adding then dropping a resolver leaves no net change", %{conn: conn} do
+      # Starting from no custom resolvers, a change that adds an address and drops
+      # it in the same event produces a net-empty list equal to the stored data, so
+      # cast_embed leaves :addresses out of the changeset's changes while the raw
+      # "addresses" params map remains. phoenix_ecto then surfaces that map as the
+      # field value, which crashed the previous length/1 guard.
+      account = account_fixture(config: %{clients_upstream_dns: %{type: :system}})
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/dns/edit")
+
+      html =
+        render_change(lv, "change", %{
+          "account" => %{
+            "config" => %{
+              "clients_upstream_dns" => %{
+                "type" => "custom",
+                "addresses" => %{"0" => %{"address" => "1.1.1.1"}},
+                "addresses_sort" => ["0"],
+                "addresses_drop" => ["0"]
+              }
+            }
+          }
+        })
+
+      assert html =~ "Add Resolver"
+    end
+  end
 end

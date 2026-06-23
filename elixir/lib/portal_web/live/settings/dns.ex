@@ -375,7 +375,7 @@ defmodule PortalWeb.Settings.DNS do
                 />
 
                 <.button
-                  :if={length(dns_form[:addresses].value || []) < 8}
+                  :if={Enum.count(dns_form[:addresses].value || []) < 8}
                   type="button"
                   name="account[config][clients_upstream_dns][addresses_sort][]"
                   value="new"
@@ -386,7 +386,7 @@ defmodule PortalWeb.Settings.DNS do
                   Add Resolver
                 </.button>
                 <p
-                  :if={length(dns_form[:addresses].value || []) >= 8}
+                  :if={Enum.count(dns_form[:addresses].value || []) >= 8}
                   class="text-xs text-subtle"
                 >
                   Maximum of 8 upstream resolvers reached.

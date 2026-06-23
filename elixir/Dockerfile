@@ -70,7 +70,7 @@ RUN mix release ${APPLICATION_NAME}
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
 
-FROM alpine:3.24.0 AS runtime
+FROM alpine:3.24.1 AS runtime
 
 ENV LANG=C.UTF-8
 

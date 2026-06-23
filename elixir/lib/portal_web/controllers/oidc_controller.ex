@@ -1248,7 +1248,7 @@ defmodule PortalWeb.OIDCController do
     end
 
     def create_one_time_passcode(account, actor) do
-      code = Portal.Crypto.random_token(5, encoder: :user_friendly)
+      code = Portal.Crypto.random_token(6, encoder: :user_friendly)
       code_hash = Portal.Crypto.hash(:argon2, code)
       expires_at = DateTime.utc_now() |> DateTime.add(@otp_expiration_seconds, :second)
 
@@ -1276,29 +1276,22 @@ defmodule PortalWeb.OIDCController do
                  pending_identity_id,
                  auth_provider_id
                ),
-             {:ok, passcode} <- fetch_pending_passcode_for_update(pending_identity),
-             :ok <- verify_pending_identity_code(entered_code, passcode),
-             pending_identity_ids <- fetch_related_pending_identity_ids(pending_identity),
-             {:ok, identity} <- insert_external_identity_from_pending(pending_identity),
-             :ok <- delete_related_pending_identities_and_passcodes(pending_identity) do
-          {:ok, {identity, pending_identity_ids}}
+             {:ok, passcode} <- fetch_pending_passcode_for_update(pending_identity) do
+          verify_and_promote(pending_identity, passcode, entered_code)
         else
           {:error, :not_found} ->
             dummy_verify_pending_identity_code()
-            {:error, :invalid_code}
-
-          {:error, reason} ->
-            {:error, reason}
+            {:ok, :not_found}
         end
       end)
       |> case do
-        {:ok, {%ExternalIdentity{} = identity, pending_identity_ids}} ->
+        {:ok, {:verified, %ExternalIdentity{} = identity, pending_identity_ids}} ->
           {:ok, Safe.preload(identity, [:actor, :account], :replica), pending_identity_ids}
 
-        {:error, :not_found} ->
+        {:ok, :invalid_code} ->
           {:error, :invalid_code}
 
-        {:error, :invalid_code} ->
+        {:ok, :not_found} ->
           {:error, :invalid_code}
 
         {:error, reason} ->
@@ -1306,11 +1299,43 @@ defmodule PortalWeb.OIDCController do
       end
     end
 
-    defp verify_pending_identity_code(entered_code, %OneTimePasscode{} = passcode) do
+    defp verify_and_promote(
+           %PendingIdentity{} = pending_identity,
+           %OneTimePasscode{} = passcode,
+           entered_code
+         ) do
       if Portal.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
-        :ok
+        pending_identity_ids = fetch_related_pending_identity_ids(pending_identity)
+
+        with {:ok, identity} <- insert_external_identity_from_pending(pending_identity),
+             :ok <- delete_related_pending_identities_and_passcodes(pending_identity) do
+          {:ok, {:verified, identity, pending_identity_ids}}
+        end
       else
-        {:error, :invalid_code}
+        :ok = record_failed_one_time_passcode_attempt(passcode)
+        {:ok, :invalid_code}
+      end
+    end
+
+    defp record_failed_one_time_passcode_attempt(%OneTimePasscode{} = passcode) do
+      from(otp in OneTimePasscode,
+        where: otp.account_id == ^passcode.account_id,
+        where: otp.id == ^passcode.id,
+        update: [inc: [attempts: 1]],
+        select: otp.attempts
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, [attempts]} ->
+          if attempts >= OneTimePasscode.max_attempts() do
+            delete_one_time_passcode(passcode.account_id, passcode.id)
+          else
+            :ok
+          end
+
+        _ ->
+          :ok
       end
     end
 
@@ -1464,6 +1489,7 @@ defmodule PortalWeb.OIDCController do
         where: passcode.actor_id == ^pending_identity.actor_id,
         where: passcode.id == ^pending_identity.one_time_passcode_id,
         where: passcode.expires_at > ^DateTime.utc_now(),
+        where: passcode.attempts < ^OneTimePasscode.max_attempts(),
         where: is_nil(actor.disabled_at),
         lock: "FOR UPDATE"
       )
