@@ -97,7 +97,7 @@ public struct AppView: View {
       switch (store.vpnStatus, store.decision) {
       case (nil, _), (_, nil):
         ProgressView()
-      case (.invalid, _):
+      case (.invalid, _) where store.vpnConfigurationManager == nil:
         GrantVPNView()
       case (_, .notDetermined):
         GrantNotificationsView()
@@ -117,7 +117,9 @@ public struct AppView: View {
           ProgressView()
           Text("Getting things ready... this should only take a few seconds.")
         }
-      case (.needsInstall, _), (_, .invalid):
+      case (.needsInstall, _):
+        GrantVPNView()
+      case (_, .invalid) where store.vpnConfigurationManager == nil:
         GrantVPNView()
       default:
         FirstTimeView()
