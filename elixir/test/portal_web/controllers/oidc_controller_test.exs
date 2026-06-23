@@ -1459,7 +1459,7 @@ defmodule PortalWeb.OIDCControllerTest do
       pending_cookie = pending_identity_cookie_from_response(conn)
       pending_identity = Repo.get_by!(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
       assert_received {:email, email}
-      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
 
       for _ <- 1..Portal.OneTimePasscode.max_attempts() do
         conn
