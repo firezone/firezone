@@ -710,6 +710,39 @@ defmodule Portal.AuthenticationTest do
                verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
     end
 
+    test "tracks failed attempts without deleting before the limit" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      for _ <- 1..(Portal.OneTimePasscode.max_attempts() - 1) do
+        assert {:error, :invalid_code} =
+                 verify_one_time_passcode(account.id, actor.id, passcode.id, "wrong")
+      end
+
+      assert {:ok, _} =
+               verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+    end
+
+    test "deletes the passcode after the maximum number of failed attempts" do
+      account = account_fixture()
+      actor = actor_fixture(account: account, allow_email_otp_sign_in: true)
+
+      {:ok, passcode} = create_one_time_passcode(account, actor)
+
+      for _ <- 1..Portal.OneTimePasscode.max_attempts() do
+        assert {:error, :invalid_code} =
+                 verify_one_time_passcode(account.id, actor.id, passcode.id, "wrong")
+      end
+
+      # The passcode is deleted, so even the correct code no longer verifies
+      assert {:error, :invalid_code} =
+               verify_one_time_passcode(account.id, actor.id, passcode.id, passcode.code)
+
+      refute Repo.get_by(Portal.OneTimePasscode, id: passcode.id)
+    end
+
     test "creating a new passcode deletes existing passcodes for the actor" do
       account = account_fixture()
       actor = actor_fixture(account: account, allow_email_otp_sign_in: true)

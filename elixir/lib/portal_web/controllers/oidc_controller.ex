@@ -137,7 +137,13 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp finish_resolved_identity(
-         %{conn: conn, context_type: context_type, account: account, provider: provider, params: params},
+         %{
+           conn: conn,
+           context_type: context_type,
+           account: account,
+           provider: provider,
+           params: params
+         },
          {:identity, identity},
          tokens
        ) do
@@ -151,7 +157,13 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp finish_resolved_identity(
-         %{conn: conn, context_type: context_type, account: account, provider: provider, params: params},
+         %{
+           conn: conn,
+           context_type: context_type,
+           account: account,
+           provider: provider,
+           params: params
+         },
          {:proof_required, actor, identity_profile},
          _tokens
        ) do
@@ -325,7 +337,8 @@ defmodule PortalWeb.OIDCController do
            identity_profile.idp_id
          ) do
       {:ok, identity} ->
-        with {:ok, identity} <- Database.update_identity_profile(identity, identity_profile.profile_attrs) do
+        with {:ok, identity} <-
+               Database.update_identity_profile(identity, identity_profile.profile_attrs) do
           {:ok, {:identity, identity}}
         end
 
@@ -349,8 +362,12 @@ defmodule PortalWeb.OIDCController do
   defp email_verification_method(_provider), do: :none
 
   defp enforce_verified_email(%IdentityProfile{email_verified: :verified}), do: :ok
-  defp enforce_verified_email(%IdentityProfile{email_verified: :unverified}), do: {:error, :email_not_verified}
-  defp enforce_verified_email(%IdentityProfile{email_verified: :missing}), do: {:error, :email_verified_missing}
+
+  defp enforce_verified_email(%IdentityProfile{email_verified: :unverified}),
+    do: {:error, :email_not_verified}
+
+  defp enforce_verified_email(%IdentityProfile{email_verified: :missing}),
+    do: {:error, :email_verified_missing}
 
   defp start_owner_verification(conn, account, provider, actor, identity_profile, params) do
     pending_identity_id = Ecto.UUID.generate()
@@ -863,7 +880,11 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
-  defp verify_oidc_callback({:ok, %{config: config, verifier: verifier} = pending}, code, lv_pid_string) do
+  defp verify_oidc_callback(
+         {:ok, %{config: config, verifier: verifier} = pending},
+         code,
+         lv_pid_string
+       ) do
     with {:ok, claims, userinfo_result} <- PortalWeb.OIDC.verify_callback(config, code, verifier),
          :ok <- verify_email_verified_claim(pending, claims, userinfo_result) do
       %{
@@ -1221,30 +1242,27 @@ defmodule PortalWeb.OIDCController do
         ) do
       Safe.transact(fn ->
         with {:ok, pending_identity} <-
-               fetch_pending_identity_for_update(account_id, pending_identity_id, auth_provider_id),
-             {:ok, passcode} <- fetch_pending_passcode_for_update(pending_identity),
-             :ok <- verify_pending_identity_code(entered_code, passcode),
-             pending_identity_ids <- fetch_related_pending_identity_ids(pending_identity),
-             {:ok, identity} <- insert_external_identity_from_pending(pending_identity),
-             :ok <- delete_related_pending_identities_and_passcodes(pending_identity) do
-          {:ok, {identity, pending_identity_ids}}
+               fetch_pending_identity_for_update(
+                 account_id,
+                 pending_identity_id,
+                 auth_provider_id
+               ),
+             {:ok, passcode} <- fetch_pending_passcode_for_update(pending_identity) do
+          verify_and_promote(pending_identity, passcode, entered_code)
         else
           {:error, :not_found} ->
             dummy_verify_pending_identity_code()
-            {:error, :invalid_code}
-
-          {:error, reason} ->
-            {:error, reason}
+            {:ok, :not_found}
         end
       end)
       |> case do
-        {:ok, {%ExternalIdentity{} = identity, pending_identity_ids}} ->
+        {:ok, {:verified, %ExternalIdentity{} = identity, pending_identity_ids}} ->
           {:ok, Safe.preload(identity, [:actor, :account], :replica), pending_identity_ids}
 
-        {:error, :not_found} ->
+        {:ok, :invalid_code} ->
           {:error, :invalid_code}
 
-        {:error, :invalid_code} ->
+        {:ok, :not_found} ->
           {:error, :invalid_code}
 
         {:error, reason} ->
@@ -1252,11 +1270,43 @@ defmodule PortalWeb.OIDCController do
       end
     end
 
-    defp verify_pending_identity_code(entered_code, %OneTimePasscode{} = passcode) do
+    defp verify_and_promote(
+           %PendingIdentity{} = pending_identity,
+           %OneTimePasscode{} = passcode,
+           entered_code
+         ) do
       if Portal.Crypto.equal?(:argon2, entered_code, passcode.code_hash) do
-        :ok
+        pending_identity_ids = fetch_related_pending_identity_ids(pending_identity)
+
+        with {:ok, identity} <- insert_external_identity_from_pending(pending_identity),
+             :ok <- delete_related_pending_identities_and_passcodes(pending_identity) do
+          {:ok, {:verified, identity, pending_identity_ids}}
+        end
       else
-        {:error, :invalid_code}
+        :ok = record_failed_one_time_passcode_attempt(passcode)
+        {:ok, :invalid_code}
+      end
+    end
+
+    defp record_failed_one_time_passcode_attempt(%OneTimePasscode{} = passcode) do
+      from(otp in OneTimePasscode,
+        where: otp.account_id == ^passcode.account_id,
+        where: otp.id == ^passcode.id,
+        update: [inc: [attempts: 1]],
+        select: otp.attempts
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, [attempts]} ->
+          if attempts >= OneTimePasscode.max_attempts() do
+            delete_one_time_passcode(passcode.account_id, passcode.id)
+          else
+            :ok
+          end
+
+        _ ->
+          :ok
       end
     end
 
@@ -1410,6 +1460,7 @@ defmodule PortalWeb.OIDCController do
         where: passcode.actor_id == ^pending_identity.actor_id,
         where: passcode.id == ^pending_identity.one_time_passcode_id,
         where: passcode.expires_at > ^DateTime.utc_now(),
+        where: passcode.attempts < ^OneTimePasscode.max_attempts(),
         where: is_nil(actor.disabled_at),
         lock: "FOR UPDATE"
       )
