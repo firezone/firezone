@@ -215,16 +215,6 @@ where
     /// - we change our IP or port
     ///
     /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
-    ///
-    /// # Soft vs hard reset
-    ///
-    /// When every established connection runs in iceless mode, the
-    /// reset takes a soft path: the WG private key and the connection
-    /// records (boringtun sessions, `peer_socket`, etc.) stay put,
-    /// and each connection just resets its path-agent + force-sends
-    /// a fresh handshake. ICE-based connections rely on the key
-    /// rotation + close-and-reopen cycle to detect roaming, so the
-    /// hard path runs whenever any ICE connection is present.
     pub fn reset(&mut self, now: Instant) {
         self.allocations.clear();
         self.buffered_transmits.clear();
@@ -274,11 +264,6 @@ where
     ///
     /// If we already have a connection with the same parameters, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
-    ///
-    /// `capabilities` carries the negotiated capability flags from the
-    /// portal. When `capabilities.iceless` is set *and* the local PostHog
-    /// `iceless` flag is on, the new connection dispatches via the `Path`
-    /// variant of `Agent` instead of the classic ICE agent variant.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[allow(clippy::too_many_arguments)]
     pub fn upsert_connection(
@@ -298,16 +283,9 @@ where
         let remote_creds = remote_creds.into();
         let want_iceless = capabilities.iceless && telemetry::feature_flags::iceless();
 
-        // Check if we already have a connection with the exact same parameters.
-        // In order for the connection to be same, we need to compare:
-        // - The agent's negotiation parameters (ICE creds + role for Ice mode;
-        //   for iceless mode, only the mode itself — it always rebuilds creds)
-        // - Desired agent mode (ICE vs iceless), so a flag flip forces replace
-        // - Remote public key
-        // - Preshared key
-        //
-        // Only if all of those things are the same, will boringtun be able to
-        // handshake a session.
+        // Reuse only if every parameter that feeds boringtun's
+        // session matches, including the agent mode — a flag flip
+        // forces a replace.
         if let Ok(c) = self.connections.get_mut(&cid, now)
             && c.agent.matches_existing_connection(
                 &local_creds,
@@ -398,12 +376,9 @@ where
             now,
         );
 
-        // No nomination step in iceless mode — fan out the WG init now,
-        // but only on the Controlling side. The other side becomes the
-        // responder when our init arrives, so we don't burn bandwidth
-        // (and TURN channel bindings) on a duplicate fanout from each
-        // peer. `PathAgent` itself stays role-agnostic; the choice is
-        // made here based on the role the portal already assigned.
+        // Only Controlling fans out the init, so we don't burn
+        // bandwidth and TURN channel bindings on a duplicate from
+        // each side.
         if connection.agent.is_iceless() && matches!(ice_role, IceRole::Controlling) {
             connection.initiate_wg_session_for_path(now);
         }
@@ -1230,9 +1205,6 @@ fn invalidate_allocation_candidates<TId, RId>(
 {
     for (cid, c) in connections.iter_mut() {
         if c.agent.is_iceless() {
-            // Iceless: rebuild the path-agent and force a fresh
-            // handshake. No `InvalidateIceCandidate` — peer rediscovers
-            // via the next `HandshakeInit`.
             c.reset_path_for_relay_replacement(cid, allocation, now);
         } else {
             for candidate in allocation.current_relay_candidates() {
@@ -1259,12 +1231,7 @@ impl From<Credentials> for is::IceCreds {
     }
 }
 
-/// Negotiated capabilities for a single connection, as decided by the
-/// portal after intersecting the local and remote sides' reported sets.
-///
-/// Mirrors `tunnel::messages::SnownetCapabilities`, which is the
-/// transport-level type. Tunnel converts via `From` at the snownet
-/// boundary so the rest of snownet only deals in `Capabilities`.
+/// Negotiated capabilities for a single connection.
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Capabilities {
     pub iceless: bool,
@@ -1590,9 +1557,6 @@ where
             }
         }
 
-        // Drain path-agent events: transition state on `PrimaryChanged`.
-        // Handshake validation now runs inside `handle_inbound_network`
-        // so `ForwardHandshake` no longer fires.
         while let Some(event) = self.agent.poll_path_event() {
             match event {
                 path_agent::Event::PrimaryChanged { local, remote } => {
@@ -1602,9 +1566,8 @@ where
             }
         }
 
-        // Drain path-agent transmits (handshake replays / retransmits,
-        // probes). Plaintext payloads go through `Tunn::encapsulate`
-        // first; ciphertext goes straight to the wire.
+        // Plaintext payloads (probes) need encapsulation; ciphertext
+        // goes straight to the wire.
         while let Some(pt) = self.agent.poll_path_transmit() {
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             let maybe = match pt.payload {
@@ -1689,13 +1652,9 @@ where
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
-        // Always run `update_timers_at` so boringtun's internal
-        // deadlines (`REKEY_TIMEOUT`, `REKEY_ATTEMPT_TIME`) keep
-        // advancing — even in `Connecting`, where no socket has been
-        // nominated yet. Without this, a stuck bootstrap (peer down,
-        // relay blackhole) would hang forever instead of surfacing
-        // `ConnectionExpired`. Any outbound bytes get dropped below
-        // if there's no socket to send on.
+        // Advance unconditionally — even in `Connecting` — so a stuck
+        // bootstrap eventually surfaces `ConnectionExpired` instead of
+        // hanging.
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
@@ -1707,19 +1666,6 @@ where
             }
             TunnResult::WriteToNetwork(b) => {
                 if self.agent.is_iceless() {
-                    // Re-key from boringtun's timer. Route through the
-                    // path-agent so it reopens the bootstrap window and
-                    // probes restart immediately instead of waiting
-                    // ~1 RTT for the inbound response. The init bytes
-                    // get queued on `primary` and the snownet drain
-                    // loop picks them up via `poll_path_transmit`.
-                    //
-                    // Rare regression: if `primary` was just cleared
-                    // (candidate removal mid-probe), the init is
-                    // dropped. boringtun retries within REKEY_TIMEOUT
-                    // (~5s); the new primary lands well under 1s in
-                    // practice. Accepted as a narrow loss window over
-                    // the alternative of sending to a stale socket.
                     self.agent.handle_outbound(b.to_vec(), now);
                 } else if let Some(peer_socket) = self.socket() {
                     transmits.extend(make_owned_transmit(
@@ -1731,9 +1677,6 @@ where
                         now,
                     ));
                 }
-                // Else: ICE in `Connecting` — drop. boringtun will
-                // retry on the next timer tick; if nomination never
-                // lands, `REKEY_ATTEMPT_TIME` eventually fires above.
             }
             TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
                 panic!("Unexpected result from update_timers")
@@ -1741,9 +1684,6 @@ where
         };
     }
 
-    /// Iceless equivalent of [`IceAgentEvent::NominatedSend`]: on the
-    /// first call, flush WG/IP buffers and transition `Connecting →
-    /// Connected`; on later calls, just rebind `peer_socket`.
     fn adopt_iceless_peer_socket<TId>(
         &mut self,
         peer_socket: PeerSocket,
@@ -1898,10 +1838,6 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        // Path-agent gets first crack at handshake bytes (dedup, replay,
-        // validation): it runs `tunnel.decapsulate_at` to authenticate
-        // before mutating any of its own state — rejected bytes leave
-        // it untouched.
         let packet = match self.agent.handle_inbound_network(
             &mut self.tunnel,
             packet,
@@ -2018,10 +1954,6 @@ where
         }
     }
 
-    /// Classify an outbound `(local, from)` socket pair into the
-    /// corresponding `PeerSocket` variant by looking up `local` in the
-    /// allocation table (relay vs. host bind) and asking the agent
-    /// whether `from` is a relayed remote candidate.
     fn peer_socket_for_tuple(
         &self,
         allocations: &mut Allocations<RId>,
@@ -2048,14 +1980,6 @@ where
         }
     }
 
-    /// Iceless equivalent of [`Self::initiate_wg_session`]: hand the
-    /// `HandshakeInit` bytes from boringtun to the path-agent. The
-    /// per-pair fanout lands in `poll_path_transmit` and gets drained
-    /// by the next `handle_timeout` pump.
-    ///
-    /// No `last_proactive_handshake_sent_at` suppression: that's an
-    /// ICE reuse-path concern. Iceless calls this once at construction;
-    /// re-keys flow through the regular `agent.handle_outbound` path.
     fn initiate_wg_session_for_path(&mut self, now: Instant)
     where
         RId: Ord + fmt::Display + Copy,
@@ -2063,34 +1987,18 @@ where
         self.agent.initiate_handshake(&mut self.tunnel, false, now);
     }
 
-    /// Soft reset for a roam: reset the path-agent, re-seed remote
-    /// candidates, and force a fresh boringtun handshake init so the
-    /// peer learns about the new local candidates as soon as they
-    /// arrive. Connection state (peer_socket, WG session keys) stays
-    /// put — outbound encapsulation against the stale `peer_socket`
-    /// will drop until the new primary lands, which is acceptable for
-    /// roaming.
-    ///
-    /// Caller is responsible for gating on iceless mode; on `Ice`
-    /// connections this still produces a fresh init, which the ICE
-    /// path doesn't expect — use [`crate::Node::reset`]'s hard path
-    /// for those.
+    /// Iceless-only soft roam: drop all locals, force-resend the init.
+    /// Connection state (peer_socket, WG session keys) stays put.
     fn reset_for_roam(&mut self, now: Instant)
     where
         RId: Ord + fmt::Display + Copy,
     {
-        // Local IPs all changed; drop every local candidate.
         self.agent.rebuild_path(|_| true);
-        // Force-resend: the network changed underneath, an in-flight
-        // init from before the roam is going nowhere.
         self.agent.initiate_handshake(&mut self.tunnel, true, now);
     }
 
-    /// Iceless-only: a relay allocation was replaced (e.g. portal
-    /// rotation). Drop the dead relay's candidates from the inner
-    /// `PathAgent` and force a fresh `HandshakeInit` so the surviving
-    /// pairs (host, srflx, other-relay) get one — the receiver
-    /// rediscovers the connection by the init's sender pubkey.
+    /// Iceless-only. Receiver rediscovers the connection by the
+    /// init's sender pubkey.
     fn reset_path_for_relay_replacement<TId>(
         &mut self,
         cid: TId,
@@ -2105,15 +2013,12 @@ where
             "reset_path_for_relay_replacement is iceless-only"
         );
 
-        // Two candidates per allocation (host + reflexive); SmallVec
-        // inline-capacity 2 keeps this stack-allocated.
+        // Host + reflexive per allocation.
         let dropped = allocation
             .current_relay_candidates()
             .collect::<SmallVec<[_; 2]>>();
         self.agent.rebuild_path(|c| dropped.contains(c));
 
-        // Force-resend: a fresh PathAgent has no established path, so
-        // the init buffers for fanout across the surviving pairs.
         self.agent.initiate_handshake(&mut self.tunnel, true, now);
 
         tracing::info!(%cid, "Reset iceless path-agent after relay invalidation");

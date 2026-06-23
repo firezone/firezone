@@ -1,16 +1,6 @@
-//! Connection-level agent dispatch.
-//!
-//! `Agent::Ice` wraps the legacy str0m `IceAgent`. `Agent::Path` wraps a
-//! `path_agent::PathAgent` plus the candidate lists snownet still needs
-//! to query (no credentials, no role).
-//!
-//! Call sites stay agent-agnostic by going through named decision
-//! methods (`send_wg_handshake_after_nomination`,
-//! `wait_for_nomination_before_wg_handshake`, etc.) rather than poking
-//! at variant-specific state. ICE-only operations on `Path` are no-ops:
-//! `handle_stun_packet` returns `false`, `set_*_credentials` drop the
-//! creds, `poll_ice_event` / `poll_ice_transmit` return `None`. Path-
-//! agent-only operations on `Ice` mirror that.
+//! Connection-level agent dispatch over `Agent::Ice` (str0m) or
+//! `Agent::Path` (iceless). Mode-irrelevant operations are no-ops on
+//! the wrong variant.
 
 use std::collections::VecDeque;
 use std::ops::ControlFlow;
@@ -23,12 +13,8 @@ use smallvec::SmallVec;
 
 use crate::{IceConfig, IceRole};
 
-/// FIFO cap on remote candidates per kind. Each portal-driven relay
-/// rotation can add a fresh remote relay candidate without us evicting
-/// the old one; without a cap, `pairs` (= `locals × remotes`) would grow
-/// unbounded over the lifetime of a long-lived connection. Splitting by
-/// kind keeps a runaway burst on one axis (e.g. many relay candidates
-/// from a flapping portal) from evicting still-useful host candidates.
+/// Per-kind FIFO cap on remote candidates, bounding `pairs` growth
+/// across portal-driven relay rotations.
 const MAX_REMOTE_PER_KIND: usize = 6;
 
 #[derive(derive_more::Debug)]
@@ -36,14 +22,8 @@ pub(crate) enum Agent {
     Ice(IceAgent),
     Path {
         local_candidates: Vec<Candidate>,
-        /// Remote host candidates. FIFO-bounded at
-        /// [`MAX_REMOTE_PER_KIND`].
         remote_host: VecDeque<Candidate>,
-        /// Remote server-reflexive (and peer-reflexive) candidates.
-        /// FIFO-bounded at [`MAX_REMOTE_PER_KIND`].
         remote_srflx: VecDeque<Candidate>,
-        /// Remote relayed candidates. FIFO-bounded at
-        /// [`MAX_REMOTE_PER_KIND`].
         remote_relayed: VecDeque<Candidate>,
         #[debug(skip)]
         path: path_agent::PathAgent,
@@ -69,22 +49,9 @@ impl Agent {
         matches!(self, Self::Path { .. })
     }
 
-    /// Rebuild the inner `PathAgent` and re-seed it from the surviving
-    /// candidates. `should_drop_local` decides which local candidates
-    /// are no longer valid:
-    ///
-    /// - Roam: pass `|_| true` — local IPs changed, drop everything.
-    /// - Relay replacement: pass a predicate that matches the dead
-    ///   allocation's candidates — host / srflx / other-relay
-    ///   candidates stay.
-    ///
-    /// Remote candidates are always preserved: they're attached to the
-    /// peer's network, which hasn't changed under us.
-    ///
-    /// No-op on `Self::Ice` — ICE-based connections rely on the
-    /// node-level key rotation + close-and-reopen path (roam) or
-    /// per-candidate `InvalidateIceCandidate` signalling (relay
-    /// replacement).
+    /// Rebuild the inner `PathAgent`, dropping locals matching
+    /// `should_drop_local` and preserving every remote. No-op on
+    /// `Self::Ice`.
     pub(crate) fn rebuild_path(&mut self, mut should_drop_local: impl FnMut(&Candidate) -> bool) {
         let Self::Path {
             local_candidates,
@@ -97,9 +64,6 @@ impl Agent {
             return;
         };
 
-        // `extract_if` is lazy — collecting into a SmallVec consumes
-        // it, performing the removal. Inline-capacity 4 covers host +
-        // srflx + up-to-two relays without spilling.
         let _dropped: SmallVec<[Candidate; 4]> = local_candidates
             .extract_if(.., |c| should_drop_local(c))
             .collect();
@@ -117,9 +81,6 @@ impl Agent {
         }
     }
 
-    /// Whether negotiation has progressed far enough that the snownet
-    /// idle-state machine can run. ICE: connected. Iceless: a primary path
-    /// has been selected.
     pub(crate) fn is_negotiation_complete(&self) -> bool {
         match self {
             Self::Ice(a) => a.state() == IceConnectionState::Connected,
@@ -127,7 +88,6 @@ impl Agent {
         }
     }
 
-    /// Apply ICE-specific STUN-retransmit configuration. No-op for iceless.
     pub(crate) fn apply_ice_config(&mut self, config: IceConfig) {
         if let Self::Ice(a) = self {
             a.set_max_stun_retransmits(config.max_retrans);
@@ -136,16 +96,8 @@ impl Agent {
         }
     }
 
-    /// Whether `upsert_connection` may reuse this existing agent.
-    /// Iceless mode silently ignores `local_creds` / `remote_creds` /
-    /// `ice_role` — the reuse-relevant dimensions (pubkey, PSK) live on
-    /// the caller. If `upsert_connection` ever needs creds/role honoured
-    /// here, the `Path` arm has to participate.
-    ///
-    /// `want_iceless` reflects the agent mode the caller would build
-    /// today. A mismatch (e.g. negotiated capability or local feature
-    /// flag flipped between upserts) forces replacement so the new mode
-    /// actually takes effect.
+    /// A mismatched `want_iceless` forces replacement so a flag flip
+    /// between upserts actually takes effect.
     pub(crate) fn matches_existing_connection(
         &self,
         local_creds: &IceCreds,
@@ -166,10 +118,7 @@ impl Agent {
         }
     }
 
-    /// Whether to send a WG `HandshakeInit` after nominating a peer
-    /// socket. ICE controlling: yes. ICE controlled: no. Iceless: no
-    /// (fans out the init in `upsert_connection` directly, no nomination
-    /// step).
+    /// Iceless fans the init out from `upsert_connection` instead.
     pub(crate) fn send_wg_handshake_after_nomination(&self) -> bool {
         match self {
             Self::Ice(a) => a.controlling(),
@@ -177,8 +126,6 @@ impl Agent {
         }
     }
 
-    /// Whether to hold WG traffic until nomination lands. ICE controlled:
-    /// yes. ICE controlling: no. Iceless: no.
     pub(crate) fn wait_for_nomination_before_wg_handshake(&self) -> bool {
         match self {
             Self::Ice(a) => !a.controlling(),
@@ -186,8 +133,6 @@ impl Agent {
         }
     }
 
-    /// Local ICE ufrag, used by the recent-disconnect cache. `None` for
-    /// iceless (no creds means no cache key).
     pub(crate) fn local_ufrag(&self) -> Option<&str> {
         match self {
             Self::Ice(a) => Some(&a.local_credentials().ufrag),
@@ -198,14 +143,14 @@ impl Agent {
     pub(crate) fn set_local_credentials(&mut self, creds: IceCreds) {
         match self {
             Self::Ice(a) => a.set_local_credentials(creds),
-            Self::Path { .. } => {} // Iceless has no ICE creds.
+            Self::Path { .. } => {}
         }
     }
 
     pub(crate) fn set_remote_credentials(&mut self, creds: IceCreds) {
         match self {
             Self::Ice(a) => a.set_remote_credentials(creds),
-            Self::Path { .. } => {} // Iceless has no ICE creds.
+            Self::Path { .. } => {}
         }
     }
 
@@ -242,9 +187,6 @@ impl Agent {
                 if bucket.contains(&c) {
                     return;
                 }
-                // FIFO eviction: drop the oldest of this kind to make
-                // room. Mirrors into `path` so pair / primary state
-                // stays in sync.
                 if bucket.len() >= MAX_REMOTE_PER_KIND {
                     let evicted = bucket
                         .pop_front()
@@ -335,8 +277,6 @@ impl Agent {
         }
     }
 
-    /// `true` iff `addr` is a remote relay candidate. Used to classify
-    /// the resulting `PeerSocket` for a freshly-nominated send pair.
     pub(crate) fn remote_candidate_is_relayed(&self, addr: std::net::SocketAddr) -> bool {
         match self {
             Self::Ice(a) => a
@@ -346,8 +286,6 @@ impl Agent {
         }
     }
 
-    /// Inbound STUN. `false` on the `Path` arm — iceless doesn't speak
-    /// STUN, so the caller treats the packet as non-STUN.
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),
@@ -355,8 +293,6 @@ impl Agent {
         }
     }
 
-    /// Inbound WG bytes. See [`path_agent::PathAgent::handle_inbound_network`].
-    /// The `Ice` arm never absorbs WG bytes, so it hands them straight back.
     pub(crate) fn handle_inbound_network<'b>(
         &mut self,
         tunnel: &mut Tunn,
@@ -372,9 +308,6 @@ impl Agent {
         }
     }
 
-    /// Decrypted inner-IP packet. See
-    /// [`path_agent::PathAgent::handle_inbound_tun`]. The `Ice` arm
-    /// never absorbs inner traffic, so it hands the packet straight back.
     pub(crate) fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,
@@ -422,18 +355,12 @@ impl Agent {
         }
     }
 
-    /// Outbound WG bytes from boringtun. No-op on the `Ice` arm — ICE
-    /// uses the existing `peer_socket`-based single-send path.
     pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
         if let Self::Path { path, .. } = self {
             path.handle_outbound(bytes, now);
         }
     }
 
-    /// Iceless-mode helper: ask `tunnel` for a `HandshakeInit` and
-    /// route it through the inner `PathAgent`. No-op on `Self::Ice`
-    /// — ICE-based connections initiate after nomination via
-    /// `Connection::initiate_wg_session`.
     pub(crate) fn initiate_handshake(
         &mut self,
         tunnel: &mut Tunn,
@@ -453,9 +380,7 @@ impl Agent {
     }
 }
 
-/// Map an `is::CandidateKind` to the matching bucket (mutable).
-/// `PeerReflexive` collapses into the server-reflexive bucket — both
-/// shapes are server-reflexive from the path-agent's perspective.
+/// `PeerReflexive` collapses into the server-reflexive bucket.
 fn bucket_for_kind_mut<'a>(
     kind: CandidateKind,
     host: &'a mut VecDeque<Candidate>,
@@ -469,7 +394,6 @@ fn bucket_for_kind_mut<'a>(
     }
 }
 
-/// Remove `c` from `bucket` if present. Returns whether it was found.
 fn remove_from_bucket(bucket: &mut VecDeque<Candidate>, c: &Candidate) -> bool {
     bucket
         .iter()

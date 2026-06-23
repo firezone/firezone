@@ -1,17 +1,13 @@
-//! Path-probe packet shape. Probes ride the WG envelope as ICMPv6
-//! echo to/from magic addresses in the `100::/64` discard prefix
-//! (RFC 6666) and are intercepted after `Tunn::decapsulate_at`.
+//! ICMPv6 echo over the WG envelope, using addresses in the
+//! `100::/64` discard prefix (RFC 6666) so they can't leak.
 
 use std::net::{IpAddr, Ipv6Addr};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 
-/// `dead:1ce` — "ICE is dead", iceless's calling card. Exposed so
-/// callers can filter probes off the wire by address match.
 pub const PROBE_SRC: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xdead, 0x01ce, 0x0001);
 pub const PROBE_DST: Ipv6Addr = Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0xdead, 0x01ce, 0x0002);
 
-/// Whether a packet is an Echo Request or an Echo Reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Echo {
     Request,
@@ -26,7 +22,6 @@ pub(crate) struct Probe {
 }
 
 impl Probe {
-    /// `Some` iff `packet` is an ICMPv6 echo between the magic addresses.
     pub(crate) fn try_parse(packet: &IpPacket) -> Option<Self> {
         if packet.source() != IpAddr::V6(PROBE_SRC) || packet.destination() != IpAddr::V6(PROBE_DST)
         {

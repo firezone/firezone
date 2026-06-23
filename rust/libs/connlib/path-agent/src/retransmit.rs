@@ -1,6 +1,3 @@
-//! Per-pair `HandshakeInit` retransmit ladder driving the
-//! path-evaluation fanout.
-
 use std::time::{Duration, Instant};
 
 pub(crate) struct PairRetransmit {
@@ -9,9 +6,8 @@ pub(crate) struct PairRetransmit {
 }
 
 impl PairRetransmit {
-    /// 50/50/50 ms head covers the race where our init lands on a
-    /// relay before the *peer's* channel-bind is registered. Past
-    /// that, exponential doubling capped at 1.6 s.
+    /// Burst head covers the race where our init lands on a relay
+    /// before the peer's channel-bind registers.
     const LADDER_MS: &'static [u64] = &[50, 50, 50, 100, 200, 400, 800, 1600];
 
     pub(crate) fn new(now: Instant) -> Self {
