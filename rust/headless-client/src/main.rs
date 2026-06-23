@@ -211,7 +211,6 @@ fn main() {
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
 
-    #[cfg(debug_assertions)]
     platform::elevate_if_needed()?;
 
     rustls::crypto::ring::default_provider()

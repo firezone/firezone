@@ -11,7 +11,6 @@ const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
 /// Re-exec via `sudo` if we are not already root.
-#[cfg(debug_assertions)]
 pub(crate) fn elevate_if_needed() -> Result<()> {
     use anyhow::Context as _;
     use std::os::unix::process::CommandExt as _;
