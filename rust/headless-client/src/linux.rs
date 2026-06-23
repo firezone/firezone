@@ -16,6 +16,10 @@ const ROOT_USER: u32 = 0;
 /// the TUN device or controlling DNS. Only compiled into debug builds; in
 /// production we run as root under `systemd`.
 #[cfg(debug_assertions)]
+#[expect(
+    clippy::print_stderr,
+    reason = "No tracing subscriber is configured this early in startup"
+)]
 pub(crate) fn elevate_if_needed() -> Result<()> {
     use anyhow::Context as _;
     use std::os::unix::process::CommandExt as _;
@@ -34,12 +38,15 @@ pub(crate) fn elevate_if_needed() -> Result<()> {
     let exe = std::env::current_exe().context("Failed to find current executable")?;
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
 
-    tracing::info!("Not running as root, re-executing via `sudo`");
+    // No tracing subscriber is configured this early, so print to stderr directly.
+    eprintln!("Not running as root, re-executing via `sudo` to elevate privileges");
 
     // `-E` preserves the environment (e.g. `FIREZONE_TOKEN`, `RUST_LOG`); `--`
-    // ends `sudo`'s own flags. The guard is set via `.env` so it only affects the
-    // child and we avoid `unsafe` `set_var`. `exec` replaces the current process,
-    // so `sudo`'s prompt uses our terminal and the exit code propagates.
+    // ends `sudo`'s own flags. Setting the guard via `.env` configures only the
+    // child's environment rather than mutating our own process env (`unsafe` in
+    // this edition, and unsound once other threads exist). `exec` replaces the
+    // current process, so `sudo`'s prompt uses our terminal and the exit code
+    // propagates.
     let err = std::process::Command::new("sudo")
         .arg("-E")
         .arg("--")
