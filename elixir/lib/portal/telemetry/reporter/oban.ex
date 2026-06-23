@@ -11,6 +11,8 @@ defmodule Portal.Telemetry.Reporter.Oban do
   - Returning Sentry context specific to their domain
   """
 
+  require Logger
+
   @directory_sync_workers [
     "Portal.Entra.Sync",
     "Portal.Google.Sync",
@@ -22,9 +24,20 @@ defmodule Portal.Telemetry.Reporter.Oban do
   end
 
   def handle_event([:oban, :job, :exception], _measure, meta, _config) do
-    sentry_context = handle_error(meta)
+    sentry_context = safe_handle_error(meta)
 
     Sentry.capture_exception(meta.reason, stacktrace: meta.stacktrace, extra: sentry_context)
+  end
+
+  defp safe_handle_error(meta) do
+    handle_error(meta)
+  rescue
+    exception ->
+      Logger.error("Oban error handler crashed while building Sentry context",
+        error: Exception.format(:error, exception, __STACKTRACE__)
+      )
+
+      build_sentry_context(meta.job)
   end
 
   # Route errors to domain-specific handlers based on worker type.

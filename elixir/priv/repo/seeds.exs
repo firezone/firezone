@@ -285,7 +285,8 @@ defmodule Portal.Repo.Seeds do
         idp_sync: true,
         rest_api: true,
         internet_resource: true,
-        client_to_client: true
+        client_to_client: true,
+        iceless: true
       })
       |> put_change(:metadata, %{
         stripe: %{

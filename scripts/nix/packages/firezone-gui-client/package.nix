@@ -23,7 +23,7 @@
 
 fzLib.rustPlatform.buildRustPackage {
   pname = "firezone-gui-client";
-  version = fzLib.crateVersion "gui-client/src-tauri";
+  version = fzLib.versions.gui;
 
   inherit (fzLib) src cargoLock;
 
@@ -78,6 +78,13 @@ fzLib.rustPlatform.buildRustPackage {
   # The workspace pulls Apple-specific crates into the test graph.
   doCheck = false;
 
+  # wrapGAppsHook3 wraps every executable in $out/bin, which would stamp the
+  # GUI-only --add-flags (notably --no-deep-links) onto the bundled
+  # firezone-client-tunnel daemon, crashing it on startup with an
+  # "unexpected argument '--no-deep-links'" error. Disable the blanket
+  # wrapping and wrap only the GUI binary ourselves in postFixup.
+  dontWrapGApps = true;
+
   postInstall = ''
     # register-sparse only does anything on Windows.
     rm -f $out/bin/register-sparse
@@ -94,6 +101,12 @@ fzLib.rustPlatform.buildRustPackage {
       $out/share/icons/hicolor/128x128/apps/firezone-client-gui.png
     install -Dm644 "gui-client/src-tauri/icons/128x128@2x.png" \
       $out/share/icons/hicolor/256x256/apps/firezone-client-gui.png
+  '';
+
+  # dontWrapGApps disables the automatic wrapping, so wrap only the GUI
+  # binary here. gappsWrapperArgs is populated in preFixup below.
+  postFixup = ''
+    wrapProgram $out/bin/firezone-client-gui "''${gappsWrapperArgs[@]}"
   '';
 
   desktopItems = [

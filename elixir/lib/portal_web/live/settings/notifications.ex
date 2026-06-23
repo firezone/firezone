@@ -18,14 +18,14 @@ defmodule PortalWeb.Settings.Notifications do
       <.settings_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 overflow-y-auto p-6">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-4">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
           Email Notifications
         </h3>
 
         <.form for={@form} phx-change="save" id="notifications-form" class="max-w-2xl">
           <.inputs_for :let={config} field={@form[:config]}>
             <.inputs_for :let={notifications} field={config[:notifications]}>
-              <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] divide-y divide-[var(--border)]">
+              <div class="rounded border border-border bg-raised divide-y divide-border">
                 <.inputs_for :let={outdated_gateway} field={notifications[:outdated_gateway]}>
                   <.notification_row
                     label="Gateway Upgrade Available"
@@ -53,8 +53,8 @@ defmodule PortalWeb.Settings.Notifications do
     ~H"""
     <div class="flex items-center justify-between px-4 py-3.5 gap-6">
       <div class="min-w-0">
-        <p class="text-sm font-medium text-[var(--text-primary)]">{@label}</p>
-        <p :if={@description} class="text-xs text-[var(--text-tertiary)] mt-0.5">{@description}</p>
+        <p class="text-sm font-medium text-heading">{@label}</p>
+        <p :if={@description} class="text-xs text-subtle mt-0.5">{@description}</p>
       </div>
       <label class="inline-flex items-center shrink-0 cursor-pointer">
         <input type="hidden" name={@field.name} value="false" />
@@ -68,8 +68,8 @@ defmodule PortalWeb.Settings.Notifications do
         />
         <div class={[
           "w-9 h-5 rounded-full border transition-colors flex items-center px-0.5",
-          @checked && "bg-[var(--brand)] border-[var(--brand)]",
-          not @checked && "bg-[var(--control-bg)] border-[var(--control-border)]"
+          @checked && "bg-brand border-brand",
+          not @checked && "bg-input border-input-border"
         ]}>
           <span class={[
             "w-4 h-4 bg-white rounded-full shadow-sm transition-transform",

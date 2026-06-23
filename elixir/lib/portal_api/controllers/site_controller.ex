@@ -70,7 +70,7 @@ defmodule PortalAPI.SiteController do
     request_body:
       {"Site Attributes", "application/json", PortalAPI.Schemas.Site.CreateRequest, required: true},
     responses:
-      [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}] ++
+      [created: {"Site Response", "application/json", PortalAPI.Schemas.Site.Response}] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,

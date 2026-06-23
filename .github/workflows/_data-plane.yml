@@ -90,7 +90,7 @@ jobs:
             config_name: release-drafter-headless-client.yml
 
     steps:
-      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
+      - uses: release-drafter/release-drafter@ed4bc48ec97379be2258e7b7ac2624a3e26ab809 # v7.4.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -285,7 +285,7 @@ jobs:
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}

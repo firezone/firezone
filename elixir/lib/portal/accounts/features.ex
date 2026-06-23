@@ -10,6 +10,7 @@ defmodule Portal.Accounts.Features do
     field :rest_api, :boolean
     field :internet_resource, :boolean
     field :client_to_client, :boolean
+    field :iceless, :boolean
   end
 
   def changeset(features \\ %__MODULE__{}, attrs) do
@@ -20,6 +21,7 @@ defmodule Portal.Accounts.Features do
       rest_api
       internet_resource
       client_to_client
+      iceless
     ]a
 
     features

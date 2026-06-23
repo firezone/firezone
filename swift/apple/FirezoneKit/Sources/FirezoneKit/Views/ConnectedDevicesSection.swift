@@ -19,9 +19,7 @@
       if !store.connectedDevices.isEmpty {
         Section("Connected Devices (\(store.connectedDevices.count))") {
           ForEach(store.connectedDevices) { device in
-            NavigationLink {
-              ConnectedDeviceView(device: device)
-            } label: {
+            NavigationLink(value: device) {
               Text(device.tunIPv4)
             }
           }

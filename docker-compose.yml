@@ -114,6 +114,9 @@ services:
       # otherwise seeds will generate invalid tokens
       MIX_ENV: "prod"
       POOL_MEMBER_FIREZONE_ID: *pool-member-firezone-id
+      # Toggles the account-wide ICE-less feature flag in `mix ecto.seed`, so
+      # integration tests can run with or without ICE-less. Defaults to off.
+      FEATURE_ICELESS_ENABLED: ${FEATURE_ICELESS_ENABLED:-false}
     depends_on:
       postgres:
         condition: "service_healthy"

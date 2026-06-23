@@ -21,7 +21,7 @@ defmodule PortalAPI.GatewayTokenController do
     ],
     responses:
       [
-        ok: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
+        created: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
       ] ++
         ProblemDetails.responses([
           :bad_request,

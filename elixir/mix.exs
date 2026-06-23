@@ -51,8 +51,8 @@ defmodule Portal.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support", ".credo"]
-  defp elixirc_paths(:dev), do: ["lib", ".credo"]
+  defp elixirc_paths(:test), do: ["lib", "portal_dev", "test/support", ".credo"]
+  defp elixirc_paths(:dev), do: ["lib", "portal_dev", ".credo"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp listeners do

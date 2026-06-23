@@ -225,8 +225,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:5.3.2")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.4.0")
 
     // Moshi
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
@@ -253,7 +253,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
 
     // UniFFI
-    implementation("net.java.dev.jna:jna:5.19.0@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
     // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
@@ -261,7 +261,7 @@ dependencies {
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.43.1")
+    implementation("io.sentry:sentry-android:8.43.2")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.05.01")
@@ -274,7 +274,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     // Immutable collections give Compose stable (skippable) parameter types.
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.0")
 
     // Slack's Compose lint checks. Lint check JARs are versioned to the lint API
     // (`lint = AGP + 23`), so AGP 9.2 (lint 32.2) needs 1.4.3, which is built against it

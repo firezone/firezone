@@ -32,7 +32,7 @@ defmodule PortalWeb.Groups.Components do
       id="group-panel"
       class={[
         "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+        "bg-elevated border-l border-border-strong",
         "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
         "transition-transform duration-200 ease-in-out",
         if(@group || @view == :new_form, do: "translate-x-0", else: "translate-x-full")
@@ -88,28 +88,22 @@ defmodule PortalWeb.Groups.Components do
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
-      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-2 min-w-0">
             <.link
               :if={@panel_view == :edit_form && @group}
               patch={~p"/#{@account}/groups/#{@group.id}"}
-              class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
+              class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors shrink-0"
               title="Back to group"
             >
               <.icon name="ri-arrow-left-line" class="w-4 h-4" />
             </.link>
-            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
+            <h2 class="text-sm font-semibold text-heading truncate">
               {if @panel_view == :new_form, do: "New Group", else: "Edit #{@group && @group.name}"}
             </h2>
           </div>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors shrink-0"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" class="shrink-0" />
         </div>
       </div>
       <.form
@@ -131,7 +125,7 @@ defmodule PortalWeb.Groups.Components do
             required
           />
           <div>
-            <h3 class="text-sm font-medium text-[var(--text-secondary)] mb-2">
+            <h3 class="text-sm font-medium text-body mb-2">
               {if @panel_view == :edit_form,
                 do: "Members (#{length(@current_members) + length(@members_to_add)})",
                 else: "Members (#{length(@members_to_add)})"}
@@ -152,7 +146,7 @@ defmodule PortalWeb.Groups.Components do
                     type="button"
                     phx-click="remove_member"
                     phx-value-actor_id={actor.id}
-                    class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+                    class="shrink-0 text-subtle hover:text-error transition-colors"
                     title="Remove from current members"
                   >
                     <.icon name="ri-close-line" class="w-4 h-4" />
@@ -175,7 +169,7 @@ defmodule PortalWeb.Groups.Components do
                     type="button"
                     phx-click="remove_member"
                     phx-value-actor_id={actor.id}
-                    class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--status-error)] transition-colors"
+                    class="shrink-0 text-subtle hover:text-error transition-colors"
                     title="Remove from pending additions"
                   >
                     <.icon name="ri-close-line" class="w-4 h-4" />
@@ -198,7 +192,7 @@ defmodule PortalWeb.Groups.Components do
                     type="button"
                     phx-click="undo_member_removal"
                     phx-value-actor_id={actor.id}
-                    class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                    class="shrink-0 text-subtle hover:text-heading transition-colors"
                     title="Remove from pending removals"
                   >
                     <.icon name="ri-close-line" class="w-4 h-4" />
@@ -208,28 +202,30 @@ defmodule PortalWeb.Groups.Components do
             </div>
           </div>
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
+        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
           <.link
             patch={
               if @panel_view == :edit_form && @group,
                 do: ~p"/#{@account}/groups/#{@group.id}",
                 else: ~p"/#{@account}/groups"
             }
-            class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+            class="px-3 py-1.5 text-xs rounded border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
           >
             Cancel
           </.link>
-          <button
+          <.button
             type="submit"
+            style="primary"
             disabled={
               if @panel_view == :new_form,
                 do: not @form.source.valid?,
                 else: edit_form_unchanged?(@form, @members_to_add, @members_to_remove)
             }
-            class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+            size="sm"
+            class="font-medium"
           >
             {if @panel_view == :new_form, do: "Create Group", else: "Save Changes"}
-          </button>
+          </.button>
         </div>
       </.form>
     </div>
@@ -256,7 +252,7 @@ defmodule PortalWeb.Groups.Components do
     <div class="flex flex-col h-full overflow-hidden">
       <.group_details_header account={@account} group={@group} confirm_delete?={@confirm_delete?} />
 
-      <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
+      <div class="flex flex-1 min-h-0 divide-x divide-border">
         <div class="flex-1 flex flex-col overflow-hidden">
           <.group_tabs
             tab={@tab}
@@ -297,23 +293,23 @@ defmodule PortalWeb.Groups.Components do
 
   def group_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
       <div class="flex items-center gap-4">
         <%!-- Left: icon + name + directory info --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <.provider_icon provider={provider_type_from_group(@group)} size="lg" variant="circle" />
           <div class="min-w-0">
-            <h2 class="text-sm font-semibold text-[var(--text-primary)] truncate">
+            <h2 class="text-sm font-semibold text-heading truncate">
               {@group.name}
             </h2>
             <div class="flex items-center gap-1.5 mt-0.5">
               <span
                 :if={@group.entity_type == :org_unit}
-                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle"
               >
                 OU
               </span>
-              <span class="text-xs text-[var(--text-tertiary)]">
+              <span class="text-xs text-subtle">
                 {directory_display_name(@group.directory)}
               </span>
             </div>
@@ -324,17 +320,11 @@ defmodule PortalWeb.Groups.Components do
           <.link
             :if={editable_group?(@group) and not @confirm_delete?}
             patch={~p"/#{@account}/groups/#{@group.id}/edit"}
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
           >
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.link>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -349,16 +339,16 @@ defmodule PortalWeb.Groups.Components do
 
   def group_tabs(assigns) do
     ~H"""
-    <div class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+    <div class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0">
       <button
         phx-click="switch_group_tab"
         phx-value-tab="members"
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
           if(@tab == :members,
-            do: "border-[var(--brand)] text-[var(--brand)]",
+            do: "border-brand text-brand",
             else:
-              "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]"
+              "border-transparent text-body hover:text-heading hover:border-border-strong"
           )
         ]}
       >
@@ -366,8 +356,8 @@ defmodule PortalWeb.Groups.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :members,
-            do: "bg-[var(--brand-muted)] text-[var(--brand)]",
-            else: "bg-[var(--surface-raised)] text-[var(--text-tertiary)]"
+            do: "bg-brand-muted text-brand",
+            else: "bg-raised text-subtle"
           )
         ]}>
           {@member_total}
@@ -379,9 +369,9 @@ defmodule PortalWeb.Groups.Components do
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
           if(@tab == :resources,
-            do: "border-[var(--brand)] text-[var(--brand)]",
+            do: "border-brand text-brand",
             else:
-              "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]"
+              "border-transparent text-body hover:text-heading hover:border-border-strong"
           )
         ]}
       >
@@ -389,28 +379,24 @@ defmodule PortalWeb.Groups.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :resources,
-            do: "bg-[var(--brand-muted)] text-[var(--brand)]",
-            else: "bg-[var(--surface-raised)] text-[var(--text-tertiary)]"
+            do: "bg-brand-muted text-brand",
+            else: "bg-raised text-subtle"
           )
         ]}>
           {@resources_count}
         </span>
       </button>
       <div :if={@tab == :resources && @tab_view == :list} class="ml-auto pb-2 flex items-center">
-        <button
-          type="button"
-          phx-click="open_grant_resource_form"
-          class="flex items-center gap-1 px-2 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-        >
+        <.button type="button" phx-click="open_grant_resource_form" size="xs">
           <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
-        </button>
+        </.button>
       </div>
       <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
         <form phx-change="filter_show_members">
           <div class="relative">
             <.icon
               name="ri-search-line"
-              class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)]"
+              class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle"
             />
             <input
               type="text"
@@ -420,7 +406,7 @@ defmodule PortalWeb.Groups.Components do
               name="filter"
               autocomplete="off"
               data-1p-ignore
-              class="pl-6 pr-2 py-1 text-xs rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors w-32"
+              class="pl-6 pr-2 py-1 text-xs rounded border bg-input border-input-border text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors w-32"
             />
           </div>
         </form>
@@ -446,7 +432,7 @@ defmodule PortalWeb.Groups.Components do
           :if={@panel_members == [] && @member_total == 0}
           class="flex items-center justify-center py-16"
         >
-          <p class="text-sm text-[var(--text-tertiary)]">
+          <p class="text-sm text-subtle">
             <%= if has_content?(@show_member_filter) do %>
               No members match your filter.
             <% else %>
@@ -454,20 +440,20 @@ defmodule PortalWeb.Groups.Components do
             <% end %>
           </p>
         </div>
-        <ul :if={@panel_members != []} class="divide-y divide-[var(--border)]">
+        <ul :if={@panel_members != []} class="divide-y divide-border">
           <li :for={actor <- @panel_members} class="transition-colors">
             <.link
               navigate={~p"/#{@account}/actors/#{actor.id}"}
-              class="flex items-center gap-3 px-5 py-3 hover:bg-[var(--surface-raised)]"
+              class="flex items-center gap-3 px-5 py-3 hover:bg-raised"
             >
               <.actor_type_badge actor={actor} />
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-[var(--text-primary)] truncate">
+                <p class="text-sm font-medium text-heading truncate">
                   {actor.name}
                 </p>
                 <p
                   :if={actor.email || actor.type == :service_account}
-                  class="text-xs text-[var(--text-tertiary)] truncate"
+                  class="text-xs text-subtle truncate"
                 >
                   {actor.email || "(Service Account)"}
                 </p>
@@ -478,29 +464,27 @@ defmodule PortalWeb.Groups.Components do
       </div>
       <div
         :if={@member_pages > 1}
-        class="shrink-0 flex items-center justify-between px-5 py-2.5 border-t border-[var(--border)] bg-[var(--surface-raised)]"
+        class="shrink-0 flex items-center justify-between px-5 py-2.5 border-t border-border bg-raised"
       >
-        <span class="text-xs text-[var(--text-tertiary)]">
+        <span class="text-xs text-subtle">
           Page {@member_page} of {@member_pages}
-          <span class="text-[var(--text-muted)]">({@member_total} members)</span>
+          <span class="text-muted">({@member_total} members)</span>
         </span>
         <div class="flex items-center gap-1">
-          <button
-            type="button"
+          <.icon_button
+            style="outline"
+            icon="ri-arrow-left-s-line"
+            title="Previous page"
             phx-click="prev_member_page"
             disabled={@member_page <= 1}
-            class="flex items-center justify-center w-7 h-7 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
+          />
+          <.icon_button
+            style="outline"
+            icon="ri-arrow-right-s-line"
+            title="Next page"
             phx-click="next_member_page"
             disabled={@member_page >= @member_pages}
-            class="flex items-center justify-center w-7 h-7 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            <.icon name="ri-arrow-right-s-line" class="w-3.5 h-3.5" />
-          </button>
+          />
         </div>
       </div>
     </div>
@@ -563,17 +547,17 @@ defmodule PortalWeb.Groups.Components do
       })
 
     ~H"""
-    <div class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+    <div class="flex items-center justify-between px-5 py-2.5 border-b border-border bg-raised shrink-0">
       <div class="flex items-center gap-2">
         <button
           type="button"
           phx-click="close_grant_resource_form"
-          class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+          class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
           title="Back to resource list"
         >
           <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
         </button>
-        <span class="text-xs font-semibold text-[var(--text-primary)]">Grant access</span>
+        <span class="text-xs font-semibold text-heading">Grant access</span>
       </div>
     </div>
     <.form
@@ -585,8 +569,8 @@ defmodule PortalWeb.Groups.Components do
       <div class="flex-1 overflow-y-auto">
         <div class="px-5 py-4 space-y-5">
           <div>
-            <label class="block text-xs font-medium text-[var(--text-secondary)] mb-2">
-              Resources <span class="text-[var(--status-error)]">*</span>
+            <label class="block text-xs font-medium text-body mb-2">
+              Resources <span class="text-error">*</span>
             </label>
             <% filtered_available =
               @available_resources
@@ -611,12 +595,12 @@ defmodule PortalWeb.Groups.Components do
                 Enum.filter(@available_resources, &(&1.id in @grant_selected_resource_ids))
               %>
             <div class="flex gap-2 h-52">
-              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
-                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
-                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-border overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     Available
                   </span>
-                  <span class="text-[10px] text-[var(--text-muted)]">
+                  <span class="text-[10px] text-muted">
                     {length(filtered_available)}
                   </span>
                 </div>
@@ -624,7 +608,7 @@ defmodule PortalWeb.Groups.Components do
                   <div class="relative">
                     <.icon
                       name="ri-search-line"
-                      class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+                      class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
                     />
                     <input
                       type="text"
@@ -634,7 +618,7 @@ defmodule PortalWeb.Groups.Components do
                       phx-debounce="200"
                       autocomplete="off"
                       data-1p-ignore
-                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
                     />
                   </div>
                 </div>
@@ -644,11 +628,11 @@ defmodule PortalWeb.Groups.Components do
                       type="button"
                       phx-click="toggle_grant_resource"
                       phx-value-resource_id={resource.id}
-                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-[var(--surface)] cursor-pointer"
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-surface cursor-pointer"
                     >
                       <div class="flex-1 min-w-0">
-                        <p class="text-xs text-[var(--text-primary)] truncate">{resource.name}</p>
-                        <p class="text-[10px] text-[var(--text-tertiary)] font-mono truncate">
+                        <p class="text-xs text-heading truncate">{resource.name}</p>
+                        <p class="text-[10px] text-subtle font-mono truncate">
                           {resource.address}
                         </p>
                       </div>
@@ -656,24 +640,24 @@ defmodule PortalWeb.Groups.Components do
                   </li>
                   <li
                     :if={@available_resources == []}
-                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                    class="flex items-center justify-center h-16 text-xs text-subtle"
                   >
                     All resources already have access.
                   </li>
                   <li
                     :if={@available_resources != [] && filtered_available == []}
-                    class="flex items-center justify-center h-12 text-xs text-[var(--text-tertiary)]"
+                    class="flex items-center justify-center h-12 text-xs text-subtle"
                   >
                     No resources match.
                   </li>
                 </ul>
               </div>
-              <div class="flex-1 flex flex-col min-w-0 rounded border border-[var(--border)] overflow-hidden">
-                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
-                  <span class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+              <div class="flex-1 flex flex-col min-w-0 rounded border border-border overflow-hidden">
+                <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     Selected
                   </span>
-                  <span class="text-[10px] font-medium text-[var(--text-muted)]">
+                  <span class="text-[10px] font-medium text-muted">
                     {length(@grant_selected_resource_ids)}
                   </span>
                 </div>
@@ -683,23 +667,23 @@ defmodule PortalWeb.Groups.Components do
                       type="button"
                       phx-click="toggle_grant_resource"
                       phx-value-resource_id={resource.id}
-                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-[var(--surface)] transition-colors cursor-pointer group"
+                      class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-surface transition-colors cursor-pointer group"
                     >
                       <div class="flex-1 min-w-0">
-                        <p class="text-xs text-[var(--text-primary)] truncate">{resource.name}</p>
-                        <p class="text-[10px] text-[var(--text-tertiary)] font-mono truncate">
+                        <p class="text-xs text-heading truncate">{resource.name}</p>
+                        <p class="text-[10px] text-subtle font-mono truncate">
                           {resource.address}
                         </p>
                       </div>
                       <.icon
                         name="ri-close-line"
-                        class="w-3.5 h-3.5 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+                        class="w-3.5 h-3.5 text-subtle opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
                     </button>
                   </li>
                   <li
                     :if={selected_resources == []}
-                    class="flex items-center justify-center h-16 text-xs text-[var(--text-tertiary)]"
+                    class="flex items-center justify-center h-16 text-xs text-subtle"
                   >
                     No resources selected.
                   </li>
@@ -719,11 +703,11 @@ defmodule PortalWeb.Groups.Components do
                 |> Enum.map(&available_conditions/1)
                 |> Enum.reduce(&Enum.filter(&2, fn c -> c in &1 end))
             end %>
-          <div class="border-t border-[var(--border)] pt-4">
+          <div class="border-t border-border pt-4">
             <div class="flex items-center justify-between mb-3">
-              <h4 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Conditions
-                <span class="ml-1 font-normal normal-case tracking-normal text-[var(--text-muted)]">
+                <span class="ml-1 font-normal normal-case tracking-normal text-muted">
                   (optional)
                 </span>
               </h4>
@@ -734,19 +718,19 @@ defmodule PortalWeb.Groups.Components do
                 <button
                   type="button"
                   phx-click="toggle_conditions_dropdown"
-                  class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                  class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                 >
                   <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
                 </button>
                 <div :if={@conditions_dropdown_open?}>
                   <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
-                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-overlay)] shadow-lg py-1 overflow-hidden">
+                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
                     <button
                       :for={type <- allowed_conditions -- @active_conditions}
                       type="button"
                       phx-click="add_condition"
                       phx-value-type={type}
-                      class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                      class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                     >
                       {condition_type_label(type)}
                     </button>
@@ -756,7 +740,7 @@ defmodule PortalWeb.Groups.Components do
             </div>
             <p
               :if={@active_conditions == []}
-              class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
+              class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border"
             >
               No conditions - access is unrestricted
             </p>
@@ -773,25 +757,17 @@ defmodule PortalWeb.Groups.Components do
       </div>
       <div
         :if={@grant_resource_form && @grant_resource_form.errors != []}
-        class="px-5 py-2 text-xs text-[var(--status-error)]"
+        class="px-5 py-2 text-xs text-error"
       >
         <p :for={{_field, {msg, _}} <- @grant_resource_form.errors}>{msg}</p>
       </div>
-      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
-        <button
-          type="button"
-          phx-click="close_grant_resource_form"
-          class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-        >
+      <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
+        <.button type="button" phx-click="close_grant_resource_form" size="xs">
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={@grant_selected_resource_ids == []}
-          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        </.button>
+        <.button type="submit" style="primary" disabled={@grant_selected_resource_ids == []} size="xs">
           Grant access
-        </button>
+        </.button>
       </div>
     </.form>
     """
@@ -809,8 +785,8 @@ defmodule PortalWeb.Groups.Components do
         :if={@resources == []}
         class="flex flex-col items-center justify-center h-full py-12 text-center"
       >
-        <p class="text-sm font-medium text-[var(--text-secondary)]">No resource access</p>
-        <p class="text-xs text-[var(--text-tertiary)] mt-1">
+        <p class="text-sm font-medium text-body">No resource access</p>
+        <p class="text-xs text-subtle mt-1">
           Assign a policy to grant this group access.
         </p>
       </div>
@@ -818,43 +794,40 @@ defmodule PortalWeb.Groups.Components do
         <li
           :for={row <- @resources}
           class={[
-            "border-b border-[var(--border)] transition-colors",
+            "border-b border-border transition-colors",
             @confirm_remove_resource_access_id == row.resource.id &&
-              "bg-[var(--status-error-bg,#fef2f2)] border-[var(--status-error)]/20"
+              "bg-error-light border-error/20"
           ]}
         >
           <div
             :if={@confirm_remove_resource_access_id == row.resource.id}
             class="flex items-center justify-between gap-2 px-4 py-2.5"
           >
-            <span class="text-xs text-[var(--text-secondary)] truncate">
-              Remove access to <span class="font-medium text-[var(--text-primary)]">{row.resource.name}</span>?
-              <span class="block text-[var(--text-tertiary)]">
+            <span class="text-xs text-body truncate">
+              Remove access to <span class="font-medium text-heading">{row.resource.name}</span>?
+              <span class="block text-subtle">
                 All group members will immediately lose access.
               </span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                phx-click="cancel_remove_resource_access"
-                class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-              >
+              <.button type="button" phx-click="cancel_remove_resource_access" size="xs">
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 type="button"
                 phx-click="remove_resource_access"
                 phx-value-resource_id={row.resource.id}
-                class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/30 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors"
+                style="danger"
+                size="xs"
               >
                 Remove
-              </button>
+              </.button>
             </div>
           </div>
           <div
             :if={@confirm_remove_resource_access_id != row.resource.id}
             class={[
-              "flex items-center gap-1 pr-4 hover:bg-[var(--surface-raised)] group/item",
+              "flex items-center gap-1 pr-4 hover:bg-raised group/item",
               @resource_access_actions_open_id == row.resource.id && "relative z-20"
             ]}
           >
@@ -872,17 +845,17 @@ defmodule PortalWeb.Groups.Components do
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
-                  <p class="text-sm font-medium text-[var(--text-primary)] group-hover/item:text-[var(--brand)] transition-colors truncate">
+                  <p class="text-sm font-medium text-heading group-hover/item:text-brand transition-colors truncate">
                     {row.resource.name}
                   </p>
                   <span
                     :if={not is_nil(row.policy_disabled_at)}
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)] shrink-0"
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle shrink-0"
                   >
                     disabled
                   </span>
                 </div>
-                <span class="text-xs text-[var(--text-tertiary)] font-mono truncate block">
+                <span class="text-xs text-subtle font-mono truncate block">
                   {row.resource.address}
                 </span>
               </div>
@@ -890,7 +863,7 @@ defmodule PortalWeb.Groups.Components do
             <.actions_dropdown
               open={@resource_access_actions_open_id == row.resource.id}
               close_event="close_resource_access_actions"
-              button_class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+              button_class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
               icon_class="w-3.5 h-3.5"
               phx-click="toggle_resource_access_actions"
               phx-value-resource_id={row.resource.id}
@@ -901,7 +874,7 @@ defmodule PortalWeb.Groups.Components do
                 type="button"
                 phx-click="disable_resource_access"
                 phx-value-resource_id={row.resource.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
               >
                 <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
               </button>
@@ -910,7 +883,7 @@ defmodule PortalWeb.Groups.Components do
                 type="button"
                 phx-click="enable_resource_access"
                 phx-value-resource_id={row.resource.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
               >
                 <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
               </button>
@@ -918,7 +891,7 @@ defmodule PortalWeb.Groups.Components do
                 type="button"
                 phx-click="confirm_remove_resource_access"
                 phx-value-resource_id={row.resource.id}
-                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[var(--status-error)] hover:bg-[var(--surface-raised)] transition-colors"
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
               >
                 <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
               </button>
@@ -937,54 +910,54 @@ defmodule PortalWeb.Groups.Components do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <section>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
           Details
         </h3>
         <dl class="space-y-2.5">
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">ID</dt>
-            <dd class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+            <dt class="text-[10px] text-subtle mb-0.5">ID</dt>
+            <dd class="font-mono text-[11px] text-body break-all">
               {@group.id}
             </dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Name</dt>
-            <dd class="text-xs text-[var(--text-secondary)] truncate" title={@group.name}>
+            <dt class="text-[10px] text-subtle mb-0.5">Name</dt>
+            <dd class="text-xs text-body truncate" title={@group.name}>
               {@group.name}
             </dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Directory</dt>
-            <dd class="text-xs text-[var(--text-secondary)]">
+            <dt class="text-[10px] text-subtle mb-0.5">Directory</dt>
+            <dd class="text-xs text-body">
               {directory_display_name(@group.directory)}
             </dd>
           </div>
           <div :if={@group.entity_type == :org_unit}>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Type</dt>
-            <dd class="text-xs text-[var(--text-secondary)]">Org Unit</dd>
+            <dt class="text-[10px] text-subtle mb-0.5">Type</dt>
+            <dd class="text-xs text-body">Org Unit</dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Created</dt>
-            <dd class="text-xs text-[var(--text-secondary)] mt-0.5">
+            <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
+            <dd class="text-xs text-body mt-0.5">
               <.relative_datetime datetime={@group.inserted_at} />
             </dd>
           </div>
           <div>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Updated</dt>
-            <dd class="text-xs text-[var(--text-secondary)] mt-0.5">
+            <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
+            <dd class="text-xs text-body mt-0.5">
               <.relative_datetime datetime={@group.updated_at} />
             </dd>
           </div>
           <div :if={Ecto.assoc_loaded?(@group.sync_state) && @group.sync_state && @group.sync_state.synced_at}>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Last Synced</dt>
-            <dd class="text-xs text-[var(--text-secondary)] mt-0.5">
+            <dt class="text-[10px] text-subtle mb-0.5">Last Synced</dt>
+            <dd class="text-xs text-body mt-0.5">
               <.relative_datetime datetime={@group.sync_state.synced_at} />
             </dd>
           </div>
           <div :if={@group.idp_id && get_idp_id(@group.idp_id)}>
-            <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">IDP ID</dt>
+            <dt class="text-[10px] text-subtle mb-0.5">IDP ID</dt>
             <dd
-              class="font-mono text-[11px] text-[var(--text-secondary)] break-all mt-0.5"
+              class="font-mono text-[11px] text-body break-all mt-0.5"
               title={get_idp_id(@group.idp_id)}
             >
               {get_idp_id(@group.idp_id)}
@@ -992,45 +965,42 @@ defmodule PortalWeb.Groups.Components do
           </div>
         </dl>
       </section>
-      <div :if={deletable_group?(@group)} class="border-t border-[var(--border)]"></div>
+      <div :if={deletable_group?(@group)} class="border-t border-border"></div>
       <section :if={deletable_group?(@group)}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--status-error)]/60 mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
           Danger Zone
         </h3>
         <button
           :if={not @confirm_delete?}
           type="button"
           phx-click="confirm_delete_group"
-          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+          class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
         >
           <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete group
         </button>
         <div
           :if={@confirm_delete?}
-          class="px-3 py-2.5 rounded border border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+          class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
         >
-          <p class="text-xs font-medium text-[var(--status-error)] mb-1">
+          <p class="text-xs font-medium text-error mb-1">
             Delete this group?
           </p>
-          <p class="text-xs text-[var(--status-error)]/70 mb-3">
+          <p class="text-xs text-error/70 mb-3">
             All associated policies will also be deleted and clients will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_delete_group"
-              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-            >
+            <.button type="button" phx-click="cancel_delete_group" size="xs">
               Cancel
-            </button>
-            <button
+            </.button>
+            <.button
               type="button"
               phx-click="delete"
               phx-value-id={@group.id}
-              class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
+              style="danger"
+              size="xs"
             >
               Delete
-            </button>
+            </.button>
           </div>
         </div>
       </section>
@@ -1073,13 +1043,13 @@ defmodule PortalWeb.Groups.Components do
   defp member_search_input(assigns) do
     ~H"""
     <div
-      class="p-3 bg-[var(--surface-raised)] border-b border-[var(--border)] relative"
+      class="p-3 bg-raised border-b border-border relative"
       phx-click-away="blur_search"
     >
       <div class="relative">
         <.icon
           name="ri-search-line"
-          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)] pointer-events-none"
+          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
         />
         <input
           type="text"
@@ -1090,34 +1060,34 @@ defmodule PortalWeb.Groups.Components do
           phx-focus="focus_search"
           autocomplete="off"
           data-1p-ignore
-          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
         />
       </div>
 
       <div
         :if={@member_search_results != nil}
-        class="absolute z-10 left-3 right-3 mt-1 bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto"
+        class="absolute z-10 left-3 right-3 mt-1 bg-elevated border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto"
       >
         <button
           :for={actor <- @member_search_results}
           type="button"
           phx-click="add_member"
           phx-value-actor_id={actor.id}
-          class="w-full text-left px-3 py-2 hover:bg-[var(--surface-raised)] border-b border-[var(--border)] last:border-b-0 transition-colors"
+          class="w-full text-left px-3 py-2 hover:bg-raised border-b border-border last:border-b-0 transition-colors"
         >
           <div class="space-y-0.5">
             <div class="flex items-center gap-2">
               <.actor_type_badge actor={actor} />
-              <div class="text-xs font-medium text-[var(--text-primary)]">{actor.name}</div>
+              <div class="text-xs font-medium text-heading">{actor.name}</div>
             </div>
-            <div :if={actor.email} class="text-xs text-[var(--text-tertiary)] pl-9">
+            <div :if={actor.email} class="text-xs text-subtle pl-9">
               {actor.email}
             </div>
           </div>
         </button>
         <div
           :if={@member_search_results == []}
-          class="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
+          class="px-3 py-4 text-center text-xs text-subtle"
         >
           No members found
         </div>
@@ -1136,16 +1106,16 @@ defmodule PortalWeb.Groups.Components do
 
   defp member_bucket(assigns) do
     ~H"""
-    <section class="min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
-      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
-        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-[var(--text-tertiary)]"]}>
+    <section class="min-w-0 rounded border border-border bg-surface overflow-hidden">
+      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-border bg-raised shrink-0">
+        <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-subtle"]}>
           {@title}
         </h4>
-        <span class="text-[10px] text-[var(--text-muted)]">{@count}</span>
+        <span class="text-[10px] text-muted">{@count}</span>
       </div>
       <.member_list
         members={@members}
-        item_class="px-2 py-1.5 flex items-center justify-between gap-2 rounded group hover:bg-[var(--surface)] transition-colors"
+        item_class="px-2 py-1.5 flex items-center justify-between gap-2 rounded group hover:bg-surface transition-colors"
         list_class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5"
         empty_class="flex items-center justify-center h-16"
       >
@@ -1159,7 +1129,7 @@ defmodule PortalWeb.Groups.Components do
 
   attr :members, :list, required: true
   attr :item_class, :string, default: "px-3 py-2.5 flex items-center justify-between group"
-  attr :list_class, :string, default: "divide-y divide-[var(--border)] h-48 overflow-y-auto"
+  attr :list_class, :string, default: "divide-y divide-border h-48 overflow-y-auto"
   attr :empty_class, :string, default: "flex items-center justify-center h-64"
   slot :badge
   slot :actions
@@ -1176,12 +1146,12 @@ defmodule PortalWeb.Groups.Components do
             {render_slot(@badge, actor)}
           <% end %>
           <div class={@has_actions && "flex-1 min-w-0"}>
-            <p class={["text-xs font-medium text-[var(--text-primary)]", @has_actions && "truncate"]}>
+            <p class={["text-xs font-medium text-heading", @has_actions && "truncate"]}>
               {actor.name}
             </p>
             <p
               :if={actor.email}
-              class={["text-xs text-[var(--text-tertiary)]", @has_actions && "truncate"]}
+              class={["text-xs text-subtle", @has_actions && "truncate"]}
             >
               {actor.email}
             </p>
@@ -1194,7 +1164,7 @@ defmodule PortalWeb.Groups.Components do
     </ul>
 
     <div :if={@members == []} class={@empty_class}>
-      <p class="text-xs text-[var(--text-tertiary)]">
+      <p class="text-xs text-subtle">
         {render_slot(@empty_message)}
       </p>
     </div>
@@ -1227,15 +1197,15 @@ defmodule PortalWeb.Groups.Components do
 
   defp type_badge_class(:dns),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-dns-bg)] text-[var(--badge-dns-text)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-dns text-badge-dns-text"
 
   defp type_badge_class(:ip),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-ip-bg)] text-[var(--badge-ip-text)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-ip text-badge-ip-text"
 
   defp type_badge_class(:cidr),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-cidr-bg)] text-[var(--badge-cidr-text)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-cidr text-badge-cidr-text"
 
   defp type_badge_class(:internet),
     do:
@@ -1243,7 +1213,7 @@ defmodule PortalWeb.Groups.Components do
 
   defp type_badge_class(_),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--surface-raised)] text-[var(--text-secondary)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   defp get_idp_id(idp_id) do
     case String.split(idp_id, ":", parts: 2) do

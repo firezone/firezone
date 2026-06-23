@@ -126,6 +126,7 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
     AuthorizeFlow(AuthorizeFlow),
+    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
 
@@ -184,6 +185,7 @@ pub struct AuthorizeFlow {
     pub snownet_capabilities: SnownetCapabilities,
 }
 
+/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct AccessAuthorizationExpiryUpdated {

@@ -20,6 +20,7 @@ defmodule PortalWeb.Clients do
       socket
       |> assign(page_title: "Clients")
       |> assign(selected_client: nil)
+      |> assign(stale: false)
       |> assign_async(:clients_count, fn -> {:ok, %{clients_count: Database.count_clients(subject)}} end)
       |> assign(
         policy_authorizations: [],
@@ -113,7 +114,7 @@ defmodule PortalWeb.Clients do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-computer-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Clients</:title>
         <:description>
@@ -131,11 +132,11 @@ defmodule PortalWeb.Clients do
             </.dual_badge>
           </.async_result>
         </:stats>
-
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <.live_table
+          stale={@stale}
           id="clients"
           rows={@clients}
           row_id={&"client-#{&1.id}"}
@@ -155,10 +156,10 @@ defmodule PortalWeb.Clients do
                 <.client_os_icon client={client} />
               </span>
               <div>
-                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {client.name}
                 </div>
-                <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {client.id}
                 </div>
               </div>
@@ -181,14 +182,14 @@ defmodule PortalWeb.Clients do
           <:col :let={client} label="Verified" class="w-28">
             <span
               :if={not is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--status-active)] bg-[var(--status-active-bg)]"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light"
               title="Device attributes of this client are manually verified"
             >
               <.icon name="ri-shield-check-line" class="w-2.5 h-2.5" /> Verified
             </span>
             <span
               :if={is_nil(client.verified_at)}
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--text-muted)] bg-[var(--surface-raised)]"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
             >
               Unverified
             </span>
@@ -202,7 +203,7 @@ defmodule PortalWeb.Clients do
             label="Last Started"
             class="hidden lg:table-cell"
           >
-            <span class="text-xs text-[var(--text-tertiary)]">
+            <span class="text-xs text-subtle">
               <.relative_datetime datetime={
                 client.latest_session && client.latest_session.inserted_at
               } />
@@ -214,18 +215,18 @@ defmodule PortalWeb.Clients do
             label="Created"
             class="hidden lg:table-cell"
           >
-            <span class="text-xs text-[var(--text-tertiary)]">
+            <span class="text-xs text-subtle">
               <.relative_datetime datetime={client.inserted_at} />
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-computer-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No clients yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No clients yet</p>
+                <p class="text-xs text-subtle mt-0.5">
                   No clients have connected yet.
                 </p>
               </div>
@@ -302,7 +303,7 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_event(event, params, socket)
-      when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
+      when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
@@ -495,21 +496,32 @@ defmodule PortalWeb.Clients do
      |> push_patch(to: ~p"/#{socket.assigns.account}/clients?#{socket.assigns.query_params}")}
   end
 
-  def handle_info(%Change{op: :insert, struct: %Device{type: :client}}, socket) do
+  def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
     {:noreply,
-     update(socket, :clients_count, fn
+     socket
+     |> update(:clients_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
        ar -> ar
-     end)}
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}}, socket) do
+  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}} = change, socket) do
     {:noreply,
-     update(socket, :clients_count, fn
+     socket
+     |> update(:clients_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
        ar -> ar
-     end)}
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
+
+  def handle_info(%Change{struct: %Device{type: :client}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
+  end
+
+  def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
+  def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
@@ -526,6 +538,14 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  defp mark_stale_if_unreflected(socket, change) do
+    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.clients, change) do
+      socket
+    else
+      assign(socket, stale: true)
+    end
+  end
 
   defmodule Database do
     import Ecto.Changeset

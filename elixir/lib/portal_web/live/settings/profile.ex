@@ -32,25 +32,25 @@ defmodule PortalWeb.Settings.Profile do
     ~H"""
     <div class="flex flex-col h-full">
       <%!-- Profile header --%>
-      <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-[var(--border)]">
-        <div class="absolute inset-x-0 top-0 h-[2px] bg-[var(--brand)] opacity-50"></div>
+      <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
         <div class="flex items-center gap-5">
-          <.icon name="ri-user-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-user-line" class="shrink-0 w-16 h-16 text-brand" />
           <div class="flex-1 min-w-0">
-            <h1 class="text-base font-semibold text-[var(--text-primary)]">{@subject.actor.name}</h1>
-            <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{@subject.actor.email}</p>
+            <h1 class="text-base font-semibold text-heading">{@subject.actor.name}</h1>
+            <p class="mt-0.5 text-sm text-body">{@subject.actor.email}</p>
           </div>
         </div>
       </div>
 
       <%!-- Preferences content --%>
       <div class="flex-1 overflow-y-auto p-6">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-4">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
           Preferences
         </h3>
 
         <.form for={@form} phx-change="save" id="preferences-form" class="max-w-2xl">
-          <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] divide-y divide-[var(--border)]">
+          <div class="rounded border border-border bg-raised divide-y divide-border">
             <.inputs_for :let={prefs} field={@form[:preferences]}>
               <.start_page_selector field={prefs[:start_page]} options={@start_page_options} />
             </.inputs_for>
@@ -64,8 +64,8 @@ defmodule PortalWeb.Settings.Profile do
   defp start_page_selector(assigns) do
     ~H"""
     <div class="px-4 py-3.5">
-      <p class="text-sm font-medium text-[var(--text-primary)] mb-0.5">Start Page</p>
-      <p class="text-xs text-[var(--text-tertiary)] mb-3">
+      <p class="text-sm font-medium text-heading mb-0.5">Start Page</p>
+      <p class="text-xs text-subtle mb-3">
         Choose which page to land on after signing in.
       </p>
       <div class="grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -82,9 +82,9 @@ defmodule PortalWeb.Settings.Profile do
     ~H"""
     <label class={[
       "flex flex-col items-center gap-2 px-3 py-3 rounded border cursor-pointer transition-colors",
-      @selected && "border-[var(--brand)] bg-[var(--brand-muted)] text-[var(--brand)]",
+      @selected && "border-brand bg-brand-muted text-brand",
       not @selected &&
-        "border-[var(--border)] hover:border-[var(--border-strong)] text-[var(--text-secondary)]"
+        "border-border hover:border-border-strong text-body"
     ]}>
       <input
         type="radio"

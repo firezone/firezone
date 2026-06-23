@@ -1,10 +1,10 @@
-<div class="flex h-screen overflow-hidden bg-[var(--canvas)]">
+<div class="flex h-screen overflow-hidden bg-page">
   <.sidebar account={@account} current_path={@current_path} subject={@subject} />
 
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
     <.topbar subject={@subject} />
 
-    <main class="flex-1 flex flex-col overflow-hidden bg-[var(--surface)]">
+    <main class="flex-1 flex flex-col overflow-hidden bg-surface">
       <.flash id="success-toast" kind={:success} title="Success!" style="toast" flash={@flash} />
       <.flash id="info-toast" kind={:info} title="Information!" style="toast" flash={@flash} />
       <.flash id="warning-toast" kind={:warning} title="Warning!" style="toast" flash={@flash} />

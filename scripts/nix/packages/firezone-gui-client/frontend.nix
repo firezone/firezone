@@ -9,7 +9,7 @@
 
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "firezone-gui-client-frontend";
-  version = fzLib.crateVersion "gui-client/src-tauri";
+  version = fzLib.versions.gui;
 
   inherit (fzLib) src;
   sourceRoot = "rust/gui-client";

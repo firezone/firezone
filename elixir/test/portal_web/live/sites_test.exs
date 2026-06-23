@@ -330,11 +330,11 @@ defmodule PortalWeb.SitesTest do
         |> live(~p"/#{account}/sites/#{site.id}")
 
       html = render_click(lv, "confirm_delete_site")
-      assert html =~ "Delete this site?"
-      assert html =~ "Associated gateways and resources will be permanently deleted."
+      assert html =~ "Delete this Site?"
+      assert html =~ "All associated gateways and resources will also be permanently deleted."
 
       html = render_click(lv, "cancel_delete_site")
-      refute html =~ "Delete this site?"
+      refute html =~ "Delete this Site?"
 
       render_click(lv, "confirm_delete_site")
       render_click(lv, "delete_site")

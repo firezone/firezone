@@ -1027,7 +1027,7 @@ defmodule PortalWeb.Actors do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-user-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-user-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>People</:title>
         <:description>
@@ -1071,17 +1071,17 @@ defmodule PortalWeb.Actors do
             <div class="flex items-center gap-2.5">
               <.actor_type_icon_with_badge actor={actor} />
               <div>
-                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
                 </div>
-                <div class="font-mono text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[11px] text-subtle mt-0.5">
                   {actor.id}
                 </div>
               </div>
             </div>
           </:col>
           <:col :let={actor} field={{:actors, :email}} label="email" class="w-72">
-            <span class="text-[var(--text-secondary)] block truncate" title={actor.email}>
+            <span class="text-body block truncate" title={actor.email}>
               {actor.email || "-"}
             </span>
           </:col>
@@ -1089,7 +1089,7 @@ defmodule PortalWeb.Actors do
             <.actor_status_badge disabled_at={actor.disabled_at} />
           </:col>
           <:empty>
-            <span class="text-sm text-[var(--text-tertiary)]">No people to display.</span>
+            <span class="text-sm text-subtle">No people to display.</span>
           </:empty>
         </.live_table>
       </div>

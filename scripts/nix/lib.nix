@@ -33,7 +33,20 @@ rec {
   # delete because its per-target rustflags conflict with buildRustPackage).
   rustflags = "--cfg system_certs -C force-frame-pointers=yes";
 
-  crateVersion = crateDir: (lib.importTOML (src + "/${crateDir}/Cargo.toml")).package.version;
+  # Current released version of each component we package. Read from the
+  # sentinel comments here (kept in sync by scripts/bump-versions.sh) rather
+  # than from Cargo.toml, whose `version` tracks the next, in-development
+  # release.
+  versions = {
+    # mark:current-gateway-version
+    gateway = "1.5.2";
+
+    # mark:current-headless-version
+    headless = "1.5.9";
+
+    # mark:current-gui-version
+    gui = "1.5.14";
+  };
 
   meta = {
     homepage = "https://www.firezone.dev";

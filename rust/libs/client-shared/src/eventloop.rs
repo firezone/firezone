@@ -19,11 +19,10 @@ use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
-    ClientAccessAuthorizationExpiryUpdated, ClientDeviceAccessAuthorized, ClientDeviceAccessDenied,
-    ClientIceCandidates, ClientRejectAccess, DevicePoolDomainResolutionFailed,
-    DevicePoolDomainResolved, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
-    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
-    ResourceFiltersUpdated,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
+    ClientRejectAccess, DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages,
+    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
@@ -623,22 +622,8 @@ impl Eventloop {
                     .state_mut()
                     .handle_reject_client_device_access(client_id, resource_id);
             }
-            IngressMessages::AccessAuthorizationExpiryUpdated(
-                ClientAccessAuthorizationExpiryUpdated {
-                    client_id,
-                    resource_id,
-                    expires_at,
-                },
-            ) => {
-                tunnel
-                    .state_mut()
-                    .handle_client_device_access_authorization_expiry_updated(
-                        client_id,
-                        resource_id,
-                        expires_at,
-                        Instant::now(),
-                    );
-            }
+            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
+            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,
                 ipv6,
