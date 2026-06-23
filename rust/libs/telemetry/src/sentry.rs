@@ -3,12 +3,12 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
-use http::{Method, Request, Response, StatusCode, header};
-use sentry::{
+use ::sentry::{
     ClientOptions, Envelope, Transport,
     transports::{RateLimiter, TokioTransportThread},
 };
+use bytes::Bytes;
+use http::{Method, Request, Response, StatusCode, header};
 
 use crate::ingest;
 
@@ -30,7 +30,7 @@ pub(crate) fn reset() {
 #[derive(Clone)]
 pub(crate) struct Factory;
 
-impl sentry::TransportFactory for Factory {
+impl ::sentry::TransportFactory for Factory {
     fn create_transport(&self, options: &ClientOptions) -> Arc<dyn Transport> {
         Arc::new(SentryTransport::new(options))
     }

@@ -5,12 +5,12 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
-use api_url::ApiUrl;
-use sentry::{
+use ::sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
 };
+use anyhow::{Context, Result, anyhow, bail};
+use api_url::ApiUrl;
 use sha2::Digest as _;
 use smallvec::SmallVec;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -23,8 +23,8 @@ mod api_url;
 mod ingest;
 mod noop_push_metrics_exporter;
 mod posthog;
+mod sentry;
 mod sentry_instrument_provider;
-mod sentry_transport;
 
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
@@ -60,7 +60,7 @@ pub fn update_system_resolvers(servers: Vec<IpAddr>) {
 pub fn reset_ingest() {
     ingest::reset_sockets();
     posthog::reset();
-    sentry_transport::reset();
+    sentry::reset();
     feature_flags::reevaluate_current();
 }
 
@@ -109,7 +109,7 @@ impl fmt::Display for Dsn {
             f,
             "https://{}@{}/{}",
             self.public_key,
-            sentry_transport::INGEST_HOST,
+            sentry::INGEST_HOST,
             self.project_id
         )
     }
@@ -183,7 +183,7 @@ impl fmt::Display for Env {
 }
 
 pub struct Telemetry {
-    inner: Option<sentry::ClientInitGuard>,
+    inner: Option<::sentry::ClientInitGuard>,
 }
 
 impl Telemetry {
@@ -198,7 +198,7 @@ impl Telemetry {
         // factories must bypass the tunnel so telemetry never loops through connlib.
         ingest::configure(tcp, udp);
         posthog::init_addresses();
-        sentry_transport::init_addresses();
+        sentry::init_addresses();
 
         Self { inner: None }
     }
@@ -241,7 +241,7 @@ impl Telemetry {
 
         tracing::info!(%environment, "Starting telemetry");
 
-        let client_options = sentry::ClientOptions {
+        let client_options = ::sentry::ClientOptions {
             environment: Some(Cow::Borrowed(environment.as_str())),
             // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
             release: Some(release.to_owned().into()),
@@ -271,25 +271,25 @@ impl Telemetry {
             })),
             ..Default::default()
         };
-        let inner = sentry::init((
+        let inner = ::sentry::init((
             dsn.to_string(),
-            sentry::ClientOptions {
-                transport: Some(Arc::new(sentry_transport::Factory)),
+            ::sentry::ClientOptions {
+                transport: Some(Arc::new(sentry::Factory)),
                 ..client_options
             },
         ));
         // Configure scope on the main hub so that all threads will get the tags.
         let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
-        sentry::Hub::main().configure_scope(move |scope| {
+        ::sentry::Hub::main().configure_scope(move |scope| {
             if let Some(api_url) = api_url {
                 scope.set_tag("api_url", api_url);
             }
-            let ctx = sentry::integrations::contexts::utils::device_context();
+            let ctx = ::sentry::integrations::contexts::utils::device_context();
             scope.set_context("device", ctx);
-            let ctx = sentry::integrations::contexts::utils::rust_context();
+            let ctx = ::sentry::integrations::contexts::utils::rust_context();
             scope.set_context("rust", ctx);
 
-            if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
+            if let Some(ctx) = ::sentry::integrations::contexts::utils::os_context() {
                 scope.set_context("os", ctx);
             }
         });
@@ -353,7 +353,7 @@ impl Telemetry {
 
     #[doc(hidden)] // Only public for testing.
     pub fn current_env() -> Option<Env> {
-        let client = sentry::Hub::main().client()?;
+        let client = ::sentry::Hub::main().client()?;
         let env = client.options().environment.as_deref()?;
         let env = Env::from_str(env).ok()?;
 
@@ -362,12 +362,12 @@ impl Telemetry {
 
     #[doc(hidden)] // Only public for testing.
     pub fn current_user() -> Option<String> {
-        sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
+        ::sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
     }
 
     #[doc(hidden)] // Only public for testing.
     pub fn current_account_slug() -> Option<String> {
-        sentry::Hub::main()
+        ::sentry::Hub::main()
             .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
     }
 }
@@ -496,7 +496,7 @@ fn insert_feature_flags_into_event(mut event: Event<'static>) -> Event<'static> 
         .map(|(flag, result)| serde_json::json!({ "flag": flag, "result": result }))
         .collect();
     let value = serde_json::json!({ "values": values.as_slice() });
-    let context = sentry::protocol::Context::Other(
+    let context = ::sentry::protocol::Context::Other(
         serde_json::from_value(value).expect("to and from json works"),
     );
 
@@ -515,8 +515,8 @@ fn insert_feature_flags_into_metric(mut metric: Metric) -> Metric {
     metric
 }
 
-fn update_user(update: impl FnOnce(&mut sentry::User)) {
-    sentry::Hub::main().configure_scope(|scope| {
+fn update_user(update: impl FnOnce(&mut ::sentry::User)) {
+    ::sentry::Hub::main().configure_scope(|scope| {
         let mut user = scope.user().cloned().unwrap_or_default();
         update(&mut user);
 
@@ -524,8 +524,8 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
     });
 }
 
-fn set_current_user(user: Option<sentry::User>) {
-    sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
+fn set_current_user(user: Option<::sentry::User>) {
+    ::sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
 #[cfg(test)]
@@ -628,7 +628,7 @@ mod tests {
 
     fn log(msg: &str, attrs: &[(&str, &str)]) -> Log {
         Log {
-            level: sentry::protocol::LogLevel::Info,
+            level: ::sentry::protocol::LogLevel::Info,
             body: msg.to_owned(),
             trace_id: None,
             timestamp: SystemTime::now(),
