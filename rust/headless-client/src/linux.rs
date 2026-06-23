@@ -31,16 +31,14 @@ pub(crate) fn elevate_if_needed() -> Result<()> {
 
     // `-E` preserves the environment (e.g. `FIREZONE_TOKEN`, `RUST_LOG`); `--`
     // ends `sudo`'s own flags. Setting the guard via `.env` configures only the
-    // child's environment rather than mutating our own process env (`unsafe` in
-    // this edition, and unsound once other threads exist). `exec` replaces the
-    // current process, so `sudo`'s prompt uses our terminal and the exit code
-    // propagates.
+    // child's environment.
     let err = std::process::Command::new("sudo")
         .arg("-E")
         .arg("--")
         .arg(&exe)
         .args(&args)
         .env(REEXEC_GUARD, "1")
+        // `exec` replaces the current process image via `execve(2)`.
         .exec();
 
     Err(err).context("Failed to re-execute via `sudo`; is it installed?")
