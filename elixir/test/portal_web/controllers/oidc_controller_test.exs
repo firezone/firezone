@@ -975,6 +975,105 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "recreated user with a new idp_id overwrites their identity in place", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-object-id",
+          email: actor.email
+        )
+
+      # The user is deleted and recreated in the IdP: same verified email, brand
+      # new object id. Sign-in must recycle the existing row instead of inserting
+      # a second identity for the same actor.
+      setup_successful_auth(ctx, actor, sub: "new-object-id", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "new-object-id"
+             ).id == existing_identity.id
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "old-object-id"
+             )
+    end
+
+    test "changed email with the same idp_id is matched by idp_id, not email", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "old-address@example.com")
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "stable-subject",
+          email: "old-address@example.com"
+        )
+
+      # Same subject, new email. The actor still carries the old email, so the
+      # match must fall back to idp_id rather than create a second identity.
+      setup_successful_auth(ctx, actor, sub: "stable-subject", email: "new-address@example.com")
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      identity =
+        Repo.get_by!(Portal.ExternalIdentity,
+          account_id: ctx.account.id,
+          issuer: ctx.provider.issuer,
+          idp_id: "stable-subject"
+        )
+
+      assert identity.id == existing_identity.id
+      assert identity.email == "new-address@example.com"
+    end
+
+    test "sign-in does not overwrite an identity from a different issuer", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      other_issuer_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: "https://other-issuer.example",
+          idp_id: "stable-subject",
+          email: actor.email
+        )
+
+      # Same email and subject, but a different issuer. existing_identity is
+      # scoped by issuer, so this must create a new identity and leave the
+      # other issuer's identity untouched.
+      setup_successful_auth(ctx, actor, sub: "stable-subject", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert new_identity =
+               Repo.get_by(Portal.ExternalIdentity,
+                 account_id: ctx.account.id,
+                 issuer: ctx.provider.issuer,
+                 idp_id: "stable-subject"
+               )
+
+      assert new_identity.id != other_issuer_identity.id
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: "https://other-issuer.example",
+               idp_id: "stable-subject"
+             ).id == other_issuer_identity.id
+    end
+
     test "successful client sign-in for admin user creates token and renders redirect page",
          ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
@@ -1183,7 +1282,7 @@ defmodule PortalWeb.OIDCControllerTest do
       assert email.text_body =~ "IP address: 127.0.x.x"
       refute email.text_body =~ "127.0.0.1"
       refute email.text_body =~ "Coordinates"
-      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
 
       conn =
         conn
@@ -1241,7 +1340,7 @@ defmodule PortalWeb.OIDCControllerTest do
              }
 
       assert_received {:email, email}
-      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
 
       conn =
         conn
@@ -1284,7 +1383,7 @@ defmodule PortalWeb.OIDCControllerTest do
       pending_cookie = pending_identity_cookie_from_response(conn)
       pending_identity = Repo.get_by!(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
       assert_received {:email, email}
-      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
 
       existing_identity =
         identity_fixture(
@@ -1336,13 +1435,13 @@ defmodule PortalWeb.OIDCControllerTest do
       first_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
       first_cookie = pending_identity_cookie_from_response(first_conn)
       assert_received {:email, first_email}
-      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, first_email.text_body)
+      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, first_email.text_body)
 
       setup_successful_auth(ctx, actor_b, email_verified: false, sub: idp_id)
       second_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
       second_cookie = pending_identity_cookie_from_response(second_conn)
       assert_received {:email, second_email}
-      [_, second_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, second_email.text_body)
+      [_, second_code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, second_email.text_body)
 
       conn =
         build_conn()
@@ -1442,6 +1541,55 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) == "The verification code is invalid or expired."
     end
 
+    test "proof email verification deletes the passcode after too many invalid codes", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(conn)
+      pending_identity = Repo.get_by!(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
+
+      for _ <- 1..Portal.OneTimePasscode.max_attempts() do
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => "wrong",
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+      end
+
+      # Budget exhausted: the passcode and its pending identity are deleted, so even
+      # the correct code is now rejected and no identity is created.
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert flash(conn, :error) == "The verification code is invalid or expired."
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer
+             )
+
+      refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
+      refute Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
+    end
+
     test "proof email verification requires the signed pending identity cookie", ctx do
       Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
@@ -1458,12 +1606,71 @@ defmodule PortalWeb.OIDCControllerTest do
       callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
       pending_cookie = pending_identity_cookie_from_response(callback_conn)
       assert_received {:email, email}
-      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
 
       conn =
         build_conn()
         |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
           "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) == "/sign_in"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
+
+    test "verification with a non-existent provider redirects without raising", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(callback_conn)
+
+      # A valid pending cookie but a provider that does not exist must not raise:
+      # a raise would unwind past the constant-time padding. It redirects with a
+      # generic error instead.
+      conn =
+        callback_conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{Ecto.UUID.generate()}/verify_identity", %{
+          "secret" => "wrong",
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) == "/sign_in"
+      assert flash(conn, :error) == "Your sign-in session has timed out. Please try again."
+    end
+
+    test "verification with a non-existent account redirects without raising", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      pending_cookie = pending_identity_cookie_from_response(callback_conn)
+
+      conn =
+        callback_conn
+        |> recycle()
+        |> post(~p"/nonexistent-account/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => "wrong",
           "pending_identity_id" => pending_cookie.pending_identity_id
         })
 
@@ -1494,7 +1701,7 @@ defmodule PortalWeb.OIDCControllerTest do
       callback_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
       pending_cookie = pending_identity_cookie_from_response(callback_conn)
       assert_received {:email, email}
-      [_, code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, email.text_body)
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
 
       conn =
         callback_conn
@@ -1534,13 +1741,13 @@ defmodule PortalWeb.OIDCControllerTest do
       first_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
       first_cookie = pending_identity_cookie_from_response(first_conn)
       assert_received {:email, first_email}
-      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, first_email.text_body)
+      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, first_email.text_body)
 
       setup_successful_auth(ctx, actor, email_verified: false)
       second_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
       second_cookie = pending_identity_cookie_from_response(second_conn)
       assert_received {:email, second_email}
-      [_, _second_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, second_email.text_body)
+      [_, _second_code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, second_email.text_body)
 
       conn =
         build_conn()
@@ -1582,7 +1789,7 @@ defmodule PortalWeb.OIDCControllerTest do
       first_cookie = pending_identity_cookie_from_response(first_conn)
       first_pending_identity = Repo.get_by!(Portal.PendingIdentity, id: first_cookie.pending_identity_id)
       assert_received {:email, first_email}
-      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{5})\n/, first_email.text_body)
+      [_, first_code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, first_email.text_body)
 
       setup_successful_auth(ctx, actor, email_verified: false)
       second_conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))

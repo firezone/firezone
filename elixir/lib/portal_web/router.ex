@@ -55,6 +55,13 @@ defmodule PortalWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
 
+    scope "/dev", PortalWeb do
+      pipe_through [:public]
+
+      live "/components", Dev.ComponentsLive
+      live "/colors", Dev.ColorsLive
+    end
+
     scope "/error", PortalWeb do
       pipe_through [:public]
 

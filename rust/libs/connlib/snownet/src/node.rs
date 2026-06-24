@@ -441,7 +441,7 @@ where
         tracing::debug!(?candidate, "Received candidate from remote");
 
         let Ok(c) = self.connections.get_mut(&cid, now) else {
-            tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
+            tracing::warn!(kind = ?candidate.kind(), "Received candidate for unknown connection");
             return;
         };
 

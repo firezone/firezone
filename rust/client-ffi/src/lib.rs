@@ -511,7 +511,9 @@ fn connect(
 
     install_rustls_crypto_provider();
 
-    let mut telemetry = Telemetry::new();
+    init_logging(&PathBuf::from(log_dir), log_filter)?;
+
+    let mut telemetry = Telemetry::new(tcp_socket_factory.clone(), udp_socket_factory.clone());
     telemetry.start(&api_url, RELEASE, platform::DSN);
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
@@ -519,8 +521,6 @@ fn connect(
     opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
-
-    init_logging(&PathBuf::from(log_dir), log_filter)?;
 
     let url = LoginUrl::client(
         api_url.as_str(),

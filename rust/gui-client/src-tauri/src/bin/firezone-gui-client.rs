@@ -39,7 +39,7 @@ fn main() -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     let mut telemetry = if cli.is_telemetry_allowed() {
-        Telemetry::new()
+        Telemetry::new(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))
     } else {
         Telemetry::disabled()
     };
@@ -291,7 +291,10 @@ struct Cli {
     /// If true, show a fake error dialog on startup
     #[arg(long, hide = true)]
     test_error_dialog: bool,
-    /// For headless CI, disable deep links.
+    /// Disable runtime deep-link self-registration. Used by headless CI, and
+    /// by packaged builds (e.g. Nix) that register the deep-link handler
+    /// themselves and don't want it overridden at runtime with a per-user
+    /// entry pointing at the unwrapped exe.
     #[arg(long, hide = true)]
     no_deep_links: bool,
     /// For headless CI, log errors instead of showing a blocking

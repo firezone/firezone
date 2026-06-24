@@ -61,7 +61,7 @@ defmodule PortalWeb.LiveTable do
       />
       <div class="flex-1 overflow-auto flex flex-col">
         <table
-          class={["w-full text-sm text-left text-[var(--text-secondary)] table-fixed shrink-0"]}
+          class={["w-full text-sm text-left text-body table-fixed shrink-0"]}
           id={@id}
         >
           <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
@@ -98,24 +98,25 @@ defmodule PortalWeb.LiveTable do
           class="flex flex-1 items-center justify-center"
         >
           <div class="flex flex-col items-center gap-3 py-16">
-            <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-              <.icon name="ri-search-line" class="w-4 h-4 text-[var(--text-tertiary)]" />
+            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+              <.icon name="ri-search-line" class="w-4 h-4 text-subtle" />
             </div>
             <div class="text-center">
-              <p class="text-sm font-medium text-[var(--text-primary)]">No results found</p>
-              <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+              <p class="text-sm font-medium text-heading">No results found</p>
+              <p class="text-xs text-subtle mt-0.5">
                 Try adjusting your search or filters.
               </p>
             </div>
-            <button
+            <.button
               phx-click="filter"
               phx-value-table_id={@id}
               phx-value-filter={nil}
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+              icon="ri-filter-3-line"
+              size="sm"
+              class="font-medium"
             >
-              <.icon name="ri-filter-3-line" class="w-4 h-4" />
               Clear filters
-            </button>
+            </.button>
           </div>
         </div>
       </div>
@@ -146,7 +147,7 @@ defmodule PortalWeb.LiveTable do
         min="2023-01-01"
         autocomplete="off"
         class={[
-          "bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--text-primary)] text-sm rounded-sm",
+          "bg-raised border border-border text-heading text-sm rounded-sm",
           "block w-1/2 mr-1",
           "disabled:opacity-50 disabled:shadow-none",
           "focus:outline-hidden focus:ring-0",
@@ -161,9 +162,9 @@ defmodule PortalWeb.LiveTable do
         id={@field.id <> "[#{@from_or_to}][time]"}
         value={normalize_value("time", Map.get(@field.value || %{}, @from_or_to)) || "00:00:00"}
         class={[
-          "bg-[var(--surface-raised)] border text-[var(--text-primary)] text-sm rounded-sm",
+          "bg-raised border text-heading text-sm rounded-sm",
           "block w-1/2",
-          "border-[var(--border)]",
+          "border-border",
           "disabled:opacity-50 disabled:shadow-none",
           "focus:outline-hidden focus:ring-0",
           @field.errors != [] && "border-rose-400"
@@ -185,14 +186,14 @@ defmodule PortalWeb.LiveTable do
   defp normalize_value(_, nil),
     do: nil
 
-  defp notice_style("info"), do: "bg-blue-100 text-[var(--text-primary)]"
-  defp notice_style("warning"), do: "bg-amber-100 text-[var(--text-primary)]"
-  defp notice_style("danger"), do: "bg-rose-100 text-[var(--text-primary)]"
-  defp notice_style(_), do: "bg-[var(--surface-raised)] text-[var(--text-primary)]"
+  defp notice_style("info"), do: "bg-blue-100 text-heading"
+  defp notice_style("warning"), do: "bg-amber-100 text-heading"
+  defp notice_style("danger"), do: "bg-rose-100 text-heading"
+  defp notice_style(_), do: "bg-raised text-heading"
 
   defp resource_filter(assigns) do
     ~H"""
-    <div class="flex items-center gap-3 px-6 py-3 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0">
+    <div class="flex items-center gap-3 px-6 py-3 border-b border-border bg-raised shrink-0">
       <.form
         :if={@filters != []}
         id={"#{@live_table_id}-filters"}
@@ -242,7 +243,7 @@ defmodule PortalWeb.LiveTable do
         from_or_to={:from}
         max={Date.utc_today()}
       />
-      <div class="mx-2 text-[var(--text-tertiary)]">to</div>
+      <div class="mx-2 text-subtle">to</div>
       <.datetime_input
         field={@form[@filter.name]}
         filter={@filter}
@@ -256,7 +257,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -266,9 +267,9 @@ defmodule PortalWeb.LiveTable do
         phx-debounce="300"
         class={[
           "w-full pl-8 pr-3 py-1.5 text-sm rounded border",
-          "bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)]",
-          "placeholder:text-[var(--text-muted)] outline-none transition-colors",
-          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "bg-input border-input-border text-heading",
+          "placeholder:text-muted outline-none transition-colors",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
           @form[@filter.name].errors != [] && "border-rose-400"
         ]}
       />
@@ -285,7 +286,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-tertiary)] pointer-events-none" />
+      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -295,9 +296,9 @@ defmodule PortalWeb.LiveTable do
         phx-debounce="300"
         class={[
           "w-full pl-8 pr-3 py-1.5 text-sm rounded border",
-          "bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)]",
-          "placeholder:text-[var(--text-muted)] outline-none transition-colors",
-          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "bg-input border-input-border text-heading",
+          "placeholder:text-muted outline-none transition-colors",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
           @form[@filter.name].errors != [] && "border-rose-400"
         ]}
       />
@@ -345,14 +346,14 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: :string, values: values}} = assigns)
        when values != [] and length(values) < 5 do
     ~H"""
-    <div class="flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--control-bg)] p-0.5 shrink-0">
+    <div class="flex items-center gap-1 rounded border border-border bg-input p-0.5 shrink-0">
       <label
         for={"#{@live_table_id}-#{@filter.name}-__all__"}
         class={[
           "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
           if(is_nil(@form[@filter.name].value),
-            do: "bg-[var(--surface)] text-[var(--text-primary)] shadow-sm",
-            else: "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            do: "bg-surface text-heading shadow-sm",
+            else: "text-body hover:text-heading"
           )
         ]}
       >
@@ -372,8 +373,8 @@ defmodule PortalWeb.LiveTable do
         class={[
           "px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
           if(@form[@filter.name].value == value,
-            do: "bg-[var(--surface)] text-[var(--text-primary)] shadow-sm",
-            else: "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            do: "bg-surface text-heading shadow-sm",
+            else: "text-body hover:text-heading"
           )
         ]}
       >
@@ -422,7 +423,7 @@ defmodule PortalWeb.LiveTable do
     ~H"""
     <div
       :if={@rows_count > 0}
-      class="shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-[var(--border)] bg-[var(--surface-raised)] text-xs text-[var(--text-tertiary)]"
+      class="shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-border bg-raised text-xs text-subtle"
     >
       <div class="flex items-center gap-4">
         <.form
@@ -439,7 +440,7 @@ defmodule PortalWeb.LiveTable do
             <div class="relative">
               <select
                 name="page_size"
-                class="appearance-none bg-none bg-[var(--surface)] border border-[var(--border)] rounded pl-2 pr-7 py-1 text-xs text-[var(--text-primary)] leading-5"
+                class="appearance-none bg-none bg-surface border border-border rounded pl-2 pr-7 py-1 text-xs text-heading leading-5"
               >
                 <option
                   :for={{label, value} <- @page_size_options}
@@ -449,7 +450,7 @@ defmodule PortalWeb.LiveTable do
                   {label}
                 </option>
               </select>
-              <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--text-tertiary)]">
+              <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-subtle">
                 <.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
               </span>
             </div>
@@ -460,8 +461,8 @@ defmodule PortalWeb.LiveTable do
             disabled={is_nil(@metadata.previous_offset)}
             class={[
               "flex items-center justify-center w-7 h-7 rounded transition-colors",
-              "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]",
-              "disabled:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              "text-body hover:bg-surface hover:text-heading",
+              "disabled:text-muted disabled:cursor-not-allowed disabled:hover:bg-transparent"
             ]}
             phx-click="paginate"
             phx-value-page={@previous_page}
@@ -473,8 +474,8 @@ defmodule PortalWeb.LiveTable do
             disabled={is_nil(@metadata.next_offset)}
             class={[
               "flex items-center justify-center w-7 h-7 rounded transition-colors",
-              "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]",
-              "disabled:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              "text-body hover:bg-surface hover:text-heading",
+              "disabled:text-muted disabled:cursor-not-allowed disabled:hover:bg-transparent"
             ]}
             phx-click="paginate"
             phx-value-page={@next_page}
@@ -485,8 +486,8 @@ defmodule PortalWeb.LiveTable do
         </div>
       </div>
       <span>
-        Showing <span class="font-medium tabular-nums text-[var(--text-primary)]">{@first_row}</span>-<span class="font-medium tabular-nums text-[var(--text-primary)]">{@last_row}</span>
-        of <span class="font-medium tabular-nums text-[var(--text-primary)]">{@metadata.count}</span>
+        Showing <span class="font-medium tabular-nums text-heading mx-1">{@first_row}</span>&mdash;<span class="font-medium tabular-nums text-heading mx-1">{@last_row}</span>
+        of <span class="font-medium tabular-nums text-heading mx-1">{@metadata.count}</span>
       </span>
     </div>
     """

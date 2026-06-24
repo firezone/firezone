@@ -66,7 +66,7 @@ defmodule PortalAPI.PolicyController do
       {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.CreateRequest,
        required: true},
     responses:
-      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+      [created: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,

@@ -20,11 +20,10 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
-    ClientAccessAuthorizationExpiryUpdated, ClientDeviceAccessAuthorized, ClientDeviceAccessDenied,
-    ClientIceCandidates, ClientRejectAccess, DevicePoolDomainResolutionFailed,
-    DevicePoolDomainResolved, EgressMessages, FailReason, FlowCreated, FlowCreationFailed,
-    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
-    ResourceFiltersUpdated,
+    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
+    ClientRejectAccess, DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages,
+    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
+    ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
@@ -128,6 +127,7 @@ impl Eventloop {
             is_internet_resource_active,
         );
         tunnel.update_system_resolvers(dns_servers.clone());
+        telemetry::update_system_resolvers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
@@ -217,6 +217,7 @@ impl Eventloop {
                 };
 
                 let dns = tunnel.update_system_resolvers(dns);
+                telemetry::update_system_resolvers(dns.clone());
 
                 self.portal_cmd_tx
                     .send(PortalCommand::UpdateDnsServers(dns))
@@ -245,6 +246,7 @@ impl Eventloop {
                 };
 
                 tunnel.reset(&reason);
+                telemetry::reset_ingest();
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(
                         tunnel.public_key().to_bytes(),
@@ -619,22 +621,8 @@ impl Eventloop {
                     .state_mut()
                     .handle_reject_client_device_access(client_id, resource_id);
             }
-            IngressMessages::AccessAuthorizationExpiryUpdated(
-                ClientAccessAuthorizationExpiryUpdated {
-                    client_id,
-                    resource_id,
-                    expires_at,
-                },
-            ) => {
-                tunnel
-                    .state_mut()
-                    .handle_client_device_access_authorization_expiry_updated(
-                        client_id,
-                        resource_id,
-                        expires_at,
-                        Instant::now(),
-                    );
-            }
+            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
+            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
             IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
                 ipv4,
                 ipv6,

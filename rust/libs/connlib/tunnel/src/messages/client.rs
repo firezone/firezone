@@ -218,7 +218,7 @@ pub struct ClientRejectAccess {
     pub resource_id: ResourceId,
 }
 
-/// Sent by the portal when an authorization's expiry time changes.
+/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientAccessAuthorizationExpiryUpdated {
@@ -325,7 +325,7 @@ pub enum IngressMessages {
     /// A previously-authorized peer-to-peer access has been revoked.
     RejectAccess(ClientRejectAccess),
 
-    /// An authorization's expiry time has changed.
+    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
 

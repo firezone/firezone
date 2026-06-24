@@ -101,7 +101,7 @@ defmodule PortalWeb.FormComponents do
   def input(%{type: "radio", label: _label} = assigns) do
     ~H"""
     <div>
-      <label class="flex items-center gap-2 text-[var(--text-primary)]">
+      <label class="flex items-center gap-2 text-heading">
         <input
           type="radio"
           id={@id}
@@ -109,7 +109,7 @@ defmodule PortalWeb.FormComponents do
           value={@value}
           checked={@checked}
           class={[
-            "w-4 h-4 border-[var(--control-border)]",
+            "w-4 h-4 border-input-border",
             @class
           ]}
           {@rest}
@@ -148,7 +148,7 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div>
       <input :if={@unchecked_value} type="hidden" name={@name} value={@unchecked_value} />
-      <label class="flex items-center gap-4 text-sm leading-6 text-[var(--text-secondary)]">
+      <label class="flex items-center gap-4 text-sm leading-6 text-body">
         <input
           type="checkbox"
           id={@id}
@@ -156,8 +156,8 @@ defmodule PortalWeb.FormComponents do
           value="true"
           checked={@checked}
           class={[
-            "bg-[var(--control-bg)]",
-            "border border-[var(--control-border)] text-[var(--text-primary)] rounded-sm",
+            "bg-input",
+            "border border-input-border text-heading rounded-sm",
             "checked:bg-accent-500 checked:hover:bg-accent-500",
             @class
           ]}
@@ -187,14 +187,14 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         class={[
           "text-sm py-2 pl-3 pr-8 rounded",
-          "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
-          "border border-[var(--border)]",
+          "bg-raised text-body",
+          "border border-border",
           "outline-none transition-colors cursor-pointer",
-          "hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]",
-          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "hover:border-border-emphasis hover:text-heading",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
           "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
+          @errors != [] && "border-error focus:border-error",
           @class
         ]}
         multiple={@multiple}
@@ -234,14 +234,14 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         class={[
           "text-sm py-2 pl-3 pr-8 rounded",
-          "bg-[var(--surface-raised)] text-[var(--text-secondary)]",
-          "border border-[var(--border)]",
+          "bg-raised text-body",
+          "border border-border",
           "outline-none transition-colors cursor-pointer",
-          "hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]",
-          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "hover:border-border-emphasis hover:text-heading",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
           "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
+          @errors != [] && "border-error focus:border-error",
           @class
         ]}
         multiple={@multiple}
@@ -266,13 +266,13 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         class={[
           "block rounded-md text-sm px-3 py-2",
-          "bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
-          "border border-[var(--control-border)]",
+          "bg-input text-heading placeholder:text-muted",
+          "border border-input-border",
           "outline-none transition-colors",
-          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
           "min-h-[6rem]",
           !@inline_errors && "w-full",
-          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
+          @errors != [] && "border-error focus:border-error",
           @class
         ]}
         {@rest}
@@ -300,7 +300,7 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div>
       <.label :if={@label}>{@label}</.label>
-      <div class="border border-[var(--control-border)] rounded-md px-3 py-2 text-sm text-[var(--text-tertiary)] bg-[var(--surface-raised)]">
+      <div class="border border-input-border rounded-md px-3 py-2 text-sm text-subtle bg-raised">
         {assigns.value}
       </div>
       <input
@@ -331,12 +331,12 @@ defmodule PortalWeb.FormComponents do
           "block",
           !@inline_errors && "w-full",
           "px-3 py-2 rounded text-sm",
-          "bg-[var(--control-bg)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]",
-          "border border-[var(--control-border)]",
+          "bg-input text-heading placeholder:text-muted",
+          "border border-input-border",
           "outline-none transition-colors",
-          "focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30",
+          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
           "disabled:opacity-40 disabled:cursor-not-allowed",
-          @errors != [] && "border-[var(--status-error)] focus:border-[var(--status-error)]",
+          @errors != [] && "border-error focus:border-error",
           @class
         ]}
         {@rest}
@@ -687,6 +687,99 @@ defmodule PortalWeb.FormComponents do
   end
 
   @doc """
+  Renders an icon-only button. Use for actions that are obvious from context
+  (e.g., close/dismiss). Always provide `title` for hover tooltip and accessibility.
+
+  ## Examples
+
+      <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+      <.icon_button style="outline" icon="ri-arrow-left-s-line" title="Previous page" phx-click="prev_page" disabled={@page <= 1} />
+      <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" size="sm" class="shrink-0" />
+  """
+  attr :icon, :string, required: true, doc: "The remix icon name"
+  attr :title, :string, default: nil, doc: "Tooltip shown on hover (recommended for accessibility)"
+  attr :style, :string, default: nil, doc: "Visual style: nil (ghost) | \"outline\""
+  attr :size, :string, default: "md", doc: "Button size: xs | sm | md | lg | xl"
+  attr :class, :string, default: "", doc: "Extra CSS classes (e.g. shrink-0)"
+  attr :rest, :global, include: ~w(disabled form name value phx-target)
+
+  def icon_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class={
+        ["flex items-center justify-center rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"] ++
+          icon_button_container_size(@size) ++
+          icon_button_style(@style) ++
+          [@class]
+      }
+      title={@title}
+      aria-label={@title}
+      {@rest}
+    >
+      <.icon name={@icon} class={icon_button_icon_size(@size)} />
+    </button>
+    """
+  end
+
+  defp icon_button_style(nil) do
+    ["text-subtle hover:text-heading hover:bg-raised"]
+  end
+
+  defp icon_button_style("outline") do
+    ["border border-border text-body hover:text-heading hover:border-border-emphasis"]
+  end
+
+  defp icon_button_container_size(size) do
+    container = %{
+      "xs" => "w-5 h-5",
+      "sm" => "w-6 h-6",
+      "md" => "w-7 h-7",
+      "lg" => "w-8 h-8",
+      "xl" => "w-9 h-9"
+    }
+
+    [container[size]]
+  end
+
+  defp icon_button_icon_size(size) do
+    icon = %{
+      "xs" => "w-3 h-3",
+      "sm" => "w-3.5 h-3.5",
+      "md" => "w-4 h-4",
+      "lg" => "w-5 h-5",
+      "xl" => "w-6 h-6"
+    }
+
+    icon[size]
+  end
+
+  @doc """
+  Renders a full-width action button with an optional leading icon and style variants.
+  """
+  attr :type, :string, default: "button"
+  attr :icon, :string, default: nil
+  attr :style, :string, default: nil
+  attr :size, :string, default: "sm"
+  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
+  attr :rest, :global, include: ~w(disabled form name value title)
+
+  slot :inner_block, required: true, doc: "The label for the button"
+
+  def action_button(assigns) do
+    ~H"""
+    <button
+      type={@type}
+      class={action_button_style(@style) ++ button_size(@size) ++ [@class]}
+      {@rest}
+    >
+      <.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" />
+      <span>{render_slot(@inner_block)}</span>
+    </button>
+    """
+  end
+
+  @doc """
   Renders a locked section with an upgrade banner and a blurred preview of the
   feature content underneath, all wrapped in a single container.
 
@@ -712,10 +805,10 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div id={@id} class={["relative", @class]} {@rest}>
       <div class="absolute inset-0 z-20 flex items-center justify-center p-3">
-        <div class="flex max-w-xs flex-col items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-4 py-3 text-center text-[var(--text-tertiary)] shadow-md">
+        <div class="flex max-w-xs flex-col items-center gap-2 rounded-lg border border-border bg-elevated px-4 py-3 text-center text-subtle shadow-md">
           <.icon name="ri-lock-2-line" class="h-5 w-5" />
           <div class="flex flex-col items-center gap-0.5">
-            <p class="text-xs font-medium text-[var(--text-primary)]">
+            <p class="text-xs font-medium text-heading">
               {@message}
             </p>
             <p :if={@description} class="text-[11px]">
@@ -732,8 +825,8 @@ defmodule PortalWeb.FormComponents do
           </.button>
         </div>
       </div>
-      <div class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40" />
-      <div class="pointer-events-none select-none rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 blur-[2px] opacity-70">
+      <div class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-elevated/40" />
+      <div class="pointer-events-none select-none rounded-xl border border-border bg-surface p-3 blur-[2px] opacity-70">
         {render_slot(@inner_block)}
       </div>
     </div>
@@ -841,44 +934,77 @@ defmodule PortalWeb.FormComponents do
 
   def button_style do
     [
-      "flex items-center justify-center",
+      "flex items-center justify-center gap-1",
       "rounded",
       "phx-submit-loading:opacity-75"
     ]
   end
 
-  def button_style("warning") do
+  def button_style("primary") do
     button_style() ++
       [
-        "text-[var(--status-warn)]",
-        "border border-[var(--status-warn)]",
-        "hover:text-white hover:bg-[var(--status-warn)]"
+        "text-white",
+        "bg-brand",
+        "border border-brand",
+        "hover:border-brand-dark hover:bg-brand-dark"
       ]
   end
 
-  def button_style("danger") do
+  def button_style("secondary") do
     button_style() ++
       [
-        "text-red-600",
-        "border border-red-600",
-        "hover:text-white hover:bg-red-600"
+        "text-white",
+        "bg-accent",
+        "border border-accent",
+        "hover:border-accent-dark hover:bg-accent-dark"
+      ]
+  end
+
+  def button_style("success") do
+    button_style() ++
+      [
+        "text-success",
+        "bg-surface",
+        "border border-success",
+        "hover:bg-success-light"
       ]
   end
 
   def button_style("info") do
     button_style() ++
       [
-        "text-[var(--text-primary)]",
-        "border border-[var(--border-strong)]",
-        "hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+        "text-info",
+        "bg-surface",
+        "border border-info",
+        "hover:bg-info-light"
+      ]
+  end
+
+  def button_style("warning") do
+    button_style() ++
+      [
+        "text-warning",
+        "bg-surface",
+        "border border-warning",
+        "hover:bg-warning-light"
+      ]
+  end
+
+  def button_style("danger") do
+    button_style() ++
+      [
+        "text-danger",
+        "bg-surface",
+        "border border-danger/40",
+        "hover:bg-danger-light"
       ]
   end
 
   def button_style("disabled") do
     button_style() ++
       [
-        "text-[var(--text-muted)]",
-        "border border-[var(--border)]",
+        "text-muted",
+        "border border-border",
         "cursor-not-allowed"
       ]
   end
@@ -886,24 +1012,38 @@ defmodule PortalWeb.FormComponents do
   def button_style(_style) do
     button_style() ++
       [
-        "text-white",
-        "bg-[var(--brand)]",
-        "hover:bg-[var(--brand-hover)]"
+        "text-body",
+        "bg-surface",
+        "border border-border-strong",
+        "hover:bg-raised hover:text-heading"
       ]
+  end
+
+  def action_button_style(nil), do: action_button_base() ++ ["text-body", "hover:text-heading", "hover:bg-raised"]
+  def action_button_style("info"), do: action_button_base() ++ ["text-info", "hover:bg-raised"]
+  def action_button_style("success"), do: action_button_base() ++ ["text-success", "hover:bg-raised"]
+  def action_button_style("warning"), do: action_button_base() ++ ["text-warning", "hover:bg-raised"]
+
+  def action_button_style(style) when style in ["error", "danger"] do
+    action_button_base() ++ ["text-error", "border", "border-error/20", "hover:bg-error-light"]
+  end
+
+  defp action_button_base do
+    ["flex items-center gap-2", "rounded", "w-full", "bg-surface", "transition-colors"]
   end
 
   def button_size(size) do
     text = %{
       "xs" => "text-xs",
-      "sm" => "text-sm",
+      "sm" => "text-xs",
       "md" => "text-sm",
       "lg" => "text-base",
       "xl" => "text-base"
     }
 
     spacing = %{
-      "xs" => "px-1.5 py-1",
-      "sm" => "px-2 py-2",
+      "xs" => "px-2 py-1",
+      "sm" => "px-3 py-1.5",
       "md" => "px-3 py-2",
       "lg" => "px-4 py-3",
       "xl" => "px-5 py-3.5"
@@ -915,20 +1055,12 @@ defmodule PortalWeb.FormComponents do
   def icon_size(size) do
     icon_size = %{
       "xs" => "w-3 h-3",
-      "sm" => "w-3 h-3",
+      "sm" => "w-3.5 h-3.5",
       "md" => "w-3.5 h-3.5",
       "lg" => "w-4 h-4",
       "xl" => "w-5 h-5"
     }
 
-    spacing = %{
-      "xs" => "mr-1",
-      "sm" => "mr-1.5",
-      "md" => "mr-2",
-      "lg" => "mr-3",
-      "xl" => "mr-4"
-    }
-
-    [icon_size[size], spacing[size]]
+    [icon_size[size]]
   end
 end

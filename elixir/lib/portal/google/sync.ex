@@ -1042,9 +1042,24 @@ defmodule Portal.Google.Sync do
           identity_attrs
         )
 
+      run_identity_upsert(query, params)
+    end
+
+    # A concurrent OIDC sign-in can insert an identity for the same
+    # (account_id, idp_id, issuer) after this statement's snapshot is taken,
+    # which the (account_id, id) conflict target does not handle. Re-running
+    # picks up the now-committed row via pre_existing_identities and recycles
+    # it, so we retry once before surfacing the error.
+    defp run_identity_upsert(query, params, retry? \\ true) do
       case Safe.unscoped() |> Safe.query(query, params) do
-        {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
-        {:error, reason} -> {:error, reason}
+        {:ok, %Postgrex.Result{rows: rows}} ->
+          {:ok, %{upserted_identities: length(rows)}}
+
+        {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} when retry? ->
+          run_identity_upsert(query, params, false)
+
+        {:error, reason} ->
+          {:error, reason}
       end
     end
 
@@ -1081,6 +1096,18 @@ defmodule Portal.Google.Sync do
         WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
           AND id.email IS NOT NULL
         ORDER BY id.idp_id, a.inserted_at ASC
+      ),
+      -- Recycles the actor's existing directory identity when its idp_id changed
+      -- (e.g. the IdP user was deleted and recreated with the same email). The
+      -- LEFT JOIN below assumes at most one row per actor here, which is
+      -- guaranteed by the partial unique index on (account_id, actor_id,
+      -- directory_id) from migration 20260506124134.
+      existing_directory_identities AS (
+        SELECT ei.id, ei.actor_id
+        FROM external_identities ei
+        WHERE ei.account_id = $#{account_id}
+          AND ei.directory_id = $#{directory_id}
+          AND ei.actor_id IN (SELECT actor_id FROM existing_actors_by_email)
       ),
       actors_to_create AS (
         SELECT
@@ -1125,7 +1152,7 @@ defmodule Portal.Google.Sync do
           account_id, inserted_at, updated_at
         )
         SELECT
-          COALESCE(ei.id, uuid_generate_v4()),
+          COALESCE(ei.id, edi.id, uuid_generate_v4()),
           aam.actor_id,
           $#{issuer},
           aam.idp_id,
@@ -1141,8 +1168,11 @@ defmodule Portal.Google.Sync do
           $#{last_synced_at}
         FROM all_actor_mappings aam
         LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
-        ON CONFLICT (account_id, idp_id, issuer)
+        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        ON CONFLICT (account_id, id)
         DO UPDATE SET
+          idp_id = EXCLUDED.idp_id,
+          issuer = EXCLUDED.issuer,
           directory_id = EXCLUDED.directory_id,
           email = EXCLUDED.email,
           name = EXCLUDED.name,
@@ -1151,11 +1181,11 @@ defmodule Portal.Google.Sync do
           preferred_username = EXCLUDED.preferred_username,
           picture = EXCLUDED.picture,
           updated_at = EXCLUDED.updated_at
-        WHERE (external_identities.directory_id, external_identities.email, external_identities.name,
+        WHERE (external_identities.idp_id, external_identities.issuer, external_identities.directory_id, external_identities.email, external_identities.name,
                external_identities.given_name, external_identities.family_name,
                external_identities.preferred_username, external_identities.picture)
               IS DISTINCT FROM
-              (EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
+              (EXCLUDED.idp_id, EXCLUDED.issuer, EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
                EXCLUDED.given_name, EXCLUDED.family_name,
                EXCLUDED.preferred_username, EXCLUDED.picture)
           AND NOT EXISTS (

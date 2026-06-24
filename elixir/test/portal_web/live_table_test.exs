@@ -287,7 +287,7 @@ defmodule PortalWeb.LiveTableTest do
       assert render_component(&live_table/1, assigns)
              |> Floki.parse_fragment!()
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1-1 of 1"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1—1 of 1"
 
       assert render_component(&live_table/1, %{
                assigns
@@ -296,7 +296,7 @@ defmodule PortalWeb.LiveTableTest do
              })
              |> Floki.parse_fragment!()
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1-10 of 10"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 1—10 of 10"
 
       assert render_component(&live_table/1, %{
                assigns
@@ -305,7 +305,7 @@ defmodule PortalWeb.LiveTableTest do
              })
              |> Floki.parse_fragment!()
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 21-30 of 100"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 21—30 of 100"
     end
 
     test "renders page size selector wired to change_limit", %{assigns: assigns} do

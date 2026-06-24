@@ -54,10 +54,14 @@
         Text("Loading VPN configurations from system settings…")
           .foregroundStyle(.secondary)
 
-      case .invalid:
+      case .invalid where store.vpnConfigurationManager == nil:
         Button("Allow the VPN permission to sign in…") {
           grantPermission()
         }
+
+      case .invalid:
+        Text("Loading VPN configurations from system settings…")
+          .foregroundStyle(.secondary)
 
       case .disconnected:
         Button("Sign In") {

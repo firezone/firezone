@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result, bail};
 use serde::Serialize;
 
-use crate::{ApiUrl, Env, Telemetry, posthog};
+use crate::{ApiUrl, Env, Telemetry, ingest, posthog};
 
 /// Records a `new_session` event for a particular user and API url.
 ///
@@ -9,7 +9,7 @@ use crate::{ApiUrl, Env, Telemetry, posthog};
 pub fn new_session(maybe_legacy_id: String, api_url: String) {
     let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
-    posthog::RUNTIME.spawn(async move {
+    ingest::RUNTIME.spawn(async move {
         if let Err(e) = capture(
             "new_session",
             distinct_id,
@@ -36,7 +36,7 @@ pub fn identify(release: String, account_slug: Option<String>) {
         return;
     };
 
-    posthog::RUNTIME.spawn({
+    ingest::RUNTIME.spawn({
         async move {
             if let Err(e) = capture(
                 "$identify",
@@ -69,7 +69,7 @@ pub fn feature_flag_called(name: impl Into<String>) {
     };
     let feature_flag = name.into();
 
-    posthog::RUNTIME.spawn({
+    ingest::RUNTIME.spawn({
         async move {
             if let Err(e) = capture(
                 "$feature_flag_called",
@@ -106,23 +106,22 @@ where
         return Ok(());
     };
 
-    let response = posthog::CLIENT
-        .as_ref()?
-        .post(format!("https://{}/i/v0/e/", posthog::INGEST_HOST))
-        .json(&CaptureRequest {
+    let response = posthog::post_json(
+        "/i/v0/e/",
+        &CaptureRequest {
             api_key: api_key.to_string(),
             distinct_id,
             event: event.clone(),
             properties,
-        })
-        .send()
-        .await
-        .context("Failed to send POST request")?;
+        },
+    )
+    .await
+    .context("Failed to send POST request")?;
 
     let status = response.status();
 
     if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
+        let body = String::from_utf8_lossy(response.body());
 
         bail!("Failed to capture event; status={status}, body={body}")
     }
