@@ -2372,6 +2372,87 @@ defmodule Portal.Google.SyncTest do
       assert identity.directory_id == directory.id
     end
 
+    test "identity upsert attaches the directory to an actor's pre-existing OIDC identity" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      issuer = "https://accounts.google.com"
+      actor = Portal.ActorFixtures.actor_fixture(account: account, email: "oidc@example.com")
+
+      auth_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          issuer: issuer,
+          idp_id: "subject-1",
+          email: "oidc@example.com"
+        )
+
+      assert auth_identity.directory_id == nil
+
+      assert {:ok, %{upserted_identities: 1}} =
+               Database.batch_upsert_identities(account.id, directory.id, DateTime.utc_now(), [
+                 %{
+                   idp_id: "subject-1",
+                   email: "oidc@example.com",
+                   name: "OIDC User",
+                   given_name: "OIDC",
+                   family_name: "User",
+                   preferred_username: "oidc@example.com",
+                   picture: nil
+                 }
+               ])
+
+      identities =
+        from(ei in Portal.ExternalIdentity,
+          where: ei.account_id == ^account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == auth_identity.id
+      assert identity.directory_id == directory.id
+    end
+
+    test "identity upsert errors when one batch maps two idp_ids to the same actor" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      issuer = "https://accounts.google.com"
+      actor = Portal.ActorFixtures.actor_fixture(account: account, email: "swap@example.com")
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: issuer,
+        idp_id: "old-subject-id",
+        email: "swap@example.com",
+        synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+      )
+
+      assert {:error, %Postgrex.Error{postgres: %{code: :cardinality_violation}}} =
+               Database.batch_upsert_identities(account.id, directory.id, DateTime.utc_now(), [
+                 %{
+                   idp_id: "old-subject-id",
+                   email: "renamed@example.com",
+                   name: "Old",
+                   given_name: "Old",
+                   family_name: "User",
+                   preferred_username: "renamed@example.com",
+                   picture: nil
+                 },
+                 %{
+                   idp_id: "new-subject-id",
+                   email: "swap@example.com",
+                   name: "New",
+                   given_name: "New",
+                   family_name: "User",
+                   preferred_username: "swap@example.com",
+                   picture: nil
+                 }
+               ])
+    end
+
     test "group upsert rejects stale synced_at and accepts fresh" do
       account = account_fixture(features: %{idp_sync: true})
       directory = google_directory_fixture(account: account)
