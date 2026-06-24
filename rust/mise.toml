@@ -76,39 +76,41 @@ run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-inte
 # Profiling
 # =============================================================================
 
-[tasks.headless-client-perf-record]
-description = "Record a CPU-cycles profile of the running firezone-headless-client, with per-sample CPU id for migration analysis."
+[tasks.record-perf-client-gateway]
+description = "Capture perf data a locally running headless-client and gateway."
 raw = true
 run = """
-set -eu
+set -u
 
-# `comm` is truncated to 15 chars in the kernel, so match the truncated name.
-pid="$(pgrep firezone-headl | head -n1 || true)"
-[ -n "${pid}" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }
+# Capture every client/gateway process (comma-separated for `perf -p`). Idle ones (e.g. an
+# unused `client-2`) contribute ~no samples, so this avoids guessing which container ran the test.
+client=$(pgrep -x firezone-headle | paste -sd, -)
+gateway=$(pgrep -x firezone-gatewa | paste -sd, -)
+[ -n "$client" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }
 
-# perf needs root; chown the result back so profiler-cli can read it without sudo.
+freq="${PERF_FREQ:-10000}"
+me="$(id -u):$(id -g)"
+statpids="$client"; [ -n "$gateway" ] && statpids="$client,$gateway"
+
+echo "Recording: client $client${gateway:+, gateway $gateway}"
+echo ">>> run your iperf, then press Ctrl-C to stop <<<"
+
+# Survive Ctrl-C so the EXIT trap can chown; the perf children get the same
+# SIGINT and flush their own files.
 trap : INT
-trap '[ -f perf.data ] && sudo chown "$(id -u):$(id -g)" perf.data 2>/dev/null || true' EXIT
+trap 'for f in perf-client.data perf-gateway.data perf-sched.data perf-stat.txt; do [ -f "$f" ] && sudo chown "$me" "$f" 2>/dev/null; done' EXIT
 
-sudo perf record \\
-  --freq "4000" \\
-  --call-graph fp \\
-  --sample-cpu \\
-  --output perf.data \\
-  --pid "${pid}"
-"""
+sudo -v # cache credentials so the background recorders do not each prompt
 
-[tasks.perf-sched]
-description = "Record scheduler events system-wide (sched_switch/wakeups/migrations) to measure cross-thread handoff latency and core migration."
-raw = true
-run = """
-set -eu
+# Per-process cycles profiles carry the CPU id (--sample-cpu) for migration analysis.
+sudo perf record -F "$freq" --call-graph fp --sample-cpu -o perf-client.data -p "$client" &
+[ -n "$gateway" ] && sudo perf record -F "$freq" --call-graph fp --sample-cpu -o perf-gateway.data -p "$gateway" &
+sudo perf sched record -o perf-sched.data &
+sudo perf stat -p "$statpids" -e task-clock,cycles,instructions,cpu-migrations,context-switches,cache-references,cache-misses -o perf-stat.txt &
 
-# perf needs root; chown the result back so it can be read without sudo.
-trap : INT
-trap '[ -f perf-sched.data ] && sudo chown "$(id -u):$(id -g)" perf-sched.data 2>/dev/null || true' EXIT
-
-sudo perf sched record --output perf-sched.data
+wait # blocks until Ctrl-C fires the INT trap
+wait # reap the recorders once they have flushed
+echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-stat.txt"
 """
 
 # =============================================================================
