@@ -1388,8 +1388,13 @@ defmodule PortalWeb.OIDCController do
       # user who was deleted and recreated in the IdP (new idp_id, same email)
       # overwrite their existing identity in place instead of inserting a second
       # row, which would later collide with directory sync on the
-      # (account_id, actor_id, directory_id) unique index. Prefer the email
-      # match so a recreated user recycles their own row.
+      # (account_id, actor_id, directory_id) unique index. Prefer the row that
+      # already holds the incoming idp_id so it is recycled in place (a no-op
+      # idp_id write); the email match only decides the recreated-user case
+      # where no row holds the incoming idp_id. Ranking email first would let an
+      # unrelated row sharing the email be picked when a second row already holds
+      # the idp_id, recycling the wrong id and colliding on
+      # external_identities_account_idp_fields_index.
       existing_identity_cte =
         from(ei in "external_identities",
           join: a in "actors",
@@ -1399,7 +1404,10 @@ defmodule PortalWeb.OIDCController do
               ei.issuer == ^issuer and
               is_nil(a.disabled_at) and
               (ei.idp_id == ^idp_id or a.email == ^email),
-          order_by: [desc: fragment("(? = ?)", a.email, ^email)],
+          order_by: [
+            desc: fragment("(? = ?)", ei.idp_id, ^idp_id),
+            desc: fragment("(? = ?)", a.email, ^email)
+          ],
           select: %{id: ei.id, actor_id: ei.actor_id},
           limit: 1
         )
