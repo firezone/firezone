@@ -47,5 +47,6 @@ defmodule Portal.ExternalIdentity do
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
     |> unique_constraint(:base, name: :external_identities_account_idp_fields_index)
+    |> unique_constraint(:base, name: :external_identities_account_id_actor_id_issuer_index)
   end
 end
