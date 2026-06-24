@@ -32,7 +32,8 @@ defmodule Portal.AccountFixtures do
         traffic_filters: true,
         idp_sync: true,
         rest_api: true,
-        client_to_client: false
+        client_to_client: false,
+        iceless: false
       },
       limits: %{
         monthly_active_users_count: 100

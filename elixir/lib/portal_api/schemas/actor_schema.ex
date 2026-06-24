@@ -198,6 +198,7 @@ defmodule PortalAPI.Schemas.Actor do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Actor
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "ActorsResponse",
@@ -205,7 +206,7 @@ defmodule PortalAPI.Schemas.Actor do
       type: :object,
       properties: %{
         data: %Schema{description: "Actors details", type: :array, items: Actor.Schema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

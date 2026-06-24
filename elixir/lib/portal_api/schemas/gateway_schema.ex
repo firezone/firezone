@@ -68,6 +68,7 @@ defmodule PortalAPI.Schemas.Gateway do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Gateway
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "GatewaysResponse",
@@ -75,7 +76,7 @@ defmodule PortalAPI.Schemas.Gateway do
       type: :object,
       properties: %{
         data: %Schema{description: "Gateways details", type: :array, items: Gateway.Schema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

@@ -147,6 +147,7 @@ config :portal, PortalWeb.Endpoint,
       ~r"config/.*(exs)$",
       ~r"lib/portal/.*(ex|eex|heex)$",
       ~r"lib/portal_web/.*(ex|eex|heex)$",
+      ~r"portal_dev/.*(ex|eex|heex)$",
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$"
     ]

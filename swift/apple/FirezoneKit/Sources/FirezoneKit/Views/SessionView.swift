@@ -15,6 +15,19 @@ import SwiftUI
     @EnvironmentObject var store: Store
 
     var body: some View {
+      // Register destinations at a stable level so a pushed detail survives
+      // store updates that mutate the resource/device lists underneath it.
+      content
+        .navigationDestination(for: Resource.self) { resource in
+          ResourceView(resource: resource)
+        }
+        .navigationDestination(for: ConnectedDevice.self) { device in
+          ConnectedDeviceView(device: device)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
       switch store.vpnStatus {
       case .connected:
         if store.configuration.publishedHideResourceList {
@@ -106,9 +119,7 @@ import SwiftUI
     var body: some View {
       ForEach(resources) { resource in
         HStack {
-          NavigationLink {
-            ResourceView(resource: resource)
-          } label: {
+          NavigationLink(value: resource) {
             Text(resourceTitle(resource: resource))
           }
         }

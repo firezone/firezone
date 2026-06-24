@@ -99,6 +99,7 @@ defmodule PortalAPI.Schemas.Site do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Site
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "SiteListResponse",
@@ -110,7 +111,7 @@ defmodule PortalAPI.Schemas.Site do
           type: :array,
           items: Site.Schema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

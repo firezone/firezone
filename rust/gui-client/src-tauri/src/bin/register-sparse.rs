@@ -39,7 +39,10 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    let mut telemetry = Telemetry::new();
+    let mut telemetry = Telemetry::new(
+        std::sync::Arc::new(socket_factory::tcp),
+        std::sync::Arc::new(socket_factory::udp),
+    );
     telemetry.start(
         "entrypoint",
         firezone_gui_client::RELEASE,

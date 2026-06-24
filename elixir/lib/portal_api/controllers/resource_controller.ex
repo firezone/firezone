@@ -67,7 +67,7 @@ defmodule PortalAPI.ResourceController do
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
        required: true},
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [created: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
@@ -201,6 +201,7 @@ defmodule PortalAPI.ResourceController do
     changeset
     |> Ecto.Changeset.validate_required(required)
     |> Database.validate_static_device_pool_feature_enabled(subject.account)
+    |> Database.validate_traffic_filters_feature_enabled(subject.account)
   end
 
   defmodule Database do
@@ -246,6 +247,23 @@ defmodule PortalAPI.ResourceController do
       Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
     end
 
+    def validate_traffic_filters_feature_enabled(changeset, account) do
+      adding_filters? =
+        changeset
+        |> Ecto.Changeset.get_change(:filters, [])
+        |> Enum.any?(fn filter -> filter.action in [:insert, :update] end)
+
+      if adding_filters? and not Portal.Account.traffic_filters_enabled?(account) do
+        Ecto.Changeset.add_error(
+          changeset,
+          :filters,
+          "traffic filters are not enabled for this account"
+        )
+      else
+        changeset
+      end
+    end
+
     def update_resource(resource, attrs, subject) do
       resource
       |> changeset(attrs, subject)
@@ -282,6 +300,7 @@ defmodule PortalAPI.ResourceController do
       changeset
       |> Ecto.Changeset.validate_required(required_fields)
       |> validate_static_device_pool_feature_enabled(subject.account)
+      |> validate_traffic_filters_feature_enabled(subject.account)
     end
 
     def cursor_fields do

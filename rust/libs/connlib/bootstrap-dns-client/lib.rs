@@ -311,11 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn falls_back_to_tcp_when_udp_returns_lame_response() {
-        // Reserve a TCP listener first so we can pin both servers to the same
-        // port.
-        let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let server_addr = tcp.local_addr().unwrap();
-        let udp = tokio::net::UdpSocket::bind(server_addr).await.unwrap();
+        let (tcp, udp, server_addr) = bind_tcp_and_udp().await;
 
         // UDP answers every query with an empty NOERROR — the lame answer we
         // observed from a misbehaving home router. TCP returns a real A record.
@@ -334,10 +330,8 @@ mod tests {
         // UDP server returns a real answer; the TCP port is freed so any TCP
         // connect attempt would get an RST. resolve() returning the UDP-side IP
         // (and not an error) proves no TCP fallback was attempted.
-        let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let server_addr = tcp.local_addr().unwrap();
+        let (tcp, udp, server_addr) = bind_tcp_and_udp().await;
         drop(tcp); // Free the port so a TCP connect would get RST.
-        let udp = tokio::net::UdpSocket::bind(server_addr).await.unwrap();
 
         spawn_udp_responder(udp, a_record(Ipv4Addr::new(127, 0, 0, 99)));
 
@@ -352,9 +346,7 @@ mod tests {
     async fn nxdomain_does_not_trigger_tcp_fallback() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
-        let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let server_addr = tcp.local_addr().unwrap();
-        let udp = tokio::net::UdpSocket::bind(server_addr).await.unwrap();
+        let (tcp, udp, server_addr) = bind_tcp_and_udp().await;
 
         // Count TCP connects instead of serving responses: the assertion is
         // that the fallback never fires, so a real responder is unnecessary.
@@ -384,13 +376,8 @@ mod tests {
         // NOERROR but answers correctly over TCP. A single NXDOMAIN must not
         // suppress the TCP retry, otherwise one bad resolver could force a
         // resolution failure.
-        let tcp_poisoned = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let poisoned_addr = tcp_poisoned.local_addr().unwrap();
-        let udp_poisoned = tokio::net::UdpSocket::bind(poisoned_addr).await.unwrap();
-
-        let tcp_healthy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let healthy_addr = tcp_healthy.local_addr().unwrap();
-        let udp_healthy = tokio::net::UdpSocket::bind(healthy_addr).await.unwrap();
+        let (tcp_poisoned, udp_poisoned, poisoned_addr) = bind_tcp_and_udp().await;
+        let (tcp_healthy, udp_healthy, healthy_addr) = bind_tcp_and_udp().await;
 
         spawn_udp_responder(udp_poisoned, nxdomain);
         spawn_tcp_responder(tcp_poisoned, nxdomain);
@@ -410,6 +397,24 @@ mod tests {
             Arc::new(socket_factory::tcp),
             servers.into_iter().collect(),
         )
+    }
+
+    /// Binds a TCP listener and a UDP socket to the same loopback port.
+    ///
+    /// On Windows, TCP and UDP have independent excluded-port ranges (Hyper-V /
+    /// WinNAT reserve blocks of the ephemeral range, and the runners differ for
+    /// each protocol), so a port the OS hands out for TCP may be forbidden for
+    /// UDP, yielding `WSAEACCES` (10013). Retry until a port binds for both.
+    async fn bind_tcp_and_udp() -> (tokio::net::TcpListener, tokio::net::UdpSocket, SocketAddr) {
+        loop {
+            let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = tcp.local_addr().unwrap();
+            match tokio::net::UdpSocket::bind(addr).await {
+                Ok(udp) => return (tcp, udp, addr),
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => continue,
+                Err(e) => panic!("Failed to bind UDP socket: {e}"),
+            }
+        }
     }
 
     /// Spawns a UDP DNS stub that answers every query with `responder(&query)`.

@@ -32,7 +32,7 @@
     >
     </script>
   </head>
-  <body class="bg-[var(--canvas)]">
+  <body class="bg-page">
     <div class="relative flex items-center justify-center h-screen overflow-hidden">
       <div class="absolute inset-0 dot-grid opacity-60 pointer-events-none"></div>
       <div class="absolute inset-0 pointer-events-none error-radial-fade"></div>
@@ -41,7 +41,7 @@
           <img src={~p"/images/logo-text.svg"} alt="Firezone" class="h-8" />
         </div>
         <div class="relative flex items-center justify-center mb-8">
-          <span class="text-[220px] font-black leading-none tracking-tighter select-none opacity-[0.05] text-[var(--text-primary)]">
+          <span class="text-[220px] font-black leading-none tracking-tighter select-none opacity-[0.05] text-heading">
             404
           </span>
           <div class="absolute inset-0 flex items-center justify-center">
@@ -143,8 +143,8 @@
             </svg>
           </div>
         </div>
-        <h1 class="text-lg font-semibold text-[var(--text-primary)] mb-2">Page not found</h1>
-        <p class="text-sm text-[var(--text-secondary)] leading-relaxed mb-8">
+        <h1 class="text-lg font-semibold text-heading mb-2">Page not found</h1>
+        <p class="text-sm text-body leading-relaxed mb-8">
           This route doesn't exist or has been moved. Double-check the URL or head back somewhere familiar.
         </p>
       </div>

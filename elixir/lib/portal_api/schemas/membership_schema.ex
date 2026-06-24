@@ -95,6 +95,7 @@ defmodule PortalAPI.Schemas.Membership do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Membership
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "MembershipListResponse",
@@ -106,7 +107,7 @@ defmodule PortalAPI.Schemas.Membership do
           type: :array,
           items: Membership.Schema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

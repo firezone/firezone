@@ -1,0 +1,5 @@
+defmodule PortalWeb.Dev.Layouts do
+  use PortalWeb, :html
+
+  embed_templates "layouts/*"
+end

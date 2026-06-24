@@ -4,7 +4,10 @@ use telemetry::{TESTING, Telemetry};
 async fn set_account_slug_before_set_firezone_id_preserves_both() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let mut telemetry = Telemetry::new();
+    let mut telemetry = Telemetry::new(
+        std::sync::Arc::new(socket_factory::tcp),
+        std::sync::Arc::new(socket_factory::udp),
+    );
     telemetry.start("entrypoint", "1.0.0", TESTING);
 
     Telemetry::set_account_slug("acme".to_owned());

@@ -118,6 +118,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ExternalIdentity
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "ExternalIdentityListResponse",
@@ -129,7 +130,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
           type: :array,
           items: ExternalIdentity.Schema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [
