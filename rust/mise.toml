@@ -77,7 +77,7 @@ run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-inte
 # =============================================================================
 
 [tasks.record-perf-client-gateway]
-description = "Capture perf data a locally running headless-client and gateway."
+description = "Capture perf data from a locally running headless-client and gateway."
 raw = true
 run = """
 set -u
