@@ -642,7 +642,7 @@ impl ReferenceState {
                             client_id,
                             Just(tunnel_ip4),
                             host_v4(gateway_ip),
-                            any::<u16>()
+                            non_dns_ports()
                         ),
                     ]
                 })
@@ -659,7 +659,7 @@ impl ReferenceState {
                             client_id,
                             Just(tunnel_ip6),
                             host_v6(gateway_ip),
-                            any::<u16>()
+                            non_dns_ports()
                         ),
                     ]
                 })

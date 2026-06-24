@@ -15,7 +15,7 @@ defmodule Portal.IdentityFixtures do
     email = "user#{unique_num}@example.com"
 
     Enum.into(attrs, %{
-      issuer: "https://auth.example.com",
+      issuer: "https://auth#{unique_num}.example.com",
       idp_id: email,
       email: email,
       name: "Test User #{unique_num}",

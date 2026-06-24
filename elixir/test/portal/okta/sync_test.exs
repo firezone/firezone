@@ -2216,6 +2216,56 @@ defmodule Portal.Okta.SyncTest do
       assert identity.issuer == "https://new.okta.example"
     end
 
+    test "identity upsert recycles a legacy same-issuer identity with a mismatched directory_id" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, email: "legacy@example.com")
+
+      # Legacy interactive identity for the same issuer but with no directory
+      # association, so recycling by directory_id alone would miss it.
+      legacy_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          issuer: "https://test.okta.example",
+          idp_id: "old-okta-user",
+          email: "legacy@example.com"
+        )
+
+      # The same person is recreated in the IdP under a new id, so the sync runs
+      # with a new idp_id for the same issuer and email.
+      assert {:ok, %{upserted_identities: 1}} =
+               Database.batch_upsert_identities(
+                 account.id,
+                 "https://test.okta.example",
+                 directory.id,
+                 DateTime.utc_now(),
+                 [
+                   %{
+                     idp_id: "new-okta-user",
+                     email: "legacy@example.com",
+                     name: "Legacy User",
+                     given_name: "Legacy",
+                     family_name: "User",
+                     preferred_username: "legacy@example.com"
+                   }
+                 ]
+               )
+
+      identities =
+        from(ei in ExternalIdentity,
+          where: ei.account_id == ^account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == legacy_identity.id
+      assert identity.idp_id == "new-okta-user"
+      assert identity.directory_id == directory.id
+    end
+
     test "group upsert rejects stale synced_at and accepts fresh" do
       account = account_fixture(features: %{idp_sync: true})
       directory = okta_directory_fixture(account: account)
