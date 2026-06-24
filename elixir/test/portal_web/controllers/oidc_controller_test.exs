@@ -975,6 +975,105 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "recreated user with a new idp_id overwrites their identity in place", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-object-id",
+          email: actor.email
+        )
+
+      # The user is deleted and recreated in the IdP: same verified email, brand
+      # new object id. Sign-in must recycle the existing row instead of inserting
+      # a second identity for the same actor.
+      setup_successful_auth(ctx, actor, sub: "new-object-id", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "new-object-id"
+             ).id == existing_identity.id
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "old-object-id"
+             )
+    end
+
+    test "changed email with the same idp_id is matched by idp_id, not email", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "old-address@example.com")
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "stable-subject",
+          email: "old-address@example.com"
+        )
+
+      # Same subject, new email. The actor still carries the old email, so the
+      # match must fall back to idp_id rather than create a second identity.
+      setup_successful_auth(ctx, actor, sub: "stable-subject", email: "new-address@example.com")
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      identity =
+        Repo.get_by!(Portal.ExternalIdentity,
+          account_id: ctx.account.id,
+          issuer: ctx.provider.issuer,
+          idp_id: "stable-subject"
+        )
+
+      assert identity.id == existing_identity.id
+      assert identity.email == "new-address@example.com"
+    end
+
+    test "sign-in does not overwrite an identity from a different issuer", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      other_issuer_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: "https://other-issuer.example",
+          idp_id: "stable-subject",
+          email: actor.email
+        )
+
+      # Same email and subject, but a different issuer. existing_identity is
+      # scoped by issuer, so this must create a new identity and leave the
+      # other issuer's identity untouched.
+      setup_successful_auth(ctx, actor, sub: "stable-subject", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert new_identity =
+               Repo.get_by(Portal.ExternalIdentity,
+                 account_id: ctx.account.id,
+                 issuer: ctx.provider.issuer,
+                 idp_id: "stable-subject"
+               )
+
+      assert new_identity.id != other_issuer_identity.id
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: "https://other-issuer.example",
+               idp_id: "stable-subject"
+             ).id == other_issuer_identity.id
+    end
+
     test "successful client sign-in for admin user creates token and renders redirect page",
          ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())

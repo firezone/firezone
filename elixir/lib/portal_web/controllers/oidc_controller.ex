@@ -1360,6 +1360,7 @@ defmodule PortalWeb.OIDCController do
       account_id_bytes = Ecto.UUID.dump!(account_id)
 
       replace_fields = [
+        :idp_id,
         :email,
         :name,
         :given_name,
@@ -1382,6 +1383,13 @@ defmodule PortalWeb.OIDCController do
           limit: 1
         )
 
+      # Match the existing identity by idp_id (stable subject) or, since the
+      # email is verified on this path, by the actor's email. The latter lets a
+      # user who was deleted and recreated in the IdP (new idp_id, same email)
+      # overwrite their existing identity in place instead of inserting a second
+      # row, which would later collide with directory sync on the
+      # (account_id, actor_id, directory_id) unique index. Prefer the email
+      # match so a recreated user recycles their own row.
       existing_identity_cte =
         from(ei in "external_identities",
           join: a in "actors",
@@ -1389,9 +1397,10 @@ defmodule PortalWeb.OIDCController do
           where:
             ei.account_id == ^account_id_bytes and
               ei.issuer == ^issuer and
-              ei.idp_id == ^idp_id and
-              is_nil(a.disabled_at),
-          select: %{actor_id: ei.actor_id},
+              is_nil(a.disabled_at) and
+              (ei.idp_id == ^idp_id or a.email == ^email),
+          order_by: [desc: fragment("(? = ?)", a.email, ^email)],
+          select: %{id: ei.id, actor_id: ei.actor_id},
           limit: 1
         )
 
@@ -1403,7 +1412,7 @@ defmodule PortalWeb.OIDCController do
           on: true,
           where: not is_nil(al.id) or not is_nil(ei.actor_id),
           select: %{
-            id: fragment("uuid_generate_v4()"),
+            id: fragment("COALESCE(?.id, uuid_generate_v4())", ei),
             account_id: ^account_id_bytes,
             issuer: ^issuer,
             idp_id: ^idp_id,
@@ -1427,15 +1436,7 @@ defmodule PortalWeb.OIDCController do
         |> with_cte("actor_lookup", as: ^actor_lookup_cte)
         |> with_cte("existing_identity", as: ^existing_identity_cte)
 
-      {count, rows} =
-        Safe.insert_all(
-          Safe.unscoped(),
-          ExternalIdentity,
-          query_with_ctes,
-          on_conflict: {:replace, replace_fields},
-          conflict_target: [:account_id, :idp_id, :issuer],
-          returning: true
-        )
+      {count, rows} = insert_identity(query_with_ctes, replace_fields)
 
       case {count, rows} do
         {0, _} ->
@@ -1446,6 +1447,31 @@ defmodule PortalWeb.OIDCController do
           # actor and account are long-lived records, safe to read from replica
           {:ok, Safe.preload(identity, [:actor, :account], :replica)}
       end
+    end
+
+    # Two concurrent sign-ins for the same brand-new (account_id, idp_id, issuer)
+    # can each generate a different id and race to insert. The (account_id, id)
+    # conflict target won't catch the loser, so it raises a unique violation on
+    # external_identities_account_idp_fields_index. On retry the committed row is
+    # found by existing_identity and recycled in place via the PK conflict.
+    defp insert_identity(query_with_ctes, replace_fields, retry? \\ true) do
+      Safe.insert_all(
+        Safe.unscoped(),
+        ExternalIdentity,
+        query_with_ctes,
+        on_conflict: {:replace, replace_fields},
+        conflict_target: [:account_id, :id],
+        returning: true
+      )
+    rescue
+      e in Postgrex.Error ->
+        case e do
+          %Postgrex.Error{postgres: %{code: :unique_violation}} when retry? ->
+            insert_identity(query_with_ctes, replace_fields, false)
+
+          _ ->
+            reraise e, __STACKTRACE__
+        end
     end
 
     defp fetch_related_pending_identity_ids(%PendingIdentity{} = pending_identity) do
