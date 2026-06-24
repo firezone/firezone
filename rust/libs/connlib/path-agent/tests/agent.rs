@@ -11,7 +11,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
     Candidate, EVALUATION_WINDOW, Event, PROBE_DST, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_SRC,
-    PROBE_TIMEOUT, PathAgent, Payload, Transmit,
+    PROBE_TIMEOUT, PathAgent, Payload, RESPONDER_DEDUP_TTL, Transmit,
 };
 
 fn addr(p: u16) -> SocketAddr {
@@ -63,6 +63,46 @@ fn rejected_handshake_leaves_state_untouched() {
     assert!(
         matches!(a.poll_event(), Some(Event::PrimaryChanged { .. })),
         "legitimate retry must adopt a primary"
+    );
+}
+
+#[test]
+fn responder_dedup_replays_within_window_then_expires() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let mut hs = Handshake::new(now);
+    let path = (addr(2), addr(4));
+
+    assert!(
+        a.handle_inbound_network(&mut hs.responder, &hs.init, path, now)
+            .is_break()
+    );
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    // Within the window, a replayed init must be served from the
+    // cache without touching boringtun; `reject_all()` proves it.
+    let replay_at = now + RESPONDER_DEDUP_TTL - Duration::from_millis(1);
+    let _ = a.handle_inbound_network(&mut reject_all(), &hs.init, path, replay_at);
+    assert!(
+        a.poll_transmit().is_some(),
+        "replay inside the window must produce a cached response"
+    );
+
+    a.handle_timeout(now + RESPONDER_DEDUP_TTL);
+    while a.poll_transmit().is_some() {}
+
+    // Past the window the cache must be gone — `reject_all()` runs
+    // again and emits no response.
+    let _ = a.handle_inbound_network(
+        &mut reject_all(),
+        &hs.init,
+        path,
+        now + RESPONDER_DEDUP_TTL + Duration::from_secs(1),
+    );
+    assert!(
+        a.poll_transmit().is_none(),
+        "replay past the window must not produce a cached response"
     );
 }
 

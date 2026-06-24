@@ -92,12 +92,15 @@ struct OutboundInit {
 struct ResponderDedup {
     init_bytes: Vec<u8>,
     response_bytes: Vec<u8>,
+    cached_at: Instant,
 }
 
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
 pub const EVALUATION_WINDOW: Duration = Duration::from_secs(10);
+
+pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
 const MAX_PEER_REFLEXIVE: usize = 4;
 
@@ -329,6 +332,7 @@ impl PathAgent {
                     self.responder.dedup = Some(ResponderDedup {
                         init_bytes,
                         response_bytes: bytes,
+                        cached_at: now,
                     });
                     self.established = true;
                 }
@@ -366,6 +370,7 @@ impl PathAgent {
         match parsed {
             Packet::HandshakeInit(_) => {
                 if let Some(d) = self.responder.dedup.as_ref()
+                    && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
                     && d.init_bytes == bytes
                 {
                     tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
@@ -609,6 +614,11 @@ impl PathAgent {
                 .any(|(addrs, state)| state.involves_relay() && !i.retransmits.contains_key(addrs))
                 .then_some(i.started_at)
         });
+        let dedup_expiry = self
+            .responder
+            .dedup
+            .as_ref()
+            .map(|d| d.cached_at + RESPONDER_DEDUP_TTL);
 
         iter::empty()
             .chain(self.events_queued_at)
@@ -616,6 +626,7 @@ impl PathAgent {
             .chain(next_probe)
             .chain(self.window.deadline())
             .chain(pending_fanout)
+            .chain(dedup_expiry)
             .min()
     }
 
@@ -623,6 +634,15 @@ impl PathAgent {
         self.drive_handshake_retransmits(now);
         self.drive_probes(now);
         self.maybe_settle(now);
+        self.expire_dedup(now);
+    }
+
+    fn expire_dedup(&mut self, now: Instant) {
+        if let Some(d) = &self.responder.dedup
+            && now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL
+        {
+            self.responder.dedup = None;
+        }
     }
 
     fn maybe_settle(&mut self, now: Instant) {
