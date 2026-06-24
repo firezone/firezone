@@ -233,6 +233,8 @@ jobs:
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - name: Seed database
+        env:
+          FEATURE_ICELESS_ENABLED: ${{ matrix.test.iceless && 'true' || 'false' }}
         run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Start docker compose in the background
         if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run if version checks succeed or are skipped
@@ -253,10 +255,6 @@ jobs:
 
           if [[ -n "${{ matrix.test.gateway_disable_ipv6 }}" ]]; then
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
-          fi
-
-          if [[ "${{ matrix.test.iceless }}" == "true" ]]; then
-            export FEATURE_ICELESS_ENABLED=true
           fi
 
           docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
