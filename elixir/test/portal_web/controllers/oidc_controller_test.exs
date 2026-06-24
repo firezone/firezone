@@ -1355,6 +1355,65 @@ defmodule PortalWeb.OIDCControllerTest do
       refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
     end
 
+    test "proof email verification recycles the actor's existing same-issuer identity", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      # The actor already holds an identity for this issuer under a previous
+      # subject. Promoting the pending identity with the new subject must recycle
+      # this row rather than insert a second one and trip the unique index.
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-subject",
+          email: actor.email
+        )
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      cookie =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{"redirect_to" => "/#{ctx.account.slug}/actors"}
+        )
+
+      conn = perform_callback(ctx.conn, cookie)
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "redirect_to" => "/#{ctx.account.slug}/actors"
+        })
+
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+
+      identities =
+        from(ei in Portal.ExternalIdentity,
+          where: ei.account_id == ^ctx.account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == existing_identity.id
+      assert identity.idp_id == "admin-user-123"
+    end
+
     test "proof email verification uses original client params after valid code", ctx do
       Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
 

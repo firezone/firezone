@@ -24,6 +24,10 @@ defmodule Portal.Repo.Migrations.DedupExternalIdentitiesByActorIssuer do
   #      already exists, created otherwise). If the target actor already has an
   #      identity for this issuer the relocated row is redundant and is deleted.
   #      A row with no email cannot own an account_user actor, so it is deleted.
+  #
+  #      Relocating only flips actor_id; group memberships and live sessions for
+  #      the relocated person are left for the next directory sign-in/sync to
+  #      reconcile rather than rebuilt here.
   def up do
     execute("""
     CREATE PROCEDURE pg_temp.collapse_same_email_identities()
@@ -69,6 +73,7 @@ defmodule Portal.Repo.Migrations.DedupExternalIdentitiesByActorIssuer do
       g RECORD;
       r RECORD;
       v_actor_email citext;
+      v_actor_disabled_at timestamptz;
       v_home_id uuid;
       v_target_actor uuid;
       v_new_actor uuid;
@@ -79,7 +84,7 @@ defmodule Portal.Repo.Migrations.DedupExternalIdentitiesByActorIssuer do
         GROUP BY account_id, actor_id, issuer
         HAVING COUNT(*) > 1
       LOOP
-        SELECT email INTO v_actor_email
+        SELECT email, disabled_at INTO v_actor_email, v_actor_disabled_at
         FROM actors
         WHERE account_id = g.account_id AND id = g.actor_id;
 
@@ -100,7 +105,7 @@ defmodule Portal.Repo.Migrations.DedupExternalIdentitiesByActorIssuer do
         END IF;
 
         FOR r IN
-          SELECT id, email, name
+          SELECT id, email, name, directory_id
           FROM external_identities
           WHERE account_id = g.account_id AND actor_id = g.actor_id AND issuer = g.issuer
             AND id <> v_home_id
@@ -117,15 +122,23 @@ defmodule Portal.Repo.Migrations.DedupExternalIdentitiesByActorIssuer do
           LIMIT 1;
 
           IF v_target_actor IS NULL THEN
-            v_new_actor := uuid_generate_v4();
+            v_new_actor := gen_random_uuid();
 
-            INSERT INTO actors (id, type, account_id, email, name, inserted_at, updated_at)
+            -- Carry over the merged actor's disabled_at so a relocated person is
+            -- not silently re-enabled, and created_by_directory_id from the
+            -- relocated identity so provider cleanup can later reap the actor if
+            -- the IdP user is removed. name is bounded to the actors.name 255
+            -- limit. Group memberships are left for the next directory sync to
+            -- reconcile rather than copied here.
+            INSERT INTO actors (id, type, account_id, email, name, created_by_directory_id, disabled_at, inserted_at, updated_at)
             VALUES (
               v_new_actor,
               'account_user',
               g.account_id,
               r.email,
-              COALESCE(NULLIF(r.name, ''), r.email::text),
+              LEFT(COALESCE(NULLIF(r.name, ''), r.email::text), 255),
+              r.directory_id,
+              v_actor_disabled_at,
               now(),
               now()
             );
