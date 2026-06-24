@@ -1,4 +1,8 @@
-FROM hexpm/elixir:1.20.2-erlang-29.0.2-alpine-3.24.1 AS compiler
+ARG ELIXIR_VERSION="1.20.2"
+ARG ERLANG_VERSION="29.0.2"
+ARG ALPINE_VERSION="3.23.5"
+
+FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS compiler
 
 ENV LANG=C.UTF-8
 
@@ -70,7 +74,7 @@ RUN mix release ${APPLICATION_NAME}
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
 
-FROM alpine:3.24.1 AS runtime
+FROM alpine:${ALPINE_VERSION} AS runtime
 
 ENV LANG=C.UTF-8
 
