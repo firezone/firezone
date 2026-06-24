@@ -1436,15 +1436,7 @@ defmodule PortalWeb.OIDCController do
         |> with_cte("actor_lookup", as: ^actor_lookup_cte)
         |> with_cte("existing_identity", as: ^existing_identity_cte)
 
-      {count, rows} =
-        Safe.insert_all(
-          Safe.unscoped(),
-          ExternalIdentity,
-          query_with_ctes,
-          on_conflict: {:replace, replace_fields},
-          conflict_target: [:account_id, :id],
-          returning: true
-        )
+      {count, rows} = insert_identity(query_with_ctes, replace_fields)
 
       case {count, rows} do
         {0, _} ->
@@ -1455,6 +1447,31 @@ defmodule PortalWeb.OIDCController do
           # actor and account are long-lived records, safe to read from replica
           {:ok, Safe.preload(identity, [:actor, :account], :replica)}
       end
+    end
+
+    # Two concurrent sign-ins for the same brand-new (account_id, idp_id, issuer)
+    # can each generate a different id and race to insert. The (account_id, id)
+    # conflict target won't catch the loser, so it raises a unique violation on
+    # external_identities_account_idp_fields_index. On retry the committed row is
+    # found by existing_identity and recycled in place via the PK conflict.
+    defp insert_identity(query_with_ctes, replace_fields, retry? \\ true) do
+      Safe.insert_all(
+        Safe.unscoped(),
+        ExternalIdentity,
+        query_with_ctes,
+        on_conflict: {:replace, replace_fields},
+        conflict_target: [:account_id, :id],
+        returning: true
+      )
+    rescue
+      e in Postgrex.Error ->
+        case e do
+          %Postgrex.Error{postgres: %{code: :unique_violation}} when retry? ->
+            insert_identity(query_with_ctes, replace_fields, false)
+
+          _ ->
+            reraise e, __STACKTRACE__
+        end
     end
 
     defp fetch_related_pending_identity_ids(%PendingIdentity{} = pending_identity) do
