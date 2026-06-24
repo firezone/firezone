@@ -10,20 +10,20 @@ use std::path::Path;
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-/// Re-exec via `sudo` if we are not already root.
+/// Re-exec via `sudo` unless we already have root or `CAP_NET_ADMIN`.
 pub(crate) fn elevate_if_needed() -> Result<()> {
     use anyhow::Context as _;
     use std::os::unix::process::CommandExt as _;
 
     // Set on the re-exec'd child so we can detect and break a re-exec loop if
-    // `sudo` ever returns without actually elevating us.
+    // `sudo` ever returns without granting the permissions we need.
     const REEXEC_GUARD: &str = "FIREZONE_REEXEC_ELEVATED";
 
-    if nix::unistd::Uid::effective().is_root() {
+    if has_necessary_permissions() {
         return Ok(());
     }
     if std::env::var_os(REEXEC_GUARD).is_some() {
-        bail!("Re-executed via `sudo` but still not root");
+        bail!("Re-executed via `sudo` but still lack root / `CAP_NET_ADMIN`");
     }
 
     let exe = std::env::current_exe().context("Failed to find current executable")?;
@@ -42,6 +42,21 @@ pub(crate) fn elevate_if_needed() -> Result<()> {
         .exec();
 
     Err(err).context("Failed to re-execute via `sudo`; is it installed?")
+}
+
+/// `CAP_NET_ADMIN` is enough for the TUN device and routing; only DNS control
+/// requires full root.
+#[must_use]
+fn has_necessary_permissions() -> bool {
+    let is_root = nix::unistd::Uid::effective().is_root();
+    let has_net_admin = caps::has_cap(
+        None,
+        caps::CapSet::Effective,
+        caps::Capability::CAP_NET_ADMIN,
+    )
+    .is_ok_and(|b| b);
+
+    is_root || has_net_admin
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {

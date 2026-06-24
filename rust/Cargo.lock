@@ -2427,6 +2427,7 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "bin-shared",
+ "caps",
  "clap",
  "client-shared",
  "futures",
