@@ -6,6 +6,7 @@ defmodule PortalWeb.OIDCControllerTest do
   import Portal.AuthProviderFixtures
   import Portal.IdentityFixtures
   import ExUnit.CaptureLog
+  import Ecto.Query
 
   alias PortalWeb.Cookie
   alias PortalWeb.Mocks
@@ -1006,6 +1007,69 @@ defmodule PortalWeb.OIDCControllerTest do
                issuer: ctx.provider.issuer,
                idp_id: "old-object-id"
              )
+    end
+
+    test "sign-in recycles the row already holding the incoming idp_id, not a sibling sharing the email",
+         ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      directory = Portal.DirectoryFixtures.directory_fixture(account: ctx.account)
+      guid = Ecto.UUID.generate()
+
+      # Interactive row keyed on the Entra `sub`, no directory association.
+      interactive_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "entra-sub-#{System.unique_integer([:positive])}",
+          email: actor.email
+        )
+
+      # Directory-synced row keyed on the Entra `oid` (GUID), with a directory.
+      synced_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          directory: directory,
+          issuer: ctx.provider.issuer,
+          idp_id: guid,
+          email: actor.email
+        )
+
+      # The user signs in with the idp_id that already exists on the synced row.
+      # Both rows tie on the email match, so ranking the email first could pick
+      # the interactive row and overwrite its idp_id with the GUID, colliding on
+      # external_identities_account_idp_fields_index. The upsert must instead
+      # recycle the GUID-holding row in place.
+      setup_successful_auth(ctx, actor, sub: guid, email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      recycled =
+        Repo.get_by!(Portal.ExternalIdentity,
+          account_id: ctx.account.id,
+          issuer: ctx.provider.issuer,
+          idp_id: guid
+        )
+
+      assert recycled.id == synced_identity.id
+      assert recycled.directory_id == directory.id
+
+      assert Repo.get_by!(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               id: interactive_identity.id
+             ).idp_id == interactive_identity.idp_id
+
+      identity_count =
+        Repo.aggregate(
+          from(ei in Portal.ExternalIdentity,
+            where: ei.account_id == ^ctx.account.id and ei.actor_id == ^actor.id
+          ),
+          :count
+        )
+
+      assert identity_count == 2
     end
 
     test "changed email with the same idp_id is matched by idp_id, not email", ctx do
