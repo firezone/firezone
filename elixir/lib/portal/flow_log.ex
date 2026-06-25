@@ -21,6 +21,7 @@ defmodule Portal.FlowLog do
           actor_email: String.t() | nil,
           actor_name: String.t(),
           authorized_at: DateTime.t(),
+          authorization_expires_at: DateTime.t(),
           client_version: String.t() | nil,
           device_os_name: String.t() | nil,
           device_os_version: String.t() | nil,
@@ -67,6 +68,7 @@ defmodule Portal.FlowLog do
     field :actor_email, :string
     field :actor_name, :string
     field :authorized_at, :utc_datetime_usec
+    field :authorization_expires_at, :utc_datetime_usec
 
     field :client_version, :string
     field :device_os_name, :string
@@ -132,6 +134,7 @@ defmodule Portal.FlowLog do
       :actor_id,
       :actor_name,
       :authorized_at,
+      :authorization_expires_at,
       :protocol,
       :inner_src_ip,
       :inner_dst_ip,

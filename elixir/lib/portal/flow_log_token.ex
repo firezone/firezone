@@ -29,6 +29,7 @@ defmodule Portal.FlowLogToken do
   # Attribution claims copied verbatim into the flow_logs row on ingest.
   @attribution_claims ~w[role device_id policy_id resource_id resource_name resource_address
                          actor_id actor_email actor_name auth_provider_id authorized_at
+                         authorization_expires_at
                          client_version device_os_name device_os_version device_serial device_uuid
                          device_identifier_for_vendor device_firebase_installation_id]
 

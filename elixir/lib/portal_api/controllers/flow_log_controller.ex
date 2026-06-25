@@ -26,6 +26,7 @@ defmodule PortalAPI.FlowLogController do
   # come from the token; the rest are reported in the body.
   @cast_fields ~w[account_id event_id device_id role policy_id auth_provider_id resource_id
                   resource_name resource_address actor_id actor_email actor_name authorized_at
+                  authorization_expires_at
                   client_version
                   device_os_name device_os_version device_serial device_uuid
                   device_identifier_for_vendor device_firebase_installation_id protocol
@@ -152,6 +153,7 @@ defmodule PortalAPI.FlowLogController do
       "actor_email" => claims["actor_email"],
       "actor_name" => claims["actor_name"],
       "authorized_at" => claims["authorized_at"],
+      "authorization_expires_at" => claims["authorization_expires_at"],
       "client_version" => claims["client_version"],
       "device_os_name" => claims["device_os_name"],
       "device_os_version" => claims["device_os_version"],
