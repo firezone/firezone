@@ -311,6 +311,14 @@ impl PathAgent {
                         remote,
                         payload: Payload::Ciphertext(bytes),
                     });
+                } else {
+                    // Lost the primary mid-session (roam, candidate
+                    // retraction); fan out like the initial bootstrap.
+                    self.outbound_init = Some(OutboundInit {
+                        bytes,
+                        retransmits: BTreeMap::new(),
+                        started_at: now,
+                    });
                 }
             }
             Ok(Packet::HandshakeResponse(_)) => {

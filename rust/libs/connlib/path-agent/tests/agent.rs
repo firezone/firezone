@@ -909,6 +909,39 @@ fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
 }
 
 #[test]
+fn rekey_without_primary_buffers_for_relay_fanout() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let recv_path = (addr(2), addr(4));
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    while a.poll_transmit().is_some() {}
+    let mut hs = Handshake::new(now).with_response(now);
+    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
+    while a.poll_event().is_some() {}
+    while a.poll_transmit().is_some() {}
+
+    // Roam: the primary's local candidate goes away mid-session.
+    assert!(a.remove_local_candidate(&Candidate::relayed(addr(2), addr(2)), now));
+    assert_eq!(a.primary(), None, "removing primary's local must clear it");
+
+    let rekey_at = now + Duration::from_secs(120);
+    a.handle_outbound(handshake_init_bytes(), rekey_at);
+    assert!(
+        a.poll_transmit().is_none(),
+        "buffered re-key must not transmit before the timer fires"
+    );
+
+    a.handle_timeout(rekey_at);
+    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert!(
+        outbound.iter().any(|t| t.remote == addr(4)),
+        "buffered re-key must fan out on a relay-involving pair: {outbound:?}"
+    );
+}
+
+#[test]
 fn trickled_candidate_after_handshake_still_gets_probed() {
     let mut a = PathAgent::new();
     a.add_local_candidate(Candidate::host(addr(1)));
