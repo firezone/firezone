@@ -83,6 +83,20 @@ defmodule PortalAPI.Client.ChannelTest do
     %{subject | context: %{subject.context | user_agent: user_agent}}
   end
 
+  defp gateway_flow_generation(channel_pid, resource_id) do
+    {generation, _timer_ref} =
+      :sys.get_state(channel_pid).assigns.pending_flows |> Map.fetch!(resource_id)
+
+    generation
+  end
+
+  defp fire_flow_creation_timeout(channel_pid, resource_id) do
+    send(
+      channel_pid,
+      {:flow_creation_timeout, resource_id, gateway_flow_generation(channel_pid, resource_id)}
+    )
+  end
+
   setup do
     start_supervised!(
       {Portal.Queue,
@@ -3475,7 +3489,7 @@ defmodule PortalAPI.Client.ChannelTest do
       timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
 
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.pending_flows, %{resource.id => timer_ref})
+        put_in(state.assigns.pending_flows, %{resource.id => {make_ref(), timer_ref}})
       end)
 
       preshared_key = "PSK"
@@ -3800,8 +3814,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
 
-      # Simulate the timeout firing before the gateway responds
-      send(socket.channel_pid, {:flow_creation_timeout, resource.id})
+      fire_flow_creation_timeout(socket.channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
@@ -3848,13 +3861,11 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
 
-      # Simulate the timeout firing first
-      send(channel_pid, {:flow_creation_timeout, resource.id})
+      fire_flow_creation_timeout(channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
 
-      # Now simulate the late gateway response arriving after timeout
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
       send(
@@ -3909,7 +3920,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
 
-      # Gateway responds successfully
+      generation = gateway_flow_generation(channel_pid, resource.id)
+
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
       send(
@@ -3922,10 +3934,55 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "flow_created", %{resource_id: resource_id}
       assert resource_id == resource.id
 
-      # Now the stale timeout fires — should be a no-op
-      send(channel_pid, {:flow_creation_timeout, resource.id})
+      send(channel_pid, {:flow_creation_timeout, resource.id, generation})
 
       refute_push "flow_creation_failed", _
+    end
+
+    test "second create_flow for same resource replaces the timer without dropping the flow", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:authorize_policy, {channel_pid, _socket_ref1}, _payload1}
+      stale_generation = gateway_flow_generation(channel_pid, resource.id)
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:authorize_policy, {^channel_pid, socket_ref2}, payload2}
+      refute gateway_flow_generation(channel_pid, resource.id) == stale_generation
+
+      send(channel_pid, {:flow_creation_timeout, resource.id, stale_generation})
+      refute_push "flow_creation_failed", _
+
+      send(
+        channel_pid,
+        {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
+         payload2.ice_credentials}
+      )
+
+      assert_push "flow_created", %{resource_id: resource_id}
+      assert resource_id == resource.id
     end
 
     test "returns :offline when gateway is in presence but not registered in PG", %{

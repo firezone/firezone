@@ -361,7 +361,7 @@ defmodule PortalAPI.Client.Channel do
         # Flow already timed out — ignore late gateway response
         {:noreply, socket}
 
-      {timer_ref, remaining} ->
+      {{_generation, timer_ref}, remaining} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -383,8 +383,23 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  def handle_info({:flow_creation_timeout, key}, socket) do
-    case Map.pop(socket.assigns.pending_flows, key) do
+  # `generation` rejects a stale timeout whose entry was already replaced by a
+  # newer create_flow for the same resource_id (its message may already be queued).
+  def handle_info({:flow_creation_timeout, resource_id, generation}, socket) do
+    case Map.get(socket.assigns.pending_flows, resource_id) do
+      {^generation, _timer_ref} ->
+        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+
+        {:noreply,
+         assign(socket, :pending_flows, Map.delete(socket.assigns.pending_flows, resource_id))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info({:flow_creation_timeout, ref}, socket) do
+    case Map.pop(socket.assigns.pending_flows, ref) do
       {nil, _} ->
         {:noreply, socket}
 
@@ -392,10 +407,6 @@ defmodule PortalAPI.Client.Channel do
       # authorization to its data plane (e.g. it disconnected in the window).
       {%{deny_payload: deny_payload}, remaining} ->
         push(socket, "client_device_access_denied", deny_payload)
-        {:noreply, assign(socket, :pending_flows, remaining)}
-
-      {_timer_ref, remaining} ->
-        push(socket, "flow_creation_failed", %{resource_id: key, reason: :offline})
         {:noreply, assign(socket, :pending_flows, remaining)}
     end
   end
@@ -1409,21 +1420,7 @@ defmodule PortalAPI.Client.Channel do
                end
              ) do
           :ok ->
-            timer_ref =
-              Process.send_after(
-                self(),
-                {:flow_creation_timeout, resource_id},
-                flow_creation_timeout()
-              )
-
-            socket =
-              assign(
-                socket,
-                :pending_flows,
-                Map.put(socket.assigns.pending_flows, resource_id, timer_ref)
-              )
-
-            {:noreply, socket}
+            {:noreply, arm_gateway_flow_timer(socket, resource_id)}
 
           {:error, _reason} ->
             push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
@@ -2429,6 +2426,29 @@ defmodule PortalAPI.Client.Channel do
   defp attach_policy_authorization({tag, ref_tuple, payload}, %Portal.PolicyAuthorization{} = pa)
        when is_tuple(ref_tuple) do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
+  end
+
+  defp arm_gateway_flow_timer(socket, resource_id) do
+    # Cancel any timer a prior in-flight create_flow armed under this key.
+    case Map.get(socket.assigns.pending_flows, resource_id) do
+      {_old_generation, old_timer_ref} -> Process.cancel_timer(old_timer_ref)
+      nil -> :ok
+    end
+
+    generation = make_ref()
+
+    timer_ref =
+      Process.send_after(
+        self(),
+        {:flow_creation_timeout, resource_id, generation},
+        flow_creation_timeout()
+      )
+
+    assign(
+      socket,
+      :pending_flows,
+      Map.put(socket.assigns.pending_flows, resource_id, {generation, timer_ref})
+    )
   end
 
   defp flow_creation_timeout do
