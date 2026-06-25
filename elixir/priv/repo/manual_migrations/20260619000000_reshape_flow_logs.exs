@@ -64,11 +64,6 @@ defmodule Portal.Repo.Migrations.ReshapeFlowLogs do
       # the device-reported flow_start is how clock skew is detected downstream.
       add(:authorized_at, :timestamptz, null: false)
 
-      # When that authorization expires. Distinct from the token's own exp, which
-      # adds a reporting grace window on top; this records the authorization's
-      # actual lifetime. Always carried by the token, so NOT NULL.
-      add(:authorization_expires_at, :timestamptz, null: false)
-
       # Connecting client's device / user-agent telemetry, as the gateway flow
       # tracker observes it (ClientProperties in flow_tracker.rs). All nullable:
       # availability is platform-dependent (e.g. identifier_for_vendor is iOS,
