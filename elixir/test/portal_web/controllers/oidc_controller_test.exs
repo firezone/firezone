@@ -1009,57 +1009,40 @@ defmodule PortalWeb.OIDCControllerTest do
              )
     end
 
-    test "sign-in recycles the row already holding the incoming idp_id, not a sibling sharing the email",
-         ctx do
+    test "rejects a second identity sharing the actor and issuer", ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
       directory = Portal.DirectoryFixtures.directory_fixture(account: ctx.account)
-      guid = Ecto.UUID.generate()
 
       # Interactive row keyed on the Entra `sub`, no directory association.
-      interactive_identity =
-        identity_fixture(
-          account: ctx.account,
-          actor: actor,
-          issuer: ctx.provider.issuer,
-          idp_id: "entra-sub-#{System.unique_integer([:positive])}",
-          email: actor.email
+      identity_fixture(
+        account: ctx.account,
+        actor: actor,
+        issuer: ctx.provider.issuer,
+        idp_id: "entra-sub-#{System.unique_integer([:positive])}",
+        email: actor.email
+      )
+
+      # A directory-synced row keyed on the Entra `oid` (GUID) used to be able to
+      # coexist with the interactive row, leaving two identities for the same
+      # actor and issuer. The unique index now forbids that second row outright.
+      changeset =
+        %Portal.ExternalIdentity{}
+        |> Ecto.Changeset.cast(
+          %{issuer: ctx.provider.issuer, idp_id: Ecto.UUID.generate(), email: actor.email},
+          [:issuer, :idp_id, :email]
         )
+        |> Ecto.Changeset.put_assoc(:account, ctx.account)
+        |> Ecto.Changeset.put_assoc(:actor, actor)
+        |> Ecto.Changeset.put_assoc(:directory, directory)
+        |> Portal.ExternalIdentity.changeset()
 
-      # Directory-synced row keyed on the Entra `oid` (GUID), with a directory.
-      synced_identity =
-        identity_fixture(
-          account: ctx.account,
-          actor: actor,
-          directory: directory,
-          issuer: ctx.provider.issuer,
-          idp_id: guid,
-          email: actor.email
-        )
+      assert {:error, changeset} = Repo.insert(changeset)
 
-      # The user signs in with the idp_id that already exists on the synced row.
-      # Both rows tie on the email match, so ranking the email first could pick
-      # the interactive row and overwrite its idp_id with the GUID, colliding on
-      # external_identities_account_idp_fields_index. The upsert must instead
-      # recycle the GUID-holding row in place.
-      setup_successful_auth(ctx, actor, sub: guid, email: actor.email)
+      assert {"has already been taken", constraint} = changeset.errors[:base]
+      assert constraint[:constraint] == :unique
 
-      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
-      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
-
-      recycled =
-        Repo.get_by!(Portal.ExternalIdentity,
-          account_id: ctx.account.id,
-          issuer: ctx.provider.issuer,
-          idp_id: guid
-        )
-
-      assert recycled.id == synced_identity.id
-      assert recycled.directory_id == directory.id
-
-      assert Repo.get_by!(Portal.ExternalIdentity,
-               account_id: ctx.account.id,
-               id: interactive_identity.id
-             ).idp_id == interactive_identity.idp_id
+      assert constraint[:constraint_name] ==
+               "external_identities_account_id_actor_id_issuer_index"
 
       identity_count =
         Repo.aggregate(
@@ -1069,7 +1052,7 @@ defmodule PortalWeb.OIDCControllerTest do
           :count
         )
 
-      assert identity_count == 2
+      assert identity_count == 1
     end
 
     test "changed email with the same idp_id is matched by idp_id, not email", ctx do
@@ -1370,6 +1353,65 @@ defmodule PortalWeb.OIDCControllerTest do
       assert identity.actor_id == actor.id
       refute Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
       refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
+    end
+
+    test "proof email verification recycles the actor's existing same-issuer identity", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      # The actor already holds an identity for this issuer under a previous
+      # subject. Promoting the pending identity with the new subject must recycle
+      # this row rather than insert a second one and trip the unique index.
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-subject",
+          email: actor.email
+        )
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      cookie =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{"redirect_to" => "/#{ctx.account.slug}/actors"}
+        )
+
+      conn = perform_callback(ctx.conn, cookie)
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "redirect_to" => "/#{ctx.account.slug}/actors"
+        })
+
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+
+      identities =
+        from(ei in Portal.ExternalIdentity,
+          where: ei.account_id == ^ctx.account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == existing_identity.id
+      assert identity.idp_id == "admin-user-123"
     end
 
     test "proof email verification uses original client params after valid code", ctx do

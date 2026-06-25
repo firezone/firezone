@@ -1550,20 +1550,50 @@ defmodule PortalWeb.OIDCController do
       end
     end
 
-    defp insert_external_identity_from_pending(%PendingIdentity{} = pending_identity) do
+    @pending_identity_replace_fields [
+      :idp_id,
+      :email,
+      :name,
+      :given_name,
+      :family_name,
+      :middle_name,
+      :nickname,
+      :preferred_username,
+      :profile,
+      :picture,
+      :updated_at
+    ]
+
+    defp insert_external_identity_from_pending(%PendingIdentity{} = pending_identity, retry? \\ true) do
       now = DateTime.utc_now()
+
+      # Recycle the actor's existing identity for this issuer, if any, so a
+      # changed subject updates that row in place rather than inserting a second
+      # one and tripping the (account_id, actor_id, issuer) unique index. When
+      # none exists, fall back to the pending identity's own id for a fresh row.
+      existing_id =
+        from(ei in ExternalIdentity,
+          where:
+            ei.account_id == ^pending_identity.account_id and
+              ei.actor_id == ^pending_identity.actor_id and
+              ei.issuer == ^pending_identity.issuer,
+          select: ei.id,
+          limit: 1
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
 
       attrs =
         pending_identity
         |> Map.from_struct()
         |> Map.take([
-          :id,
           :account_id,
           :actor_id,
           :issuer,
           :idp_id,
           :directory_id | @pending_identity_profile_fields
         ])
+        |> Map.put(:id, existing_id || pending_identity.id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
 
@@ -1571,33 +1601,40 @@ defmodule PortalWeb.OIDCController do
              Safe.unscoped(),
              ExternalIdentity,
              [attrs],
-             on_conflict: external_identity_conflict_query(pending_identity),
-             conflict_target: [:account_id, :idp_id, :issuer],
+             on_conflict: {:replace, @pending_identity_replace_fields},
+             conflict_target: [:account_id, :id],
              returning: true
            ) do
         {1, [%ExternalIdentity{} = identity]} -> {:ok, identity}
         {0, []} -> {:error, :invalid_code}
       end
-    end
+    rescue
+      e in Postgrex.Error ->
+        case e do
+          %Postgrex.Error{
+            postgres: %{
+              code: :unique_violation,
+              constraint: "external_identities_account_idp_fields_index"
+            }
+          } ->
+            # The incoming idp_id already belongs to another actor for this
+            # issuer; promoting would steal it, so reject the code instead.
+            {:error, :invalid_code}
 
-    defp external_identity_conflict_query(%PendingIdentity{} = pending_identity) do
-      from(identity in ExternalIdentity,
-        where: identity.actor_id == ^pending_identity.actor_id,
-        update: [
-          set: [
-            email: fragment("EXCLUDED.email"),
-            name: fragment("EXCLUDED.name"),
-            given_name: fragment("EXCLUDED.given_name"),
-            family_name: fragment("EXCLUDED.family_name"),
-            middle_name: fragment("EXCLUDED.middle_name"),
-            nickname: fragment("EXCLUDED.nickname"),
-            preferred_username: fragment("EXCLUDED.preferred_username"),
-            profile: fragment("EXCLUDED.profile"),
-            picture: fragment("EXCLUDED.picture"),
-            updated_at: fragment("EXCLUDED.updated_at")
-          ]
-        ]
-      )
+          %Postgrex.Error{
+            postgres: %{
+              code: :unique_violation,
+              constraint: "external_identities_account_id_actor_id_issuer_index"
+            }
+          }
+          when retry? ->
+            # A concurrent promotion created the actor's issuer row after our
+            # lookup; retry once to recycle it.
+            insert_external_identity_from_pending(pending_identity, false)
+
+          _ ->
+            reraise e, __STACKTRACE__
+        end
     end
 
     defp atomize_profile_attrs(attrs) do

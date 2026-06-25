@@ -805,17 +805,22 @@ defmodule Portal.Okta.Sync do
           AND id.email IS NOT NULL
         ORDER BY id.idp_id, a.inserted_at ASC
       ),
-      -- Recycles the actor's existing directory identity when its idp_id changed
-      -- (e.g. the IdP user was deleted and recreated with the same email). The
-      -- LEFT JOIN below assumes at most one row per actor here, which is
-      -- guaranteed by the partial unique index on (account_id, actor_id,
-      -- directory_id) from migration 20260506124134.
+      -- Recycles the actor's existing identity for this directory so a changed
+      -- idp_id (issuer unchanged) or a changed issuer (directory reverified
+      -- against a new domain) updates the row in place instead of inserting a
+      -- second one and tripping the (account_id, actor_id, issuer) unique index.
+      -- Matching on issuer OR directory_id covers both: issuer alone catches
+      -- legacy rows whose directory_id is NULL or differs; directory_id alone
+      -- catches the row whose issuer just changed. DISTINCT ON keeps one row per
+      -- actor, preferring the row that already holds the new issuer so updating
+      -- it cannot collide on that index.
       existing_directory_identities AS (
-        SELECT ei.id, ei.actor_id
+        SELECT DISTINCT ON (ei.actor_id) ei.id, ei.actor_id
         FROM external_identities ei
         WHERE ei.account_id = $#{account_id}
-          AND ei.directory_id = $#{directory_id}
           AND ei.actor_id IN (SELECT actor_id FROM existing_actors_by_email)
+          AND (ei.issuer = $#{issuer} OR ei.directory_id = $#{directory_id})
+        ORDER BY ei.actor_id, (ei.issuer = $#{issuer}) DESC
       ),
       actors_to_create AS (
         SELECT
