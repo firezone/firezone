@@ -16,6 +16,10 @@ defmodule Portal.Account do
 
     field :legal_name, :string
 
+    # Per-account symmetric key used to sign and verify flow-log ingest tokens.
+    # DB-generated and redacted; see Portal.FlowLogToken.
+    field :ingest_signing_key, :binary, read_after_writes: true, redact: true
+
     # Updated by the billing subscription metadata fields
     embeds_one :features, Portal.Accounts.Features, on_replace: :delete
     embeds_one :limits, Portal.Accounts.Limits, on_replace: :delete

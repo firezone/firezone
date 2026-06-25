@@ -41,7 +41,8 @@ defmodule PortalAPI.Router do
       length: 10_000_000
 
     plug :accepts, ["json"]
-    plug PortalAPI.Plugs.IngestionAuth
+    # No request-level auth: each record carries its own per-flow ingest token,
+    # verified in the controller. Rate limiting is keyed on the source IP.
     plug PortalAPI.Plugs.IngestionRateLimit
   end
 

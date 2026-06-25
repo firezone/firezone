@@ -84,7 +84,7 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   defp gateway_flow_generation(channel_pid, resource_id) do
-    {generation, _timer_ref} =
+    {generation, _timer_ref, _initiator_token} =
       :sys.get_state(channel_pid).assigns.pending_flows |> Map.fetch!(resource_id)
 
     generation
@@ -3489,7 +3489,10 @@ defmodule PortalAPI.Client.ChannelTest do
       timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
 
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.pending_flows, %{resource.id => {make_ref(), timer_ref}})
+        put_in(
+          state.assigns.pending_flows,
+          %{resource.id => {make_ref(), timer_ref, "ingest-token"}}
+        )
       end)
 
       preshared_key = "PSK"

@@ -302,6 +302,7 @@ defmodule PortalAPI.Gateway.Channel do
     } = payload
 
     initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
+    flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
@@ -327,7 +328,8 @@ defmodule PortalAPI.Gateway.Channel do
       client_ice_credentials: ice_credentials.initiator,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
       subject: subject,
-      use_iceless: use_iceless
+      use_iceless: use_iceless,
+      flow_logs_ingest_token: flow_logs_ingest_token
     })
 
     cache =
