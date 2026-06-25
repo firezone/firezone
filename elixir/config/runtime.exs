@@ -425,6 +425,10 @@ if config_env() == :prod do
       refill_rate: env_var_to_config!(:api_socket_refill_rate),
       capacity: env_var_to_config!(:api_socket_capacity)
 
+    config :portal, PortalAPI.Plugs.IngestionRateLimit,
+      refill_rate: env_var_to_config!(:api_ingestion_refill_rate),
+      capacity: env_var_to_config!(:api_ingestion_capacity)
+
     config :portal,
       api_external_url: api_external_url
   end

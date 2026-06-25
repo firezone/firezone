@@ -142,6 +142,16 @@ defmodule Portal.Config.Definitions do
   defconfig(:api_socket_capacity, :integer, default: 1)
 
   @doc """
+  The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
+  """
+  defconfig(:api_ingestion_refill_rate, :integer, default: 1)
+
+  @doc """
+  The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
+  """
+  defconfig(:api_ingestion_capacity, :integer, default: 1)
+
+  @doc """
   The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:web_refill_rate, :integer, default: 10)

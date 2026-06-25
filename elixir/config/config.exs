@@ -441,6 +441,12 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
+# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
+# batches up to 10k records, so one per second is ample for reporters.
+config :portal, PortalAPI.Plugs.IngestionRateLimit,
+  refill_rate: 1,
+  capacity: 1
+
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
