@@ -45,7 +45,7 @@ rec {
     headless = "1.5.9";
 
     # mark:current-gui-version
-    gui = "1.5.14";
+    gui = "1.5.15";
   };
 
   meta = {
