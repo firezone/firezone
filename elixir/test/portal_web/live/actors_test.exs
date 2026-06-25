@@ -4,6 +4,7 @@ defmodule PortalWeb.ActorsTest do
   alias Portal.Actor
   alias Portal.Changes.Change
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -1477,7 +1478,11 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Total"
     end
 
-    test "ignores service account changes", %{conn: conn, account: account, actor: actor} do
+    test "ignores user actor update changes without warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -1485,7 +1490,39 @@ defmodule PortalWeb.ActorsTest do
 
       render_async(lv)
 
-      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+      log =
+        capture_log(fn ->
+          send(lv.pid, %Change{op: :update, struct: %Actor{type: :account_user}})
+          render(lv)
+        end)
+
+      refute log =~ "Unhandled handle_info message in LiveView"
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "logs a warning and ignores service account changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      log =
+        capture_log(fn ->
+          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+          render(lv)
+        end)
+
+      assert log =~ "[warning]"
+      assert log =~ "Unhandled handle_info message in LiveView"
 
       html = render(lv)
       assert html =~ "1"
