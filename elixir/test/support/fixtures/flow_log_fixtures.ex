@@ -22,6 +22,7 @@ defmodule Portal.FlowLogFixtures do
         "actor_name" => "Some User",
         "auth_provider_id" => Ecto.UUID.generate(),
         "authorized_at" => "2026-03-20T09:59:00.000000Z",
+        "authorization_expires_at" => "2026-03-20T19:59:00.000000Z",
         "client_version" => "1.4.0",
         "device_os_name" => "iOS",
         "device_os_version" => "17.4",

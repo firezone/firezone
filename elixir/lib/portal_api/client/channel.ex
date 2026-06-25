@@ -2473,6 +2473,10 @@ defmodule PortalAPI.Client.Channel do
       # The authorization happens now; both tokens share the same authorized_at
       # so the two sides of the flow agree on the trusted flow_start floor.
       "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
+      # When this authorization expires (independent of the token's own exp,
+      # which adds a reporting grace window on top). Stamped so the flow_log row
+      # records the actual authorization lifetime.
+      "authorization_expires_at" => DateTime.to_iso8601(expires_at),
       # The connecting (initiator) client's device telemetry. It describes the
       # initiating client on both sides of the flow, so it is shared by both
       # tokens, matching what the gateway flow tracker stamps onto each flow.
