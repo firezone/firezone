@@ -167,15 +167,15 @@ defmodule Portal.Repo.Migrations.ReshapeFlowLogs do
         :flow_logs,
         [
           :account_id,
-          :device_id,
-          :role,
           :flow_start,
+          :device_id,
+          :resource_id,
+          :inner_dst_ip,
+          :inner_dst_port,
+          :role,
           :protocol,
           :inner_src_ip,
           :inner_src_port,
-          :inner_dst_ip,
-          :inner_dst_port,
-          :resource_id
         ],
         name: :flow_logs_flow_identity
       )
@@ -188,15 +188,15 @@ defmodule Portal.Repo.Migrations.ReshapeFlowLogs do
         :flow_logs,
         [
           :account_id,
-          :device_id,
-          :role,
           :flow_start,
+          :device_id,
+          :resource_id,
+          :inner_dst_ip,
+          :inner_dst_port,
+          :role,
           :protocol,
           :inner_src_ip,
           :inner_src_port,
-          :inner_dst_ip,
-          :inner_dst_port,
-          :resource_id
         ],
         name: :flow_logs_flow_identity
       )
