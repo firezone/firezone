@@ -211,7 +211,7 @@ impl FlowTracker {
 
                         tracing::debug!(key = ?vacant.key(), ?context, syn = %tcp_syn, "Creating new TCP flow");
 
-                        vacant.insert(TcpFlowValue {
+                        let value = TcpFlowValue {
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
@@ -232,7 +232,11 @@ impl FlowTracker {
                             actor_email: client.actor_email,
                             auth_provider_id: client.auth_provider_id,
                             actor_name: client.actor_name,
-                        });
+                        };
+
+                        emit_tcp_flow_started(key, &value);
+
+                        vacant.insert(value);
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
@@ -248,31 +252,32 @@ impl FlowTracker {
 
                         self.completed_flows.push_back(flow.into());
 
-                        self.active_tcp_flows.insert(
-                            key,
-                            TcpFlowValue {
-                                start: now_utc,
-                                last_packet: now_utc,
-                                stats: FlowStats::default().with_tx(payload_len as u64),
-                                context,
-                                fin_tx: false,
-                                fin_rx: false,
-                                domain,
-                                resource_name: resource.name,
-                                resource_address: resource.address,
-                                client_version: client.version,
-                                device_os_name: client.device_os_name,
-                                device_os_version: client.device_os_version,
-                                device_serial: client.device_serial,
-                                device_uuid: client.device_uuid,
-                                identifier_for_vendor: client.identifier_for_vendor,
-                                firebase_installation_id: client.firebase_installation_id,
-                                actor_id: client.actor_id,
-                                actor_email: client.actor_email,
-                                auth_provider_id: client.auth_provider_id,
-                                actor_name: client.actor_name,
-                            },
-                        );
+                        let value = TcpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            context,
+                            fin_tx: false,
+                            fin_rx: false,
+                            domain,
+                            resource_name: resource.name,
+                            resource_address: resource.address,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
+                            device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
+                            actor_id: client.actor_id,
+                            actor_email: client.actor_email,
+                            auth_provider_id: client.auth_provider_id,
+                            actor_name: client.actor_name,
+                        };
+
+                        emit_tcp_flow_started(key, &value);
+
+                        self.active_tcp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(occupied) if tcp_syn => {
                         let (key, value) = occupied.remove_entry();
@@ -283,31 +288,32 @@ impl FlowTracker {
 
                         self.completed_flows.push_back(flow.into());
 
-                        self.active_tcp_flows.insert(
-                            key,
-                            TcpFlowValue {
-                                start: now_utc,
-                                last_packet: now_utc,
-                                stats: FlowStats::default().with_tx(payload_len as u64),
-                                context,
-                                fin_tx: false,
-                                fin_rx: false,
-                                domain,
-                                resource_name: resource.name,
-                                resource_address: resource.address,
-                                client_version: client.version,
-                                device_os_name: client.device_os_name,
-                                device_os_version: client.device_os_version,
-                                device_serial: client.device_serial,
-                                device_uuid: client.device_uuid,
-                                identifier_for_vendor: client.identifier_for_vendor,
-                                firebase_installation_id: client.firebase_installation_id,
-                                actor_id: client.actor_id,
-                                actor_email: client.actor_email,
-                                auth_provider_id: client.auth_provider_id,
-                                actor_name: client.actor_name,
-                            },
-                        );
+                        let value = TcpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            context,
+                            fin_tx: false,
+                            fin_rx: false,
+                            domain,
+                            resource_name: resource.name,
+                            resource_address: resource.address,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
+                            device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
+                            actor_id: client.actor_id,
+                            actor_email: client.actor_email,
+                            auth_provider_id: client.auth_provider_id,
+                            actor_name: client.actor_name,
+                        };
+
+                        emit_tcp_flow_started(key, &value);
+
+                        self.active_tcp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
@@ -343,7 +349,7 @@ impl FlowTracker {
                     hash_map::Entry::Vacant(vacant) => {
                         tracing::debug!(key = ?vacant.key(), "Creating new UDP flow");
 
-                        vacant.insert(UdpFlowValue {
+                        let value = UdpFlowValue {
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
@@ -362,7 +368,11 @@ impl FlowTracker {
                             actor_email: client.actor_email,
                             auth_provider_id: client.auth_provider_id,
                             actor_name: client.actor_name,
-                        });
+                        };
+
+                        emit_udp_flow_started(key, &value);
+
+                        vacant.insert(value);
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
@@ -378,29 +388,30 @@ impl FlowTracker {
 
                         self.completed_flows.push_back(flow.into());
 
-                        self.active_udp_flows.insert(
-                            key,
-                            UdpFlowValue {
-                                start: now_utc,
-                                last_packet: now_utc,
-                                stats: FlowStats::default().with_tx(payload_len as u64),
-                                context,
-                                domain,
-                                resource_name: value.resource_name,
-                                resource_address: value.resource_address,
-                                client_version: client.version,
-                                device_os_name: client.device_os_name,
-                                device_os_version: client.device_os_version,
-                                device_serial: client.device_serial,
-                                device_uuid: client.device_uuid,
-                                identifier_for_vendor: client.identifier_for_vendor,
-                                firebase_installation_id: client.firebase_installation_id,
-                                actor_id: client.actor_id,
-                                actor_email: client.actor_email,
-                                auth_provider_id: client.auth_provider_id,
-                                actor_name: client.actor_name,
-                            },
-                        );
+                        let value = UdpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            context,
+                            domain,
+                            resource_name: value.resource_name,
+                            resource_address: value.resource_address,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
+                            device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
+                            actor_id: client.actor_id,
+                            actor_email: client.actor_email,
+                            auth_provider_id: client.auth_provider_id,
+                            actor_name: client.actor_name,
+                        };
+
+                        emit_udp_flow_started(key, &value);
+
+                        self.active_udp_flows.insert(key, value);
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
@@ -680,6 +691,82 @@ impl CompletedUdpFlow {
             tx_bytes: value.stats.tx_bytes,
         }
     }
+}
+
+fn emit_tcp_flow_started(key: TcpFlowKey, value: &TcpFlowValue) {
+    tracing::trace!(
+        target: "flow_logs::tcp",
+
+        client_id = %key.client,
+        client_version = value.client_version.as_ref().map(tracing::field::display),
+
+        device_os_name = value.device_os_name.as_ref().map(tracing::field::display),
+        device_os_version = value.device_os_version.as_ref().map(tracing::field::display),
+        device_serial = value.device_serial.as_ref().map(tracing::field::display),
+        device_uuid = value.device_uuid.as_ref().map(tracing::field::display),
+        device_identifier_for_vendor = value.identifier_for_vendor.as_ref().map(tracing::field::display),
+        device_firebase_installation_id = value.firebase_installation_id.as_ref().map(tracing::field::display),
+
+        auth_provider_id = value.auth_provider_id.as_ref().map(tracing::field::display),
+        actor_name = value.actor_name.as_ref().map(tracing::field::display),
+        actor_id = value.actor_id.as_ref().map(tracing::field::display),
+        actor_email = value.actor_email.as_ref().map(tracing::field::display),
+
+        resource_id = %key.resource,
+        resource_name = %value.resource_name,
+        resource_address = %value.resource_address,
+        start = ?value.start,
+
+        inner_src_ip = %key.src_ip,
+        inner_dst_ip = %key.dst_ip,
+        inner_src_port = %key.src_port,
+        inner_dst_port = %key.dst_port,
+        inner_domain = value.domain.as_ref().map(tracing::field::display),
+
+        outer_src_ip = %value.context.src_ip,
+        outer_dst_ip = %value.context.dst_ip,
+        outer_src_port = %value.context.src_port,
+        outer_dst_port = %value.context.dst_port,
+        "TCP flow started"
+    );
+}
+
+fn emit_udp_flow_started(key: UdpFlowKey, value: &UdpFlowValue) {
+    tracing::trace!(
+        target: "flow_logs::udp",
+
+        client_id = %key.client,
+        client_version = value.client_version.as_ref().map(tracing::field::display),
+
+        device_os_name = value.device_os_name.as_ref().map(tracing::field::display),
+        device_os_version = value.device_os_version.as_ref().map(tracing::field::display),
+        device_serial = value.device_serial.as_ref().map(tracing::field::display),
+        device_uuid = value.device_uuid.as_ref().map(tracing::field::display),
+        device_identifier_for_vendor = value.identifier_for_vendor.as_ref().map(tracing::field::display),
+        device_firebase_installation_id = value.firebase_installation_id.as_ref().map(tracing::field::display),
+
+        auth_provider_id = value.auth_provider_id.as_ref().map(tracing::field::display),
+        actor_name = value.actor_name.as_ref().map(tracing::field::display),
+        actor_id = value.actor_id.as_ref().map(tracing::field::display),
+        actor_email = value.actor_email.as_ref().map(tracing::field::display),
+
+        resource_id = %key.resource,
+        resource_name = %value.resource_name,
+        resource_address = %value.resource_address,
+        start = ?value.start,
+
+        inner_src_ip = %key.src_ip,
+        inner_dst_ip = %key.dst_ip,
+        inner_src_port = %key.src_port,
+        inner_dst_port = %key.dst_port,
+        inner_domain = value.domain.as_ref().map(tracing::field::display),
+
+        outer_src_ip = %value.context.src_ip,
+        outer_dst_ip = %value.context.dst_ip,
+        outer_src_port = %value.context.src_port,
+        outer_dst_port = %value.context.dst_port,
+        "UDP flow started"
+    );
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
