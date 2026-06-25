@@ -25,7 +25,7 @@ jobs:
     permissions:
       packages: write # push promoted Docker images to GHCR
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Login to GitHub Container Registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -93,7 +93,7 @@ jobs:
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - id: resolve
         env:
           release_name: ${{ inputs.release_name || github.event.release.name }}
@@ -146,7 +146,7 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
@@ -179,7 +179,7 @@ jobs:
           - tag_prefix: android-client
             component: android-client
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
@@ -301,7 +301,7 @@ jobs:
           - component: android-client
             projects: android-client
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
@@ -324,7 +324,7 @@ jobs:
           - tag_prefix: gui-client
             deb_name: firezone-client-gui
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
