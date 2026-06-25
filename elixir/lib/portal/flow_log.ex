@@ -12,6 +12,7 @@ defmodule Portal.FlowLog do
           event_id: Portal.Types.EventId.t(),
           device_id: Ecto.UUID.t(),
           role: :initiator | :responder,
+          policy_authorization_id: Ecto.UUID.t(),
           policy_id: Ecto.UUID.t(),
           auth_provider_id: Ecto.UUID.t() | nil,
           resource_id: Ecto.UUID.t(),
@@ -59,6 +60,7 @@ defmodule Portal.FlowLog do
     field :device_id, :binary_id
     field :role, Ecto.Enum, values: @roles
 
+    field :policy_authorization_id, :binary_id
     field :policy_id, :binary_id
     field :auth_provider_id, :binary_id
     field :resource_id, :binary_id
@@ -106,7 +108,7 @@ defmodule Portal.FlowLog do
   # Postgres bigint is a signed 64-bit integer.
   @bigint_max 9_223_372_036_854_775_807
 
-  @uuid_fields ~w[account_id device_id policy_id auth_provider_id resource_id actor_id]a
+  @uuid_fields ~w[account_id device_id policy_authorization_id policy_id auth_provider_id resource_id actor_id]a
   @port_fields ~w[inner_src_port inner_dst_port outer_src_port outer_dst_port]a
   @counter_fields ~w[rx_packets tx_packets rx_bytes tx_bytes]a
   @bounded_string_fields ~w[resource_name resource_address actor_name actor_email
@@ -128,6 +130,7 @@ defmodule Portal.FlowLog do
       :event_id,
       :device_id,
       :role,
+      :policy_authorization_id,
       :policy_id,
       :resource_id,
       :resource_name,

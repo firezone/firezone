@@ -13,6 +13,7 @@ defmodule Portal.FlowLogFixtures do
       %{
         "role" => "initiator",
         "device_id" => Ecto.UUID.generate(),
+        "policy_authorization_id" => Ecto.UUID.generate(),
         "policy_id" => Ecto.UUID.generate(),
         "resource_id" => Ecto.UUID.generate(),
         "resource_name" => "prod-db",

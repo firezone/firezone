@@ -1385,6 +1385,7 @@ defmodule PortalAPI.Client.Channel do
           mint_ingest_tokens(
             socket.assigns.subject,
             {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+            policy_authorization_id,
             policy_id,
             socket.assigns.client,
             gateway.id,
@@ -1758,6 +1759,7 @@ defmodule PortalAPI.Client.Channel do
         mint_ingest_tokens(
           socket.assigns.subject,
           {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+          policy_authorization_id,
           policy_id,
           client,
           target_client_id,
@@ -2453,6 +2455,7 @@ defmodule PortalAPI.Client.Channel do
   defp mint_ingest_tokens(
          %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
          {resource_id, resource_name, resource_address},
+         policy_authorization_id,
          policy_id,
          %Device{type: :client} = initiator_client,
          responder_device_id,
@@ -2462,6 +2465,9 @@ defmodule PortalAPI.Client.Channel do
       PortalAPI.Gateway.Views.Client.parse_user_agent(subject.context.user_agent)
 
     attribution = %{
+      # The authorization this batch of flow logs reports against. The ingest
+      # endpoint rejects a request whose records mix more than one of these.
+      "policy_authorization_id" => policy_authorization_id,
       "policy_id" => policy_id,
       "resource_id" => resource_id,
       "resource_name" => resource_name,

@@ -90,34 +90,18 @@ defmodule Portal.FlowLogTokenTest do
       assert {:error, :malformed} = FlowLogToken.verify(nil)
       assert {:error, :malformed} = FlowLogToken.verify(123)
     end
-  end
 
-  describe "verify/2 key cache" do
-    test "resolves and caches the signing key on a miss" do
+    test "rejects a token presenting a different algorithm" do
       account = account_fixture()
 
-      token =
-        FlowLogToken.mint(account, flow_log_token_claims(), expires_in(3600))
+      forged =
+        account.ingest_signing_key
+        |> JOSE.JWK.from_oct()
+        |> JOSE.JWT.sign(%{"alg" => "HS512"}, %{"account_id" => account.id, "exp" => 9_999_999_999})
+        |> JOSE.JWS.compact()
+        |> elem(1)
 
-      assert {{:ok, _claims}, cache} = FlowLogToken.verify(token, %{})
-      assert Map.fetch!(cache, account.id) == account.ingest_signing_key
-    end
-
-    test "verifies from the cache without touching the database" do
-      # Never persisted: a DB lookup would resolve :not_found -> :invalid, so a
-      # successful verify proves the cached key short-circuited the lookup.
-      account = %Portal.Account{
-        id: Ecto.UUID.generate(),
-        ingest_signing_key: :crypto.strong_rand_bytes(32)
-      }
-
-      token = FlowLogToken.mint(account, flow_log_token_claims(), expires_in(3600))
-      cache = %{account.id => account.ingest_signing_key}
-
-      assert {{:ok, claims}, ^cache} = FlowLogToken.verify(token, cache)
-      assert claims["account_id"] == account.id
+      assert {:error, :invalid} = FlowLogToken.verify(forged)
     end
   end
-
-  defp expires_in(seconds), do: DateTime.add(DateTime.utc_now(), seconds, :second)
 end

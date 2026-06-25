@@ -6,12 +6,15 @@ defmodule PortalAPI.FlowLogController do
   # declares no `operation`/`request_body` specs (which is what would otherwise
   # cause `Paths.from_router/1` to document it).
   #
-  # There is no request-level authentication: each record carries its own
-  # per-flow ingest token (see `Portal.FlowLogToken`), which both authenticates
-  # the record and supplies the authoritative attribution fields (account,
-  # policy, resource, actor, reporting device + role). The body supplies the
-  # network fields: the inner tunnel tuple, the outer (WireGuard) tuple, the
-  # flow window, and the byte/packet counters.
+  # The request carries a single per-authorization ingest token (see
+  # `Portal.FlowLogToken`) in the `Authorization: Bearer` header. It both
+  # authenticates the request and supplies the authoritative attribution fields
+  # (account, policy authorization, policy, resource, actor, reporting device +
+  # role) for every record. Because the token names one policy authorization, a
+  # request may only carry flow logs for that authorization: a record declaring
+  # a different `policy_authorization_id` fails the whole request with 422. The
+  # body supplies the network fields: the inner tunnel tuple, the outer
+  # (WireGuard) tuple, the flow window, and the byte/packet counters.
   use PortalAPI, :controller
   import Ecto.Changeset
   alias Portal.FlowLog
@@ -24,7 +27,8 @@ defmodule PortalAPI.FlowLogController do
   # fresh flow_log event_id is minted here, not trusted from the body); on a
   # slot conflict the existing row keeps its own event_id. Attribution fields
   # come from the token; the rest are reported in the body.
-  @cast_fields ~w[account_id event_id device_id role policy_id auth_provider_id resource_id
+  @cast_fields ~w[account_id event_id device_id role policy_authorization_id policy_id
+                  auth_provider_id resource_id
                   resource_name resource_address actor_id actor_email actor_name authorized_at
                   authorization_expires_at
                   client_version
@@ -42,28 +46,41 @@ defmodule PortalAPI.FlowLogController do
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
-    now = DateTime.utc_now()
+    with {:ok, claims} <- authenticate(conn),
+         :ok <- ensure_single_authorization(records, claims) do
+      now = DateTime.utc_now()
 
-    {valid, errors, _key_cache} =
-      records
-      |> Enum.with_index()
-      |> Enum.reduce({[], [], %{}}, fn {record, index}, acc ->
-        validate_record(record, index, now, acc)
-      end)
+      {valid, errors} =
+        records
+        |> Enum.with_index()
+        |> Enum.reduce({[], []}, fn {record, index}, acc ->
+          validate_record(record, index, claims, now, acc)
+        end)
 
-    valid
-    |> Enum.map(fn {_index, entry} -> entry end)
-    |> Database.upsert_flow_logs()
+      valid
+      |> Enum.map(fn {_index, entry} -> entry end)
+      |> Database.upsert_flow_logs()
 
-    if errors == [] do
-      conn
-      |> put_status(202)
-      |> put_view(json: PortalAPI.FlowLogJSON)
-      |> render(:accepted)
+      if errors == [] do
+        conn
+        |> put_status(202)
+        |> put_view(json: PortalAPI.FlowLogJSON)
+        |> render(:accepted)
+      else
+        ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
+          validation_errors: render_validation_errors(Enum.reverse(errors))
+        })
+      end
     else
-      ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
-        validation_errors: render_validation_errors(Enum.reverse(errors))
-      })
+      {:error, :unauthenticated} ->
+        ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
+
+      {:error, :multiple_authorizations} ->
+        ProblemDetails.send(
+          conn,
+          422,
+          "All flow logs in a request must belong to a single policy authorization"
+        )
     end
   end
 
@@ -71,31 +88,63 @@ defmodule PortalAPI.FlowLogController do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
 
-  # Threads {valid, errors, key_cache}: valid is a list of {index, entry},
-  # errors a list of {index, reason}, and key_cache memoizes each account's
-  # signing key for the request so a batch under one account hits the DB once.
-  defp validate_record(record, index, _now, {valid, invalid, cache})
-       when not is_map(record) do
-    {valid, [{index, :not_a_map} | invalid], cache}
+  # The single per-authorization ingest token authenticates the whole request.
+  # An unknown account, a bad signature, an expired or malformed token, and a
+  # missing header all collapse to the same 401 so the endpoint reveals nothing.
+  defp authenticate(conn) do
+    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
+         {:ok, claims} <- FlowLogToken.verify(token) do
+      {:ok, claims}
+    else
+      _ -> {:error, :unauthenticated}
+    end
   end
 
-  defp validate_record(record, index, now, {valid, invalid, cache}) do
-    case FlowLogToken.verify(Map.get(record, "token"), cache) do
-      {{:ok, claims}, cache} ->
-        changeset =
-          record
-          |> to_attrs(claims, now)
-          |> changeset()
+  # The token names exactly one policy authorization; a record that declares a
+  # different one means the reporter mixed authorizations into one request, which
+  # fails the whole request. A record omitting the id is attributed to the
+  # token's authorization (attribution always comes from the token regardless).
+  defp ensure_single_authorization(records, %{"policy_authorization_id" => authz_id}) do
+    mixed? =
+      Enum.any?(records, fn
+        record when is_map(record) ->
+          case Map.get(record, "policy_authorization_id") do
+            nil -> false
+            id -> id != authz_id
+          end
 
-        if changeset.valid? do
-          entry = Map.new(@cast_fields, &{&1, get_field(changeset, &1)})
-          {[{index, entry} | valid], invalid, cache}
-        else
-          {valid, [{index, changeset} | invalid], cache}
-        end
+        _ ->
+          false
+      end)
 
-      {{:error, reason}, cache} ->
-        {valid, [{index, {:token, reason}} | invalid], cache}
+    if mixed? do
+      {:error, :multiple_authorizations}
+    else
+      :ok
+    end
+  end
+
+  defp ensure_single_authorization(_records, _claims), do: {:error, :unauthenticated}
+
+  # Threads {valid, errors}: valid is a list of {index, entry} and errors a list
+  # of {index, reason}. Attribution comes from the request token (claims), so a
+  # record only needs structural validation of its body.
+  defp validate_record(record, index, _claims, _now, {valid, invalid})
+       when not is_map(record) do
+    {valid, [{index, :not_a_map} | invalid]}
+  end
+
+  defp validate_record(record, index, claims, now, {valid, invalid}) do
+    changeset =
+      record
+      |> to_attrs(claims, now)
+      |> changeset()
+
+    if changeset.valid? do
+      entry = Map.new(@cast_fields, &{&1, get_field(changeset, &1)})
+      {[{index, entry} | valid], invalid}
+    else
+      {valid, [{index, changeset} | invalid]}
     end
   end
 
@@ -109,9 +158,6 @@ defmodule PortalAPI.FlowLogController do
     Map.new(errors, fn
       {index, :not_a_map} ->
         {index, %{record: ["must be a JSON object"]}}
-
-      {index, {:token, reason}} ->
-        {index, %{token: ["is #{reason}"]}}
 
       {index, changeset} ->
         {index, Ecto.Changeset.traverse_errors(changeset, &translate_error/1)}
@@ -144,6 +190,7 @@ defmodule PortalAPI.FlowLogController do
       "event_id" => EventId.build_flow_log(),
       "device_id" => claims["device_id"],
       "role" => claims["role"],
+      "policy_authorization_id" => claims["policy_authorization_id"],
       "policy_id" => claims["policy_id"],
       "auth_provider_id" => claims["auth_provider_id"],
       "resource_id" => claims["resource_id"],
