@@ -297,6 +297,13 @@ impl Io {
             )
         });
 
+        // Drain send errors reported by the UDP socket threads. These are delivered on a dedicated
+        // channel so that reporting them never causes us to drop received datagrams. A
+        // `UdpSocketThreadStopped` among them will trigger a shutdown.
+        while let Poll::Ready(e) = self.sockets.poll_send_error(cx) {
+            error.push(e);
+        }
+
         let device = self
             .tun
             .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)

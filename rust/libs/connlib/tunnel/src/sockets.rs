@@ -121,6 +121,22 @@ impl Sockets {
 
         Poll::Ready(Ok(iter))
     }
+
+    pub fn poll_send_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        if let Some(socket) = self.socket_v4.as_mut()
+            && let Poll::Ready(e) = socket.poll_send_error(cx)
+        {
+            return Poll::Ready(e);
+        }
+
+        if let Some(socket) = self.socket_v6.as_mut()
+            && let Poll::Ready(e) = socket.poll_send_error(cx)
+        {
+            return Poll::Ready(e);
+        }
+
+        Poll::Pending
+    }
 }
 
 struct PacketIter<T4, T6> {
@@ -181,13 +197,19 @@ struct ThreadedUdpSocket {
 struct Channels {
     outbound_tx: PollSender<DatagramOut>,
     inbound_rx: mpsc::Receiver<Result<DatagramSegmentIter>>,
+    /// Errors that occur while sending, plus a final [`UdpSocketThreadStopped`] once a thread dies.
+    ///
+    /// Kept separate from `inbound_rx` so that draining these errors never causes us to drop
+    /// received datagrams.
+    send_error_rx: mpsc::Receiver<anyhow::Error>,
 }
 
 impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (error_tx, error_rx) = std::sync::mpsc::sync_channel(0);
+        let (send_error_tx, send_error_rx) = mpsc::channel(QUEUE_SIZE);
+        let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
         tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
@@ -217,7 +239,7 @@ impl ThreadedUdpSocket {
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = error_tx.send(Err(e));
+                        let _ = startup_tx.send(Err(e));
                         return;
                     }
                 };
@@ -232,7 +254,7 @@ impl ThreadedUdpSocket {
                 ) {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = error_tx.send(Err(e));
+                        let _ = startup_tx.send(Err(e));
                         return;
                     }
                 };
@@ -258,7 +280,7 @@ impl ThreadedUdpSocket {
 
                 let send = runtime.spawn({
                     let io_error_counter = io_error_counter.clone();
-                    let inbound_tx = inbound_tx.clone();
+                    let send_error_tx = send_error_tx.clone();
                     let socket = socket.clone();
 
                     let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
@@ -290,16 +312,17 @@ impl ThreadedUdpSocket {
                                         );
                                     }
 
-                                    // We use the inbound_tx channel to send the error back to the main thread.
-                                    if inbound_tx.send(Err(e)).await.is_err() {
+                                    // Report send errors on a dedicated channel so that they don't
+                                    // interfere with the delivery of received datagrams.
+                                    if send_error_tx.send(e).await.is_err() {
                                         tracing::debug!(
-                                            "Channel for inbound datagrams closed; exiting UDP send task"
+                                            "Channel for send errors closed; exiting UDP send task"
                                         );
                                         return;
                                     }
                                 };
                             }
-                        };
+                        }
                     }
                 });
                 let receive = runtime.spawn(async move {
@@ -331,12 +354,18 @@ impl ThreadedUdpSocket {
                     }
                 });
 
-                let _ = error_tx.send(Ok(()));
+                let _ = startup_tx.send(Ok(()));
 
-                runtime.block_on(futures::future::select(send, receive));
+                runtime.block_on(async move {
+                    futures::future::select(send, receive).await;
+
+                    // One of the tasks stopped, which tears down the runtime and renders the socket
+                    // non-functional. Report it on the send-error channel so that `Io` shuts down.
+                    let _ = send_error_tx.send(UdpSocketThreadStopped.into()).await;
+                });
             })?;
 
-        error_rx.recv().map_err(io::Error::other)??;
+        startup_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
             thread_name,
@@ -344,6 +373,7 @@ impl ThreadedUdpSocket {
             channels: Some(Channels {
                 outbound_tx: PollSender::new(outbound_tx),
                 inbound_rx,
+                send_error_rx,
             }),
         })
     }
@@ -365,10 +395,29 @@ impl ThreadedUdpSocket {
     }
 
     fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
-        let iter =
-            ready!(self.channels_mut()?.inbound_rx.poll_recv(cx)).ok_or(UdpSocketThreadStopped)?;
+        let Some(channels) = self.channels.as_mut() else {
+            return Poll::Pending;
+        };
 
-        Poll::Ready(iter)
+        // A closed channel means the thread stopped. We surface that via `poll_send_error` instead
+        // of erroring here so that we don't discard datagrams from the other socket on the way out.
+        let Some(result) = ready!(channels.inbound_rx.poll_recv(cx)) else {
+            return Poll::Pending;
+        };
+
+        Poll::Ready(result)
+    }
+
+    fn poll_send_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        let Some(channels) = self.channels.as_mut() else {
+            return Poll::Pending;
+        };
+
+        let Some(error) = ready!(channels.send_error_rx.poll_recv(cx)) else {
+            return Poll::Pending;
+        };
+
+        Poll::Ready(error)
     }
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {
