@@ -6,7 +6,14 @@ use clap::Parser as _;
 use firezone_gui_client::service;
 use std::path::PathBuf;
 
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "dhat")]
+    let _dhat = dhat::Profiler::new_heap();
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .map_err(|_| anyhow!("Failed to install default crypto provider"))?;

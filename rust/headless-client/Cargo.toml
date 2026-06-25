@@ -7,12 +7,16 @@ authors = ["Firezone, Inc."]
 license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+dhat = ["dep:dhat"]
+
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
 client-shared = { workspace = true }
+dhat = { workspace = true, optional = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }

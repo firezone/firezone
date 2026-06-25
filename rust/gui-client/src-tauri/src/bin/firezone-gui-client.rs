@@ -26,7 +26,14 @@ enum LogGuard {
     Gui(logging::file::Handle, logging::CleanupHandle),
 }
 
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() -> ExitCode {
+    #[cfg(feature = "dhat")]
+    let _dhat = dhat::Profiler::new_heap();
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install default crypto provider");
