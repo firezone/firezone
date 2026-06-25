@@ -86,7 +86,7 @@ jobs:
           - release_name: gateway-1.5.3
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.10
+          - release_name: headless-client-1.5.11
             config_name: release-drafter-headless-client.yml
 
     steps:
@@ -119,9 +119,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.10]
+        release_name: [headless-client-1.5.11]
         # mark:next-headless-version
-        version: [1.5.10]
+        version: [1.5.11]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -208,9 +208,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.10
+            release_name: headless-client-1.5.11
             # mark:next-headless-version
-            version: 1.5.10
+            version: 1.5.11
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
