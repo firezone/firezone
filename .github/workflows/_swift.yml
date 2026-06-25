@@ -45,6 +45,10 @@ jobs:
       - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        env:
+          # The macOS runner installs the reporter from the coverallsapp/coveralls
+          # Homebrew tap, which Homebrew 6.0.0 refuses to load unless trusted.
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: swift/apple/FirezoneKit/coverage.lcov
