@@ -53,17 +53,23 @@ defmodule Portal.FlowLog do
   @roles [:initiator, :responder]
   @protocols [:tcp, :udp]
 
+  # The primary key is the natural flow identity, tagged primary_key: true
+  # field-by-field below: the reporting side (account_id, device_id, role), the
+  # inner tunnel 6-tuple (protocol, inner src/dst ip+port), the resource, and
+  # flow_start. event_id is a random public handle, not part of the key.
+  # flow_start is included partly because Postgres requires the
+  # partition key in every key on a partitioned table. See the partition migration.
   schema "flow_logs" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :event_id, Portal.Types.EventId, primary_key: true
+    field :event_id, Portal.Types.EventId
 
-    field :device_id, :binary_id
-    field :role, Ecto.Enum, values: @roles
+    field :device_id, :binary_id, primary_key: true
+    field :role, Ecto.Enum, values: @roles, primary_key: true
 
     field :policy_authorization_id, :binary_id
     field :policy_id, :binary_id
     field :auth_provider_id, :binary_id
-    field :resource_id, :binary_id
+    field :resource_id, :binary_id, primary_key: true
     field :resource_name, :string
     field :resource_address, :string
     field :actor_id, :binary_id
@@ -80,12 +86,12 @@ defmodule Portal.FlowLog do
     field :device_identifier_for_vendor, :string
     field :device_firebase_installation_id, :string
 
-    field :protocol, Ecto.Enum, values: @protocols
+    field :protocol, Ecto.Enum, values: @protocols, primary_key: true
 
-    field :inner_src_ip, Portal.Types.IP
-    field :inner_dst_ip, Portal.Types.IP
-    field :inner_src_port, :integer
-    field :inner_dst_port, :integer
+    field :inner_src_ip, Portal.Types.IP, primary_key: true
+    field :inner_dst_ip, Portal.Types.IP, primary_key: true
+    field :inner_src_port, :integer, primary_key: true
+    field :inner_dst_port, :integer, primary_key: true
     field :domain, :string
 
     field :outer_src_ip, Portal.Types.IP
@@ -93,7 +99,7 @@ defmodule Portal.FlowLog do
     field :outer_src_port, :integer
     field :outer_dst_port, :integer
 
-    field :flow_start, :utc_datetime_usec
+    field :flow_start, :utc_datetime_usec, primary_key: true
     field :flow_end, :utc_datetime_usec
     field :last_packet, :utc_datetime_usec
 
