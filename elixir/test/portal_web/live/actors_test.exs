@@ -1503,7 +1503,7 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Total"
     end
 
-    test "logs a warning and ignores service account changes", %{
+    test "logs and ignores service account changes", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1521,7 +1521,7 @@ defmodule PortalWeb.ActorsTest do
           render(lv)
         end)
 
-      assert log =~ "[warning]"
+      assert log =~ "[error]"
       assert log =~ "Unhandled handle_info message in LiveView"
 
       html = render(lv)
