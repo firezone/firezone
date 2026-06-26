@@ -23,8 +23,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
         assign(
           socket,
           page_title: "API Clients",
-          requested: Portal.Account.rest_api_access_requested?(socket.assigns.account),
-          api_url: Portal.Config.get_env(:portal, :api_external_url)
+          requested: Portal.Account.rest_api_access_requested?(socket.assigns.account)
         )
 
       {:ok, socket}
@@ -52,12 +51,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
             <div class="flex flex-col items-center gap-1 text-center">
               <p class="text-sm font-medium text-heading">REST API is in closed beta</p>
               <p class="text-xs">
-                API Tokens are used to manage Firezone via the <.link
-                  navigate={"#{@api_url}/swaggerui"}
-                  class="text-brand hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >REST API</.link>.
+                API Tokens are used to manage Firezone via the <.website_link path="/kb/reference/rest-api">REST API</.website_link>.
               </p>
             </div>
             <.button
