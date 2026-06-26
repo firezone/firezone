@@ -845,7 +845,13 @@ pub fn run_smoke_test() -> Result<()> {
     // The smoke test runs this binary as an unprivileged subprocess of the
     // test runner — not as a Windows service under LocalSystem. Tell the IPC
     // layer to skip pinning/checking LocalSystem ownership on the Tunnel pipe;
-    // otherwise `CreateNamedPipeW` fails with `ERROR_INVALID_OWNER` on Windows.
+    // otherwise `CreateNamedPipeW` fails with `ERROR_INVALID_OWNER`.
+    //
+    // Windows-only: on Unix the same call disables peer-binary verification,
+    // which the smoke test exercises. It installs the GUI at the canonical path
+    // for the happy path and launches one from elsewhere to assert the tunnel
+    // rejects unrecognised binaries.
+    #[cfg(target_os = "windows")]
     ipc::skip_tunnel_pipe_owner_check();
 
     let log_filter_reloader = logging::setup_stdout()?;

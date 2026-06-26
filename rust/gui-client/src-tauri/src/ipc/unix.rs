@@ -9,13 +9,22 @@ mod peer_check;
 
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
-/// No-op twin of the Windows function. Unix IPC uses filesystem permissions
-/// instead of an owner-SID check, so there is nothing to skip.
+/// Whether to skip the tunnel pipe owner check.
 #[cfg(debug_assertions)]
-pub fn skip_tunnel_pipe_owner_check() {}
+static SKIP_TUNNEL_PIPE_OWNER_CHECK: AtomicBool = AtomicBool::new(false);
+
+/// Set [`SKIP_TUNNEL_PIPE_OWNER_CHECK`].
+///
+/// Call once at process startup, before any `Server::new(SocketId::Tunnel)` or `connect_to_socket`.
+#[cfg(debug_assertions)]
+pub fn skip_tunnel_pipe_owner_check() {
+    SKIP_TUNNEL_PIPE_OWNER_CHECK.store(true, Ordering::Relaxed);
+}
 
 pub struct Server {
     listener: UnixListener,
@@ -109,6 +118,19 @@ impl Server {
         loop {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
+
+            #[cfg(debug_assertions)]
+            if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) {
+                tracing::info!(
+                    uid = cred.uid(),
+                    gid = cred.gid(),
+                    pid = cred.pid(),
+                    "Accepted an IPC connection without stream owner check"
+                );
+                let pid = cred.pid().context("No PID")?.try_into()?;
+
+                return Ok((stream, pid));
+            }
 
             match self.allowed_peer.verify(stream) {
                 Ok(stream) => {
