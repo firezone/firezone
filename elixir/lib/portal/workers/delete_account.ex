@@ -40,6 +40,7 @@ defmodule Portal.Workers.DeleteAccount do
 
     alias Portal.Account
     alias Portal.Actor
+    alias Portal.FlowLog
     alias Portal.Safe
     alias Portal.Workers.AccountDeletionCompleted
     alias Portal.Workers.DeleteSubscription
@@ -54,8 +55,15 @@ defmodule Portal.Workers.DeleteAccount do
         admin_emails = get_account_admin_emails(account_id)
 
         case delete_account(account_id) do
-          {1, [account]} -> schedule_post_deletion_jobs(account, admin_emails)
-          {0, []} -> {:ok, :noop}
+          {1, [account]} ->
+            # flow_logs has no FK to accounts (it is partitioned; see the
+            # flow_logs partition migration), so its rows are purged explicitly
+            # rather than by cascade.
+            delete_flow_logs(account_id)
+            schedule_post_deletion_jobs(account, admin_emails)
+
+          {0, []} ->
+            {:ok, :noop}
         end
       end)
     end
@@ -115,6 +123,12 @@ defmodule Portal.Workers.DeleteAccount do
         where: a.scheduled_deletion_at <= ^now,
         select: a
       )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp delete_flow_logs(account_id) do
+      from(f in FlowLog, where: f.account_id == ^account_id)
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
