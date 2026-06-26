@@ -260,6 +260,10 @@ if config_env() == :prod do
     external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
     private_clients: env_var_to_config!(:phoenix_private_clients)
 
+  config :portal,
+    flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
+    flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
+
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   oban_crontab = [
@@ -424,6 +428,10 @@ if config_env() == :prod do
     config :portal, PortalAPI.Sockets.RateLimit,
       refill_rate: env_var_to_config!(:api_socket_refill_rate),
       capacity: env_var_to_config!(:api_socket_capacity)
+
+    config :portal, PortalAPI.Plugs.IngestionRateLimit,
+      refill_rate: env_var_to_config!(:api_ingestion_refill_rate),
+      capacity: env_var_to_config!(:api_ingestion_capacity)
 
     config :portal,
       api_external_url: api_external_url

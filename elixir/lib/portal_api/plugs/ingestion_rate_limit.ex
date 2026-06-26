@@ -1,8 +1,8 @@
 defmodule PortalAPI.Plugs.IngestionRateLimit do
   import Plug.Conn
 
-  @default_refill_rate Portal.Config.fetch_env!(:portal, PortalAPI.RateLimit)[:refill_rate]
-  @default_capacity Portal.Config.fetch_env!(:portal, PortalAPI.RateLimit)[:capacity]
+  @default_refill_rate Portal.Config.fetch_env!(:portal, __MODULE__)[:refill_rate]
+  @default_capacity Portal.Config.fetch_env!(:portal, __MODULE__)[:capacity]
   @cost 1
 
   def init(opts), do: opts

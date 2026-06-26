@@ -1,20 +1,21 @@
 defmodule Portal.FlowLogToken do
   @moduledoc """
-  Mints and verifies per-flow ingest tokens.
+  Mints and verifies per-authorization flow-log ingest tokens.
 
-  A token is a base64url-encoded JSON attribution payload joined to an
-  HMAC-SHA256 tag over that encoded payload, keyed by the reporting account's
-  symmetric `ingest_signing_key`: `<payload>.<mac>`. It carries an attribution
-  snapshot (account, policy, resource, actor and the reporting device + role)
+  A token is a standard HS256 JWT signed with the reporting account's symmetric
+  `ingest_signing_key`. It carries an attribution snapshot (account, policy
+  authorization, policy, resource, actor and the reporting device + role)
   captured when a flow is authorized. The token is the sole authenticator for
-  records posted to `POST /ingestion/flow_logs`: there is no request-level
-  credential, so each record proves its own provenance and supplies the
-  authoritative attribution fields for the resulting `Portal.FlowLog` row.
+  `POST /ingestion/flow_logs`: it is sent once per request in the
+  `Authorization: Bearer` header (not per record), so every record in a request
+  is attributed to the single policy authorization the token names and there is
+  no other request-level credential.
 
-  The MAC algorithm is fixed, so there is no algorithm field to negotiate and no
+  The accepted algorithm is pinned to HS256 on verify (`verify_strict`), so a
+  token presenting another `alg` (including `none`) is rejected and there is no
   algorithm-confusion surface. The token signs attribution, not stats: trust in
   the reported byte/packet counts comes from the two-sided cross-check
-  (initiator and responder each report independently), not from the MAC.
+  (initiator and responder each report independently), not from the signature.
 
   `exp` is `authorization_expires_at + 30d`: an absolute grace window so flows
   that finalize and upload long after their authorization is gone (sleep/wake,
@@ -27,14 +28,13 @@ defmodule Portal.FlowLogToken do
   @reporting_grace_seconds 2_592_000
 
   # Attribution claims copied verbatim into the flow_logs row on ingest.
-  @attribution_claims ~w[role device_id policy_id resource_id resource_name resource_address
-                         actor_id actor_email actor_name auth_provider_id authorized_at
-                         authorization_expires_at
+  @attribution_claims ~w[role device_id policy_authorization_id policy_id resource_id resource_name
+                         resource_address actor_id actor_email actor_name auth_provider_id
+                         authorized_at authorization_expires_at
                          client_version device_os_name device_os_version device_serial device_uuid
                          device_identifier_for_vendor device_firebase_installation_id]
 
   @type claims :: %{optional(String.t()) => term()}
-  @type key_cache :: %{optional(String.t()) => binary() | :not_found}
 
   @doc """
   Mint a token for `account` carrying `attribution`, expiring at
@@ -50,17 +50,24 @@ defmodule Portal.FlowLogToken do
       |> DateTime.add(@reporting_grace_seconds, :second)
       |> DateTime.to_unix()
 
-    payload =
+    claims =
       attribution
       |> Map.new(fn {k, v} -> {to_string(k), v} end)
       |> Map.take(@attribution_claims)
+      # Drop absent attribution: JOSE's JSON codec round-trips `null` as the atom
+      # `:null` (not `nil`), which would fail to cast into a flow_logs column. An
+      # omitted claim reads back as `nil` on verify, which is what we want for the
+      # nullable attribution fields (resource_address, actor_email, etc.).
+      |> Map.reject(fn {_k, v} -> is_nil(v) end)
       |> Map.put("account_id", account_id)
       |> Map.put("iat", DateTime.to_unix(DateTime.utc_now()))
       |> Map.put("exp", exp)
-      |> Jason.encode!()
-      |> Base.url_encode64(padding: false)
 
-    payload <> "." <> sign(payload, key)
+    key
+    |> jwk()
+    |> JOSE.JWT.sign(%{"alg" => "HS256"}, claims)
+    |> JOSE.JWS.compact()
+    |> elem(1)
   end
 
   @doc """
@@ -68,104 +75,41 @@ defmodule Portal.FlowLogToken do
 
   The endpoint is not pre-authenticated, so verification first decodes the
   (unverified) payload to read the `account_id` claim, loads the signing key,
-  then verifies the MAC with that key and finally checks `exp`.
+  then verifies the signature with that key, pinning the algorithm to HS256, and
+  finally checks `exp`.
+
+  An unknown account and a bad signature both collapse to `:invalid` so the
+  endpoint is not an oracle for which account ids exist.
   """
   @spec verify(term()) :: {:ok, claims()} | {:error, :malformed | :invalid | :expired}
-  def verify(token), do: token |> verify(%{}) |> elem(0)
-
-  @doc """
-  Like `verify/1`, but reuses `cache` (a map of `account_id => signing key`) so a
-  batch of records sharing an account performs a single key lookup for the whole
-  request. Returns the verify result paired with the updated cache.
-
-  A batch may mix accounts; each entry is keyed independently. An unknown account
-  and a bad MAC both collapse to `:invalid` so the endpoint is not an oracle for
-  which account ids exist.
-  """
-  @spec verify(term(), key_cache()) ::
-          {{:ok, claims()} | {:error, :malformed | :invalid | :expired}, key_cache()}
-  def verify(token, cache) when is_binary(token) do
-    case decode(token) do
-      {:ok, payload, mac, claims} ->
-        {key, cache} = resolve_key(claims, cache)
-        {verify_claims(payload, mac, claims, key), cache}
-
-      {:error, reason} ->
-        {{:error, reason}, cache}
-    end
-  end
-
-  def verify(_token, cache), do: {{:error, :malformed}, cache}
-
-  defp decode(token) do
-    with {:ok, payload, mac} <- split(token),
-         {:ok, claims} <- decode_payload(payload) do
-      {:ok, payload, mac, claims}
-    end
-  end
-
-  defp verify_claims(payload, mac, claims, key) do
-    with :ok <- verify_mac(payload, mac, key) do
+  def verify(token) when is_binary(token) do
+    with {:ok, account_id} <- peek_account_id(token),
+         %Account{ingest_signing_key: key} <- fetch_account(account_id),
+         {true, %JOSE.JWT{fields: claims}, _jws} <- JOSE.JWT.verify_strict(jwk(key), ["HS256"], token) do
       verify_exp(claims)
-    end
-  end
-
-  defp sign(payload, key) do
-    :hmac
-    |> :crypto.mac(:sha256, key, payload)
-    |> Base.url_encode64(padding: false)
-  end
-
-  defp split(token) do
-    case String.split(token, ".") do
-      [payload, mac] when payload != "" and mac != "" -> {:ok, payload, mac}
-      _ -> {:error, :malformed}
-    end
-  end
-
-  defp decode_payload(payload) do
-    with {:ok, json} <- Base.url_decode64(payload, padding: false),
-         {:ok, claims} when is_map(claims) <- Jason.decode(json) do
-      {:ok, claims}
     else
-      _ -> {:error, :malformed}
+      {:error, :malformed} -> {:error, :malformed}
+      _ -> {:error, :invalid}
     end
   end
 
-  defp resolve_key(%{"account_id" => account_id}, cache) when is_binary(account_id) do
-    case cache do
-      %{^account_id => key} ->
-        {key, cache}
+  def verify(_token), do: {:error, :malformed}
 
-      _ ->
-        key = fetch_key(account_id)
-        {key, Map.put(cache, account_id, key)}
-    end
+  defp jwk(key), do: JOSE.JWK.from_oct(key)
+
+  # Reads the account_id from the unverified payload to pick the signing key.
+  # peek_payload raises on a non-JWT input; a well-formed JWT missing account_id
+  # collapses to :malformed via the failed match.
+  defp peek_account_id(token) do
+    %JOSE.JWT{fields: %{"account_id" => account_id}} = JOSE.JWT.peek_payload(token)
+    {:ok, account_id}
+  rescue
+    _ -> {:error, :malformed}
   end
 
-  defp resolve_key(_claims, cache), do: {:not_found, cache}
-
-  defp fetch_key(account_id) do
-    with {:ok, account_id} <- Ecto.UUID.cast(account_id),
-         %Account{ingest_signing_key: key} <- Database.fetch_account(account_id) do
-      key
-    else
-      _ -> :not_found
-    end
-  end
-
-  # Unknown account and bad MAC collapse to the same error. Constant-time compare
-  # among equal-length candidates; the expected MAC length is fixed and public,
-  # so short-circuiting a wrong length leaks nothing.
-  defp verify_mac(_payload, _mac, :not_found), do: {:error, :invalid}
-
-  defp verify_mac(payload, mac, key) do
-    expected = sign(payload, key)
-
-    if byte_size(mac) == byte_size(expected) and :crypto.hash_equals(mac, expected) do
-      :ok
-    else
-      {:error, :invalid}
+  defp fetch_account(account_id) do
+    with {:ok, account_id} <- Ecto.UUID.cast(account_id) do
+      Database.fetch_account(account_id)
     end
   end
 

@@ -303,6 +303,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         account_slug: account_slug,
         interface: interface,
         relays: relays,
+        flow_logs_api_url: "https://flow-api.firezone.dev/",
+        flow_logs_upload_interval_secs: 60,
         config: %{
           ipv4_masquerade_enabled: true,
           ipv6_masquerade_enabled: true
