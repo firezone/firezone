@@ -276,6 +276,12 @@ impl IpPacket {
         self.version
     }
 
+    /// The identifier of the underlying pool buffer, used to correlate the packet
+    /// across processing stages for latency tracking.
+    pub fn buffer_id(&self) -> u64 {
+        self.buf.id()
+    }
+
     pub fn source(&self) -> IpAddr {
         match self.version {
             IpVersion::V4 => self.as_ipv4_unchecked().header().source_addr().into(),

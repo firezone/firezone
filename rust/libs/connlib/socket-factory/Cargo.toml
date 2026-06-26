@@ -13,6 +13,7 @@ gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
+packet-timing = { workspace = true }
 quinn-udp = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 socket2 = { workspace = true, features = ["all"] }

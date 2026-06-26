@@ -15,6 +15,7 @@ ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["metrics"] }
+packet-timing = { workspace = true }
 parking_lot = { workspace = true }
 rand = { workspace = true }
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls-no-provider", "tracing", "logs", "metrics"] }

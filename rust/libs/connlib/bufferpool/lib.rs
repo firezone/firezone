@@ -2,7 +2,10 @@
 
 use std::{
     ops::{Deref, DerefMut},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use bytes::BytesMut;
@@ -11,6 +14,9 @@ use opentelemetry::{
     KeyValue,
     metrics::{Meter, UpDownCounter},
 };
+
+/// Source of process-unique identifiers for physical buffers.
+static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(0);
 
 /// A lock-free pool of buffers that are all equal in size.
 ///
@@ -116,6 +122,15 @@ impl Buffer<Vec<u8>> {
 }
 
 impl<B> Buffer<B> {
+    /// A process-unique identifier for the underlying physical buffer.
+    ///
+    /// The identifier is assigned when the buffer is first allocated and stays with the
+    /// physical buffer as it is returned to and pulled from the pool again. While a buffer
+    /// is checked out of the pool, its identifier is therefore a stable correlation key.
+    pub fn id(&self) -> u64 {
+        self.storage().id
+    }
+
     fn storage(&self) -> &BufferStorage<B> {
         self.inner
             .as_ref()
@@ -199,6 +214,10 @@ impl<B> Drop for Buffer<B> {
     fn drop(&mut self) {
         let buffer_storage = self.inner.take().expect("should have storage in `Drop`");
 
+        // Discard any packet-timing tracking keyed by this buffer before it returns to
+        // the pool, so an abandoned timeline cannot leak or bleed into the buffer's reuse.
+        packet_timing::forget(buffer_storage.id);
+
         let actual = (buffer_storage.capacity_of)(&buffer_storage.inner);
         if let Some(actual) = deviating_capacity(buffer_storage.capacity, actual) {
             tracing::warn!(
@@ -267,6 +286,9 @@ impl Buf for BytesMut {
 struct BufferStorage<B> {
     inner: B,
 
+    /// Process-unique identifier of this physical buffer, stable across pool cycling.
+    id: u64,
+
     /// The size every buffer in the pool is allocated with.
     ///
     /// A returned buffer whose capacity deviates from this no longer fits the pool's
@@ -304,6 +326,7 @@ impl<B> BufferStorage<B> {
 
         Self {
             inner,
+            id: NEXT_BUFFER_ID.fetch_add(1, Ordering::Relaxed),
             capacity,
             tag,
             capacity_of: B::capacity,
@@ -387,6 +410,25 @@ mod tests {
         buffer.resize_to(8 * 1024); // Force a reallocation beyond the pool's capacity.
 
         drop(buffer); // Exercises the capacity-deviation check on return to the pool.
+    }
+
+    #[test]
+    fn buffer_id_is_unique_and_stable_across_recycling() {
+        let pool = BufferPool::<Vec<u8>>::new(1024, "test");
+
+        let buffer1 = pool.pull();
+        let id1 = buffer1.id();
+
+        let buffer2 = pool.pull();
+        let id2 = buffer2.id();
+
+        assert_ne!(id1, id2, "distinct buffers have distinct ids");
+
+        // Returning a buffer and pulling again reuses the physical buffer and its id.
+        drop(buffer2);
+        let buffer3 = pool.pull();
+
+        assert_eq!(buffer3.id(), id2, "recycled buffer keeps its id");
     }
 
     #[test]

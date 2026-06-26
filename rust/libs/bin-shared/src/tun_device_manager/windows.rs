@@ -423,6 +423,7 @@ fn start_send_thread(
                         session.send_packet(pkt);
 
                         record_write_retries(&write_retry_histogram, attempt);
+                        packet_timing::receive::written_to_tun(packet.buffer_id());
 
                         continue 'next_packet;
                     }
@@ -559,6 +560,8 @@ fn start_recv_thread(
                         continue;
                     }
                 };
+
+                packet_timing::transmit::tun_read(pkt.buffer_id());
 
                 #[cfg(debug_assertions)]
                 tracing::trace!(target: "wire::dev::recv", ?pkt);

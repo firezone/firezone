@@ -345,7 +345,15 @@ fn drain(
             }
         };
 
-        out.push_back(DatagramSegmentIter::new(bufs, metas, port, len));
+        let received_at = packet_timing::Instant::now();
+
+        out.push_back(DatagramSegmentIter::new(
+            bufs,
+            metas,
+            port,
+            len,
+            received_at,
+        ));
     }
 }
 

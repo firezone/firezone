@@ -296,6 +296,8 @@ pub struct DatagramIn<'a> {
     pub from: SocketAddr,
     pub packet: &'a [u8],
     pub ecn: Ecn,
+    /// When the containing batch was read off the socket (for packet-timing).
+    pub received_at: packet_timing::Instant,
 }
 
 /// An outbound UDP datagram.
@@ -356,7 +358,15 @@ impl PerfUdpSocket {
             ],
         );
 
-        Ok(DatagramSegmentIter::new(bufs, meta, self.port, len))
+        let received_at = packet_timing::Instant::now();
+
+        Ok(DatagramSegmentIter::new(
+            bufs,
+            meta,
+            self.port,
+            len,
+            received_at,
+        ))
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
@@ -372,7 +382,13 @@ impl PerfUdpSocket {
             .pool
             .get_send_socket(transmit.src_ip, datagram.dst, &self.buffer_pool);
 
-        self.send_transmit(pooled.as_socket(), &transmit).await
+        let result = self.send_transmit(pooled.as_socket(), &transmit).await;
+
+        // Record the flush after the syscall, while the datagram still owns the GSO
+        // buffer: a buffer recycled into a new batch cannot then reuse this id and race.
+        packet_timing::transmit::flushed(datagram.packet.id());
+
+        result
     }
 
     /// The number of connected per-destination "flow" sockets currently cached.
@@ -787,6 +803,7 @@ pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = B
     metas: SmallVec<[quinn_udp::RecvMeta; N]>,
 
     port: u16,
+    received_at: packet_timing::Instant,
 
     buf_index: usize,
     segment_index: usize,
@@ -801,6 +818,7 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
         metas: [quinn_udp::RecvMeta; N],
         port: u16,
         len: usize,
+        received_at: packet_timing::Instant,
     ) -> Self {
         let mut buffers = SmallVec::from_buf(buffers);
         let mut metas = SmallVec::from_buf(metas);
@@ -825,6 +843,7 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
             buffers,
             metas,
             port,
+            received_at,
             buf_index: 0,
             segment_index: 0,
             _total_bytes: total_bytes,
@@ -902,6 +921,7 @@ where
                     Some(EcnCodepoint::Ect1) => Ecn::Ect1,
                     None => Ecn::NonEct,
                 },
+                received_at: self.received_at,
             });
         }
     }
@@ -943,6 +963,7 @@ mod tests {
             ],
             0,
             3,
+            packet_timing::Instant::default(),
         );
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
