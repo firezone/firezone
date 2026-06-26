@@ -588,10 +588,10 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_info(%Change{struct: %Actor{}} = message, socket),
-    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket, :warning)
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_info(%Change{old_struct: %Actor{}} = message, socket),
-    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket, :warning)
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
