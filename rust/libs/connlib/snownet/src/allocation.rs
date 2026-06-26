@@ -759,7 +759,11 @@ impl Allocation {
             let needs_auth = method != BINDING;
 
             let queued = if needs_auth {
-                self.authenticate_and_queue(MessagePrototype::from_request(&request), Some(backoff), now)
+                self.authenticate_and_queue(
+                    MessagePrototype::from_request(&request),
+                    Some(backoff),
+                    now,
+                )
             } else {
                 self.queue(dst, request, Some(backoff), now)
             };
@@ -785,7 +789,11 @@ impl Allocation {
             && !self.refresh_in_flight()
         {
             tracing::debug!("Allocation is due for a refresh");
-            self.authenticate_and_queue(MessagePrototype::refresh(self.software.clone()), None, now);
+            self.authenticate_and_queue(
+                MessagePrototype::refresh(self.software.clone()),
+                None,
+                now,
+            );
         }
 
         let channel_refresh_messages = self
@@ -796,7 +804,9 @@ impl Allocation {
             .inspect(|(number, peer)| {
                 tracing::debug!(%number, %peer, "Channel is due for a refresh");
             })
-            .map(|(number, peer)| MessagePrototype::channel_bind(peer, number, self.software.clone()))
+            .map(|(number, peer)| {
+                MessagePrototype::channel_bind(peer, number, self.software.clone())
+            })
             .collect::<SmallVec<[_; 16]>>();
 
         for message in channel_refresh_messages {
