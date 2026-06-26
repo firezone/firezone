@@ -188,6 +188,12 @@ defmodule Portal.Repo.Migrations.PartitionFlowLogs do
   # always finds a partition; the worker prunes the front to the retention window
   # on its first run.
   defp seed_partitions do
+    # CURRENT_DATE and the date -> timestamptz casts below resolve against the
+    # session TimeZone, which is not guaranteed to be UTC. Pin it so the seeded
+    # partition bounds land on UTC day boundaries, matching the worker's
+    # UTC-aligned partitions (a non-UTC session would offset them and overlap).
+    execute("SET LOCAL timezone TO 'UTC'")
+
     execute("""
     DO $$
     DECLARE
