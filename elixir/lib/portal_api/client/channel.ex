@@ -1402,7 +1402,8 @@ defmodule PortalAPI.Client.Channel do
                  preshared_key,
                  socket.assigns.subject.context.user_agent
                ),
-             # Redundant with the attribution claims in the ingest token; kept for older gateways that read attribution from the subject.
+             # Kept for older gateways that do not report flow logs to the portal.
+             # These do not parse the attribution fields from the ingest token.
              subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
              resource: PortalAPI.Gateway.Views.Resource.render(resource),
              policy_authorization_id: policy_authorization_id,
