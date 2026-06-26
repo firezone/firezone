@@ -1145,7 +1145,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert has_element?(lv, "button[role='tab'][aria-selected]", "Clients")
+      assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
     end
 
     test "lists pool clients with owner and tunnel IPs", %{
@@ -1299,7 +1299,7 @@ defmodule PortalWeb.ResourcesTest do
       render_click(lv, "switch_resource_tab", %{"tab" => "clients"})
       assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=clients")
 
-      assert has_element?(lv, "button[role='tab'][aria-selected]", "Clients")
+      assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
     end
 
     test "does not show the clients tab for non-device-pool resources", %{
@@ -1314,7 +1314,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      refute has_element?(lv, "button[role='tab']", "Clients")
+      refute has_element?(lv, "button[role='tab']", "Pool Members")
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
     end
 
