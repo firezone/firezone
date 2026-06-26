@@ -1235,10 +1235,10 @@ defmodule PortalWeb.Resources.Components do
         <table class="w-full text-xs">
           <thead class="sticky top-0 bg-surface z-10">
             <tr class="border-b border-border text-subtle">
-              <th class="text-left px-4 py-2 font-medium">Status</th>
               <th class="text-left px-4 py-2 font-medium">Name</th>
               <th class="text-left px-4 py-2 font-medium">Owner</th>
               <th class="text-left px-4 py-2 font-medium">Tunnel IPv4</th>
+              <th class="text-left px-4 py-2 font-medium">Status</th>
               <th class="w-6"></th>
             </tr>
           </thead>
@@ -1252,9 +1252,6 @@ defmodule PortalWeb.Resources.Components do
                 tabindex="0"
                 class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
               >
-                <td class="px-4 py-2">
-                  <.client_status_badge online?={MapSet.member?(@online_client_ids, client.id)} />
-                </td>
                 <td class="px-4 py-2 text-heading">
                   <div class="flex items-center gap-1.5">
                     <span class="truncate">{client.name}</span>
@@ -1266,6 +1263,9 @@ defmodule PortalWeb.Resources.Components do
                 </td>
                 <td class="px-4 py-2 text-subtle font-mono">
                   {client.ipv4}
+                </td>
+                <td class="px-4 py-2">
+                  <.client_status_badge online?={MapSet.member?(@online_client_ids, client.id)} />
                 </td>
                 <td class="px-4 py-2 text-subtle">
                   <.icon
