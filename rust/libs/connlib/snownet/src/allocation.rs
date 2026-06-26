@@ -9,7 +9,7 @@ use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
 use is::Candidate;
 use logging::err_with_src;
-use rand::random;
+use rand::{Rng, SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
@@ -102,6 +102,13 @@ pub struct Allocation {
     rtt: Option<Duration>,
 
     buffer_pool: BufferPool<Vec<u8>>,
+
+    /// Source of randomness for STUN transaction IDs.
+    ///
+    /// Seeded from the [`Node`](crate::Node)'s RNG so that transaction IDs are
+    /// a deterministic function of the node seed, which keeps tests (and fuzzing)
+    /// reproducible.
+    rng: StdRng,
 }
 
 #[derive(derive_more::Debug, Clone, Copy)]
@@ -226,6 +233,7 @@ impl Allocation {
         realm: Realm,
         now: Instant,
         buffer_pool: BufferPool<Vec<u8>>,
+        seed: [u8; 32],
     ) -> Self {
         let mut allocation = Self {
             server,
@@ -253,6 +261,7 @@ impl Allocation {
             explicit_failure: Default::default(),
             rtt: None,
             buffer_pool,
+            rng: StdRng::from_seed(seed),
         };
 
         allocation.send_binding_requests(now);
@@ -725,7 +734,8 @@ impl Allocation {
         {
             tracing::debug!("Sending STUN binding as keep-alive");
 
-            self.queue(addr, make_binding_request(self.software.clone()), None, now);
+            let request = make_binding_request(&mut self.rng, self.software.clone());
+            self.queue(addr, request, None, now);
         }
 
         while let Some(timed_out_request) = self
@@ -1110,20 +1120,14 @@ impl Allocation {
         tracing::debug!(relay_socket = ?self.server, "Sending BINDING requests to pick active socket");
 
         if let Some(v4) = self.server.as_v4() {
-            self.queue(
-                (*v4).into(),
-                make_binding_request(self.software.clone()),
-                None,
-                now,
-            );
+            let dst: SocketAddr = (*v4).into();
+            let request = make_binding_request(&mut self.rng, self.software.clone());
+            self.queue(dst, request, None, now);
         }
         if let Some(v6) = self.server.as_v6() {
-            self.queue(
-                (*v6).into(),
-                make_binding_request(self.software.clone()),
-                None,
-                now,
-            );
+            let dst: SocketAddr = (*v6).into();
+            let request = make_binding_request(&mut self.rng, self.software.clone());
+            self.queue(dst, request, None, now);
         }
     }
 
@@ -1150,7 +1154,7 @@ impl Allocation {
             return false;
         };
 
-        let authenticated_message = authenticate(message, credentials);
+        let authenticated_message = authenticate(&mut self.rng, message, credentials);
         self.queue(active_socket.addr, authenticated_message, backoff, now)
     }
 
@@ -1246,7 +1250,11 @@ impl ActiveSocket {
     }
 }
 
-fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
+fn authenticate(
+    rng: &mut impl Rng,
+    message: Message<Attribute>,
+    credentials: &Credentials,
+) -> Message<Attribute> {
     let attributes = message
         .attributes()
         .filter(|a| !matches!(a, Attribute::Nonce(_)))
@@ -1260,7 +1268,7 @@ fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Messa
         ])
         .chain(credentials.nonce.clone().map(Attribute::Nonce));
 
-    let transaction_id = TransactionId::new(random());
+    let transaction_id = TransactionId::new(rng.random());
     let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
 
     for attribute in attributes {
@@ -1307,8 +1315,15 @@ fn update_candidate(
     }
 }
 
-fn make_binding_request(software: Software) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::Request, BINDING, TransactionId::new(random()));
+/// The transaction ID assigned to requests that are authenticated before being
+/// sent. [`authenticate`] always overwrites it with a fresh, random transaction
+/// ID, so this placeholder never reaches the wire.
+fn placeholder_transaction_id() -> TransactionId {
+    TransactionId::new([0; 12])
+}
+
+fn make_binding_request(rng: &mut impl Rng, software: Software) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::Request, BINDING, TransactionId::new(rng.random()));
     message.add_attribute(software);
 
     message
@@ -1318,7 +1333,7 @@ fn make_allocate_request(software: Software) -> Message<Attribute> {
     let mut message = Message::new(
         MessageClass::Request,
         ALLOCATE,
-        TransactionId::new(random()),
+        placeholder_transaction_id(),
     );
 
     message.add_attribute(RequestedTransport::new(17));
@@ -1339,7 +1354,7 @@ fn make_delete_allocation_request(software: Software) -> Message<Attribute> {
 }
 
 fn make_refresh_request(software: Software) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::Request, REFRESH, TransactionId::new(random()));
+    let mut message = Message::new(MessageClass::Request, REFRESH, placeholder_transaction_id());
 
     message.add_attribute(RequestedTransport::new(17));
     message.add_attribute(AdditionalAddressFamily::new(
@@ -1358,7 +1373,7 @@ fn make_channel_bind_request(
     let mut message = Message::new(
         MessageClass::Request,
         CHANNEL_BIND,
-        TransactionId::new(random()),
+        placeholder_transaction_id(),
     );
 
     message.add_attribute(XorPeerAddress::new(target));
@@ -2997,6 +3012,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
                 BufferPool::new(500, "test"),
+                [0; 32],
             )
         }
 
@@ -3011,6 +3027,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
                 BufferPool::new(500, "test"),
+                [1; 32],
             )
         }
 

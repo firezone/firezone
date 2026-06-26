@@ -108,6 +108,7 @@ where
         password: String,
         realm: Realm,
         now: Instant,
+        rng: &mut impl Rng,
     ) -> UpsertResult {
         match self.inner.entry(rid) {
             Entry::Vacant(v) => {
@@ -118,6 +119,7 @@ where
                     realm,
                     now,
                     self.buffer_pool.clone(),
+                    rng.random(),
                 ));
 
                 UpsertResult::Added
@@ -138,6 +140,7 @@ where
                     realm,
                     now,
                     self.buffer_pool.clone(),
+                    rng.random(),
                 ));
 
                 self.previous_relays_by_ip
@@ -339,6 +342,7 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
+            &mut rand::rng(),
         );
 
         allocations.remove_by_id(&1);
@@ -359,6 +363,7 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
+            &mut rand::rng(),
         );
 
         allocations.clear();
@@ -379,6 +384,7 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
+            &mut rand::rng(),
         );
 
         allocations.upsert(
@@ -388,6 +394,7 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
+            &mut rand::rng(),
         );
 
         assert!(matches!(
@@ -465,6 +472,7 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
+                &mut rand::rng(),
             );
             allocations
                 .get_mut_by_id(&rid)
@@ -494,6 +502,7 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
+                &mut rand::rng(),
             );
             allocations
                 .get_mut_by_id(&rid)
@@ -530,6 +539,7 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
+                &mut rand::rng(),
             );
             allocations
                 .get_mut_by_id(&rid)
@@ -557,6 +567,7 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
+            &mut rand::rng(),
         );
         allocations
             .get_mut_by_id(&1)
@@ -581,6 +592,7 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
+            &mut rand::rng(),
         );
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);

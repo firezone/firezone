@@ -8,7 +8,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 thread_local! {
     static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
@@ -45,14 +45,21 @@ pub struct ClientProperties {
 }
 
 impl FlowTracker {
-    pub fn new(enabled: bool, now: Instant) -> Self {
+    pub fn new(enabled: bool, now: Instant, unix_ts: Duration) -> Self {
+        // Anchor wall-clock time to the injected `unix_ts` (rather than
+        // `Utc::now()`) so flow timestamps are a deterministic function of the
+        // inputs, which keeps tests and fuzzing reproducible.
+        let created_at_utc =
+            DateTime::from_timestamp(unix_ts.as_secs() as i64, unix_ts.subsec_nanos())
+                .unwrap_or(DateTime::UNIX_EPOCH);
+
         Self {
             active_tcp_flows: Default::default(),
             active_udp_flows: Default::default(),
             completed_flows: Default::default(),
             enabled,
             created_at: now,
-            created_at_utc: Utc::now(),
+            created_at_utc,
         }
     }
 

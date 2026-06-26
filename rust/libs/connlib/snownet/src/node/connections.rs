@@ -528,6 +528,7 @@ mod tests {
             "pass".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
+            &mut rng,
         );
         // Simulate a successful response so the relay is eligible for sampling.
         allocations

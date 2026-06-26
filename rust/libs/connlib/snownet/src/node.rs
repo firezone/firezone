@@ -707,7 +707,7 @@ where
 
             match self
                 .allocations
-                .upsert(*rid, *server, username, password.clone(), realm, now)
+                .upsert(*rid, *server, username, password.clone(), realm, now, &mut self.rng)
             {
                 allocations::UpsertResult::Added => {
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
