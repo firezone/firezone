@@ -553,7 +553,7 @@ if config_env() == :prod do
          (cond do
             String.contains?(api_external_url_host, "firezone.dev") -> :production
             String.contaains?(api_external_url_host, "firez.one") -> :staging
-            _ -> :unknown
+            true -> :unknown
           end) do
     config :sentry,
       environment_name: environment_name,
