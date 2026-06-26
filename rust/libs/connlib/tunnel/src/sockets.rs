@@ -18,8 +18,8 @@ use tokio_util::sync::PollSender;
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
-const UDP_SEND_BATCH_LIMIT: usize = 16;
-const UDP_RECV_BATCH_LIMIT: usize = 8;
+const UDP_SEND_BATCH_LIMIT: usize = 32;
+const UDP_RECV_BATCH_LIMIT: usize = 32;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
