@@ -18,7 +18,8 @@ use tokio_util::sync::PollSender;
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
-const UDP_SEND_BATCH_LIMIT: usize = 16;
+const UDP_SEND_BATCH_LIMIT: usize = 32;
+const UDP_RECV_BATCH_LIMIT: usize = 32;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -177,7 +178,37 @@ where
     }
 }
 
-/// How big the queue for incoming and outgoing UDP batches is at most.
+/// Chains up to [`UDP_RECV_BATCH_LIMIT`] datagram batches from a single `poll` into one iterator.
+///
+/// A linked list (not a `Vec`) so `next` can fall back from the drained `current` batch to `rest` as
+/// separate fields — the disjoint borrow that lets a runtime-length chain of lending iterators
+/// compile on stable Rust.
+struct ChainedDatagrams {
+    current: DatagramSegmentIter,
+    rest: Option<Box<ChainedDatagrams>>,
+}
+
+impl ChainedDatagrams {
+    fn new(batches: Vec<DatagramSegmentIter>) -> Option<Self> {
+        let mut rest = None;
+
+        for current in batches.into_iter().rev() {
+            rest = Some(Box::new(ChainedDatagrams { current, rest }));
+        }
+
+        rest.map(|boxed| *boxed)
+    }
+}
+
+impl LendingIterator for ChainedDatagrams {
+    type Item<'a> = DatagramIn<'a>;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.current.next().or_else(|| self.rest.as_mut()?.next())
+    }
+}
+
+/// How big the queue for outgoing UDP batches and socket errors is at most.
 ///
 /// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
 const QUEUE_SIZE: usize = {
@@ -185,6 +216,17 @@ const QUEUE_SIZE: usize = {
         10
     } else {
         1000
+    }
+};
+
+/// How big the queue for incoming UDP batches is at most.
+///
+/// Smaller than [`QUEUE_SIZE`] because we drain it in chunks of up to [`UDP_RECV_BATCH_LIMIT`].
+const INBOUND_QUEUE_SIZE: usize = {
+    if cfg!(any(target_os = "ios", target_os = "android")) {
+        10
+    } else {
+        100
     }
 };
 
@@ -204,7 +246,7 @@ struct Channels {
 impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
         let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
@@ -401,14 +443,22 @@ impl ThreadedUdpSocket {
         Ok(())
     }
 
-    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<DatagramSegmentIter> {
+    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<ChainedDatagrams> {
         let Some(channels) = self.channels.as_mut() else {
             return Poll::Pending;
         };
 
-        let Some(datagrams) = ready!(channels.inbound_rx.poll_recv(cx)) else {
-            // Thread stopped (reported via `poll_error`). `Pending` avoids dropping the other
-            // socket's datagrams; no waker on close, since we'll be shutting down anyway.
+        let mut batches = Vec::with_capacity(UDP_RECV_BATCH_LIMIT);
+        ready!(
+            channels
+                .inbound_rx
+                .poll_recv_many(cx, &mut batches, UDP_RECV_BATCH_LIMIT)
+        );
+
+        let Some(datagrams) = ChainedDatagrams::new(batches) else {
+            // An empty read means a closed channel, i.e. the thread stopped (reported via
+            // `poll_error`). `Pending` avoids dropping the other socket's datagrams; no waker on
+            // close, since we'll be shutting down anyway.
             return Poll::Pending;
         };
 
