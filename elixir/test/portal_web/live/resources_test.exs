@@ -7,6 +7,7 @@ defmodule PortalWeb.ResourcesTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
   import Portal.FeaturesFixtures
   import Portal.GroupFixtures
@@ -1125,6 +1126,211 @@ defmodule PortalWeb.ResourcesTest do
       html = render(lv)
       assert html =~ "0"
       assert html =~ "Total"
+    end
+  end
+
+  describe ":show clients tab (device pool)" do
+    test "defaults to the clients tab for device pool resources", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
+    end
+
+    test "lists pool clients with owner and tunnel IPs", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ client.name
+      assert html =~ client.actor.name
+      assert html =~ to_string(client.ipv4)
+    end
+
+    test "shows an offline status for clients without presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ "Offline"
+      assert html =~ "0 / 1 online"
+    end
+
+    test "shows an online status for connected clients", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      :ok = Portal.Presence.Clients.Account.track(account.id, client.id)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ "Online"
+      assert html =~ "1 / 1 online"
+    end
+
+    test "shows an empty state when the pool has no clients", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = static_device_pool_resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      assert html =~ "No clients in this pool"
+    end
+
+    test "expands and collapses a client row to reveal details", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client =
+        client_fixture(account: account, actor: actor, device_serial: "SERIAL-1234")
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      refute html =~ "Tunnel IPv6"
+
+      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      assert html =~ "Tunnel IPv6"
+      assert html =~ to_string(client.ipv6)
+      assert html =~ "SERIAL-1234"
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/clients/#{client.id}"]|)
+
+      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      refute html =~ "Tunnel IPv6"
+    end
+
+    test "shows operating system and last seen from the latest session when expanded", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      _session =
+        client_session_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          user_agent: "Mac OS/14.0 connlib/1.3.0"
+        )
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+
+      assert html =~ "Operating System"
+      assert html =~ "Mac OS 14.0"
+      assert html =~ "Last Seen"
+    end
+
+    test "switching to the clients tab patches the URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      resource =
+        static_device_pool_resource_fixture(account: account, clients: [client])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=groups")
+
+      render_click(lv, "switch_resource_tab", %{"tab" => "clients"})
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=clients")
+
+      assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
+    end
+
+    test "does not show the clients tab for non-device-pool resources", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      refute has_element?(lv, "button[role='tab']", "Pool Members")
+      assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
+    end
+
+    test "ignores the clients tab for non-device-pool resources and falls back to groups", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=clients")
+
+      assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
     end
   end
 
