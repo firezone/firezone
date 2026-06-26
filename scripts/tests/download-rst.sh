@@ -13,7 +13,7 @@ readarray -t flows < <(get_flow_logs "tcp")
 
 assert_gteq "${#flows[@]}" 1
 
-rx_bytes=0
+declare -i rx_bytes=0
 
 # All flows should have same inner_dst_ip
 for flow in "${flows[@]}"; do
