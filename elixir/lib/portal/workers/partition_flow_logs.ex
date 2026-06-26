@@ -7,6 +7,11 @@ defmodule Portal.Workers.PartitionFlowLogs do
   finds a child table to land in, and drops partitions whose whole day has aged
   out of the retention window. Dropping a partition is a metadata-only operation,
   so a day of logs is reclaimed without the scan-and-vacuum cost of a bulk DELETE.
+
+  Both add (ATTACH) and remove (DETACH CONCURRENTLY) take only a SHARE UPDATE
+  EXCLUSIVE lock on flow_logs, so ingestion (and the accounts FK cascade) keep
+  running while partitions are maintained. The drop path cannot run inside a
+  transaction, so it is exercised on staging rather than the sandboxed test suite.
   """
 
   use Oban.Worker,
@@ -46,10 +51,12 @@ defmodule Portal.Workers.PartitionFlowLogs do
 
       # Start one day back so a flow that closed just before midnight but is
       # reported by a slightly-behind clock still has its partition.
-      dates = Date.range(Date.add(today, -1), Date.add(today, lookahead_days))
+      wanted = Enum.to_list(Date.range(Date.add(today, -1), Date.add(today, lookahead_days)))
+      existing = MapSet.new(list_partition_dates())
+      missing = Enum.reject(wanted, &MapSet.member?(existing, &1))
 
-      Enum.each(dates, &create_partition/1)
-      Enum.count(dates)
+      Enum.each(missing, &create_partition/1)
+      length(missing)
     end
 
     def drop_expired_partitions(retention_days) do
@@ -63,14 +70,25 @@ defmodule Portal.Workers.PartitionFlowLogs do
       length(expired)
     end
 
+    # Add the partition by creating it standalone and ATTACHing it, not via
+    # CREATE TABLE ... PARTITION OF. ATTACH takes a SHARE UPDATE EXCLUSIVE lock on
+    # flow_logs, which does not conflict with inserts, so ingestion keeps writing
+    # while the partition is added; CREATE ... PARTITION OF would take ACCESS
+    # EXCLUSIVE and block all writes. LIKE ... INCLUDING ALL gives the child the
+    # columns, CHECK constraints, and indexes that ATTACH requires.
     defp create_partition(date) do
+      name = partition_name(date)
       lower = bound(date)
       upper = bound(Date.add(date, 1))
 
       {:ok, _} =
         Safe.unscoped()
+        |> Safe.query("CREATE TABLE IF NOT EXISTS #{name} (LIKE flow_logs INCLUDING ALL)", [])
+
+      {:ok, _} =
+        Safe.unscoped()
         |> Safe.query(
-          "CREATE TABLE IF NOT EXISTS #{partition_name(date)} PARTITION OF flow_logs " <>
+          "ALTER TABLE flow_logs ATTACH PARTITION #{name} " <>
             "FOR VALUES FROM ('#{lower}') TO ('#{upper}')",
           []
         )
@@ -78,10 +96,21 @@ defmodule Portal.Workers.PartitionFlowLogs do
       :ok
     end
 
+    # Detach the partition concurrently, then drop the now-standalone table.
+    # DETACH ... CONCURRENTLY takes only SHARE UPDATE EXCLUSIVE on flow_logs, so
+    # ingestion keeps writing and the accounts FK cascade is not blocked; a plain
+    # DROP would take ACCESS EXCLUSIVE. It cannot run inside a transaction, so this
+    # path is exercised on staging rather than in the sandboxed test suite.
     defp drop_partition(date) do
+      name = partition_name(date)
+
       {:ok, _} =
         Safe.unscoped()
-        |> Safe.query("DROP TABLE IF EXISTS #{partition_name(date)}", [])
+        |> Safe.query("ALTER TABLE flow_logs DETACH PARTITION #{name} CONCURRENTLY", [])
+
+      {:ok, _} =
+        Safe.unscoped()
+        |> Safe.query("DROP TABLE IF EXISTS #{name}", [])
 
       :ok
     end

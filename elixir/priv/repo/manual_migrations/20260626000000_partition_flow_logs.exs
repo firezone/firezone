@@ -13,8 +13,8 @@ defmodule Portal.Repo.Migrations.PartitionFlowLogs do
   launched), so there is no data to migrate. The columns, types, defaults, and
   NOT NULLs are copied from the existing table with `LIKE` so the shape stays
   byte-for-byte what reshape + the later column adds produced; only the
-  partitioning, primary key, CHECK constraints, and the single event_id index are
-  restated here (LIKE does not carry those over).
+  partitioning, primary key, foreign key, CHECK constraints, and the single
+  event_id index are restated here (LIKE does not carry those over).
 
   The primary key becomes the natural flow identity (see the `up` body) rather
   than (account_id, event_id, flow_start): it enforces flow uniqueness directly
@@ -23,10 +23,10 @@ defmodule Portal.Repo.Migrations.PartitionFlowLogs do
   the partition key in every UNIQUE and PRIMARY KEY constraint on a partitioned
   table; flow_start is immutable, so a row never needs to move between partitions.
 
-  The accounts foreign key is not recreated: on a partitioned table it would force
-  every partition create/drop to lock accounts to manage FK triggers, deadlocking
-  with account deletion. account_id stays a plain column and
-  Portal.Workers.DeleteAccount purges a deleted account's logs explicitly.
+  The accounts foreign key (ON DELETE CASCADE) is kept. Partition maintenance uses
+  ATTACH / DETACH CONCURRENTLY (see Portal.Workers.PartitionFlowLogs), which take a
+  SHARE UPDATE EXCLUSIVE lock on flow_logs rather than ACCESS EXCLUSIVE, so they do
+  not block the FK cascade's delete and cannot deadlock with account deletion.
 
   Daily partitions are pre-created here from a fixed lower bound (covering the
   existing fixtures and any already-issued authorizations) through a forward
@@ -59,12 +59,18 @@ defmodule Portal.Repo.Migrations.PartitionFlowLogs do
        role, protocol, inner_src_ip, inner_src_port)
     """)
 
-    # No foreign key to accounts. flow_logs already drops the policy / resource /
-    # actor FKs (a log must survive deletion of what it references), and on a
-    # partitioned table an FK forces every partition create/drop to lock the
-    # referenced table to manage its FK triggers, which deadlocks with account
-    # deletion. account_id is therefore a plain column; Portal.Workers.DeleteAccount
-    # purges a deleted account's flow logs explicitly instead of via cascade.
+    # Keep the accounts FK (ON DELETE CASCADE). On a partitioned table, adding or
+    # dropping a partition takes SHARE ROW EXCLUSIVE on accounts to manage the FK
+    # triggers, which would deadlock with account deletion if partition DDL also
+    # took ACCESS EXCLUSIVE on flow_logs. Portal.Workers.PartitionFlowLogs avoids
+    # that by using ATTACH / DETACH CONCURRENTLY, which take only SHARE UPDATE
+    # EXCLUSIVE on flow_logs and so do not block the cascade's delete.
+    execute("""
+    ALTER TABLE flow_logs
+    ADD CONSTRAINT flow_logs_account_id_fkey
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    """)
+
     execute(
       "ALTER TABLE flow_logs ADD CONSTRAINT flow_logs_role_chk " <>
         "CHECK (role IN ('initiator', 'responder'))"
