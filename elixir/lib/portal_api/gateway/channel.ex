@@ -107,6 +107,7 @@ defmodule PortalAPI.Gateway.Channel do
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
         iceless_capable: false
       )
+
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
@@ -478,7 +479,10 @@ defmodule PortalAPI.Gateway.Channel do
   # for `pa.id` in `authz_durability` was either removed (durability
   # confirmed/rejected) or replaced (new timer for the same authz_id),
   # so the generation no longer matches. In that case, we ignore.
-  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+  def handle_info(
+        {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
+        socket
+      ) do
     case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
       {^generation, _ref} ->
         Logger.warning(
@@ -728,6 +732,8 @@ defmodule PortalAPI.Gateway.Channel do
 
   defp init(socket, account, relays) do
     push(socket, "init", %{
+      flow_logs_api_url: flow_logs_api_url(),
+      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -744,6 +750,11 @@ defmodule PortalAPI.Gateway.Channel do
       }
     })
   end
+
+  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
+
+  defp flow_logs_upload_interval_secs,
+    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
 
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
@@ -970,7 +981,11 @@ defmodule PortalAPI.Gateway.Channel do
     generation = make_ref()
 
     timer_ref =
-      Process.send_after(self(), {:authz_durability_timeout, pa, generation}, @authz_durability_timeout)
+      Process.send_after(
+        self(),
+        {:authz_durability_timeout, pa, generation},
+        @authz_durability_timeout
+      )
 
     pending = socket.assigns[:authz_durability] || %{}
 

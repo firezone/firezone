@@ -190,7 +190,8 @@ defmodule PortalAPI.Client.Channel do
     {:noreply,
      assign(
        socket,
-       authorizations_cache: Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
+       authorizations_cache:
+         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
      )}
   end
 
@@ -521,7 +522,10 @@ defmodule PortalAPI.Client.Channel do
   # Authz durability timer fired — no confirm/reject arrived in time. Fail-closed.
   # See gateway channel's equivalent handler for the rationale on the
   # generation check.
-  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+  def handle_info(
+        {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
+        socket
+      ) do
     case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
       {^generation, _ref} ->
         Logger.warning(
@@ -591,10 +595,8 @@ defmodule PortalAPI.Client.Channel do
         fk_partitions: %{
           "policy_authorizations_account_id_fkey" => {:simple, :account_id, Portal.Account},
           "policy_authorizations_policy_id_fkey" => {:composite, :policy_id, Portal.Policy},
-          "policy_authorizations_resource_id_fkey" =>
-            {:composite, :resource_id, Portal.Resource},
-          "policy_authorizations_token_id_fkey" =>
-            {:composite, :token_id, Portal.ClientToken},
+          "policy_authorizations_resource_id_fkey" => {:composite, :resource_id, Portal.Resource},
+          "policy_authorizations_token_id_fkey" => {:composite, :token_id, Portal.ClientToken},
           "policy_authorizations_membership_id_fkey" =>
             {:composite_optional, :membership_id, Portal.Membership},
           "policy_authorizations_initiating_device_id_fkey" =>
@@ -1833,9 +1835,10 @@ defmodule PortalAPI.Client.Channel do
 
   defp init(socket, resources, relays) do
     push(socket, "init", %{
+      flow_logs_api_url: flow_logs_api_url(),
+      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
       resources: Views.Resource.render_many(resources, socket.assigns.session),
-      authorizations:
-        Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
+      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       # TODO: Re-enable after verifying compatibility with older clients
       # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
@@ -1859,6 +1862,11 @@ defmodule PortalAPI.Client.Channel do
     init(socket, socket.assigns.cache.connectable_resources, relays)
     track_presence(socket)
   end
+
+  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
+
+  defp flow_logs_upload_interval_secs,
+    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
@@ -2294,7 +2302,11 @@ defmodule PortalAPI.Client.Channel do
     generation = make_ref()
 
     timer_ref =
-      Process.send_after(self(), {:authz_durability_timeout, pa, generation}, @authz_durability_timeout)
+      Process.send_after(
+        self(),
+        {:authz_durability_timeout, pa, generation},
+        @authz_durability_timeout
+      )
 
     pending = socket.assigns[:authz_durability] || %{}
 

@@ -152,6 +152,26 @@ defmodule Portal.Config.Definitions do
   defconfig(:api_ingestion_capacity, :integer, default: 1)
 
   @doc """
+  How often, in seconds, clients and gateways upload batched flow logs to the ingest API.
+
+  The trade-off is request load on the API against how quickly flow logs become visible.
+  Set to `0` to disable flow log uploads entirely.
+  """
+  defconfig(:flow_logs_upload_interval_secs, :integer, default: 60)
+
+  @doc """
+  The base URL clients and gateways POST flow logs to.
+  """
+  defconfig(:flow_logs_api_url, :string,
+    default: "https://flow-api.firezone.dev/",
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:web_refill_rate, :integer, default: 10)

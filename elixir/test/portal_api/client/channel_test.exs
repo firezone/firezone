@@ -460,7 +460,9 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{
         resources: resources,
         interface: interface,
-        relays: relays
+        relays: relays,
+        flow_logs_api_url: "https://flow-api.firezone.dev/",
+        flow_logs_upload_interval_secs: 60
       }
 
       assert length(resources) == 4
