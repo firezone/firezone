@@ -1288,7 +1288,7 @@ fn update_candidate(
 /// without one.
 mod request {
     use super::*;
-    use rand::RngCore;
+    use rand::Rng;
     use stun_codec::Method;
 
     pub(super) struct MessagePrototype {
@@ -1352,7 +1352,7 @@ mod request {
         }
 
         /// Finalise an unauthenticated request (i.e. a `BINDING` request).
-        pub(super) fn seal(self, rng: &mut impl RngCore) -> Message<Attribute> {
+        pub(super) fn seal(self, rng: &mut impl Rng) -> Message<Attribute> {
             let mut message =
                 Message::new(MessageClass::Request, self.method, new_transaction_id(rng));
 
@@ -1366,7 +1366,7 @@ mod request {
         /// Finalise an authenticated request by attaching a long-term credential.
         pub(super) fn authenticate(
             self,
-            rng: &mut impl RngCore,
+            rng: &mut impl Rng,
             credentials: &Credentials,
         ) -> Message<Attribute> {
             let mut message =
@@ -1402,7 +1402,7 @@ mod request {
         ]
     }
 
-    fn new_transaction_id(rng: &mut impl RngCore) -> TransactionId {
+    fn new_transaction_id(rng: &mut impl Rng) -> TransactionId {
         let mut bytes = [0u8; 12];
         rng.fill_bytes(&mut bytes);
 

@@ -8,7 +8,7 @@ use std::{
 use bufferpool::BufferPool;
 use is::Candidate;
 use itertools::Itertools as _;
-use rand::{Rng, RngCore, seq::IteratorRandom as _};
+use rand::{Rng, seq::IteratorRandom as _};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
