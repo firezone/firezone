@@ -4,6 +4,7 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
+use base64::Engine as _;
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
@@ -21,27 +22,11 @@ pub struct FlowTracker {
     active_tcp_flows: HashMap<TcpFlowKey, TcpFlowValue>,
     active_udp_flows: HashMap<UdpFlowKey, UdpFlowValue>,
 
-    completed_flows: VecDeque<CompletedFlow>,
+    flow_records: VecDeque<FlowLogRecord>,
 
     enabled: bool,
     created_at: Instant,
     created_at_utc: DateTime<Utc>,
-}
-
-/// Additional properties we track for a client.
-#[derive(Debug, Clone, Default)]
-pub struct ClientProperties {
-    pub version: Option<String>,
-    pub device_serial: Option<String>,
-    pub device_uuid: Option<String>,
-    pub device_os_name: Option<String>,
-    pub device_os_version: Option<String>,
-    pub identifier_for_vendor: Option<String>,
-    pub firebase_installation_id: Option<String>,
-    pub auth_provider_id: Option<String>,
-    pub actor_name: Option<String>,
-    pub actor_id: Option<String>,
-    pub actor_email: Option<String>,
 }
 
 impl FlowTracker {
@@ -49,7 +34,7 @@ impl FlowTracker {
         Self {
             active_tcp_flows: Default::default(),
             active_udp_flows: Default::default(),
-            completed_flows: Default::default(),
+            flow_records: Default::default(),
             enabled,
             created_at: now,
             created_at_utc: Utc::now(),
@@ -117,8 +102,8 @@ impl FlowTracker {
         }
     }
 
-    pub fn poll_completed_flow(&mut self) -> Option<CompletedFlow> {
-        self.completed_flows.pop_front()
+    pub fn poll_flow_record(&mut self) -> Option<FlowLogRecord> {
+        self.flow_records.pop_front()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -128,22 +113,20 @@ impl FlowTracker {
             .active_tcp_flows
             .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) > FLOW_TIMEOUT)
         {
-            let flow = CompletedTcpFlow::new(key, value, now_utc);
+            tracing::debug!(?key, "Terminating TCP flow; timeout");
 
-            tracing::debug!(?flow, "Terminating TCP flow; timeout");
-
-            self.completed_flows.push_back(flow.into());
+            self.flow_records
+                .push_back(FlowLogRecord::tcp_close(key, value, now_utc));
         }
 
         for (key, value) in self
             .active_udp_flows
             .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) > FLOW_TIMEOUT)
         {
-            let flow = CompletedUdpFlow::new(key, value, now_utc);
+            tracing::debug!(?key, "Terminating UDP flow; timeout");
 
-            tracing::debug!(?flow, "Terminating UDP flow; timeout");
-
-            self.completed_flows.push_back(flow.into());
+            self.flow_records
+                .push_back(FlowLogRecord::udp_close(key, value, now_utc));
         }
 
         for (key, value) in self
@@ -151,11 +134,11 @@ impl FlowTracker {
             .extract_if(|_, value| value.fin_rx && value.fin_tx)
         {
             let end = value.last_packet;
-            let flow = CompletedTcpFlow::new(key, value, end);
 
-            tracing::debug!(?flow, "Terminating TCP flow; FIN sent & received");
+            tracing::debug!(?key, "Terminating TCP flow; FIN sent & received");
 
-            self.completed_flows.push_back(flow.into());
+            self.flow_records
+                .push_back(FlowLogRecord::tcp_close(key, value, end));
         }
     }
 
@@ -194,7 +177,7 @@ impl FlowTracker {
         match (src_proto, dst_proto) {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
                 let key = TcpFlowKey {
-                    client: client.id,
+                    client,
                     resource: resource.id,
                     src_ip,
                     dst_ip,
@@ -219,22 +202,11 @@ impl FlowTracker {
                             fin_tx: false,
                             fin_rx: false,
                             domain,
-                            resource_name: resource.name,
-                            resource_address: resource.address,
-                            client_version: client.version,
-                            device_os_name: client.device_os_name,
-                            device_os_version: client.device_os_version,
-                            device_serial: client.device_serial,
-                            device_uuid: client.device_uuid,
-                            identifier_for_vendor: client.identifier_for_vendor,
-                            firebase_installation_id: client.firebase_installation_id,
-                            actor_id: client.actor_id,
-                            actor_email: client.actor_email,
-                            auth_provider_id: client.auth_provider_id,
-                            actor_name: client.actor_name,
+                            ingest_token: resource.ingest_token,
                         };
 
-                        emit_tcp_flow_started(key, &value);
+                        self.flow_records
+                            .push_back(FlowLogRecord::tcp_open(&key, &value));
 
                         vacant.insert(value);
                     }
@@ -248,9 +220,8 @@ impl FlowTracker {
                             "Splitting existing TCP flow; context changed"
                         );
 
-                        let flow = CompletedTcpFlow::new(key, value, now_utc);
-
-                        self.completed_flows.push_back(flow.into());
+                        self.flow_records
+                            .push_back(FlowLogRecord::tcp_close(key, value, now_utc));
 
                         let value = TcpFlowValue {
                             start: now_utc,
@@ -260,22 +231,11 @@ impl FlowTracker {
                             fin_tx: false,
                             fin_rx: false,
                             domain,
-                            resource_name: resource.name,
-                            resource_address: resource.address,
-                            client_version: client.version,
-                            device_os_name: client.device_os_name,
-                            device_os_version: client.device_os_version,
-                            device_serial: client.device_serial,
-                            device_uuid: client.device_uuid,
-                            identifier_for_vendor: client.identifier_for_vendor,
-                            firebase_installation_id: client.firebase_installation_id,
-                            actor_id: client.actor_id,
-                            actor_email: client.actor_email,
-                            auth_provider_id: client.auth_provider_id,
-                            actor_name: client.actor_name,
+                            ingest_token: resource.ingest_token,
                         };
 
-                        emit_tcp_flow_started(key, &value);
+                        self.flow_records
+                            .push_back(FlowLogRecord::tcp_open(&key, &value));
 
                         self.active_tcp_flows.insert(key, value);
                     }
@@ -284,9 +244,8 @@ impl FlowTracker {
 
                         tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
 
-                        let flow = CompletedTcpFlow::new(key, value, now_utc);
-
-                        self.completed_flows.push_back(flow.into());
+                        self.flow_records
+                            .push_back(FlowLogRecord::tcp_close(key, value, now_utc));
 
                         let value = TcpFlowValue {
                             start: now_utc,
@@ -296,22 +255,11 @@ impl FlowTracker {
                             fin_tx: false,
                             fin_rx: false,
                             domain,
-                            resource_name: resource.name,
-                            resource_address: resource.address,
-                            client_version: client.version,
-                            device_os_name: client.device_os_name,
-                            device_os_version: client.device_os_version,
-                            device_serial: client.device_serial,
-                            device_uuid: client.device_uuid,
-                            identifier_for_vendor: client.identifier_for_vendor,
-                            firebase_installation_id: client.firebase_installation_id,
-                            actor_id: client.actor_id,
-                            actor_email: client.actor_email,
-                            auth_provider_id: client.auth_provider_id,
-                            actor_name: client.actor_name,
+                            ingest_token: resource.ingest_token,
                         };
 
-                        emit_tcp_flow_started(key, &value);
+                        self.flow_records
+                            .push_back(FlowLogRecord::tcp_open(&key, &value));
 
                         self.active_tcp_flows.insert(key, value);
                     }
@@ -326,18 +274,18 @@ impl FlowTracker {
 
                         if tcp_rst {
                             let (key, value) = occupied.remove_entry();
-                            let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                            tracing::debug!(?flow, "TCP flow completed on outbound RST");
+                            tracing::debug!(?key, "TCP flow completed on outbound RST");
 
-                            self.completed_flows.push_back(flow.into());
+                            self.flow_records
+                                .push_back(FlowLogRecord::tcp_close(key, value, now_utc));
                         }
                     }
                 };
             }
             (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
                 let key = UdpFlowKey {
-                    client: client.id,
+                    client,
                     resource: resource.id,
                     src_ip,
                     dst_ip,
@@ -355,22 +303,11 @@ impl FlowTracker {
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context,
                             domain,
-                            resource_name: resource.name,
-                            resource_address: resource.address,
-                            client_version: client.version,
-                            device_os_name: client.device_os_name,
-                            device_os_version: client.device_os_version,
-                            device_serial: client.device_serial,
-                            device_uuid: client.device_uuid,
-                            identifier_for_vendor: client.identifier_for_vendor,
-                            firebase_installation_id: client.firebase_installation_id,
-                            actor_id: client.actor_id,
-                            actor_email: client.actor_email,
-                            auth_provider_id: client.auth_provider_id,
-                            actor_name: client.actor_name,
+                            ingest_token: resource.ingest_token,
                         };
 
-                        emit_udp_flow_started(key, &value);
+                        self.flow_records
+                            .push_back(FlowLogRecord::udp_open(&key, &value));
 
                         vacant.insert(value);
                     }
@@ -378,15 +315,16 @@ impl FlowTracker {
                         let (key, value) = occupied.remove_entry();
                         let context_diff = FlowContextDiff::new(value.context, context);
 
-                        let flow = CompletedUdpFlow::new(key, value.clone(), now_utc);
-
                         tracing::debug!(
                             ?key,
                             ?context_diff,
                             "Splitting existing UDP flow; context changed"
                         );
 
-                        self.completed_flows.push_back(flow.into());
+                        let ingest_token = value.ingest_token.clone();
+
+                        self.flow_records
+                            .push_back(FlowLogRecord::udp_close(key, value, now_utc));
 
                         let value = UdpFlowValue {
                             start: now_utc,
@@ -394,22 +332,11 @@ impl FlowTracker {
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context,
                             domain,
-                            resource_name: value.resource_name,
-                            resource_address: value.resource_address,
-                            client_version: client.version,
-                            device_os_name: client.device_os_name,
-                            device_os_version: client.device_os_version,
-                            device_serial: client.device_serial,
-                            device_uuid: client.device_uuid,
-                            identifier_for_vendor: client.identifier_for_vendor,
-                            firebase_installation_id: client.firebase_installation_id,
-                            actor_id: client.actor_id,
-                            actor_email: client.actor_email,
-                            auth_provider_id: client.auth_provider_id,
-                            actor_name: client.actor_name,
+                            ingest_token,
                         };
 
-                        emit_udp_flow_started(key, &value);
+                        self.flow_records
+                            .push_back(FlowLogRecord::udp_open(&key, &value));
 
                         self.active_udp_flows.insert(key, value);
                     }
@@ -484,11 +411,11 @@ impl FlowTracker {
 
                         if tcp_rst {
                             let (key, value) = occupied.remove_entry();
-                            let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                            tracing::debug!(?flow, "TCP flow completed on inbound RST");
+                            tracing::debug!(?key, "TCP flow completed on inbound RST");
 
-                            self.completed_flows.push_back(flow.into());
+                            self.flow_records
+                                .push_back(FlowLogRecord::tcp_close(key, value, now_utc));
                         }
                     }
                 };
@@ -527,246 +454,211 @@ impl FlowTracker {
     }
 }
 
-#[derive(Debug, derive_more::From)]
-pub enum CompletedFlow {
-    Tcp(CompletedTcpFlow),
-    Udp(CompletedUdpFlow),
+/// The transport protocol of a flow, as reported to the ingest API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlowProtocol {
+    Tcp,
+    Udp,
 }
 
+impl FlowProtocol {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FlowProtocol::Tcp => "tcp",
+            FlowProtocol::Udp => "udp",
+        }
+    }
+}
+
+/// The closing half of a flow log, present only once the flow has ended.
+///
+/// Mirrors the portal's "close complete" invariant: either all of these are
+/// reported together (a "completed" record) or none are (an "open" record).
 #[derive(Debug)]
-pub struct CompletedTcpFlow {
-    pub client_id: ClientId,
-    pub client_version: Option<String>,
-
-    pub device_os_name: Option<String>,
-    pub device_os_version: Option<String>,
-    pub device_serial: Option<String>,
-    pub device_uuid: Option<String>,
-    pub device_identifier_for_vendor: Option<String>,
-    pub device_firebase_installation_id: Option<String>,
-
-    pub auth_provider_id: Option<String>,
-    pub actor_name: Option<String>,
-    pub actor_id: Option<String>,
-    pub actor_email: Option<String>,
-
-    pub resource_id: ResourceId,
-    pub resource_name: String,
-    pub resource_address: String,
-
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
+pub struct FlowClose {
+    pub flow_end: DateTime<Utc>,
     pub last_packet: DateTime<Utc>,
-
-    pub inner_src_ip: IpAddr,
-    pub inner_dst_ip: IpAddr,
-    pub inner_src_port: u16,
-    pub inner_dst_port: u16,
-    pub inner_domain: Option<DomainName>,
-
-    pub outer_src_ip: IpAddr,
-    pub outer_dst_ip: IpAddr,
-    pub outer_src_port: u16,
-    pub outer_dst_port: u16,
-
     pub rx_packets: u64,
     pub tx_packets: u64,
     pub rx_bytes: u64,
     pub tx_bytes: u64,
 }
 
+/// A single flow log record, shaped like the portal's `/ingestion/flow_logs` body.
+///
+/// `ingest_token` is the portal's opaque attribution token (echoed to the API and
+/// decodable for local observability via [`decode_attribution`]). The remaining
+/// fields are the network data the data plane observes. `close` is `None` for an
+/// "open" (started) record and `Some` once the flow has ended ("completed").
 #[derive(Debug)]
-pub struct CompletedUdpFlow {
-    pub client_id: ClientId,
-    pub client_version: Option<String>,
+pub struct FlowLogRecord {
+    pub ingest_token: Option<String>,
+    pub protocol: FlowProtocol,
 
+    pub inner_src_ip: IpAddr,
+    pub inner_src_port: u16,
+    pub inner_dst_ip: IpAddr,
+    pub inner_dst_port: u16,
+    pub domain: Option<DomainName>,
+
+    pub outer_src_ip: IpAddr,
+    pub outer_src_port: u16,
+    pub outer_dst_ip: IpAddr,
+    pub outer_dst_port: u16,
+
+    pub flow_start: DateTime<Utc>,
+    pub close: Option<FlowClose>,
+}
+
+impl FlowLogRecord {
+    fn tcp_open(key: &TcpFlowKey, value: &TcpFlowValue) -> Self {
+        Self::new(
+            FlowProtocol::Tcp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token.clone(),
+            value.domain.clone(),
+            value.context,
+            value.start,
+            None,
+        )
+    }
+
+    fn tcp_close(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
+        let close = FlowClose::from_stats(&value.stats, end, value.last_packet);
+
+        Self::new(
+            FlowProtocol::Tcp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token,
+            value.domain,
+            value.context,
+            value.start,
+            Some(close),
+        )
+    }
+
+    fn udp_open(key: &UdpFlowKey, value: &UdpFlowValue) -> Self {
+        Self::new(
+            FlowProtocol::Udp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token.clone(),
+            value.domain.clone(),
+            value.context,
+            value.start,
+            None,
+        )
+    }
+
+    fn udp_close(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
+        let close = FlowClose::from_stats(&value.stats, end, value.last_packet);
+
+        Self::new(
+            FlowProtocol::Udp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token,
+            value.domain,
+            value.context,
+            value.start,
+            Some(close),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        protocol: FlowProtocol,
+        inner_src_ip: IpAddr,
+        inner_src_port: u16,
+        inner_dst_ip: IpAddr,
+        inner_dst_port: u16,
+        ingest_token: Option<String>,
+        domain: Option<DomainName>,
+        context: FlowContext,
+        flow_start: DateTime<Utc>,
+        close: Option<FlowClose>,
+    ) -> Self {
+        Self {
+            ingest_token,
+            protocol,
+            inner_src_ip,
+            inner_src_port,
+            inner_dst_ip,
+            inner_dst_port,
+            domain,
+            outer_src_ip: context.src_ip,
+            outer_src_port: context.src_port,
+            outer_dst_ip: context.dst_ip,
+            outer_dst_port: context.dst_port,
+            flow_start,
+            close,
+        }
+    }
+}
+
+impl FlowClose {
+    fn from_stats(stats: &FlowStats, end: DateTime<Utc>, last_packet: DateTime<Utc>) -> Self {
+        Self {
+            flow_end: end,
+            last_packet,
+            rx_packets: stats.rx_packets,
+            tx_packets: stats.tx_packets,
+            rx_bytes: stats.rx_bytes,
+            tx_bytes: stats.tx_bytes,
+        }
+    }
+}
+
+/// The attribution claims carried inside an ingest token's base64url JSON payload.
+///
+/// The Gateway does not verify the token's signature (it lacks the account signing
+/// key); it decodes the JWT payload purely to enrich local flow-log observability.
+/// The token bookkeeping claims (`account_id`, `iat`, `exp`) are intentionally omitted.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct Attribution {
+    pub role: Option<String>,
+    pub device_id: Option<String>,
+    pub policy_authorization_id: Option<String>,
+    pub policy_id: Option<String>,
+    pub resource_id: Option<String>,
+    pub resource_name: Option<String>,
+    pub resource_address: Option<String>,
+    pub actor_id: Option<String>,
+    pub actor_email: Option<String>,
+    pub actor_name: Option<String>,
+    pub auth_provider_id: Option<String>,
+    pub authorized_at: Option<String>,
+    pub authorization_expires_at: Option<String>,
+    pub client_version: Option<String>,
     pub device_os_name: Option<String>,
     pub device_os_version: Option<String>,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
     pub device_identifier_for_vendor: Option<String>,
     pub device_firebase_installation_id: Option<String>,
-
-    pub auth_provider_id: Option<String>,
-    pub actor_name: Option<String>,
-    pub actor_id: Option<String>,
-    pub actor_email: Option<String>,
-
-    pub resource_id: ResourceId,
-    pub resource_name: String,
-    pub resource_address: String,
-
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
-    pub last_packet: DateTime<Utc>,
-
-    pub inner_src_ip: IpAddr,
-    pub inner_dst_ip: IpAddr,
-    pub inner_src_port: u16,
-    pub inner_dst_port: u16,
-    pub inner_domain: Option<DomainName>,
-
-    pub outer_src_ip: IpAddr,
-    pub outer_dst_ip: IpAddr,
-    pub outer_src_port: u16,
-    pub outer_dst_port: u16,
-
-    pub rx_packets: u64,
-    pub tx_packets: u64,
-    pub rx_bytes: u64,
-    pub tx_bytes: u64,
 }
 
-impl CompletedTcpFlow {
-    fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
-        Self {
-            client_id: key.client,
-            client_version: value.client_version,
-            device_os_name: value.device_os_name,
-            device_os_version: value.device_os_version,
-            device_serial: value.device_serial,
-            device_uuid: value.device_uuid,
-            device_identifier_for_vendor: value.identifier_for_vendor,
-            device_firebase_installation_id: value.firebase_installation_id,
-            actor_id: value.actor_id,
-            actor_email: value.actor_email,
-            auth_provider_id: value.auth_provider_id,
-            actor_name: value.actor_name,
-            resource_id: key.resource,
-            resource_name: value.resource_name,
-            resource_address: value.resource_address,
-            start: value.start,
-            end,
-            last_packet: value.last_packet,
-            inner_src_ip: key.src_ip,
-            inner_dst_ip: key.dst_ip,
-            inner_src_port: key.src_port,
-            inner_dst_port: key.dst_port,
-            inner_domain: value.domain,
-            outer_src_ip: value.context.src_ip,
-            outer_dst_ip: value.context.dst_ip,
-            outer_src_port: value.context.src_port,
-            outer_dst_port: value.context.dst_port,
-            rx_packets: value.stats.rx_packets,
-            tx_packets: value.stats.tx_packets,
-            rx_bytes: value.stats.rx_bytes,
-            tx_bytes: value.stats.tx_bytes,
-        }
-    }
-}
+/// Decodes the attribution claims of an ingest token without verifying its signature.
+///
+/// The token is an HS256 JWT (`base64url(header).base64url(payload).base64url(sig)`);
+/// only the (portal-trusted) payload segment is read.
+pub fn decode_attribution(token: &str) -> Option<Attribution> {
+    let payload = token.split('.').nth(1)?;
+    let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
 
-impl CompletedUdpFlow {
-    fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
-        Self {
-            client_id: key.client,
-            client_version: value.client_version,
-            device_os_name: value.device_os_name,
-            device_os_version: value.device_os_version,
-            device_serial: value.device_serial,
-            device_uuid: value.device_uuid,
-            device_identifier_for_vendor: value.identifier_for_vendor,
-            device_firebase_installation_id: value.firebase_installation_id,
-            actor_id: value.actor_id,
-            actor_email: value.actor_email,
-            auth_provider_id: value.auth_provider_id,
-            actor_name: value.actor_name,
-            resource_id: key.resource,
-            resource_name: value.resource_name,
-            resource_address: value.resource_address,
-            start: value.start,
-            end,
-            last_packet: value.last_packet,
-            inner_src_ip: key.src_ip,
-            inner_dst_ip: key.dst_ip,
-            inner_src_port: key.src_port,
-            inner_dst_port: key.dst_port,
-            inner_domain: value.domain,
-            outer_src_ip: value.context.src_ip,
-            outer_dst_ip: value.context.dst_ip,
-            outer_src_port: value.context.src_port,
-            outer_dst_port: value.context.dst_port,
-            rx_packets: value.stats.rx_packets,
-            tx_packets: value.stats.tx_packets,
-            rx_bytes: value.stats.rx_bytes,
-            tx_bytes: value.stats.tx_bytes,
-        }
-    }
-}
-
-fn emit_tcp_flow_started(key: TcpFlowKey, value: &TcpFlowValue) {
-    tracing::trace!(
-        target: "flow_logs::tcp",
-
-        client_id = %key.client,
-        client_version = value.client_version.as_ref().map(tracing::field::display),
-
-        device_os_name = value.device_os_name.as_ref().map(tracing::field::display),
-        device_os_version = value.device_os_version.as_ref().map(tracing::field::display),
-        device_serial = value.device_serial.as_ref().map(tracing::field::display),
-        device_uuid = value.device_uuid.as_ref().map(tracing::field::display),
-        device_identifier_for_vendor = value.identifier_for_vendor.as_ref().map(tracing::field::display),
-        device_firebase_installation_id = value.firebase_installation_id.as_ref().map(tracing::field::display),
-
-        auth_provider_id = value.auth_provider_id.as_ref().map(tracing::field::display),
-        actor_name = value.actor_name.as_ref().map(tracing::field::display),
-        actor_id = value.actor_id.as_ref().map(tracing::field::display),
-        actor_email = value.actor_email.as_ref().map(tracing::field::display),
-
-        resource_id = %key.resource,
-        resource_name = %value.resource_name,
-        resource_address = %value.resource_address,
-        start = ?value.start,
-
-        inner_src_ip = %key.src_ip,
-        inner_dst_ip = %key.dst_ip,
-        inner_src_port = %key.src_port,
-        inner_dst_port = %key.dst_port,
-        inner_domain = value.domain.as_ref().map(tracing::field::display),
-
-        outer_src_ip = %value.context.src_ip,
-        outer_dst_ip = %value.context.dst_ip,
-        outer_src_port = %value.context.src_port,
-        outer_dst_port = %value.context.dst_port,
-        "TCP flow started"
-    );
-}
-
-fn emit_udp_flow_started(key: UdpFlowKey, value: &UdpFlowValue) {
-    tracing::trace!(
-        target: "flow_logs::udp",
-
-        client_id = %key.client,
-        client_version = value.client_version.as_ref().map(tracing::field::display),
-
-        device_os_name = value.device_os_name.as_ref().map(tracing::field::display),
-        device_os_version = value.device_os_version.as_ref().map(tracing::field::display),
-        device_serial = value.device_serial.as_ref().map(tracing::field::display),
-        device_uuid = value.device_uuid.as_ref().map(tracing::field::display),
-        device_identifier_for_vendor = value.identifier_for_vendor.as_ref().map(tracing::field::display),
-        device_firebase_installation_id = value.firebase_installation_id.as_ref().map(tracing::field::display),
-
-        auth_provider_id = value.auth_provider_id.as_ref().map(tracing::field::display),
-        actor_name = value.actor_name.as_ref().map(tracing::field::display),
-        actor_id = value.actor_id.as_ref().map(tracing::field::display),
-        actor_email = value.actor_email.as_ref().map(tracing::field::display),
-
-        resource_id = %key.resource,
-        resource_name = %value.resource_name,
-        resource_address = %value.resource_address,
-        start = ?value.start,
-
-        inner_src_ip = %key.src_ip,
-        inner_dst_ip = %key.dst_ip,
-        inner_src_port = %key.src_port,
-        inner_dst_port = %key.dst_port,
-        inner_domain = value.domain.as_ref().map(tracing::field::display),
-
-        outer_src_ip = %value.context.src_ip,
-        outer_dst_ip = %value.context.dst_ip,
-        outer_src_port = %value.context.src_port,
-        outer_dst_port = %value.context.dst_port,
-        "UDP flow started"
-    );
+    serde_json::from_slice(&json).ok()
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -798,27 +690,14 @@ struct TcpFlowValue {
 
     domain: Option<DomainName>,
 
-    resource_name: String,
-    resource_address: String,
-
-    client_version: Option<String>,
-    device_serial: Option<String>,
-    device_uuid: Option<String>,
-    device_os_name: Option<String>,
-    device_os_version: Option<String>,
-    identifier_for_vendor: Option<String>,
-    firebase_installation_id: Option<String>,
-
-    auth_provider_id: Option<String>,
-    actor_name: Option<String>,
-    actor_id: Option<String>,
-    actor_email: Option<String>,
+    /// The portal's opaque per-flow ingest token (carries the attribution).
+    ingest_token: Option<String>,
 
     fin_tx: bool,
     fin_rx: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
@@ -827,21 +706,8 @@ struct UdpFlowValue {
 
     domain: Option<DomainName>,
 
-    resource_name: String,
-    resource_address: String,
-
-    client_version: Option<String>,
-    device_serial: Option<String>,
-    device_uuid: Option<String>,
-    device_os_name: Option<String>,
-    device_os_version: Option<String>,
-    identifier_for_vendor: Option<String>,
-    firebase_installation_id: Option<String>,
-
-    auth_provider_id: Option<String>,
-    actor_name: Option<String>,
-    actor_id: Option<String>,
-    actor_email: Option<String>,
+    /// The portal's opaque per-flow ingest token (carries the attribution).
+    ingest_token: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -936,28 +802,13 @@ pub mod inbound_wg {
 
     use super::*;
 
-    pub fn record_client(cid: ClientId, props: ClientProperties) {
-        update_current_flow_inbound_wireguard(|wg| {
-            wg.client.replace(Client {
-                id: cid,
-                version: props.version,
-                device_os_name: props.device_os_name,
-                device_os_version: props.device_os_version,
-                device_serial: props.device_serial,
-                actor_id: props.actor_id,
-                actor_email: props.actor_email,
-                auth_provider_id: props.auth_provider_id,
-                actor_name: props.actor_name,
-                device_uuid: props.device_uuid,
-                identifier_for_vendor: props.identifier_for_vendor,
-                firebase_installation_id: props.firebase_installation_id,
-            })
-        });
+    pub fn record_client(cid: ClientId) {
+        update_current_flow_inbound_wireguard(|wg| wg.client.replace(cid));
     }
 
-    pub fn record_resource(id: ResourceId, name: String, address: String) {
+    pub fn record_resource(id: ResourceId, ingest_token: Option<String>) {
         update_current_flow_inbound_wireguard(|wg| {
-            wg.resource.replace(Resource { id, name, address })
+            wg.resource.replace(Resource { id, ingest_token })
         });
     }
 
@@ -1056,7 +907,7 @@ enum FlowData {
 struct InboundWireGuard {
     outer: OuterFlow<SocketAddr>,
     inner: Option<InnerFlow>,
-    client: Option<Client>,
+    client: Option<ClientId>,
     resource: Option<Resource>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
@@ -1092,30 +943,9 @@ struct InnerFlow {
 }
 
 #[derive(Debug)]
-struct Client {
-    id: ClientId,
-
-    version: Option<String>,
-
-    device_serial: Option<String>,
-    device_uuid: Option<String>,
-    device_os_name: Option<String>,
-    device_os_version: Option<String>,
-
-    identifier_for_vendor: Option<String>,
-    firebase_installation_id: Option<String>,
-
-    auth_provider_id: Option<String>,
-    actor_name: Option<String>,
-    actor_id: Option<String>,
-    actor_email: Option<String>,
-}
-
-#[derive(Debug)]
 struct Resource {
     id: ResourceId,
-    name: String,
-    address: String,
+    ingest_token: Option<String>,
 }
 
 impl From<&IpPacket> for InnerFlow {
@@ -1160,5 +990,22 @@ mod tests {
             "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
             format!("{diff:?}")
         );
+    }
+
+    #[test]
+    fn decode_attribution_reads_jwt_payload_segment() {
+        // An HS256 JWT is `header.payload.signature`; attribution is the middle
+        // segment, and the (untrusted) signature is never inspected.
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            r#"{"policy_authorization_id":"pa-1","actor_email":"a@b.c","role":"responder"}"#,
+        );
+        let token = format!("ignored-header.{payload}.ignored-signature");
+
+        let attr = decode_attribution(&token).expect("decodes attribution");
+
+        assert_eq!(attr.policy_authorization_id.as_deref(), Some("pa-1"));
+        assert_eq!(attr.actor_email.as_deref(), Some("a@b.c"));
+        assert_eq!(attr.role.as_deref(), Some("responder"));
+        assert!(attr.resource_id.is_none());
     }
 }

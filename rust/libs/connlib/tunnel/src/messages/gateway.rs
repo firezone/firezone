@@ -135,32 +135,6 @@ pub struct Client {
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
-    #[serde(default)]
-    pub version: Option<String>,
-    #[serde(default)]
-    pub device_os_name: Option<String>,
-    #[serde(default)]
-    pub device_os_version: Option<String>,
-    #[serde(default)]
-    pub device_serial: Option<String>,
-    #[serde(default)]
-    pub device_uuid: Option<String>,
-    #[serde(default)]
-    pub identifier_for_vendor: Option<String>,
-    #[serde(default)]
-    pub firebase_installation_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct Subject {
-    #[serde(default)]
-    pub auth_provider_id: Option<String>,
-    #[serde(default)]
-    pub actor_name: Option<String>,
-    #[serde(default)]
-    pub actor_id: Option<String>,
-    #[serde(default)]
-    pub actor_email: Option<String>,
 }
 
 #[serde_as]
@@ -172,12 +146,20 @@ pub struct AuthorizeFlow {
     pub resource: ResourceDescription,
     pub gateway_ice_credentials: IceCredentials,
     pub client: Client,
-    #[serde(default)]
-    pub subject: Subject,
     pub client_ice_credentials: IceCredentials,
 
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
+
+    /// Per-authorization ingest token (HS256 JWT) minted by the portal.
+    ///
+    /// Carries the attribution snapshot (account, policy authorization, policy,
+    /// resource, actor and the reporting device + role) for the flow logs. The
+    /// Gateway sends it as the `Authorization: Bearer` credential when uploading a
+    /// batch of flow logs for this authorization; it can also decode the (unverified)
+    /// JWT payload for local observability. See [`crate::gateway::flow_tracker`].
+    #[serde(default)]
+    pub flow_logs_ingest_token: Option<String>,
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
