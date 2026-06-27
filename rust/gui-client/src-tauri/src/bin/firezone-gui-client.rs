@@ -77,8 +77,8 @@ fn try_main(
     telemetry: Arc<Mutex<Telemetry>>,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
-    if cli.skip_tunnel_pipe_owner_check {
-        firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
+    if cli.skip_peer_verification {
+        firezone_gui_client::ipc::skip_peer_verification();
     }
 
     #[cfg(debug_assertions)]
@@ -314,12 +314,12 @@ struct Cli {
     )]
     no_telemetry: bool,
 
-    /// Windows-only smoke-test escape hatch: skip the LocalSystem owner check
-    /// on the Tunnel named pipe. Only exists in debug builds, so release
-    /// binaries can't disable the check.
+    /// Skip verifying the identity of the Tunnel service we connect to (the
+    /// pipe owner on Windows). Local-dev / smoke-test escape hatch. Only exists
+    /// in debug builds, so release binaries can't disable the check.
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
-    skip_tunnel_pipe_owner_check: bool,
+    skip_peer_verification: bool,
 
     /// Decouple sign-in from the portal: mint a fake session/token on the fly
     /// (never persisted) instead of opening the browser. Pairs with
