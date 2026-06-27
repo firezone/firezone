@@ -122,6 +122,22 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The external URL the REST API will be accessible at.
+
+  Advertised as the server URL in the OpenAPI spec and SwaggerUI. If not set,
+  it falls back to `api_external_url`.
+  """
+
+  defconfig(:rest_api_external_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   The API rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:api_refill_rate, :integer, default: 10)
