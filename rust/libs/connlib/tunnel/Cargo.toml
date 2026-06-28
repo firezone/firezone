@@ -31,7 +31,6 @@ futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
-hex = { workspace = true }
 http-client = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
@@ -64,17 +63,12 @@ tun = { workspace = true }
 visibility = { workspace = true, optional = true }
 
 [dev-dependencies]
-firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
-l3-tcp = { workspace = true }
-proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
-sha2 = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
-tokio = { workspace = true, features = ["process", "test-util"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
 
 [[bench]]
 name = "divan"
