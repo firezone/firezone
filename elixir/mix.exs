@@ -150,7 +150,7 @@ defmodule Portal.MixProject do
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
       {:remixicons,
        github: "Remix-Design/RemixIcon",
        sparse: "icons",
