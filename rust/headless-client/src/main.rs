@@ -2,6 +2,9 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{

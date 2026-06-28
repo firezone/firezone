@@ -35,6 +35,7 @@ hickory-resolver = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
+mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
@@ -58,6 +59,7 @@ url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 nix = { workspace = true, features = ["user"] }
 
 [dev-dependencies]

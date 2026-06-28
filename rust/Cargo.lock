@@ -185,7 +185,7 @@ dependencies = [
  "objc2-foundation",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "x11rb",
 ]
 
@@ -1237,6 +1237,7 @@ dependencies = [
  "jni 0.22.4",
  "libc",
  "logging",
+ "mimalloc",
  "opentelemetry",
  "oslog",
  "otel-instruments",
@@ -2316,6 +2317,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "logging",
+ "mimalloc",
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2369,6 +2371,7 @@ dependencies = [
  "ksni",
  "libc",
  "logging",
+ "mimalloc",
  "native-dialog",
  "nix 0.31.3",
  "notify-rust",
@@ -2436,6 +2439,7 @@ dependencies = [
  "ip_network",
  "known-dirs",
  "logging",
+ "mimalloc",
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2510,6 +2514,7 @@ dependencies = [
  "futures",
  "hex",
  "logging",
+ "mimalloc",
  "mio",
  "once_cell",
  "opentelemetry",
@@ -4177,7 +4182,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.3",
+]
+
+[[package]]
+name = "libmimalloc-sys"
+version = "0.1.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -4336,6 +4350,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "mimalloc"
+version = "0.1.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d4139bb28d14ad1facf21d5eb8825051b326e172d216b39f6d31df53cc97862"
+dependencies = [
+ "libmimalloc-sys",
 ]
 
 [[package]]
@@ -5659,7 +5682,7 @@ dependencies = [
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6016,7 +6039,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6073,7 +6096,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7540,7 +7563,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
