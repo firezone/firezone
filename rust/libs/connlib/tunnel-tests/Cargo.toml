@@ -10,6 +10,7 @@ anyhow = { workspace = true }
 bufferpool = { workspace = true }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
+coverage = { workspace = true, features = ["enabled"] }
 derive_more = { workspace = true, features = ["debug"] }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }

@@ -97,6 +97,7 @@ impl GatewayState {
 
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
+        coverage::cov!("tunnel.graceful_shutdown");
 
         self.peers.clear();
         self.node.close_all(p2p_control::goodbye(), now);

@@ -207,6 +207,7 @@ impl DeviceStubResolver {
         }
 
         tracing::debug!(%resource_id, %domain, ?result, "Device FQDN resolved");
+        coverage::cov!("dns.device_fqdn_resolved");
 
         if let Ok((ipv4, ipv6)) = result {
             self.resolved.insert(

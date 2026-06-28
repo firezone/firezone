@@ -10,7 +10,7 @@
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-use crate::{coverage::Coverage, flux_capacitor::FluxCapacitor};
+use crate::flux_capacitor::FluxCapacitor;
 use assertions::PanicOnErrorEvents;
 use core::fmt;
 use proptest::{
@@ -39,7 +39,7 @@ mod assertions;
 mod buffered_transmits;
 mod coin;
 mod composite_strategy;
-mod coverage;
+mod coverage_check;
 mod dns_records;
 mod dns_server_resource;
 mod echo;
@@ -65,8 +65,8 @@ type QueryId = u16;
 
 #[test]
 fn tunnel_test() {
-    let run_coverage = coverage::run_coverage();
-    let harvest_target = coverage::harvest_target();
+    let enforce_coverage = coverage_check::enforce_coverage();
+    let harvest_target = coverage_check::harvest_target();
 
     let mut config = Config {
         source_file: Some(file!()),
@@ -78,8 +78,9 @@ fn tunnel_test() {
     // any newly-discovered seed to stderr tagged with the pattern being
     // hunted, where the driver script can pick it up.
     if let Some(target) = harvest_target {
-        config.failure_persistence =
-            Some(Box::new(coverage::HarvestPersistence::for_target(target)));
+        config.failure_persistence = Some(Box::new(
+            coverage_check::HarvestPersistence::for_target(target),
+        ));
     }
 
     let test_index = AtomicU32::new(0);
@@ -107,16 +108,15 @@ fn tunnel_test() {
     let result = test_runner.run(
         &strategy,
         |(mut ref_state, transitions, mut seen_counter)| {
-            let case_coverage = harvest_target.map(|_| Coverage::new());
+            // In harvest mode each case must be judged on its own — including
+            // every shrink re-run — so clear the global marker counters first.
+            if harvest_target.is_some() {
+                coverage_check::reset_markers();
+            }
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             flux_capacitor.reset();
 
-            let _guard = init_logging(
-                flux_capacitor.clone(),
-                test_index,
-                run_coverage.clone(),
-                case_coverage.clone(),
-            );
+            let _guard = init_logging(flux_capacitor.clone(), test_index);
 
             std::fs::write(
                 format!("testcases/{test_index}.state"),
@@ -171,11 +171,10 @@ fn tunnel_test() {
                 // pattern has fired so proptest shrinks and persists the
                 // seed via `HarvestPersistence`.
                 if let Some(target) = harvest_target
-                    && let Some(cov) = case_coverage.as_ref()
-                    && cov.seen(target)
+                    && coverage_check::marker_hit(target)
                 {
                     return Err(TestCaseError::fail(format!(
-                        "harvest: pattern `{target}` fired"
+                        "harvest: marker `{target}` fired"
                     )));
                 }
             }
@@ -188,8 +187,8 @@ fn tunnel_test() {
 
     match result {
         Ok(()) => {
-            if let Some(cov) = &run_coverage {
-                cov.assert_all_patterns_seen();
+            if enforce_coverage {
+                coverage_check::assert_all_markers_hit();
             }
         }
         Err(e) => match e {
@@ -266,8 +265,6 @@ where
 fn init_logging(
     flux_capacitor: FluxCapacitor,
     test_index: u32,
-    run_coverage: Option<Coverage>,
-    case_coverage: Option<Coverage>,
 ) -> tracing::subscriber::DefaultGuard {
     tracing_subscriber::registry()
         .with(
@@ -283,26 +280,12 @@ fn init_logging(
                 .with_ansi(false)
                 .with_filter(log_file_filter()),
         )
-        .with(run_coverage.map(|cov| {
-            tracing_subscriber::fmt::layer()
-                .with_writer(cov)
-                .with_ansi(false)
-                .with_filter(log_file_filter())
-        }))
-        .with(case_coverage.map(|cov| {
-            tracing_subscriber::fmt::layer()
-                .with_writer(cov)
-                .with_ansi(false)
-                .with_filter(log_file_filter())
-        }))
         .with(PanicOnErrorEvents::new(test_index))
         .set_default()
 }
 
 fn log_file_filter() -> EnvFilter {
-    let default_filter =
-        "debug,tunnel=trace,tunnel_tests=debug,tunnel_test_coverage=trace,ip_packet=trace"
-            .to_owned();
+    let default_filter = "debug,tunnel=trace,tunnel_tests=debug,ip_packet=trace".to_owned();
     let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
 
     EnvFilter::new([default_filter, env_filter].join(","))

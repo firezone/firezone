@@ -116,6 +116,7 @@ fn is_trigger_allowed(filter: &FilterEngine, trigger: &IpPacket) -> bool {
     #[cfg(any(test, feature = "test-util"))]
     if crate::malicious_behaviour::ignore_resource_filter() {
         tracing::debug!("Malicious client: ignoring resource filter");
+        coverage::cov!("client.malicious_ignore_filter");
         return true;
     }
 

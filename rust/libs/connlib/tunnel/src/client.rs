@@ -435,6 +435,7 @@ impl ClientState {
 
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
+        coverage::cov!("tunnel.graceful_shutdown");
 
         self.clients.clear();
         self.gateways.clear();
@@ -1067,6 +1068,7 @@ impl ClientState {
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
+        coverage::cov!("client.device_access_authorized");
 
         let pending_device_access = self.pending_device_access.remove(&cid);
 
@@ -1376,24 +1378,19 @@ impl ClientState {
             .dns_routing_table
             .matches(destination, Ok(protocol))
             .map(|e| (e.resource_id, &e.domain))
-            .inspect(
-                |(rid, domain)| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, %domain, "Packet for DNS resource"),
-            )
+            .inspect(|_| coverage::cov!("client.packet_dns_resource"))
             .map(|(rid, _)| rid);
 
         let maybe_cidr_resource_id = self
             .cidr_routing_table
             .matches(destination, Ok(protocol))
             .map(|e| e.resource_id)
-            .inspect(
-                |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for CIDR resource"),
-            );
+            .inspect(|_| coverage::cov!("client.packet_cidr_resource"));
 
-        let maybe_internet_resource = self.active_internet_resource()
+        let maybe_internet_resource = self
+            .active_internet_resource()
             .map(|r| r.id)
-            .inspect(|rid| {
-                tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for Internet resource")
-            });
+            .inspect(|_| coverage::cov!("client.packet_internet_resource"));
 
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
@@ -2252,6 +2249,7 @@ impl ClientState {
 
             if resource_addressability_changed {
                 tracing::debug!(rid = %new_resource.id(), "Resource is known but its addressability changed");
+                coverage::cov!("client.resource_addressability_changed");
 
                 self.remove_resource(resource.id(), now);
             }
@@ -2629,6 +2627,7 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
     #[cfg(any(test, feature = "test-util"))]
     if crate::malicious_behaviour::ignore_resource_filter() {
         tracing::debug!("Malicious client: ignoring resource filter");
+        coverage::cov!("client.malicious_ignore_filter");
         return true;
     }
 

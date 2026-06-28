@@ -1,0 +1,13 @@
+[package]
+name = "coverage"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[features]
+# Turns the markers into real counters. Off by default so production builds pay
+# nothing; the `tunnel-tests` harness enables it.
+enabled = []
+
+[lints]
+workspace = true

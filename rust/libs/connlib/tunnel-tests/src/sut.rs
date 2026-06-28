@@ -284,6 +284,7 @@ impl TunnelTest {
                 payload,
                 ..
             } => {
+                coverage::cov!("transition.icmp");
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
                 let packet = ip_packet::make::icmp_request_packet(
@@ -308,6 +309,7 @@ impl TunnelTest {
                 dport,
                 payload,
             } => {
+                coverage::cov!("transition.udp");
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
                 let packet =
@@ -326,6 +328,7 @@ impl TunnelTest {
                 sport,
                 dport,
             } => {
+                coverage::cov!("transition.tcp");
                 let dst = address_from_destination(&dst, &state, &src, client_id);
 
                 state
@@ -335,6 +338,7 @@ impl TunnelTest {
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
             Transition::SendDnsQueries(queries) => {
+                coverage::cov!("transition.dns_queries");
                 for (
                     client_id,
                     DnsQuery {

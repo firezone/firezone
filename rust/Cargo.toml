@@ -12,6 +12,7 @@ members = [
     "libs/client-shared",
     "libs/connlib/bootstrap-dns-client",
     "libs/connlib/bufferpool",
+    "libs/connlib/coverage",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
     "libs/connlib/etc-hosts-dns-client",
@@ -80,6 +81,7 @@ chrono = { version = "0.4.44", default-features = false, features = ["std", "clo
 clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
+coverage = { path = "libs/connlib/coverage" }
 crossbeam-queue = "0.3.12"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }

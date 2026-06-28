@@ -76,6 +76,7 @@ impl ResourceStubResolver {
 
         if !records.is_empty() {
             tracing::info!(count = %records.len(), "Re-seeding records for DNS resources");
+            coverage::cov!("dns.reseed_resource_records");
 
             let num_ip4_records = records
                 .iter()
@@ -299,6 +300,7 @@ impl ResourceStubResolver {
                 let multiple_resources = resources.len() > 1;
 
                 tracing::debug!(%qtype, rid = %resource.id, ?multiple_resources, "Forwarding query for DNS resource to corresponding site");
+                coverage::cov!("dns.forward_query_to_site");
 
                 return ResolveStrategy::RecurseSite(resource.id);
             }

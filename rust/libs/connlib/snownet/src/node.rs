@@ -412,6 +412,7 @@ where
         match connection.encapsulate(cid, peer_socket, &goodbye, now, &mut self.allocations) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
+                coverage::cov!("snownet.closed_with_goodbye");
 
                 self.buffered_transmits.push_back(transmit);
             }

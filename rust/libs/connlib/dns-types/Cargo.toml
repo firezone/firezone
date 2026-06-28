@@ -10,6 +10,7 @@ path = "lib.rs"
 [dependencies]
 base64 = { workspace = true, features = ["alloc"] }
 bytes = { workspace = true }
+coverage = { workspace = true }
 domain = { version = "0.12", features = ["serde"] } # Not a workspace dependency because we don't want any other crates to depend on it.
 http = { workspace = true }
 serde = { workspace = true }
