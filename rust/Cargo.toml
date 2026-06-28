@@ -143,6 +143,7 @@ libc = "0.2.186"
 libfuzzer-sys = "0.4.12"
 logging = { path = "libs/logging" }
 lru = "0.18.0"
+mimalloc = { version = "0.1.52" }
 mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"

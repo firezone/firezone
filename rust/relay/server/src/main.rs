@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{http_health_check, signals};

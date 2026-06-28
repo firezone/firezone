@@ -21,6 +21,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
+mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
@@ -39,6 +40,7 @@ tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
 

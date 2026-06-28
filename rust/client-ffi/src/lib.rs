@@ -1,3 +1,9 @@
+// Not on iOS: the Network Extension has a hard memory cap and mimalloc retains freed pages, which
+// risks a jetsam kill. The system allocator is tuned for that budget, so we keep it there.
+#[cfg(not(target_os = "ios"))]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod fd;
 mod platform;
 
