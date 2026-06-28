@@ -70,6 +70,7 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn new(flow_logs: bool, seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
@@ -83,11 +84,13 @@ impl GatewayState {
         }
     }
 
-    #[cfg(all(test, feature = "proptest"))]
+    #[cfg(feature = "test-util")]
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn tunnel_ip_config(&self) -> Option<IpConfig> {
         self.tun_ip_config
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
@@ -100,6 +103,7 @@ impl GatewayState {
     }
 
     /// Handles packets received on the TUN device.
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
@@ -144,6 +148,7 @@ impl GatewayState {
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn handle_network_input(
         &mut self,
         local: SocketAddr,
@@ -608,12 +613,14 @@ impl GatewayState {
         }
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .pop_front()
             .or_else(|| self.node.poll_transmit())
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
         if let Some(ev) = self.buffered_events.pop_front() {
             return Some(ev);

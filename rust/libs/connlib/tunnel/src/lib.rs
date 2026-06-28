@@ -30,27 +30,37 @@ use std::{
 };
 use tun::Tun;
 
+#[cfg(not(feature = "test-util"))]
 mod client;
+#[cfg(feature = "test-util")]
+pub mod client;
 mod conn_track;
+#[cfg(not(feature = "test-util"))]
 mod dns;
+#[cfg(feature = "test-util")]
+pub mod dns;
 mod expiring_map;
+#[cfg(not(feature = "test-util"))]
 mod filter_engine;
+#[cfg(feature = "test-util")]
+pub mod filter_engine;
 mod gateway;
 mod io;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "test-util")))]
 mod malicious_behaviour;
+#[cfg(feature = "test-util")]
+pub mod malicious_behaviour;
 pub mod messages;
 mod otel;
 mod p2p_control;
 mod packet_kind;
 mod peer_store;
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(all(test, not(feature = "test-util")))]
 mod proptest;
+#[cfg(feature = "test-util")]
+pub mod proptest;
 mod routing_table;
 mod sockets;
-#[cfg(all(test, feature = "proptest"))]
-#[allow(clippy::unwrap_in_result)]
-mod tests;
 mod unique_packet_buffer;
 mod unix_ts;
 mod unroutable_packet;

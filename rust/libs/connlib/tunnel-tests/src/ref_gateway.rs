@@ -5,7 +5,6 @@ use super::{
     sim_net::{ExecMutScope, Host, dual_ip_stack, host},
     strategies::latency,
 };
-use crate::{GatewayState, IpConfig};
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
 use proptest::prelude::*;
@@ -14,6 +13,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
+use tunnel::{GatewayState, IpConfig};
 
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]

@@ -4,6 +4,7 @@ use rangemap::RangeInclusiveSet;
 use crate::messages::Filter;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) enum FilterEngine {
     PermitAll,
     PermitSome(AllowRules),
@@ -11,6 +12,7 @@ pub(crate) enum FilterEngine {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) struct AllowRules {
     udp: RangeInclusiveSet<u16>,
     tcp: RangeInclusiveSet<u16>,
@@ -18,6 +20,7 @@ pub(crate) struct AllowRules {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) enum Filtered {
     #[error("TCP port is not in allowed range")]
     Tcp,
@@ -30,6 +33,7 @@ pub(crate) enum Filtered {
 }
 
 impl FilterEngine {
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn new(filters: &[Filter]) -> FilterEngine {
         if filters.is_empty() {
             return Self::PermitAll;
@@ -44,6 +48,7 @@ impl FilterEngine {
         Self::PermitSome(allow_rules)
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn apply(
         &self,
         protocol: Result<Protocol, UnsupportedProtocol>,

@@ -7,6 +7,10 @@ license = { workspace = true }
 [features]
 proptest = ["dep:proptest"]
 divan = ["dep:divan"]
+# Exposes internal types/methods to the `tunnel-tests` harness and the fuzzer
+# (via `visibility::make(pub)`), and compiles the test-only `malicious_behaviour`
+# hooks. Not meant for production use.
+test-util = ["dep:visibility", "proptest"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -57,6 +61,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+visibility = { workspace = true, optional = true }
 
 [dev-dependencies]
 firezone-relay = { workspace = true, features = ["proptest"] }

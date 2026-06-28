@@ -132,7 +132,7 @@ impl Coverage {
              during the proptest run:\n{list}\n\n\
              Run the `tunnel-proptest-harvester` binary to generate regression seeds \
              for the missing patterns and append them to \
-             `proptest-regressions/tests.txt`.",
+             `proptest-regressions/lib.txt`.",
         );
     }
 

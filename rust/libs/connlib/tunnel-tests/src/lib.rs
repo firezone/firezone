@@ -1,21 +1,38 @@
-use crate::tests::{coverage::Coverage, flux_capacitor::FluxCapacitor, sut::TunnelTest};
+//! Shared proptest/fuzz harness for connlib's tunnel state machine.
+//!
+//! Extracted from the `tunnel` crate (behind its `test-util` feature) so the
+//! reference model and system-under-test wrapper can drive both the `proptest`
+//! suite (the `#[test]` entry points in this file) and the fuzzer. Because the
+//! harness is consumed selectively by those entry points, not every item is
+//! reachable in a plain library build; and, like the test code it grew out of,
+//! it leans on `unwrap` and stdout.
+#![allow(dead_code)]
+#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
+use crate::{coverage::Coverage, flux_capacitor::FluxCapacitor};
 use assertions::PanicOnErrorEvents;
-use chrono::Utc;
 use core::fmt;
 use proptest::{
-    prelude::*,
-    sample::SizeRange,
     strategy::{Strategy, ValueTree as _},
-    test_runner::{Config, RngAlgorithm, TestError, TestRng, TestRunner},
-};
-use proptest_state_machine::Sequential;
-use reference::ReferenceState;
-use std::{
-    sync::atomic::{self, AtomicU32},
-    time::Instant,
+    test_runner::{Config, RngAlgorithm, TestRng, TestRunner},
 };
 use tracing_subscriber::{
     EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
+};
+
+#[cfg(test)]
+use crate::{reference::ReferenceState, sut::TunnelTest};
+#[cfg(test)]
+use chrono::Utc;
+#[cfg(test)]
+use proptest::{prelude::*, sample::SizeRange, test_runner::TestError};
+#[cfg(test)]
+use proptest_state_machine::Sequential;
+#[cfg(test)]
+use std::{
+    sync::atomic::{self, AtomicU32},
+    time::Instant,
 };
 
 mod assertions;
@@ -234,7 +251,7 @@ where
         .current()
 }
 
-/// Initialise logging for [`TunnelTest`].
+/// Initialise logging for [`TunnelTest`](crate::sut::TunnelTest).
 ///
 /// Log-level can be controlled with `RUST_LOG`.
 /// By default, `debug` logs will be written to the `testcases/` directory for each test run.
@@ -281,7 +298,7 @@ fn init_logging(
 
 fn log_file_filter() -> EnvFilter {
     let default_filter =
-        "debug,tunnel=trace,tunnel::tests=debug,tunnel_test_coverage=trace,ip_packet=trace"
+        "debug,tunnel=trace,tunnel_tests=debug,tunnel_test_coverage=trace,ip_packet=trace"
             .to_owned();
     let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
 

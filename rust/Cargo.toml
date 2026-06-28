@@ -28,6 +28,7 @@ members = [
     "libs/connlib/socket-factory",
     "libs/connlib/tun",
     "libs/connlib/tunnel",
+    "libs/connlib/tunnel-tests",
     "libs/eventloop-budget",
     "libs/http-client",
     "libs/known-dirs",
@@ -222,9 +223,11 @@ tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
+tunnel-tests = { path = "libs/connlib/tunnel-tests" }
 uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"
+visibility = "0.1.1"
 webpki-roots = "1.0.7"
 which = "7.0.3"
 windows = "0.61.3"

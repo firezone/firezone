@@ -6,10 +6,6 @@ use super::{
     sim_relay::{SimRelay, map_explode},
     transition::{DPort, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{
-    ClientState, DnsMapping, DnsResourceRecord, dns,
-    malicious_behaviour::{Guard, MaliciousBehaviour},
-};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
 use dns_types::{DomainName, Query, RecordData, RecordType};
@@ -20,6 +16,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
+};
+use tunnel::{
+    ClientState, DnsMapping, DnsResourceRecord, dns,
+    malicious_behaviour::{Guard, MaliciousBehaviour},
 };
 
 /// Simulation state for a particular client.
@@ -73,7 +73,7 @@ pub(crate) struct SimClient {
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
     /// TCP connections to resources.
-    pub(crate) tcp_client: crate::tests::tcp::Client,
+    pub(crate) tcp_client: crate::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
 }
 
@@ -104,7 +104,7 @@ impl SimClient {
             search_domain: Default::default(),
             resource_status: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
-            tcp_client: crate::tests::tcp::Client::new(now),
+            tcp_client: crate::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
         }

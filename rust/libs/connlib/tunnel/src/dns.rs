@@ -20,6 +20,7 @@ pub(crate) const DNS_PORT: u16 = 53;
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
 #[derive(Debug)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) struct RecursiveQuery {
     /// The server we want to send the query to.
     pub server: Upstream,
@@ -39,6 +40,7 @@ pub(crate) struct RecursiveQuery {
 
 /// A response to a [`RecursiveQuery`].
 #[derive(Debug)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) struct RecursiveResponse {
     /// The server we sent the query to.
     pub server: Upstream,
@@ -67,12 +69,14 @@ pub(crate) struct RecursiveResponse {
 
 /// Whether a recursive query was resolved locally or forwarded through the tunnel.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) enum Recursion {
     Local,
     Tunnel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) enum Transport {
     #[display("UDP")]
     Udp,
