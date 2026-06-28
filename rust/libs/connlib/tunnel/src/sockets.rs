@@ -18,7 +18,8 @@ use tokio_util::sync::PollSender;
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
-const UDP_SEND_BATCH_LIMIT: usize = 16;
+const UDP_SEND_BATCH_LIMIT: usize = 32;
+const UDP_RECV_BATCH_LIMIT: usize = 32;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -104,22 +105,38 @@ impl Sockets {
     pub fn poll_recv_from(
         &mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>>> {
+    ) -> Poll<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>> {
         let mut iter = PacketIter::new();
 
         if let Some(Poll::Ready(packets)) = self.socket_v4.as_mut().map(|s| s.poll_recv_from(cx)) {
-            iter.ip4 = Some(packets?);
+            iter.ip4 = Some(packets);
         }
 
         if let Some(Poll::Ready(packets)) = self.socket_v6.as_mut().map(|s| s.poll_recv_from(cx)) {
-            iter.ip6 = Some(packets?);
+            iter.ip6 = Some(packets);
         }
 
         if iter.is_empty() {
             return Poll::Pending;
         }
 
-        Poll::Ready(Ok(iter))
+        Poll::Ready(iter)
+    }
+
+    pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        if let Some(socket) = self.socket_v4.as_mut()
+            && let Poll::Ready(e) = socket.poll_error(cx)
+        {
+            return Poll::Ready(e);
+        }
+
+        if let Some(socket) = self.socket_v6.as_mut()
+            && let Poll::Ready(e) = socket.poll_error(cx)
+        {
+            return Poll::Ready(e);
+        }
+
+        Poll::Pending
     }
 }
 
@@ -161,7 +178,37 @@ where
     }
 }
 
-/// How big the queue for incoming and outgoing UDP batches is at most.
+/// Chains up to [`UDP_RECV_BATCH_LIMIT`] datagram batches from a single `poll` into one iterator.
+///
+/// A linked list (not a `Vec`) so `next` can fall back from the drained `current` batch to `rest` as
+/// separate fields — the disjoint borrow that lets a runtime-length chain of lending iterators
+/// compile on stable Rust.
+struct ChainedDatagrams {
+    current: DatagramSegmentIter,
+    rest: Option<Box<ChainedDatagrams>>,
+}
+
+impl ChainedDatagrams {
+    fn new(batches: Vec<DatagramSegmentIter>) -> Option<Self> {
+        let mut rest = None;
+
+        for current in batches.into_iter().rev() {
+            rest = Some(Box::new(ChainedDatagrams { current, rest }));
+        }
+
+        rest.map(|boxed| *boxed)
+    }
+}
+
+impl LendingIterator for ChainedDatagrams {
+    type Item<'a> = DatagramIn<'a>;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.current.next().or_else(|| self.rest.as_mut()?.next())
+    }
+}
+
+/// How big the queue for outgoing UDP batches and socket errors is at most.
 ///
 /// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
 const QUEUE_SIZE: usize = {
@@ -169,6 +216,17 @@ const QUEUE_SIZE: usize = {
         10
     } else {
         1000
+    }
+};
+
+/// How big the queue for incoming UDP batches is at most.
+///
+/// Smaller than [`QUEUE_SIZE`] because we drain it in chunks of up to [`UDP_RECV_BATCH_LIMIT`].
+const INBOUND_QUEUE_SIZE: usize = {
+    if cfg!(any(target_os = "ios", target_os = "android")) {
+        10
+    } else {
+        100
     }
 };
 
@@ -180,14 +238,17 @@ struct ThreadedUdpSocket {
 
 struct Channels {
     outbound_tx: PollSender<DatagramOut>,
-    inbound_rx: mpsc::Receiver<Result<DatagramSegmentIter>>,
+    inbound_rx: mpsc::Receiver<DatagramSegmentIter>,
+    /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
+    error_rx: mpsc::Receiver<anyhow::Error>,
 }
 
 impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (error_tx, error_rx) = std::sync::mpsc::sync_channel(0);
+        let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
+        let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
+        let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
         tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
@@ -217,7 +278,7 @@ impl ThreadedUdpSocket {
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = error_tx.send(Err(e));
+                        let _ = startup_tx.send(Err(e));
                         return;
                     }
                 };
@@ -232,7 +293,7 @@ impl ThreadedUdpSocket {
                 ) {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = error_tx.send(Err(e));
+                        let _ = startup_tx.send(Err(e));
                         return;
                     }
                 };
@@ -258,7 +319,7 @@ impl ThreadedUdpSocket {
 
                 let send = runtime.spawn({
                     let io_error_counter = io_error_counter.clone();
-                    let inbound_tx = inbound_tx.clone();
+                    let error_tx = error_tx.clone();
                     let socket = socket.clone();
 
                     let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
@@ -290,53 +351,70 @@ impl ThreadedUdpSocket {
                                         );
                                     }
 
-                                    // We use the inbound_tx channel to send the error back to the main thread.
-                                    if inbound_tx.send(Err(e)).await.is_err() {
+                                    // Dedicated channel so errors can't hold up received datagrams.
+                                    if error_tx.send(e).await.is_err() {
                                         tracing::debug!(
-                                            "Channel for inbound datagrams closed; exiting UDP send task"
+                                            "Channel for errors closed; exiting UDP send task"
                                         );
                                         return;
                                     }
                                 };
                             }
-                        };
-                    }
-                });
-                let receive = runtime.spawn(async move {
-                    loop {
-                        let result = socket.recv_from().await;
-
-                        if let Some(io) = result
-                            .as_ref()
-                            .err()
-                            .and_then(|e| e.any_downcast_ref::<io::Error>())
-                        {
-                            io_error_counter.add(
-                                1,
-                                &[
-                                    otel::attr::network_io_direction_receive(),
-                                    otel::attr::network_type_for_addr(preferred_addr),
-                                    otel::attr::io_error_type(io),
-                                    otel::attr::io_error_code(io),
-                                ],
-                            );
-                        }
-
-                        if inbound_tx.send(result).await.is_err() {
-                            tracing::debug!(
-                                "Channel for inbound datagrams closed; exiting UDP recv task"
-                            );
-                            return;
                         }
                     }
                 });
+                let receive = runtime.spawn({
+                    let error_tx = error_tx.clone();
 
-                let _ = error_tx.send(Ok(()));
+                    async move {
+                        loop {
+                            let datagrams = match socket.recv_from().await {
+                                Ok(datagrams) => datagrams,
+                                Err(e) => {
+                                    if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                                        io_error_counter.add(
+                                            1,
+                                            &[
+                                                otel::attr::network_io_direction_receive(),
+                                                otel::attr::network_type_for_addr(preferred_addr),
+                                                otel::attr::io_error_type(io),
+                                                otel::attr::io_error_code(io),
+                                            ],
+                                        );
+                                    }
 
-                runtime.block_on(futures::future::select(send, receive));
+                                    if error_tx.send(e).await.is_err() {
+                                        tracing::debug!(
+                                            "Channel for errors closed; exiting UDP recv task"
+                                        );
+                                        return;
+                                    }
+
+                                    continue;
+                                }
+                            };
+
+                            if inbound_tx.send(datagrams).await.is_err() {
+                                tracing::debug!(
+                                    "Channel for inbound datagrams closed; exiting UDP recv task"
+                                );
+                                return;
+                            }
+                        }
+                    }
+                });
+
+                let _ = startup_tx.send(Ok(()));
+
+                runtime.block_on(async move {
+                    futures::future::select(send, receive).await;
+
+                    // A stopped task tears down the runtime; report it so `Io` shuts down.
+                    let _ = error_tx.send(UdpSocketThreadStopped.into()).await;
+                });
             })?;
 
-        error_rx.recv().map_err(io::Error::other)??;
+        startup_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
             thread_name,
@@ -344,6 +422,7 @@ impl ThreadedUdpSocket {
             channels: Some(Channels {
                 outbound_tx: PollSender::new(outbound_tx),
                 inbound_rx,
+                error_rx,
             }),
         })
     }
@@ -364,11 +443,38 @@ impl ThreadedUdpSocket {
         Ok(())
     }
 
-    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
-        let iter =
-            ready!(self.channels_mut()?.inbound_rx.poll_recv(cx)).ok_or(UdpSocketThreadStopped)?;
+    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<ChainedDatagrams> {
+        let Some(channels) = self.channels.as_mut() else {
+            return Poll::Pending;
+        };
 
-        Poll::Ready(iter)
+        let mut batches = Vec::with_capacity(UDP_RECV_BATCH_LIMIT);
+        ready!(
+            channels
+                .inbound_rx
+                .poll_recv_many(cx, &mut batches, UDP_RECV_BATCH_LIMIT)
+        );
+
+        let Some(datagrams) = ChainedDatagrams::new(batches) else {
+            // An empty read means a closed channel, i.e. the thread stopped (reported via
+            // `poll_error`). `Pending` avoids dropping the other socket's datagrams; no waker on
+            // close, since we'll be shutting down anyway.
+            return Poll::Pending;
+        };
+
+        Poll::Ready(datagrams)
+    }
+
+    fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        let Some(channels) = self.channels.as_mut() else {
+            return Poll::Pending;
+        };
+
+        let Some(error) = ready!(channels.error_rx.poll_recv(cx)) else {
+            return Poll::Pending;
+        };
+
+        Poll::Ready(error)
     }
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {

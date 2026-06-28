@@ -84,7 +84,7 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   defp gateway_flow_generation(channel_pid, resource_id) do
-    {generation, _timer_ref} =
+    {generation, _timer_ref, _initiator_token} =
       :sys.get_state(channel_pid).assigns.pending_flows |> Map.fetch!(resource_id)
 
     generation
@@ -460,7 +460,9 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{
         resources: resources,
         interface: interface,
-        relays: relays
+        relays: relays,
+        flow_logs_api_url: "https://flow-api.firezone.dev/",
+        flow_logs_upload_interval_secs: 60
       }
 
       assert length(resources) == 4
@@ -3489,7 +3491,10 @@ defmodule PortalAPI.Client.ChannelTest do
       timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
 
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.pending_flows, %{resource.id => {make_ref(), timer_ref}})
+        put_in(
+          state.assigns.pending_flows,
+          %{resource.id => {make_ref(), timer_ref, "ingest-token"}}
+        )
       end)
 
       preshared_key = "PSK"

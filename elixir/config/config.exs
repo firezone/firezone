@@ -372,6 +372,10 @@ config :portal,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
+config :portal,
+  flow_logs_api_url: "https://flow-api.firezone.dev/",
+  flow_logs_upload_interval_secs: 60
+
 config :portal, country_code_blocklist: []
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
@@ -438,6 +442,12 @@ config :portal, PortalAPI.RateLimit,
   capacity: 200
 
 config :portal, PortalAPI.Sockets.RateLimit,
+  refill_rate: 1,
+  capacity: 1
+
+# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
+# batches up to 10k records, so one per second is ample for reporters.
+config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 1,
   capacity: 1
 

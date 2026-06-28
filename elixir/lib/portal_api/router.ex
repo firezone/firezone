@@ -41,7 +41,9 @@ defmodule PortalAPI.Router do
       length: 10_000_000
 
     plug :accepts, ["json"]
-    plug PortalAPI.Plugs.IngestionAuth
+    # Auth is the per-authorization ingest token in the Authorization header,
+    # verified in the controller (it needs the token's account_id to load the
+    # signing key). Rate limiting is keyed on the source IP.
     plug PortalAPI.Plugs.IngestionRateLimit
   end
 

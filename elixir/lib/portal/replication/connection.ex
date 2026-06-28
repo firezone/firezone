@@ -623,7 +623,7 @@ defmodule Portal.Replication.Connection do
         tuple_data
         |> Tuple.to_list()
         |> Enum.zip(columns)
-        |> Map.new(&Decoder.decode_json/1)
+        |> Map.new(&Decoder.decode_value/1)
       end
     end
   end

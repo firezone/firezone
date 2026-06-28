@@ -181,6 +181,25 @@ defmodule Portal.Types.EventIdTest do
     end
   end
 
+  describe "build_flow_log/0" do
+    test "produces a 24-character lowercase hex string in the 0xF namespace" do
+      hex = EventId.build_flow_log()
+      assert byte_size(hex) == 24
+      assert hex == String.downcase(hex)
+      assert hex =~ ~r/^f[0-9a-f]{23}$/
+      assert <<0xF::4, _::92>> = Base.decode16!(hex, case: :mixed)
+    end
+
+    test "is random: successive calls differ" do
+      refute EventId.build_flow_log() == EventId.build_flow_log()
+    end
+
+    test "decodes to a 12-byte value" do
+      {:ok, bin} = EventId.dump(EventId.build_flow_log())
+      assert byte_size(bin) == 12
+    end
+  end
+
   describe "round-trip" do
     test "cast → dump → load is lossless" do
       original = EventId.build_change_log(987_654_321, 17)

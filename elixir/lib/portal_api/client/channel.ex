@@ -5,6 +5,7 @@ defmodule PortalAPI.Client.Channel do
   alias Portal.{
     Cache,
     Device,
+    FlowLogToken,
     PG,
     Changes.Change,
     Features,
@@ -189,7 +190,8 @@ defmodule PortalAPI.Client.Channel do
     {:noreply,
      assign(
        socket,
-       authorizations_cache: Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
+       authorizations_cache:
+         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
      )}
   end
 
@@ -361,7 +363,7 @@ defmodule PortalAPI.Client.Channel do
         # Flow already timed out — ignore late gateway response
         {:noreply, socket}
 
-      {{_generation, timer_ref}, remaining} ->
+      {{_generation, timer_ref, initiator_token}, remaining} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -374,7 +376,8 @@ defmodule PortalAPI.Client.Channel do
             gateway_ipv4: gateway_ipv4,
             gateway_ipv6: gateway_ipv6,
             gateway_ice_credentials: ice_credentials.receiver,
-            use_iceless: use_iceless
+            use_iceless: use_iceless,
+            flow_logs_ingest_token: initiator_token
           }
           |> put_site_id(site_id, socket.assigns.session)
 
@@ -387,7 +390,7 @@ defmodule PortalAPI.Client.Channel do
   # newer create_flow for the same resource_id (its message may already be queued).
   def handle_info({:flow_creation_timeout, resource_id, generation}, socket) do
     case Map.get(socket.assigns.pending_flows, resource_id) do
-      {^generation, _timer_ref} ->
+      {^generation, _timer_ref, _initiator_token} ->
         push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
 
         {:noreply,
@@ -519,7 +522,10 @@ defmodule PortalAPI.Client.Channel do
   # Authz durability timer fired — no confirm/reject arrived in time. Fail-closed.
   # See gateway channel's equivalent handler for the rationale on the
   # generation check.
-  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+  def handle_info(
+        {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
+        socket
+      ) do
     case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
       {^generation, _ref} ->
         Logger.warning(
@@ -589,10 +595,8 @@ defmodule PortalAPI.Client.Channel do
         fk_partitions: %{
           "policy_authorizations_account_id_fkey" => {:simple, :account_id, Portal.Account},
           "policy_authorizations_policy_id_fkey" => {:composite, :policy_id, Portal.Policy},
-          "policy_authorizations_resource_id_fkey" =>
-            {:composite, :resource_id, Portal.Resource},
-          "policy_authorizations_token_id_fkey" =>
-            {:composite, :token_id, Portal.ClientToken},
+          "policy_authorizations_resource_id_fkey" => {:composite, :resource_id, Portal.Resource},
+          "policy_authorizations_token_id_fkey" => {:composite, :token_id, Portal.ClientToken},
           "policy_authorizations_membership_id_fkey" =>
             {:composite_optional, :membership_id, Portal.Membership},
           "policy_authorizations_initiating_device_id_fkey" =>
@@ -1107,6 +1111,7 @@ defmodule PortalAPI.Client.Channel do
           nil,
           nil,
           nil,
+          nil,
           ref,
           socket
         )
@@ -1378,6 +1383,17 @@ defmodule PortalAPI.Client.Channel do
             gateway_public_key
           )
 
+        {initiator_token, responder_token} =
+          mint_ingest_tokens(
+            socket.assigns.subject,
+            {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+            policy_authorization_id,
+            policy_id,
+            socket.assigns.client,
+            gateway.id,
+            expires_at
+          )
+
         message =
           {:authorize_policy, {self(), socket_ref(socket)},
            %{
@@ -1388,13 +1404,16 @@ defmodule PortalAPI.Client.Channel do
                  preshared_key,
                  socket.assigns.subject.context.user_agent
                ),
+             # Kept for older gateways that do not report flow logs to the portal.
+             # These do not parse the attribution fields from the ingest token.
              subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
              resource: PortalAPI.Gateway.Views.Resource.render(resource),
              policy_authorization_id: policy_authorization_id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
-             initiator_iceless_capable: socket.assigns.iceless_capable
+             initiator_iceless_capable: socket.assigns.iceless_capable,
+             flow_logs_ingest_token: responder_token
            }}
 
         attrs =
@@ -1420,7 +1439,7 @@ defmodule PortalAPI.Client.Channel do
                end
              ) do
           :ok ->
-            {:noreply, arm_gateway_flow_timer(socket, resource_id)}
+            {:noreply, arm_gateway_flow_timer(socket, resource_id, initiator_token)}
 
           {:error, _reason} ->
             push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
@@ -1637,6 +1656,7 @@ defmodule PortalAPI.Client.Channel do
         target_meta,
         resource,
         policy_authorization_id,
+        policy_id,
         expires_at,
         ref,
         socket
@@ -1693,6 +1713,7 @@ defmodule PortalAPI.Client.Channel do
          target_meta,
          resource,
          policy_authorization_id,
+         policy_id,
          expires_at,
          ref,
          socket
@@ -1733,6 +1754,25 @@ defmodule PortalAPI.Client.Channel do
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
+    # The legacy `request_device_access` shim calls this builder with no
+    # resource/expires_at (it has no policy authorization to anchor a token to),
+    # so there is nothing to mint. Once that shim is removed before GA, both are
+    # always present here and this guard can go.
+    {initiator_token, responder_token} =
+      if resource && expires_at do
+        mint_ingest_tokens(
+          socket.assigns.subject,
+          {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+          policy_authorization_id,
+          policy_id,
+          client,
+          target_client_id,
+          expires_at
+        )
+      else
+        {nil, nil}
+      end
+
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
        %{
@@ -1748,7 +1788,8 @@ defmodule PortalAPI.Client.Channel do
          subject: rendered_subject,
          policy_authorization_id: policy_authorization_id,
          authorization_expires_at: expires_at,
-         initiator_iceless_capable: socket.assigns.iceless_capable
+         initiator_iceless_capable: socket.assigns.iceless_capable,
+         flow_logs_ingest_token: responder_token
        }}
 
     initiator_payload = %{
@@ -1759,7 +1800,8 @@ defmodule PortalAPI.Client.Channel do
       preshared_key: preshared_key,
       local_ice_credentials: ice_credentials.initiator,
       remote_ice_credentials: ice_credentials.receiver,
-      ice_role: :controlling
+      ice_role: :controlling,
+      flow_logs_ingest_token: initiator_token
     }
 
     {receiver_message, initiator_payload}
@@ -1793,9 +1835,10 @@ defmodule PortalAPI.Client.Channel do
 
   defp init(socket, resources, relays) do
     push(socket, "init", %{
+      flow_logs_api_url: flow_logs_api_url(),
+      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
       resources: Views.Resource.render_many(resources, socket.assigns.session),
-      authorizations:
-        Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
+      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       # TODO: Re-enable after verifying compatibility with older clients
       # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
@@ -1819,6 +1862,11 @@ defmodule PortalAPI.Client.Channel do
     init(socket, socket.assigns.cache.connectable_resources, relays)
     track_presence(socket)
   end
+
+  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
+
+  defp flow_logs_upload_interval_secs,
+    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
@@ -2254,7 +2302,11 @@ defmodule PortalAPI.Client.Channel do
     generation = make_ref()
 
     timer_ref =
-      Process.send_after(self(), {:authz_durability_timeout, pa, generation}, @authz_durability_timeout)
+      Process.send_after(
+        self(),
+        {:authz_durability_timeout, pa, generation},
+        @authz_durability_timeout
+      )
 
     pending = socket.assigns[:authz_durability] || %{}
 
@@ -2409,6 +2461,77 @@ defmodule PortalAPI.Client.Channel do
     }
   end
 
+  # Mints the pair of per-flow ingest tokens for an authorization: one for the
+  # initiator (the client) and one for the responder (the gateway or receiving
+  # client). Each token snapshots the attribution the corresponding device must
+  # report and is the sole authenticator for its flow-log uploads. The reporting
+  # `device_id` and `role` differ between the two; everything else is shared.
+  defp mint_ingest_tokens(
+         %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
+         {resource_id, resource_name, resource_address},
+         policy_authorization_id,
+         policy_id,
+         %Device{type: :client} = initiator_client,
+         responder_device_id,
+         expires_at
+       ) do
+    {os_name, os_version, client_version} =
+      PortalAPI.Gateway.Views.Client.parse_user_agent(subject.context.user_agent)
+
+    attribution = %{
+      # The authorization this batch of flow logs reports against. The ingest
+      # endpoint rejects a request whose records mix more than one of these.
+      "policy_authorization_id" => policy_authorization_id,
+      "policy_id" => policy_id,
+      "resource_id" => resource_id,
+      "resource_name" => resource_name,
+      "resource_address" => resource_address,
+      "actor_id" => actor.id,
+      "actor_email" => actor.email,
+      "actor_name" => actor.name,
+      "auth_provider_id" => credential.auth_provider_id,
+      # The authorization happens now; both tokens share the same authorized_at
+      # so the two sides of the flow agree on the trusted flow_start floor.
+      "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
+      # When this authorization expires (independent of the token's own exp,
+      # which adds a reporting grace window on top). Stamped so the flow_log row
+      # records the actual authorization lifetime.
+      "authorization_expires_at" => DateTime.to_iso8601(expires_at),
+      # The connecting (initiator) client's device telemetry. It describes the
+      # initiating client on both sides of the flow, so it is shared by both
+      # tokens, matching what the gateway flow tracker stamps onto each flow.
+      "client_version" => client_version,
+      "device_os_name" => os_name,
+      "device_os_version" => os_version,
+      "device_serial" => initiator_client.device_serial,
+      "device_uuid" => initiator_client.device_uuid,
+      "device_identifier_for_vendor" => initiator_client.identifier_for_vendor,
+      "device_firebase_installation_id" => initiator_client.firebase_installation_id
+    }
+
+    initiator_token =
+      FlowLogToken.mint(
+        account,
+        Map.merge(attribution, %{
+          "role" => "initiator",
+          "device_id" => initiator_client.id
+        }),
+        expires_at
+      )
+
+    responder_token =
+      FlowLogToken.mint(
+        account,
+        Map.merge(attribution, %{
+          "role" => "responder",
+          "device_id" => responder_device_id
+        }),
+        expires_at
+      )
+
+    {initiator_token, responder_token}
+  end
+
   # Attaches a synthetic `%Portal.PolicyAuthorization{}` to a receiver-side
   # allow message. The receiver uses it to:
   #   1. Arm an authz durability timer keyed by `pa.id`, so that if no
@@ -2428,11 +2551,14 @@ defmodule PortalAPI.Client.Channel do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
   end
 
-  defp arm_gateway_flow_timer(socket, resource_id) do
+  defp arm_gateway_flow_timer(socket, resource_id, initiator_token) do
     # Cancel any timer a prior in-flight create_flow armed under this key.
     case Map.get(socket.assigns.pending_flows, resource_id) do
-      {_old_generation, old_timer_ref} -> Process.cancel_timer(old_timer_ref)
-      nil -> :ok
+      {_old_generation, old_timer_ref, _old_initiator_token} ->
+        Process.cancel_timer(old_timer_ref)
+
+      nil ->
+        :ok
     end
 
     generation = make_ref()
@@ -2447,7 +2573,7 @@ defmodule PortalAPI.Client.Channel do
     assign(
       socket,
       :pending_flows,
-      Map.put(socket.assigns.pending_flows, resource_id, {generation, timer_ref})
+      Map.put(socket.assigns.pending_flows, resource_id, {generation, timer_ref, initiator_token})
     )
   end
 

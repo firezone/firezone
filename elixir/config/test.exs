@@ -200,6 +200,13 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# The ingestion endpoint defaults to a strict 1 req/s per IP; keep it effectively
+# disabled in general tests (which share localhost) to avoid cross-test 429s.
+# Dedicated rate-limit tests pass strict opts directly to the plug instead.
+config :portal, PortalAPI.Plugs.IngestionRateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",

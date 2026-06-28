@@ -6760,6 +6760,7 @@ dependencies = [
  "otel-instruments",
  "parking_lot",
  "quinn-udp",
+ "smallvec",
  "socket2",
  "tokio",
  "tracing",

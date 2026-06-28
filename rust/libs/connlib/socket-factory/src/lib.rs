@@ -5,6 +5,7 @@ use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
+use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
@@ -782,9 +783,8 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 #[derive(derive_more::Debug)]
 pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = Buffer<Vec<u8>>> {
     #[debug(skip)]
-    buffers: [B; N],
-    metas: [quinn_udp::RecvMeta; N],
-    len: usize,
+    buffers: SmallVec<[B; N]>,
+    metas: SmallVec<[quinn_udp::RecvMeta; N]>,
 
     port: u16,
 
@@ -802,6 +802,13 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
         port: u16,
         len: usize,
     ) -> Self {
+        let mut buffers = SmallVec::from_buf(buffers);
+        let mut metas = SmallVec::from_buf(metas);
+
+        // Drop the unused buffers / metas.
+        buffers.truncate(len);
+        metas.truncate(len);
+
         let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
         let num_packets = metas
             .iter()
@@ -817,7 +824,6 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
         Self {
             buffers,
             metas,
-            len,
             port,
             buf_index: 0,
             segment_index: 0,
@@ -835,7 +841,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
         loop {
-            if self.buf_index >= N || self.buf_index >= self.len {
+            if self.buf_index >= self.buffers.len() {
                 return None;
             }
 

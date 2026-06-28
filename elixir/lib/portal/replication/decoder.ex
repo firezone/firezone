@@ -163,18 +163,23 @@ defmodule Portal.Replication.Decoder do
   alias Portal.Replication.OidDatabase
 
   @doc """
-  Helper for decoding JSON data inside messages.
+  Decodes a single `{value, column}` pair from its pgoutput text representation
+  into an Elixir term.
+
+  The replication stream runs in text format, so `json`/`jsonb` arrive as JSON
+  strings and `bytea` arrives as the Postgres hex literal (`\\x...`). Everything
+  else is passed through as-is and cast later by the consuming schema's Ecto type.
   """
 
   # Postgrex uses `_jsonb` to mean `jsonb[]`. These array types are returned as string literals from
   # Postgrex and need to be split, and then double-decoded.
-  def decode_json({value, %{type: type} = column})
+  def decode_value({value, %{type: type} = column})
       when type in ["_json", "_jsonb"] and is_binary(value) do
     decoded_list = parse_postgres_jsonb_array(value)
     {column.name, decoded_list}
   end
 
-  def decode_json({value, %{type: type} = column})
+  def decode_value({value, %{type: type} = column})
       when type in ["json", "jsonb"] and is_binary(value) do
     case JSON.decode(value) do
       {:ok, decoded} ->
@@ -190,7 +195,25 @@ defmodule Portal.Replication.Decoder do
     end
   end
 
-  def decode_json({value, column}) do
+  # bytea is sent as the Postgres hex output `\x<hex>` (an empty bytea is `\x`).
+  # Decode it back to the raw binary so consumers see the same bytes Postgrex
+  # would return, not the literal hex string.
+  def decode_value({"\\x" <> hex = value, %{type: "bytea"} = column}) do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, decoded} ->
+        {column.name, decoded}
+
+      :error ->
+        Logger.warning("Failed to decode bytea, using as-is",
+          bytea: value,
+          column: column.name
+        )
+
+        {column.name, value}
+    end
+  end
+
+  def decode_value({value, column}) do
     {column.name, value}
   end
 
