@@ -74,11 +74,13 @@ defmodule Portal.Workers.PartitionFlowLogs do
     # CREATE TABLE ... PARTITION OF. ATTACH takes a SHARE UPDATE EXCLUSIVE lock on
     # flow_logs, which does not conflict with inserts, so ingestion keeps writing
     # while the partition is added; CREATE ... PARTITION OF would take ACCESS
-    # EXCLUSIVE and block all writes. The child only needs matching columns: ATTACH
-    # propagates the parent's primary key, CHECK constraints, and indexes onto the
-    # new partition. LIKE ... INCLUDING DEFAULTS copies columns and defaults only;
-    # INCLUDING ALL would also copy the primary key, and ATTACH would then fail with
-    # "multiple primary keys for table not allowed".
+    # EXCLUSIVE and block all writes. ATTACH propagates the parent's primary key
+    # and indexes onto the new partition, but the child must already carry the
+    # parent's CHECK constraints or ATTACH fails with "child table is missing
+    # constraint". LIKE ... INCLUDING DEFAULTS INCLUDING CONSTRAINTS copies columns,
+    # defaults, and CHECK constraints without copying the primary key; INCLUDING ALL
+    # would also copy the primary key, and ATTACH would then fail with "multiple
+    # primary keys for table not allowed".
     defp create_partition(date) do
       name = partition_name(date)
       lower = bound(date)
@@ -86,7 +88,10 @@ defmodule Portal.Workers.PartitionFlowLogs do
 
       {:ok, _} =
         Safe.unscoped()
-        |> Safe.query("CREATE TABLE IF NOT EXISTS #{name} (LIKE flow_logs INCLUDING DEFAULTS)", [])
+        |> Safe.query(
+          "CREATE TABLE IF NOT EXISTS #{name} (LIKE flow_logs INCLUDING DEFAULTS INCLUDING CONSTRAINTS)",
+          []
+        )
 
       {:ok, _} =
         Safe.unscoped()
