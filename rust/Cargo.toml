@@ -258,7 +258,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 [patch.crates-io]
 sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
-boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/firezone/boringtun", branch = "claude/adoring-planck-c3ja2s" } # TODO: revert to `branch = "master"` once firezone/boringtun#203 merges.
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.

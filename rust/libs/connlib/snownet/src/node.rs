@@ -537,12 +537,11 @@ where
             return Ok(None);
         }
 
-        let socket = match &mut conn.state {
-            ConnectionState::Connecting { ip_buffer, .. } => {
-                ip_buffer.enqueue(packet.clone());
-                let num_buffered = ip_buffer.len();
-
-                tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
+        let socket = match &conn.state {
+            ConnectionState::Connecting { .. } => {
+                // Packets are buffered by the client until the connection is established, so we
+                // should not be asked to encapsulate while ICE is still in progress.
+                tracing::debug!(%cid, "ICE is still in progress; dropping packet");
 
                 return Ok(None);
             }
@@ -812,7 +811,6 @@ where
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
-                ip_buffer: AllocRingBuffer::new(128),
             },
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
@@ -1436,11 +1434,7 @@ where
                     };
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
-                        ConnectionState::Connecting {
-                            wg_buffer,
-                            ip_buffer,
-                            ..
-                        } => {
+                        ConnectionState::Connecting { wg_buffer } => {
                             tracing::debug!(
                                 num_buffered = %wg_buffer.len(),
                                 "Flushing WireGuard packets buffered during ICE"
@@ -1455,23 +1449,6 @@ where
                                     allocations,
                                     now,
                                 )
-                            }));
-
-                            tracing::debug!(
-                                num_buffered = %ip_buffer.len(),
-                                "Flushing IP packets buffered during ICE"
-                            );
-                            transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
-                                let transmit = self
-                                    .encapsulate(cid, remote_socket, &packet, now, allocations)
-                                    .inspect_err(|e| {
-                                        tracing::debug!(
-                                            "Failed to encapsulate buffered IP packet: {e:#}"
-                                        )
-                                    })
-                                    .ok()??;
-
-                                Some(transmit)
                             }));
 
                             self.state = ConnectionState::Connected {
@@ -1644,14 +1621,13 @@ where
         let len =
             match self
                 .tunnel
-                .encapsulate_at(packet.packet(), &mut buffer[packet_start..], now)
+                .encapsulate_data_at(packet.packet(), &mut buffer[packet_start..], now)
             {
-                TunnResult::Done => return Ok(None),
-                TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
-                TunnResult::WriteToNetwork(packet) => packet.len(),
-                TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                    unreachable!("never returned from encapsulate")
-                }
+                Ok(len) => len,
+                // No usable session yet. The client only sends once the connection is established, so
+                // this is a rare re-key gap; drop the packet rather than buffering it.
+                Err(WireGuardError::NoCurrentSession) => return Ok(None),
+                Err(e) => return Err(anyhow::Error::new(e)),
             };
 
         let packet_end = packet_start + len;
