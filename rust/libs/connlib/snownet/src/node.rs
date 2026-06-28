@@ -540,10 +540,9 @@ where
         let socket = match &conn.state {
             ConnectionState::Connecting { .. } => {
                 // Packets are buffered by the client until the connection is established, so we
-                // should not be asked to encapsulate while ICE is still in progress.
-                tracing::debug!(%cid, "ICE is still in progress; dropping packet");
-
-                return Ok(None);
+                // should not be asked to encapsulate while ICE is still in progress. Surface this
+                // as an error so the event-loop logs and meters it.
+                return Err(anyhow!("Connection {cid} is still establishing"));
             }
             ConnectionState::Connected { peer_socket, .. } => *peer_socket,
             ConnectionState::Idle { peer_socket } => *peer_socket,
@@ -1624,9 +1623,8 @@ where
                 .encapsulate_data_at(packet.packet(), &mut buffer[packet_start..], now)
             {
                 Ok(len) => len,
-                // No usable session yet. The client only sends once the connection is established, so
-                // this is a rare re-key gap; drop the packet rather than buffering it.
-                Err(WireGuardError::NoCurrentSession) => return Ok(None),
+                // Surface the error (including `NoCurrentSession`, a rare re-key gap) so the
+                // event-loop logs and meters it instead of silently dropping the packet.
                 Err(e) => return Err(anyhow::Error::new(e)),
             };
 
