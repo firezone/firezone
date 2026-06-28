@@ -118,6 +118,14 @@ pub struct Node<TId, RId> {
 #[error("No TURN servers available")]
 pub struct NoTurnServers {}
 
+/// The connection exists but is not yet ready to send application packets because ICE is
+/// still in progress (no socket has been nominated yet).
+///
+/// Callers should buffer the packet and retry once the connection is established.
+#[derive(thiserror::Error, Debug)]
+#[error("Connection is still establishing")]
+pub struct StillConnecting;
+
 #[derive(Debug, Clone, Copy)]
 pub struct IceConfig {
     max_retrans: usize,
@@ -528,18 +536,12 @@ where
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_mut(&cid, now)?;
 
-        if !conn.agent.controlling() && !conn.state.has_nominated_socket() {
-            tracing::debug!(
-                ?packet,
-                "ICE is still in progress; dropping packet because controlled agent should not initiate WireGuard sessions"
-            );
-
-            return Ok(None);
-        }
-
         let socket = match &conn.state {
+            // ICE is still in progress: no socket has been nominated, so we cannot send yet.
+            // The caller is expected to buffer the packet and retry on `ConnectionEstablished`.
+            // This also means the controlled agent does not initiate a WireGuard session.
             ConnectionState::Connecting { .. } => {
-                return Err(anyhow!("Connection {cid} is still establishing"));
+                return Err(StillConnecting.into());
             }
             ConnectionState::Connected { peer_socket, .. } => *peer_socket,
             ConnectionState::Idle { peer_socket } => *peer_socket,
@@ -612,6 +614,7 @@ where
                 now,
                 &mut self.allocations,
                 &mut self.buffered_transmits,
+                &mut self.pending_events,
                 &mut self.inflight_stun_requests,
             );
 
@@ -1032,8 +1035,13 @@ where
 
             tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
-            self.pending_events
-                .push_back(Event::ConnectionEstablished(cid))
+            // Only signal establishment once we can actually send, i.e. ICE has nominated a
+            // socket. On the controlled side the handshake can complete before nomination, in
+            // which case the event is emitted from the `NominatedSend` handler instead.
+            if conn.state.has_nominated_socket() {
+                self.pending_events
+                    .push_back(Event::ConnectionEstablished(cid))
+            }
         }
 
         control_flow
@@ -1334,6 +1342,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
+        pending_events: &mut VecDeque<Event<TId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
@@ -1451,6 +1460,14 @@ where
                                 peer_socket: remote_socket,
                                 last_activity: now,
                             };
+
+                            // If the WireGuard handshake already completed while we were still
+                            // running ICE, the connection only becomes usable now that a socket is
+                            // nominated, so this is when we signal establishment.
+                            if self.first_handshake_completed_at.is_some() {
+                                pending_events.push_back(Event::ConnectionEstablished(cid));
+                            }
+
                             None
                         }
                         ConnectionState::Connected {

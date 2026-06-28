@@ -13,7 +13,8 @@ mod utils;
 
 pub use allocation::RelaySocket;
 pub use node::{
-    Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, Transmit, UnknownConnection,
+    Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting, Transmit,
+    UnknownConnection,
 };
 pub use stats::{ConnectionStats, NodeStats};
 
