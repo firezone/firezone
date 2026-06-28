@@ -1,7 +1,7 @@
 //! libFuzzer entry point that drives the tunnel state machine from raw bytes.
 //!
-//! The proptest suite ([`crate::tunnel_test`]) samples scenarios from a
-//! [`proptest`] strategy using a pseudo-random generator. The fuzz target reuses
+//! The proptest suite (the `tunnel_test` function) samples scenarios from a
+//! proptest strategy using a pseudo-random generator. The fuzz target reuses
 //! the very same building blocks — [`ReferenceState::initial_state`],
 //! [`ReferenceState::transitions`], [`ReferenceState::is_valid_transition`] and
 //! [`ReferenceState::apply`] — but derives the generator's seed from libFuzzer's
