@@ -29,7 +29,7 @@ defmodule PortalAPI.ApiSpec do
   end
 
   defp server do
-    case Portal.Config.get_env(:portal, :rest_api_external_url) do
+    case Portal.Config.get_env(:portal, :rest_api_url) do
       nil -> Server.from_endpoint(Endpoint)
       url -> %Server{url: String.trim_trailing(url, "/")}
     end

@@ -438,7 +438,7 @@ if config_env() == :prod do
 
     config :portal,
       api_external_url: api_external_url,
-      rest_api_external_url: env_var_to_config!(:rest_api_external_url) || api_external_url
+      rest_api_url: env_var_to_config!(:rest_api_url) || api_external_url
   end
 
   ###############################
