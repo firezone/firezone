@@ -120,14 +120,11 @@ pub struct ClientState {
     /// Tracks pending access to other devices.
     pending_device_access: PendingDeviceAccessRequests,
 
-    /// Per-connection packet buffers, keyed by the peer.
+    /// Packets buffered per peer while its connection is still being established.
     ///
-    /// An entry exists only while a connection is still being established: packets we cannot send
-    /// yet (snownet returns [`snownet::StillConnecting`]) are held here and flushed once we receive
-    /// [`snownet::Event::ConnectionEstablished`], at which point the entry is removed. This is the
-    /// single place where the client holds application packets between initiating a connection and
-    /// it being usable.
-    connections: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    /// Flushed once we receive [`snownet::Event::ConnectionEstablished`]; the single place where
+    /// the client buffers application packets.
+    pending_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 
     dns_resource_nat: DnsResourceNat,
     /// Resources we have requested access to and the path that authorises
@@ -223,7 +220,7 @@ impl ClientState {
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             pending_device_access: Default::default(),
-            connections: Default::default(),
+            pending_packets: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
@@ -622,7 +619,7 @@ impl ClientState {
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
-                            &mut self.connections,
+                            &mut self.pending_packets,
                         );
                     }
                 }
@@ -661,7 +658,7 @@ impl ClientState {
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
-                            &mut self.connections,
+                            &mut self.pending_packets,
                         );
                         return Ok(None);
                     }
@@ -785,7 +782,7 @@ impl ClientState {
 
     /// Flush all packets buffered for `pid` now that its connection is established.
     fn flush_connection(&mut self, pid: ClientOrGatewayId, now: Instant) {
-        let Some(buffer) = self.connections.remove(&pid) else {
+        let Some(buffer) = self.pending_packets.remove(&pid) else {
             return;
         };
 
@@ -796,14 +793,9 @@ impl ClientState {
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
-                &mut self.connections,
+                &mut self.pending_packets,
             );
         }
-    }
-
-    /// Forget any packets buffered for `pid`'s connection (e.g. when it failed or closed).
-    fn forget_connection(&mut self, pid: ClientOrGatewayId) {
-        self.connections.remove(&pid);
     }
 
     fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Result<Option<snownet::Transmit>> {
@@ -835,36 +827,7 @@ impl ClientState {
             }
         }
 
-        // If we are already buffering for this connection, keep doing so to preserve ordering; the
-        // buffer is flushed once we receive `snownet::Event::ConnectionEstablished`.
-        if let Some(buffer) = self.connections.get_mut(&pid) {
-            buffer.push(packet);
-            return Ok(None);
-        }
-
-        let transmit = match self.node.encapsulate(pid, &packet, now) {
-            Ok(Some(transmit)) => transmit,
-            Ok(None) => return Ok(None),
-            // The connection is still establishing; start buffering until it is usable.
-            Err(e) if e.any_is::<snownet::StillConnecting>() => {
-                self.connections
-                    .entry(pid)
-                    .or_insert_with(|| {
-                        UniquePacketBuffer::with_capacity_power_of_2(
-                            Self::CONNECTION_BUFFER_CAPACITY_POW_2,
-                            "pending-connection",
-                        )
-                    })
-                    .push(packet);
-                return Ok(None);
-            }
-            Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-                return Err(e.context(UnroutablePacket::not_connected(&packet)));
-            }
-            Err(e) => return Err(e),
-        };
-
-        Ok(Some(transmit))
+        encapsulate_or_buffer(packet, pid, now, &mut self.node, &mut self.pending_packets)
     }
 
     /// Decide which connection a packet should be encapsulated through.
@@ -1050,7 +1013,7 @@ impl ClientState {
                         now,
                         &mut self.node,
                         &mut self.buffered_transmits,
-                        &mut self.connections,
+                        &mut self.pending_packets,
                     );
                 }
             }
@@ -1154,7 +1117,7 @@ impl ClientState {
                     now,
                     &mut self.node,
                     &mut self.buffered_transmits,
-                    &mut self.connections,
+                    &mut self.pending_packets,
                 );
             }
         }
@@ -1698,7 +1661,7 @@ impl ClientState {
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
-                &mut self.connections,
+                &mut self.pending_packets,
             );
         }
     }
@@ -2009,12 +1972,12 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(ClientOrGatewayId::Gateway(id))
                 | snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
-                    self.forget_connection(ClientOrGatewayId::Gateway(id));
+                    self.pending_packets.remove(&ClientOrGatewayId::Gateway(id)); // Drop buffered packets.
                     self.cleanup_connected_gateway(&id, now);
                 }
                 snownet::Event::ConnectionFailed(ClientOrGatewayId::Client(id))
                 | snownet::Event::ConnectionClosed(ClientOrGatewayId::Client(id)) => {
-                    self.forget_connection(ClientOrGatewayId::Client(id));
+                    self.pending_packets.remove(&ClientOrGatewayId::Client(id)); // Drop buffered packets.
                     self.cleanup_connected_client(&id);
                 }
                 snownet::Event::NewIceCandidate {
@@ -2181,7 +2144,7 @@ impl ClientState {
         self.node.reset(now); // Clear all network connections.
         self.gateways.clear(); // Clear all state associated with Gateways.
         self.clients.clear(); // Clear all state associated with Clients.
-        self.connections.clear(); // Drop packets buffered for pending connections.
+        self.pending_packets.clear(); // Drop packets buffered for pending connections.
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events(now);
@@ -2653,31 +2616,35 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
     false
 }
 
-/// Encapsulate `packet` for `pid` and queue the resulting transmit, or buffer it if the connection
-/// is still being established.
+/// Encapsulate `packet` for `pid`, or buffer it if the connection is still being established.
 ///
 /// If we are already buffering for `pid`, the packet is appended to preserve ordering. A connection
 /// that is not yet usable makes `node.encapsulate` return [`snownet::StillConnecting`], in which
-/// case we start buffering. The buffer is flushed via [`ClientState::flush_connection`] once we
+/// case we start buffering; the buffer is flushed via [`ClientState::flush_connection`] once we
 /// receive [`snownet::Event::ConnectionEstablished`].
-fn encapsulate_and_buffer(
+///
+/// Returns the transmit to send, or `Ok(None)` if the packet was buffered. Queueing the transmit is
+/// left to the caller.
+fn encapsulate_or_buffer(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
-    connections: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
-) {
-    if let Some(buffer) = connections.get_mut(&pid) {
+    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+) -> Result<Option<Transmit>> {
+    // If we are already buffering for this connection, keep doing so to preserve ordering. The
+    // connection can be usable for ICE (nominated) but not yet have a WireGuard session, so we must
+    // keep buffering until `ConnectionEstablished` rather than relying on `StillConnecting` alone.
+    if let Some(buffer) = pending_packets.get_mut(&pid) {
         buffer.push(packet);
-        return;
+        return Ok(None);
     }
 
     match node.encapsulate(pid, &packet, now) {
-        Ok(Some(transmit)) => buffered_transmits.push_back(transmit),
-        Ok(None) => {}
+        Ok(maybe_transmit) => Ok(maybe_transmit),
+        // The connection is still establishing; start buffering until it is usable.
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
-            connections
+            pending_packets
                 .entry(pid)
                 .or_insert_with(|| {
                     UniquePacketBuffer::with_capacity_power_of_2(
@@ -2686,7 +2653,28 @@ fn encapsulate_and_buffer(
                     )
                 })
                 .push(packet);
+            Ok(None)
         }
+        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
+            Err(e.context(UnroutablePacket::not_connected(&packet)))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Like [`encapsulate_or_buffer`], but queues the resulting transmit into `buffered_transmits` and
+/// drops (with a log) any error instead of returning it.
+fn encapsulate_and_buffer(
+    packet: IpPacket,
+    pid: ClientOrGatewayId,
+    now: Instant,
+    node: &mut Node<ClientOrGatewayId, RelayId>,
+    buffered_transmits: &mut VecDeque<Transmit>,
+    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+) {
+    match encapsulate_or_buffer(packet, pid, now, node, pending_packets) {
+        Ok(Some(transmit)) => buffered_transmits.push_back(transmit),
+        Ok(None) => {}
         Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
     }
 }
