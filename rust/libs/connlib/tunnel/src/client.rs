@@ -120,17 +120,14 @@ pub struct ClientState {
     /// Tracks pending access to other devices.
     pending_device_access: PendingDeviceAccessRequests,
 
-    /// Packets buffered per connection while it is still being established.
+    /// Per-connection buffering state, keyed by the peer.
     ///
-    /// An entry is created when we start connecting to a peer and is flushed and removed once the
-    /// connection is established (see [`snownet::Event::ConnectionEstablished`]). This is the single
-    /// place where we hold application packets between initiating a connection and it being usable.
-    pending_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
-    /// Connections whose WireGuard handshake has completed.
-    ///
-    /// Used to decide, when access to a resource is authorized, whether the connection is already
-    /// usable (send directly) or still being established (buffer in `pending_packets`).
-    established_connections: BTreeSet<ClientOrGatewayId>,
+    /// While a connection is still being established, packets are held in
+    /// [`Connection::Connecting`]; once it is usable (on [`snownet::Event::ConnectionEstablished`])
+    /// they are drained and the entry becomes [`Connection::Connected`], after which packets are
+    /// sent straight away. This is the single place where the client holds application packets
+    /// between initiating a connection and it being usable.
+    connections: BTreeMap<ClientOrGatewayId, Connection>,
 
     dns_resource_nat: DnsResourceNat,
     /// Resources we have requested access to and the path that authorises
@@ -191,6 +188,14 @@ pub struct ClientState {
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
+/// Buffering state of a connection to a peer.
+enum Connection {
+    /// The connection is still being established; packets are buffered here until it is usable.
+    Connecting(UniquePacketBuffer),
+    /// The connection is established; packets are sent straight away.
+    Connected,
+}
+
 impl ClientState {
     pub(crate) fn new(
         seed: [u8; 32],
@@ -226,8 +231,7 @@ impl ClientState {
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             pending_device_access: Default::default(),
-            pending_packets: Default::default(),
-            established_connections: Default::default(),
+            connections: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
@@ -782,31 +786,30 @@ impl ClientState {
         }
     }
 
-    /// Capacity (as a power of two) of a per-connection [`ClientState::pending_packets`] buffer.
-    const PENDING_PACKETS_CAPACITY_POW_2: usize = 7; // 2^7 = 128
+    /// Capacity (as a power of two) of a per-connection packet buffer.
+    const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    /// Ensure packets sent to `pid` are buffered until its connection is established.
+    /// Start buffering packets for `pid` until its connection is established.
     ///
-    /// Does nothing if the connection is already established — in that case packets are sent
-    /// straight away.
-    fn buffer_until_established(&mut self, pid: ClientOrGatewayId) {
-        if self.established_connections.contains(&pid) {
+    /// No-op if the connection is already established.
+    fn ensure_connecting(&mut self, pid: ClientOrGatewayId) {
+        if matches!(self.connections.get(&pid), Some(Connection::Connected)) {
             return;
         }
 
-        self.pending_packets.entry(pid).or_insert_with(|| {
-            UniquePacketBuffer::with_capacity_power_of_2(
-                Self::PENDING_PACKETS_CAPACITY_POW_2,
+        self.connections.entry(pid).or_insert_with(|| {
+            Connection::Connecting(UniquePacketBuffer::with_capacity_power_of_2(
+                Self::CONNECTION_BUFFER_CAPACITY_POW_2,
                 "pending-connection",
-            )
+            ))
         });
     }
 
     /// Flush all packets buffered for `pid` now that its connection is established.
-    fn flush_pending_packets(&mut self, pid: ClientOrGatewayId, now: Instant) {
-        self.established_connections.insert(pid);
-
-        let Some(buffer) = self.pending_packets.remove(&pid) else {
+    fn flush_connection(&mut self, pid: ClientOrGatewayId, now: Instant) {
+        let Some(Connection::Connecting(buffer)) =
+            self.connections.insert(pid, Connection::Connected)
+        else {
             return;
         };
 
@@ -823,8 +826,7 @@ impl ClientState {
 
     /// Forget any state we track for `pid`'s connection (e.g. when it failed or closed).
     fn forget_connection(&mut self, pid: ClientOrGatewayId) {
-        self.established_connections.remove(&pid);
-        self.pending_packets.remove(&pid);
+        self.connections.remove(&pid);
     }
 
     fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Result<Option<snownet::Transmit>> {
@@ -858,7 +860,7 @@ impl ClientState {
 
         // Buffer the packet if the connection is still being established; it is flushed once we
         // receive `snownet::Event::ConnectionEstablished`.
-        if let Some(buffer) = self.pending_packets.get_mut(&pid) {
+        if let Some(Connection::Connecting(buffer)) = self.connections.get_mut(&pid) {
             buffer.push(packet);
             return Ok(None);
         }
@@ -1020,19 +1022,19 @@ impl ClientState {
             Ok(()) => {}
             Err(e) => return Ok(Err(e)),
         };
-        // Buffer packets to this Gateway until the connection is established. Inlined rather than
-        // `buffer_until_established` because `resource` still borrows `self.resources_by_id`.
-        if !self
-            .established_connections
-            .contains(&ClientOrGatewayId::Gateway(gid))
-        {
-            self.pending_packets
+        // Buffer packets to this Gateway until the connection is established (unless it already
+        // is). Inlined rather than a helper because `resource` still borrows `self.resources_by_id`.
+        if !matches!(
+            self.connections.get(&ClientOrGatewayId::Gateway(gid)),
+            Some(Connection::Connected)
+        ) {
+            self.connections
                 .entry(ClientOrGatewayId::Gateway(gid))
                 .or_insert_with(|| {
-                    UniquePacketBuffer::with_capacity_power_of_2(
-                        Self::PENDING_PACKETS_CAPACITY_POW_2,
+                    Connection::Connecting(UniquePacketBuffer::with_capacity_power_of_2(
+                        Self::CONNECTION_BUFFER_CAPACITY_POW_2,
                         "pending-connection",
-                    )
+                    ))
                 });
         }
         self.authorized_resources
@@ -1064,22 +1066,22 @@ impl ClientState {
                     peer.allow_ip_for_resource(address, rid);
                 }
 
-                // Buffer the packets until the connection is established (or send them straight
-                // away if it already is). Inlined rather than via `send_or_buffer` because `peer`
-                // still borrows `self.gateways`.
-                for packet in buffered_resource_packets {
-                    match self
-                        .pending_packets
-                        .get_mut(&ClientOrGatewayId::Gateway(gid))
-                    {
-                        Some(buffer) => buffer.push(packet),
-                        None => encapsulate_and_buffer(
-                            packet,
-                            ClientOrGatewayId::Gateway(gid),
-                            now,
-                            &mut self.node,
-                            &mut self.buffered_transmits,
-                        ),
+                // Buffer the packets until the connection is established, or send them straight
+                // away if it already is.
+                match self.connections.get_mut(&ClientOrGatewayId::Gateway(gid)) {
+                    Some(Connection::Connecting(buffer)) => {
+                        buffer.extend(buffered_resource_packets)
+                    }
+                    _ => {
+                        for packet in buffered_resource_packets {
+                            encapsulate_and_buffer(
+                                packet,
+                                ClientOrGatewayId::Gateway(gid),
+                                now,
+                                &mut self.node,
+                                &mut self.buffered_transmits,
+                            );
+                        }
                     }
                 }
             }
@@ -1135,7 +1137,7 @@ impl ClientState {
             snownet::IceConfig::client_default(),
             now,
         )?;
-        self.buffer_until_established(ClientOrGatewayId::Client(cid));
+        self.ensure_connecting(ClientOrGatewayId::Client(cid));
 
         let authorization = authorization.map(|auth| {
             let expires_at = auth
@@ -1178,12 +1180,9 @@ impl ClientState {
 
             for packet in pending_client_access.into_buffered_packets() {
                 peer.record_outbound(&packet, now);
-                match self
-                    .pending_packets
-                    .get_mut(&ClientOrGatewayId::Client(cid))
-                {
-                    Some(buffer) => buffer.push(packet),
-                    None => encapsulate_and_buffer(
+                match self.connections.get_mut(&ClientOrGatewayId::Client(cid)) {
+                    Some(Connection::Connecting(buffer)) => buffer.push(packet),
+                    _ => encapsulate_and_buffer(
                         packet,
                         ClientOrGatewayId::Client(cid),
                         now,
@@ -2070,11 +2069,11 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
-                    self.flush_pending_packets(ClientOrGatewayId::Gateway(id), now);
+                    self.flush_connection(ClientOrGatewayId::Gateway(id), now);
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
-                    self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
+                    self.flush_connection(ClientOrGatewayId::Client(id), now);
                     if self.connected_pool_clients.insert(id) {
                         self.resource_list.update(self.resource_list_snapshot());
                     }
@@ -2215,8 +2214,7 @@ impl ClientState {
         self.node.reset(now); // Clear all network connections.
         self.gateways.clear(); // Clear all state associated with Gateways.
         self.clients.clear(); // Clear all state associated with Clients.
-        self.pending_packets.clear(); // Drop packets buffered for pending connections.
-        self.established_connections.clear();
+        self.connections.clear(); // Drop packets buffered for pending connections.
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events(now);
