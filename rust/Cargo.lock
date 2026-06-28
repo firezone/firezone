@@ -2736,6 +2736,7 @@ dependencies = [
  "arbitrary",
  "ip-packet",
  "libfuzzer-sys",
+ "tunnel-tests",
 ]
 
 [[package]]

@@ -44,6 +44,7 @@ mod dns_records;
 mod dns_server_resource;
 mod echo;
 mod flux_capacitor;
+mod fuzz;
 mod icmp_error_hosts;
 mod ref_client;
 mod ref_gateway;
@@ -57,6 +58,8 @@ mod stub_portal;
 mod sut;
 mod tcp;
 mod transition;
+
+pub use fuzz::run_fuzz_case;
 
 type QueryId = u16;
 
