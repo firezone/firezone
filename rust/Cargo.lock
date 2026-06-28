@@ -1231,6 +1231,7 @@ dependencies = [
  "backoff",
  "client-shared",
  "connlib-model",
+ "flow-log-upload",
  "ip-packet",
  "ip_network",
  "itertools",
@@ -1263,6 +1264,7 @@ dependencies = [
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
+ "flow-log-upload",
  "futures",
  "logging",
  "opentelemetry",
@@ -2310,6 +2312,7 @@ dependencies = [
  "caps",
  "clap",
  "dns-types",
+ "flow-log-upload",
  "futures",
  "futures-bounded",
  "hickory-resolver",
@@ -2547,6 +2550,36 @@ dependencies = [
  "crc32fast",
  "libz-rs-sys",
  "miniz_oxide",
+]
+
+[[package]]
+name = "flow-log-spool"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crc32fast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "flow-log-upload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "backoff",
+ "base64 0.22.1",
+ "bytes",
+ "flow-log-spool",
+ "http",
+ "http-client",
+ "serde",
+ "serde_json",
+ "socket-factory",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -8217,6 +8250,7 @@ name = "tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "atomicwrites",
  "base64 0.22.1",
  "bimap",
  "bootstrap-dns-client",
@@ -8231,6 +8265,7 @@ dependencies = [
  "dns-types",
  "eventloop-budget",
  "firezone-relay",
+ "flow-log-spool",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
@@ -8264,6 +8299,7 @@ dependencies = [
  "snownet",
  "socket-factory",
  "telemetry",
+ "tempfile",
  "test-case",
  "test-strategy",
  "thiserror 2.0.18",

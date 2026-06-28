@@ -22,6 +22,19 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(PathBuf::from("/Library/Logs").join(BUNDLE_ID))
 }
 
+/// Spool directory for flow logs the Tunnel service writes and uploads.
+///
+/// A sibling of [`tunnel_service_config`], kept out of the log directory so an
+/// exported log bundle never sweeps it up.
+#[expect(clippy::unnecessary_wraps)] // Signature must match Windows
+pub fn flow_logs() -> Option<PathBuf> {
+    Some(
+        PathBuf::from("/Library/Application Support")
+            .join(BUNDLE_ID)
+            .join("flow_logs"),
+    )
+}
+
 /// User-specific logs directory
 pub fn logs() -> Option<PathBuf> {
     Some(

@@ -1837,6 +1837,7 @@ defmodule PortalAPI.Client.Channel do
     push(socket, "init", %{
       flow_logs_api_url: flow_logs_api_url(),
       flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
+      flow_logs_upload_batch_size: flow_logs_upload_batch_size(),
       resources: Views.Resource.render_many(resources, socket.assigns.session),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       # TODO: Re-enable after verifying compatibility with older clients
@@ -1867,6 +1868,9 @@ defmodule PortalAPI.Client.Channel do
 
   defp flow_logs_upload_interval_secs,
     do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
+
+  defp flow_logs_upload_batch_size,
+    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)

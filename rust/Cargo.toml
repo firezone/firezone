@@ -29,6 +29,8 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/eventloop-budget",
+    "libs/flow-log-spool",
+    "libs/flow-log-upload",
     "libs/http-client",
     "libs/known-dirs",
     "libs/logging",
@@ -79,6 +81,7 @@ chrono = { version = "0.4.44", default-features = false, features = ["std", "clo
 clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
+crc32fast = "1.5.0"
 crossbeam-queue = "0.3.12"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
@@ -96,6 +99,8 @@ etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
 filetime = "0.2.29"
+flow-log-spool = { path = "libs/flow-log-spool" }
+flow-log-upload = { path = "libs/flow-log-upload" }
 firezone-relay = { path = "relay/server", default-features = false }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"

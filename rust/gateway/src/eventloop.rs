@@ -39,6 +39,10 @@ pub struct Eventloop {
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
 
+    /// Flow-log spool root. The portal's upload config (URL + interval) from `init`
+    /// is persisted here for the uploader thread. `None` when flow logging is off.
+    flow_logs_dir: Option<std::path::PathBuf>,
+
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         ResolveDnsRequest,
@@ -65,6 +69,7 @@ impl Eventloop {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
+        flow_logs_dir: Option<std::path::PathBuf>,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -81,6 +86,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             tun_device_manager,
             resolver,
+            flow_logs_dir,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -294,12 +300,12 @@ impl Eventloop {
             IngressMessages::AuthorizeFlow(msg) => {
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
                     msg.client,
-                    msg.subject,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
                     Instant::now(),
+                    msg.flow_logs_ingest_token,
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
@@ -359,11 +365,35 @@ impl Eventloop {
                 account_slug,
                 relays,
                 authorizations,
+                flow_logs_api_url,
+                flow_logs_upload_interval_secs,
+                flow_logs_upload_batch_size,
             }) => {
                 if let Some(account_slug) = account_slug {
                     Telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
+                }
+
+                // The portal drives flow logging via the upload interval: `0` (or no
+                // API URL) disables emission entirely, so no flow files are written.
+                if let Some(spool_root) = &self.flow_logs_dir {
+                    let interval = flow_logs_upload_interval_secs.unwrap_or(0);
+                    let batch_size = flow_logs_upload_batch_size.unwrap_or(0);
+                    let enabled = interval > 0 && flow_logs_api_url.is_some();
+
+                    tunnel.state_mut().set_flow_logs_enabled(enabled);
+
+                    if let Some(base_url) = &flow_logs_api_url
+                        && let Err(e) = flow_log_upload::write_upload_config(
+                            spool_root,
+                            base_url,
+                            interval,
+                            batch_size,
+                        )
+                    {
+                        tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                    }
                 }
 
                 tunnel.state_mut().update_relays(

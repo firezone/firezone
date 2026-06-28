@@ -35,6 +35,11 @@ const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
+/// Spool directory for flow logs pending upload. Lives in the Gateway's state
+/// directory (not `/var/log`), so it is never swept into an exported log bundle,
+/// and holds Bearer tokens + flow payloads (written with 0700/0600 permissions).
+const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -193,14 +198,25 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
-    telemetry::update_system_resolvers(nameservers.iter().copied().collect());
+    telemetry::set_system_resolvers(nameservers.iter().copied().collect());
+
+    let flow_logs_dir = cli.flow_logs.then(|| PathBuf::from(FLOW_LOGS_DIR));
 
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
-        cli.flow_logs,
+        flow_logs_dir.clone(),
     );
+
+    // The Gateway is always running, so it uploads in-process. Prune stale spool
+    // dirs first, then spawn the uploader thread; it reads the upload config the
+    // eventloop persists into the spool root once `init` arrives.
+    if let Some(spool_root) = flow_logs_dir.clone() {
+        flow_log_upload::prune(&spool_root);
+        flow_log_upload::spawn(spool_root, Arc::new(tcp_socket_factory));
+    }
+
     let max_partition_time = cli
         .max_partition_time
         .map(|d| d.into())
@@ -246,7 +262,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
+    Eventloop::new(tunnel, portal, tun_device_manager, resolver, flow_logs_dir)?
         .run()
         .await
         .context(EventloopFailed)?;

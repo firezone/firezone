@@ -26,6 +26,7 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
+use crate::flow_log::{self, FlowContext, RxFlow, Tracker, TxFlow};
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
@@ -176,6 +177,11 @@ pub struct ClientState {
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
+
+    /// Tracks flow logs for this Client, both as the initiator of flows to
+    /// gateways / other clients and as the responder for flows other clients
+    /// initiate to it. Keyed by the peer the flow is tunneled through.
+    flow_tracker: Tracker<ClientOrGatewayId>,
 }
 
 impl ClientState {
@@ -183,11 +189,13 @@ impl ClientState {
         seed: [u8; 32],
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
+        flow_logs: bool,
         now: Instant,
         unix_ts: Duration,
     ) -> Self {
         Self {
             authorized_resources: Default::default(),
+            flow_tracker: Tracker::new(flow_logs, now),
             cidr_routing_table: RoutingTable::default(),
             dns_routing_table: RoutingTable::default(),
             client_routing_table: RoutingTable::default(),
@@ -421,9 +429,23 @@ impl ClientState {
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 
+        // Emit a close record for every still-active flow before we tear the
+        // connections down, so in-flight flows are reported on exit.
+        self.flow_tracker.close_all(now);
+
         self.clients.clear();
         self.gateways.clear();
         self.node.close_all(p2p_control::goodbye(), now);
+    }
+
+    pub(crate) fn poll_flow_record(&mut self) -> Option<flow_log::FlowLogRecord> {
+        self.flow_tracker.poll_flow_record()
+    }
+
+    /// Enables or disables flow-log emission at runtime. The portal drives this via
+    /// the upload interval (`0` disables), so no flow files are written when off.
+    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
+        self.flow_tracker.set_enabled(enabled);
     }
 
     /// Updates the NAT for all domains resolved by the stub resolver on the corresponding gateway.
@@ -654,6 +676,8 @@ impl ClientState {
                     }
                 };
 
+                self.record_inbound_flow(pid, local, from, &packet, now);
+
                 return Ok(Some(packet));
             }
             ClientOrGatewayId::Gateway(gid) => {
@@ -683,6 +707,8 @@ impl ClientState {
                 }
             }
         }
+
+        self.record_inbound_flow(pid, local, from, &packet, now);
 
         Ok(Some(packet))
     }
@@ -805,7 +831,153 @@ impl ClientState {
             Err(e) => return Err(e),
         };
 
+        self.record_outbound_flow(pid, &packet, &transmit, now);
+
         Ok(Some(transmit))
+    }
+
+    /// Records the flow log for an outbound packet, now that it has been
+    /// encapsulated and the outer (transport) addresses are known.
+    ///
+    /// To a gateway we are always the initiator (tx). To another client we are the
+    /// initiator (tx) when we requested access and the responder (rx, a reply) when
+    /// the peer holds an inbound authorization against us.
+    ///
+    /// Only packets that produce a transmit are counted, so the initial packets of
+    /// the first flow to a new peer, which are buffered until the connection is up,
+    /// are not counted here; the responder records them, and steady-state packets
+    /// are counted once the connection is established.
+    fn record_outbound_flow(
+        &mut self,
+        pid: ClientOrGatewayId,
+        inner: &IpPacket,
+        outer: &snownet::Transmit,
+        now: Instant,
+    ) {
+        if !self.flow_tracker.enabled() {
+            return;
+        }
+
+        let Some(inner) = InnerPacket::extract(inner) else {
+            return;
+        };
+
+        match pid {
+            ClientOrGatewayId::Gateway(gid) => {
+                let (ingest_token, domain) =
+                    self.gateway_flow_attribution(gid, inner.dst_ip, inner.dst_proto);
+
+                self.flow_tracker.record_tx(
+                    inner.into_tx(pid, outer_context(outer), ingest_token, domain),
+                    now,
+                );
+            }
+            ClientOrGatewayId::Client(cid) => {
+                let is_responder = self
+                    .clients
+                    .peer_by_id(&cid)
+                    .is_some_and(ClientOnClient::is_responder);
+
+                if is_responder {
+                    self.flow_tracker.record_rx(inner.into_rx(pid), now);
+                } else {
+                    let ingest_token =
+                        self.client_flow_token(cid, inner.dst_ip, inner.dst_proto);
+
+                    self.flow_tracker.record_tx(
+                        inner.into_tx(pid, outer_context(outer), ingest_token, None),
+                        now,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Records the flow log for an inbound (decrypted) packet.
+    ///
+    /// From a gateway it is a reply to a flow we initiated (rx). From another
+    /// client it is the initiator-to-responder direction (tx) when the peer holds
+    /// an inbound authorization against us, otherwise a reply to a flow we
+    /// initiated (rx).
+    fn record_inbound_flow(
+        &mut self,
+        pid: ClientOrGatewayId,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &IpPacket,
+        now: Instant,
+    ) {
+        if !self.flow_tracker.enabled() {
+            return;
+        }
+
+        let Some(inner) = InnerPacket::extract(packet) else {
+            return;
+        };
+
+        match pid {
+            ClientOrGatewayId::Gateway(_) => {
+                self.flow_tracker.record_rx(inner.into_rx(pid), now);
+            }
+            ClientOrGatewayId::Client(cid) => {
+                let Some(peer) = self.clients.peer_by_id(&cid) else {
+                    return;
+                };
+
+                if peer.is_responder() {
+                    let ingest_token = peer.ingest_token_for_inbound(packet);
+
+                    self.flow_tracker.record_tx(
+                        inner.into_tx(pid, FlowContext::new(from, local), ingest_token, None),
+                        now,
+                    );
+                } else {
+                    self.flow_tracker.record_rx(inner.into_rx(pid), now);
+                }
+            }
+        }
+    }
+
+    /// Resolves the ingest token (and domain, for DNS resources) attributing an
+    /// outbound packet to a gateway.
+    fn gateway_flow_attribution(
+        &mut self,
+        gid: GatewayId,
+        dst: IpAddr,
+        dst_proto: Protocol,
+    ) -> (Option<String>, Option<DomainName>) {
+        let peer = self.gateways.peer_by_id(&gid);
+
+        if let Some(entry) = self.dns_routing_table.matches(dst, Ok(dst_proto)) {
+            let token = peer.and_then(|peer| peer.ingest_token(&entry.resource_id));
+
+            return (token, Some(entry.domain.clone()));
+        }
+
+        let resource_id = self
+            .cidr_routing_table
+            .matches(dst, Ok(dst_proto))
+            .map(|entry| entry.resource_id)
+            .or_else(|| self.active_internet_resource().map(|resource| resource.id));
+
+        let token = resource_id.and_then(|rid| peer.and_then(|peer| peer.ingest_token(&rid)));
+
+        (token, None)
+    }
+
+    /// Resolves the ingest token attributing an outbound packet to another client
+    /// we are the initiator for.
+    fn client_flow_token(
+        &mut self,
+        cid: ClientId,
+        dst: IpAddr,
+        dst_proto: Protocol,
+    ) -> Option<String> {
+        let resource_id = self.client_routing_table.matches(dst, Ok(dst_proto))?.resource_id;
+
+        self.clients
+            .peer_by_id(&cid)
+            .and_then(|peer| peer.ingest_token(&resource_id))
     }
 
     /// Decide which connection a packet should be encapsulated through.
@@ -927,6 +1099,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        flow_logs_ingest_token: Option<String>,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -963,6 +1136,8 @@ impl ClientState {
         let peer = self
             .gateways
             .upsert(gid, || GatewayOnClient::new(gateway_tun));
+
+        peer.set_ingest_token(rid, flow_logs_ingest_token);
 
         // Deal with buffered packets
 
@@ -1028,6 +1203,7 @@ impl ClientState {
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
+        flow_logs_ingest_token: Option<String>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
@@ -1054,6 +1230,17 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || ClientOnClient::new(client_tun));
+
+        // Attribute this peer's flow logs for the resource this authorization
+        // covers: the receiving side learns it from the resource, the initiating
+        // side from the pending access it is completing.
+        if let Some(resource_id) = authorization
+            .as_ref()
+            .map(|(resource_id, _, _)| *resource_id)
+            .or_else(|| pending_device_access.as_ref().map(|p| p.resource_id()))
+        {
+            peer.set_ingest_token(resource_id, flow_logs_ingest_token);
+        }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
@@ -1490,6 +1677,7 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
+        self.flow_tracker.handle_timeout(now);
 
         for peer in self.clients.iter_mut() {
             peer.handle_timeout(now);
@@ -2585,6 +2773,90 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
     false
 }
 
+/// The flow-log fields extracted from one inner (application) IP packet, in the
+/// packet's natural orientation.
+struct InnerPacket {
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_proto: Protocol,
+    dst_proto: Protocol,
+    tcp_syn: bool,
+    tcp_fin: bool,
+    tcp_rst: bool,
+    payload_len: usize,
+}
+
+impl InnerPacket {
+    /// Extracts the fields needed for flow logging, or `None` for a packet whose
+    /// protocol the flow tracker does not track.
+    fn extract(packet: &IpPacket) -> Option<Self> {
+        Some(Self {
+            src_ip: packet.source(),
+            dst_ip: packet.destination(),
+            src_proto: packet.source_protocol().ok()?,
+            dst_proto: packet.destination_protocol().ok()?,
+            tcp_syn: packet.as_tcp().map(|tcp| tcp.syn()).unwrap_or(false),
+            tcp_fin: packet.as_tcp().map(|tcp| tcp.fin()).unwrap_or(false),
+            tcp_rst: packet.as_tcp().map(|tcp| tcp.rst()).unwrap_or(false),
+            payload_len: packet.layer4_payload_len(),
+        })
+    }
+
+    fn into_tx(
+        self,
+        scope: ClientOrGatewayId,
+        context: FlowContext,
+        ingest_token: Option<String>,
+        domain: Option<DomainName>,
+    ) -> TxFlow<ClientOrGatewayId> {
+        TxFlow {
+            scope,
+            context,
+            src_ip: self.src_ip,
+            dst_ip: self.dst_ip,
+            src_proto: self.src_proto,
+            dst_proto: self.dst_proto,
+            tcp_syn: self.tcp_syn,
+            tcp_fin: self.tcp_fin,
+            tcp_rst: self.tcp_rst,
+            payload_len: self.payload_len,
+            ingest_token,
+            domain,
+        }
+    }
+
+    fn into_rx(self, scope: ClientOrGatewayId) -> RxFlow<ClientOrGatewayId> {
+        RxFlow {
+            scope,
+            src_ip: self.src_ip,
+            dst_ip: self.dst_ip,
+            src_proto: self.src_proto,
+            dst_proto: self.dst_proto,
+            tcp_fin: self.tcp_fin,
+            tcp_rst: self.tcp_rst,
+            payload_len: self.payload_len,
+        }
+    }
+}
+
+/// Builds the outer (transport) 4-tuple for an outbound flow from its transmit.
+/// The local address is unspecified when the socket layer has not bound one yet
+/// (e.g. a relayed transmit).
+fn outer_context(transmit: &Transmit) -> FlowContext {
+    let local = transmit
+        .src
+        .unwrap_or_else(|| unspecified_socket_like(transmit.dst));
+
+    FlowContext::new(local, transmit.dst)
+}
+
+fn unspecified_socket_like(addr: SocketAddr) -> SocketAddr {
+    match addr {
+        SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
+        SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
+    }
+}
+
 fn encapsulate_and_buffer(
     packet: IpPacket,
     pid: ClientOrGatewayId,
@@ -2841,6 +3113,7 @@ mod tests {
             ClientState::new(
                 rand::random(),
                 Default::default(),
+                false,
                 false,
                 Instant::now(),
                 Duration::ZERO,

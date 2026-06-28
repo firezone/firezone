@@ -37,6 +37,18 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
     )
 }
 
+/// Spool directory for flow logs the Tunnel service writes and uploads.
+///
+/// A sibling of [`tunnel_service_config`] under `ProgramData`, kept out of the log
+/// directory so an exported log bundle never sweeps it up.
+pub fn flow_logs() -> Option<PathBuf> {
+    Some(
+        get_known_folder_path(KnownFolder::ProgramData)?
+            .join(BUNDLE_ID)
+            .join("flow_logs"),
+    )
+}
+
 /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data\logs`
 ///
 /// See connlib docs for details

@@ -12,13 +12,13 @@ anyhow = { workspace = true }
 bytes = { workspace = true }
 http = { workspace = true }
 http-body-util = { workspace = true }
-hyper = { workspace = true, features = ["client", "http2"] }
+hyper = { workspace = true, features = ["client", "http1", "http2"] }
 hyper-util = { workspace = true, features = ["tokio"] }
 rustls = { workspace = true }
 rustls-pki-types = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
 tokio-rustls = { workspace = true }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }

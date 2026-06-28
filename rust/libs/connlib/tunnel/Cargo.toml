@@ -10,6 +10,7 @@ divan = ["dep:divan"]
 
 [dependencies]
 anyhow = { workspace = true }
+atomicwrites = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 bimap = { workspace = true }
 bootstrap-dns-client = { workspace = true }
@@ -24,6 +25,7 @@ dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
+flow-log-spool = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
@@ -66,6 +68,7 @@ proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
 sha2 = { workspace = true }
+tempfile = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "test-util"] }
