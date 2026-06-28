@@ -56,10 +56,15 @@ import uniffi.connlib.enforceLogSizeCap
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
+import uniffi.connlib.runFlowLogUploadTimeboxed
+import uniffi.connlib.startFlowLogUploader
+import uniffi.connlib.startTelemetry
+import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
+import kotlin.concurrent.thread
 import kotlin.coroutines.cancellation.CancellationException
 
 @AndroidEntryPoint
@@ -243,11 +248,28 @@ class TunnelService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         registerReceiver(restrictionsReceiver, restrictionsFilter)
+
+        // Start connlib's (Rust) telemetry for the service-process lifetime, decoupled
+        // from any connlib session. It comes up in the `entrypoint` environment to
+        // capture early crashes; `connect` later re-points it at the session's
+        // environment, and `onDestroy` flushes it. It uses protected (tunnel-bypassing)
+        // sockets, so it never loops back through the VPN.
+        startTelemetry(protectSocket)
+
+        // Run the flow-log uploader for the app-process lifetime, decoupled from any
+        // connlib session, so spooled flows keep uploading across connect/disconnect
+        // cycles while the process is alive. Idempotent across service restarts. Uses
+        // protected (tunnel-bypassing) sockets so uploads never loop through the VPN.
+        startFlowLogUploader(getFlowLogsDir(), protectSocket)
     }
 
     override fun onDestroy() {
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
+
+        // Flush connlib's (Rust) telemetry as the service process tears down. It is
+        // process-lifetime, so it is not stopped per-session on disconnect.
+        stopTelemetry()
         super.onDestroy()
     }
 
@@ -334,6 +356,7 @@ class TunnelService : VpnService() {
                             deviceName = getDeviceName(),
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
+                            flowLogsDir = getFlowLogsDir(),
                             isInternetResourceActive = resourceState.isEnabled(),
                             protectSocket = protectSocket,
                             deviceInfo = deviceInfo,
@@ -358,6 +381,14 @@ class TunnelService : VpnService() {
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
+
+                    // Best-effort: connlib has finalized any open flows into the spool,
+                    // so kick a prompt, timeboxed drain over protected sockets (the tunnel
+                    // may still be tearing down). The process-lifetime uploader also keeps
+                    // draining while the app process is alive.
+                    val flowLogsDir = getFlowLogsDir()
+                    val protect = protectSocket
+                    thread(isDaemon = true) { runFlowLogUploadTimeboxed(flowLogsDir, 5UL, protect) }
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
@@ -534,6 +565,15 @@ class TunnelService : VpnService() {
         val logDir = cacheDir.absolutePath + "/logs"
         Files.createDirectories(Paths.get(logDir))
         return logDir
+    }
+
+    // Spool directory for flow logs the tunnel writes and the uploader drains. Under
+    // `filesDir` (persistent, unlike `cacheDir`) and outside the log directory so an
+    // exported log bundle never sweeps it up.
+    private fun getFlowLogsDir(): String {
+        val flowLogsDir = filesDir.absolutePath + "/flow_logs"
+        Files.createDirectories(Paths.get(flowLogsDir))
+        return flowLogsDir
     }
 
     fun startConnectedNotification() {

@@ -17,6 +17,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
 use std::future;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
@@ -30,6 +31,16 @@ use crate::eventloop::UserNotification;
 mod eventloop;
 
 const PHOENIX_TOPIC: &str = "client";
+
+/// How this client handles flow logs.
+pub struct FlowLogConfig {
+    /// Directory the flow-log records are spooled to.
+    pub dir: PathBuf,
+    /// Whether to run the in-process uploader thread (desktop tunnel service, which
+    /// is always running) or to only spool, leaving uploads to an OS background task
+    /// that calls [`flow_log_upload::upload_once`] via FFI (mobile).
+    pub upload: bool,
+}
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
@@ -72,6 +83,7 @@ impl Session {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        flow_logs: Option<FlowLogConfig>,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -82,6 +94,7 @@ impl Session {
                     udp_socket_factory,
                     is_internet_resource_active,
                     dns_servers,
+                    flow_logs,
                     portal,
                     cmd_rx,
                     resource_list_sender,

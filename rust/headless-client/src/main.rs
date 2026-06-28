@@ -421,12 +421,20 @@ fn try_main() -> Result<()> {
             },
             Arc::new(tcp_socket_factory),
         );
+        // The Tunnel service is always running, so it spools and uploads flow logs
+        // in-process. Actual logging is gated by the portal sending ingest tokens.
+        let flow_logs = known_dirs::flow_logs().map(|dir| client_shared::FlowLogConfig {
+            dir,
+            upload: true,
+        });
+
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
+            flow_logs,
             rt.handle().clone(),
         );
 
@@ -506,12 +514,17 @@ fn try_main() -> Result<()> {
             }
         };
 
-        telemetry.stop().await; // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
-
+        // Closing the command channel shuts the event-loop down and restores the
+        // system resolver.
         drop(session);
 
         // Drain the event-stream to allow the event-loop to gracefully shutdown.
+        // This runs `shut_down_tunnel`, which clears the telemetry resolver override.
         let _ = tokio::time::timeout(Duration::from_secs(1), event_stream.drain()).await;
+
+        // Telemetry outlives the session: connlib has restored the system resolver,
+        // so this final flush resolves the sentry host via the default resolver.
+        telemetry.stop().await;
 
         result
     })?;

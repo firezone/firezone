@@ -83,6 +83,20 @@ public struct SharedAccess {
     return nil
   }
 
+  // Spool directory for flow logs the tunnel writes and uploads. Kept under
+  // Application Support (persistent state, not cache) and outside the log folder so
+  // an exported log bundle never sweeps it up.
+  public static var flowLogsFolderURL: URL? {
+    if let url = applicationSupportFolderURL?.appendingPathComponent("flow_logs") {
+      guard ensureDirectoryExists(at: url.path) else {
+        return nil
+      }
+      return url
+    }
+    NSLog("Can't access applicationSupportFolderURL to create flowLogsFolderURL")
+    return nil
+  }
+
   public static var providerStopReasonURL: URL {
     baseFolderURL.appendingPathComponent("reason")
   }

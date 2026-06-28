@@ -84,6 +84,15 @@ pub struct InitGateway {
     pub account_slug: Option<String>,
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
+    /// Base URL the Gateway POSTs flow logs to (portal-provided, authoritative).
+    #[serde(default)]
+    pub flow_logs_api_url: Option<String>,
+    /// How often, in seconds, to upload batched flow logs. `0` disables uploads.
+    #[serde(default)]
+    pub flow_logs_upload_interval_secs: Option<u64>,
+    /// Maximum flow-log records per upload request. `0` / absent uses the default.
+    #[serde(default)]
+    pub flow_logs_upload_batch_size: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]

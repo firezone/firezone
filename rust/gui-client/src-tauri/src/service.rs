@@ -495,7 +495,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        self.telemetry.stop().await; // Stop the telemetry session once the client disconnects or we are shutting down.
+        self.telemetry.stop().await; // Flush telemetry as the service shuts down.
 
         ret
     }
@@ -543,7 +543,8 @@ impl<'a> Handler<'a> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                self.telemetry.stop().await;
+                // Telemetry is process-lifetime; it outlives sessions and is only
+                // flushed when the service itself shuts down.
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
@@ -621,7 +622,8 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
-                self.telemetry.stop().await;
+                // Telemetry is process-lifetime; it outlives sessions and is only
+                // flushed when the service itself shuts down.
                 self.dns_controller.deactivate()?;
 
                 // Always send `DisconnectedGracefully` even if we weren't connected,
@@ -740,12 +742,20 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        // The Tunnel service is always running, so it spools and uploads flow logs
+        // in-process. Actual logging is gated by the portal sending ingest tokens.
+        let flow_logs = known_dirs::flow_logs().map(|dir| client_shared::FlowLogConfig {
+            dir,
+            upload: true,
+        });
+
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             is_internet_resource_active,
             dns,
+            flow_logs,
             tokio::runtime::Handle::current(),
         );
 

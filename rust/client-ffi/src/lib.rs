@@ -6,7 +6,7 @@ use crate::fd::RawFd;
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{Arc, LazyLock, OnceLock},
     time::Duration,
 };
 
@@ -25,11 +25,20 @@ use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
 uniffi::setup_scaffolding!();
 
+/// Process-lifetime telemetry, decoupled from any single connlib session.
+///
+/// Started once at provider/process start via [`start_telemetry`] (in the
+/// `entrypoint` environment, to capture early crashes), re-pointed at each
+/// session's environment in [`connect`], and flushed at process teardown via
+/// [`stop_telemetry`]. It deliberately outlives connlib sessions so the
+/// post-disconnect flow-log uploader and late crashes still report.
+static TELEMETRY: LazyLock<std::sync::Mutex<Option<Telemetry>>> =
+    LazyLock::new(|| std::sync::Mutex::new(None));
+
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
-    telemetry: Mutex<Telemetry>,
     runtime: Option<tokio::runtime::Runtime>,
 }
 
@@ -185,6 +194,7 @@ impl Session {
         device_name: String,
         log_dir: String,
         log_filter: String,
+        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
         protect_socket: Arc<dyn ProtectSocket>,
@@ -200,6 +210,7 @@ impl Session {
             Some(device_name),
             log_dir,
             log_filter,
+            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -224,6 +235,7 @@ impl Session {
         device_name: Option<String>,
         log_dir: String,
         log_filter: String,
+        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
@@ -239,6 +251,7 @@ impl Session {
             device_name,
             log_dir,
             log_filter,
+            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -269,6 +282,7 @@ impl Session {
         device_name: Option<String>,
         log_dir: String,
         log_filter: String,
+        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
@@ -283,6 +297,7 @@ impl Session {
             device_name,
             log_dir,
             log_filter,
+            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -334,18 +349,10 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
+        // Telemetry is intentionally *not* stopped here: it lives for the
+        // provider-process lifetime (see `TELEMETRY`), so crashes and the
+        // post-disconnect flow-log uploader keep reporting after the session ends.
         self.inner.stop();
-
-        let Some(runtime) = self.runtime.as_ref() else {
-            tracing::error!(
-                "No tokio runtime set! This should be impossible because we only clear it on `Drop`"
-            );
-            return;
-        };
-
-        runtime.block_on(async {
-            self.telemetry.lock().await.stop().await;
-        });
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
@@ -371,10 +378,15 @@ impl Session {
     }
 
     pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
-        let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
+        let state = LOGGER_STATE.get().context("Logger not yet initialised")?;
 
-        reload_handle
+        state
+            .file_reload
             .reload(&directives)
+            .context("Failed to apply new directives")?;
+        state
+            .platform_reload
+            .reload(&platform_log_directives(&directives))
             .context("Failed to apply new directives")?;
 
         Ok(())
@@ -469,7 +481,8 @@ impl Drop for Session {
         self.inner.stop(); // Instruct the event-loop to shut down.
 
         runtime.block_on(async {
-            self.telemetry.lock().await.stop().await;
+            // Telemetry is process-lifetime (see `TELEMETRY`); it is flushed at
+            // process teardown via `stop_telemetry`, not here.
 
             // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
             let drain = async { self.events.lock().await.drain().await };
@@ -480,6 +493,7 @@ impl Drop for Session {
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn connect(
     api_url: String,
     token: String,
@@ -488,6 +502,7 @@ fn connect(
     device_name: Option<String>,
     log_dir: String,
     log_filter: String,
+    flow_logs_dir: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -513,12 +528,15 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    let mut telemetry = Telemetry::new(tcp_socket_factory.clone(), udp_socket_factory.clone());
-    telemetry.start(&api_url, RELEASE, platform::DSN);
+    // Telemetry is started once at process start (`start_telemetry`) and lives for
+    // the provider-process lifetime. Re-point the process-global guard at this
+    // session's environment; if `start_telemetry` was never called (e.g. the
+    // Linux/Windows dummy path), telemetry simply stays off.
+    if let Some(telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        telemetry.start(&api_url, RELEASE, platform::DSN);
+    }
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
-
-    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
@@ -545,39 +563,148 @@ fn connect(
         },
         tcp_socket_factory.clone(),
     );
+    // The tunnel process on these platforms (iOS Network Extension, Android
+    // foreground service, macOS System Extension) is session-scoped, so it only
+    // *writes* the spool here (`upload: false`). Uploading the spool, for up to 30
+    // days after the last session, is driven separately by the tunnel-process /
+    // OS background task (iOS `BGTaskScheduler`, Android `JobScheduler`, macOS in
+    // the provider process) that calls `run_flow_log_upload`.
+    let flow_logs = flow_logs_dir
+        .filter(|dir| !dir.is_empty())
+        .map(|dir| client_shared::FlowLogConfig {
+            dir: PathBuf::from(dir),
+            upload: false,
+        });
+
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
         is_internet_resource_active,
         Vec::default(),
+        flow_logs,
         runtime.handle().clone(),
     );
 
-    analytics::new_session(device_id, api_url.to_string());
+    analytics::new_session(device_id, api_url);
 
     Ok(Session {
         inner: session,
         events: Mutex::new(events),
-        telemetry: Mutex::new(telemetry),
         runtime: Some(runtime),
     })
 }
 
-static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =
-    OnceLock::new();
+/// Starts process-lifetime telemetry in the `entrypoint` environment.
+///
+/// Call this once at provider/process start, before any session. It configures
+/// the tunnel-bypassing ingest socket factories and brings up the Sentry guard so
+/// early crashes are captured; [`connect`] later re-points it at the session's
+/// environment, and [`stop_telemetry`] flushes it at teardown.
+fn start_telemetry_inner(
+    tcp: Arc<dyn SocketFactory<TcpSocket>>,
+    udp: Arc<dyn SocketFactory<UdpSocket>>,
+) {
+    install_rustls_crypto_provider();
+
+    let mut telemetry = Telemetry::new(tcp, udp);
+    telemetry.start("entrypoint", RELEASE, platform::DSN);
+
+    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
+
+    *TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()) = Some(telemetry);
+}
+
+#[uniffi::export]
+#[cfg(target_os = "android")]
+pub fn start_telemetry(protect_socket: Arc<dyn ProtectSocket>) {
+    let tcp = Arc::new(protected_tcp_socket_factory(protect_socket.clone()));
+    let udp = Arc::new(protected_udp_socket_factory(protect_socket));
+
+    start_telemetry_inner(tcp, udp);
+}
+
+#[uniffi::export]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub fn start_telemetry() {
+    start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+}
+
+#[uniffi::export]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
+pub fn start_telemetry() {
+    start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+}
+
+/// Flushes and stops process-lifetime telemetry.
+///
+/// Call this at provider/process teardown (after the last session has
+/// disconnected) for a graceful flush of any pending events.
+#[uniffi::export]
+pub fn stop_telemetry() {
+    let Some(mut telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+        return;
+    };
+
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            tracing::error!("Failed to build runtime to stop telemetry: {e:#}");
+            return;
+        }
+    };
+
+    runtime.block_on(telemetry.stop());
+}
+
+struct LoggerState {
+    /// Kept alive so the file-logging worker keeps flushing.
+    _file: logging::file::Handle,
+    file_reload: logging::FilterReloadHandle,
+    platform_reload: logging::FilterReloadHandle,
+}
+
+static LOGGER_STATE: OnceLock<LoggerState> = OnceLock::new();
+
+/// Whether flow-log events should be written to the platform/console sink.
+///
+/// Mirrors the gateway's `FIREZONE_FLOW_LOGS`: opt-in, off by default. This only
+/// gates the console sink; the log file still emits flow logs per the configured
+/// directives (i.e. only at `flow_logs=trace`).
+fn flow_logs_to_stdout() -> bool {
+    std::env::var("FIREZONE_FLOW_LOGS").is_ok_and(|v| v == "true")
+}
+
+/// Builds the console sink's directives: the configured `directives` plus an
+/// explicit `flow_logs` level, so the noisy flow-log target shows on the console
+/// only when `FIREZONE_FLOW_LOGS=true`, regardless of the configured directives.
+fn platform_log_directives(directives: &str) -> String {
+    let level = if flow_logs_to_stdout() { "trace" } else { "off" };
+
+    format!("{directives},flow_logs={level}")
+}
 
 fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
-    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
-        reload_handle
+    if let Some(state) = LOGGER_STATE.get() {
+        state
+            .file_reload
             .reload(&log_filter)
+            .context("Failed to apply new log-filter")?;
+        state
+            .platform_reload
+            .reload(&platform_log_directives(&log_filter))
             .context("Failed to apply new log-filter")?;
         return Ok(());
     }
 
-    let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
-    let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
-    let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
+    let (file_log_filter, file_reload) = logging::try_filter(&log_filter)?;
+    let (platform_log_filter, platform_reload) =
+        logging::try_filter(&platform_log_directives(&log_filter))?;
+    let (file_layer, file_handle) = logging::file::layer(log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
@@ -590,12 +717,14 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
         )
         .with(sentry_layer());
 
-    let reload_handle = file_reload_handle.merge(platform_reload_handle);
-
     logging::init(subscriber)?;
 
     LOGGER_STATE
-        .set((handle, reload_handle))
+        .set(LoggerState {
+            _file: file_handle,
+            file_reload,
+            platform_reload,
+        })
         .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())
@@ -667,6 +796,109 @@ pub fn log_cleanup_default_interval_secs() -> u64 {
 #[uniffi::export]
 pub fn hash_device_id(id: String) -> String {
     telemetry::hash_device_id(id)
+}
+
+// Flow-log uploads go through a tunnel-bypassing socket factory so they never
+// traverse an active tunnel: on Apple the NetworkExtension's own sockets are
+// excluded from its tunnel, so plain sockets suffice; on Android we must
+// `protect()` the sockets via the `ProtectSocket` callback whenever a VPN is up.
+// So the functions that run alongside an active/​tearing-down tunnel are split by
+// platform (Android variants take a `ProtectSocket`). `run_flow_log_upload` is
+// plain on every platform: it's only invoked when no tunnel is active (Android's
+// app-launch drain), where there is nothing to bypass. The work lives in the
+// shared `do_*` helpers below.
+
+/// Prunes the spool and starts the process-lifetime uploader thread (idempotent).
+fn do_start_flow_log_uploader(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return; // Already started for this process.
+    }
+
+    // The uploader may run without `connect` ever being called, so ensure the
+    // rustls crypto provider its TLS needs is installed (idempotent).
+    install_rustls_crypto_provider();
+
+    let spool_dir = PathBuf::from(spool_dir);
+    flow_log_upload::prune(&spool_dir);
+    flow_log_upload::spawn(spool_dir, tcp);
+}
+
+/// Runs a single upload pass.
+fn do_run_flow_log_upload(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>) -> bool {
+    install_rustls_crypto_provider();
+
+    flow_log_upload::upload_once(std::path::Path::new(&spool_dir), tcp)
+}
+
+/// Runs a single upload pass bounded to `timeout_secs`; the pass keeps running on
+/// its own thread if it overruns (best-effort flush at disconnect).
+fn do_run_flow_log_upload_timeboxed(
+    spool_dir: String,
+    timeout_secs: u64,
+    tcp: Arc<dyn SocketFactory<TcpSocket>>,
+) -> bool {
+    install_rustls_crypto_provider();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let backlog = flow_log_upload::upload_once(std::path::Path::new(&spool_dir), tcp);
+        let _ = tx.send(backlog);
+    });
+
+    rx.recv_timeout(Duration::from_secs(timeout_secs))
+        .unwrap_or(false)
+}
+
+/// Starts the process-lifetime flow-log uploader thread over the spool at
+/// `spool_dir`, decoupled from any connlib session (the provider process on
+/// macOS/iOS, the foreground service on Android). Idempotent.
+#[uniffi::export]
+#[cfg(target_os = "android")]
+pub fn start_flow_log_uploader(spool_dir: String, protect_socket: Arc<dyn ProtectSocket>) {
+    do_start_flow_log_uploader(spool_dir, Arc::new(protected_tcp_socket_factory(protect_socket)));
+}
+
+#[uniffi::export]
+#[cfg(not(target_os = "android"))]
+pub fn start_flow_log_uploader(spool_dir: String) {
+    do_start_flow_log_uploader(spool_dir, Arc::new(socket_factory::tcp));
+}
+
+/// Runs a single flow-log upload pass over the spool at `spool_dir`, reusing the
+/// same parsing / request logic as the gateway and desktop clients. Needs no live
+/// session. Returns `true` when a backlog remained (more than one batch pending).
+///
+/// Uses plain (unprotected) sockets, so call it only when no tunnel is active —
+/// there is nothing to bypass then. While a tunnel is up, drain via the protected
+/// uploader thread / `run_flow_log_upload_timeboxed` instead.
+#[uniffi::export]
+pub fn run_flow_log_upload(spool_dir: String) -> bool {
+    do_run_flow_log_upload(spool_dir, Arc::new(socket_factory::tcp))
+}
+
+/// Runs a flow-log upload pass bounded to `timeout_secs`, for a best-effort final
+/// flush at disconnect: returns once the pass finishes or the timeout elapses,
+/// whichever comes first.
+#[uniffi::export]
+#[cfg(target_os = "android")]
+pub fn run_flow_log_upload_timeboxed(
+    spool_dir: String,
+    timeout_secs: u64,
+    protect_socket: Arc<dyn ProtectSocket>,
+) -> bool {
+    do_run_flow_log_upload_timeboxed(
+        spool_dir,
+        timeout_secs,
+        Arc::new(protected_tcp_socket_factory(protect_socket)),
+    )
+}
+
+#[uniffi::export]
+#[cfg(not(target_os = "android"))]
+pub fn run_flow_log_upload_timeboxed(spool_dir: String, timeout_secs: u64) -> bool {
+    do_run_flow_log_upload_timeboxed(spool_dir, timeout_secs, Arc::new(socket_factory::tcp))
 }
 
 /// Returns whether log streaming is currently active.

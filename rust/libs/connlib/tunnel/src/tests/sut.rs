@@ -1108,6 +1108,7 @@ impl TunnelTest {
                             preshared_key,
                             client_ice,
                             gateway_ice,
+                            None,
                             now,
                         )
                     })
@@ -1170,6 +1171,7 @@ impl TunnelTest {
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
                                     Some(remote_authorization),
+                                    None,
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client {
@@ -1193,6 +1195,7 @@ impl TunnelTest {
                                     local_client_ice,
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
+                                    None,
                                     None,
                                     now,
                                 )

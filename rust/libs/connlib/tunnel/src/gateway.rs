@@ -468,6 +468,12 @@ impl GatewayState {
         self.flow_tracker.poll_flow_record()
     }
 
+    /// Enables or disables flow-log emission at runtime. The portal drives this via
+    /// the upload interval (`0` disables), so no flow files are written when off.
+    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
+        self.flow_tracker.set_enabled(enabled);
+    }
+
     fn drain_node_events(&mut self) {
         let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
         let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
@@ -563,86 +569,6 @@ impl GatewayState {
 
             client.retain_authorizations(resources);
         }
-    }
-}
-
-/// Emits a flow log record as a structured tracing event for local observability.
-///
-/// The record's `ingest_token` is base64url-decoded (without MAC verification) to
-/// recover the attribution. Open vs. completed is conveyed by the `state` field and
-/// the presence of the close fields.
-pub(crate) fn emit_flow_log(record: &flow_tracker::FlowLogRecord) {
-    let attr = record
-        .ingest_token
-        .as_deref()
-        .and_then(flow_tracker::decode_attribution)
-        .unwrap_or_default();
-
-    let close = record.close.as_ref();
-    let state = if close.is_some() {
-        "completed"
-    } else {
-        "started"
-    };
-
-    macro_rules! emit {
-        ($target:literal) => {
-            tracing::trace!(
-                target: $target,
-                state,
-                protocol = record.protocol.as_str(),
-
-                role = attr.role.as_deref(),
-                device_id = attr.device_id.as_deref(),
-                policy_authorization_id = attr.policy_authorization_id.as_deref(),
-                policy_id = attr.policy_id.as_deref(),
-
-                resource_id = attr.resource_id.as_deref(),
-                resource_name = attr.resource_name.as_deref(),
-                resource_address = attr.resource_address.as_deref(),
-
-                actor_id = attr.actor_id.as_deref(),
-                actor_email = attr.actor_email.as_deref(),
-                actor_name = attr.actor_name.as_deref(),
-                auth_provider_id = attr.auth_provider_id.as_deref(),
-
-                authorized_at = attr.authorized_at.as_deref(),
-                authorization_expires_at = attr.authorization_expires_at.as_deref(),
-
-                client_version = attr.client_version.as_deref(),
-                device_os_name = attr.device_os_name.as_deref(),
-                device_os_version = attr.device_os_version.as_deref(),
-                device_serial = attr.device_serial.as_deref(),
-                device_uuid = attr.device_uuid.as_deref(),
-                device_identifier_for_vendor = attr.device_identifier_for_vendor.as_deref(),
-                device_firebase_installation_id = attr.device_firebase_installation_id.as_deref(),
-
-                inner_src_ip = %record.inner_src_ip,
-                inner_src_port = %record.inner_src_port,
-                inner_dst_ip = %record.inner_dst_ip,
-                inner_dst_port = %record.inner_dst_port,
-                inner_domain = record.domain.as_ref().map(tracing::field::display),
-
-                outer_src_ip = %record.outer_src_ip,
-                outer_src_port = %record.outer_src_port,
-                outer_dst_ip = %record.outer_dst_ip,
-                outer_dst_port = %record.outer_dst_port,
-
-                flow_start = ?record.flow_start,
-                flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
-                last_packet = close.map(|c| tracing::field::debug(c.last_packet)),
-                rx_packets = close.map(|c| c.rx_packets),
-                tx_packets = close.map(|c| c.tx_packets),
-                rx_bytes = close.map(|c| c.rx_bytes),
-                tx_bytes = close.map(|c| c.tx_bytes),
-                "Flow log"
-            )
-        };
-    }
-
-    match record.protocol {
-        flow_tracker::FlowProtocol::Tcp => emit!("flow_logs::tcp"),
-        flow_tracker::FlowProtocol::Udp => emit!("flow_logs::udp"),
     }
 }
 

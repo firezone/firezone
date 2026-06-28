@@ -34,17 +34,15 @@ use std::{
     collections::BTreeMap,
     hash::{Hash as _, Hasher as _},
     io::Write as _,
-    net::IpAddr,
     path::{Path, PathBuf},
     sync::mpsc,
     thread::JoinHandle,
 };
 
 use atomicwrites::{AtomicFile, OverwriteBehavior};
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use flow_log_spool::{Payload, serialize_entry};
 
-use crate::gateway::flow_tracker::{FlowLogRecord, decode_attribution};
+use crate::flow_log::{FlowLogRecord, decode_attribution};
 
 /// Hands each record to a writer thread that writes it immediately as its own
 /// atomic, fsync'd file.
@@ -142,13 +140,7 @@ fn write_record(
         tokens.insert(authz_id, token.to_owned());
     }
 
-    let payload = Payload::from(record);
-    let body = serde_json::to_vec(&payload)?;
-    let entry = Entry {
-        checksum: crc32fast::hash(&body),
-        payload: &payload,
-    };
-    let contents = serde_json::to_vec(&entry)?;
+    let contents = serialize_entry(&payload_from_record(record))?;
 
     let suffix = if record.close.is_some() {
         "end"
@@ -234,118 +226,40 @@ fn set_owner_only(_f: &std::fs::File) -> std::io::Result<()> {
     Ok(())
 }
 
-/// A flow-log payload: the network fields the data plane observes. Attribution
-/// lives in the authorization's token, never in the payload. `flow_end` and the
-/// counters are absent for an "open" report and present for a "completed" one.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct Payload {
-    protocol: String,
-    inner_src_ip: IpAddr,
-    inner_src_port: u16,
-    inner_dst_ip: IpAddr,
-    inner_dst_port: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    domain: Option<String>,
-    outer_src_ip: IpAddr,
-    outer_src_port: u16,
-    outer_dst_ip: IpAddr,
-    outer_dst_port: u16,
-    flow_start: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    flow_end: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    last_packet: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rx_packets: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tx_packets: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rx_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tx_bytes: Option<u64>,
-}
+/// Builds the spool [`Payload`] for a record. Attribution stays in the token; only
+/// the network fields go in the payload. `flow_end` and the counters are present
+/// only for a "completed" record.
+fn payload_from_record(record: &FlowLogRecord) -> Payload {
+    let close = record.close.as_ref();
 
-impl From<&FlowLogRecord> for Payload {
-    fn from(r: &FlowLogRecord) -> Self {
-        let close = r.close.as_ref();
-
-        Self {
-            protocol: r.protocol.as_str().to_owned(),
-            inner_src_ip: r.inner_src_ip,
-            inner_src_port: r.inner_src_port,
-            inner_dst_ip: r.inner_dst_ip,
-            inner_dst_port: r.inner_dst_port,
-            domain: r.domain.as_ref().map(|d| d.to_string()),
-            outer_src_ip: r.outer_src_ip,
-            outer_src_port: r.outer_src_port,
-            outer_dst_ip: r.outer_dst_ip,
-            outer_dst_port: r.outer_dst_port,
-            flow_start: r.flow_start,
-            flow_end: close.map(|c| c.flow_end),
-            last_packet: close.map(|c| c.last_packet),
-            rx_packets: close.map(|c| c.rx_packets),
-            tx_packets: close.map(|c| c.tx_packets),
-            rx_bytes: close.map(|c| c.rx_bytes),
-            tx_bytes: close.map(|c| c.tx_bytes),
-        }
+    Payload {
+        protocol: record.protocol.as_str().to_owned(),
+        inner_src_ip: record.inner_src_ip,
+        inner_src_port: record.inner_src_port,
+        inner_dst_ip: record.inner_dst_ip,
+        inner_dst_port: record.inner_dst_port,
+        domain: record.domain.as_ref().map(|d| d.to_string()),
+        outer_src_ip: record.outer_src_ip,
+        outer_src_port: record.outer_src_port,
+        outer_dst_ip: record.outer_dst_ip,
+        outer_dst_port: record.outer_dst_port,
+        flow_start: record.flow_start,
+        flow_end: close.map(|c| c.flow_end),
+        last_packet: close.map(|c| c.last_packet),
+        rx_packets: close.map(|c| c.rx_packets),
+        tx_packets: close.map(|c| c.tx_packets),
+        rx_bytes: close.map(|c| c.rx_bytes),
+        tx_bytes: close.map(|c| c.tx_bytes),
     }
-}
-
-/// One on-disk flow-log report: a CRC32 of the serialized `payload` and the
-/// payload itself. The Bearer token lives once per authorization in the
-/// directory's `token` file, not in each report.
-#[derive(Serialize)]
-struct Entry<'a> {
-    checksum: u32,
-    payload: &'a Payload,
-}
-
-#[derive(Deserialize)]
-struct StoredEntry {
-    checksum: u32,
-    payload: Payload,
-}
-
-/// A report that could not be parsed, or whose checksum did not match.
-#[derive(Debug)]
-pub struct CorruptEntry(String);
-
-impl std::fmt::Display for CorruptEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// Parses and verifies a spooled flow-log report from its file bytes, returning
-/// the payload.
-///
-/// Returns [`CorruptEntry`] when the JSON is malformed or the CRC32 does not match
-/// the payload, so the uploader can drop the file rather than send bad data.
-pub fn read_spooled_entry(bytes: &[u8]) -> Result<Payload, CorruptEntry> {
-    let stored: StoredEntry = serde_json::from_slice(bytes)
-        .map_err(|e| CorruptEntry(format!("malformed report: {e}")))?;
-
-    // The payload serializes deterministically (fixed struct, compact), so the CRC
-    // of its re-serialization matches the one written alongside it.
-    let serialized = serde_json::to_vec(&stored.payload)
-        .map_err(|e| CorruptEntry(format!("could not re-serialize payload: {e}")))?;
-    let computed = crc32fast::hash(&serialized);
-    if computed != stored.checksum {
-        return Err(CorruptEntry(format!(
-            "checksum mismatch: stored {}, computed {computed}",
-            stored.checksum
-        )));
-    }
-
-    Ok(stored.payload)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gateway::flow_tracker::{FlowClose, FlowLogRecord, FlowProtocol};
+    use crate::flow_log::{FlowClose, FlowLogRecord, FlowProtocol};
     use base64::Engine as _;
-    use chrono::TimeZone as _;
+    use chrono::{TimeZone as _, Utc};
+    use flow_log_spool::read_spooled_entry;
 
     fn token_for(authz_id: &str) -> String {
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(

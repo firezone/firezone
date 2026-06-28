@@ -1231,6 +1231,7 @@ dependencies = [
  "backoff",
  "client-shared",
  "connlib-model",
+ "flow-log-upload",
  "ip-packet",
  "ip_network",
  "itertools",
@@ -1263,6 +1264,7 @@ dependencies = [
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
+ "flow-log-upload",
  "futures",
  "logging",
  "opentelemetry",
@@ -2310,6 +2312,7 @@ dependencies = [
  "caps",
  "clap",
  "dns-types",
+ "flow-log-upload",
  "futures",
  "futures-bounded",
  "hickory-resolver",
@@ -2323,12 +2326,9 @@ dependencies = [
  "opentelemetry_sdk",
  "otel-instruments",
  "phoenix-channel",
- "reqwest",
  "resolv-conf",
  "rustls",
  "secrecy",
- "serde",
- "serde_json",
  "snownet",
  "socket-factory",
  "telemetry",
@@ -2550,6 +2550,36 @@ dependencies = [
  "crc32fast",
  "libz-rs-sys",
  "miniz_oxide",
+]
+
+[[package]]
+name = "flow-log-spool"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crc32fast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "flow-log-upload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "backoff",
+ "base64 0.22.1",
+ "bytes",
+ "flow-log-spool",
+ "http",
+ "http-client",
+ "serde",
+ "serde_json",
+ "socket-factory",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -8229,13 +8259,13 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-model",
- "crc32fast",
  "derive_more",
  "divan",
  "dns-over-tcp",
  "dns-types",
  "eventloop-budget",
  "firezone-relay",
+ "flow-log-spool",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",

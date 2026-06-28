@@ -26,7 +26,23 @@ pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 /// loops back through connlib; the resolvers are the system's upstream DNS
 /// servers (never the system resolver itself, which may be connlib).
 static SOCKETS: LazyLock<Mutex<Option<SocketFactories>>> = LazyLock::new(|| Mutex::new(None));
-static SERVERS: LazyLock<Mutex<Vec<IpAddr>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// The resolvers used to look up all ingest hosts while a connlib session is
+/// active.
+///
+/// These are the system's upstream DNS servers that connlib captured (never the
+/// system resolver itself, which connlib has hijacked). We deliberately don't use
+/// the portal-configured `upstream_do53`/`upstream_doh` here; honouring those for
+/// telemetry is left to a future change.
+///
+/// - `Some(servers)`: a session is active and has hijacked the system resolver,
+///   so we resolve via these captured servers directly. If the list is empty,
+///   resolution fails and telemetry is effectively disabled until servers arrive;
+///   we never fall back to the system resolver, which would loop back through
+///   connlib.
+/// - `None`: no session is active, so the system resolver is the real OS
+///   resolver. We resolve ingest hosts via `getaddrinfo` directly.
+static SERVERS: LazyLock<Mutex<Option<Vec<IpAddr>>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Configures the socket factories used to reach all ingest hosts.
 pub(crate) fn configure(
@@ -36,9 +52,15 @@ pub(crate) fn configure(
     *SOCKETS.lock() = Some((tcp, udp));
 }
 
-/// Updates the upstream resolvers used to look up all ingest hosts.
-pub(crate) fn update_system_resolvers(servers: Vec<IpAddr>) {
-    *SERVERS.lock() = servers;
+/// Sets the upstream resolvers used while a connlib session is active.
+pub(crate) fn set_system_resolvers(servers: Vec<IpAddr>) {
+    *SERVERS.lock() = Some(servers);
+}
+
+/// Clears the upstream resolvers when no connlib session is active, so ingest
+/// hosts are resolved via the default system resolver.
+pub(crate) fn clear_system_resolvers() {
+    *SERVERS.lock() = None;
 }
 
 /// Resets the shared socket factories so the next connection rebinds.
@@ -52,13 +74,13 @@ pub(crate) fn reset_sockets() {
 
 /// A self-healing HTTP/2 client for a single ingest host.
 ///
-/// The host is resolved via [`BootstrapDnsClient`] against the configured
-/// upstreams and connected through the shared, tunnel-bypassing socket factories,
-/// falling back to addresses seeded from the system resolver at startup. The
-/// connection is re-established on demand when it is closed.
+/// While a connlib session is active, the host is resolved via
+/// [`BootstrapDnsClient`] against the configured upstreams; otherwise it is
+/// resolved via the default system resolver. Either way the connection goes
+/// through the shared, tunnel-bypassing socket factories and is re-established
+/// on demand when it is closed.
 pub(crate) struct Client {
     host: &'static str,
-    seed_addresses: Mutex<Vec<IpAddr>>,
     connection: Mutex<Option<HttpClient>>,
     /// Serialises bootstrapping so concurrent senders share a single connection.
     bootstrap: tokio::sync::Mutex<()>,
@@ -68,29 +90,9 @@ impl Client {
     pub(crate) fn new(host: &'static str) -> Self {
         Self {
             host,
-            seed_addresses: Mutex::new(Vec::new()),
             connection: Mutex::new(None),
             bootstrap: tokio::sync::Mutex::new(()),
         }
-    }
-
-    /// Seeds the host addresses using the system resolver.
-    ///
-    /// Must run at startup, before connlib reconfigures the system resolver, so the
-    /// lookup reaches the real upstream and not connlib itself. Used as a fallback
-    /// until the bootstrap resolver has upstreams configured.
-    pub(crate) fn init_addresses(&self) {
-        let addresses = (self.host, 443u16)
-            .to_socket_addrs()
-            .inspect_err(|e| {
-                tracing::debug!(host = %self.host, "Failed to seed ingest host addresses: {e:#}")
-            })
-            .map(|addresses| addresses.map(|addr| addr.ip()).collect::<Vec<_>>())
-            .unwrap_or_default();
-
-        tracing::debug!(host = %self.host, ?addresses, "Seeded ingest host addresses from system resolver");
-
-        *self.seed_addresses.lock() = addresses;
     }
 
     /// Drops the current connection so the next request reconnects.
@@ -151,36 +153,33 @@ impl Client {
             .clone()
             .context("Ingest client has no socket factories configured")?;
         let servers = SERVERS.lock().clone();
-        let seed_addresses = self.seed_addresses.lock().clone();
 
         // Anchor the connection task on our own runtime so it outlives the caller,
         // which may be a short-lived `block_on` on another runtime.
         RUNTIME
             .spawn(async move {
-                // Resolve via the bootstrap resolver, which never uses the system
-                // resolver (i.e. connlib), and add the addresses seeded at startup as
-                // extra fallback candidates. `HttpClient` tries them in order and
-                // connects to the first that works.
-                //
-                // Skip the resolver while we have no upstreams yet (e.g. before
-                // connlib reports the system DNS servers); the seed covers that.
-                let mut addresses = if servers.is_empty() {
-                    Vec::new()
-                } else {
-                    BootstrapDnsClient::new(udp, tcp.clone(), servers)
-                        .resolve(host)
-                        .await
-                        .inspect_err(
-                            |e| tracing::debug!(%host, "Failed to resolve ingest host: {e:#}"),
-                        )
-                        .unwrap_or_default()
-                };
+                let addresses = match servers {
+                    // A connlib session is active and has hijacked the system
+                    // resolver. Resolve via the upstreams directly, never the system
+                    // resolver, which would loop back through connlib. With no
+                    // upstreams we cannot resolve at all and telemetry is disabled
+                    // until they arrive; don't fall back.
+                    Some(servers) => {
+                        anyhow::ensure!(
+                            !servers.is_empty(),
+                            "No upstream resolvers configured for ingest host {host}; \
+                             telemetry is disabled while the session is active"
+                        );
 
-                for address in seed_addresses {
-                    if !addresses.contains(&address) {
-                        addresses.push(address);
+                        BootstrapDnsClient::new(udp, tcp.clone(), servers)
+                            .resolve(host)
+                            .await
+                            .with_context(|| format!("Failed to resolve ingest host {host}"))?
                     }
-                }
+                    // No session is active, so the system resolver is the real OS
+                    // resolver. Resolve via `getaddrinfo` directly.
+                    None => resolve_via_system(host).await?,
+                };
 
                 anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
 
@@ -191,6 +190,24 @@ impl Client {
             .await
             .context("Bootstrap task failed")?
     }
+}
+
+/// Resolves a host via the default system resolver (`getaddrinfo`).
+///
+/// Only safe when no connlib session is active; otherwise the lookup would route
+/// through connlib's stub resolver and loop back into the tunnel.
+async fn resolve_via_system(host: &'static str) -> Result<Vec<IpAddr>> {
+    tokio::task::spawn_blocking(move || {
+        let addresses = (host, 443u16)
+            .to_socket_addrs()
+            .with_context(|| format!("Failed to resolve ingest host {host} via system resolver"))?
+            .map(|addr| addr.ip())
+            .collect::<Vec<_>>();
+
+        Ok(addresses)
+    })
+    .await
+    .context("System resolver task panicked")?
 }
 
 fn init_runtime() -> Runtime {

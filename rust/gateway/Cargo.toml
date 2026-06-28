@@ -29,6 +29,7 @@ backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
 dns-types = { workspace = true }
+flow-log-upload = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
@@ -41,12 +42,9 @@ opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
-reqwest = { workspace = true, features = ["blocking", "rustls-no-provider"] }
 resolv-conf = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
