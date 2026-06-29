@@ -127,7 +127,7 @@ impl Eventloop {
             is_internet_resource_active,
         );
         tunnel.update_system_resolvers(dns_servers.clone());
-        telemetry::update_system_resolvers(dns_servers.clone());
+        telemetry::set_system_resolvers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
@@ -217,7 +217,7 @@ impl Eventloop {
                 };
 
                 let dns = tunnel.update_system_resolvers(dns);
-                telemetry::update_system_resolvers(dns.clone());
+                telemetry::set_system_resolvers(dns.clone());
 
                 self.portal_cmd_tx
                     .send(PortalCommand::UpdateDnsServers(dns))
@@ -697,6 +697,12 @@ impl Eventloop {
             .shut_down()
             .await
             .context("Failed to shut down tunnel")?;
+
+        // The session is over and connlib has restored the system resolver, so
+        // telemetry resolves ingest hosts via the default resolver again. Clearing
+        // only after `shut_down` avoids a window where the system resolver is still
+        // connlib's stub.
+        telemetry::clear_system_resolvers();
 
         Ok(())
     }

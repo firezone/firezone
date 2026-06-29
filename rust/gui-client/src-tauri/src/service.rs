@@ -495,7 +495,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        self.telemetry.stop().await; // Stop the telemetry session once the client disconnects or we are shutting down.
+        self.telemetry.stop().await; // Flush telemetry as the service shuts down.
 
         ret
     }
@@ -543,7 +543,8 @@ impl<'a> Handler<'a> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                self.telemetry.stop().await;
+                // Telemetry is process-lifetime; it outlives sessions and is only
+                // flushed when the service itself shuts down.
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
@@ -621,7 +622,8 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
-                self.telemetry.stop().await;
+                // Telemetry is process-lifetime; it outlives sessions and is only
+                // flushed when the service itself shuts down.
                 self.dns_controller.deactivate()?;
 
                 // Always send `DisconnectedGracefully` even if we weren't connected,

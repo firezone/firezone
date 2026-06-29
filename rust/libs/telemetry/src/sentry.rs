@@ -17,11 +17,6 @@ pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
 
 static CLIENT: LazyLock<ingest::Client> = LazyLock::new(|| ingest::Client::new(INGEST_HOST));
 
-/// Seeds the Sentry ingest-host addresses via the system resolver.
-pub(crate) fn init_addresses() {
-    CLIENT.init_addresses();
-}
-
 /// Drops the current connection so the next request reconnects.
 pub(crate) fn reset_client() {
     CLIENT.reset();
