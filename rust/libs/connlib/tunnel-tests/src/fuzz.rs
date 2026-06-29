@@ -21,7 +21,6 @@
 //! reach new coverage. The trade-off is weaker mutation locality; see the
 //! coverage-instrumentation design notes for a path back to structured input.
 
-use std::sync::Once;
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
@@ -48,7 +47,12 @@ const MAX_ATTEMPTS: usize = 400;
 ///
 /// This is the function wired up to the `tunnel` libFuzzer target.
 pub fn run_fuzz_case(data: &[u8]) {
-    install_error_to_panic();
+    // Treat any `ERROR` log as a failure, exactly like the proptest harness, but
+    // without an output layer so the fuzzer stays quiet and fast. The guard
+    // scopes the subscriber to this case.
+    let _guard = tracing_subscriber::registry()
+        .with(PanicOnErrorEvents::new(0))
+        .set_default();
 
     let now = Instant::now();
     // A fixed UTC start keeps a given input fully reproducible (libFuzzer
@@ -110,18 +114,6 @@ fn seed_rng(data: &[u8]) -> TestRng {
         seed[i % 32] ^= byte;
     }
     TestRng::from_seed(RngAlgorithm::ChaCha, &seed)
-}
-
-/// Treat any `ERROR` log as a failure, exactly like the proptest harness, but
-/// without an output layer so the fuzzer stays quiet and fast. Installed once
-/// for the whole fuzzing process.
-fn install_error_to_panic() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        let _ = tracing_subscriber::registry()
-            .with(PanicOnErrorEvents::new(0))
-            .try_init();
-    });
 }
 
 #[cfg(test)]
