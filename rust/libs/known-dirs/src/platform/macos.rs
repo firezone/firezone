@@ -22,9 +22,11 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(PathBuf::from("/Library/Logs").join(BUNDLE_ID))
 }
 
-/// Flow-log spooling on macOS is owned by the Swift app, which passes its spool
-/// directory in over FFI (via `SharedAccess`), so this returns `None`. The headless
-/// and tauri clients that also compile for macOS therefore don't spool here.
+/// Spool directory for flow logs
+///
+/// Returns `None` on macOS: spooling is owned by the Swift app, which passes its
+/// spool directory in over FFI (via `SharedAccess`). The headless and tauri clients
+/// that also compile for macOS therefore don't spool here.
 pub fn flow_logs() -> Option<PathBuf> {
     None
 }
