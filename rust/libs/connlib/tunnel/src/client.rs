@@ -610,7 +610,7 @@ impl ClientState {
                     let buffered_packets = self.dns_resource_nat.on_domain_status(gid, res);
 
                     for packet in buffered_packets {
-                        encapsulate_and_buffer(
+                        encapsulate_and_queue(
                             packet,
                             ClientOrGatewayId::Gateway(gid),
                             now,
@@ -649,7 +649,7 @@ impl ClientState {
                 let packet = match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered(reply) => {
-                        encapsulate_and_buffer(
+                        encapsulate_and_queue(
                             reply,
                             ClientOrGatewayId::Client(cid),
                             now,
@@ -781,7 +781,7 @@ impl ClientState {
         };
 
         for packet in buffer {
-            encapsulate_and_buffer(
+            encapsulate_and_queue(
                 packet,
                 pid,
                 now,
@@ -1001,7 +1001,7 @@ impl ClientState {
                 // Send the buffered packets, or buffer them again if the connection is not yet
                 // established.
                 for packet in buffered_resource_packets {
-                    encapsulate_and_buffer(
+                    encapsulate_and_queue(
                         packet,
                         ClientOrGatewayId::Gateway(gid),
                         now,
@@ -1105,7 +1105,7 @@ impl ClientState {
 
             for packet in pending_client_access.into_buffered_packets() {
                 peer.record_outbound(&packet, now);
-                encapsulate_and_buffer(
+                encapsulate_and_queue(
                     packet,
                     ClientOrGatewayId::Client(cid),
                     now,
@@ -1653,7 +1653,7 @@ impl ClientState {
         while let Some((gid, domain, rid, packet)) = self.dns_resource_nat.poll_packet() {
             tracing::debug!(%gid, %domain, %rid, "Setting up DNS resource NAT");
 
-            encapsulate_and_buffer(
+            encapsulate_and_queue(
                 packet,
                 ClientOrGatewayId::Gateway(gid),
                 now,
@@ -2650,7 +2650,7 @@ fn encapsulate_or_buffer(
 
 /// Like [`encapsulate_or_buffer`], but queues the resulting transmit into `buffered_transmits` and
 /// drops (with a log) any error instead of returning it.
-fn encapsulate_and_buffer(
+fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
