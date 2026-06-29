@@ -13,6 +13,10 @@ import UserNotifications
   import AppKit
 #endif
 
+#if os(iOS)
+  import UIKit
+#endif
+
 @MainActor
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
@@ -244,6 +248,10 @@ public final class Store: ObservableObject {
         }
       }
     }
+
+    observeForegroundForUploaderDrain()
+    // Nudge a drain on launch too, not just on subsequent foregrounds.
+    drainFlowLogUploader()
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: session.status)
@@ -618,6 +626,38 @@ public final class Store: ObservableObject {
     unreachableResources.removeAll()
     connectedDevices.removeAll()
     Log.setStreamingActive(false)
+  }
+
+  /// Subscribes to app-foreground events to nudge a best-effort flow-log drain.
+  ///
+  /// The uploader itself runs in the provider for its process lifetime; this just
+  /// asks it to drain promptly when the user opens the app. On macOS, delivering the
+  /// message while disconnected also cycle-starts the provider, spinning the uploader
+  /// up to drain without a session. Best effort: nothing happens once the app quits.
+  private func observeForegroundForUploaderDrain() {
+    #if os(iOS)
+      let didBecomeActive = UIApplication.didBecomeActiveNotification
+    #elseif os(macOS)
+      let didBecomeActive = NSApplication.didBecomeActiveNotification
+    #endif
+
+    NotificationCenter.default.publisher(for: didBecomeActive)
+      .sink { [weak self] _ in
+        Task { @MainActor in self?.drainFlowLogUploader() }
+      }
+      .store(in: &cancellables)
+  }
+
+  /// Nudges the provider to run a best-effort flow-log upload pass.
+  private func drainFlowLogUploader() {
+    Task {
+      guard let session = try? manager().session() else { return }
+      do {
+        try await IPCClient.registerUploader(session: session)
+      } catch {
+        Log.debug("Failed to nudge flow-log uploader: \(error)")
+      }
+    }
   }
 
   private func pollStateOnce() async throws {
