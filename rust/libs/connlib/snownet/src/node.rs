@@ -1627,7 +1627,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>, WireGuardError>
+    ) -> Result<Option<EncapsulateInfo>>
     where
         TId: fmt::Display,
     {
@@ -1646,17 +1646,10 @@ where
         // active socket; the actual peer is encoded into the channel-data header below.
         let dst = match socket {
             PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => dest,
-            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => {
-                let Some(dst) = allocations
-                    .get_by_id(&self.relay.id)
-                    .and_then(|allocation| allocation.active_socket())
-                else {
-                    tracing::warn!(relay = %self.relay.id, "No allocation");
-                    return Ok(None);
-                };
-
-                dst
-            }
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => allocations
+                .get_by_id(&self.relay.id)
+                .and_then(|allocation| allocation.active_socket())
+                .with_context(|| format!("No allocation for relay {}", self.relay.id))?,
         };
 
         let reserve_len = packet_start + packet.packet().len() + ip_packet::WG_OVERHEAD;

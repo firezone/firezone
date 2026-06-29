@@ -579,7 +579,9 @@ impl ClientState {
             &mut self.node,
             provider,
             &mut self.pending_packets,
-        )
+        )?;
+
+        Ok(())
     }
 
     /// Handles UDP packets received on the network interface.
