@@ -46,9 +46,6 @@ pub struct ClientProperties {
 
 impl FlowTracker {
     pub fn new(enabled: bool, now: Instant, unix_ts: Duration) -> Self {
-        // Anchor wall-clock time to the injected `unix_ts` (rather than
-        // `Utc::now()`) so flow timestamps are a deterministic function of the
-        // inputs, which keeps tests and fuzzing reproducible.
         let created_at_utc = i64::try_from(unix_ts.as_secs())
             .ok()
             .and_then(|secs| DateTime::from_timestamp(secs, unix_ts.subsec_nanos()))
