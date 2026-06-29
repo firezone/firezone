@@ -146,7 +146,7 @@ defmodule Portal.MixProject do
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
       {:sentry, "~> 13.1"},
       {:logger_json, "~> 7.0"},
-      {:req, "~> 0.5.15"},
+      {:req, "~> 0.6.2"},
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
