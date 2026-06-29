@@ -7,7 +7,7 @@ mod timeout_cache;
 pub use connections::UnknownConnection;
 
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, TransmitBuffer};
+use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -533,13 +533,8 @@ where
     /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
-    /// We say "enforce" because an [`IpPacket`] can be created from an (almost) arbitrary byte
-    /// buffer at virtually no cost; using [`IpPacket`] in our API has good documentation value.
-    ///
-    /// Returns where the datagram was written (for observability), or `Ok(None)` if the relay path
-    /// is not ready yet (the reservation is rolled back in that case). Returns [`StillConnecting`]
-    /// while ICE is still in progress; buffering the packet and retrying once
-    /// [`Event::ConnectionEstablished`] is emitted is the caller's responsibility.
+    /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
+    /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
     pub fn encapsulate(
         &mut self,
         cid: TId,
@@ -550,16 +545,21 @@ where
         let conn = self.connections.get_mut(&cid, now)?;
 
         let socket = match &conn.state {
-            ConnectionState::Connecting { .. } => return Err(StillConnecting.into()),
-            ConnectionState::Connected { peer_socket, .. }
-            | ConnectionState::Idle { peer_socket } => *peer_socket,
+            ConnectionState::Connecting { .. } => {
+                return Err(StillConnecting.into());
+            }
+            ConnectionState::Connected { peer_socket, .. } => *peer_socket,
+            ConnectionState::Idle { peer_socket } => *peer_socket,
             ConnectionState::Failed => {
                 return Err(anyhow!("Connection {cid} failed"));
             }
         };
 
-        conn.encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
-            .with_context(|| format!("cid={cid}"))
+        let info = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
+            .with_context(|| format!("cid={cid}"))?;
+
+        Ok(info)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -1258,7 +1258,6 @@ impl fmt::Debug for Transmit {
     }
 }
 
-/// Describes where an encapsulated datagram was sent; returned by [`Node::encapsulate`].
 #[derive(Debug, Clone, Copy)]
 pub struct EncapsulateInfo {
     pub src: Option<SocketAddr>,
@@ -1620,13 +1619,6 @@ where
     }
 
     /// Encapsulate `packet` directly into the buffer handed out by `provider`, avoiding a copy.
-    ///
-    /// This is the throughput-critical path for the TUN -> network direction. When a usable
-    /// WireGuard session exists, the encrypted packet is written in place into `provider` and the
-    /// resulting [`EncapsulateInfo`] is returned. When no session is usable, the reservation is
-    /// rolled back and the [`WireGuardError`] is propagated for the caller to handle. `Ok(None)`
-    /// means nothing was written because the relay path is not ready yet (no allocation or no bound
-    /// channel).
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
@@ -1668,41 +1660,36 @@ where
         };
 
         let reserve_len = packet_start + packet.packet().len() + ip_packet::WG_OVERHEAD;
-        let buffer = provider.reserve(src, dst, ecn, reserve_len);
+        let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
 
-        match self
-            .tunnel
-            .encapsulate_data_at(packet.packet(), &mut buffer[packet_start..], now)
-        {
-            Ok(len) => {
-                debug_assert_eq!(packet_start + len, reserve_len);
+        // On `Err`, `reservation` is dropped without committing and rolls back automatically.
+        let len = self.tunnel.encapsulate_data_at(
+            packet.packet(),
+            &mut reservation.buffer()[packet_start..],
+            now,
+        )?;
+        debug_assert_eq!(packet_start + len, reserve_len);
 
-                match socket {
-                    PeerSocket::RelayToPeer { dest: peer }
-                    | PeerSocket::RelayToRelay { dest: peer } => {
-                        // Prepend the channel-data header into the reserved space.
-                        if allocations
-                            .get_mut_by_id(&self.relay.id)
-                            .and_then(|allocation| {
-                                allocation.encode_channel_data_header(peer, buffer, now)
-                            })
-                            .is_none()
-                        {
-                            // No channel bound to the peer yet; undo the reservation and drop.
-                            provider.rollback(src, dst, ecn, reserve_len);
-                            return Ok(None);
-                        }
-                    }
-                    PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => {}
+        match socket {
+            PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
+                // Prepend the channel-data header into the reserved space.
+                if allocations
+                    .get_mut_by_id(&self.relay.id)
+                    .and_then(|allocation| {
+                        allocation.encode_channel_data_header(peer, reservation.buffer(), now)
+                    })
+                    .is_none()
+                {
+                    // No channel bound to the peer yet; dropping the reservation rolls it back.
+                    return Ok(None);
                 }
-
-                Ok(Some(EncapsulateInfo { src, dst }))
             }
-            Err(e) => {
-                provider.rollback(src, dst, ecn, reserve_len);
-                Err(e)
-            }
+            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => {}
         }
+
+        reservation.commit();
+
+        Ok(Some(EncapsulateInfo { src, dst }))
     }
 
     fn decapsulate<TId>(

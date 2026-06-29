@@ -127,18 +127,8 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?;
 
-        let info = match self.node.encapsulate(cid, &packet, now, provider) {
-            Ok(Some(info)) => info,
-            Ok(None) => return Ok(()),
-            // The Gateway does not buffer: it only sends in response to Client traffic.
-            Err(e) if e.any_is::<snownet::StillConnecting>() => {
-                tracing::debug!(%cid, "Connection is still establishing; dropping packet");
-                return Ok(());
-            }
-            Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-                return Err(e.context(UnroutablePacket::not_connected(&packet)));
-            }
-            Err(e) => return Err(e),
+        let Some(info) = encrypt_packet(packet, cid, &mut self.node, provider, now)? else {
+            return Ok(());
         };
 
         flow_tracker::inbound_tun::record_wireguard_packet(info.src, info.dst);
@@ -712,15 +702,15 @@ fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
-    buffered_transmits: &mut snownet::TransmitBuffer,
+    provider: &mut impl snownet::BufferProvider,
     now: Instant,
-) -> Result<()> {
-    match node.encapsulate(cid, &packet, now, buffered_transmits) {
-        Ok(_) => Ok(()),
+) -> Result<Option<snownet::EncapsulateInfo>> {
+    match node.encapsulate(cid, &packet, now, provider) {
+        Ok(info) => Ok(info),
         // The Gateway does not buffer: it only sends in response to Client traffic.
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
-            Ok(())
+            Ok(None)
         }
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
             Err(e.context(UnroutablePacket::not_connected(&packet)))

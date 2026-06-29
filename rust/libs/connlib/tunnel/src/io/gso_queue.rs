@@ -6,7 +6,7 @@ use std::{
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::Ecn;
-use snownet::BufferProvider;
+use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
@@ -37,8 +37,31 @@ impl GsoQueue {
     /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
     /// directly into the queue via the [`BufferProvider`] implementation.
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        self.reserve(src, dst, ecn, payload.len())
-            .copy_from_slice(payload);
+        let mut reservation = self.reserve(src, dst, ecn, payload.len());
+        reservation.buffer().copy_from_slice(payload);
+        reservation.commit();
+    }
+
+    /// Undo the most recent reservation for `connection`.
+    fn rollback(&mut self, connection: Connection, len: usize) {
+        let Some(batches) = self.inner.get_mut(&connection) else {
+            return;
+        };
+        let Some((_, buffer)) = batches.back_mut() else {
+            return;
+        };
+
+        let new_len = buffer.len().saturating_sub(len);
+        buffer.truncate(new_len);
+
+        // Drop any batch (and connection) that became empty as a result.
+        if buffer.is_empty() {
+            batches.pop_back();
+
+            if batches.is_empty() {
+                self.inner.remove(&connection);
+            }
+        }
     }
 
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
@@ -51,16 +74,19 @@ impl GsoQueue {
 }
 
 impl BufferProvider for GsoQueue {
+    type Reservation<'a> = GsoReservation<'a>;
+
     fn reserve(
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
         ecn: Ecn,
         len: usize,
-    ) -> &mut [u8] {
+    ) -> GsoReservation<'_> {
         debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
 
-        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
+        let connection = Connection { src, dst, ecn };
+        let batches = self.inner.entry(connection).or_default();
 
         // Decide whether the datagram can extend the current batch or has to start a new one.
         let needs_new_batch = match batches.back() {
@@ -80,32 +106,50 @@ impl BufferProvider for GsoQueue {
         }
 
         let (_, buffer) = batches.back_mut().expect("we ensured a batch exists");
-        let offset = buffer.len();
-        buffer.resize(offset + len, 0);
+        let new_len = buffer.len() + len;
+        buffer.resize(new_len, 0);
+
+        GsoReservation {
+            queue: self,
+            connection,
+            len,
+            committed: false,
+        }
+    }
+}
+
+/// A [`Reservation`] into a [`GsoQueue`], pointing at the tail of the current batch.
+pub struct GsoReservation<'a> {
+    queue: &'a mut GsoQueue,
+    connection: Connection,
+    len: usize,
+    committed: bool,
+}
+
+impl Reservation for GsoReservation<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        let (_, buffer) = self
+            .queue
+            .inner
+            .get_mut(&self.connection)
+            .expect("reserved connection to exist")
+            .back_mut()
+            .expect("reserved batch to exist");
+
+        let offset = buffer.len() - self.len;
 
         &mut buffer[offset..]
     }
 
-    fn rollback(&mut self, src: Option<SocketAddr>, dst: SocketAddr, ecn: Ecn, len: usize) {
-        let connection = Connection { src, dst, ecn };
+    fn commit(mut self) {
+        self.committed = true;
+    }
+}
 
-        let Some(batches) = self.inner.get_mut(&connection) else {
-            return;
-        };
-        let Some((_, buffer)) = batches.back_mut() else {
-            return;
-        };
-
-        let new_len = buffer.len().saturating_sub(len);
-        buffer.truncate(new_len);
-
-        // Drop any batch (and connection) that became empty as a result.
-        if buffer.is_empty() {
-            batches.pop_back();
-
-            if batches.is_empty() {
-                self.inner.remove(&connection);
-            }
+impl Drop for GsoReservation<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.queue.rollback(self.connection, self.len);
         }
     }
 }

@@ -13,7 +13,7 @@ mod stats;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use buffer::{BufferProvider, TransmitBuffer};
+pub use buffer::{BufferProvider, Reservation, TransmitBuffer};
 pub use node::{
     Credentials, EncapsulateInfo, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting,
     Transmit, UnknownConnection,

@@ -11,43 +11,53 @@ use crate::node::Transmit;
 /// Implementers hand out a writable slice into which the encrypted packet is written directly,
 /// avoiding an intermediate copy.
 pub trait BufferProvider {
+    type Reservation<'a>: Reservation
+    where
+        Self: 'a;
+
     /// Reserve `len` writable bytes for a datagram from `src` to `dst` with the given `ecn`.
+    ///
+    /// The returned [`Reservation`] is rolled back when dropped unless it is
+    /// [committed](Reservation::commit).
     fn reserve(
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
         ecn: Ecn,
         len: usize,
-    ) -> &mut [u8];
-
-    /// Undo the most recent [`BufferProvider::reserve`] for `(src, dst, ecn)`.
-    ///
-    /// Called when we end up not writing a valid datagram into the reserved slice.
-    fn rollback(&mut self, src: Option<SocketAddr>, dst: SocketAddr, ecn: Ecn, len: usize);
+    ) -> Self::Reservation<'_>;
 
     /// Collect an already-formed [`Transmit`].
     ///
     /// Used for datagrams that were produced elsewhere as a standalone [`Transmit`] (e.g. a
     /// handshake that cannot be encrypted in place because there is no session yet). The default
-    /// implementation copies the payload via [`BufferProvider::reserve`]; implementers that can take
+    /// implementation copies the payload into a fresh reservation; implementers that can take
     /// ownership of the buffer should override it.
     fn push(&mut self, transmit: Transmit) {
-        self.reserve(
+        let mut reservation = self.reserve(
             transmit.src,
             transmit.dst,
             transmit.ecn,
             transmit.payload.len(),
-        )
-        .copy_from_slice(&transmit.payload);
+        );
+        reservation.buffer().copy_from_slice(&transmit.payload);
+        reservation.commit();
     }
 }
 
-/// Collects datagrams as standalone [`Transmit`]s.
+/// A reserved region within a [`BufferProvider`].
 ///
-/// Datagrams are either encapsulated in place via the [`BufferProvider`] impl or pushed in
-/// fully-formed via [`BufferProvider::push`]. Used wherever packets must be surfaced as individual
-/// transmits rather than written into a shared destination buffer (e.g. control traffic, handshakes
-/// or the test harness).
+/// Dropping the reservation without [committing](Self::commit) it rolls the reservation back.
+pub trait Reservation {
+    /// The writable bytes reserved for the datagram.
+    fn buffer(&mut self) -> &mut [u8];
+
+    /// Keep the bytes written into [`buffer`](Self::buffer); without this the reservation is rolled
+    /// back on drop.
+    fn commit(self);
+}
+
+/// Collects datagrams as standalone [`Transmit`]s.
 pub struct TransmitBuffer {
     buffer_pool: BufferPool<Vec<u8>>,
     transmits: VecDeque<Transmit>,
@@ -84,13 +94,15 @@ impl Default for TransmitBuffer {
 }
 
 impl BufferProvider for TransmitBuffer {
+    type Reservation<'a> = TransmitReservation<'a>;
+
     fn reserve(
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
         ecn: Ecn,
         len: usize,
-    ) -> &mut [u8] {
+    ) -> TransmitReservation<'_> {
         let mut payload = self.buffer_pool.pull();
         payload.resize(len, 0);
 
@@ -101,16 +113,42 @@ impl BufferProvider for TransmitBuffer {
             ecn,
         });
 
-        let last = self.transmits.back_mut().expect("just pushed an element");
-
-        &mut last.payload[..]
-    }
-
-    fn rollback(&mut self, _: Option<SocketAddr>, _: SocketAddr, _: Ecn, _: usize) {
-        self.transmits.pop_back();
+        TransmitReservation {
+            inner: self,
+            committed: false,
+        }
     }
 
     fn push(&mut self, transmit: Transmit) {
         self.transmits.push_back(transmit);
+    }
+}
+
+/// A [`Reservation`] into a [`TransmitBuffer`], backed by a freshly pushed [`Transmit`].
+pub struct TransmitReservation<'a> {
+    inner: &'a mut TransmitBuffer,
+    committed: bool,
+}
+
+impl Reservation for TransmitReservation<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        &mut self
+            .inner
+            .transmits
+            .back_mut()
+            .expect("a transmit to have been reserved")
+            .payload[..]
+    }
+
+    fn commit(mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for TransmitReservation<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.inner.transmits.pop_back();
+        }
     }
 }
