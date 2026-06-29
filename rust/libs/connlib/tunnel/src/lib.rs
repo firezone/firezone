@@ -55,7 +55,7 @@ mod otel;
 mod p2p_control;
 mod packet_kind;
 mod peer_store;
-#[cfg(all(test, not(feature = "test-util")))]
+#[cfg(all(test, feature = "proptest", not(feature = "test-util")))]
 mod proptest;
 #[cfg(feature = "test-util")]
 pub mod proptest;
