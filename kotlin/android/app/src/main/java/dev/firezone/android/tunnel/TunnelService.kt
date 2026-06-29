@@ -56,6 +56,8 @@ import uniffi.connlib.enforceLogSizeCap
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
+import uniffi.connlib.startTelemetry
+import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -243,11 +245,22 @@ class TunnelService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         registerReceiver(restrictionsReceiver, restrictionsFilter)
+
+        // Start connlib's (Rust) telemetry for the service-process lifetime, decoupled
+        // from any connlib session. It comes up in the `entrypoint` environment to
+        // capture early crashes; `connect` later re-points it at the session's
+        // environment, and `onDestroy` flushes it. It uses protected (tunnel-bypassing)
+        // sockets, so it never loops back through the VPN.
+        startTelemetry(protectSocket)
     }
 
     override fun onDestroy() {
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
+
+        // Flush connlib's (Rust) telemetry as the service process tears down. It is
+        // process-lifetime, so it is not stopped per-session on disconnect.
+        stopTelemetry()
         super.onDestroy()
     }
 

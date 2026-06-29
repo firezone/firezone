@@ -40,13 +40,27 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
-/// Updates the upstream DNS resolvers used to look up our telemetry ingest hosts.
+/// Sets the upstream DNS resolvers used to look up our telemetry ingest hosts
+/// while a connlib session is active.
 ///
-/// Call this wherever connlib's system resolvers are updated. Triggers a
+/// Call this wherever connlib's system resolvers are updated, while a session is
+/// active. While set, ingest hosts are resolved via these upstreams directly
+/// (never the system resolver, which connlib has hijacked). Triggers a
 /// feature-flag re-evaluation, since a prior attempt may have failed for lack of
 /// (working) resolvers.
-pub fn update_system_resolvers(servers: Vec<IpAddr>) {
-    ingest::update_system_resolvers(servers);
+pub fn set_system_resolvers(servers: Vec<IpAddr>) {
+    ingest::set_system_resolvers(servers);
+    feature_flags::reevaluate_current();
+}
+
+/// Clears the upstream DNS resolvers when no connlib session is active.
+///
+/// Call this when a session ends. Afterwards ingest hosts are resolved via the
+/// default system resolver, which is safe because connlib is no longer
+/// intercepting DNS. Triggers a feature-flag re-evaluation so flags refresh over
+/// the default-resolved connection.
+pub fn clear_system_resolvers() {
+    ingest::clear_system_resolvers();
     feature_flags::reevaluate_current();
 }
 
@@ -188,14 +202,9 @@ impl Telemetry {
         tcp: Arc<dyn SocketFactory<TcpSocket>>,
         udp: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
-        // Configure the shared ingest socket factories and seed each ingest host's
-        // addresses via the system resolver. Seeding here, at telemetry construction,
-        // ensures the lookup happens before connlib reconfigures the system resolver
-        // (which would otherwise route it through connlib itself). The socket
-        // factories must bypass the tunnel so telemetry never loops through connlib.
+        // Configure the shared ingest socket factories. They must bypass the tunnel
+        // so telemetry never loops through connlib.
         ingest::configure(tcp, udp);
-        posthog::init_addresses();
-        sentry::init_addresses();
 
         Self { inner: None }
     }

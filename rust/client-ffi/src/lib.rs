@@ -6,7 +6,7 @@ use crate::fd::RawFd;
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{Arc, LazyLock, OnceLock},
     time::Duration,
 };
 
@@ -25,11 +25,20 @@ use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
 uniffi::setup_scaffolding!();
 
+/// Process-lifetime telemetry, decoupled from any single connlib session.
+///
+/// Started once at provider/process start via [`start_telemetry`] (in the
+/// `entrypoint` environment, to capture early crashes), re-pointed at each
+/// session's environment in [`connect`], and flushed at process teardown via
+/// [`stop_telemetry`]. It deliberately outlives connlib sessions so the
+/// post-disconnect flow-log uploader and late crashes still report.
+static TELEMETRY: LazyLock<std::sync::Mutex<Option<Telemetry>>> =
+    LazyLock::new(|| std::sync::Mutex::new(None));
+
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
-    telemetry: Mutex<Telemetry>,
     runtime: Option<tokio::runtime::Runtime>,
 }
 
@@ -334,18 +343,10 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
+        // Telemetry is intentionally *not* stopped here: it lives for the
+        // provider-process lifetime (see `TELEMETRY`), so crashes and the
+        // post-disconnect flow-log uploader keep reporting after the session ends.
         self.inner.stop();
-
-        let Some(runtime) = self.runtime.as_ref() else {
-            tracing::error!(
-                "No tokio runtime set! This should be impossible because we only clear it on `Drop`"
-            );
-            return;
-        };
-
-        runtime.block_on(async {
-            self.telemetry.lock().await.stop().await;
-        });
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
@@ -469,7 +470,8 @@ impl Drop for Session {
         self.inner.stop(); // Instruct the event-loop to shut down.
 
         runtime.block_on(async {
-            self.telemetry.lock().await.stop().await;
+            // Telemetry is process-lifetime (see `TELEMETRY`); it is flushed at
+            // process teardown via `stop_telemetry`, not here.
 
             // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
             let drain = async { self.events.lock().await.drain().await };
@@ -513,12 +515,15 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    let mut telemetry = Telemetry::new(tcp_socket_factory.clone(), udp_socket_factory.clone());
-    telemetry.start(&api_url, RELEASE, platform::DSN);
+    // Telemetry is started once at process start (`start_telemetry`) and lives for
+    // the provider-process lifetime. Re-point the process-global guard at this
+    // session's environment; if `start_telemetry` was never called (e.g. the
+    // Linux/Windows dummy path), telemetry simply stays off.
+    if let Some(telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        telemetry.start(&api_url, RELEASE, platform::DSN);
+    }
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
-
-    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
@@ -554,14 +559,79 @@ fn connect(
         runtime.handle().clone(),
     );
 
-    analytics::new_session(device_id, api_url.to_string());
+    analytics::new_session(device_id, api_url);
 
     Ok(Session {
         inner: session,
         events: Mutex::new(events),
-        telemetry: Mutex::new(telemetry),
         runtime: Some(runtime),
     })
+}
+
+/// Starts process-lifetime telemetry in the `entrypoint` environment.
+///
+/// Call this once at provider/process start, before any session. It configures
+/// the tunnel-bypassing ingest socket factories and brings up the Sentry guard so
+/// early crashes are captured; [`connect`] later re-points it at the session's
+/// environment, and [`stop_telemetry`] flushes it at teardown.
+fn start_telemetry_inner(
+    tcp: Arc<dyn SocketFactory<TcpSocket>>,
+    udp: Arc<dyn SocketFactory<UdpSocket>>,
+) {
+    install_rustls_crypto_provider();
+
+    let mut telemetry = Telemetry::new(tcp, udp);
+    telemetry.start("entrypoint", RELEASE, platform::DSN);
+
+    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
+
+    *TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()) = Some(telemetry);
+}
+
+#[uniffi::export]
+#[cfg(target_os = "android")]
+pub fn start_telemetry(protect_socket: Arc<dyn ProtectSocket>) {
+    let tcp = Arc::new(protected_tcp_socket_factory(protect_socket.clone()));
+    let udp = Arc::new(protected_udp_socket_factory(protect_socket));
+
+    start_telemetry_inner(tcp, udp);
+}
+
+#[uniffi::export]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub fn start_telemetry() {
+    start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+}
+
+#[uniffi::export]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
+pub fn start_telemetry() {
+    start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+}
+
+/// Flushes and stops process-lifetime telemetry.
+///
+/// Call this at provider/process teardown (after the last session has
+/// disconnected) for a graceful flush of any pending events.
+#[uniffi::export]
+pub fn stop_telemetry() {
+    let Some(mut telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+        return;
+    };
+
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            tracing::error!("Failed to build runtime to stop telemetry: {e:#}");
+            return;
+        }
+    };
+
+    runtime.block_on(telemetry.stop());
 }
 
 static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =

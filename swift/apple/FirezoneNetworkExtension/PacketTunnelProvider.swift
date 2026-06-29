@@ -38,6 +38,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // on mach_msg when idle, causing false positive reports.
     Telemetry.start(enableAppHangTracking: false)
 
+    // Start connlib's (Rust) telemetry for the provider-process lifetime, decoupled
+    // from any connlib session. It comes up in the `entrypoint` environment to
+    // capture early crashes; `connect` later re-points it at the session's
+    // environment, and `deinit` flushes it.
+    startTelemetry()
+
     super.init()
 
     // Log version information immediately on startup
@@ -49,6 +55,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
     migrateFirezoneId()
+  }
+
+  deinit {
+    // Flush connlib's (Rust) telemetry as the provider process tears down. It is
+    // process-lifetime, so it is not stopped per-session in `stopTunnel`.
+    stopTelemetry()
   }
 
   override func startTunnel(
