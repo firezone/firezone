@@ -167,6 +167,7 @@ actor Adapter {
     #endif
 
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
+    let flowLogsDir = SharedAccess.flowLogsFolderURL?.path
 
     #if os(iOS)
       let deviceInfo = DeviceInfo(
@@ -195,6 +196,7 @@ actor Adapter {
         deviceName: deviceName,
         logDir: logDir,
         logFilter: logFilter,
+        flowLogsDir: flowLogsDir,
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled
       )
