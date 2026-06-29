@@ -33,7 +33,6 @@ defmodule PortalAPI.Endpoint do
 
   socket "/gateway", PortalAPI.Gateway.Socket,
     websocket: [
-      transport_log: :debug,
       check_origin: :conn,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
@@ -44,7 +43,6 @@ defmodule PortalAPI.Endpoint do
 
   socket "/client", PortalAPI.Client.Socket,
     websocket: [
-      transport_log: :debug,
       check_origin: :conn,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
@@ -55,7 +53,6 @@ defmodule PortalAPI.Endpoint do
 
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
-      transport_log: :debug,
       check_origin: :conn,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
