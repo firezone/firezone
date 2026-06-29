@@ -6,6 +6,9 @@ import android.content.Context
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
+import dev.firezone.android.tunnel.TunnelService
+import uniffi.connlib.runFlowLogUpload
+import kotlin.concurrent.thread
 
 @HiltAndroidApp
 class FirezoneApp : Application() {
@@ -24,6 +27,15 @@ class FirezoneApp : Application() {
 
         // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
         initRustlsPlatformVerifier(this)
+
+        // Best-effort flow-log drain on launch for spool a previous session left behind.
+        // Only when the tunnel isn't running: there's then no VPN to bypass, so plain
+        // (unprotected) sockets are fine. While connected, the TunnelService's protected
+        // uploader owns draining.
+        if (!TunnelService.isRunning(this)) {
+            val flowLogsDir = filesDir.absolutePath + "/flow_logs"
+            thread(isDaemon = true) { runFlowLogUpload(flowLogsDir) }
+        }
     }
 
     companion object {
