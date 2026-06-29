@@ -1,14 +1,23 @@
 defmodule Portal.Mocks.OktaDirectory do
+  import ExUnit.Assertions
+
+  alias Portal.Okta.APIClient
+
   @okta_icon_md "https://ok12static.oktacdn.com/assets/img/logos/groups/odyssey/okta-medium.30ce6d4085dff29412984e4c191bc874.png"
   @okta_icon_lg "https://ok12static.oktacdn.com/assets/img/logos/groups/odyssey/okta-large.c3cb8cda8ae0add1b4fe928f5844dbe3.png"
 
-  def mock_users_list_endpoint(bypass, status, resp \\ nil) do
-    users_list_endpoint_path = "api/v1/users"
-    okta_base_url = "http://localhost:#{bypass.port}"
+  def mock_users_list_endpoint(status, resp \\ nil)
 
-    resp =
-      resp ||
-        JSON.encode!([
+  def mock_users_list_endpoint(status, resp) do
+    users_list_endpoint_path = "api/v1/users"
+
+    Req.Test.expect(APIClient, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/" <> users_list_endpoint_path
+
+      resp =
+        resp ||
+          [
           %{
             "id" => "OT6AZkcmzkDXwkXcjTHY",
             "status" => "ACTIVE",
@@ -29,7 +38,7 @@ defmodule Portal.Mocks.OktaDirectory do
             },
             "_links" => %{
               "self" => %{
-                "href" => "#{okta_base_url}/api/v1/users/OT6AZkcmzkDXwkXcjTHY"
+                "href" => "#{base_url(conn)}/api/v1/users/OT6AZkcmzkDXwkXcjTHY"
               }
             }
           },
@@ -53,30 +62,30 @@ defmodule Portal.Mocks.OktaDirectory do
             },
             "_links" => %{
               "self" => %{
-                "href" => "#{okta_base_url}/api/v1/users/I5OsjUZAUVJr4BvNVp3l"
+                "href" => "#{base_url(conn)}/api/v1/users/I5OsjUZAUVJr4BvNVp3l"
               }
             }
           }
-        ])
+        ]
 
-    test_pid = self()
-
-    Bypass.expect(bypass, "GET", users_list_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, status, resp)
+      send_json_resp(conn, status, resp)
     end)
 
-    bypass
+    :ok
   end
 
-  def mock_groups_list_endpoint(bypass, status, resp \\ nil) do
-    groups_list_endpoint_path = "api/v1/groups"
-    okta_base_url = "http://localhost:#{bypass.port}"
+  def mock_groups_list_endpoint(status, resp \\ nil)
 
-    resp =
-      resp ||
-        JSON.encode!([
+  def mock_groups_list_endpoint(status, resp) do
+    groups_list_endpoint_path = "api/v1/groups"
+
+    Req.Test.expect(APIClient, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/" <> groups_list_endpoint_path
+
+      resp =
+        resp ||
+          [
           %{
             "id" => "00gezqhvv4IFj2Avg5d7",
             "created" => "2024-02-07T04:32:03.000Z",
@@ -104,10 +113,10 @@ defmodule Portal.Mocks.OktaDirectory do
                 }
               ],
               "users" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00gezqhvv4IFj2Avg5d7/users"
+                "href" => "#{base_url(conn)}/api/v1/groups/00gezqhvv4IFj2Avg5d7/users"
               },
               "apps" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00gezqhvv4IFj2Avg5d7/apps"
+                "href" => "#{base_url(conn)}/api/v1/groups/00gezqhvv4IFj2Avg5d7/apps"
               }
             }
           },
@@ -138,10 +147,10 @@ defmodule Portal.Mocks.OktaDirectory do
                 }
               ],
               "users" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00gezqfqxwa2ohLhp5d7/users"
+                "href" => "#{base_url(conn)}/api/v1/groups/00gezqfqxwa2ohLhp5d7/users"
               },
               "apps" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00gezqfqxwa2ohLhp5d7/apps"
+                "href" => "#{base_url(conn)}/api/v1/groups/00gezqfqxwa2ohLhp5d7/apps"
               }
             }
           },
@@ -172,10 +181,10 @@ defmodule Portal.Mocks.OktaDirectory do
                 }
               ],
               "users" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00ge1rmoufwOX8isq5d7/users"
+                "href" => "#{base_url(conn)}/api/v1/groups/00ge1rmoufwOX8isq5d7/users"
               },
               "apps" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00ge1rmoufwOX8isq5d7/apps"
+                "href" => "#{base_url(conn)}/api/v1/groups/00ge1rmoufwOX8isq5d7/apps"
               }
             }
           },
@@ -207,33 +216,33 @@ defmodule Portal.Mocks.OktaDirectory do
                 }
               ],
               "users" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00ge1rmov9ULMTFSg5d7/users"
+                "href" => "#{base_url(conn)}/api/v1/groups/00ge1rmov9ULMTFSg5d7/users"
               },
               "apps" => %{
-                "href" => "#{okta_base_url}/api/v1/groups/00ge1rmov9ULMTFSg5d7/apps"
+                "href" => "#{base_url(conn)}/api/v1/groups/00ge1rmov9ULMTFSg5d7/apps"
               }
             }
           }
-        ])
+        ]
 
-    test_pid = self()
-
-    Bypass.expect(bypass, "GET", groups_list_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, status, resp)
+      send_json_resp(conn, status, resp)
     end)
 
-    bypass
+    :ok
   end
 
-  def mock_group_members_list_endpoint(bypass, group_id, status, resp \\ nil) do
-    group_members_list_endpoint_path = "api/v1/groups/#{group_id}/users"
-    okta_base_url = "http://localhost:#{bypass.port}"
+  def mock_group_members_list_endpoint(group_id, status, resp \\ nil)
 
-    resp =
-      resp ||
-        JSON.encode!([
+  def mock_group_members_list_endpoint(group_id, status, resp) do
+    group_members_list_endpoint_path = "api/v1/groups/#{group_id}/users"
+
+    Req.Test.expect(APIClient, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/" <> group_members_list_endpoint_path
+
+      resp =
+        resp ||
+          [
           %{
             "id" => "00ue1rr3zgV1DjyfL5d7",
             "status" => "ACTIVE",
@@ -270,7 +279,7 @@ defmodule Portal.Mocks.OktaDirectory do
             },
             "_links" => %{
               "self" => %{
-                "href" => "#{okta_base_url}/api/v1/users/00ue1rr3zgV1DjyfL5d7"
+                "href" => "#{base_url(conn)}/api/v1/users/00ue1rr3zgV1DjyfL5d7"
               }
             }
           },
@@ -310,20 +319,34 @@ defmodule Portal.Mocks.OktaDirectory do
             },
             "_links" => %{
               "self" => %{
-                "href" => "#{okta_base_url}/api/v1/users/00ueap8xflioRLpKn5d7"
+                "href" => "#{base_url(conn)}/api/v1/users/00ueap8xflioRLpKn5d7"
               }
             }
           }
-        ])
+        ]
 
-    test_pid = self()
-
-    Bypass.expect(bypass, "GET", group_members_list_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, status, resp)
+      send_json_resp(conn, status, resp)
     end)
 
-    bypass
+    :ok
+  end
+
+  defp base_url(conn) do
+    scheme = Atom.to_string(conn.scheme)
+    port = if conn.port in [80, 443], do: "", else: ":#{conn.port}"
+
+    "#{scheme}://#{conn.host}#{port}"
+  end
+
+  defp send_json_resp(conn, status, resp) when is_binary(resp) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(status, resp)
+  end
+
+  defp send_json_resp(conn, status, resp) do
+    conn
+    |> Plug.Conn.put_status(status)
+    |> Req.Test.json(resp)
   end
 end
