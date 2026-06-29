@@ -176,6 +176,13 @@ defmodule Portal.Config.Definitions do
   defconfig(:flow_logs_upload_interval_secs, :integer, default: 60)
 
   @doc """
+  Maximum number of flow log records clients and gateways send per upload request.
+
+  Capped at 10,000 (the ingest API's per-request limit) by the data plane.
+  """
+  defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
+
+  @doc """
   The base URL clients and gateways POST flow logs to.
   """
   defconfig(:flow_logs_api_url, :string,
