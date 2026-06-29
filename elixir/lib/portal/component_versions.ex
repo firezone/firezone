@@ -82,7 +82,11 @@ defmodule Portal.ComponentVersions do
   end
 
   defp fetch_versions_from_url(releases_url) do
-    case Req.get(releases_url) do
+    req_opts =
+      fetch_config!()
+      |> Keyword.get(:req_opts, [])
+
+    case Req.get(releases_url, req_opts) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         versions = decode_versions_response(body)
         {:ok, Enum.into(versions, [])}

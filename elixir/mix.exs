@@ -160,7 +160,6 @@ defmodule Portal.MixProject do
        depth: 1},
 
       # Test deps
-      {:bypass, "~> 2.1", only: :test},
       {:floki, "~> 0.38.0", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
