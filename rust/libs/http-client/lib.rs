@@ -2,7 +2,11 @@
 
 use std::{
     net::{IpAddr, SocketAddr},
-    sync::Arc,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -10,27 +14,40 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use rustls::ClientConfig;
-use socket_factory::{SocketFactory, TcpSocket, TcpStream};
+use socket_factory::{SocketFactory, TcpSocket};
 use tokio_rustls::TlsConnector;
 use tokio_util::task::AbortOnDropHandle;
 
-type Client = hyper::client::conn::http2::SendRequest<Full<Bytes>>;
-type Connection = hyper::client::conn::http2::Connection<
-    hyper_util::rt::TokioIo<tokio_rustls::client::TlsStream<TcpStream>>,
-    Full<Bytes>,
-    hyper_util::rt::TokioExecutor,
->;
-
-/// A specialised HTTP2 client that plugs into our [`SocketFactory`] abstraction.
+/// The negotiated request sender for a connection.
 ///
-/// One instance of this client is tied to a given domain.
-/// It maintains a TCP connection and can send multiple requests across it in parallel.
-/// If the TCP connection fails, [`Closed`] is returned.
-/// In that case, the client becomes permanently unusable and should be discarded.
+/// HTTP/2 multiplexes, so its sender is cheaply cloned and used concurrently.
+/// HTTP/1.1 serialises one request at a time, so it is shared behind a mutex; the
+/// `Clone` on [`HttpClient`] (which telemetry's parallel DoH path relies on) still
+/// holds, but concurrent sends over an h1 connection take turns.
+#[derive(Clone)]
+enum Sender {
+    H2(hyper::client::conn::http2::SendRequest<Full<Bytes>>),
+    H1(Arc<tokio::sync::Mutex<hyper::client::conn::http1::SendRequest<Full<Bytes>>>>),
+}
+
+/// A future that drives a connection to completion. Boxed so the h2 and h1
+/// connection types share one return shape.
+type ConnectionDriver = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+/// An HTTP client that plugs into our [`SocketFactory`] abstraction.
+///
+/// One instance is tied to a given host. It negotiates HTTP/2 if the server
+/// supports it (ALPN `h2`) and falls back to HTTP/1.1 otherwise. The connection is
+/// maintained for the client's lifetime; if it fails, [`Closed`] is returned and
+/// the client becomes permanently unusable and should be discarded.
 #[derive(Clone)]
 pub struct HttpClient {
     host: String,
-    client: Client,
+    sender: Sender,
+    /// Set by the connection driver when the connection ends, so [`Self::is_closed`]
+    /// reports closure for both h2 and h1 (h1's sender can't be polled without the
+    /// mutex).
+    closed: Arc<AtomicBool>,
 
     #[expect(dead_code, reason = "We only need to keep it around.")]
     connection: Arc<AbortOnDropHandle<()>>,
@@ -51,7 +68,7 @@ impl HttpClient {
             .with_no_client_auth();
         config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec(), b"http/1.0".to_vec()];
 
-        let (client, conn) = connect(
+        let (sender, driver) = connect(
             addresses,
             443,
             host.clone(),
@@ -60,20 +77,22 @@ impl HttpClient {
         )
         .await?;
 
+        let closed = Arc::new(AtomicBool::new(false));
         let connection = tokio::spawn({
             let host = host.clone();
+            let closed = closed.clone();
 
             async move {
-                match conn.await.context("HTTP2 connection failed") {
-                    Ok(()) => tracing::debug!(%host, "HTTP2 connection finished"),
-                    Err(e) => tracing::debug!(%host, "{e:#}"),
-                }
+                driver.await;
+                closed.store(true, Ordering::Relaxed);
+                tracing::debug!(%host, "HTTP connection finished");
             }
         });
 
         Ok(Self {
             host,
-            client,
+            sender,
+            closed,
             connection: Arc::new(AbortOnDropHandle::new(connection)),
         })
     }
@@ -82,14 +101,15 @@ impl HttpClient {
     ///
     /// A closed client is permanently unusable and should be discarded.
     pub fn is_closed(&self) -> bool {
-        self.client.is_closed()
+        self.closed.load(Ordering::Relaxed)
+            || matches!(&self.sender, Sender::H2(client) if client.is_closed())
     }
 
     pub fn send_request(
         &self,
         request: http::Request<Bytes>,
     ) -> Result<impl Future<Output = Result<http::Response<Bytes>>> + use<>> {
-        anyhow::ensure!(!self.client.is_closed(), Closed);
+        anyhow::ensure!(!self.is_closed(), Closed);
         anyhow::ensure!(
             request.uri().port_u16().is_none_or(|p| p == 443),
             "Only supports requests to port 443"
@@ -106,21 +126,46 @@ impl HttpClient {
             self.host
         );
 
-        let mut client = self.client.clone();
+        let sender = self.sender.clone();
 
         Ok(async move {
-            client
-                .ready()
-                .await
-                .context("Failed to await readiness of HTTP2 client")?;
-
             let (parts, body) = request.into_parts();
-            let request = http::Request::from_parts(parts, Full::new(body));
+            let mut request = http::Request::from_parts(parts, Full::new(body));
 
-            let response = client
-                .send_request(request)
-                .await
-                .context("Failed to send HTTP request")?;
+            let response = match sender {
+                Sender::H2(mut client) => {
+                    client
+                        .ready()
+                        .await
+                        .context("Failed to await readiness of HTTP/2 client")?;
+
+                    client
+                        .send_request(request)
+                        .await
+                        .context("Failed to send HTTP/2 request")?
+                }
+                Sender::H1(mutex) => {
+                    // HTTP/1.1 carries the host in a `Host` header (HTTP/2 uses the
+                    // `:authority` pseudo-header derived from the URI), so add it if
+                    // the caller didn't.
+                    if !request.headers().contains_key(http::header::HOST) {
+                        let value =
+                            http::HeaderValue::from_str(&host).context("Invalid host header")?;
+                        request.headers_mut().insert(http::header::HOST, value);
+                    }
+
+                    let mut client = mutex.lock().await;
+                    client
+                        .ready()
+                        .await
+                        .context("Failed to await readiness of HTTP/1.1 client")?;
+
+                    client
+                        .send_request(request)
+                        .await
+                        .context("Failed to send HTTP/1.1 request")?
+                }
+            };
 
             let (parts, incoming) = response.into_parts();
 
@@ -144,20 +189,20 @@ async fn connect(
     domain: String,
     tls_config: Arc<ClientConfig>,
     sf: Arc<dyn SocketFactory<TcpSocket>>,
-) -> Result<(Client, Connection)> {
-    tracing::debug!(?addresses, %domain, "Creating new HTTP2 connection");
+) -> Result<(Sender, ConnectionDriver)> {
+    tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
     for address in addresses {
         let socket = SocketAddr::new(address, port);
 
         match connect_one(socket, domain.clone(), tls_config.clone(), sf.clone()).await {
-            Ok((client, conn)) => {
-                tracing::debug!(%socket, %domain, "Created new HTTP2 connection");
+            Ok((sender, driver)) => {
+                tracing::debug!(%socket, %domain, "Created new HTTP connection");
 
-                return Ok((client, conn));
+                return Ok((sender, driver));
             }
             Err(e) => {
-                tracing::debug!(%socket, %domain, "Failed to create HTTP2 client: {e:#}");
+                tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}");
                 continue;
             }
         }
@@ -171,14 +216,7 @@ async fn connect_one(
     domain: String,
     tls_client_config: Arc<ClientConfig>,
     sf: Arc<dyn SocketFactory<TcpSocket>>,
-) -> Result<(
-    hyper::client::conn::http2::SendRequest<Full<Bytes>>,
-    hyper::client::conn::http2::Connection<
-        hyper_util::rt::TokioIo<tokio_rustls::client::TlsStream<TcpStream>>,
-        Full<Bytes>,
-        hyper_util::rt::TokioExecutor,
-    >,
-)> {
+) -> Result<(Sender, ConnectionDriver)> {
     let stream = sf
         .bind(socket)
         .context("Failed to create TCP socket")?
@@ -186,24 +224,52 @@ async fn connect_one(
         .await
         .context("Failed to connect TCP stream")?;
 
-    let connector = TlsConnector::from(tls_client_config.clone());
+    let connector = TlsConnector::from(tls_client_config);
     let tls_domain = rustls_pki_types::ServerName::try_from(domain)?;
 
     let stream = connector.connect(tls_domain, stream).await?;
 
-    let mut builder =
-        hyper::client::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new());
-    builder.timer(hyper_util::rt::TokioTimer::default());
-    builder.keep_alive_timeout(Duration::from_secs(1));
-    builder.keep_alive_while_idle(true);
-    builder.keep_alive_interval(Some(Duration::from_secs(5)));
+    // Drive the HTTP version off what the server negotiated via ALPN.
+    let is_h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
+    let io = hyper_util::rt::TokioIo::new(stream);
 
-    let (client, connection) = builder
-        .handshake(hyper_util::rt::TokioIo::new(stream))
-        .await
-        .context("Failed to handshake HTTP2 connection")?;
+    if is_h2 {
+        let mut builder =
+            hyper::client::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new());
+        builder.timer(hyper_util::rt::TokioTimer::default());
+        builder.keep_alive_timeout(Duration::from_secs(1));
+        builder.keep_alive_while_idle(true);
+        builder.keep_alive_interval(Some(Duration::from_secs(5)));
 
-    Ok((client, connection))
+        let (sender, conn) = builder
+            .handshake::<_, Full<Bytes>>(io)
+            .await
+            .context("Failed to handshake HTTP/2 connection")?;
+
+        let driver = Box::pin(async move {
+            if let Err(e) = conn.await {
+                tracing::debug!("HTTP/2 connection failed: {e:#}");
+            }
+        });
+
+        Ok((Sender::H2(sender), driver))
+    } else {
+        let (sender, conn) = hyper::client::conn::http1::Builder::new()
+            .handshake::<_, Full<Bytes>>(io)
+            .await
+            .context("Failed to handshake HTTP/1.1 connection")?;
+
+        let driver = Box::pin(async move {
+            if let Err(e) = conn.await {
+                tracing::debug!("HTTP/1.1 connection failed: {e:#}");
+            }
+        });
+
+        Ok((
+            Sender::H1(Arc::new(tokio::sync::Mutex::new(sender))),
+            driver,
+        ))
+    }
 }
 
 #[cfg(test)]
