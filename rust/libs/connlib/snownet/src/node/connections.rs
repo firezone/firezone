@@ -9,7 +9,6 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
 use is::stun::{StunMessage, TransId};
-use rand::Rng;
 
 use crate::{
     ConnectionStats, Event,
@@ -101,9 +100,8 @@ where
     pub(crate) fn migrate_relays(
         &mut self,
         removed_allocations: impl Iterator<Item = RId>,
-        allocations: &Allocations<RId>,
+        allocations: &mut Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
-        rng: &mut impl Rng,
         now: Instant,
     ) {
         // Temporarily take ownership of buffer to satisfy borrow-checker.
@@ -112,7 +110,7 @@ where
 
         for removed_relay in removed_allocations {
             for (cid, c) in self.iter_mut_by_relay(removed_relay) {
-                let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
+                let Some((new_relay, new_allocation)) = allocations.sample() else {
                     let was_inserted = connections_with_removed_relays.insert(cid);
 
                     if was_inserted {
@@ -127,7 +125,7 @@ where
         }
 
         for cid in connections_with_removed_relays {
-            let Some((new_relay, new_allocation)) = allocations.sample(rng) else {
+            let Some((new_relay, new_allocation)) = allocations.sample() else {
                 self.connections_with_removed_relays.insert(cid);
 
                 continue;
@@ -500,9 +498,8 @@ mod tests {
     #[test]
     fn migrate_relay_retries_connections_that_previously_had_no_allocation() {
         let mut connections: Connections<u32, u32> = Connections::default();
-        let mut allocations: Allocations<u32> = Allocations::default();
+        let mut allocations: Allocations<u32> = Allocations::for_test();
         let now = Instant::now();
-        let mut rng = rand::rng();
 
         // Insert a connection that is using relay id 1.
         let conn = new_connection(12345, 1, [1u8; 32]);
@@ -512,9 +509,8 @@ mod tests {
         let mut pending_events = VecDeque::new();
         connections.migrate_relays(
             std::iter::once(1u32),
-            &allocations,
+            &mut allocations,
             &mut pending_events,
-            &mut rng,
             now,
         );
 
@@ -537,9 +533,8 @@ mod tests {
 
         connections.migrate_relays(
             std::iter::empty(),
-            &allocations,
+            &mut allocations,
             &mut pending_events,
-            &mut rng,
             now,
         );
 

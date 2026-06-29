@@ -76,7 +76,7 @@ impl GatewayState {
             node: Node::new(seed, now, unix_ts),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
-            flow_tracker: FlowTracker::new(flow_logs, now),
+            flow_tracker: FlowTracker::new(flow_logs, now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
