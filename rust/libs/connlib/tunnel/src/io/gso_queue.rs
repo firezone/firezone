@@ -295,6 +295,55 @@ mod tests {
         assert_eq!(datagrams[1].dst, DST_1);
     }
 
+    #[test]
+    fn committing_a_reservation_keeps_the_datagram() {
+        let mut send_queue = GsoQueue::new();
+
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"foobar");
+            reservation.commit();
+        }
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+    }
+
+    #[test]
+    fn dropping_a_reservation_without_committing_rolls_it_back() {
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+
+        // Reserve a second segment in the same batch but drop it without committing.
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"barbaz");
+        }
+
+        // Only the committed datagram remains; the reserved bytes were rolled back.
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+        assert_eq!(datagrams[0].segment_size, 6);
+    }
+
+    #[test]
+    fn dropping_the_only_reservation_leaves_the_queue_empty() {
+        let mut send_queue = GsoQueue::new();
+
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"barbaz");
+        }
+
+        // Rolling back the last segment drops the empty batch and connection.
+        assert_eq!(send_queue.datagrams().count(), 0);
+    }
+
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
     const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2222));
 }
