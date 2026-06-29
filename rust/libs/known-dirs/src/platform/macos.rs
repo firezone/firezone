@@ -24,9 +24,7 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
 
 /// Spool directory for flow logs
 ///
-/// Returns `None` on macOS: spooling is owned by the Swift app, which passes its
-/// spool directory in over FFI (via `SharedAccess`). The headless and tauri clients
-/// that also compile for macOS therefore don't spool here.
+/// `None` on macOS: the Swift app owns spooling and passes its directory over FFI.
 pub fn flow_logs() -> Option<PathBuf> {
     None
 }
