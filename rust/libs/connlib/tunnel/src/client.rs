@@ -780,6 +780,8 @@ impl ClientState {
             return;
         };
 
+        tracing::debug!(%pid, num_buffered = %buffer.len(), "Flushing buffered packets");
+
         for packet in buffer {
             encapsulate_and_queue(
                 packet,
@@ -821,7 +823,10 @@ impl ClientState {
             }
         }
 
-        encapsulate_or_buffer(packet, pid, now, &mut self.node, &mut self.pending_packets)
+        let transmit =
+            encapsulate_or_buffer(packet, pid, now, &mut self.node, &mut self.pending_packets)?;
+
+        Ok(transmit)
     }
 
     /// Decide which connection a packet should be encapsulated through.
