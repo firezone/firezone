@@ -537,9 +537,6 @@ where
         let conn = self.connections.get_mut(&cid, now)?;
 
         let socket = match &conn.state {
-            // ICE is still in progress: no socket has been nominated, so we cannot send yet.
-            // The caller is expected to buffer the packet and retry on `ConnectionEstablished`.
-            // This also means the controlled agent does not initiate a WireGuard session.
             ConnectionState::Connecting { .. } => {
                 return Err(StillConnecting.into());
             }
