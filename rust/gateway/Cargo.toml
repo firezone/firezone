@@ -23,11 +23,15 @@ assets = [
 ]
 depends = 'iptables,systemd'
 
+[features]
+dhat = ["dep:dhat"]
+
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
+dhat = { workspace = true, optional = true }
 dns-types = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }

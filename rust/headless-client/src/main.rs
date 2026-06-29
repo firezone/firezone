@@ -39,6 +39,10 @@ mod platform;
 #[path = "macos.rs"]
 mod platform;
 
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 /// Command-line args for the headless Client
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -197,6 +201,9 @@ const RELEASE: &str = concat!("headless-client@", env!("CARGO_PKG_VERSION"));
     reason = "No logger is active when we are printing this error."
 )]
 fn main() {
+    #[cfg(feature = "dhat")]
+    let _dhat = dhat::Profiler::new_heap();
+
     match try_main() {
         Ok(()) => {}
         Err(e) => {

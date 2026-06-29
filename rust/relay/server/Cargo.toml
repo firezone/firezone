@@ -7,6 +7,7 @@ license = { workspace = true }
 [features]
 default = ["ebpf"]
 ebpf = ["dep:aya", "dep:aya-log", "dep:ebpf-shared"]
+dhat = ["dep:dhat"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -19,6 +20,7 @@ bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
+dhat = { workspace = true, optional = true }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }

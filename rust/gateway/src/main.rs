@@ -35,7 +35,14 @@ const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() -> ExitCode {
+    #[cfg(feature = "dhat")]
+    let _dhat = dhat::Profiler::new_heap();
+
     let cli = Cli::parse();
 
     #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]

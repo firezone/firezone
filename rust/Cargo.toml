@@ -83,6 +83,7 @@ crossbeam-queue = "0.3.12"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
+dhat = "0.3.3"
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"

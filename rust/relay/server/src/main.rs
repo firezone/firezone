@@ -32,6 +32,10 @@ use tracing_core::Dispatch;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
 
+#[cfg(feature = "dhat")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
@@ -128,6 +132,9 @@ enum LogFormat {
 }
 
 fn main() -> ExitCode {
+    #[cfg(feature = "dhat")]
+    let _dhat = dhat::Profiler::new_heap();
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
