@@ -126,13 +126,8 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?;
 
-        let encrypted_packet = match self.node.encapsulate(cid, &packet, now) {
-            Ok(Some(encrypted_packet)) => encrypted_packet,
-            Ok(None) => return Ok(None),
-            Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-                return Err(e.context(UnroutablePacket::not_connected(&packet)));
-            }
-            Err(e) => return Err(e),
+        let Some(encrypted_packet) = encrypt_packet(packet, cid, &mut self.node, now)? else {
+            return Ok(None);
         };
 
         flow_tracker::inbound_tun::record_wireguard_packet(
@@ -709,11 +704,18 @@ fn encrypt_packet(
     node: &mut Node<ClientId, RelayId>,
     now: Instant,
 ) -> Result<Option<Transmit>> {
-    let transmit = node
-        .encapsulate(cid, &packet, now)
-        .context("Failed to encapsulate")?;
-
-    Ok(transmit)
+    match node.encapsulate(cid, &packet, now) {
+        Ok(transmit) => Ok(transmit),
+        // The Gateway does not buffer: it only sends in response to Client traffic.
+        Err(e) if e.any_is::<snownet::StillConnecting>() => {
+            tracing::debug!(%cid, "Connection is still establishing; dropping packet");
+            Ok(None)
+        }
+        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
+            Err(e.context(UnroutablePacket::not_connected(&packet)))
+        }
+        Err(e) => Err(e).context("Failed to encapsulate"),
+    }
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.

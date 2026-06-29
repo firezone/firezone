@@ -175,6 +175,7 @@ defmodule PortalAPI.Schemas.Client do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Client
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "ClientsResponse",
@@ -182,7 +183,7 @@ defmodule PortalAPI.Schemas.Client do
       type: :object,
       properties: %{
         data: %Schema{description: "Clients details", type: :array, items: Client.GetSchema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

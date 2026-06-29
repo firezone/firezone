@@ -322,8 +322,12 @@ defmodule PortalWeb.Actors.Components do
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                    name="ri-arrow-down-s-line"
+                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                  />
+                  <.icon
+                    name="ri-arrow-up-s-line"
+                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -501,8 +505,12 @@ defmodule PortalWeb.Actors.Components do
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                    name="ri-arrow-down-s-line"
+                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                  />
+                  <.icon
+                    name="ri-arrow-up-s-line"
+                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -585,8 +593,12 @@ defmodule PortalWeb.Actors.Components do
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                    name="ri-arrow-down-s-line"
+                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                  />
+                  <.icon
+                    name="ri-arrow-up-s-line"
+                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -763,8 +775,12 @@ defmodule PortalWeb.Actors.Components do
                       <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                     </button>
                     <.icon
-                      name="ri-arrow-right-s-line"
-                      class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                      name="ri-arrow-down-s-line"
+                      class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    />
+                    <.icon
+                      name="ri-arrow-up-s-line"
+                      class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                     />
                   </div>
                 </summary>

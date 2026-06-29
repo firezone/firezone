@@ -260,6 +260,10 @@ if config_env() == :prod do
     external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
     private_clients: env_var_to_config!(:phoenix_private_clients)
 
+  config :portal,
+    flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
+    flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
+
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   oban_crontab = [
@@ -322,6 +326,9 @@ if config_env() == :prod do
 
     # Delete old change_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
+
+    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
+    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
 
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
@@ -425,8 +432,13 @@ if config_env() == :prod do
       refill_rate: env_var_to_config!(:api_socket_refill_rate),
       capacity: env_var_to_config!(:api_socket_capacity)
 
+    config :portal, PortalAPI.Plugs.IngestionRateLimit,
+      refill_rate: env_var_to_config!(:api_ingestion_refill_rate),
+      capacity: env_var_to_config!(:api_ingestion_capacity)
+
     config :portal,
-      api_external_url: api_external_url
+      api_external_url: api_external_url,
+      rest_api_external_url: env_var_to_config!(:rest_api_external_url) || api_external_url
   end
 
   ###############################
@@ -550,10 +562,10 @@ if config_env() == :prod do
          env_var_to_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
        environment_name when environment_name in [:staging, :production] <-
-         (case api_external_url_host do
-            "api.firezone.dev" -> :production
-            "api.firez.one" -> :staging
-            _ -> :unknown
+         (cond do
+            String.contains?(api_external_url_host, "firezone.dev") -> :production
+            String.contains?(api_external_url_host, "firez.one") -> :staging
+            true -> :unknown
           end) do
     config :sentry,
       environment_name: environment_name,

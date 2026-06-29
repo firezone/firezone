@@ -274,6 +274,7 @@ defmodule PortalAPI.Schemas.Policy do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "PolicyListResponse",
@@ -281,7 +282,7 @@ defmodule PortalAPI.Schemas.Policy do
       type: :object,
       properties: %{
         data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

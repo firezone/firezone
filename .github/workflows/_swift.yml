@@ -14,9 +14,9 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.5.18
+      RELEASE_NAME: macos-client-1.5.19
     steps:
-      - uses: release-drafter/release-drafter@ed4bc48ec97379be2258e7b7ac2624a3e26ab809 # v7.4.0
+      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -35,7 +35,7 @@ jobs:
     env:
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: ./.github/actions/setup-mise
         with:
@@ -45,6 +45,10 @@ jobs:
       - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        env:
+          # The macOS runner installs the reporter from the coverallsapp/coveralls
+          # Homebrew tap, which Homebrew 6.0.0 refuses to load unless trusted.
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: swift/apple/FirezoneKit/coverage.lcov
@@ -59,7 +63,7 @@ jobs:
     env:
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: ./.github/actions/setup-mise
         with:
@@ -105,13 +109,13 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.18.dmg"
+            artifact-file: "firezone-macos-client-1.5.19.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.18.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.19.pkg"
             # mark:next-apple-version
-            release-name: macos-client-1.5.18
+            release-name: macos-client-1.5.19
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-mise

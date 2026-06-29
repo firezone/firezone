@@ -10,7 +10,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "8.6.0"
+    id("com.diffplug.spotless") version "8.7.0"
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
     id("com.google.devtools.ksp")
@@ -55,7 +55,7 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.12"
+        versionName = "1.5.13"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -244,7 +244,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.9")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.14.1"))
+    implementation(platform("com.google.firebase:firebase-bom:34.15.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -264,7 +264,7 @@ dependencies {
     implementation("io.sentry:sentry-android:8.43.2")
 
     // Compose
-    val composeBom = platform("androidx.compose:compose-bom:2026.05.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.compose.ui:ui")

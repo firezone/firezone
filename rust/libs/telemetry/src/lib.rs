@@ -1,32 +1,26 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    fmt, mem,
-    net::{SocketAddr, ToSocketAddrs as _},
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt, mem, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
-    transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
 pub mod otel;
 
 mod api_url;
+mod ingest;
 mod noop_push_metrics_exporter;
 mod posthog;
+mod sentry;
 mod sentry_instrument_provider;
 
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
@@ -46,6 +40,27 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
+/// Updates the upstream DNS resolvers used to look up our telemetry ingest hosts.
+///
+/// Call this wherever connlib's system resolvers are updated. Triggers a
+/// feature-flag re-evaluation, since a prior attempt may have failed for lack of
+/// (working) resolvers.
+pub fn update_system_resolvers(servers: Vec<IpAddr>) {
+    ingest::update_system_resolvers(servers);
+    feature_flags::reevaluate_current();
+}
+
+/// Drops the current telemetry ingest connections so they are re-established lazily.
+///
+/// Call this on network changes, alongside resetting connlib. Triggers a
+/// feature-flag re-evaluation so flags are refreshed over the new connection.
+pub fn reset_ingest() {
+    ingest::reset_sockets();
+    posthog::reset_client();
+    sentry::reset_client();
+    feature_flags::reevaluate_current();
+}
+
 pub struct Dsn {
     public_key: &'static str,
     project_id: u64,
@@ -55,8 +70,6 @@ pub struct Dsn {
 // Sentry docs say this does not need to be protected:
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
-
-const INGEST_HOST: &str = "sentry.firezone.dev";
 
 pub const ANDROID_DSN: Dsn = Dsn {
     public_key: "928a6ee1f6af9734100b8bc89b2dc87d",
@@ -91,8 +104,10 @@ impl fmt::Display for Dsn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "https://{}@{INGEST_HOST}/{}",
-            self.public_key, self.project_id
+            "https://{}@{}/{}",
+            self.public_key,
+            sentry::INGEST_HOST,
+            self.project_id
         )
     }
 }
@@ -166,32 +181,27 @@ impl fmt::Display for Env {
 
 pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
-    transport: TransportFactory,
-}
-
-impl Default for Telemetry {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl Telemetry {
-    pub fn new() -> Self {
-        Self {
-            inner: Default::default(),
-            transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
-                tracing::debug!("Failed to create telemetry transport factory: {e:#}");
+    pub fn new(
+        tcp: Arc<dyn SocketFactory<TcpSocket>>,
+        udp: Arc<dyn SocketFactory<UdpSocket>>,
+    ) -> Self {
+        // Configure the shared ingest socket factories and seed each ingest host's
+        // addresses via the system resolver. Seeding here, at telemetry construction,
+        // ensures the lookup happens before connlib reconfigures the system resolver
+        // (which would otherwise route it through connlib itself). The socket
+        // factories must bypass the tunnel so telemetry never loops through connlib.
+        ingest::configure(tcp, udp);
+        posthog::init_addresses();
+        sentry::init_addresses();
 
-                TransportFactory::without_addresses()
-            }),
-        }
+        Self { inner: None }
     }
 
     pub fn disabled() -> Self {
-        Self {
-            inner: None,
-            transport: TransportFactory::without_addresses(),
-        }
+        Self { inner: None }
     }
 
     /// Starts a Sentry session.
@@ -228,43 +238,7 @@ impl Telemetry {
 
         tracing::info!(%environment, "Starting telemetry");
 
-        let client_options = sentry::ClientOptions {
-            environment: Some(Cow::Borrowed(environment.as_str())),
-            // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
-            release: Some(release.to_owned().into()),
-            max_breadcrumbs: 500,
-            before_send: Some({
-                let rate_limit = event_rate_limiter(Duration::from_secs(60 * 5));
-                Arc::new(move |event| {
-                    let event = rate_limit(event)?;
-                    let event = insert_feature_flags_into_event(event);
-
-                    Some(event)
-                })
-            }),
-            enable_logs: true,
-            enable_metrics: true,
-            before_send_log: Some(Arc::new(|log| {
-                let log = insert_user_account_slug_into_log(log);
-                let log = append_tracing_fields_to_message(log);
-
-                Some(log)
-            })),
-            before_send_metric: Some(Arc::new(|metric| {
-                let metric = insert_user_account_slug_into_metric(metric);
-                let metric = insert_feature_flags_into_metric(metric);
-
-                Some(metric)
-            })),
-            ..Default::default()
-        };
-        let inner = sentry::init((
-            dsn.to_string(),
-            sentry::ClientOptions {
-                transport: Some(Arc::new(self.transport.clone())),
-                ..client_options
-            },
-        ));
+        let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
         // Configure scope on the main hub so that all threads will get the tags.
         let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
         sentry::Hub::main().configure_scope(move |scope| {
@@ -513,52 +487,6 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
-}
-
-#[derive(Debug, Clone)]
-pub struct TransportFactory {
-    ingest_domain_addresses: Vec<SocketAddr>,
-}
-
-impl TransportFactory {
-    pub fn resolve_ingest_host() -> Result<Self> {
-        let resolved_addresses = (INGEST_HOST, 443u16)
-            .to_socket_addrs()
-            .with_context(|| format!("Failed to resolve {INGEST_HOST}"))?
-            .collect();
-
-        tracing::debug!(host = %INGEST_HOST, addresses = ?resolved_addresses, "Resolved ingest host IPs");
-
-        Ok(Self {
-            ingest_domain_addresses: resolved_addresses,
-        })
-    }
-
-    fn without_addresses() -> Self {
-        Self {
-            ingest_domain_addresses: Default::default(),
-        }
-    }
-}
-
-impl sentry::TransportFactory for TransportFactory {
-    fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
-        let mut builder = reqwest::ClientBuilder::new()
-            .http2_prior_knowledge()
-            .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_timeout(Duration::from_secs(1))
-            .http2_keep_alive_interval(Duration::from_secs(5)); // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
-
-        if !self.ingest_domain_addresses.is_empty() {
-            builder = builder.resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses);
-        } else {
-            tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host");
-        }
-
-        let client = builder.build().expect("Failed to build HTTP client");
-
-        Arc::new(ReqwestHttpTransport::with_client(options, client))
-    }
 }
 
 #[cfg(test)]

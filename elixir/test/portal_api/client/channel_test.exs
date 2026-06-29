@@ -83,6 +83,20 @@ defmodule PortalAPI.Client.ChannelTest do
     %{subject | context: %{subject.context | user_agent: user_agent}}
   end
 
+  defp gateway_flow_generation(channel_pid, resource_id) do
+    {generation, _timer_ref, _initiator_token} =
+      :sys.get_state(channel_pid).assigns.pending_flows |> Map.fetch!(resource_id)
+
+    generation
+  end
+
+  defp fire_flow_creation_timeout(channel_pid, resource_id) do
+    send(
+      channel_pid,
+      {:flow_creation_timeout, resource_id, gateway_flow_generation(channel_pid, resource_id)}
+    )
+  end
+
   setup do
     start_supervised!(
       {Portal.Queue,
@@ -446,7 +460,9 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{
         resources: resources,
         interface: interface,
-        relays: relays
+        relays: relays,
+        flow_logs_api_url: "https://flow-api.firezone.dev/",
+        flow_logs_upload_interval_secs: 60
       }
 
       assert length(resources) == 4
@@ -3475,7 +3491,10 @@ defmodule PortalAPI.Client.ChannelTest do
       timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
 
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.pending_flows, %{resource.id => timer_ref})
+        put_in(
+          state.assigns.pending_flows,
+          %{resource.id => {make_ref(), timer_ref, "ingest-token"}}
+        )
       end)
 
       preshared_key = "PSK"
@@ -3800,8 +3819,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
 
-      # Simulate the timeout firing before the gateway responds
-      send(socket.channel_pid, {:flow_creation_timeout, resource.id})
+      fire_flow_creation_timeout(socket.channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
@@ -3848,13 +3866,11 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
 
-      # Simulate the timeout firing first
-      send(channel_pid, {:flow_creation_timeout, resource.id})
+      fire_flow_creation_timeout(channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
 
-      # Now simulate the late gateway response arriving after timeout
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
       send(
@@ -3909,7 +3925,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
 
-      # Gateway responds successfully
+      generation = gateway_flow_generation(channel_pid, resource.id)
+
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
       send(
@@ -3922,10 +3939,55 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "flow_created", %{resource_id: resource_id}
       assert resource_id == resource.id
 
-      # Now the stale timeout fires — should be a no-op
-      send(channel_pid, {:flow_creation_timeout, resource.id})
+      send(channel_pid, {:flow_creation_timeout, resource.id, generation})
 
       refute_push "flow_creation_failed", _
+    end
+
+    test "second create_flow for same resource replaces the timer without dropping the flow", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:authorize_policy, {channel_pid, _socket_ref1}, _payload1}
+      stale_generation = gateway_flow_generation(channel_pid, resource.id)
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:authorize_policy, {^channel_pid, socket_ref2}, payload2}
+      refute gateway_flow_generation(channel_pid, resource.id) == stale_generation
+
+      send(channel_pid, {:flow_creation_timeout, resource.id, stale_generation})
+      refute_push "flow_creation_failed", _
+
+      send(
+        channel_pid,
+        {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
+         payload2.ice_credentials}
+      )
+
+      assert_push "flow_created", %{resource_id: resource_id}
+      assert resource_id == resource.id
     end
 
     test "returns :offline when gateway is in presence but not registered in PG", %{
@@ -7069,16 +7131,16 @@ defmodule PortalAPI.Client.ChannelTest do
 
       initiating_client_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
-      ghost_paid = Ecto.UUID.generate()
+      ghost_pa_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(3600, :second)
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           Portal.Cache.Client.Authorizations.put(
             state.assigns.authorizations_cache,
+            ghost_pa_id,
             initiating_client_id,
             resource_id,
-            ghost_paid,
             expires_at
           )
 
@@ -7086,7 +7148,7 @@ defmodule PortalAPI.Client.ChannelTest do
       end)
 
       policy_authorization = %Portal.PolicyAuthorization{
-        id: ghost_paid,
+        id: ghost_pa_id,
         account_id: account.id,
         initiating_device_id: initiating_client_id,
         receiving_device_id: client.id,
@@ -7099,10 +7161,9 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
 
-      key = {Ecto.UUID.dump!(initiating_client_id), Ecto.UUID.dump!(resource_id)}
       refute Map.has_key?(
                :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
-               key
+               Ecto.UUID.dump!(ghost_pa_id)
              )
     end
   end
@@ -7175,9 +7236,9 @@ defmodule PortalAPI.Client.ChannelTest do
         cache =
           Portal.Cache.Client.Authorizations.put(
             state.assigns.authorizations_cache,
+            pa.id,
             initiating_client_id,
             resource_id,
-            pa.id,
             pa.expires_at
           )
 
@@ -7198,11 +7259,9 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
 
-      key = {Ecto.UUID.dump!(initiating_client_id), Ecto.UUID.dump!(resource_id)}
-
       refute Map.has_key?(
                :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
-               key
+               Ecto.UUID.dump!(pa.id)
              )
     end
   end
@@ -7414,7 +7473,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       expired_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
-      paid = Ecto.UUID.generate()
+      pa_id = Ecto.UUID.generate()
 
       cacheable_resource = Portal.Cache.Cacheable.to_cache(pool_resource)
       rendered_resource = PortalAPI.Client.Views.Resource.render(cacheable_resource)
@@ -7433,7 +7492,7 @@ defmodule PortalAPI.Client.ChannelTest do
           remote_ice_credentials: %{username: "u", password: "p"},
           ice_role: :controlled,
           resource: rendered_resource,
-          policy_authorization_id: paid,
+          policy_authorization_id: pa_id,
           authorization_expires_at: expired_at
         }
       })
@@ -7516,69 +7575,7 @@ defmodule PortalAPI.Client.ChannelTest do
              )
     end
 
-    test "policy_authorization delete with a replacement policy pushes access_authorization_expiry_updated",
-         %{
-           target_client: target_client,
-           target_subject: target_subject,
-           client: initiating_client,
-           pool_resource: pool_resource,
-           account: account,
-           target_actor: target_actor,
-           group: group_a,
-           actor: initiating_actor
-         } do
-      target_actor_token =
-        Portal.TokenFixtures.client_token_fixture(account: account, actor: target_actor)
-
-      group_b = Portal.GroupFixtures.group_fixture(account: account)
-      Portal.MembershipFixtures.membership_fixture(account: account, actor: initiating_actor, group: group_b)
-      Portal.PolicyFixtures.policy_fixture(account: account, group: group_b, resource: pool_resource)
-
-      Portal.ClientSessionFixtures.client_session_fixture(
-        account: account,
-        actor: initiating_actor,
-        client: initiating_client
-      )
-
-      pa =
-        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
-          account: account,
-          client: initiating_client,
-          gateway: target_client,
-          resource: pool_resource,
-          group: group_a,
-          token: target_actor_token
-        )
-
-      socket = join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :delete,
-        old_struct: pa
-      })
-
-      initiating_client_id = initiating_client.id
-      pool_resource_id = pool_resource.id
-
-      assert_push "access_authorization_expiry_updated", %{
-        client_id: ^initiating_client_id,
-        resource_id: ^pool_resource_id,
-        expires_at: expires_at
-      }
-
-      assert is_integer(expires_at)
-
-      state = :sys.get_state(socket.channel_pid)
-
-      assert Portal.Cache.Client.Authorizations.has_resource?(
-               state.assigns.authorizations_cache,
-               pool_resource.id
-             )
-    end
-
-    test "policy_authorization delete with remaining cached authorizations updates expiry without reauth",
+    test "ignores a superseded authorization delete and rejects when the current one is deleted",
          %{
            target_client: target_client,
            target_subject: target_subject,
@@ -7590,7 +7587,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor_token =
         Portal.TokenFixtures.client_token_fixture(account: account, actor: target_actor)
 
-      preexisting =
+      current =
         Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
           account: account,
           client: initiating_client,
@@ -7599,41 +7596,43 @@ defmodule PortalAPI.Client.ChannelTest do
           token: target_actor_token
         )
 
-      preloaded = Portal.Repo.preload(preexisting, [:resource, :policy])
-
-      second =
-        Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
-          account: account,
-          client: initiating_client,
-          gateway: target_client,
-          resource: preloaded.resource,
-          policy: preloaded.policy,
-          token: target_actor_token
-        )
-
       socket = join_channel(target_client, target_subject)
       assert_push "init", _
-
-      send(socket.channel_pid, %Changes.Change{
-        lsn: 100,
-        op: :delete,
-        old_struct: second
-      })
 
       initiating_client_id = initiating_client.id
       pool_resource_id = pool_resource.id
 
-      assert_push "access_authorization_expiry_updated", %{
+      # A superseded authorization for the same pair (different id) — last-one-wins
+      # means the cache holds `current`, so deleting the superseded one is a no-op.
+      superseded = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        initiating_device_id: initiating_client.id,
+        receiving_device_id: target_client.id,
+        resource_id: pool_resource.id,
+        expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
+      }
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: superseded})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "reject_access", _
+
+      assert Portal.Cache.Client.Authorizations.has_resource?(
+               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               pool_resource.id
+             )
+
+      # Deleting the current authorization rejects the pair.
+      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: current})
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "reject_access", %{
         client_id: ^initiating_client_id,
         resource_id: ^pool_resource_id
       }
 
-      refute_push "reject_access", _
-
-      state = :sys.get_state(socket.channel_pid)
-
-      assert Portal.Cache.Client.Authorizations.has_resource?(
-               state.assigns.authorizations_cache,
+      refute Portal.Cache.Client.Authorizations.has_resource?(
+               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
                pool_resource.id
              )
     end

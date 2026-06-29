@@ -19,11 +19,6 @@ pub(crate) enum ConnectionState {
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
         wg_buffer: AllocRingBuffer<Vec<u8>>,
-
-        /// Packets we are told to send whilst we are still running ICE.
-        ///
-        /// These need to be encrypted and sent once the tunnel is established.
-        ip_buffer: AllocRingBuffer<IpPacket>,
     },
     /// A socket has been nominated.
     Connected {

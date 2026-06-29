@@ -1360,6 +1360,7 @@ defmodule PortalWeb.OIDCController do
       account_id_bytes = Ecto.UUID.dump!(account_id)
 
       replace_fields = [
+        :idp_id,
         :email,
         :name,
         :given_name,
@@ -1382,6 +1383,18 @@ defmodule PortalWeb.OIDCController do
           limit: 1
         )
 
+      # Match the existing identity by idp_id (stable subject) or, since the
+      # email is verified on this path, by the actor's email. The latter lets a
+      # user who was deleted and recreated in the IdP (new idp_id, same email)
+      # overwrite their existing identity in place instead of inserting a second
+      # row, which would later collide with directory sync on the
+      # (account_id, actor_id, directory_id) unique index. Prefer the row that
+      # already holds the incoming idp_id so it is recycled in place (a no-op
+      # idp_id write); the email match only decides the recreated-user case
+      # where no row holds the incoming idp_id. Ranking email first would let an
+      # unrelated row sharing the email be picked when a second row already holds
+      # the idp_id, recycling the wrong id and colliding on
+      # external_identities_account_idp_fields_index.
       existing_identity_cte =
         from(ei in "external_identities",
           join: a in "actors",
@@ -1389,9 +1402,13 @@ defmodule PortalWeb.OIDCController do
           where:
             ei.account_id == ^account_id_bytes and
               ei.issuer == ^issuer and
-              ei.idp_id == ^idp_id and
-              is_nil(a.disabled_at),
-          select: %{actor_id: ei.actor_id},
+              is_nil(a.disabled_at) and
+              (ei.idp_id == ^idp_id or a.email == ^email),
+          order_by: [
+            desc: fragment("(? = ?)", ei.idp_id, ^idp_id),
+            desc: fragment("(? = ?)", a.email, ^email)
+          ],
+          select: %{id: ei.id, actor_id: ei.actor_id},
           limit: 1
         )
 
@@ -1403,7 +1420,7 @@ defmodule PortalWeb.OIDCController do
           on: true,
           where: not is_nil(al.id) or not is_nil(ei.actor_id),
           select: %{
-            id: fragment("uuid_generate_v4()"),
+            id: fragment("COALESCE(?.id, uuid_generate_v4())", ei),
             account_id: ^account_id_bytes,
             issuer: ^issuer,
             idp_id: ^idp_id,
@@ -1427,15 +1444,7 @@ defmodule PortalWeb.OIDCController do
         |> with_cte("actor_lookup", as: ^actor_lookup_cte)
         |> with_cte("existing_identity", as: ^existing_identity_cte)
 
-      {count, rows} =
-        Safe.insert_all(
-          Safe.unscoped(),
-          ExternalIdentity,
-          query_with_ctes,
-          on_conflict: {:replace, replace_fields},
-          conflict_target: [:account_id, :idp_id, :issuer],
-          returning: true
-        )
+      {count, rows} = insert_identity(query_with_ctes, replace_fields)
 
       case {count, rows} do
         {0, _} ->
@@ -1446,6 +1455,31 @@ defmodule PortalWeb.OIDCController do
           # actor and account are long-lived records, safe to read from replica
           {:ok, Safe.preload(identity, [:actor, :account], :replica)}
       end
+    end
+
+    # Two concurrent sign-ins for the same brand-new (account_id, idp_id, issuer)
+    # can each generate a different id and race to insert. The (account_id, id)
+    # conflict target won't catch the loser, so it raises a unique violation on
+    # external_identities_account_idp_fields_index. On retry the committed row is
+    # found by existing_identity and recycled in place via the PK conflict.
+    defp insert_identity(query_with_ctes, replace_fields, retry? \\ true) do
+      Safe.insert_all(
+        Safe.unscoped(),
+        ExternalIdentity,
+        query_with_ctes,
+        on_conflict: {:replace, replace_fields},
+        conflict_target: [:account_id, :id],
+        returning: true
+      )
+    rescue
+      e in Postgrex.Error ->
+        case e do
+          %Postgrex.Error{postgres: %{code: :unique_violation}} when retry? ->
+            insert_identity(query_with_ctes, replace_fields, false)
+
+          _ ->
+            reraise e, __STACKTRACE__
+        end
     end
 
     defp fetch_related_pending_identity_ids(%PendingIdentity{} = pending_identity) do
@@ -1516,20 +1550,50 @@ defmodule PortalWeb.OIDCController do
       end
     end
 
-    defp insert_external_identity_from_pending(%PendingIdentity{} = pending_identity) do
+    @pending_identity_replace_fields [
+      :idp_id,
+      :email,
+      :name,
+      :given_name,
+      :family_name,
+      :middle_name,
+      :nickname,
+      :preferred_username,
+      :profile,
+      :picture,
+      :updated_at
+    ]
+
+    defp insert_external_identity_from_pending(%PendingIdentity{} = pending_identity, retry? \\ true) do
       now = DateTime.utc_now()
+
+      # Recycle the actor's existing identity for this issuer, if any, so a
+      # changed subject updates that row in place rather than inserting a second
+      # one and tripping the (account_id, actor_id, issuer) unique index. When
+      # none exists, fall back to the pending identity's own id for a fresh row.
+      existing_id =
+        from(ei in ExternalIdentity,
+          where:
+            ei.account_id == ^pending_identity.account_id and
+              ei.actor_id == ^pending_identity.actor_id and
+              ei.issuer == ^pending_identity.issuer,
+          select: ei.id,
+          limit: 1
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
 
       attrs =
         pending_identity
         |> Map.from_struct()
         |> Map.take([
-          :id,
           :account_id,
           :actor_id,
           :issuer,
           :idp_id,
           :directory_id | @pending_identity_profile_fields
         ])
+        |> Map.put(:id, existing_id || pending_identity.id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
 
@@ -1537,33 +1601,40 @@ defmodule PortalWeb.OIDCController do
              Safe.unscoped(),
              ExternalIdentity,
              [attrs],
-             on_conflict: external_identity_conflict_query(pending_identity),
-             conflict_target: [:account_id, :idp_id, :issuer],
+             on_conflict: {:replace, @pending_identity_replace_fields},
+             conflict_target: [:account_id, :id],
              returning: true
            ) do
         {1, [%ExternalIdentity{} = identity]} -> {:ok, identity}
         {0, []} -> {:error, :invalid_code}
       end
-    end
+    rescue
+      e in Postgrex.Error ->
+        case e do
+          %Postgrex.Error{
+            postgres: %{
+              code: :unique_violation,
+              constraint: "external_identities_account_idp_fields_index"
+            }
+          } ->
+            # The incoming idp_id already belongs to another actor for this
+            # issuer; promoting would steal it, so reject the code instead.
+            {:error, :invalid_code}
 
-    defp external_identity_conflict_query(%PendingIdentity{} = pending_identity) do
-      from(identity in ExternalIdentity,
-        where: identity.actor_id == ^pending_identity.actor_id,
-        update: [
-          set: [
-            email: fragment("EXCLUDED.email"),
-            name: fragment("EXCLUDED.name"),
-            given_name: fragment("EXCLUDED.given_name"),
-            family_name: fragment("EXCLUDED.family_name"),
-            middle_name: fragment("EXCLUDED.middle_name"),
-            nickname: fragment("EXCLUDED.nickname"),
-            preferred_username: fragment("EXCLUDED.preferred_username"),
-            profile: fragment("EXCLUDED.profile"),
-            picture: fragment("EXCLUDED.picture"),
-            updated_at: fragment("EXCLUDED.updated_at")
-          ]
-        ]
-      )
+          %Postgrex.Error{
+            postgres: %{
+              code: :unique_violation,
+              constraint: "external_identities_account_id_actor_id_issuer_index"
+            }
+          }
+          when retry? ->
+            # A concurrent promotion created the actor's issuer row after our
+            # lookup; retry once to recycle it.
+            insert_external_identity_from_pending(pending_identity, false)
+
+          _ ->
+            reraise e, __STACKTRACE__
+        end
     end
 
     defp atomize_profile_attrs(attrs) do

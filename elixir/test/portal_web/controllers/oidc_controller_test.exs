@@ -6,6 +6,7 @@ defmodule PortalWeb.OIDCControllerTest do
   import Portal.AuthProviderFixtures
   import Portal.IdentityFixtures
   import ExUnit.CaptureLog
+  import Ecto.Query
 
   alias PortalWeb.Cookie
   alias PortalWeb.Mocks
@@ -975,6 +976,151 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_portal_sign_in_success(ctx)
     end
 
+    test "recreated user with a new idp_id overwrites their identity in place", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-object-id",
+          email: actor.email
+        )
+
+      # The user is deleted and recreated in the IdP: same verified email, brand
+      # new object id. Sign-in must recycle the existing row instead of inserting
+      # a second identity for the same actor.
+      setup_successful_auth(ctx, actor, sub: "new-object-id", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "new-object-id"
+             ).id == existing_identity.id
+
+      refute Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: ctx.provider.issuer,
+               idp_id: "old-object-id"
+             )
+    end
+
+    test "rejects a second identity sharing the actor and issuer", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+      directory = Portal.DirectoryFixtures.directory_fixture(account: ctx.account)
+
+      # Interactive row keyed on the Entra `sub`, no directory association.
+      identity_fixture(
+        account: ctx.account,
+        actor: actor,
+        issuer: ctx.provider.issuer,
+        idp_id: "entra-sub-#{System.unique_integer([:positive])}",
+        email: actor.email
+      )
+
+      # A directory-synced row keyed on the Entra `oid` (GUID) used to be able to
+      # coexist with the interactive row, leaving two identities for the same
+      # actor and issuer. The unique index now forbids that second row outright.
+      changeset =
+        %Portal.ExternalIdentity{}
+        |> Ecto.Changeset.cast(
+          %{issuer: ctx.provider.issuer, idp_id: Ecto.UUID.generate(), email: actor.email},
+          [:issuer, :idp_id, :email]
+        )
+        |> Ecto.Changeset.put_assoc(:account, ctx.account)
+        |> Ecto.Changeset.put_assoc(:actor, actor)
+        |> Ecto.Changeset.put_assoc(:directory, directory)
+        |> Portal.ExternalIdentity.changeset()
+
+      assert {:error, changeset} = Repo.insert(changeset)
+
+      assert {"has already been taken", constraint} = changeset.errors[:base]
+      assert constraint[:constraint] == :unique
+
+      assert constraint[:constraint_name] ==
+               "external_identities_account_id_actor_id_issuer_index"
+
+      identity_count =
+        Repo.aggregate(
+          from(ei in Portal.ExternalIdentity,
+            where: ei.account_id == ^ctx.account.id and ei.actor_id == ^actor.id
+          ),
+          :count
+        )
+
+      assert identity_count == 1
+    end
+
+    test "changed email with the same idp_id is matched by idp_id, not email", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "old-address@example.com")
+
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "stable-subject",
+          email: "old-address@example.com"
+        )
+
+      # Same subject, new email. The actor still carries the old email, so the
+      # match must fall back to idp_id rather than create a second identity.
+      setup_successful_auth(ctx, actor, sub: "stable-subject", email: "new-address@example.com")
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      identity =
+        Repo.get_by!(Portal.ExternalIdentity,
+          account_id: ctx.account.id,
+          issuer: ctx.provider.issuer,
+          idp_id: "stable-subject"
+        )
+
+      assert identity.id == existing_identity.id
+      assert identity.email == "new-address@example.com"
+    end
+
+    test "sign-in does not overwrite an identity from a different issuer", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      other_issuer_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: "https://other-issuer.example",
+          idp_id: "stable-subject",
+          email: actor.email
+        )
+
+      # Same email and subject, but a different issuer. existing_identity is
+      # scoped by issuer, so this must create a new identity and leave the
+      # other issuer's identity untouched.
+      setup_successful_auth(ctx, actor, sub: "stable-subject", email: actor.email)
+
+      conn = perform_callback(ctx.conn, build_oidc_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+
+      assert new_identity =
+               Repo.get_by(Portal.ExternalIdentity,
+                 account_id: ctx.account.id,
+                 issuer: ctx.provider.issuer,
+                 idp_id: "stable-subject"
+               )
+
+      assert new_identity.id != other_issuer_identity.id
+
+      assert Repo.get_by(Portal.ExternalIdentity,
+               account_id: ctx.account.id,
+               issuer: "https://other-issuer.example",
+               idp_id: "stable-subject"
+             ).id == other_issuer_identity.id
+    end
+
     test "successful client sign-in for admin user creates token and renders redirect page",
          ctx do
       actor = admin_actor_fixture(account: ctx.account, email: unique_email())
@@ -1207,6 +1353,65 @@ defmodule PortalWeb.OIDCControllerTest do
       assert identity.actor_id == actor.id
       refute Repo.get_by(Portal.PendingIdentity, id: pending_cookie.pending_identity_id)
       refute Repo.get_by(Portal.OneTimePasscode, id: pending_identity.one_time_passcode_id)
+    end
+
+    test "proof email verification recycles the actor's existing same-issuer identity", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      provider =
+        oidc_provider_fixture(:mock,
+          account: ctx.account,
+          email_verification_method: :proof
+        )
+
+      ctx = %{ctx | provider: provider}
+      actor = admin_actor_fixture(account: ctx.account, email: unique_email())
+
+      # The actor already holds an identity for this issuer under a previous
+      # subject. Promoting the pending identity with the new subject must recycle
+      # this row rather than insert a second one and trip the unique index.
+      existing_identity =
+        identity_fixture(
+          account: ctx.account,
+          actor: actor,
+          issuer: ctx.provider.issuer,
+          idp_id: "old-subject",
+          email: actor.email
+        )
+
+      setup_successful_auth(ctx, actor, email_verified: false)
+
+      cookie =
+        build_oidc_auth_state(ctx.account, ctx.provider,
+          params: %{"redirect_to" => "/#{ctx.account.slug}/actors"}
+        )
+
+      conn = perform_callback(ctx.conn, cookie)
+      pending_cookie = pending_identity_cookie_from_response(conn)
+
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{ctx.provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id,
+          "redirect_to" => "/#{ctx.account.slug}/actors"
+        })
+
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+
+      identities =
+        from(ei in Portal.ExternalIdentity,
+          where: ei.account_id == ^ctx.account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == existing_identity.id
+      assert identity.idp_id == "admin-user-123"
     end
 
     test "proof email verification uses original client params after valid code", ctx do

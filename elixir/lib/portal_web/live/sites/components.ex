@@ -370,8 +370,12 @@ defmodule PortalWeb.Sites.Components do
               </span>
             </span>
             <.icon
-              name="ri-arrow-right-s-line"
-              class={"w-4 h-4 text-subtle transition-transform shrink-0#{if @expanded_gateway_id == gateway.id, do: " rotate-90", else: ""}"}
+              name={
+                if @expanded_gateway_id == gateway.id,
+                  do: "ri-arrow-up-s-line",
+                  else: "ri-arrow-down-s-line"
+              }
+              class="w-4 h-4 text-subtle shrink-0"
             />
           </div>
           <div

@@ -22,7 +22,7 @@ defmodule PortalAPI.Gateway.Views.Client do
 
   # The OS name can have spaces, hence split the user-agent step by step.
   # Expected format: "OS/version connlib/version ..."
-  defp parse_user_agent(user_agent) do
+  def parse_user_agent(user_agent) do
     with [os_name, rest] when rest != "" <- String.split(user_agent, "/", parts: 2),
          [os_version, rest] when rest != "" <- String.split(rest, " ", parts: 2),
          [_, rest] when rest != "" <- String.split(rest, "/", parts: 2) do

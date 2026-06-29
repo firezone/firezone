@@ -15,6 +15,16 @@ const MAX_ENOSPC_RETRIES: u32 = 24;
 /// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
 const SPIN_LIMIT: u32 = 6;
 
+/// How many packets we at most pull from the outbound channel in one batch before
+/// writing them, amortising task wake-ups across the batch.
+///
+/// Mobile platforms are memory-constrained, so we use a smaller batch there.
+const MAX_TUN_BATCH: usize = if cfg!(any(target_os = "ios", target_os = "android")) {
+    25
+} else {
+    100
+};
+
 pub fn tun_send<T>(
     fd: T,
     mut outbound_rx: mpsc::Receiver<IpPacket>,
@@ -32,42 +42,47 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+            let mut packets = Vec::with_capacity(MAX_TUN_BATCH);
 
-            while let Some(packet) = outbound_rx.recv().await {
-                #[cfg(debug_assertions)]
-                tracing::trace!(target: "wire::dev::send", ?packet);
+            // Pull as many packets as are queued (up to `MAX_TUN_BATCH`) per wake-up,
+            // so the cost of being scheduled is amortised across the whole batch.
+            while outbound_rx.recv_many(&mut packets, MAX_TUN_BATCH).await > 0 {
+                for packet in packets.drain(..) {
+                    #[cfg(debug_assertions)]
+                    tracing::trace!(target: "wire::dev::send", ?packet);
 
-                let mut attempt = 0;
+                    let mut attempt = 0;
 
-                loop {
-                    match fd
-                        .async_io(tokio::io::Interest::WRITABLE, |fd| {
-                            write(fd.as_raw_fd(), &packet)
-                        })
-                        .await
-                    {
-                        Ok(_) => {
-                            record_write_retries(&write_retry_histogram, attempt);
+                    loop {
+                        match fd
+                            .async_io(tokio::io::Interest::WRITABLE, |fd| {
+                                write(fd.as_raw_fd(), &packet)
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                record_write_retries(&write_retry_histogram, attempt);
 
-                            break;
-                        }
-                        Err(e) if should_retry(&e, attempt) => {
-                            spin_and_yield(attempt).await;
-
-                            attempt += 1;
-                        }
-                        Err(e) => {
-                            record_write_retries(&write_retry_histogram, attempt);
-                            dropped_packets_counter.add(1, &drop_attributes(&e));
-
-                            if is_queue_full(&e) {
-                                // The TUN queue is still full after all retries; dropping is by design, like for any congested network device.
-                                tracing::debug!("Failed to write to TUN FD: {e}");
-                            } else {
-                                tracing::warn!("Failed to write to TUN FD: {e}");
+                                break;
                             }
+                            Err(e) if should_retry(&e, attempt) => {
+                                spin_and_yield(attempt).await;
 
-                            break;
+                                attempt += 1;
+                            }
+                            Err(e) => {
+                                record_write_retries(&write_retry_histogram, attempt);
+                                dropped_packets_counter.add(1, &drop_attributes(&e));
+
+                                if is_queue_full(&e) {
+                                    // The TUN queue is still full after all retries; dropping is by design, like for any congested network device.
+                                    tracing::debug!("Failed to write to TUN FD: {e}");
+                                } else {
+                                    tracing::warn!("Failed to write to TUN FD: {e}");
+                                }
+
+                                break;
+                            }
                         }
                     }
                 }
@@ -162,50 +177,56 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
+            let mut packets = Vec::with_capacity(MAX_TUN_BATCH);
 
             loop {
-                let next_inbound_packet = fd
-                    .async_io(tokio::io::Interest::READABLE, |fd| {
-                        let mut ip_packet_buf = IpPacketBuf::new();
+                let mut guard = fd.readable().await?;
 
-                        let len = read(fd.as_raw_fd(), &mut ip_packet_buf)?;
+                // Drain up to `MAX_TUN_BATCH` packets from the FD before handing them off,
+                // so a single wake-up feeds a batch into the state loop instead of one packet.
+                while packets.len() < MAX_TUN_BATCH {
+                    let mut ip_packet_buf = IpPacketBuf::new();
 
-                        if len == 0 {
-                            return Ok(None);
+                    let len = match guard
+                        .try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut ip_packet_buf))
+                    {
+                        Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
+                        Ok(Ok(len)) => len,
+                        Ok(Err(e)) => {
+                            return Err(anyhow::Error::new(e))
+                                .context("Failed to read from TUN FD");
                         }
+                        Err(_would_block) => break, // FD is drained; hand off what we have.
+                    };
 
-                        let packet = IpPacket::new(ip_packet_buf, len)
-                            .context("Failed to parse IP packet") // Add an extra layer to ensure any inner error is the `cause`
-                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                    match IpPacket::new(ip_packet_buf, len) {
+                        Ok(packet) => {
+                            #[cfg(debug_assertions)]
+                            tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                        Ok(Some(packet))
-                    })
-                    .await;
-
-                match next_inbound_packet.context("Failed to read from TUN FD") {
-                    Ok(None) => bail!("TUN file descriptor is closed"),
-                    Ok(Some(packet)) => {
-                        #[cfg(debug_assertions)]
-                        tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                        if inbound_tx.send(packet).await.is_err() {
-                            tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                            break;
-                        };
-                    }
-                    Err(e) if e.any_is::<ip_packet::Fragmented>() => {
-                        tracing::debug!("{e:#}"); // Log on debug to be less noisy.
-                        continue;
-                    }
-                    Err(e) => {
-                        tracing::warn!("{e:#}");
-                        continue;
+                            packets.push(packet);
+                        }
+                        Err(e) if e.any_is::<ip_packet::Fragmented>() => {
+                            tracing::debug!("{e:#}") // Log on debug to be less noisy.
+                        }
+                        Err(e) => tracing::warn!("{e:#}"),
                     }
                 }
-            }
 
-            anyhow::Ok(())
+                if packets.is_empty() {
+                    continue;
+                }
+
+                let Ok(permits) = inbound_tx.reserve_many(packets.len()).await else {
+                    tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                    return anyhow::Ok(());
+                };
+
+                for (permit, packet) in permits.zip(packets.drain(..)) {
+                    permit.send(packet);
+                }
+            }
         })?;
 
     anyhow::Ok(())

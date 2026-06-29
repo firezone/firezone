@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.15
+      RELEASE_NAME: gui-client-1.5.16
     steps:
-      - uses: release-drafter/release-drafter@ed4bc48ec97379be2258e7b7ac2624a3e26ab809 # v7.4.0
+      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -40,7 +40,7 @@ jobs:
   static-analysis:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
@@ -63,7 +63,7 @@ jobs:
         working-directory: ./rust/gui-client
       # The Windows client ignores RUST_LOG because it uses a settings file instead
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
@@ -113,25 +113,25 @@ jobs:
             pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.15_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.15_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.15_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.15
+      FIREZONE_GUI_VERSION: 1.5.16
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
       TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
       TARGET_DIR: ../target
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-node

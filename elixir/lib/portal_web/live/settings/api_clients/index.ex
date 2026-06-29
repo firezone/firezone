@@ -76,7 +76,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       socket =
         socket
         |> assign(page_title: "API Tokens")
-        |> assign(api_url: Portal.Config.get_env(:portal, :api_external_url))
         |> assign(actors_with_tokens: actors_with_tokens)
         |> assign(selected_actor: nil)
         |> assign(form: nil, encoded_token: nil)

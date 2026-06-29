@@ -29,28 +29,23 @@ defmodule PortalAPI.Gateway.Channel do
   @doc """
   Self-heal escape hatch. Pushes `reject_access` to a gateway's data plane
   for the given `(client_id, resource_id)` pair and clears the matching
-  local cache entry, without attempting to reauthorize via the DB.
+  local cache entries.
 
   ## Not expected to be hit in production
 
   Every natural production code path that ends in `reject_access` on the
   gateway's data plane goes through `revoke_policy_authorization/2` first,
-  which calls `Cache.Gateway.reauthorize_deleted_policy_authorization/2`
-  to attempt a DB-backed reauth before deciding whether to push reject:
+  which evicts the cached authorization by id and pushes reject:
 
-    * CDC delete of a `policy_authorization` row — the row was really
-      deleted, so reauth checks for any other authz granting the same
-      `(client, resource)` pair.
+    * CDC delete of a `policy_authorization` row — the row was really deleted.
     * `Portal.Queue`'s `:on_failed` callback — the insert failed FK, which
-      means a parent row is gone; the same reauth attempt hits the same
-      missing parent and also fails.
-    * Receiver-side authz durability timer — the queue died before flush; same
-      reauth pathway.
+      means a parent row is gone.
+    * Receiver-side authz durability timer — the queue died before flush.
 
   In every one of those, the only way reject reaches connlib is when the
-  underlying policy state truly no longer grants the pair. The synthetic
-  case this function produces — "deliver reject for a pair the DB still
-  authorizes" — has no natural production trigger.
+  underlying authorization truly no longer exists. The synthetic case this
+  function produces — "deliver reject for a pair the DB still authorizes" —
+  has no natural production trigger.
 
   ## Why it exists
 
@@ -112,6 +107,7 @@ defmodule PortalAPI.Gateway.Channel do
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
         iceless_capable: false
       )
+
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
@@ -307,6 +303,7 @@ defmodule PortalAPI.Gateway.Channel do
     } = payload
 
     initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
+    flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
@@ -332,15 +329,16 @@ defmodule PortalAPI.Gateway.Channel do
       client_ice_credentials: ice_credentials.initiator,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
       subject: subject,
-      use_iceless: use_iceless
+      use_iceless: use_iceless,
+      flow_logs_ingest_token: flow_logs_ingest_token
     })
 
     cache =
       socket.assigns.cache
       |> Cache.Gateway.put(
-        client.id,
-        rid_bytes,
         policy_authorization_id,
+        client.id,
+        resource.id,
         authorization_expires_at
       )
 
@@ -388,9 +386,9 @@ defmodule PortalAPI.Gateway.Channel do
         cache =
           socket.assigns.cache
           |> Cache.Gateway.put(
+            policy_authorization_id,
             client_id,
             resource.id,
-            policy_authorization_id,
             authorization_expires_at
           )
 
@@ -433,9 +431,9 @@ defmodule PortalAPI.Gateway.Channel do
         cache =
           socket.assigns.cache
           |> Cache.Gateway.put(
+            policy_authorization_id,
             client.id,
             resource.id,
-            policy_authorization_id,
             authorization_expires_at
           )
 
@@ -450,10 +448,9 @@ defmodule PortalAPI.Gateway.Channel do
 
   # Direct revocation from `Portal.Queue`'s on_failed path — a policy
   # authorization that we already announced via `:allow_access` /
-  # `:authorize_policy` failed to persist. We reuse the same eviction path
-  # the CDC delete handler uses, so the outcome is per-authz_id: if another
-  # authorization still grants the same `(client, resource)` access we keep
-  # the entry and push an expiry update; otherwise we push `reject_access`.
+  # `:authorize_policy` failed to persist. We reuse the same eviction path the
+  # CDC delete handler uses: drop the cached authorization and push
+  # `reject_access` so connlib tears down the flow.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = cancel_authz_durability_timer(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
@@ -482,7 +479,10 @@ defmodule PortalAPI.Gateway.Channel do
   # for `pa.id` in `authz_durability` was either removed (durability
   # confirmed/rejected) or replaced (new timer for the same authz_id),
   # so the generation no longer matches. In that case, we ignore.
-  def handle_info({:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation}, socket) do
+  def handle_info(
+        {:authz_durability_timeout, %Portal.PolicyAuthorization{} = pa, generation},
+        socket
+      ) do
     case Map.get(socket.assigns[:authz_durability] || %{}, pa.id) do
       {^generation, _ref} ->
         Logger.warning(
@@ -519,18 +519,15 @@ defmodule PortalAPI.Gateway.Channel do
 
     key = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
 
-    # Cancel any pending authz durability timers for authz_ids in this pair
-    # so they don't fire later, find the cache empty, and log spurious warnings.
+    # Cancel any pending authz durability timer for the cached authz of this pair
+    # so it doesn't fire later, find the cache empty, and log a spurious warning.
     socket =
       case Map.get(socket.assigns.cache, key) do
+        {pa_id_bytes, _exp} ->
+          cancel_authz_durability_timer(socket, Ecto.UUID.load!(pa_id_bytes))
+
         nil ->
           socket
-
-        authz_map ->
-          authz_map
-          |> Map.keys()
-          |> Enum.map(&Ecto.UUID.load!/1)
-          |> Enum.reduce(socket, &cancel_authz_durability_timer(&2, &1))
       end
 
     cache = Map.delete(socket.assigns.cache, key)
@@ -735,6 +732,8 @@ defmodule PortalAPI.Gateway.Channel do
 
   defp init(socket, account, relays) do
     push(socket, "init", %{
+      flow_logs_api_url: flow_logs_api_url(),
+      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -751,6 +750,11 @@ defmodule PortalAPI.Gateway.Channel do
       }
     })
   end
+
+  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
+
+  defp flow_logs_upload_interval_secs,
+    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
 
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
@@ -895,48 +899,29 @@ defmodule PortalAPI.Gateway.Channel do
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
-  # Shared eviction path for both the CDC delete handler and the direct
-  # `:reject_access` from `Portal.Queue`'s on_failed callback. Per-authz_id:
-  # if other authorizations still grant the same `(client, resource)` access,
-  # we push an expiry update; if none do, we push `reject_access`.
-  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{} = policy_authorization) do
-    %Portal.PolicyAuthorization{
-      initiating_device_id: client_id,
-      resource_id: resource_id
-    } = policy_authorization
-
-    socket.assigns.cache
-    |> Cache.Gateway.reauthorize_deleted_policy_authorization(policy_authorization)
-    |> case do
+  # Shared eviction path for the CDC delete handler, the direct `:reject_access`
+  # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
+  # We look the authorization up by id and, if it was still active, push
+  # `reject_access`; the client recovers by tripping ICMP "destination
+  # prohibited" and requesting a fresh flow. Deletes of already-expired
+  # authorizations (the `DeleteExpiredPolicyAuthorizations` reaper) are dropped
+  # silently — connlib has already expired them locally.
+  defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{
+         id: id,
+         initiating_device_id: client_id,
+         resource_id: resource_id
+       }) do
+    case Cache.Gateway.delete(socket.assigns.cache, id, client_id, resource_id) do
       {:ok, expires_at_unix, cache} ->
-        Logger.info("Updating authorization expiration for deleted policy authorization",
-          deleted_policy_authorization: inspect(policy_authorization),
-          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
-        )
+        now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
-        push(
-          socket,
-          "access_authorization_expiry_updated",
-          Views.PolicyAuthorization.render(policy_authorization, expires_at_unix)
-        )
+        if expires_at_unix > now_unix do
+          push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
+        end
 
         {:noreply, assign(socket, cache: cache)}
 
-      {:error, :unauthorized, cache} ->
-        Logger.info(
-          "No authorizations remaining for deleted policy authorization, revoking access",
-          deleted_policy_authorization: inspect(policy_authorization)
-        )
-
-        push(
-          socket,
-          "reject_access",
-          %{client_id: client_id, resource_id: resource_id}
-        )
-
-        {:noreply, assign(socket, cache: cache)}
-
-      {:error, :not_found} ->
+      :error ->
         {:noreply, socket}
     end
   end
@@ -996,7 +981,11 @@ defmodule PortalAPI.Gateway.Channel do
     generation = make_ref()
 
     timer_ref =
-      Process.send_after(self(), {:authz_durability_timeout, pa, generation}, @authz_durability_timeout)
+      Process.send_after(
+        self(),
+        {:authz_durability_timeout, pa, generation},
+        @authz_durability_timeout
+      )
 
     pending = socket.assigns[:authz_durability] || %{}
 

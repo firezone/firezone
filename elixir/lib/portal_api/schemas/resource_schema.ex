@@ -254,6 +254,7 @@ defmodule PortalAPI.Schemas.Resource do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Resource
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "ResourceListResponse",
@@ -261,7 +262,7 @@ defmodule PortalAPI.Schemas.Resource do
       type: :object,
       properties: %{
         data: %Schema{description: "Resource details", type: :array, items: Resource.Schema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

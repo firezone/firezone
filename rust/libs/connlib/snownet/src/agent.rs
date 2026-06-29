@@ -126,13 +126,6 @@ impl Agent {
         }
     }
 
-    pub(crate) fn wait_for_nomination_before_wg_handshake(&self) -> bool {
-        match self {
-            Self::Ice(a) => !a.controlling(),
-            Self::Path { .. } => false,
-        }
-    }
-
     pub(crate) fn local_ufrag(&self) -> Option<&str> {
         match self {
             Self::Ice(a) => Some(&a.local_credentials().ufrag),

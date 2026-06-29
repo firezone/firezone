@@ -9,7 +9,7 @@ mod udp_dns;
 pub use device::{Device, TunChannelClosed};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
-use anyhow::{Context as _, ErrorExt, Result};
+use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
@@ -289,13 +289,14 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx).map(|network| {
-            anyhow::Ok(
-                network
-                    .context("UDP socket failed")?
-                    .filter(is_max_wg_packet_size),
-            )
-        });
+        let network = self
+            .sockets
+            .poll_recv_from(cx)
+            .map(|network| network.filter(is_max_wg_packet_size));
+
+        while let Poll::Ready(e) = self.sockets.poll_error(cx) {
+            error.push(e);
+        }
 
         let device = self
             .tun
@@ -405,7 +406,7 @@ impl Io {
             now: Instant::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
-            network: poll_result_to_option(network, &mut error),
+            network: poll_to_option(network),
             tcp_dns_queries,
             udp_dns_queries,
             dns_response: poll_to_option(dns_response),
