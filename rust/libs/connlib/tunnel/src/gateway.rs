@@ -129,6 +129,13 @@ impl GatewayState {
         let encrypted_packet = match self.node.encapsulate(cid, &packet, now) {
             Ok(Some(encrypted_packet)) => encrypted_packet,
             Ok(None) => return Ok(None),
+            // The Gateway does not buffer: it only sends in response to Client traffic. The WG
+            // handshake can complete (we just decrypted a Client packet) before ICE nominates a
+            // socket, so dropping the odd reply here is expected; the Client retransmits.
+            Err(e) if e.any_is::<snownet::StillConnecting>() => {
+                tracing::debug!(%cid, "Connection is still establishing; dropping packet");
+                return Ok(None);
+            }
             Err(e) if e.any_is::<snownet::UnknownConnection>() => {
                 return Err(e.context(UnroutablePacket::not_connected(&packet)));
             }
@@ -706,11 +713,15 @@ fn encrypt_packet(
     node: &mut Node<ClientId, RelayId>,
     now: Instant,
 ) -> Result<Option<Transmit>> {
-    let transmit = node
-        .encapsulate(cid, &packet, now)
-        .context("Failed to encapsulate")?;
-
-    Ok(transmit)
+    match node.encapsulate(cid, &packet, now) {
+        Ok(transmit) => Ok(transmit),
+        // The Gateway does not buffer; dropping a packet sent while still establishing is expected.
+        Err(e) if e.any_is::<snownet::StillConnecting>() => {
+            tracing::debug!(%cid, "Connection is still establishing; dropping packet");
+            Ok(None)
+        }
+        Err(e) => Err(e).context("Failed to encapsulate"),
+    }
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.
