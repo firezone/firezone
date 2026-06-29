@@ -619,7 +619,6 @@ mod tests {
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),
-                ip_buffer: AllocRingBuffer::new(1),
             },
             disconnected_at: None,
             stats: Default::default(),

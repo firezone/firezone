@@ -32,6 +32,7 @@ use crate::messages::{
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, otel, packet_kind};
@@ -118,6 +119,9 @@ pub struct ClientState {
     pending_flows: PendingFlows,
     /// Tracks pending access to other devices.
     pending_device_access: PendingDeviceAccessRequests,
+
+    /// Packets buffered per peer while its connection is still being established.
+    pending_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 
     dns_resource_nat: DnsResourceNat,
     /// Resources we have requested access to and the path that authorises
@@ -213,6 +217,7 @@ impl ClientState {
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             pending_device_access: Default::default(),
+            pending_packets: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
@@ -605,12 +610,13 @@ impl ClientState {
                     let buffered_packets = self.dns_resource_nat.on_domain_status(gid, res);
 
                     for packet in buffered_packets {
-                        encapsulate_and_buffer(
+                        encapsulate_and_queue(
                             packet,
                             ClientOrGatewayId::Gateway(gid),
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
+                            &mut self.pending_packets,
                         );
                     }
                 }
@@ -643,12 +649,13 @@ impl ClientState {
                 let packet = match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered(reply) => {
-                        encapsulate_and_buffer(
+                        encapsulate_and_queue(
                             reply,
                             ClientOrGatewayId::Client(cid),
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
+                            &mut self.pending_packets,
                         );
                         return Ok(None);
                     }
@@ -767,6 +774,26 @@ impl ClientState {
         }
     }
 
+    /// Flush all packets buffered for `pid` now that its connection is established.
+    fn flush_pending_packets(&mut self, pid: ClientOrGatewayId, now: Instant) {
+        let Some(buffer) = self.pending_packets.remove(&pid) else {
+            return;
+        };
+
+        tracing::debug!(%pid, num_buffered = %buffer.len(), "Flushing buffered packets");
+
+        for packet in buffer {
+            encapsulate_and_queue(
+                packet,
+                pid,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+                &mut self.pending_packets,
+            );
+        }
+    }
+
     fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Result<Option<snownet::Transmit>> {
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;
@@ -796,16 +823,10 @@ impl ClientState {
             }
         }
 
-        let transmit = match self.node.encapsulate(pid, &packet, now) {
-            Ok(Some(transmit)) => transmit,
-            Ok(None) => return Ok(None),
-            Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-                return Err(e.context(UnroutablePacket::not_connected(&packet)));
-            }
-            Err(e) => return Err(e),
-        };
+        let transmit =
+            encapsulate_or_buffer(packet, pid, now, &mut self.node, &mut self.pending_packets)?;
 
-        Ok(Some(transmit))
+        Ok(transmit)
     }
 
     /// Decide which connection a packet should be encapsulated through.
@@ -982,14 +1003,16 @@ impl ClientState {
                     peer.allow_ip_for_resource(address, rid);
                 }
 
-                // For CIDR and Internet resources, we can directly queue the buffered packets.
+                // Send the buffered packets, or buffer them again if the connection is not yet
+                // established.
                 for packet in buffered_resource_packets {
-                    encapsulate_and_buffer(
+                    encapsulate_and_queue(
                         packet,
                         ClientOrGatewayId::Gateway(gid),
                         now,
                         &mut self.node,
                         &mut self.buffered_transmits,
+                        &mut self.pending_packets,
                     );
                 }
             }
@@ -1087,12 +1110,13 @@ impl ClientState {
 
             for packet in pending_client_access.into_buffered_packets() {
                 peer.record_outbound(&packet, now);
-                encapsulate_and_buffer(
+                encapsulate_and_queue(
                     packet,
                     ClientOrGatewayId::Client(cid),
                     now,
                     &mut self.node,
                     &mut self.buffered_transmits,
+                    &mut self.pending_packets,
                 );
             }
         }
@@ -1282,6 +1306,8 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_gateway))]
     fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId, now: Instant) {
+        self.pending_packets
+            .remove(&ClientOrGatewayId::Gateway(*disconnected_gateway));
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown, now);
         self.gateways.remove(disconnected_gateway);
         for _ in self
@@ -1293,6 +1319,8 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(client = %disconnected_client))]
     fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
+        self.pending_packets
+            .remove(&ClientOrGatewayId::Client(*disconnected_client));
         self.clients.remove(disconnected_client);
         if self.connected_pool_clients.remove(disconnected_client) {
             self.resource_list.update(self.resource_list_snapshot());
@@ -1630,12 +1658,13 @@ impl ClientState {
         while let Some((gid, domain, rid, packet)) = self.dns_resource_nat.poll_packet() {
             tracing::debug!(%gid, %domain, %rid, "Setting up DNS resource NAT");
 
-            encapsulate_and_buffer(
+            encapsulate_and_queue(
                 packet,
                 ClientOrGatewayId::Gateway(gid),
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
+                &mut self.pending_packets,
             );
         }
     }
@@ -1971,9 +2000,11 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
+                    self.flush_pending_packets(ClientOrGatewayId::Gateway(id), now);
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
+                    self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
                     if self.connected_pool_clients.insert(id) {
                         self.resource_list.update(self.resource_list_snapshot());
                     }
@@ -2114,6 +2145,7 @@ impl ClientState {
         self.node.reset(now); // Clear all network connections.
         self.gateways.clear(); // Clear all state associated with Gateways.
         self.clients.clear(); // Clear all state associated with Clients.
+        self.pending_packets.clear(); // Drop packets buffered for pending connections.
 
         self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events(now);
@@ -2585,23 +2617,56 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
     false
 }
 
-fn encapsulate_and_buffer(
+/// Encapsulate `packet` for `pid`, or buffer it if the connection is still being established.
+fn encapsulate_or_buffer(
+    packet: IpPacket,
+    pid: ClientOrGatewayId,
+    now: Instant,
+    node: &mut Node<ClientOrGatewayId, RelayId>,
+    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+) -> Result<Option<Transmit>> {
+    const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
+
+    if let Some(buffer) = pending_packets.get_mut(&pid) {
+        buffer.push(packet);
+        return Ok(None);
+    }
+
+    match node.encapsulate(pid, &packet, now) {
+        Ok(maybe_transmit) => Ok(maybe_transmit),
+        Err(e) if e.any_is::<snownet::StillConnecting>() => {
+            pending_packets
+                .entry(pid)
+                .or_insert_with(|| {
+                    UniquePacketBuffer::with_capacity_power_of_2(
+                        CONNECTION_BUFFER_CAPACITY_POW_2,
+                        "pending-connection",
+                    )
+                })
+                .push(packet);
+            Ok(None)
+        }
+        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
+            Err(e.context(UnroutablePacket::not_connected(&packet)))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Like [`encapsulate_or_buffer`], but queues the resulting transmit into `buffered_transmits` and
+/// drops (with a log) any error instead of returning it.
+fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
     buffered_transmits: &mut VecDeque<Transmit>,
+    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 ) {
-    let Some(transmit) = node
-        .encapsulate(pid, &packet, now)
-        .inspect_err(|e| tracing::debug!(%pid, "Failed to encapsulate: {e}"))
-        .ok()
-        .flatten()
-    else {
-        return;
-    };
-
-    buffered_transmits.push_back(transmit);
+    match encapsulate_or_buffer(packet, pid, now, node, pending_packets) {
+        Ok(maybe_transmit) => buffered_transmits.extend(maybe_transmit),
+        Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
+    }
 }
 
 fn gateway_by_resource_mut<'p>(

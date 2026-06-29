@@ -118,6 +118,14 @@ pub struct Node<TId, RId> {
 #[error("No TURN servers available")]
 pub struct NoTurnServers {}
 
+/// The connection exists but is not yet ready to send application packets because ICE is
+/// still in progress (no socket has been nominated yet).
+///
+/// Callers should buffer the packet and retry once the connection is established.
+#[derive(thiserror::Error, Debug)]
+#[error("Connection is still establishing")]
+pub struct StillConnecting;
+
 #[derive(Debug, Clone, Copy)]
 pub struct IceConfig {
     max_retrans: usize,
@@ -528,23 +536,9 @@ where
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_mut(&cid, now)?;
 
-        if !conn.agent.controlling() && !conn.state.has_nominated_socket() {
-            tracing::debug!(
-                ?packet,
-                "ICE is still in progress; dropping packet because controlled agent should not initiate WireGuard sessions"
-            );
-
-            return Ok(None);
-        }
-
-        let socket = match &mut conn.state {
-            ConnectionState::Connecting { ip_buffer, .. } => {
-                ip_buffer.enqueue(packet.clone());
-                let num_buffered = ip_buffer.len();
-
-                tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
-
-                return Ok(None);
+        let socket = match &conn.state {
+            ConnectionState::Connecting { .. } => {
+                return Err(StillConnecting.into());
             }
             ConnectionState::Connected { peer_socket, .. } => *peer_socket,
             ConnectionState::Idle { peer_socket } => *peer_socket,
@@ -617,6 +611,7 @@ where
                 now,
                 &mut self.allocations,
                 &mut self.buffered_transmits,
+                &mut self.pending_events,
                 &mut self.inflight_stun_requests,
             );
 
@@ -812,7 +807,6 @@ where
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
-                ip_buffer: AllocRingBuffer::new(128),
             },
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
@@ -1038,8 +1032,13 @@ where
 
             tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
-            self.pending_events
-                .push_back(Event::ConnectionEstablished(cid))
+            // Only signal establishment once we can actually send, i.e. ICE has nominated a
+            // socket. On the controlled side the handshake can complete before nomination, in
+            // which case the event is emitted from the `NominatedSend` handler instead.
+            if conn.state.has_nominated_socket() {
+                self.pending_events
+                    .push_back(Event::ConnectionEstablished(cid))
+            }
         }
 
         control_flow
@@ -1340,6 +1339,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
+        pending_events: &mut VecDeque<Event<TId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
@@ -1436,11 +1436,7 @@ where
                     };
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
-                        ConnectionState::Connecting {
-                            wg_buffer,
-                            ip_buffer,
-                            ..
-                        } => {
+                        ConnectionState::Connecting { wg_buffer } => {
                             tracing::debug!(
                                 num_buffered = %wg_buffer.len(),
                                 "Flushing WireGuard packets buffered during ICE"
@@ -1457,27 +1453,18 @@ where
                                 )
                             }));
 
-                            tracing::debug!(
-                                num_buffered = %ip_buffer.len(),
-                                "Flushing IP packets buffered during ICE"
-                            );
-                            transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
-                                let transmit = self
-                                    .encapsulate(cid, remote_socket, &packet, now, allocations)
-                                    .inspect_err(|e| {
-                                        tracing::debug!(
-                                            "Failed to encapsulate buffered IP packet: {e:#}"
-                                        )
-                                    })
-                                    .ok()??;
-
-                                Some(transmit)
-                            }));
-
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
                                 last_activity: now,
                             };
+
+                            // If the WireGuard handshake already completed while we were still
+                            // running ICE, the connection only becomes usable now that a socket is
+                            // nominated, so this is when we signal establishment.
+                            if self.first_handshake_completed_at.is_some() {
+                                pending_events.push_back(Event::ConnectionEstablished(cid));
+                            }
+
                             None
                         }
                         ConnectionState::Connected {
@@ -1642,17 +1629,8 @@ where
         buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
 
         let len =
-            match self
-                .tunnel
-                .encapsulate_at(packet.packet(), &mut buffer[packet_start..], now)
-            {
-                TunnResult::Done => return Ok(None),
-                TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
-                TunnResult::WriteToNetwork(packet) => packet.len(),
-                TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                    unreachable!("never returned from encapsulate")
-                }
-            };
+            self.tunnel
+                .encapsulate_data_at(packet.packet(), &mut buffer[packet_start..], now)?;
 
         let packet_end = packet_start + len;
         buffer.truncate(packet_end);
