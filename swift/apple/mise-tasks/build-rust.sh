@@ -49,7 +49,7 @@ for var in $(env | awk -F= '{print $1}'); do
         [[ "$var" != "CARGO_INCREMENTAL" ]] &&
         [[ "$var" != "CARGO_TERM_COLOR" ]] &&
         [[ "$var" != "FIREZONE_PACKAGE_VERSION" ]] &&
-        [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
+        [[ "$var" != "RUST_TARGET_DIR" ]]; then
         unset "$var"
     fi
 done
@@ -63,8 +63,8 @@ PLATFORM_NAME="${PLATFORM_NAME:-macosx}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 NATIVE_ARCH="${ARCHS:-${NATIVE_ARCH:-$(uname -m)}}"
 
-# Set target directory - use CONNLIB_TARGET_DIR if set, otherwise default
-export CARGO_TARGET_DIR="${CONNLIB_TARGET_DIR:-$RUST_DIR/target}"
+# Set target directory - use RUST_TARGET_DIR if set, otherwise default
+export CARGO_TARGET_DIR="${RUST_TARGET_DIR:-$RUST_DIR/target}"
 
 echo "========================================="
 echo "Building Connlib for Xcode"
