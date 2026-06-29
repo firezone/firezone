@@ -31,6 +31,7 @@ members = [
     "libs/connlib/tunnel",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
+    "libs/flow-log-upload",
     "libs/http-client",
     "libs/known-dirs",
     "libs/logging",
@@ -99,6 +100,7 @@ etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
 filetime = "0.2.29"
+flow-log-spool = { path = "libs/flow-log-spool" }
 firezone-relay = { path = "relay/server", default-features = false }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
