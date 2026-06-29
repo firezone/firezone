@@ -3,10 +3,7 @@
 use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     time::Duration,
 };
 
@@ -44,10 +41,6 @@ type ConnectionDriver = Pin<Box<dyn Future<Output = ()> + Send>>;
 pub struct HttpClient {
     host: String,
     sender: Sender,
-    /// Set by the connection driver when the connection ends, so [`Self::is_closed`]
-    /// reports closure for both h2 and h1 (h1's sender can't be polled without the
-    /// mutex).
-    closed: Arc<AtomicBool>,
 
     #[expect(dead_code, reason = "We only need to keep it around.")]
     connection: Arc<AbortOnDropHandle<()>>,
@@ -66,7 +59,7 @@ impl HttpClient {
         let mut config = rustls::ClientConfig::builder()
             .with_root_certificates(root_cert_store)
             .with_no_client_auth();
-        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec(), b"http/1.0".to_vec()];
+        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
         let (sender, driver) = connect(
             addresses,
@@ -77,14 +70,11 @@ impl HttpClient {
         )
         .await?;
 
-        let closed = Arc::new(AtomicBool::new(false));
         let connection = tokio::spawn({
             let host = host.clone();
-            let closed = closed.clone();
 
             async move {
                 driver.await;
-                closed.store(true, Ordering::Relaxed);
                 tracing::debug!(%host, "HTTP connection finished");
             }
         });
@@ -92,7 +82,6 @@ impl HttpClient {
         Ok(Self {
             host,
             sender,
-            closed,
             connection: Arc::new(AbortOnDropHandle::new(connection)),
         })
     }
@@ -101,8 +90,12 @@ impl HttpClient {
     ///
     /// A closed client is permanently unusable and should be discarded.
     pub fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::Relaxed)
-            || matches!(&self.sender, Sender::H2(client) if client.is_closed())
+        match &self.sender {
+            Sender::H2(client) => client.is_closed(),
+            // A held lock means a request is in flight, so the connection is still
+            // active; an idle lock lets us ask the sender directly.
+            Sender::H1(mutex) => mutex.try_lock().is_ok_and(|sender| sender.is_closed()),
+        }
     }
 
     pub fn send_request(
