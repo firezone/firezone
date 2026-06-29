@@ -273,6 +273,19 @@ impl PeerSocket {
         matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
     }
 
+    /// The local source address the resulting UDP datagram should be sent from, if any.
+    ///
+    /// This is `None` for relayed sockets because those are sent from whichever interface can
+    /// reach the relay.
+    pub(crate) fn packet_src(&self) -> Option<SocketAddr> {
+        match self {
+            PeerSocket::PeerToPeer { source, .. } | PeerSocket::PeerToRelay { source, .. } => {
+                Some(*source)
+            }
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => None,
+        }
+    }
+
     pub(crate) fn fmt<RId>(&self, relay: RId) -> String
     where
         RId: fmt::Display,

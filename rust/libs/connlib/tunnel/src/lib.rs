@@ -255,21 +255,15 @@ impl ClientTunnel {
                     for packet in packets {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now)
+                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(Some(transmit)) => {
-                                self.io.send_network(
-                                    transmit.src,
-                                    transmit.dst,
-                                    &transmit.payload,
-                                    transmit.ecn,
-                                );
-                            }
-                            Ok(None) => self.io.schedule_timeout(now),
+                            Ok(()) => {}
                             Err(e) => error.push(e),
                         }
                     }
+
+                    self.io.schedule_timeout(now);
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -450,18 +444,10 @@ impl GatewayTunnel {
                     for packet in packets {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now)
+                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(Some(transmit)) => {
-                                self.io.send_network(
-                                    transmit.src,
-                                    transmit.dst,
-                                    &transmit.payload,
-                                    transmit.ecn,
-                                );
-                            }
-                            Ok(None) => self.io.schedule_timeout(now),
+                            Ok(()) => {}
                             Err(e) => {
                                 let routing_error = e
                                     .any_downcast_ref::<UnroutablePacket>()
@@ -478,6 +464,8 @@ impl GatewayTunnel {
                             }
                         }
                     }
+
+                    self.io.schedule_timeout(now);
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {

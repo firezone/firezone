@@ -7,6 +7,7 @@ mod timeout;
 mod udp_dns;
 
 pub use device::{Device, TunChannelClosed};
+pub(crate) use gso_queue::GsoQueue;
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -14,7 +15,6 @@ use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
-use gso_queue::GsoQueue;
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
@@ -493,6 +493,11 @@ impl Io {
     /// Schedules a wakeup in case one isn't registered yet.
     pub fn schedule_timeout(&mut self, now: Instant) {
         self.timeout.schedule(now + Duration::from_secs(1));
+    }
+
+    /// The GSO queue used as the destination buffer when encapsulating packets in place.
+    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
+        &mut self.gso_queue
     }
 
     pub fn send_network(

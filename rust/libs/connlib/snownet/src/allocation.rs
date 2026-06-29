@@ -964,6 +964,11 @@ impl Allocation {
         self.active_socket.is_some()
     }
 
+    /// The relay socket we are currently sending to, if one has been selected.
+    pub fn active_socket(&self) -> Option<SocketAddr> {
+        Some(self.active_socket.as_ref()?.addr)
+    }
+
     pub fn has_credentials(&self) -> bool {
         self.credentials.is_some()
     }

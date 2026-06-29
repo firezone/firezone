@@ -6,6 +6,7 @@ use std::{
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::Ecn;
+use snownet::BufferProvider;
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
@@ -30,32 +31,14 @@ impl GsoQueue {
         }
     }
 
+    /// Copy an already-formed datagram into the queue.
+    ///
+    /// This is used for datagrams we cannot (or need not) encrypt in place, e.g. STUN/TURN control
+    /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
+    /// directly into the queue via the [`BufferProvider`] implementation.
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let payload_len = payload.len();
-
-        debug_assert!(
-            payload_len <= MAX_SEGMENT_SIZE,
-            "MAX_SEGMENT_SIZE is miscalculated"
-        );
-
-        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
-
-        let Some((batch_size, buffer)) = batches.back_mut() else {
-            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
-
-            return;
-        };
-        let batch_size = *batch_size;
-
-        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
-        let batch_is_ongoing = buffer.len() % batch_size == 0;
-
-        if batch_is_ongoing && payload_len <= batch_size {
-            buffer.extend_from_slice(payload);
-            return;
-        }
-
-        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+        self.reserve(src, dst, ecn, payload.len())
+            .copy_from_slice(payload);
     }
 
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
@@ -64,6 +47,66 @@ impl GsoQueue {
 
     pub fn clear(&mut self) {
         self.inner.clear()
+    }
+}
+
+impl BufferProvider for GsoQueue {
+    fn reserve(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        ecn: Ecn,
+        len: usize,
+    ) -> &mut [u8] {
+        debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
+
+        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
+
+        // Decide whether the datagram can extend the current batch or has to start a new one.
+        let needs_new_batch = match batches.back() {
+            None => true,
+            Some((batch_size, buffer)) => {
+                // A batch is "ongoing" as long as every segment so far has been full-size.
+                let batch_is_ongoing = buffer.len() % batch_size == 0;
+
+                !(batch_is_ongoing && len <= *batch_size)
+            }
+        };
+
+        if needs_new_batch {
+            let mut buffer = self.buffer_pool.pull();
+            buffer.clear();
+            batches.push_back((len, buffer));
+        }
+
+        let (_, buffer) = batches.back_mut().expect("we ensured a batch exists");
+        let offset = buffer.len();
+        buffer.resize(offset + len, 0);
+
+        &mut buffer[offset..]
+    }
+
+    fn rollback(&mut self, src: Option<SocketAddr>, dst: SocketAddr, ecn: Ecn, len: usize) {
+        let connection = Connection { src, dst, ecn };
+
+        let Some(batches) = self.inner.get_mut(&connection) else {
+            return;
+        };
+        let Some((_, buffer)) = batches.back_mut() else {
+            return;
+        };
+
+        let new_len = buffer.len().saturating_sub(len);
+        buffer.truncate(new_len);
+
+        // Drop any batch (and connection) that became empty as a result.
+        if buffer.is_empty() {
+            batches.pop_back();
+
+            if batches.is_empty() {
+                self.inner.remove(&connection);
+            }
+        }
     }
 }
 
