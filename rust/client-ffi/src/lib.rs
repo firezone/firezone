@@ -556,6 +556,9 @@ fn connect(
         portal,
         is_internet_resource_active,
         Vec::default(),
+        // Mobile flow logging (spool dir + uploader) is wired up separately; until
+        // then this client writes no flow logs.
+        None,
         runtime.handle().clone(),
     );
 
