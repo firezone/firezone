@@ -49,7 +49,7 @@ impl HttpClient {
         let mut config = rustls::ClientConfig::builder()
             .with_root_certificates(root_cert_store)
             .with_no_client_auth();
-        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec(), b"http/1.0".to_vec()];
+        config.alpn_protocols = vec![b"h2".to_vec()];
 
         let (client, conn) = connect(
             addresses,
