@@ -568,7 +568,18 @@ impl ClientState {
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        self.encapsulate(non_dns_packet, now, provider)
+        let Some((pid, packet)) = self.prepare_outbound(non_dns_packet, now)? else {
+            return Ok(());
+        };
+
+        encapsulate_or_buffer(
+            packet,
+            pid,
+            now,
+            &mut self.node,
+            provider,
+            &mut self.pending_packets,
+        )
     }
 
     /// Handles UDP packets received on the network interface.
@@ -793,26 +804,6 @@ impl ClientState {
                 &mut self.pending_packets,
             );
         }
-    }
-
-    fn encapsulate(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-        provider: &mut impl snownet::BufferProvider,
-    ) -> Result<()> {
-        let Some((pid, packet)) = self.prepare_outbound(packet, now)? else {
-            return Ok(());
-        };
-
-        encapsulate_or_buffer(
-            packet,
-            pid,
-            now,
-            &mut self.node,
-            provider,
-            &mut self.pending_packets,
-        )
     }
 
     /// Route an outbound IP packet and apply any DNS resource NAT, yielding the
