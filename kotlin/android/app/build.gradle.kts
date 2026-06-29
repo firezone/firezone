@@ -188,6 +188,8 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    // Background flow-log uploads, independent of the tunnel session's lifetime.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // Material
     implementation("com.google.android.material:material:1.14.0")
