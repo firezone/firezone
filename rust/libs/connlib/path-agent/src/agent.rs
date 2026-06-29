@@ -440,7 +440,11 @@ impl PathAgent {
                 // against `last_init`/`last_init_path`.
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
-                self.reopen_evaluation_window(now);
+                // A fresh inbound init (a roam re-keys to a new address)
+                // restarts evaluation unconditionally, even mid-window:
+                // the previous window's RTTs are stale and must not keep
+                // a now-dead pair as primary. Duplicates were dropped above.
+                self.restart_evaluation(now);
                 self.maybe_adopt_handshake_primary(is_handshake, path, now);
 
                 for b in outbound {
@@ -495,8 +499,9 @@ impl PathAgent {
         }
     }
 
-    /// Idempotent within an open window so an outbound re-key and
-    /// the inbound response 1 RTT later don't both wipe RTTs.
+    /// Debounced restart: no-op while a window is already open, so an
+    /// outbound re-key and the inbound response 1 RTT later (or a burst
+    /// of candidate changes) don't repeatedly wipe RTTs mid-evaluation.
     fn reopen_evaluation_window(&mut self, now: Instant) {
         if let Some(deadline) = self.window.deadline()
             && now < deadline
@@ -504,6 +509,17 @@ impl PathAgent {
             return;
         }
 
+        self.restart_evaluation(now);
+    }
+
+    /// Discard every pair's RTT and open a fresh evaluation window.
+    ///
+    /// A new handshake means the peer's situation changed (e.g. a roam
+    /// to a new address), so a stale RTT must not keep an old, now-dead
+    /// pair as primary. Unlike [`Self::reopen_evaluation_window`] this
+    /// restarts unconditionally, even mid-window — duplicate handshakes
+    /// are already filtered out before we get here.
+    fn restart_evaluation(&mut self, now: Instant) {
         for state in self.pairs.values_mut() {
             state.smoothed_rtt = None;
             state.inflight_probe = None;

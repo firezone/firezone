@@ -430,6 +430,44 @@ fn inbound_handshake_reopens_evaluation_window_after_settle() {
 }
 
 #[test]
+fn new_handshake_inside_open_window_restarts_evaluation() {
+    // A roam re-keys to a new address while the *initial* evaluation
+    // window is still open. The new handshake must restart the window so
+    // stale RTTs are cleared; otherwise the original window settles on a
+    // pre-roam pair that is now dead.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    // Handshake 1 opens the window (deadline now + EVALUATION_WINDOW).
+    let mut hs1 = Handshake::new(now);
+    let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), now);
+    while a.poll_event().is_some() {}
+
+    // A *different* handshake arrives late in the window (a roam re-key
+    // to a new address), still inside the original deadline.
+    let t2 = now + Duration::from_secs(8);
+    let mut hs2 = Handshake::new(t2);
+    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
+    while a.poll_event().is_some() {}
+
+    // At the *original* deadline a non-restarted window settles and drops
+    // to the live cadence (primary-only, +25s). The restart pushed the
+    // deadline out to t2 + EVALUATION_WINDOW, so it stays open and probes.
+    a.handle_timeout(now + EVALUATION_WINDOW);
+    while a.poll_transmit().is_some() {}
+
+    // Past the inflight-probe timeout but well before the restarted
+    // deadline: an open window re-probes *every* pair; a settled window
+    // probes nothing (its primary isn't due for another ~25s).
+    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_TIMEOUT + Duration::from_secs(1));
+    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    assert!(
+        probes.len() > 1,
+        "a new handshake inside the open window must restart it (re-probe all pairs), got {probes:?}"
+    );
+}
+
+#[test]
 fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
