@@ -8,7 +8,7 @@ use std::{
 use bufferpool::BufferPool;
 use is::Candidate;
 use itertools::Itertools as _;
-use rand::{Rng, seq::IteratorRandom as _};
+use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -23,12 +23,31 @@ pub(crate) struct Allocations<RId> {
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
 
     buffer_pool: BufferPool<Vec<u8>>,
+
+    rng: StdRng,
 }
 
 impl<RId> Allocations<RId>
 where
     RId: Ord + fmt::Display + Copy,
 {
+    pub(crate) fn new(rng: &mut impl Rng) -> Self {
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+
+        Self {
+            inner: BTreeMap::default(),
+            previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
+            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
+            rng: StdRng::from_seed(seed),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test() -> Self {
+        Self::new(&mut StdRng::seed_from_u64(0))
+    }
+
     pub(crate) fn clear(&mut self) {
         for (_, allocation) in std::mem::take(&mut self.inner) {
             self.previous_relays_by_ip
@@ -108,12 +127,11 @@ where
         password: String,
         realm: Realm,
         now: Instant,
-        rng: &mut impl Rng,
     ) -> UpsertResult {
         match self.inner.entry(rid) {
             Entry::Vacant(v) => {
                 let mut seed = [0u8; 32];
-                rng.fill_bytes(&mut seed);
+                self.rng.fill_bytes(&mut seed);
 
                 v.insert(Allocation::new(
                     server,
@@ -137,7 +155,7 @@ where
                 }
 
                 let mut seed = [0u8; 32];
-                rng.fill_bytes(&mut seed);
+                self.rng.fill_bytes(&mut seed);
 
                 let previous = o.insert(Allocation::new(
                     server,
@@ -163,7 +181,7 @@ where
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
     /// or below it. Allocations without an RTT measurement are skipped: we
     /// don't know whether they are healthy yet.
-    pub(crate) fn sample(&self, rng: &mut impl Rng) -> Option<(RId, &Allocation)> {
+    pub(crate) fn sample(&mut self) -> Option<(RId, &Allocation)> {
         let candidates = self
             .inner
             .iter()
@@ -179,7 +197,7 @@ where
         candidates
             .iter()
             .filter(|(_, _, rtt)| *rtt <= threshold)
-            .choose(rng)
+            .choose(&mut self.rng)
             .map(|(id, a, _)| (*id, *a))
     }
 
@@ -320,28 +338,15 @@ pub(crate) enum UpsertResult {
     Replaced(Allocation),
 }
 
-impl<RId> Default for Allocations<RId> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-            previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries,
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
-
-    use rand::SeedableRng as _;
 
     use super::*;
 
     #[test]
     fn manual_remove_remembers_address() {
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -349,7 +354,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            &mut rng,
         );
 
         allocations.remove_by_id(&1);
@@ -362,8 +366,7 @@ mod tests {
 
     #[test]
     fn clear_remembers_address() {
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -371,7 +374,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            &mut rng,
         );
 
         allocations.clear();
@@ -384,8 +386,7 @@ mod tests {
 
     #[test]
     fn replace_by_address_remembers_address() {
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -393,7 +394,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            &mut rng,
         );
 
         allocations.upsert(
@@ -403,7 +403,6 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
-            &mut rng,
         );
 
         assert!(matches!(
@@ -465,8 +464,7 @@ mod tests {
     #[test]
     fn sample_excludes_outlier_relay_among_many_fast_ones() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
 
         for (rid, port, rtt_ms) in [
             (1u32, 11111u16, 30),
@@ -482,18 +480,14 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
-                &mut rng,
             );
             allocations
                 .get_mut_by_id(&rid)
                 .unwrap()
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
         for _ in 0..1000 {
-            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            let (rid, _) = allocations.sample().unwrap();
             assert_ne!(rid, 5, "outlier relay must not be selected");
         }
     }
@@ -501,8 +495,7 @@ mod tests {
     #[test]
     fn sample_distributes_load_across_similar_rtt_relays() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
 
         // 1ms apart: both relays should be picked roughly equally (uniform within bucket).
         for (rid, port, rtt_ms) in [(1u32, 11111u16, 30), (2, 22222, 31)] {
@@ -513,19 +506,16 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
-                &mut rng,
             );
             allocations
                 .get_mut_by_id(&rid)
                 .unwrap()
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let mut counts = [0u32; 2];
 
         for _ in 0..10_000 {
-            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            let (rid, _) = allocations.sample().unwrap();
             counts[(rid - 1) as usize] += 1;
         }
 
@@ -539,8 +529,7 @@ mod tests {
     #[test]
     fn sample_excludes_n2_relay_when_much_slower() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
 
         // 30ms vs 200ms with n=2 ⇒ 200ms is 6.7x the leader, well outside 1.5x.
         for (rid, port, rtt_ms) in [(1u32, 11111u16, 30), (2, 22222, 200)] {
@@ -551,18 +540,14 @@ mod tests {
                 "password".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
-                &mut rng,
             );
             allocations
                 .get_mut_by_id(&rid)
                 .unwrap()
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
         for _ in 0..100 {
-            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            let (rid, _) = allocations.sample().unwrap();
             assert_eq!(rid, 1);
         }
     }
@@ -570,8 +555,7 @@ mod tests {
     #[test]
     fn sample_falls_back_to_only_remaining_relay_even_if_high_rtt() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
 
         allocations.upsert(
             1,
@@ -580,24 +564,19 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
-            &mut rng,
         );
         allocations
             .get_mut_by_id(&1)
             .unwrap()
             .set_rtt(Duration::from_millis(500));
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
-        let (rid, _) = allocations.sample(&mut rng).unwrap();
+        let (rid, _) = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }
 
     #[test]
     fn sample_excludes_allocations_without_rtt() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+        let mut allocations = Allocations::for_test();
 
         allocations.upsert(
             1,
@@ -606,13 +585,9 @@ mod tests {
             "password".to_owned(),
             Realm::new("firezone".to_owned()).unwrap(),
             now,
-            &mut rng,
         );
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
         assert_eq!(allocations.get_by_id(&1).unwrap().rtt(), None);
-        assert!(allocations.sample(&mut rng).is_none());
+        assert!(allocations.sample().is_none());
     }
 
     const SERVER_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111));

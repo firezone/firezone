@@ -189,6 +189,7 @@ where
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
         let index = IndexLfsr::new(&mut rng);
+        let allocations = Allocations::new(&mut rng);
 
         Self {
             rng,
@@ -199,7 +200,7 @@ where
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
-            allocations: Default::default(),
+            allocations,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
@@ -644,9 +645,8 @@ where
 
         self.connections.migrate_relays(
             removed_allocations,
-            &self.allocations,
+            &mut self.allocations,
             &mut self.pending_events,
-            &mut self.rng,
             now,
         );
         self.connections
@@ -705,15 +705,10 @@ where
                 continue;
             };
 
-            match self.allocations.upsert(
-                *rid,
-                *server,
-                username,
-                password.clone(),
-                realm,
-                now,
-                &mut self.rng,
-            ) {
+            match self
+                .allocations
+                .upsert(*rid, *server, username, password.clone(), realm, now)
+            {
                 allocations::UpsertResult::Added => {
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
@@ -749,9 +744,8 @@ where
         // Fourth, migrate existing connections away from removed relays.
         self.connections.migrate_relays(
             to_remove.into_iter(),
-            &self.allocations,
+            &mut self.allocations,
             &mut self.pending_events,
-            &mut self.rng,
             now,
         );
     }
@@ -1072,10 +1066,7 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let (rid, _) = self
-            .allocations
-            .sample(&mut self.rng)
-            .ok_or(NoTurnServers {})?;
+        let (rid, _) = self.allocations.sample().ok_or(NoTurnServers {})?;
 
         tracing::debug!(%rid, "Sampled relay");
 
