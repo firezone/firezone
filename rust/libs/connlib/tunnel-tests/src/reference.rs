@@ -904,7 +904,8 @@ impl ReferenceState {
                 state.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
-                debug_assert!(state.network.add_host(*client_id, client));
+                let added = state.network.add_host(*client_id, client);
+                debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
@@ -1884,7 +1885,8 @@ impl ReferenceState {
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());
-            debug_assert!(self.network.add_host(*rid, new_relay));
+            let added = self.network.add_host(*rid, new_relay);
+            debug_assert!(added);
         }
     }
 }

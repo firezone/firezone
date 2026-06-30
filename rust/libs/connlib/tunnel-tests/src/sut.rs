@@ -425,7 +425,8 @@ impl TunnelTest {
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
                 state.network.remove_host(client);
                 client.update_interface(ip4, ip6);
-                debug_assert!(state.network.add_host(client_id, client));
+                let added = state.network.add_host(client_id, client);
+                debug_assert!(added);
 
                 client.exec_mut(|c| {
                     c.sut.reset(now, "roam");
@@ -1327,7 +1328,8 @@ impl TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         for (rid, relay) in &online {
-            debug_assert!(self.network.add_host(*rid, relay));
+            let added = self.network.add_host(*rid, relay);
+            debug_assert!(added);
         }
 
         for client in self.clients.values_mut() {
