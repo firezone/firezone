@@ -382,7 +382,9 @@ fn try_main() -> Result<()> {
                 otel::attr::service_instance_id(firezone_id.clone()),
             ]);
 
-            let telemetry_allowed = cli.is_telemetry_allowed();
+            // Field access (not `cli.is_telemetry_allowed()`) to avoid borrowing all
+            // of `cli`, which is partially moved by this point.
+            let telemetry_allowed = !cli.no_telemetry;
             let api_url = cli.api_url.clone();
 
             match (backend, cli.otlp_grpc_endpoint) {
