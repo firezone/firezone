@@ -64,6 +64,16 @@ pub fn clear_system_resolvers() {
     feature_flags::reevaluate_current();
 }
 
+/// Resolves an ingest host the way telemetry resolves its own ingest hosts: via
+/// the captured upstream resolvers while a connlib session is active (so the lookup
+/// never loops through connlib's hijacked system resolver), and via the default
+/// system resolver otherwise.
+///
+/// Exposed for the flow-log uploader, whose ingest host has the same constraint.
+pub async fn resolve_ingest_host(host: &str) -> Result<Vec<IpAddr>> {
+    ingest::resolve(host.to_owned()).await
+}
+
 /// Drops the current telemetry ingest connections so they are re-established lazily.
 ///
 /// Call this on network changes, alongside resetting connlib. Triggers a

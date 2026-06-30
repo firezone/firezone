@@ -2573,6 +2573,7 @@ dependencies = [
  "serde",
  "serde_json",
  "socket-factory",
+ "telemetry",
  "tempfile",
  "tokio",
  "tracing",

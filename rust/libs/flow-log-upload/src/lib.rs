@@ -46,7 +46,6 @@
 
 use std::{
     collections::BTreeMap,
-    net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -370,6 +369,11 @@ async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>
 
 /// Opens a tunnel-bypassing HTTP client to the ingest host. Re-resolved on every
 /// scan, so a roamed / changed flow-api address is picked up without a restart.
+///
+/// Resolution goes through [`telemetry::resolve_ingest_host`] so that, like
+/// telemetry, it uses connlib's captured upstream resolvers while a session is
+/// active rather than `getaddrinfo`, which would loop back through connlib's
+/// hijacked system resolver.
 async fn connect(
     ingest_url: &str,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -377,13 +381,7 @@ async fn connect(
     let url = Url::parse(ingest_url).context("Invalid ingest URL")?;
     let host = url.host_str().context("Ingest URL has no host")?.to_owned();
 
-    let addresses = tokio::net::lookup_host((host.as_str(), 443))
-        .await
-        .with_context(|| format!("Failed to resolve ingest host {host}"))?
-        .map(|addr| addr.ip())
-        .collect::<Vec<IpAddr>>();
-
-    anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
+    let addresses = telemetry::resolve_ingest_host(&host).await?;
 
     HttpClient::new(host, addresses, socket_factory)
         .await

@@ -148,40 +148,16 @@ impl Client {
 
     async fn bootstrap(&self) -> Result<HttpClient> {
         let host = self.host;
-        let (tcp, udp) = SOCKETS
+        let (tcp, _) = SOCKETS
             .lock()
             .clone()
             .context("Ingest client has no socket factories configured")?;
-        let servers = SERVERS.lock().clone();
 
         // Anchor the connection task on our own runtime so it outlives the caller,
         // which may be a short-lived `block_on` on another runtime.
         RUNTIME
             .spawn(async move {
-                let addresses = match servers {
-                    // A connlib session is active and has hijacked the system
-                    // resolver. Resolve via the upstreams directly, never the system
-                    // resolver, which would loop back through connlib. With no
-                    // upstreams we cannot resolve at all and telemetry is disabled
-                    // until they arrive; don't fall back.
-                    Some(servers) => {
-                        anyhow::ensure!(
-                            !servers.is_empty(),
-                            "No upstream resolvers configured for ingest host {host}; \
-                             telemetry is disabled while the session is active"
-                        );
-
-                        BootstrapDnsClient::new(udp, tcp.clone(), servers)
-                            .resolve(host)
-                            .await
-                            .with_context(|| format!("Failed to resolve ingest host {host}"))?
-                    }
-                    // No session is active, so the system resolver is the real OS
-                    // resolver. Resolve via `getaddrinfo` directly.
-                    None => resolve_via_system(host).await?,
-                };
-
-                anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
+                let addresses = resolve(host.to_owned()).await?;
 
                 HttpClient::new(host.to_owned(), addresses, tcp)
                     .await
@@ -192,13 +168,52 @@ impl Client {
     }
 }
 
+/// Resolves an ingest host without looping through connlib: via the captured
+/// upstream resolvers while a session is active, via the system resolver otherwise.
+///
+/// Shared by telemetry's own ingest hosts and the flow-log uploader, which both
+/// must reach their ingest endpoint under the same constraints.
+pub(crate) async fn resolve(host: String) -> Result<Vec<IpAddr>> {
+    let servers = SERVERS.lock().clone();
+
+    let addresses = match servers {
+        // A session is active and has hijacked the system resolver, so resolve via
+        // the captured upstreams directly. With no upstreams we can't resolve at
+        // all; don't fall back to the system resolver, which would loop back through
+        // connlib.
+        Some(servers) => {
+            anyhow::ensure!(
+                !servers.is_empty(),
+                "No upstream resolvers configured for ingest host {host}; \
+                 resolution is disabled while the session is active"
+            );
+
+            let (tcp, udp) = SOCKETS
+                .lock()
+                .clone()
+                .context("Ingest client has no socket factories configured")?;
+
+            BootstrapDnsClient::new(udp, tcp, servers)
+                .resolve(host.clone())
+                .await
+                .with_context(|| format!("Failed to resolve ingest host {host}"))?
+        }
+        // No session is active, so the system resolver is the real OS resolver.
+        None => resolve_via_system(host.clone()).await?,
+    };
+
+    anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
+
+    Ok(addresses)
+}
+
 /// Resolves a host via the default system resolver (`getaddrinfo`).
 ///
 /// Only safe when no connlib session is active; otherwise the lookup would route
 /// through connlib's stub resolver and loop back into the tunnel.
-async fn resolve_via_system(host: &'static str) -> Result<Vec<IpAddr>> {
+async fn resolve_via_system(host: String) -> Result<Vec<IpAddr>> {
     tokio::task::spawn_blocking(move || {
-        let addresses = (host, 443u16)
+        let addresses = (host.as_str(), 443u16)
             .to_socket_addrs()
             .with_context(|| format!("Failed to resolve ingest host {host} via system resolver"))?
             .map(|addr| addr.ip())
