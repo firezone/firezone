@@ -506,16 +506,11 @@ fn try_main() -> Result<()> {
             }
         };
 
-        // Closing the command channel shuts the event-loop down and restores the
-        // system resolver.
         drop(session);
 
         // Drain the event-stream to allow the event-loop to gracefully shutdown.
-        // This runs `shut_down_tunnel`, which clears the telemetry resolver override.
         let _ = tokio::time::timeout(Duration::from_secs(1), event_stream.drain()).await;
 
-        // Telemetry outlives the session: connlib has restored the system resolver,
-        // so this final flush resolves the sentry host via the default resolver.
         telemetry.stop().await;
 
         result
