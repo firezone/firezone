@@ -1,4 +1,4 @@
-use std::{fmt, future::Future, sync::LazyLock, time::Duration};
+use std::{fmt, sync::LazyLock, time::Duration};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -83,14 +83,12 @@ impl<E> PushMetricExporter for StreamMetricsGated<E>
 where
     E: PushMetricExporter,
 {
-    fn export(&self, metrics: &ResourceMetrics) -> impl Future<Output = OTelSdkResult> + Send {
-        async move {
-            if !feature_flags::stream_metrics() {
-                return Ok(());
-            }
-
-            self.0.export(metrics).await
+    async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
+        if !feature_flags::stream_metrics() {
+            return Ok(());
         }
+
+        self.0.export(metrics).await
     }
 
     fn force_flush(&self) -> OTelSdkResult {
