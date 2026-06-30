@@ -26,6 +26,23 @@ pub struct RefGateway {
 }
 
 impl RefGateway {
+    /// Construct a [`RefGateway`] from already-sampled parts.
+    ///
+    /// Mirrors the `ref_gateway` proptest strategy for the structured generator.
+    pub(crate) fn from_parts(
+        key: PrivateKey,
+        tunnel_ip4: Ipv4Addr,
+        tunnel_ip6: Ipv6Addr,
+        site_specific_dns_records: DnsRecords,
+    ) -> Self {
+        Self {
+            key,
+            tunnel_ip4,
+            tunnel_ip6,
+            site_specific_dns_records,
+        }
+    }
+
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.

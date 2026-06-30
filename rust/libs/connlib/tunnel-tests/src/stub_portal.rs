@@ -181,6 +181,29 @@ impl StubPortal {
         }
     }
 
+    /// The tunnel IPs assigned to each client, in client order.
+    ///
+    /// Used by the structured generator to materialize client hosts without going
+    /// through the `clients(...)` proptest strategy.
+    pub(crate) fn client_tunnel_ips(&self) -> Vec<(ClientId, Ipv4Addr, Ipv6Addr)> {
+        self.clients
+            .iter()
+            .map(|(id, c)| (*id, c.ipv4, c.ipv6))
+            .collect()
+    }
+
+    /// The tunnel IPs and owning site of each gateway.
+    pub(crate) fn gateway_tunnel_ips(&self) -> Vec<(GatewayId, Ipv4Addr, Ipv6Addr, SiteId)> {
+        self.gateways_by_site
+            .iter()
+            .flat_map(|(site_id, gateways)| {
+                gateways
+                    .iter()
+                    .map(move |(gid, ipv4, ipv6)| (*gid, *ipv4, *ipv6, *site_id))
+            })
+            .collect()
+    }
+
     /// All device labels the portal knows about, in client order.
     pub(crate) fn device_labels(&self) -> Vec<String> {
         self.clients

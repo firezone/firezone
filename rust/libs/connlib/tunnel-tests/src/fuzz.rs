@@ -28,9 +28,7 @@ use proptest::{
     strategy::{Strategy, ValueTree as _},
     test_runner::{Config, RngAlgorithm, TestRng, TestRunner},
 };
-use tracing_subscriber::{Layer as _, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::assertions::PanicOnErrorEvents;
 use crate::flux_capacitor::FluxCapacitor;
 use crate::reference::ReferenceState;
 use crate::sut::TunnelTest;
@@ -49,7 +47,7 @@ const MAX_ATTEMPTS: usize = 400;
 pub fn run_fuzz_case(data: &[u8]) {
     // Treat any `ERROR` log as a failure, exactly like the proptest harness. The
     // guard scopes the subscriber to this case.
-    let _guard = init_subscriber();
+    let _guard = crate::init_fuzz_subscriber();
 
     let now = Instant::now();
     // A fixed UTC start keeps a given input fully reproducible (libFuzzer
@@ -97,29 +95,6 @@ pub fn run_fuzz_case(data: &[u8]) {
         TunnelTest::check_invariants(&sut, &ref_state);
 
         applied += 1;
-    }
-}
-
-/// Scope an error-detecting subscriber to the current case.
-///
-/// Mass fuzzing installs only [`PanicOnErrorEvents`] and writes no logs, keeping
-/// each case fast. Setting `RUST_LOG` — e.g. when reproducing or minimising a
-/// saved crash — additionally writes a trace to stderr on the same targets as
-/// the proptest suite.
-fn init_subscriber() -> tracing::subscriber::DefaultGuard {
-    let registry = tracing_subscriber::registry().with(PanicOnErrorEvents::new(0));
-
-    if std::env::var_os("RUST_LOG").is_some() {
-        registry
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_writer(std::io::stderr)
-                    .with_ansi(false)
-                    .with_filter(crate::log_file_filter()),
-            )
-            .set_default()
-    } else {
-        registry.set_default()
     }
 }
 
