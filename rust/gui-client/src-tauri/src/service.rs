@@ -497,7 +497,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        self.telemetry.stop().await; // Flush telemetry as the service shuts down.
+        self.telemetry.stop().await;
 
         ret
     }
@@ -541,16 +541,20 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
+    /// Re-points telemetry to the neutral environment so events emitted while
+    /// disconnected aren't attributed to the ended session.
+    fn reset_telemetry_environment(&mut self) {
+        if self.telemetry.is_active() {
+            self.telemetry
+                .start("entrypoint", &self.telemetry_release, telemetry::GUI_DSN);
+        }
+    }
+
     async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                // Re-point telemetry to the neutral environment so events emitted
-                // while disconnected aren't attributed to the ended session.
-                if self.telemetry.is_active() {
-                    self.telemetry
-                        .start("entrypoint", &self.telemetry_release, telemetry::GUI_DSN);
-                }
+                self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
@@ -628,8 +632,7 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
-                // Telemetry is process-lifetime; it outlives sessions and is only
-                // flushed when the service itself shuts down.
+                self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
 
                 // Always send `DisconnectedGracefully` even if we weren't connected,

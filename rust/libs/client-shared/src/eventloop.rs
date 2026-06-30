@@ -698,10 +698,8 @@ impl Eventloop {
             .await
             .context("Failed to shut down tunnel")?;
 
-        // The session is over and connlib has restored the system resolver, so
-        // telemetry resolves ingest hosts via the default resolver again. Clearing
-        // only after `shut_down` avoids a window where the system resolver is still
-        // connlib's stub.
+        // Clear only after `shut_down` has restored the system resolver, else ingest
+        // lookups could briefly route through connlib's stub.
         telemetry::clear_system_resolvers();
 
         Ok(())

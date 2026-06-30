@@ -246,11 +246,6 @@ class TunnelService : VpnService() {
         super.onCreate()
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
-        // Start connlib's (Rust) telemetry for the service-process lifetime, decoupled
-        // from any connlib session. It comes up in the `entrypoint` environment to
-        // capture early crashes; `connect` later re-points it at the session's
-        // environment, and `onDestroy` flushes it. It uses protected (tunnel-bypassing)
-        // sockets, so it never loops back through the VPN.
         startTelemetry(protectSocket)
     }
 
@@ -258,8 +253,6 @@ class TunnelService : VpnService() {
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
-        // Flush connlib's (Rust) telemetry as the service process tears down. It is
-        // process-lifetime, so it is not stopped per-session on disconnect.
         stopTelemetry()
         super.onDestroy()
     }

@@ -25,10 +25,7 @@ use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
 uniffi::setup_scaffolding!();
 
-/// The process-global telemetry guard.
-///
-/// `Some` between [`start_telemetry`] and [`stop_telemetry`]. [`connect`] re-points
-/// it at the active session's environment.
+/// The process-global telemetry guard, outliving individual connlib sessions.
 static TELEMETRY: LazyLock<std::sync::Mutex<Option<Telemetry>>> =
     LazyLock::new(|| std::sync::Mutex::new(None));
 
@@ -506,8 +503,6 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    // Re-point the telemetry guard at this session's environment. A no-op if
-    // telemetry was never started.
     if let Some(telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         telemetry.start(&api_url, RELEASE, platform::DSN);
     }
@@ -557,7 +552,6 @@ fn connect(
     })
 }
 
-/// Brings up the telemetry guard in the neutral `entrypoint` environment.
 fn start_telemetry_inner(
     tcp: Arc<dyn SocketFactory<TcpSocket>>,
     udp: Arc<dyn SocketFactory<UdpSocket>>,
@@ -587,7 +581,6 @@ pub fn start_telemetry() {
     start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
 }
 
-/// Flushes and tears down the telemetry guard.
 #[uniffi::export]
 pub fn stop_telemetry() {
     if let Some(mut telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).take() {
