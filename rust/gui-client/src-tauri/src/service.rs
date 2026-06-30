@@ -742,12 +742,18 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
+        // The Tunnel service is always running, so it spools and uploads flow logs
+        // in-process. Actual logging is gated by the portal sending ingest tokens.
+        let flow_logs =
+            known_dirs::flow_logs().map(|dir| client_shared::FlowLogConfig { dir, upload: true });
+
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             is_internet_resource_active,
             dns,
+            flow_logs,
             tokio::runtime::Handle::current(),
         );
 

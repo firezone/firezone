@@ -1263,6 +1263,7 @@ dependencies = [
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
+ "flow-log-upload",
  "futures",
  "logging",
  "opentelemetry",
@@ -2310,6 +2311,7 @@ dependencies = [
  "caps",
  "clap",
  "dns-types",
+ "flow-log-upload",
  "futures",
  "futures-bounded",
  "hickory-resolver",
@@ -8249,6 +8251,7 @@ name = "tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "atomicwrites",
  "base64 0.22.1",
  "bimap",
  "bootstrap-dns-client",
@@ -8263,6 +8266,7 @@ dependencies = [
  "dns-types",
  "eventloop-budget",
  "firezone-relay",
+ "flow-log-spool",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
@@ -8296,6 +8300,7 @@ dependencies = [
  "snownet",
  "socket-factory",
  "telemetry",
+ "tempfile",
  "test-case",
  "test-strategy",
  "thiserror 2.0.18",
@@ -8304,6 +8309,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
+ "windows-security",
 ]
 
 [[package]]

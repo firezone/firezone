@@ -10,7 +10,7 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
-use crate::messages::gateway::{Client, Subject};
+use crate::messages::gateway::Client;
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -1082,25 +1082,13 @@ impl TunnelTest {
                                 preshared_key: preshared_key.clone(),
                                 ipv4: client.inner().sut.tunnel_ip_config().unwrap().v4,
                                 ipv6: client.inner().sut.tunnel_ip_config().unwrap().v6,
-                                device_os_name: None,
-                                device_serial: None,
-                                device_uuid: None,
-                                identifier_for_vendor: None,
-                                firebase_installation_id: None,
-                                version: None,
-                                device_os_version: None,
-                            },
-                            Subject {
-                                actor_name: None,
-                                actor_email: None,
-                                auth_provider_id: None,
-                                actor_id: None,
                             },
                             client_ice.clone(),
                             gateway_ice.clone(),
                             None,
                             resource,
                             now,
+                            None,
                         )
                     })
                     .map_err(|error| ClientEventError::Gateway {
@@ -1120,6 +1108,7 @@ impl TunnelTest {
                             preshared_key,
                             client_ice,
                             gateway_ice,
+                            None,
                             now,
                         )
                     })
@@ -1182,6 +1171,7 @@ impl TunnelTest {
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
                                     Some(remote_authorization),
+                                    None,
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client {
@@ -1205,6 +1195,7 @@ impl TunnelTest {
                                     local_client_ice,
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
+                                    None,
                                     None,
                                     now,
                                 )

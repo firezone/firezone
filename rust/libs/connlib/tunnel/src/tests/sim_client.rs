@@ -128,6 +128,7 @@ impl SimClient {
             key.0,
             dns_resource_records,
             is_internet_resource_active,
+            false,
             now,
             utc_now
                 .signed_duration_since(DateTime::UNIX_EPOCH)

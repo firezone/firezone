@@ -14,6 +14,7 @@ use connlib_model::{
 };
 use dns_types::DomainName;
 use eventloop_budget::Budget;
+use flow_log_writer::FlowLogWriter;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
@@ -24,6 +25,7 @@ use std::{
     collections::BTreeSet,
     future, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    path::PathBuf,
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant, SystemTime},
@@ -35,6 +37,8 @@ mod conn_track;
 mod dns;
 mod expiring_map;
 mod filter_engine;
+mod flow_log;
+mod flow_log_writer;
 mod gateway;
 mod io;
 #[cfg(test)]
@@ -102,6 +106,9 @@ pub struct Tunnel<TRoleState> {
     io: Io,
     buffers: Buffers,
 
+    /// Spools flow-log records to disk when flow logging is enabled.
+    flow_log_writer: Option<FlowLogWriter>,
+
     packet_counter: opentelemetry::metrics::Counter<u64>,
 }
 
@@ -120,11 +127,16 @@ impl<TRoleState> Tunnel<TRoleState> {
 }
 
 impl ClientTunnel {
+    /// Creates a Client tunnel.
+    ///
+    /// `flow_logs_dir` enables flow logging when `Some`, spooling records to that
+    /// directory; `None` disables it.
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
+        flow_logs_dir: Option<PathBuf>,
     ) -> Self {
         Self {
             io: Io::new(
@@ -136,13 +148,27 @@ impl ClientTunnel {
                 rand::random(),
                 records,
                 is_internet_resource_active,
+                flow_logs_dir.is_some(),
                 Instant::now(),
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             buffers: Buffers::default(),
+            flow_log_writer: flow_logs_dir.map(FlowLogWriter::new),
             packet_counter: otel_instruments::network_packets(),
+        }
+    }
+
+    /// Drains pending flow-log records: emits each for observability and, when
+    /// flow logging is enabled, queues it to be spooled to disk.
+    fn drain_flow_records(&mut self) {
+        while let Some(record) = self.role_state.poll_flow_record() {
+            crate::flow_log::emit(&record);
+
+            if let Some(writer) = self.flow_log_writer.as_ref() {
+                writer.write(record);
+            }
         }
     }
 
@@ -166,6 +192,10 @@ impl ClientTunnel {
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
         self.role_state.shut_down(Instant::now());
+
+        // Queue any remaining flow logs; the writer is joined when this tunnel is
+        // dropped at the end of the returned future, so they are durable on exit.
+        self.drain_flow_records();
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
@@ -192,6 +222,10 @@ impl ClientTunnel {
 
         while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
+            // Queue any flow logs produced by packet processing / timeouts; the
+            // writer thread spools each to disk immediately.
+            self.drain_flow_records();
 
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
@@ -329,16 +363,20 @@ impl ClientTunnel {
 }
 
 impl GatewayTunnel {
+    /// Creates a Gateway tunnel.
+    ///
+    /// `flow_logs_dir` enables flow logging when `Some`, spooling records to that
+    /// directory; `None` disables it.
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
-        flow_logs: bool,
+        flow_logs_dir: Option<PathBuf>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(
-                flow_logs,
+                flow_logs_dir.is_some(),
                 rand::random(),
                 Instant::now(),
                 SystemTime::now()
@@ -346,6 +384,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             buffers: Buffers::default(),
+            flow_log_writer: flow_logs_dir.map(FlowLogWriter::new),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -354,10 +393,26 @@ impl GatewayTunnel {
         self.role_state.public_key()
     }
 
+    /// Drains pending flow-log records: emits each for observability and, when
+    /// flow logging is enabled, queues it to be spooled to disk.
+    fn drain_flow_records(&mut self) {
+        while let Some(record) = self.role_state.poll_flow_record() {
+            crate::flow_log::emit(&record);
+
+            if let Some(writer) = self.flow_log_writer.as_ref() {
+                writer.write(record);
+            }
+        }
+    }
+
     /// Shut down the Gateway tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
         self.role_state.shut_down(Instant::now());
+
+        // Queue any remaining flow logs; the writer is joined when this tunnel is
+        // dropped at the end of the returned future, so they are durable on exit.
+        self.drain_flow_records();
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
@@ -384,6 +439,10 @@ impl GatewayTunnel {
 
         while let Some(mut tick) = budget.next() {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
+            // Queue any flow logs produced by packet processing / timeouts; the
+            // writer thread spools each to disk immediately.
+            self.drain_flow_records();
 
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
