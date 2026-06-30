@@ -124,11 +124,12 @@ defmodule Portal.Config.Definitions do
   @doc """
   The external URL the REST API will be accessible at.
 
-  Advertised as the server URL in the OpenAPI spec and SwaggerUI. If not set,
-  it falls back to `api_external_url`.
+  Advertised as the server URL in the OpenAPI spec and SwaggerUI, and used to
+  permanent-redirect REST API requests that arrive on any other host. If not
+  set, it falls back to `api_external_url`.
   """
 
-  defconfig(:rest_api_external_url, :string,
+  defconfig(:rest_api_url, :string,
     default: nil,
     changeset: fn changeset, key ->
       changeset

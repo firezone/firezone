@@ -75,6 +75,9 @@ pub(crate) struct SimClient {
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tests::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
+
+    /// Collects datagrams encapsulated via [`crate::ClientState::handle_tun_input`].
+    transmit_buffer: snownet::TransmitBuffer,
 }
 
 impl SimClient {
@@ -107,6 +110,7 @@ impl SimClient {
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
+            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -219,7 +223,7 @@ impl SimClient {
     ) -> Option<snownet::Transmit> {
         self.update_sent_requests(&packet, now);
 
-        match self.sut.handle_tun_input(packet, now) {
+        match self.handle_tun_input(packet, now) {
             Ok(Some(transmit)) => Some(transmit),
             Ok(None) => {
                 self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
@@ -232,6 +236,21 @@ impl SimClient {
                 None
             }
         }
+    }
+
+    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
+    ///
+    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
+    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    fn handle_tun_input(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<Option<snownet::Transmit>> {
+        self.sut
+            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+
+        Ok(self.transmit_buffer.poll_transmit())
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -369,7 +388,7 @@ impl SimClient {
                 .insert(packet_id, (now, packet.clone()));
 
             let reply = echo_reply(packet)?;
-            return self.sut.handle_tun_input(reply, now).ok().flatten();
+            return self.handle_tun_input(reply, now).ok().flatten();
         }
 
         if self.tcp_dns_client.accepts(&packet) {
@@ -488,7 +507,7 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
+        let transmit = self.handle_tun_input(reply, now).unwrap()?;
 
         Some(transmit)
     }

@@ -6,6 +6,7 @@
 mod agent;
 mod allocation;
 mod backoff;
+mod buffer;
 mod candidate;
 mod channel_data;
 mod index;
@@ -14,9 +15,10 @@ mod stats;
 mod utils;
 
 pub use allocation::RelaySocket;
+pub use buffer::{BufferProvider, Reservation, TransmitBuffer};
 pub use node::{
-    Credentials, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting, Transmit,
-    UnknownConnection,
+    Credentials, EncapsulateInfo, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting,
+    Transmit, UnknownConnection,
 };
 pub use stats::{ConnectionStats, NodeStats};
 

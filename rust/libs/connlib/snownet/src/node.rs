@@ -8,6 +8,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
+use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -91,7 +92,7 @@ pub struct Node<TId, RId> {
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
 
-    buffered_transmits: VecDeque<Transmit>,
+    buffered_transmits: TransmitBuffer,
 
     next_rate_limiter_reset: Option<Instant>,
 
@@ -191,6 +192,7 @@ where
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
         let index = IndexLfsr::new(&mut rng);
+        let allocations = Allocations::new(&mut rng);
 
         Self {
             rng,
@@ -198,10 +200,10 @@ where
             public_key: *public_key,
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
-            buffered_transmits: VecDeque::default(),
+            buffered_transmits: TransmitBuffer::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
-            allocations: Default::default(),
+            allocations,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
@@ -431,11 +433,16 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(cid, peer_socket, &goodbye, now, &mut self.allocations) {
-            Ok(Some(transmit)) => {
+        match connection.encapsulate(
+            cid,
+            peer_socket,
+            &goodbye,
+            now,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+        ) {
+            Ok(Some(_)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
-
-                self.buffered_transmits.push_back(transmit);
             }
             Ok(None) => {
                 tracing::info!("Connection closed proactively (failed to send goodbye)");
@@ -546,7 +553,7 @@ where
         Ok(Some((id, packet)))
     }
 
-    /// Encapsulate an outgoing IP packet.
+    /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
@@ -556,7 +563,8 @@ where
         cid: TId,
         packet: &IpPacket,
         now: Instant,
-    ) -> Result<Option<Transmit>> {
+        provider: &mut impl BufferProvider,
+    ) -> Result<Option<EncapsulateInfo>> {
         let conn = self.connections.get_mut(&cid, now)?;
 
         let socket = match &conn.state {
@@ -570,11 +578,11 @@ where
             }
         };
 
-        let maybe_transmit = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations)
+        let info = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
             .with_context(|| format!("cid={cid}"))?;
 
-        Ok(maybe_transmit)
+        Ok(info)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -667,9 +675,8 @@ where
 
         self.connections.migrate_relays(
             removed_allocations,
-            &self.allocations,
+            &mut self.allocations,
             &mut self.pending_events,
-            &mut self.rng,
             now,
         );
         self.connections
@@ -687,7 +694,7 @@ where
             return Some(transmit);
         }
 
-        let transmit = self.buffered_transmits.pop_front()?;
+        let transmit = self.buffered_transmits.poll_transmit()?;
 
         tracing::trace!(?transmit);
 
@@ -769,9 +776,8 @@ where
         // Fourth, migrate existing connections away from removed relays.
         self.connections.migrate_relays(
             to_remove.into_iter(),
-            &self.allocations,
+            &mut self.allocations,
             &mut self.pending_events,
-            &mut self.rng,
             now,
         );
     }
@@ -1094,10 +1100,7 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let (rid, _) = self
-            .allocations
-            .sample(&mut self.rng)
-            .ok_or(NoTurnServers {})?;
+        let (rid, _) = self.allocations.sample().ok_or(NoTurnServers {})?;
 
         tracing::debug!(%rid, "Sampled relay");
 
@@ -1290,6 +1293,12 @@ impl fmt::Debug for Transmit {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct EncapsulateInfo {
+    pub src: Option<SocketAddr>,
+    pub dst: SocketAddr,
+}
+
 #[derive(derive_more::Debug)]
 struct Connection<RId> {
     agent: Agent,
@@ -1373,7 +1382,7 @@ where
         cid: TId,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        transmits: &mut VecDeque<Transmit>,
+        transmits: &mut TransmitBuffer,
         pending_events: &mut VecDeque<Event<TId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
@@ -1556,22 +1565,22 @@ where
         // goes straight to the wire.
         while let Some(pt) = self.agent.poll_path_transmit() {
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
-            let maybe = match pt.payload {
-                path_agent::Payload::Ciphertext(ref bytes) => make_owned_transmit(
-                    self.relay.id,
-                    peer_socket,
-                    bytes,
-                    &self.buffer_pool,
-                    allocations,
-                    now,
-                ),
-                path_agent::Payload::Plaintext(ref ip) => self
-                    .encapsulate(cid, peer_socket, ip, now, allocations)
-                    .ok()
-                    .flatten(),
-            };
-            if let Some(transmit) = maybe {
-                transmits.push_back(transmit);
+            match pt.payload {
+                path_agent::Payload::Ciphertext(ref bytes) => {
+                    if let Some(transmit) = make_owned_transmit(
+                        self.relay.id,
+                        peer_socket,
+                        bytes,
+                        &self.buffer_pool,
+                        allocations,
+                        now,
+                    ) {
+                        transmits.push(transmit);
+                    }
+                }
+                path_agent::Payload::Plaintext(ref ip) => {
+                    let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
+                }
             }
         }
 
@@ -1594,7 +1603,7 @@ where
                 self.stats.stun_bytes_to_peer_direct += stun_packet_bytes.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
-                transmits.push_back(Transmit {
+                transmits.push(Transmit {
                     src: Some(source),
                     dst,
                     payload: self.buffer_pool.pull_initialised(&stun_packet_bytes),
@@ -1616,7 +1625,7 @@ where
 
             self.stats.stun_bytes_to_peer_relayed += data_channel_packet.len();
 
-            transmits.push_back(Transmit {
+            transmits.push(Transmit {
                 src: None,
                 dst: encode_ok.socket,
                 payload: self.buffer_pool.pull_initialised(&data_channel_packet),
@@ -1629,7 +1638,7 @@ where
         &mut self,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        transmits: &mut VecDeque<Transmit>,
+        transmits: &mut TransmitBuffer,
     ) {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
@@ -1674,7 +1683,7 @@ where
         &mut self,
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
-        transmits: &mut VecDeque<Transmit>,
+        transmits: &mut TransmitBuffer,
         pending_events: &mut VecDeque<Event<TId>>,
         cid: TId,
         now: Instant,
@@ -1734,6 +1743,7 @@ where
         }
     }
 
+    /// Encapsulate `packet` directly into the buffer handed out by `provider`, avoiding a copy.
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
@@ -1741,60 +1751,63 @@ where
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-    ) -> Result<Option<Transmit>>
+        provider: &mut impl BufferProvider,
+    ) -> Result<Option<EncapsulateInfo>>
     where
         TId: fmt::Display,
     {
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
-        let packet_start = if socket.send_from_relay() { 4 } else { 0 };
+        let relay_id = self.relay.id;
+        let ecn = packet.ecn();
 
-        let mut buffer = self.buffer_pool.pull();
-        buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
-
-        let len =
-            self.tunnel
-                .encapsulate_data_at(packet.packet(), &mut buffer[packet_start..], now)?;
-
-        let packet_end = packet_start + len;
-        buffer.truncate(packet_end);
-
-        match socket {
-            PeerSocket::PeerToPeer {
-                source,
-                dest: remote,
+        let (src, dst, packet_start, relay) = match socket {
+            PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
+                (Some(source), dest, 0, None)
             }
-            | PeerSocket::PeerToRelay {
-                source,
-                dest: remote,
-            } => Ok(Some(Transmit {
-                src: Some(source),
-                dst: remote,
-                payload: buffer,
-                ecn: packet.ecn(),
-            })),
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-                let Some(allocation) = allocations.get_mut_by_id(&self.relay.id) else {
-                    tracing::warn!(relay = %self.relay.id, "No allocation");
-                    return Ok(None);
-                };
-                let Some(encode_ok) =
-                    allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
-                else {
-                    return Ok(None);
-                };
+                let allocation = allocations
+                    .get_mut_by_id(&relay_id)
+                    .with_context(|| format!("No allocation for relay {relay_id}"))?;
+                let dst = allocation
+                    .active_socket()
+                    .with_context(|| format!("No active socket for relay {relay_id}"))?;
 
-                buffer.truncate(packet_end);
+                (
+                    None,
+                    dst,
+                    ip_packet::DATA_CHANNEL_OVERHEAD,
+                    Some((peer, allocation)),
+                )
+            }
+        };
 
-                Ok(Some(Transmit {
-                    src: None,
-                    dst: encode_ok.socket,
-                    payload: buffer,
-                    ecn: packet.ecn(),
-                }))
+        let reserve_len = packet_start + packet.packet().len() + ip_packet::WG_OVERHEAD;
+        let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
+
+        // On `Err`, `reservation` is dropped without committing and rolls back automatically.
+        let len = self.tunnel.encapsulate_data_at(
+            packet.packet(),
+            &mut reservation.buffer()[packet_start..],
+            now,
+        )?;
+        debug_assert_eq!(packet_start + len, reserve_len);
+
+        if let Some((peer, allocation)) = relay {
+            // A missing channel is an expected part of channel setup (`encode_channel_data_header`
+            // logs it and queues a binding), so drop the packet instead of surfacing an error.
+            if allocation
+                .encode_channel_data_header(peer, reservation.buffer(), now)
+                .is_none()
+            {
+                return Ok(None);
             }
         }
+
+        reservation.commit();
+
+        Ok(Some(EncapsulateInfo { src, dst }))
     }
 
     fn decapsulate<TId>(
@@ -1804,7 +1817,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         allocations: &mut Allocations<RId>,
-        transmits: &mut VecDeque<Transmit>,
+        transmits: &mut TransmitBuffer,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
     where
@@ -2000,7 +2013,7 @@ where
     fn initiate_wg_session(
         &mut self,
         allocations: &mut Allocations<RId>,
-        transmits: &mut VecDeque<Transmit>,
+        provider: &mut impl BufferProvider,
         now: Instant,
     ) where
         RId: Copy,
@@ -2041,14 +2054,16 @@ where
 
         self.last_proactive_handshake_sent_at = Some(now);
 
-        transmits.extend(make_owned_transmit(
+        if let Some(transmit) = make_owned_transmit(
             self.relay.id,
             socket,
             bytes,
             &self.buffer_pool,
             allocations,
             now,
-        ));
+        ) {
+            provider.push(transmit);
+        }
     }
 
     fn add_local_candidate<TId>(

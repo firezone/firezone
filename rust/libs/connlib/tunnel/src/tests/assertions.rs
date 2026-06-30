@@ -734,6 +734,10 @@ impl<S> Layer<S> for PanicOnErrorEvents<S>
 where
     S: Subscriber,
 {
+    fn max_level_hint(&self) -> Option<tracing::level_filters::LevelFilter> {
+        Some(tracing::level_filters::LevelFilter::ERROR)
+    }
+
     fn on_event(
         &self,
         _event: &tracing::Event<'_>,

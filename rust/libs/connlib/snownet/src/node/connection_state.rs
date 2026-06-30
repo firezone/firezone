@@ -268,10 +268,6 @@ pub(crate) enum PeerSocket {
 }
 
 impl PeerSocket {
-    pub(crate) fn send_from_relay(&self) -> bool {
-        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
-    }
-
     pub(crate) fn fmt<RId>(&self, relay: RId) -> String
     where
         RId: fmt::Display,

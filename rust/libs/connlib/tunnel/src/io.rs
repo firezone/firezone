@@ -7,6 +7,7 @@ mod timeout;
 mod udp_dns;
 
 pub use device::{Device, TunChannelClosed};
+pub(crate) use gso_queue::GsoQueue;
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -14,7 +15,6 @@ use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
-use gso_queue::GsoQueue;
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
@@ -442,6 +442,17 @@ impl Io {
                 break;
             };
 
+            for segment in datagram.packet.chunks(datagram.segment_size) {
+                self.packet_counter.add(
+                    1,
+                    &[
+                        otel::attr::network_protocol_name(segment),
+                        otel::attr::network_transport_udp(),
+                        otel::attr::network_io_direction_transmit(),
+                    ],
+                );
+            }
+
             self.sockets.send(datagram)?;
         }
 
@@ -495,6 +506,11 @@ impl Io {
         self.timeout.schedule(now + Duration::from_secs(1));
     }
 
+    /// The GSO queue used as the destination buffer when encapsulating packets in place.
+    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
+        &mut self.gso_queue
+    }
+
     pub fn send_network(
         &mut self,
         src: Option<SocketAddr>,
@@ -503,15 +519,6 @@ impl Io {
         ecn: Ecn,
     ) {
         self.gso_queue.enqueue(src, dst, payload, ecn);
-
-        self.packet_counter.add(
-            1,
-            &[
-                otel::attr::network_protocol_name(payload),
-                otel::attr::network_transport_udp(),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        );
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {

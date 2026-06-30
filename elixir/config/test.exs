@@ -135,6 +135,10 @@ config :portal, :policy_authorization_queue, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
+  req_opts: [
+    plug: {Req.Test, Portal.ComponentVersions},
+    retry: false
+  ],
   versions: [
     apple: "1.0.0",
     android: "1.0.0",
