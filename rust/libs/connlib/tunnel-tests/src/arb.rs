@@ -31,14 +31,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use arbitrary::{Result, Unstructured};
+use arbitrary::Unstructured;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
-use dns_types::{DomainName, OwnedRecordData};
+use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use tunnel::client::{CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource};
+use tunnel::dns;
 use tunnel::malicious_behaviour::MaliciousBehaviour;
-use tunnel::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
+use tunnel::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember};
 
 use crate::dns_records::DnsRecords;
 use crate::flux_capacitor::FluxCapacitor;
@@ -49,7 +50,9 @@ use crate::reference::{PrivateKey, ReferenceState};
 use crate::sim_net::{Host, RoutingTable};
 use crate::stub_portal::StubPortal;
 use crate::sut::TunnelTest;
-use crate::transition::{DPort, Destination, Identifier, SPort, Seq, Transition};
+use crate::transition::{
+    DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq, Transition,
+};
 
 /// Upper bound on transitions applied per case (the proptest suite uses 5..=15).
 const MAX_TRANSITIONS: usize = 20;
@@ -257,9 +260,10 @@ pub fn run_fuzz_case_structured(data: &[u8]) {
     let mut u = Unstructured::new(data);
     let mut g = Gen::new(&mut u);
 
-    let Ok(mut ref_state) = arb_initial_state(&mut g, now) else {
-        return;
-    };
+    // Generation is infallible: out-of-bytes degrades each decision to its
+    // minimum/default rather than erroring, so a truncated input still yields a
+    // minimal-but-valid scenario (and the loop simply applies fewer transitions).
+    let mut ref_state = arb_initial_state(&mut g, now);
 
     let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor.clone());
     TunnelTest::check_invariants(&sut, &ref_state);
@@ -270,10 +274,8 @@ pub fn run_fuzz_case_structured(data: &[u8]) {
             break;
         }
 
-        let transition = match arb_transition(&mut g, &ref_state, now) {
-            Ok(Some(t)) => t,
-            Ok(None) => break, // no legal arm
-            Err(_) => break,   // out of bytes
+        let Some(transition) = arb_transition(&mut g, &ref_state, now) else {
+            break; // no legal arm
         };
 
         // Bounded residual validity gate (payload-level preconditions). Skipping
@@ -299,24 +301,24 @@ pub fn run_fuzz_case_structured(data: &[u8]) {
 // Initial state
 // ---------------------------------------------------------------------------
 
-fn arb_initial_state(g: &mut Gen, start: Instant) -> Result<ReferenceState> {
+fn arb_initial_state(g: &mut Gen, start: Instant) -> ReferenceState {
     // 1. Portal layout. Tunnel IPs are assigned INSIDE StubPortal::new from a
     //    single shared iterator (clients -> gateways-by-site -> static-pool
     //    offline members), so the static-device-pool invariant is preserved.
-    let portal = arb_stub_portal(g)?;
+    let portal = arb_stub_portal(g);
 
     // 2. Materialize hosts. Socket IPs come from cursors (unique by
     //    construction), keys from the keyed counter.
-    let clients = arb_clients(g, &portal)?;
-    let gateways = arb_gateways(g, &portal, start)?;
-    let relays = arb_relays(g)?;
+    let clients = arb_clients(g, &portal);
+    let gateways = arb_gateways(g, &portal, start);
+    let relays = arb_relays(g);
 
     // 3. Staged DNS dependency chain, preserved in order.
-    let dns_resource_records = arb_dns_resource_records(g, &portal, start)?;
+    let dns_resource_records = arb_dns_resource_records(g, &portal, start);
     let icmp_error_hosts = arb_icmp_error_hosts(g, &dns_resource_records, start);
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts, start);
 
-    let mut global_dns_records = arb_global_dns_records(g, start)?;
+    let mut global_dns_records = arb_global_dns_records(g, start);
     global_dns_records.merge(dns_resource_records);
 
     let drop_direct_client_traffic = g.bool();
@@ -337,7 +339,7 @@ fn arb_initial_state(g: &mut Gen, start: Instant) -> Result<ReferenceState> {
         debug_assert!(ok, "relay socket IPs must be unique by construction");
     }
 
-    Ok(ReferenceState::from_parts(
+    ReferenceState::from_parts(
         clients,
         gateways,
         relays,
@@ -347,10 +349,10 @@ fn arb_initial_state(g: &mut Gen, start: Instant) -> Result<ReferenceState> {
         icmp_error_hosts,
         network,
         drop_direct_client_traffic,
-    ))
+    )
 }
 
-fn arb_stub_portal(g: &mut Gen) -> Result<StubPortal> {
+fn arb_stub_portal(g: &mut Gen) -> StubPortal {
     // Sites: 2..=4, first one becomes the Internet site.
     let n_sites = g.count(2, 4);
     let mut sites: Vec<Site> = (0..n_sites)
@@ -443,7 +445,7 @@ fn arb_stub_portal(g: &mut Gen) -> Result<StubPortal> {
         })
         .collect();
 
-    Ok(StubPortal::new(
+    StubPortal::new(
         clients,
         gateways_by_site,
         gateway_selector,
@@ -455,7 +457,7 @@ fn arb_stub_portal(g: &mut Gen) -> Result<StubPortal> {
         search_domain,
         upstream_do53,
         upstream_doh,
-    ))
+    )
 }
 
 fn pick_site(g: &mut Gen, sites: &[Site]) -> Site {
@@ -616,21 +618,16 @@ fn arb_search_domain(g: &mut Gen, dns_resources: &BTreeSet<DnsResource>) -> Opti
 // Hosts
 // ---------------------------------------------------------------------------
 
-fn arb_clients(g: &mut Gen, portal: &StubPortal) -> Result<BTreeMap<ClientId, Host<RefClient>>> {
+fn arb_clients(g: &mut Gen, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
     let mut clients = BTreeMap::new();
     for (id, tun4, tun6) in portal.client_tunnel_ips() {
-        let host = arb_client_host(g, id, tun4, tun6)?;
+        let host = arb_client_host(g, id, tun4, tun6);
         clients.insert(id, host);
     }
-    Ok(clients)
+    clients
 }
 
-fn arb_client_host(
-    g: &mut Gen,
-    id: ClientId,
-    tun4: Ipv4Addr,
-    tun6: Ipv6Addr,
-) -> Result<Host<RefClient>> {
+fn arb_client_host(g: &mut Gen, id: ClientId, tun4: Ipv4Addr, tun6: Ipv6Addr) -> Host<RefClient> {
     let key = g.fresh_private_key();
     let system_dns = arb_system_dns_servers(g);
     let internet_resource_active = g.bool();
@@ -654,29 +651,29 @@ fn arb_client_host(
     let latency = g.latency(250);
     let mut host = Host::new(inner, latency, port);
     host.update_interface(ip4, ip6);
-    Ok(host)
+    host
 }
 
 fn arb_gateways(
     g: &mut Gen,
     portal: &StubPortal,
     start: Instant,
-) -> Result<BTreeMap<GatewayId, Host<RefGateway>>> {
+) -> BTreeMap<GatewayId, Host<RefGateway>> {
     let mut gateways = BTreeMap::new();
     for (id, tun4, tun6, site_id) in portal.gateway_tunnel_ips() {
         // Gateways are always dual-stack on a fixed listening port (matching
         // `ref_gateway_host`).
-        let site_specific = arb_site_specific_dns_records(g, portal, site_id, start)?;
+        let site_specific = arb_site_specific_dns_records(g, portal, site_id, start);
         let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
         let latency = g.latency(200);
         let mut host = Host::new(inner, latency, 52625);
         host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
         gateways.insert(id, host);
     }
-    Ok(gateways)
+    gateways
 }
 
-fn arb_relays(g: &mut Gen) -> Result<BTreeMap<RelayId, Host<u64>>> {
+fn arb_relays(g: &mut Gen) -> BTreeMap<RelayId, Host<u64>> {
     let n = g.count(1, 2);
     let mut relays = BTreeMap::new();
     for _ in 0..n {
@@ -687,7 +684,7 @@ fn arb_relays(g: &mut Gen) -> Result<BTreeMap<RelayId, Host<u64>>> {
         host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
         relays.insert(id, host);
     }
-    Ok(relays)
+    relays
 }
 
 /// V4 / V6 / Dual socket shape, addresses from the cursors so they never collide.
@@ -714,7 +711,7 @@ fn arb_listening_port(g: &mut Gen) -> u16 {
 // DNS records
 // ---------------------------------------------------------------------------
 
-fn arb_dns_resource_records(g: &mut Gen, portal: &StubPortal, at: Instant) -> Result<DnsRecords> {
+fn arb_dns_resource_records(g: &mut Gen, portal: &StubPortal, at: Instant) -> DnsRecords {
     let mut map = DnsRecords::default();
     for resource in portal.dns_resources() {
         let address = resource.address;
@@ -729,7 +726,7 @@ fn arb_dns_resource_records(g: &mut Gen, portal: &StubPortal, at: Instant) -> Re
             }
         }
     }
-    Ok(map)
+    map
 }
 
 /// Site-specific DNS records for a gateway: records for the DNS resources in
@@ -739,7 +736,7 @@ fn arb_site_specific_dns_records(
     portal: &StubPortal,
     site: SiteId,
     at: Instant,
-) -> Result<DnsRecords> {
+) -> DnsRecords {
     let mut map = DnsRecords::default();
     for resource in portal.dns_resources() {
         if !resource.sites.iter().any(|s| s.id == site) {
@@ -757,7 +754,7 @@ fn arb_site_specific_dns_records(
             }
         }
     }
-    Ok(map)
+    map
 }
 
 fn arb_subdomain_records(g: &mut Gen, base: String, at: Instant) -> DnsRecords {
@@ -797,7 +794,7 @@ fn arb_dns_resource_ip(g: &mut Gen) -> IpAddr {
 }
 
 /// Global DNS records: 0..=4 domains, each with 1..=5 records (IP or TXT).
-fn arb_global_dns_records(g: &mut Gen, at: Instant) -> Result<DnsRecords> {
+fn arb_global_dns_records(g: &mut Gen, at: Instant) -> DnsRecords {
     let n = g.count(0, 4);
     let mut map = DnsRecords::default();
     for _ in 0..n {
@@ -808,7 +805,7 @@ fn arb_global_dns_records(g: &mut Gen, at: Instant) -> Result<DnsRecords> {
             BTreeMap::from([(at, records)]),
         )]));
     }
-    Ok(map)
+    map
 }
 
 /// 1..=5 records, weighted 3:1 IP:TXT (matching `dns_record`).
@@ -824,7 +821,7 @@ fn arb_dns_record_set(g: &mut Gen) -> BTreeSet<OwnedRecordData> {
             let mut content = Vec::new();
             for _ in 0..sections {
                 content.push(255u8);
-                content.extend(std::iter::repeat(b'a').take(255));
+                content.extend(std::iter::repeat_n(b'a', 255));
             }
             match dns_types::records::txt(content) {
                 Ok(r) => r,
@@ -1043,7 +1040,7 @@ fn arb_more_specific_subnet(g: &mut Gen, address: IpNetwork, extra_bits: usize) 
             let off = if host_bits == 0 {
                 0
             } else {
-                (g.u32() % (1u32 << host_bits.min(31))) as u32
+                g.u32() % (1u32 << host_bits.min(31))
             };
             let ip = Ipv4Addr::from(base.wrapping_add(off));
             let netmask = (n.netmask() as usize + add).min(32) as u8;
@@ -1132,9 +1129,22 @@ enum TransitionKind {
     ConnectTcpV6,
     IcmpErrorV4Packet,
     IcmpErrorV6Packet,
+    // Packet arms against non-resource / gateway / peer-client IPs.
+    NonResourceV4Packet,
+    NonResourceV6Packet,
+    GatewayV4Packet,
+    GatewayV6Packet,
+    PoolRoutedPacket,
+    // DNS-query arms (`SendDnsQueries`).
+    SendDnsQueriesAllDomains,
+    SendDnsQueriesWildcard,
+    SendDnsQueriesDevicePoolLabel,
+    SendDnsQueriesDevicePoolRandom,
+    // Static device pool membership update.
+    UpdateStaticDevicePool,
 }
 
-fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Result<Option<Transition>> {
+fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<Transition> {
     // 1. Build the legal-arm list in fixed enum order with the same weights the
     //    proptest `transitions()` uses.
     let mut legal: Vec<(TransitionKind, u32)> = Vec::new();
@@ -1204,11 +1214,46 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Result<O
     if !state.resolved_v6_domains_with_icmp_errors(now).is_empty() {
         legal.push((K::IcmpErrorV6Packet, 10));
     }
+    // DNS-query arms (gated on a reachable DNS server existing).
+    if !state.all_domains(now).is_empty() && !state.reachable_dns_servers().is_empty() {
+        legal.push((K::SendDnsQueriesAllDomains, 5));
+    }
+    if !state.wildcard_dns_resources().is_empty() && !state.reachable_dns_servers().is_empty() {
+        legal.push((K::SendDnsQueriesWildcard, 2));
+    }
+    if !state.device_pool_query_targets().is_empty() && !state.portal.device_labels().is_empty() {
+        legal.push((K::SendDnsQueriesDevicePoolLabel, 2));
+    }
+    if !state.device_pool_query_targets().is_empty() {
+        legal.push((K::SendDnsQueriesDevicePoolRandom, 1));
+    }
+    if !state
+        .resolved_ip4_for_non_resources(&state.global_dns_records, now)
+        .is_empty()
+    {
+        legal.push((K::NonResourceV4Packet, 1));
+    }
+    if !state
+        .resolved_ip6_for_non_resources(&state.global_dns_records, now)
+        .is_empty()
+    {
+        legal.push((K::NonResourceV6Packet, 1));
+    }
+    if !state.connected_gateway_ipv4_ips().is_empty() {
+        legal.push((K::GatewayV4Packet, 1));
+    }
+    if !state.connected_gateway_ipv6_ips().is_empty() {
+        legal.push((K::GatewayV6Packet, 1));
+    }
+    if !state.pool_routed_other_client_tun_ips().is_empty() {
+        legal.push((K::PoolRoutedPacket, 5));
+    }
+    if !state.static_device_pools_on_any_client().is_empty() {
+        legal.push((K::UpdateStaticDevicePool, 2));
+    }
 
     // 2. Weighted pick over the legal list.
-    let Some(kind) = weighted_choose(g, &legal) else {
-        return Ok(None);
-    };
+    let kind = weighted_choose(g, &legal)?;
 
     // 3. Generate the chosen arm's payload from the following bytes.
     let transition = match kind {
@@ -1248,7 +1293,7 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Result<O
                 ip6,
             }
         }
-        K::DeployNewRelays => Transition::DeployNewRelays(arb_relays(g)?),
+        K::DeployNewRelays => Transition::DeployNewRelays(arb_relays(g)),
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
             // Reboot the *existing* relays with fresh credentials (same ids).
@@ -1406,9 +1451,118 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Result<O
             let tunnel_ip6 = state.clients.get(&client_id).unwrap().inner().tunnel_ip6;
             arb_connect_tcp_for_filters(g, client_id, IpAddr::V6(tunnel_ip6), domain, &filters)
         }
+        // Non-resource IP packets: unconstrained ICMP or UDP (any port for v4/v6
+        // non-resources, matching the proptest `prop_oneof![icmp, udp(any u16)]`).
+        K::NonResourceV4Packet => {
+            let values = state.resolved_ip4_for_non_resources(&state.global_dns_records, now);
+            let (client_id, ip) = values[g.choose_index(values.len())];
+            let tunnel_ip4 = state.clients.get(&client_id).unwrap().inner().tunnel_ip4;
+            arb_icmp_or_any_udp(g, client_id, IpAddr::V4(tunnel_ip4), IpAddr::V4(ip))
+        }
+        K::NonResourceV6Packet => {
+            let values = state.resolved_ip6_for_non_resources(&state.global_dns_records, now);
+            let (client_id, ip) = values[g.choose_index(values.len())];
+            let tunnel_ip6 = state.clients.get(&client_id).unwrap().inner().tunnel_ip6;
+            arb_icmp_or_any_udp(g, client_id, IpAddr::V6(tunnel_ip6), IpAddr::V6(ip))
+        }
+        // Connected-gateway IPs: ICMP or UDP on a non-DNS port to a host within the
+        // gateway's tunnel network (matching `prop_oneof![icmp, udp(non_dns_ports)]`).
+        K::GatewayV4Packet => {
+            let values = state.connected_gateway_ipv4_ips();
+            let (client_id, network) = values[g.choose_index(values.len())];
+            let tunnel_ip4 = state.clients.get(&client_id).unwrap().inner().tunnel_ip4;
+            let DstSpec::Ip(dst) = host_in_v4(g, network) else {
+                unreachable!()
+            };
+            arb_icmp_or_nondns_udp(g, client_id, IpAddr::V4(tunnel_ip4), dst)
+        }
+        K::GatewayV6Packet => {
+            let values = state.connected_gateway_ipv6_ips();
+            let (client_id, network) = values[g.choose_index(values.len())];
+            let tunnel_ip6 = state.clients.get(&client_id).unwrap().inner().tunnel_ip6;
+            let DstSpec::Ip(dst) = host_in_v6(g, network) else {
+                unreachable!()
+            };
+            arb_icmp_or_nondns_udp(g, client_id, IpAddr::V6(tunnel_ip6), dst)
+        }
+        // Peer-client routed via a static device pool: ICMP/UDP respecting the pool filters.
+        K::PoolRoutedPacket => {
+            let values = state.pool_routed_other_client_tun_ips();
+            let (src_id, dst_ip, filters) = values[g.choose_index(values.len())].clone();
+            let inner = state.clients.get(&src_id).unwrap().inner();
+            let src_ip = match dst_ip {
+                IpAddr::V4(_) => IpAddr::V4(inner.tunnel_ip4),
+                IpAddr::V6(_) => IpAddr::V6(inner.tunnel_ip6),
+            };
+            arb_icmp_or_udp_for_filters(g, src_id, src_ip, DstSpec::Ip(dst_ip), &filters)
+        }
+        K::SendDnsQueriesAllDomains => {
+            let domains = state.all_domains(now);
+            let dns_servers = state.reachable_dns_servers();
+            let (client_id, domain, rtypes) = domains[g.choose_index(domains.len())].clone();
+            let (dns_client_id, dns_server) =
+                dns_servers[g.choose_index(dns_servers.len())].clone();
+            // The proptest deliberately emits a NO-OP when the sampled domain's
+            // client differs from the sampled DNS server's client.
+            if client_id != dns_client_id {
+                Transition::SendDnsQueries(Vec::new())
+            } else {
+                let queries = arb_dns_queries(g, vec![(domain, rtypes)], dns_server);
+                Transition::SendDnsQueries(queries.into_iter().map(|q| (client_id, q)).collect())
+            }
+        }
+        K::SendDnsQueriesWildcard => {
+            let wildcards = state.wildcard_dns_resources();
+            let dns_servers = state.reachable_dns_servers();
+            let (client_id, resource) = wildcards[g.choose_index(wildcards.len())].clone();
+            let (dns_client_id, dns_server) =
+                dns_servers[g.choose_index(dns_servers.len())].clone();
+            if client_id != dns_client_id {
+                Transition::SendDnsQueries(Vec::new())
+            } else {
+                let base = resource.address.trim_start_matches("*.").to_owned();
+                let label = g.lower_ascii(3, 6);
+                let domain: DomainName = format!("{label}.{base}").parse().unwrap();
+                let rtypes = if g.bool() {
+                    vec![RecordType::A]
+                } else {
+                    vec![RecordType::AAAA]
+                };
+                let queries = arb_dns_queries(g, vec![(domain, rtypes)], dns_server);
+                Transition::SendDnsQueries(queries.into_iter().map(|q| (client_id, q)).collect())
+            }
+        }
+        K::SendDnsQueriesDevicePoolLabel => {
+            let targets = state.device_pool_query_targets();
+            let labels = state.portal.device_labels();
+            let (client_id, resource, dns_server) = targets[g.choose_index(targets.len())].clone();
+            let label = labels[g.choose_index(labels.len())].clone();
+            let base = resource.address.trim_start_matches("*.").to_owned();
+            let domain: DomainName = format!("{label}.{base}").parse().unwrap();
+            let queries = arb_dns_queries(g, vec![(domain, vec![RecordType::A])], dns_server);
+            Transition::SendDnsQueries(queries.into_iter().map(|q| (client_id, q)).collect())
+        }
+        K::SendDnsQueriesDevicePoolRandom => {
+            let targets = state.device_pool_query_targets();
+            let (client_id, resource, dns_server) = targets[g.choose_index(targets.len())].clone();
+            let base = resource.address.trim_start_matches("*.").to_owned();
+            // Random label exercises the not-found path (FailReason::NotFound).
+            let label = g.lower_ascii(3, 6);
+            let domain: DomainName = format!("{label}.{base}").parse().unwrap();
+            let queries = arb_dns_queries(g, vec![(domain, vec![RecordType::A])], dns_server);
+            Transition::SendDnsQueries(queries.into_iter().map(|q| (client_id, q)).collect())
+        }
+        K::UpdateStaticDevicePool => {
+            let pools = state.static_device_pools_on_any_client();
+            let pool = pools[g.choose_index(pools.len())].clone();
+            Transition::UpdateStaticDevicePool {
+                pool_id: pool.id,
+                new_devices: arb_static_pool_members(g, state, &pool),
+            }
+        }
     };
 
-    Ok(Some(transition))
+    Some(transition)
 }
 
 /// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed
@@ -1487,13 +1641,13 @@ fn arb_icmp_or_udp_for_filters(
                 })
             )
         })
-        .cloned()
+        .copied()
         .collect();
 
     let use_matching = !usable.is_empty() && g.flip(80);
 
     if use_matching {
-        let filter = usable[g.choose_index(usable.len())].clone();
+        let filter = usable[g.choose_index(usable.len())];
         match filter {
             Filter::Icmp => arb_icmp_packet(g, client_id, src, dst),
             Filter::Udp(PortRange {
@@ -1529,7 +1683,7 @@ fn arb_connect_tcp_for_filters(
         .iter()
         .filter_map(|f| match f {
             Filter::Tcp(r) => Some(*r),
-            _ => None,
+            Filter::Udp(_) | Filter::Icmp => None,
         })
         .collect();
 
@@ -1553,6 +1707,185 @@ fn arb_connect_tcp_for_filters(
         sport: SPort(sport),
         dport: DPort(dport),
     }
+}
+
+/// Unconstrained ICMP or UDP to an IP destination, UDP using *any* port
+/// (matches the non-resource `prop_oneof![icmp, udp(any::<u16>())]`).
+fn arb_icmp_or_any_udp(g: &mut Gen, client_id: ClientId, src: IpAddr, dst: IpAddr) -> Transition {
+    if g.bool() {
+        arb_icmp_packet(g, client_id, src, DstSpec::Ip(dst))
+    } else {
+        let dport = g.u16();
+        arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), dport)
+    }
+}
+
+/// Unconstrained ICMP or UDP to an IP destination, UDP using a non-DNS port
+/// (matches the connected-gateway `prop_oneof![icmp, udp(non_dns_ports())]`).
+fn arb_icmp_or_nondns_udp(
+    g: &mut Gen,
+    client_id: ClientId,
+    src: IpAddr,
+    dst: IpAddr,
+) -> Transition {
+    if g.bool() {
+        arb_icmp_packet(g, client_id, src, DstSpec::Ip(dst))
+    } else {
+        let dport = arb_non_dns_port(g);
+        arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), dport)
+    }
+}
+
+/// Port of `dns_queries`: zip a set of `(server, transport, query_id)` tuples with
+/// a set of `(domain, rtypes)` and drop the unmatched tail. For each pair, choose a
+/// response rtype (PTR-rewriting the domain when PTR is chosen).
+///
+/// Uniqueness of the query tuples is by construction (collected into a `BTreeSet`,
+/// matching the proptest `btree_set`, so duplicates simply collapse — "we don't
+/// care if we drop some").
+fn arb_dns_queries(
+    g: &mut Gen,
+    domains: Vec<(DomainName, Vec<RecordType>)>,
+    dns_server: dns::Upstream,
+) -> Vec<DnsQuery> {
+    // 1..5 unique (server, transport, query_id) tuples. The server is fixed to the
+    // chosen one, so uniqueness reduces to (transport, query_id).
+    let n_queries = g.count(1, 4);
+    let mut tuples: BTreeSet<(DnsTransport, u16)> = BTreeSet::new();
+    for _ in 0..n_queries {
+        tuples.insert((arb_dns_transport(g), arb_dns_query_id(g)));
+    }
+
+    // 1..5 unique domains drawn from the provided list (collapses duplicates).
+    let n_domains = g.count(1, 4);
+    let mut domain_set: BTreeSet<(DomainName, Vec<RecordType>)> = BTreeSet::new();
+    if !domains.is_empty() {
+        for _ in 0..n_domains {
+            domain_set.insert(domains[g.choose_index(domains.len())].clone());
+        }
+    }
+
+    // Zip, dropping the unmatched tail of whichever set is longer.
+    tuples
+        .into_iter()
+        .zip(domain_set)
+        .map(|((transport, query_id), (mut domain, existing_rtypes))| {
+            let r_type = arb_maybe_available_response_rtype(g, &existing_rtypes);
+            if matches!(r_type, RecordType::PTR) {
+                let reverse_ip = arb_ptr_query_ip(g);
+                domain = DomainName::reverse_from_addr(reverse_ip).unwrap();
+            }
+            DnsQuery {
+                domain,
+                r_type,
+                query_id,
+                dns_server: dns_server.clone(),
+                transport,
+            }
+        })
+        .collect()
+}
+
+fn arb_dns_transport(g: &mut Gen) -> DnsTransport {
+    if g.bool() {
+        DnsTransport::Udp {
+            local_port: g.u16(),
+        }
+    } else {
+        DnsTransport::Tcp
+    }
+}
+
+fn arb_dns_query_id(g: &mut Gen) -> u16 {
+    // `prop_oneof![any::<u16>(), Just(33333)]` — equal weight.
+    if g.bool() { g.u16() } else { 33333 }
+}
+
+/// Port of `maybe_available_response_rtypes`: if the domain has an A/AAAA record,
+/// pick from {PTR, MX, A, AAAA}; otherwise pick from the available rtypes.
+fn arb_maybe_available_response_rtype(g: &mut Gen, available: &[RecordType]) -> RecordType {
+    if available.contains(&RecordType::A) || available.contains(&RecordType::AAAA) {
+        let choices = [
+            RecordType::PTR,
+            RecordType::MX,
+            RecordType::A,
+            RecordType::AAAA,
+        ];
+        choices[g.choose_index(choices.len())]
+    } else if available.is_empty() {
+        // No records to choose from; default to A (the proptest never reaches here
+        // because `all_domains` filters out empty-rtype domains).
+        RecordType::A
+    } else {
+        available[g.choose_index(available.len())]
+    }
+}
+
+/// Port of `ptr_query_ip`: a host in the resource ranges, or any IP.
+fn arb_ptr_query_ip(g: &mut Gen) -> IpAddr {
+    use tunnel::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+    match g.choose_index(3) {
+        0 => {
+            let DstSpec::Ip(ip) = host_in_v4(g, IPV4_RESOURCES) else {
+                unreachable!()
+            };
+            ip
+        }
+        1 => {
+            let DstSpec::Ip(ip) = host_in_v6(g, IPV6_RESOURCES) else {
+                unreachable!()
+            };
+            ip
+        }
+        _ => {
+            if g.bool() {
+                IpAddr::V4(Ipv4Addr::from(g.u32()))
+            } else {
+                let hi = (g.u64() as u128) << 64;
+                let lo = g.u64() as u128;
+                IpAddr::V6(Ipv6Addr::from(hi | lo))
+            }
+        }
+    }
+}
+
+/// Port of the `UpdateStaticDevicePool` member generation: a subsequence of the
+/// online clients (as `/32` + `/128` device members) plus all preserved offline
+/// members already in the pool.
+fn arb_static_pool_members(
+    g: &mut Gen,
+    state: &ReferenceState,
+    pool: &tunnel::client::StaticDevicePoolResource,
+) -> Vec<DevicePoolMember> {
+    let online_clients: Vec<(ClientId, Ipv4Network, Ipv6Network)> = state
+        .clients
+        .iter()
+        .map(|(id, c)| {
+            let inner = c.inner();
+            (
+                *id,
+                Ipv4Network::new(inner.tunnel_ip4, 32).unwrap(),
+                Ipv6Network::new(inner.tunnel_ip6, 128).unwrap(),
+            )
+        })
+        .collect();
+    let online_ids: BTreeSet<ClientId> = online_clients.iter().map(|(id, _, _)| *id).collect();
+
+    let preserved_offline: Vec<DevicePoolMember> = pool
+        .devices
+        .iter()
+        .filter(|d| !online_ids.contains(&d.id))
+        .cloned()
+        .collect();
+
+    // Per-element keep-bit subsequence of the online clients (0..=all).
+    let mut devices: Vec<DevicePoolMember> = online_clients
+        .into_iter()
+        .filter(|_| g.bool())
+        .map(|(id, ipv4, ipv6)| DevicePoolMember { id, ipv4, ipv6 })
+        .collect();
+    devices.extend(preserved_offline);
+    devices
 }
 
 fn arb_icmp_packet(g: &mut Gen, client_id: ClientId, src: IpAddr, dst: DstSpec) -> Transition {
