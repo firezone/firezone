@@ -497,7 +497,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        self.telemetry.stop().await;
+        self.telemetry.stop().await; // Flush telemetry as the service shuts down.
 
         ret
     }
