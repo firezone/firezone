@@ -76,7 +76,7 @@ pub(crate) struct SimClient {
     pub(crate) tcp_client: crate::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
 
-    /// Collects datagrams encapsulated via [`crate::ClientState::handle_tun_input`].
+    /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
 }
 
