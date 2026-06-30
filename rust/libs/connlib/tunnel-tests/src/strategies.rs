@@ -37,8 +37,20 @@ pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecord
 }
 
 pub(crate) fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
+    // IP records resolve into the documentation ranges (same as DNS *resource*
+    // records). This keeps every DNS-resolvable IP disjoint from CIDR / Internet
+    // resource address ranges (which exclude the documentation and sentinel
+    // ranges, see `cidr_resource_outside_reserved_ranges`). Otherwise a domain's
+    // resolved IP could fall inside a CIDR resource, making the reference (routes
+    // by domain) and the SUT (routes by resolved IP) pick different gateways.
+    let ip_record = prop_oneof![
+        dns_resource_ip4s().prop_map_into::<IpAddr>(),
+        dns_resource_ip6s().prop_map_into::<IpAddr>(),
+    ]
+    .prop_map(dns_types::records::ip);
+
     prop_oneof![
-        3 => non_reserved_ip().prop_map(dns_types::records::ip),
+        3 => ip_record,
         1 => collection::vec(txt_record(), 6..=10)
             .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
             .prop_map(|content| dns_types::records::txt(content).unwrap())
@@ -507,13 +519,50 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = CidrResource> {
-    cidr_resource(
-        cidr_resource_address(), sites.prop_map(|s| vec![s]))
-        .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
+    // `cidr_resource_address` already excludes the documentation / DNS / sentinel
+    // ranges, so no additional filter is needed here.
+    cidr_resource(cidr_resource_address(), sites.prop_map(|s| vec![s]))
+}
+
+/// Whether `network` overlaps any range that DNS records resolve into (the
+/// documentation host / DNS ranges) or a DNS sentinel range.
+///
+/// A CIDR / Internet resource whose range contains a DNS-resolvable IP makes the
+/// reference (routes a `Destination::DomainName` by domain) and the SUT (routes by
+/// the resolved IP) disagree on the gateway; resources inside the sentinel range
+/// are also unsupported by connlib.
+pub(crate) fn cidr_overlaps_dns_or_sentinel(network: IpNetwork) -> bool {
+    fn overlaps(a: IpNetwork, b: IpNetwork) -> bool {
+        a.contains(b.network_address()) || b.contains(a.network_address())
+    }
+
+    let reserved: [IpNetwork; 7] = [
+        IpNetwork::V4("192.0.2.0/24".parse().unwrap()), // TEST-NET-1
+        IpNetwork::V4("198.51.100.0/24".parse().unwrap()), // TEST-NET-2 (DNS resource IPs)
+        IpNetwork::V4("203.0.113.0/24".parse().unwrap()), // TEST-NET-3 (host IPs)
+        IpNetwork::V4(DNS_SENTINELS_V4),
+        IpNetwork::V6(
+            Ipv6Network::new_truncate(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32).unwrap(),
+        ),
+        IpNetwork::V6(
+            Ipv6Network::new_truncate(Ipv6Addr::new(0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0), 32).unwrap(),
+        ),
+        IpNetwork::V6(DNS_SENTINELS_V6),
+    ];
+
+    reserved.iter().any(|r| overlaps(network, *r))
 }
 
 pub(crate) fn cidr_resource_address() -> impl Strategy<Value = IpNetwork> {
-    non_reserved_ip().prop_flat_map(move |ip| ip_network(ip, 8))
+    non_reserved_ip()
+        .prop_flat_map(move |ip| ip_network(ip, 8))
+        // Exclude the documentation / DNS / sentinel ranges here (not only in
+        // `cidr_resource_outside_reserved_ranges`) so the `ChangeCidrResourceAddress`
+        // transition, which draws addresses directly, is also constrained.
+        .prop_filter(
+            "CIDR resource must not overlap the documentation / DNS / sentinel ranges",
+            |network| !cidr_overlaps_dns_or_sentinel(*network),
+        )
 }
 
 fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {

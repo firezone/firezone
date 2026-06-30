@@ -809,12 +809,19 @@ fn arb_global_dns_records(g: &mut Gen, at: Instant) -> DnsRecords {
 }
 
 /// 1..=5 records, weighted 3:1 IP:TXT (matching `dns_record`).
+///
+/// IP records are confined to the same documentation ranges as DNS *resource*
+/// records (`arb_dns_resource_ip`). This is load-bearing: a domain's resolved IP
+/// must never fall inside a CIDR/Internet resource's address range, or the
+/// reference (which routes a `Destination::DomainName` by domain) and the SUT
+/// (which routes by the resolved IP) would pick different gateways. CIDR resource
+/// addresses correspondingly exclude these ranges (see `arb_cidr_resource_address`).
 fn arb_dns_record_set(g: &mut Gen) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
     let mut set = BTreeSet::new();
     for _ in 0..n {
         let record = if g.flip(75) {
-            dns_types::records::ip(arb_non_reserved_ip(g))
+            dns_types::records::ip(arb_dns_resource_ip(g))
         } else {
             // TXT: 6..=10 sections of 255 'a's. Build it directly.
             let sections = g.count(6, 10);
@@ -825,7 +832,7 @@ fn arb_dns_record_set(g: &mut Gen) -> BTreeSet<OwnedRecordData> {
             }
             match dns_types::records::txt(content) {
                 Ok(r) => r,
-                Err(_) => dns_types::records::ip(arb_non_reserved_ip(g)),
+                Err(_) => dns_types::records::ip(arb_dns_resource_ip(g)),
             }
         };
         set.insert(record);
@@ -1012,8 +1019,53 @@ fn arb_domain_name_string(g: &mut Gen, lo: usize, hi: usize) -> String {
     labels.join(".")
 }
 
-/// A CIDR address outside all reserved + documentation ranges (so it never
-/// overlaps the host / DNS / tunnel ranges). Wrap-around repair, no rejection.
+/// The IP ranges that DNS records (resource + global) resolve into, plus the host
+/// socket ranges and the DNS sentinel ranges.
+///
+/// CIDR / Internet resource addresses must avoid these: a resource whose range
+/// contains a DNS-resolvable IP (or a sentinel) makes the reference (which routes
+/// a `Destination::DomainName` by domain) and the SUT (which routes by the
+/// resolved IP) disagree on the gateway. Defining a resource inside the DNS
+/// sentinel range is also explicitly unsupported by connlib.
+fn cidr_reserved_v4() -> [Ipv4Network; 4] {
+    use tunnel::client::DNS_SENTINELS_V4;
+    [
+        "192.0.2.0/24".parse().unwrap(),    // TEST-NET-1 (documentation)
+        "198.51.100.0/24".parse().unwrap(), // TEST-NET-2 (DNS resource real IPs)
+        "203.0.113.0/24".parse().unwrap(),  // TEST-NET-3 (host socket IPs)
+        DNS_SENTINELS_V4,                   // 100.100.111.0/24
+    ]
+}
+
+fn cidr_reserved_v6() -> [Ipv6Network; 3] {
+    use tunnel::client::DNS_SENTINELS_V6;
+    [
+        // The host (`2001:db80:1010:1010::/64`) and DNS (`2001:db80:2020:2020::/64`)
+        // documentation subnets both live under `2001:db80::/32`.
+        Ipv6Network::new_truncate(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32).unwrap(),
+        Ipv6Network::new_truncate(Ipv6Addr::new(0x2001, 0x0DB8, 0, 0, 0, 0, 0, 0), 32).unwrap(),
+        DNS_SENTINELS_V6, // fd00:2021:1111:8000:100:100:111:0/120
+    ]
+}
+
+fn v4_overlaps_reserved(net: Ipv4Network) -> bool {
+    cidr_reserved_v4()
+        .iter()
+        .any(|r| r.contains(net.network_address()) || net.contains(r.network_address()))
+}
+
+fn v6_overlaps_reserved(net: Ipv6Network) -> bool {
+    cidr_reserved_v6()
+        .iter()
+        .any(|r| r.contains(net.network_address()) || net.contains(r.network_address()))
+}
+
+/// A CIDR address outside all reserved + documentation + DNS + sentinel ranges
+/// (so it never overlaps the host / DNS / tunnel / sentinel ranges).
+///
+/// Wrap-around repair, no rejection loop: at most `cidr_reserved_*().len()`
+/// advances, since each advance moves the network strictly past one reserved
+/// range and the ranges are disjoint.
 fn arb_cidr_resource_address(g: &mut Gen) -> IpNetwork {
     let ip = arb_non_reserved_ip(g);
     // host_mask_bits = 8 in the proptest path: netmask in [max-8, max].
@@ -1021,11 +1073,40 @@ fn arb_cidr_resource_address(g: &mut Gen) -> IpNetwork {
     match ip {
         IpAddr::V4(v4) => {
             let netmask = 32 - mask_offset as u8;
-            IpNetwork::new_truncate(IpAddr::V4(v4), netmask).unwrap()
+            let mut net = Ipv4Network::new_truncate(v4, netmask).unwrap();
+            for _ in 0..cidr_reserved_v4().len() {
+                if !v4_overlaps_reserved(net) {
+                    break;
+                }
+                // Advance past the overlapping reserved range, then re-truncate.
+                let reserved = *cidr_reserved_v4()
+                    .iter()
+                    .find(|r| {
+                        r.contains(net.network_address()) || net.contains(r.network_address())
+                    })
+                    .unwrap();
+                let next = u32::from(reserved.broadcast_address()).wrapping_add(1);
+                net = Ipv4Network::new_truncate(Ipv4Addr::from(next), netmask).unwrap();
+            }
+            IpNetwork::V4(net)
         }
         IpAddr::V6(v6) => {
             let netmask = 128 - mask_offset as u8;
-            IpNetwork::new_truncate(IpAddr::V6(v6), netmask).unwrap()
+            let mut net = Ipv6Network::new_truncate(v6, netmask).unwrap();
+            for _ in 0..cidr_reserved_v6().len() {
+                if !v6_overlaps_reserved(net) {
+                    break;
+                }
+                let reserved = *cidr_reserved_v6()
+                    .iter()
+                    .find(|r| {
+                        r.contains(net.network_address()) || net.contains(r.network_address())
+                    })
+                    .unwrap();
+                let next = u128::from(reserved.last_address()).wrapping_add(1);
+                net = Ipv6Network::new_truncate(Ipv6Addr::from(next), netmask).unwrap();
+            }
+            IpNetwork::V6(net)
         }
     }
 }
