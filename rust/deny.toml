@@ -288,6 +288,7 @@ skip = [
     "toml",
     "toml_datetime",
     "toml_edit",
+    "untrusted", # aws-lc-rs 1.17 pulls untrusted 0.7.1; ring/rustls-webpki use 0.9.0.
     "webpki-roots",
     "windows-link",
     "windows-result",
