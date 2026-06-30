@@ -11,6 +11,7 @@ boringtun = { workspace = true }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
+coverage = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 hex = { workspace = true }
 hex-display = { workspace = true }

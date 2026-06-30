@@ -107,7 +107,8 @@ impl ClientOnGateway {
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
         if resolved_ips.is_empty() {
-            tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain")
+            tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain");
+            coverage::cov!("gateway.no_a_aaaa_records");
         }
 
         let mut resolved_ipv4 = resolved_ips.iter().filter(|ip| ip.is_ipv4()).cycle();
@@ -225,6 +226,7 @@ impl ClientOnGateway {
             .extract_if(|rid, _| !authorization.contains(rid))
         {
             tracing::info!(%rid, "Revoking resource authorization");
+            coverage::cov!("gateway.revoke_authorization");
         }
 
         self.recalculate_filters();
@@ -424,6 +426,22 @@ impl ClientOnGateway {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
+
+                match prototype.error() {
+                    ip_packet::IcmpError::V4Unreachable(_) => {
+                        coverage::cov!("icmp_error.v4_unreachable")
+                    }
+                    ip_packet::IcmpError::V6Unreachable(_) => {
+                        coverage::cov!("icmp_error.v6_unreachable")
+                    }
+                    ip_packet::IcmpError::V4TimeExceeded(_) => {
+                        coverage::cov!("icmp_error.v4_time_exceeded")
+                    }
+                    ip_packet::IcmpError::V6TimeExceeded(_) => {
+                        coverage::cov!("icmp_error.v6_time_exceeded")
+                    }
+                    ip_packet::IcmpError::V6PacketTooBig { .. } => {}
+                }
 
                 let icmp_error = prototype
                     .into_packet(self.client_tun.v4, self.client_tun.v6)

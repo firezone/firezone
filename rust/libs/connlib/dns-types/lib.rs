@@ -279,6 +279,7 @@ impl Response {
         }
 
         tracing::debug!(%len, %max_len, %qid, domain = %self.domain(), "Truncating DNS response");
+        coverage::cov!("dns.response_truncated");
 
         self.inner.header_mut().set_tc(true);
 

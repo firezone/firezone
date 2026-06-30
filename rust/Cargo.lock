@@ -185,7 +185,7 @@ dependencies = [
  "objc2-foundation",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "x11rb",
 ]
 
@@ -1432,6 +1432,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "coverage"
+version = "0.1.0"
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1949,6 +1953,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "coverage",
  "domain",
  "hex-literal",
  "http",
@@ -2736,6 +2741,7 @@ dependencies = [
  "arbitrary",
  "ip-packet",
  "libfuzzer-sys",
+ "tunnel-tests",
 ]
 
 [[package]]
@@ -4177,7 +4183,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.3",
 ]
 
 [[package]]
@@ -5659,7 +5665,7 @@ dependencies = [
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6016,7 +6022,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6073,7 +6079,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6727,6 +6733,7 @@ dependencies = [
  "bufferpool",
  "bytecodec",
  "bytes",
+ "coverage",
  "derive_more",
  "hex",
  "hex-display",
@@ -7540,7 +7547,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8225,23 +8232,21 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-model",
+ "coverage",
  "derive_more",
  "divan",
  "dns-over-tcp",
  "dns-types",
  "eventloop-budget",
- "firezone-relay",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
  "glob",
- "hex",
  "http-client",
  "ip-packet",
  "ip_network",
  "ip_network_table",
  "itertools",
- "l3-tcp",
  "l3-udp-dns-client",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
@@ -8250,7 +8255,6 @@ dependencies = [
  "opentelemetry",
  "otel-instruments",
  "proptest",
- "proptest-state-machine",
  "rand 0.10.1",
  "rangemap",
  "ringbuffer",
@@ -8259,7 +8263,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sha2",
  "smallvec",
  "snownet",
  "socket-factory",
@@ -8270,8 +8273,8 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
  "tun",
+ "visibility",
 ]
 
 [[package]]
@@ -8286,6 +8289,37 @@ dependencies = [
  "num_cpus",
  "tokio",
  "tokio-stream",
+]
+
+[[package]]
+name = "tunnel-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bufferpool",
+ "chrono",
+ "connlib-model",
+ "coverage",
+ "derive_more",
+ "dns-over-tcp",
+ "dns-types",
+ "firezone-relay",
+ "hex",
+ "ip-packet",
+ "ip_network",
+ "ip_network_table",
+ "itertools",
+ "l3-tcp",
+ "proptest",
+ "proptest-state-machine",
+ "rand 0.10.1",
+ "secrecy",
+ "sha2",
+ "snownet",
+ "test-strategy",
+ "tracing",
+ "tracing-subscriber",
+ "tunnel",
 ]
 
 [[package]]
@@ -8655,6 +8689,17 @@ checksum = "80a7e511ce1795821207a837b7b1c8d8aca0c648810966ad200446ae58f6667f"
 dependencies = [
  "itertools",
  "nom 8.0.0",
+]
+
+[[package]]
+name = "visibility"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d674d135b4a8c1d7e813e2f8d1c9a58308aee4a680323066025e53132218bd91"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

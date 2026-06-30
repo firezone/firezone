@@ -11,8 +11,10 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-#[cfg(all(feature = "proptest", test))]
+#[cfg(any(test, feature = "test-util"))]
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) use resource::{InternetResource, Resource, StaticDevicePoolResource};
 
 use crate::client::client_on_client::InboundResult;
@@ -61,11 +63,13 @@ use std::time::{Duration, Instant};
 use std::{io, iter};
 use telemetry::{analytics, feature_flags};
 
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
     Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
     107,
@@ -80,11 +84,13 @@ const LLMNR_PORT: u16 = 5355;
 const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
 const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
 
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
+#[cfg_attr(feature = "test-util", visibility::make(pub))]
 pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
     Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
     120,
@@ -183,6 +189,7 @@ pub struct ClientState {
 }
 
 impl ClientState {
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn new(
         seed: [u8; 32],
         records: BTreeSet<DnsResourceRecord>,
@@ -226,12 +233,14 @@ impl ClientState {
         }
     }
 
-    #[cfg(all(test, feature = "proptest"))]
+    #[cfg(feature = "test-util")]
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn tunnel_ip_config(&self) -> Option<crate::IpConfig> {
         Some(self.tun_config.current()?.ip)
     }
 
-    #[cfg(all(test, feature = "proptest"))]
+    #[cfg(feature = "test-util")]
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
             IpAddr::V4(_) => self.tunnel_ip_config()?.v4.into(),
@@ -419,12 +428,14 @@ impl ClientState {
         self.drain_device_stub_resolver_events();
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
 
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
+        coverage::cov!("tunnel.graceful_shutdown");
 
         self.clients.clear();
         self.gateways.clear();
@@ -535,6 +546,7 @@ impl ClientState {
     /// Most of these packets will be application traffic that needs to be encrypted and sent through a WireGuard tunnel.
     /// Some of it may be processed directly, for example DNS queries.
     /// In that case, this function will return `None` and you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
@@ -590,6 +602,7 @@ impl ClientState {
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn handle_network_input(
         &mut self,
         local: SocketAddr,
@@ -708,6 +721,7 @@ impl ClientState {
         Ok(Some(packet))
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
         let mut attributes = vec![
             match response.recursion {
@@ -1077,6 +1091,7 @@ impl ClientState {
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
+        coverage::cov!("client.device_access_authorized");
 
         let pending_device_access = self.pending_device_access.remove(&cid);
 
@@ -1386,24 +1401,19 @@ impl ClientState {
             .dns_routing_table
             .matches(destination, Ok(protocol))
             .map(|e| (e.resource_id, &e.domain))
-            .inspect(
-                |(rid, domain)| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, %domain, "Packet for DNS resource"),
-            )
+            .inspect(|_| coverage::cov!("client.packet_dns_resource"))
             .map(|(rid, _)| rid);
 
         let maybe_cidr_resource_id = self
             .cidr_routing_table
             .matches(destination, Ok(protocol))
             .map(|e| e.resource_id)
-            .inspect(
-                |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for CIDR resource"),
-            );
+            .inspect(|_| coverage::cov!("client.packet_cidr_resource"));
 
-        let maybe_internet_resource = self.active_internet_resource()
+        let maybe_internet_resource = self
+            .active_internet_resource()
             .map(|r| r.id)
-            .inspect(|rid| {
-                tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for Internet resource")
-            });
+            .inspect(|_| coverage::cov!("client.packet_internet_resource"));
 
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
@@ -1435,6 +1445,7 @@ impl ClientState {
     ///
     /// Note: The returned list is not necessarily the list of DNS resolvers that is active.
     /// If DNS servers are defined in the portal, those will be preferred over the system defined ones.
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> Vec<IpAddr> {
         let changed = self.dns_config.update_system_resolvers(new_dns);
 
@@ -2135,6 +2146,7 @@ impl ClientState {
         self.resource_list.update(self.resource_list_snapshot());
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
         if let Some(config) = self.tun_config.take_pending_update() {
             tracing::info!(?config, "Updating TUN device");
@@ -2171,6 +2183,7 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
@@ -2187,12 +2200,14 @@ impl ClientState {
         self.tcp_dns_client.reset();
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .poll_transmit()
             .or_else(|| self.node.poll_transmit())
     }
 
+    #[cfg_attr(feature = "test-util", visibility::make(pub))]
     pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
         self.buffered_dns_queries.pop_front()
     }
@@ -2266,6 +2281,7 @@ impl ClientState {
 
             if resource_addressability_changed {
                 tracing::debug!(rid = %new_resource.id(), "Resource is known but its addressability changed");
+                coverage::cov!("client.resource_addressability_changed");
 
                 self.remove_resource(resource.id(), now);
             }
@@ -2640,9 +2656,10 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
         return true;
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-util"))]
     if crate::malicious_behaviour::ignore_resource_filter() {
         tracing::debug!("Malicious client: ignoring resource filter");
+        coverage::cov!("client.malicious_ignore_filter");
         return true;
     }
 

@@ -420,6 +420,7 @@ where
         ) {
             Ok(Some(_)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
+                coverage::cov!("snownet.closed_with_goodbye");
             }
             Ok(None) => {
                 tracing::info!("Connection closed proactively (failed to send goodbye)");

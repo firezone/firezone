@@ -1,5 +1,12 @@
 # Fuzzing
 
+## Targets
+
+- `ip_packet` — parses and mutates a single IP packet through `ip-packet`'s API.
+- `tunnel` — drives the connlib tunnel state machine. Each input seeds one run
+  of the same reference-model / system-under-test harness used by the
+  `tunnel-tests` proptest suite (see `tunnel_tests::run_fuzz_case`).
+
 ## Setup
 
 1. Install `cargo-fuzz`

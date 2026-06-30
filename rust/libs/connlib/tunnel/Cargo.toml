@@ -7,6 +7,10 @@ license = { workspace = true }
 [features]
 proptest = ["dep:proptest"]
 divan = ["dep:divan"]
+# Exposes internal types/methods to the `tunnel-tests` harness and the fuzzer
+# (via `visibility::make(pub)`), and compiles the test-only `malicious_behaviour`
+# hooks. Not meant for production use.
+test-util = ["dep:visibility", "proptest"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -18,6 +22,7 @@ bufferpool = { workspace = true }
 bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
+coverage = { workspace = true }
 derive_more = { workspace = true, features = ["debug", "from", "display"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
@@ -27,7 +32,6 @@ futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
-hex = { workspace = true }
 http-client = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
@@ -57,19 +61,15 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+visibility = { workspace = true, optional = true }
 
 [dev-dependencies]
-firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
-l3-tcp = { workspace = true }
-proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
-sha2 = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
-tokio = { workspace = true, features = ["process", "test-util"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
 
 [[bench]]
 name = "divan"

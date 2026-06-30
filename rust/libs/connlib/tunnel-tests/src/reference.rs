@@ -4,10 +4,6 @@ use super::{
     composite_strategy::CompositeStrategy, ref_client::*, ref_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::messages::Filter;
-use crate::proptest::{domain_label, filters, host_v4, host_v6};
-use crate::{client, dns};
-use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -22,6 +18,10 @@ use std::{
     fmt, iter,
     net::{IpAddr, SocketAddr},
 };
+use tunnel::messages::Filter;
+use tunnel::proptest::{domain_label, filters, host_v4, host_v6};
+use tunnel::{client, dns};
+use tunnel::{dns::is_subdomain, proptest::relay_id};
 
 /// The reference state machine of the tunnel.
 ///
@@ -52,7 +52,7 @@ pub(crate) struct ReferenceState {
 
 /// Implementation of our reference state machine.
 ///
-/// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
+/// The logic in here represents what we expect the [`ClientState`](tunnel::ClientState) & [`GatewayState`](tunnel::GatewayState) to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
@@ -307,16 +307,13 @@ impl ReferenceState {
                         sample::subsequence(online_clients, 0..=online_member_count);
 
                     online_subset.prop_map(move |online_devices| {
-                        let mut devices: Vec<_> = online_devices
-                            .into_iter()
-                            .map(
-                                |(id, ipv4, ipv6)| crate::messages::client::DevicePoolMember {
-                                    id,
-                                    ipv4,
-                                    ipv6,
-                                },
-                            )
-                            .collect();
+                        let mut devices: Vec<_> =
+                            online_devices
+                                .into_iter()
+                                .map(|(id, ipv4, ipv6)| {
+                                    tunnel::messages::client::DevicePoolMember { id, ipv4, ipv6 }
+                                })
+                                .collect();
                         devices.extend(preserved_offline.clone());
 
                         Transition::UpdateStaticDevicePool {
@@ -907,7 +904,8 @@ impl ReferenceState {
                 state.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
-                debug_assert!(state.network.add_host(*client_id, client));
+                let added = state.network.add_host(*client_id, client);
+                debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
@@ -1142,10 +1140,10 @@ impl ReferenceState {
                 };
 
                 let has_socket_for_server = match query.dns_server {
-                    crate::dns::Upstream::Do53 { server } => {
+                    tunnel::dns::Upstream::Do53 { server } => {
                         client.sending_socket_for(server.ip()).is_some()
                     }
-                    crate::dns::Upstream::DoH { .. } => true,
+                    tunnel::dns::Upstream::DoH { .. } => true,
                 };
                 let upstream_do53 = state.portal.upstream_do53();
                 let upstream_doh = state.portal.upstream_doh();
@@ -1259,7 +1257,7 @@ impl ReferenceState {
         };
 
         // If the dst is a peer, the packet will only be routed if we are connected.
-        if crate::is_peer(dst) {
+        if tunnel::is_peer(dst) {
             return match dst {
                 IpAddr::V4(dst) => self
                     .connected_gateway_ipv4_ips()
@@ -1440,13 +1438,13 @@ impl ReferenceState {
                     .expected_dns_servers(self.portal.upstream_do53(), self.portal.upstream_doh())
                     .into_iter()
                     .filter(|s| match s {
-                        crate::dns::Upstream::Do53 {
+                        tunnel::dns::Upstream::Do53 {
                             server: SocketAddr::V4(_),
                         } => client.ip4.is_some(),
-                        crate::dns::Upstream::Do53 {
+                        tunnel::dns::Upstream::Do53 {
                             server: SocketAddr::V6(_),
                         } => client.ip6.is_some(),
-                        crate::dns::Upstream::DoH { .. } => true,
+                        tunnel::dns::Upstream::DoH { .. } => true,
                     })
                     .map(move |server| (*client_id, server))
             })
@@ -1887,7 +1885,8 @@ impl ReferenceState {
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());
-            debug_assert!(self.network.add_host(*rid, new_relay));
+            let added = self.network.add_host(*rid, new_relay);
+            debug_assert!(added);
         }
     }
 }
