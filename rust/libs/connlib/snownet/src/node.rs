@@ -1635,19 +1635,15 @@ where
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
         let relay_id = self.relay.id;
-        let packet_start = if socket.send_from_relay() {
-            ip_packet::DATA_CHANNEL_OVERHEAD
-        } else {
-            0
-        };
         let src = socket.packet_src();
         let ecn = packet.ecn();
 
         // Resolve the relay's allocation once for relayed sockets: it provides the destination
-        // socket and, after encryption, the channel-data header. Direct sockets have no allocation.
-        let (dst, relay) = match socket {
+        // socket and, after encryption, the channel-data header. Direct sockets have no allocation
+        // and write at offset 0; relayed sockets reserve room for the channel-data header.
+        let (dst, packet_start, relay) = match socket {
             PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => {
-                (dest, None)
+                (dest, 0, None)
             }
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
                 let allocation = allocations
@@ -1657,7 +1653,11 @@ where
                     .active_socket()
                     .with_context(|| format!("No active socket for relay {relay_id}"))?;
 
-                (dst, Some((peer, allocation)))
+                (
+                    dst,
+                    ip_packet::DATA_CHANNEL_OVERHEAD,
+                    Some((peer, allocation)),
+                )
             }
         };
 

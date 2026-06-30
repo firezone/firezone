@@ -269,10 +269,6 @@ pub(crate) enum PeerSocket {
 }
 
 impl PeerSocket {
-    pub(crate) fn send_from_relay(&self) -> bool {
-        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
-    }
-
     /// The local source address the resulting UDP datagram should be sent from, if any.
     ///
     /// This is `None` for relayed sockets because those are sent from whichever interface can
