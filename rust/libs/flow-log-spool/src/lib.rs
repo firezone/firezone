@@ -13,6 +13,7 @@
 
 use std::net::IpAddr;
 
+use anyhow::Context as _;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// counters are absent for an "open" report and present for a "completed" one.
 ///
 /// Fields are public so the writer can build one directly; readers get one back
-/// from [`read_spooled_entry`].
+/// from [`deserialize`].
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Payload {
     pub protocol: String,
@@ -65,21 +66,9 @@ struct StoredEntry {
     payload: Payload,
 }
 
-/// A report that could not be parsed, or whose checksum did not match.
-#[derive(Debug)]
-pub struct CorruptEntry(String);
-
-impl std::fmt::Display for CorruptEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for CorruptEntry {}
-
 /// Serializes a payload into the on-disk report form, computing the CRC32 over the
-/// serialized payload so [`read_spooled_entry`] can verify it.
-pub fn serialize_entry(payload: &Payload) -> Result<Vec<u8>, serde_json::Error> {
+/// serialized payload so [`deserialize`] can verify it.
+pub fn serialize(payload: &Payload) -> Result<Vec<u8>, serde_json::Error> {
     let body = serde_json::to_vec(payload)?;
     let entry = Entry {
         checksum: crc32fast::hash(&body),
@@ -92,23 +81,21 @@ pub fn serialize_entry(payload: &Payload) -> Result<Vec<u8>, serde_json::Error> 
 /// Parses and verifies a spooled flow-log report from its file bytes, returning the
 /// payload.
 ///
-/// Returns [`CorruptEntry`] when the JSON is malformed or the CRC32 does not match
-/// the payload, so the uploader can drop the file rather than send bad data.
-pub fn read_spooled_entry(bytes: &[u8]) -> Result<Payload, CorruptEntry> {
-    let stored: StoredEntry = serde_json::from_slice(bytes)
-        .map_err(|e| CorruptEntry(format!("malformed report: {e}")))?;
+/// Errors when the JSON is malformed or the CRC32 does not match the payload, so the
+/// uploader can drop the file rather than send bad data.
+pub fn deserialize(bytes: &[u8]) -> anyhow::Result<Payload> {
+    let stored: StoredEntry = serde_json::from_slice(bytes).context("Malformed report")?;
 
     // The payload serializes deterministically (fixed struct, compact), so the CRC
     // of its re-serialization matches the one written alongside it.
-    let serialized = serde_json::to_vec(&stored.payload)
-        .map_err(|e| CorruptEntry(format!("could not re-serialize payload: {e}")))?;
+    let serialized =
+        serde_json::to_vec(&stored.payload).context("Could not re-serialize payload")?;
     let computed = crc32fast::hash(&serialized);
-    if computed != stored.checksum {
-        return Err(CorruptEntry(format!(
-            "checksum mismatch: stored {}, computed {computed}",
-            stored.checksum
-        )));
-    }
+    anyhow::ensure!(
+        computed == stored.checksum,
+        "Checksum mismatch: stored {}, computed {computed}",
+        stored.checksum
+    );
 
     Ok(stored.payload)
 }
@@ -141,19 +128,19 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_through_serialize_and_read() {
-        let bytes = serialize_entry(&payload()).unwrap();
+    fn round_trips_through_serialize_and_deserialize() {
+        let bytes = serialize(&payload()).unwrap();
 
-        assert_eq!(read_spooled_entry(&bytes).unwrap(), payload());
+        assert_eq!(deserialize(&bytes).unwrap(), payload());
     }
 
     #[test]
     fn detects_checksum_mismatch() {
-        let bytes = serialize_entry(&payload()).unwrap();
+        let bytes = serialize(&payload()).unwrap();
         let tampered = String::from_utf8(bytes)
             .unwrap()
             .replace("\"inner_dst_port\":443", "\"inner_dst_port\":444");
 
-        assert!(read_spooled_entry(tampered.as_bytes()).is_err());
+        assert!(deserialize(tampered.as_bytes()).is_err());
     }
 }
