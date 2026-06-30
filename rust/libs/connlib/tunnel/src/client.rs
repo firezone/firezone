@@ -961,7 +961,6 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
-    #[allow(clippy::too_many_arguments)]
     pub fn handle_resource_access_authorized(
         &mut self,
         rid: ResourceId,
@@ -1067,7 +1066,6 @@ impl ClientState {
         Ok(Ok(()))
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn handle_client_device_access_authorized(
         &mut self,
         cid: ClientId,
@@ -2180,15 +2178,6 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        // No explicit `self.gateways.clear()` / `self.clients.clear()` /
-        // `pending_packets.clear()` / `dns_resource_nat.clear()` here. The
-        // hard-reset path of `Node::reset` emits `ConnectionClosed` for every
-        // connection, and `drain_node_events` then runs
-        // `cleanup_connected_gateway` (per-gateway: drop pending packets,
-        // remove from `self.gateways`, clear DNS-NAT, set site status to
-        // `Unknown`). The iceless soft-reset path keeps connections alive —
-        // that's exactly the state we want preserved here, including site
-        // status.
         self.node.reset(now);
         self.drain_node_events(now);
 

@@ -275,7 +275,6 @@ where
     /// If we already have a connection with the same parameters, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    #[allow(clippy::too_many_arguments)]
     pub fn upsert_connection(
         &mut self,
         cid: TId,
