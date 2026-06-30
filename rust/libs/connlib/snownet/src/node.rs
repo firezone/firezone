@@ -1634,6 +1634,7 @@ where
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
+        let relay_id = self.relay.id;
         let packet_start = if socket.send_from_relay() {
             ip_packet::DATA_CHANNEL_OVERHEAD
         } else {
@@ -1642,14 +1643,22 @@ where
         let src = socket.packet_src();
         let ecn = packet.ecn();
 
-        // The destination of the resulting UDP datagram. For relayed sockets this is the relay's
-        // active socket; the actual peer is encoded into the channel-data header below.
-        let dst = match socket {
-            PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => dest,
-            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => allocations
-                .get_by_id(&self.relay.id)
-                .and_then(|allocation| allocation.active_socket())
-                .with_context(|| format!("No allocation for relay {}", self.relay.id))?,
+        // Resolve the relay's allocation once for relayed sockets: it provides the destination
+        // socket and, after encryption, the channel-data header. Direct sockets have no allocation.
+        let (dst, relay) = match socket {
+            PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => {
+                (dest, None)
+            }
+            PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
+                let allocation = allocations
+                    .get_mut_by_id(&relay_id)
+                    .with_context(|| format!("No allocation for relay {relay_id}"))?;
+                let dst = allocation
+                    .active_socket()
+                    .with_context(|| format!("No active socket for relay {relay_id}"))?;
+
+                (dst, Some((peer, allocation)))
+            }
         };
 
         let reserve_len = packet_start + packet.packet().len() + ip_packet::WG_OVERHEAD;
@@ -1663,21 +1672,15 @@ where
         )?;
         debug_assert_eq!(packet_start + len, reserve_len);
 
-        match socket {
-            PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-                // Prepend the channel-data header into the reserved space.
-                if allocations
-                    .get_mut_by_id(&self.relay.id)
-                    .and_then(|allocation| {
-                        allocation.encode_channel_data_header(peer, reservation.buffer(), now)
-                    })
-                    .is_none()
-                {
-                    // No channel bound to the peer yet; dropping the reservation rolls it back.
-                    return Ok(None);
-                }
+        if let Some((peer, allocation)) = relay {
+            // Prepend the channel-data header into the reserved space.
+            if allocation
+                .encode_channel_data_header(peer, reservation.buffer(), now)
+                .is_none()
+            {
+                // No channel bound to the peer yet; dropping the reservation rolls it back.
+                return Ok(None);
             }
-            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => {}
         }
 
         reservation.commit();
