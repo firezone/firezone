@@ -188,7 +188,7 @@ impl Client {
         // which may be a short-lived `block_on` on another runtime.
         RUNTIME
             .spawn(async move {
-                let addresses = resolver.resolve(host).await?;
+                let addresses = resolver.resolve(host.to_owned()).await?;
 
                 anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
 
@@ -212,15 +212,25 @@ enum IngestResolver {
 }
 
 impl IngestResolver {
-    async fn resolve(&self, host: &'static str) -> Result<Vec<IpAddr>> {
+    async fn resolve(&self, host: String) -> Result<Vec<IpAddr>> {
         match self {
             IngestResolver::Upstream(client) => client
-                .resolve(host)
+                .resolve(host.clone())
                 .await
                 .with_context(|| format!("Failed to resolve ingest host {host}")),
             IngestResolver::System(client) => client.resolve(host).await,
         }
     }
+}
+
+/// Resolves an arbitrary ingest host through the active [`IngestResolver`], so the
+/// flow-log uploader shares telemetry's session-aware resolution.
+pub(crate) async fn resolve_host(host: String) -> Result<Vec<IpAddr>> {
+    let resolver = RESOLVER.lock().clone();
+    let addresses = resolver.resolve(host.clone()).await?;
+    anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
+
+    Ok(addresses)
 }
 
 /// Resolves host names via the system resolver, i.e. libc's `getaddrinfo`.
@@ -231,9 +241,9 @@ impl IngestResolver {
 struct LibcDnsClient;
 
 impl LibcDnsClient {
-    async fn resolve(&self, host: &'static str) -> Result<Vec<IpAddr>> {
+    async fn resolve(&self, host: String) -> Result<Vec<IpAddr>> {
         tokio::task::spawn_blocking(move || {
-            let addresses = (host, 443u16)
+            let addresses = (host.as_str(), 443u16)
                 .to_socket_addrs()
                 .with_context(|| {
                     format!("Failed to resolve ingest host {host} via system resolver")
