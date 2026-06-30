@@ -56,6 +56,7 @@ admx-macro = { path = "gui-client/src-admx-macro" }
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
+async-trait = "0.1.89"
 atomicwrites = "0.4.4"
 axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
@@ -142,6 +143,7 @@ nu-ansi-term = "0.50.3"
 num_cpus = "1.17.0"
 once_cell = "1.21.4"
 opentelemetry = "0.32.0"
+opentelemetry-http = "0.32.0"
 opentelemetry-otlp = "0.32.0"
 opentelemetry-stdout = "0.32.0"
 opentelemetry_sdk = "0.32.0"

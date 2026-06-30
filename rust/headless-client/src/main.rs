@@ -119,7 +119,12 @@ struct Cli {
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
+    #[arg(
+        long,
+        hide = true,
+        env = "FIREZONE_METRICS",
+        default_value = "otel-collector"
+    )]
     metrics: Option<MetricsExporter>,
 
     /// Send metrics to a custom OTLP collector.
@@ -377,6 +382,9 @@ fn try_main() -> Result<()> {
                 otel::attr::service_instance_id(firezone_id.clone()),
             ]);
 
+            let telemetry_allowed = cli.is_telemetry_allowed();
+            let api_url = cli.api_url.clone();
+
             match (backend, cli.otlp_grpc_endpoint) {
                 (MetricsExporter::Sentry, _) => {
                     opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
@@ -396,9 +404,21 @@ fn try_main() -> Result<()> {
                     )
                 }
                 (MetricsExporter::OtelCollector, None) => {
-                    opentelemetry::global::set_meter_provider(
-                        SdkMeterProvider::builder().with_resource(resource).build(),
-                    )
+                    // No custom endpoint: export to Firezone's hosted OTLP endpoint,
+                    // unless telemetry is disabled or the environment has none. The
+                    // exporter itself is additionally gated on the `stream_metrics`
+                    // feature flag.
+                    let exporter = telemetry_allowed
+                        .then(|| telemetry::hosted_metric_exporter(api_url.as_ref()))
+                        .flatten();
+
+                    let mut builder = SdkMeterProvider::builder().with_resource(resource);
+
+                    if let Some(exporter) = exporter {
+                        builder = builder.with_periodic_exporter(exporter);
+                    }
+
+                    opentelemetry::global::set_meter_provider(builder.build());
                 }
             }
         }
