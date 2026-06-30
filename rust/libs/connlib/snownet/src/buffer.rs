@@ -152,3 +152,41 @@ impl Drop for TransmitReservation<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
+    use super::*;
+
+    const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
+
+    #[test]
+    fn committing_a_reservation_yields_the_transmit() {
+        let mut transmits = TransmitBuffer::new();
+
+        {
+            let mut reservation = transmits.reserve(None, DST, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"foobar");
+            reservation.commit();
+        }
+
+        let transmit = transmits.poll_transmit().expect("a committed transmit");
+        assert_eq!(transmit.dst, DST);
+        assert_eq!(&transmit.payload[..], b"foobar");
+        assert!(transmits.poll_transmit().is_none());
+    }
+
+    #[test]
+    fn dropping_a_reservation_without_committing_yields_nothing() {
+        let mut transmits = TransmitBuffer::new();
+
+        {
+            let mut reservation = transmits.reserve(None, DST, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"foobar");
+            // Dropped without committing.
+        }
+
+        assert!(transmits.poll_transmit().is_none());
+    }
+}
