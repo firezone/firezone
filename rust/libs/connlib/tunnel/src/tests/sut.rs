@@ -819,7 +819,10 @@ impl TunnelTest {
                 break; // Nothing to do before cut-off.
             }
 
-            self.flux_capacitor.large_tick(); // Large tick to more quickly advance to potential next timeout.
+            // The buffer is empty here (see the `is_empty` guard above), so nothing
+            // is in flight; jump straight to the next timeout instead of ticking
+            // there one `LARGE_TICK` at a time.
+            self.flux_capacitor.advance_until(time_to_next_action);
         }
 
         for (transmit, at) in buffered_transmits.drain() {
