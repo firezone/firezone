@@ -916,6 +916,8 @@ impl Allocation {
         let channel_number = match connected_channel_to_peer.or(inflight_channel_to_peer) {
             Some(cn) => cn,
             None => {
+                tracing::debug!(%peer, "Dropping packet; no channel bound to peer yet");
+
                 self.bind_channel(peer, now);
 
                 return None;
@@ -962,6 +964,11 @@ impl Allocation {
 
     pub fn received_any_response(&self) -> bool {
         self.active_socket.is_some()
+    }
+
+    /// The relay socket we are currently sending to, if one has been selected.
+    pub fn active_socket(&self) -> Option<SocketAddr> {
+        Some(self.active_socket.as_ref()?.addr)
     }
 
     pub fn has_credentials(&self) -> bool {

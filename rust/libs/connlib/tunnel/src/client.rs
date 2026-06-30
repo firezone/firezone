@@ -52,7 +52,7 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use ringbuffer::RingBuffer;
 use secrecy::ExposeSecret as _;
-use snownet::{NoTurnServers, Node, RelaySocket, Transmit};
+use snownet::{NoTurnServers, Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque, hash_map};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -175,7 +175,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: VecDeque<Transmit>,
+    buffered_transmits: snownet::TransmitBuffer,
 
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
@@ -539,13 +539,14 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
+        provider: &mut impl snownet::BufferProvider,
+    ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
         if packet.destination().is_multicast() {
-            return Ok(None);
+            return Ok(());
         }
 
         let tun_config = self
@@ -563,11 +564,24 @@ impl ClientState {
         );
 
         let non_dns_packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return Ok(None),
+            ControlFlow::Break(()) => return Ok(()),
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        self.encapsulate(non_dns_packet, now)
+        let Some((pid, packet)) = self.prepare_outbound(non_dns_packet, now)? else {
+            return Ok(());
+        };
+
+        encapsulate_or_buffer(
+            packet,
+            pid,
+            now,
+            &mut self.node,
+            provider,
+            &mut self.pending_packets,
+        )?;
+
+        Ok(())
     }
 
     /// Handles UDP packets received on the network interface.
@@ -794,7 +808,19 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Result<Option<snownet::Transmit>> {
+    /// Route an outbound IP packet and apply any DNS resource NAT, yielding the
+    /// connection it should be encapsulated through.
+    ///
+    /// ## Returns
+    ///
+    /// - `Ok(Some(...))` if the packet is ready to be encapsulated
+    /// - `Ok(None)` if the packet was consumed (buffered for flow setup, replied to, etc.)
+    /// - `Err(...)` if the packet is unroutable
+    fn prepare_outbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Result<Option<(ClientOrGatewayId, IpPacket)>> {
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;
 
@@ -823,10 +849,7 @@ impl ClientState {
             }
         }
 
-        let transmit =
-            encapsulate_or_buffer(packet, pid, now, &mut self.node, &mut self.pending_packets)?;
-
-        Ok(transmit)
+        Ok(Some((pid, packet)))
     }
 
     /// Decide which connection a packet should be encapsulated through.
@@ -1577,16 +1600,25 @@ impl ClientState {
                 .or_else(|| self.udp_dns_client.poll_outbound())
             {
                 // All packets from the DNS clients _should_ go through the tunnel.
-                let transmit = match self.encapsulate(packet, now) {
-                    Ok(Some(transmit)) => transmit,
-                    Ok(None) => continue,
+                let maybe_outbound = match self.prepare_outbound(packet, now) {
+                    Ok(maybe_outbound) => maybe_outbound,
                     Err(e) => {
                         tracing::debug!("{e:#}");
                         continue;
                     }
                 };
+                let Some((pid, packet)) = maybe_outbound else {
+                    continue;
+                };
 
-                self.buffered_transmits.push_back(transmit);
+                encapsulate_and_queue(
+                    packet,
+                    pid,
+                    now,
+                    &mut self.node,
+                    &mut self.buffered_transmits,
+                    &mut self.pending_packets,
+                );
                 continue;
             }
 
@@ -2157,7 +2189,7 @@ impl ClientState {
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
-            .pop_front()
+            .poll_transmit()
             .or_else(|| self.node.poll_transmit())
     }
 
@@ -2617,23 +2649,25 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
     false
 }
 
-/// Encapsulate `packet` for `pid`, or buffer it if the connection is still being established.
+/// Encapsulate `packet` for `pid` directly into `provider`, or buffer it if the connection is
+/// still being established.
 fn encapsulate_or_buffer(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
+    provider: &mut impl snownet::BufferProvider,
     pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
-) -> Result<Option<Transmit>> {
+) -> Result<()> {
     const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
     if let Some(buffer) = pending_packets.get_mut(&pid) {
         buffer.push(packet);
-        return Ok(None);
+        return Ok(());
     }
 
-    match node.encapsulate(pid, &packet, now) {
-        Ok(maybe_transmit) => Ok(maybe_transmit),
+    match node.encapsulate(pid, &packet, now, provider) {
+        Ok(_) => Ok(()),
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             pending_packets
                 .entry(pid)
@@ -2644,7 +2678,7 @@ fn encapsulate_or_buffer(
                     )
                 })
                 .push(packet);
-            Ok(None)
+            Ok(())
         }
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
             Err(e.context(UnroutablePacket::not_connected(&packet)))
@@ -2653,19 +2687,20 @@ fn encapsulate_or_buffer(
     }
 }
 
-/// Like [`encapsulate_or_buffer`], but queues the resulting transmit into `buffered_transmits` and
-/// drops (with a log) any error instead of returning it.
+/// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
+/// log) any error instead of returning it.
 fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
+    buffered_transmits: &mut snownet::TransmitBuffer,
     pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 ) {
-    match encapsulate_or_buffer(packet, pid, now, node, pending_packets) {
-        Ok(maybe_transmit) => buffered_transmits.extend(maybe_transmit),
-        Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
+    if let Err(e) =
+        encapsulate_or_buffer(packet, pid, now, node, buffered_transmits, pending_packets)
+    {
+        tracing::debug!(%pid, "Failed to encapsulate: {e:#}");
     }
 }
 
@@ -2771,7 +2806,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now())
+                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -2789,7 +2824,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now())
+                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
