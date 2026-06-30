@@ -26,8 +26,8 @@ use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 uniffi::setup_scaffolding!();
 
 /// The process-global telemetry guard, outliving individual connlib sessions.
-static TELEMETRY: LazyLock<std::sync::Mutex<Option<Telemetry>>> =
-    LazyLock::new(|| std::sync::Mutex::new(None));
+static TELEMETRY: LazyLock<parking_lot::Mutex<Option<Telemetry>>> =
+    LazyLock::new(|| parking_lot::Mutex::new(None));
 
 #[derive(uniffi::Object)]
 pub struct Session {
@@ -503,7 +503,7 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    if let Some(telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+    if let Some(telemetry) = TELEMETRY.lock().as_mut() {
         telemetry.start(&api_url, RELEASE, platform::DSN);
     }
     runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
@@ -563,7 +563,7 @@ fn start_telemetry_inner(
 
     opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
 
-    *TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()) = Some(telemetry);
+    *TELEMETRY.lock() = Some(telemetry);
 }
 
 #[uniffi::export]
@@ -583,7 +583,7 @@ pub fn start_telemetry() {
 
 #[uniffi::export]
 pub fn stop_telemetry() {
-    if let Some(mut telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).take() {
+    if let Some(mut telemetry) = TELEMETRY.lock().take() {
         telemetry.stop_blocking();
     }
 }

@@ -1240,6 +1240,7 @@ dependencies = [
  "opentelemetry",
  "oslog",
  "otel-instruments",
+ "parking_lot",
  "phoenix-channel",
  "rustls",
  "rustls-platform-verifier",

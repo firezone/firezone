@@ -223,7 +223,7 @@ struct Handler<'a> {
     mdm_settings: MdmSettings,
     session: Session,
     telemetry: Telemetry,
-    telemetry_release: String,
+    telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
@@ -397,7 +397,7 @@ impl<'a> Handler<'a> {
             mdm_settings,
             session: Session::None,
             telemetry,
-            telemetry_release: String::new(),
+            telemetry_release: None,
             tun_device,
             dns_notifier,
             network_notifier,
@@ -544,9 +544,9 @@ impl<'a> Handler<'a> {
     /// Re-points telemetry to the neutral environment so events emitted while
     /// disconnected aren't attributed to the ended session.
     fn reset_telemetry_environment(&mut self) {
-        if self.telemetry.is_active() {
+        if let Some(release) = &self.telemetry_release {
             self.telemetry
-                .start("entrypoint", &self.telemetry_release, telemetry::GUI_DSN);
+                .start("entrypoint", release, telemetry::GUI_DSN);
         }
     }
 
@@ -681,7 +681,7 @@ impl<'a> Handler<'a> {
                     std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
                 if !no_telemetry {
-                    self.telemetry_release = release.clone();
+                    self.telemetry_release = Some(release.clone());
                     self.telemetry
                         .start(&environment, &release, telemetry::GUI_DSN);
                     Telemetry::set_firezone_id(self.device_id.id.clone()).await;
