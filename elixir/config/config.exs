@@ -139,6 +139,8 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     one_time_passcodes
     portal_sessions
     api_tokens
+    trust_anchors
+    trust_anchor_certificates
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.
@@ -466,7 +468,9 @@ config :openid_connect,
   finch_transport_opts: []
 
 config :mime, :types, %{
-  "application/xml" => ["xml"]
+  "application/xml" => ["xml"],
+  "application/x-pem-file" => ["pem"],
+  "application/x-x509-ca-cert" => ["crt", "cer", "der"]
 }
 
 config :opentelemetry,

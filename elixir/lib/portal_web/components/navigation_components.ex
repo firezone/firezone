@@ -3,6 +3,16 @@ defmodule PortalWeb.NavigationComponents do
   use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
+  defmodule Database do
+    import Ecto.Query, only: [from: 2]
+    alias Portal.{Features, Safe}
+
+    def trust_anchors_feature_enabled? do
+      query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
+      Safe.unscoped(query, :replica) |> Safe.exists?()
+    end
+  end
+
   @doc """
   Renders the top navigation bar.
   """
@@ -365,6 +375,8 @@ defmodule PortalWeb.NavigationComponents do
   slot :actions
 
   def settings_nav(assigns) do
+    assigns = assign(assigns, :trust_anchors_enabled?, Database.trust_anchors_feature_enabled?())
+
     ~H"""
     <div class="flex flex-col bg-surface">
       <%!-- Page header --%>
@@ -462,6 +474,15 @@ defmodule PortalWeb.NavigationComponents do
           icon="ri-code-s-slash-fill"
         >
           REST API
+        </.settings_tab>
+        <.settings_tab
+          :if={@trust_anchors_enabled?}
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/trust_anchors"}
+          tab_path="settings/trust_anchors"
+          icon="ri-shield-check-fill"
+        >
+          Trust Anchors
         </.settings_tab>
       </div>
     </div>

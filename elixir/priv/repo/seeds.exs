@@ -263,6 +263,10 @@ defmodule Portal.Repo.Seeds do
       "INSERT INTO features (feature, enabled) VALUES ('client_to_client', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
     )
 
+    Repo.query!(
+      "INSERT INTO features (feature, enabled) VALUES ('trust_anchors', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+    )
+
     account =
       %Account{}
       |> cast(

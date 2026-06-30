@@ -36,6 +36,8 @@ defmodule Portal.ChangeLogs.ReplicationConnection do
     "sites" => Portal.Site,
     "static_device_pool_members" => Portal.StaticDevicePoolMember,
     "client_tokens" => Portal.ClientToken,
+    "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
+    "trust_anchors" => Portal.TrustAnchor,
     "userpass_auth_providers" => Portal.Userpass.AuthProvider
   }
 
