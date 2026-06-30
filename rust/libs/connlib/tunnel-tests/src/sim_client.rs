@@ -18,7 +18,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel::{
-    ClientState, DnsMapping, DnsResourceRecord, dns,
+    ClientState, DnsMapping, DnsResourceRecord,
+    client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6},
+    dns,
     malicious_behaviour::{Guard, MaliciousBehaviour},
 };
 
@@ -438,6 +440,28 @@ impl SimClient {
         {
             self.received_icmp_replies
                 .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            return None;
+        }
+
+        // Silently ignore TCP packets on port 53 originating from connlib's DNS
+        // sentinel range. The TCP-DNS client only `accepts` packets matching a
+        // currently-open socket, so a teardown (e.g. RST) that arrives after the
+        // query's socket has already been closed — or after the sentinel mapping
+        // changed (`UpdateSystemDnsServers` / `UpdateUpstream*`) — would otherwise
+        // fall through to the `Unhandled packet` error below. This is connlib's
+        // DNS infrastructure closing a connection, not application traffic the
+        // reference models, so it must not fail the test. We match the fixed
+        // sentinel *range* rather than the current mapping precisely because the
+        // mapping may no longer contain the (old) sentinel by the time the RST
+        // arrives.
+        if let Some(tcp) = packet.as_tcp()
+            && tcp.source_port() == 53
+            && match packet.source() {
+                IpAddr::V4(v4) => DNS_SENTINELS_V4.contains(v4),
+                IpAddr::V6(v6) => DNS_SENTINELS_V6.contains(v6),
+            }
+        {
+            tracing::debug!(?packet, "Ignoring TCP teardown from DNS sentinel");
             return None;
         }
 

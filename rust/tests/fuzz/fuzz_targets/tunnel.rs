@@ -2,12 +2,14 @@
 
 //! Coverage-guided fuzz target for the connlib tunnel state machine.
 //!
-//! Each input seeds one run of the same reference-model/system-under-test
-//! harness that backs the `tunnel-tests` proptest suite. See
-//! [`tunnel_tests::run_fuzz_case`] for how the bytes map to a scenario.
+//! Each input drives one run of the same reference-model/system-under-test
+//! harness that backs the `tunnel-tests` proptest suite. The bytes are decoded
+//! positionally through `arbitrary::Unstructured` so that libFuzzer mutations
+//! and minimization map to individual scenario decisions. See
+//! [`tunnel_tests::run_fuzz_case_structured`].
 
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    tunnel_tests::run_fuzz_case(data);
+    tunnel_tests::run_fuzz_case_structured(data);
 });

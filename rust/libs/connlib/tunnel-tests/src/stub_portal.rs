@@ -10,8 +10,7 @@ use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
-    collection,
-    sample::{self, Selector},
+    collection, sample,
     strategy::{Just, Strategy},
 };
 use std::{
@@ -47,8 +46,12 @@ pub(crate) struct StubPortal {
     upstream_do53: Vec<UpstreamDo53>,
     upstream_doh: Vec<UpstreamDoH>,
 
+    /// Index used to pick a gateway within a site (selected with `% len`).
+    ///
+    /// Replaces `proptest::sample::Selector`, which cannot be constructed from
+    /// `arbitrary::Unstructured` (no public constructor).
     #[debug(skip)]
-    gateway_selector: Selector,
+    gateway_selector: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -66,7 +69,7 @@ impl StubPortal {
     pub(crate) fn new(
         clients: BTreeSet<ClientId>,
         gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
-        gateway_selector: Selector,
+        gateway_selector: u32,
         cidr_resources: BTreeSet<client::CidrResource>,
         dns_resources: BTreeSet<client::DnsResource>,
         device_pool_resources: BTreeSet<DynamicDevicePoolResource>,
@@ -178,6 +181,29 @@ impl StubPortal {
         }
     }
 
+    /// The tunnel IPs assigned to each client, in client order.
+    ///
+    /// Used by the structured generator to materialize client hosts without going
+    /// through the `clients(...)` proptest strategy.
+    pub(crate) fn client_tunnel_ips(&self) -> Vec<(ClientId, Ipv4Addr, Ipv6Addr)> {
+        self.clients
+            .iter()
+            .map(|(id, c)| (*id, c.ipv4, c.ipv6))
+            .collect()
+    }
+
+    /// The tunnel IPs and owning site of each gateway.
+    pub(crate) fn gateway_tunnel_ips(&self) -> Vec<(GatewayId, Ipv4Addr, Ipv6Addr, SiteId)> {
+        self.gateways_by_site
+            .iter()
+            .flat_map(|(site_id, gateways)| {
+                gateways
+                    .iter()
+                    .map(move |(gid, ipv4, ipv6)| (*gid, *ipv4, *ipv6, *site_id))
+            })
+            .collect()
+    }
+
     /// All device labels the portal knows about, in client order.
     pub(crate) fn device_labels(&self) -> Vec<String> {
         self.clients
@@ -269,7 +295,8 @@ impl StubPortal {
             .expect("resource to be known");
 
         let gateways = self.gateways_by_site.get(site_id).unwrap();
-        let (gateway, _, _) = self.gateway_selector.select(gateways);
+        let (gateway, _, _) =
+            select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
 
         (*gateway, *site_id)
     }
@@ -325,7 +352,7 @@ impl StubPortal {
 
         let sid = cidr_site.or(dns_site).or(internet_site)?;
         let gateways = self.gateways_by_site.get(&sid)?;
-        let (gid, _, _) = self.gateway_selector.try_select(gateways)?;
+        let (gid, _, _) = select_by_index(gateways, self.gateway_selector)?;
 
         Some(gid)
     }
@@ -535,6 +562,19 @@ fn dns_resource_records(
 
             map
         })
+}
+
+/// Picks an element from a set by index (`index % len`), or `None` if empty.
+///
+/// Used in place of `proptest::sample::Selector::select`/`try_select` so the
+/// gateway choice can be driven by a plain `u32` (and thus by `arbitrary`).
+fn select_by_index<T>(set: &BTreeSet<T>, index: u32) -> Option<&T> {
+    let len = set.len();
+    if len == 0 {
+        return None;
+    }
+
+    set.iter().nth(index as usize % len)
 }
 
 /// Materializes static-device-pool plans into [`StaticDevicePoolResource`]s.

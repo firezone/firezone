@@ -8296,6 +8296,7 @@ name = "tunnel-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "arbitrary",
  "bufferpool",
  "chrono",
  "connlib-model",

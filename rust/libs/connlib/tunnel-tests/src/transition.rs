@@ -202,11 +202,16 @@ pub(crate) struct SPort(pub u16);
 pub(crate) struct DPort(pub u16);
 
 #[derive(Clone, derive_more::Debug)]
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum Destination {
     DomainName {
-        #[debug(skip)]
-        resolved_ip: sample::Selector,
+        /// Index used to pick one of the (runtime-filtered) resolved IPs for `name`.
+        ///
+        /// The set of candidate IPs is only known at apply-time (it depends on the
+        /// source address family and the current DNS records), so we store an index
+        /// and select with `% len` over the materialized candidates. This replaces
+        /// the previous `proptest::sample::Selector`, which had no public constructor
+        /// and therefore could not be produced from `arbitrary::Unstructured`.
+        resolved_ip: u32,
         name: DomainName,
     },
     IpAddr(IpAddr),
@@ -314,7 +319,7 @@ impl From<IpAddr> for PacketDestination {
 }
 
 impl PacketDestination {
-    fn into_destination(self, resolved_ip: sample::Selector) -> Destination {
+    fn into_destination(self, resolved_ip: u32) -> Destination {
         match self {
             PacketDestination::DomainName(name) => Destination::DomainName { resolved_ip, name },
             PacketDestination::IpAddr(addr) => Destination::IpAddr(addr),
@@ -337,7 +342,7 @@ where
         dst.prop_map(Into::into),
         any::<u16>(),
         any::<u16>(),
-        any::<sample::Selector>(),
+        any::<u32>(),
         any::<u64>(),
     )
         .prop_map(move |(src, dst, seq, identifier, resolved_ip, payload)| {
@@ -368,7 +373,7 @@ where
         dst.prop_map(Into::into),
         any::<u16>(),
         dport,
-        any::<sample::Selector>(),
+        any::<u32>(),
         any::<u64>(),
     )
         .prop_map(move |(src, dst, sport, dport, resolved_ip, payload)| {
@@ -516,7 +521,7 @@ where
         dst.prop_map(Into::into),
         any::<NonZeroU16>().prop_map(|p| p.get()),
         dport,
-        any::<sample::Selector>(),
+        any::<u32>(),
     )
         .prop_map(
             move |(src, dst, sport, dport, resolved_ip)| Transition::ConnectTcp {
