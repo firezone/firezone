@@ -902,7 +902,10 @@ impl ReferenceState {
                 ip4,
                 ip6,
             } => {
-                let all_iceless = state.all_iceless(client_id);
+                // With ICE-less connections, a roam re-keys in place and keeps
+                // the connection alive, so we only reset when the portal hands
+                // out classic ICE flows.
+                let all_iceless = state.portal.iceless();
 
                 let client = state.clients.get_mut(client_id).unwrap();
                 state.network.remove_host(client);
@@ -1318,24 +1321,6 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_iceless(&self, client_id: &ClientId) -> bool {
-        let Some(client) = self.clients.get(client_id) else {
-            return false;
-        };
-        let inner = client.inner();
-        if !inner.snownet_capabilities.iceless {
-            return false;
-        }
-        inner
-            .connected_resources()
-            .filter_map(|r| self.portal.gateway_for_resource(r).copied())
-            .all(|gid| {
-                self.gateways
-                    .get(&gid)
-                    .is_none_or(|g| g.inner().snownet_capabilities.iceless)
-            })
-    }
-
     fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.clients
             .values()

@@ -1072,20 +1072,7 @@ impl TunnelTest {
                 let gateway_key = gateway.inner().sut.public_key();
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
-                let use_iceless = resolve_use_iceless(
-                    ref_state
-                        .clients
-                        .get(&src)
-                        .unwrap()
-                        .inner()
-                        .snownet_capabilities,
-                    ref_state
-                        .gateways
-                        .get(&gateway_id)
-                        .unwrap()
-                        .inner()
-                        .snownet_capabilities,
-                );
+                let use_iceless = portal.iceless();
 
                 gateway
                     .exec_mut(|g| {
@@ -1177,20 +1164,7 @@ impl TunnelTest {
 
                         let (preshared_key, local_client_ice, remote_client_ice) =
                             make_preshared_key_and_ice(src_key, remote_key);
-                        let use_iceless = resolve_use_iceless(
-                            ref_state
-                                .clients
-                                .get(&src)
-                                .unwrap()
-                                .inner()
-                                .snownet_capabilities,
-                            ref_state
-                                .clients
-                                .get(&remote_id)
-                                .unwrap()
-                                .inner()
-                                .snownet_capabilities,
-                        );
+                        let use_iceless = portal.iceless();
 
                         let pool_filters = portal
                             .static_device_pool_filters(resource_id)
@@ -1400,16 +1374,6 @@ fn address_from_destination(
         }
         Destination::IpAddr(addr) => *addr,
     }
-}
-
-/// Mirror of the portal: ICE-less is used iff both peers advertise
-/// the capability. Each peer's capability is sampled by the
-/// proptest strategy, so coverage of both modes flows from that.
-fn resolve_use_iceless(
-    a: crate::messages::SnownetCapabilities,
-    b: crate::messages::SnownetCapabilities,
-) -> bool {
-    a.iceless && b.iceless
 }
 
 fn make_preshared_key_and_ice(
