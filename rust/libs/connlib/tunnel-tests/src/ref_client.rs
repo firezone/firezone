@@ -133,7 +133,6 @@ impl RefClient {
     /// Mirrors the `ref_client` proptest strategy but takes already-sampled
     /// values, so the structured (`arbitrary`-driven) generator can build a
     /// client without going through a `Strategy`.
-    #[expect(clippy::too_many_arguments)]
     pub(crate) fn new(
         id: ClientId,
         key: PrivateKey,

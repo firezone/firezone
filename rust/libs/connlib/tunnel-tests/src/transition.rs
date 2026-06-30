@@ -202,7 +202,6 @@ pub(crate) struct SPort(pub u16);
 pub(crate) struct DPort(pub u16);
 
 #[derive(Clone, derive_more::Debug)]
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum Destination {
     DomainName {
         /// Index used to pick one of the (runtime-filtered) resolved IPs for `name`.

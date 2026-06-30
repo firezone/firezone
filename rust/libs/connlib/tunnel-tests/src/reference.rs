@@ -60,7 +60,6 @@ impl ReferenceState {
     ///
     /// Used by the structured (`arbitrary`-driven) generator, which builds each
     /// component directly instead of through a proptest `Strategy`.
-    #[expect(clippy::too_many_arguments)]
     pub(crate) fn from_parts(
         clients: BTreeMap<ClientId, Host<RefClient>>,
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
