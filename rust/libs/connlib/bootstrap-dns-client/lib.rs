@@ -26,6 +26,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// unanimous NXDOMAIN suppresses the retry because TCP cannot change a "name
 /// does not exist" answer; requiring consensus stops a single misbehaving
 /// resolver from blocking the fallback.
+#[derive(Clone)]
 pub struct BootstrapDnsClient {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,

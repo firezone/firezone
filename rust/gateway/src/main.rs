@@ -193,8 +193,6 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
-    telemetry::set_system_resolvers(nameservers.iter().copied().collect());
-
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),

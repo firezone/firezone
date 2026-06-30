@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{collections::BTreeMap, fmt, mem, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
@@ -23,6 +23,7 @@ mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
 
+pub use ingest::SystemResolvers;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
 
@@ -38,30 +39,6 @@ pub fn maybe_hash_device_id(id: String) -> String {
     } else {
         id
     }
-}
-
-/// Sets the upstream DNS resolvers used to look up our telemetry ingest hosts
-/// while a connlib session is active.
-///
-/// Call this wherever connlib's system resolvers are updated, while a session is
-/// active. While set, ingest hosts are resolved via these upstreams directly
-/// (never the system resolver, which connlib has hijacked). Triggers a
-/// feature-flag re-evaluation, since a prior attempt may have failed for lack of
-/// (working) resolvers.
-pub fn set_system_resolvers(servers: Vec<IpAddr>) {
-    ingest::set_system_resolvers(servers);
-    feature_flags::reevaluate_current();
-}
-
-/// Clears the upstream DNS resolvers when no connlib session is active.
-///
-/// Call this when a session ends. Afterwards ingest hosts are resolved via the
-/// default system resolver, which is safe because connlib is no longer
-/// intercepting DNS. Triggers a feature-flag re-evaluation so flags refresh over
-/// the default-resolved connection.
-pub fn clear_system_resolvers() {
-    ingest::clear_system_resolvers();
-    feature_flags::reevaluate_current();
 }
 
 /// Drops the current telemetry ingest connections so they are re-established lazily.
