@@ -18,7 +18,7 @@
 //!
 //! The submit is idempotent (the portal upserts by flow identity), so any
 //! ambiguous failure retries the whole batch. Response handling:
-//! - 202: delete the sent files.
+//! - 2xx: delete the sent files.
 //! - 422: the portal already persisted the valid records and the listed ones are
 //!   permanently invalid, so log the body (to Sentry) and drop the batch.
 //! - 413: split the batch and retry each half.
@@ -28,9 +28,8 @@
 //! - Other 4xx: permanent; log the status + body (to Sentry) and drop the batch.
 //!
 //! Uploads go through [`http_client::HttpClient`] over the caller's
-//! [`SocketFactory`], so they bypass the tunnel exactly like connlib's own traffic
-//! (Apple NE process exclusion, Android `protect()`, Linux/Windows routing). The
-//! client negotiates HTTP/2 and falls back to HTTP/1.1.
+//! [`SocketFactory`], so they bypass the tunnel exactly like connlib's own traffic.
+//! The client negotiates HTTP/2 and falls back to HTTP/1.1.
 //!
 //! Two drivers share this logic so parsing / CRC / request handling is not
 //! duplicated across platforms:
@@ -221,7 +220,7 @@ pub fn prune(spool_root: &Path) {
 
     for role_entry in role_dirs.flatten() {
         let Ok(authz_dirs) = std::fs::read_dir(role_entry.path()) else {
-            continue; // not a directory, or unreadable
+            continue;
         };
 
         for entry in authz_dirs.flatten() {
@@ -428,7 +427,7 @@ async fn scan(
     for role_entry in role_dirs.flatten() {
         let role_dir = role_entry.path();
         let Ok(authz_dirs) = std::fs::read_dir(&role_dir) else {
-            continue; // not a directory, or unreadable
+            continue;
         };
 
         for entry in authz_dirs.flatten() {
@@ -466,7 +465,6 @@ async fn process_authz_dir(client: &HttpClient, dir: &Path, url: &str, batch_siz
         }
     };
 
-    // Oldest flows first, bounded to one request's worth.
     flows.sort_by_key(|files| files.mtime.unwrap_or(SystemTime::UNIX_EPOCH));
     let backlog = flows.len() > batch_size;
     flows.truncate(batch_size);
@@ -496,7 +494,7 @@ fn group_flows(dir: &Path) -> std::io::Result<Vec<FlowFiles>> {
         } else if let Some(stem) = name.strip_suffix(".start.json") {
             (stem, false)
         } else {
-            continue; // the `token` file or anything unexpected
+            continue;
         };
 
         let mtime = entry.metadata()?.modified().ok();
@@ -593,13 +591,11 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
 
         let status = response.status();
         match status {
-            StatusCode::ACCEPTED => {
+            _ if status.is_success() => {
                 delete_all(batch);
                 return;
             }
             StatusCode::UNPROCESSABLE_ENTITY => {
-                // The portal persisted the valid records and the listed ones are
-                // permanently invalid, so log and drop the whole batch.
                 let body = body_string(&response);
                 tracing::error!(%body, "Flow-log batch had validation errors; dropping batch");
                 delete_all(batch);
@@ -627,7 +623,6 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
                 }
             }
             _ => {
-                // Other 4xx (400/401/403/...): permanent. Report and drop.
                 let body = body_string(&response);
                 tracing::error!(%status, %body, "Flow-log upload rejected; dropping batch");
                 delete_all(batch);
