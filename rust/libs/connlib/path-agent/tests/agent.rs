@@ -77,8 +77,8 @@ fn responder_dedup_replays_within_window_then_expires() {
         a.handle_inbound_network(&mut hs.responder, &hs.init, path, now)
             .is_break()
     );
-    while a.poll_event().is_some() {}
-    while a.poll_transmit().is_some() {}
+    a.drain_events();
+    let _ = a.transmits();
 
     // Within the window, a replayed init must be served from the
     // cache without touching boringtun; `reject_all()` proves it.
@@ -90,7 +90,7 @@ fn responder_dedup_replays_within_window_then_expires() {
     );
 
     a.handle_timeout(now + RESPONDER_DEDUP_TTL);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     // Past the window the cache must be gone — `reject_all()` runs
     // again and emits no response.
@@ -112,7 +112,7 @@ fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
     let now = Instant::now();
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
     let next = a.poll_timeout().expect("retransmit deadline");
     assert_eq!(next, now + Duration::from_millis(50));
 }
@@ -131,7 +131,7 @@ fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
     let later = now + Duration::from_millis(50);
     a.handle_timeout(later);
 
-    let retransmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let retransmits = a.transmits();
     assert_eq!(retransmits.len(), 3);
     for t in &retransmits {
         assert_eq!(t.payload, Payload::Ciphertext(init.clone()));
@@ -145,13 +145,13 @@ fn retransmit_ladder_bursts_then_doubles_to_cap() {
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     let mut t = now + Duration::from_millis(50);
     let expected_step_ms: [u64; 8] = [50, 50, 100, 200, 400, 800, 1600, 1600];
     for &expected_ms in &expected_step_ms {
         a.handle_timeout(t);
-        while a.poll_transmit().is_some() {}
+        let _ = a.transmits();
         let next = a.poll_timeout().expect("deadline");
         assert_eq!(next, t + Duration::from_millis(expected_ms));
         t = next;
@@ -165,12 +165,12 @@ fn inbound_handshake_response_clears_retransmits() {
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
     let init_deadline = a.poll_timeout().expect("init armed retransmits");
 
     let mut hs = Handshake::new(now).with_response(now);
     let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     let post_deadline = a.poll_timeout();
     assert!(
@@ -185,7 +185,7 @@ fn handle_timeout_before_deadline_does_not_emit() {
     let now = Instant::now();
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
     a.handle_timeout(now + Duration::from_millis(25));
     assert!(a.poll_transmit().is_none());
 }
@@ -220,7 +220,7 @@ fn outbound_handshake_init_fans_out_on_every_relay_pair() {
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
 
-    let transmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let transmits = a.transmits();
     assert_eq!(transmits.len(), 3);
     let payload = Payload::Ciphertext(handshake_init_bytes());
     for t in &transmits {
@@ -235,7 +235,7 @@ fn probe_seq_advances_per_pair_per_fire() {
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
     a.handle_timeout(now);
-    let first: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let first = a.transmits();
     let first_probe = extract_probe_for(&first, (addr(1), addr(3)));
     let first_seq = first_probe.seq;
 
@@ -246,7 +246,7 @@ fn probe_seq_advances_per_pair_per_fire() {
     );
 
     a.handle_timeout(now + PROBE_INTERVAL);
-    let second: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let second = a.transmits();
     let second_seq = extract_probe_for(&second, (addr(1), addr(3))).seq;
 
     assert_eq!(second_seq, first_seq.wrapping_add(1));
@@ -259,7 +259,7 @@ fn probe_skips_while_inflight_until_probe_timeout_lapses() {
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
     a.handle_timeout(now);
-    let first: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let first = a.transmits();
     let pair = (addr(1), addr(3));
     let first_seq = extract_probe_for(&first, pair).seq;
 
@@ -292,27 +292,19 @@ fn drive_probes_only_emits_on_primary_after_settle() {
     let primary = (addr(1), addr(3));
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    a.handle_timeout(now);
-    let inside: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let inside = a.tick(now);
     assert!(!inside.is_empty(), "expected probes inside window");
-
-    let host_probe = extract_probe_for(&inside, primary);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(host_probe.id, host_probe.seq),
-        primary,
-        now + Duration::from_millis(50),
-    );
+    a.ack_probe(&inside, primary, now + ms(50));
     assert_eq!(a.primary(), Some(primary));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     a.handle_timeout(now + EVALUATION_WINDOW);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
-    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE - Duration::from_millis(1));
+    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE - ms(1));
     assert!(a.poll_transmit().is_none(), "before live deadline");
 
-    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE);
-    let live: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let live = a.tick(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE);
     assert_eq!(live.len(), 1, "expected primary-only probe: {live:?}");
     assert_eq!((live[0].local, live[0].remote), primary);
 }
@@ -322,21 +314,7 @@ fn settle_keeps_poll_timeout_armed_for_primary_probes() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     let primary = (addr(1), addr(3));
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
-
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    let host_probe = extract_probe_for(&outbound, primary);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(host_probe.id, host_probe.seq),
-        primary,
-        now + Duration::from_millis(50),
-    );
-    assert_eq!(a.primary(), Some(primary));
-    while a.poll_event().is_some() {} // drain PrimaryChanged
-
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    while a.poll_transmit().is_some() {}
+    settle_with_primary(&mut a, (addr(2), addr(4)), primary, now);
 
     assert_eq!(
         a.poll_timeout(),
@@ -352,20 +330,20 @@ fn settle_is_sticky_across_later_handshakes() {
     let mut hs = Handshake::new(now).with_response(now);
 
     let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let outbound = a.transmits();
     let host_probe = extract_probe_for(&outbound, primary);
     let _ = a.handle_inbound_tun(
         build_echo_reply(host_probe.id, host_probe.seq),
         primary,
         now + Duration::from_millis(50),
     );
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     a.handle_timeout(now + EVALUATION_WINDOW);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     let live_deadline = a.poll_timeout().expect("live cadence");
 
@@ -377,7 +355,7 @@ fn settle_is_sticky_across_later_handshakes() {
         (addr(2), addr(4)),
         now + EVALUATION_WINDOW + Duration::from_secs(60),
     );
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     assert_eq!(a.poll_timeout(), Some(live_deadline));
 }
@@ -389,23 +367,10 @@ fn inbound_handshake_reopens_evaluation_window_after_settle() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     let primary = (addr(1), addr(3));
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
-
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    let host_probe = extract_probe_for(&outbound, primary);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(host_probe.id, host_probe.seq),
-        primary,
-        now + Duration::from_millis(50),
-    );
-    while a.poll_event().is_some() {}
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    while a.poll_transmit().is_some() {}
+    settle_with_primary(&mut a, (addr(2), addr(4)), primary, now);
 
     let live_tick = now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE;
-    a.handle_timeout(live_tick);
-    let live_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let live_probes = a.tick(live_tick);
     assert_eq!(
         live_probes.len(),
         1,
@@ -420,9 +385,8 @@ fn inbound_handshake_reopens_evaluation_window_after_settle() {
         (addr(2), addr(4)),
         reopen_at,
     );
-    while a.poll_event().is_some() {}
-    a.handle_timeout(reopen_at);
-    let reopened_probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    a.drain_events();
+    let reopened_probes = a.tick(reopen_at);
     assert!(
         reopened_probes.len() > 1,
         "all pairs should probe after reopen, got {reopened_probes:?}"
@@ -441,26 +405,26 @@ fn new_handshake_inside_open_window_restarts_evaluation() {
     // Handshake 1 opens the window (deadline now + EVALUATION_WINDOW).
     let mut hs1 = Handshake::new(now);
     let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), now);
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     // A *different* handshake arrives late in the window (a roam re-key
     // to a new address), still inside the original deadline.
     let t2 = now + Duration::from_secs(8);
     let mut hs2 = Handshake::new(t2);
     let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     // At the *original* deadline a non-restarted window settles and drops
     // to the live cadence (primary-only, +25s). The restart pushed the
     // deadline out to t2 + EVALUATION_WINDOW, so it stays open and probes.
     a.handle_timeout(now + EVALUATION_WINDOW);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     // Past the inflight-probe timeout but well before the restarted
     // deadline: an open window re-probes *every* pair; a settled window
     // probes nothing (its primary isn't due for another ~25s).
     a.handle_timeout(now + EVALUATION_WINDOW + PROBE_TIMEOUT + Duration::from_secs(1));
-    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let probes = a.transmits();
     assert!(
         probes.len() > 1,
         "a new handshake inside the open window must restart it (re-probe all pairs), got {probes:?}"
@@ -473,13 +437,10 @@ fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    let probe_on_host_pair = extract_probe_for(&outbound, (addr(1), addr(3)));
-
-    let reply = build_echo_reply(probe_on_host_pair.id, probe_on_host_pair.seq);
-    let later = now + Duration::from_millis(50);
-    let handled = a.handle_inbound_tun(reply, (addr(1), addr(3)), later);
+    let probes = a.tick(now);
+    let probe = extract_probe_for(&probes, (addr(1), addr(3)));
+    let reply = build_echo_reply(probe.id, probe.seq);
+    let handled = a.handle_inbound_tun(reply, (addr(1), addr(3)), now + ms(50));
     assert!(matches!(handled, ControlFlow::Break(())));
 
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
@@ -520,10 +481,10 @@ fn inbound_echo_request_from_unknown_source_registers_peer_reflexive() {
     let request = build_echo_request(0, 1);
     let _ = a.handle_inbound_tun(request, (addr(1), addr(99)), now);
 
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     a.handle_timeout(now);
-    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let probes = a.transmits();
 
     let _ = extract_probe_for(&probes, (addr(1), addr(99)));
 }
@@ -535,10 +496,10 @@ fn signaled_candidate_promotes_peer_reflexive_in_place() {
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
     let _ = a.handle_inbound_tun(build_echo_request(0, 1), (addr(1), addr(99)), now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     a.handle_timeout(now);
-    let probes: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let probes = a.transmits();
     let probe = extract_probe_for(&probes, (addr(1), addr(99)));
     let later = now + Duration::from_millis(50);
     let _ = a.handle_inbound_tun(
@@ -566,24 +527,12 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
-    let relay_probe = extract_probe_for(&outbound, (addr(2), addr(4)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(relay_probe.id, relay_probe.seq),
-        (addr(2), addr(4)),
-        now + Duration::from_millis(100),
-    );
+    let probes = a.tick(now);
+    a.ack_probe(&probes, (addr(2), addr(4)), now + ms(100));
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
+    a.drain_events();
 
-    let host_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
-    while a.poll_event().is_some() {}
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(host_probe.id, host_probe.seq),
-        (addr(1), addr(3)),
-        now + Duration::from_millis(150),
-    );
+    a.ack_probe(&probes, (addr(1), addr(3)), now + ms(150));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     match a.poll_event() {
         Some(Event::PrimaryChanged { local, remote }) => {
@@ -605,25 +554,13 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     let remote_relay_pair = (addr(1), addr(4));
     bootstrap_primary(&mut a, remote_relay_pair, now);
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
-    let remote_relay_probe = extract_probe_for(&outbound, remote_relay_pair);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(remote_relay_probe.id, remote_relay_probe.seq),
-        remote_relay_pair,
-        now + Duration::from_millis(50),
-    );
+    let probes = a.tick(now);
+    a.ack_probe(&probes, remote_relay_pair, now + ms(50));
     assert_eq!(a.primary(), Some(remote_relay_pair));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     let local_relay_pair = (addr(2), addr(3));
-    let local_relay_probe = extract_probe_for(&outbound, local_relay_pair);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(local_relay_probe.id, local_relay_probe.seq),
-        local_relay_pair,
-        now + Duration::from_millis(100),
-    );
+    a.ack_probe(&probes, local_relay_pair, now + ms(100));
     assert_eq!(
         a.primary(),
         Some(local_relay_pair),
@@ -641,25 +578,12 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(1), addr(2)), now);
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
-    let v4_probe = extract_probe_for(&outbound, (addr(1), addr(2)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(v4_probe.id, v4_probe.seq),
-        (addr(1), addr(2)),
-        now + Duration::from_millis(50),
-    );
+    let probes = a.tick(now);
+    a.ack_probe(&probes, (addr(1), addr(2)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(2))));
+    a.drain_events();
 
-    while a.poll_event().is_some() {}
-
-    let v6_probe = extract_probe_for(&outbound, (addr_v6(11), addr_v6(12)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(v6_probe.id, v6_probe.seq),
-        (addr_v6(11), addr_v6(12)),
-        now + Duration::from_millis(100),
-    );
+    a.ack_probe(&probes, (addr_v6(11), addr_v6(12)), now + ms(100));
     assert_eq!(
         a.primary(),
         Some((addr_v6(11), addr_v6(12))),
@@ -680,14 +604,8 @@ fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
     bootstrap_primary(&mut a, v6_pair, now);
     assert_eq!(a.primary(), Some(v6_pair));
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-    let v4_probe = extract_probe_for(&outbound, (addr(1), addr(2)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(v4_probe.id, v4_probe.seq),
-        (addr(1), addr(2)),
-        now + Duration::from_millis(40),
-    );
+    let probes = a.tick(now);
+    a.ack_probe(&probes, (addr(1), addr(2)), now + ms(40));
 
     assert_eq!(
         a.primary(),
@@ -705,28 +623,16 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     a.add_local_candidate(Candidate::relayed(mismatched_local_alloc, addr(101)));
     a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)));
     let now = Instant::now();
-    bootstrap_primary(&mut a, (mismatched_local_alloc, addr_v6(20)), now);
-
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
     let mismatched_pair = (mismatched_local_alloc, addr_v6(20));
-    let mismatched_probe = extract_probe_for(&outbound, mismatched_pair);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(mismatched_probe.id, mismatched_probe.seq),
-        mismatched_pair,
-        now + Duration::from_millis(50),
-    );
+    bootstrap_primary(&mut a, mismatched_pair, now);
+
+    let probes = a.tick(now);
+    a.ack_probe(&probes, mismatched_pair, now + ms(50));
     assert_eq!(a.primary(), Some(mismatched_pair));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     let matched_pair = (matched_local_alloc, addr_v6(20));
-    let matched_probe = extract_probe_for(&outbound, matched_pair);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(matched_probe.id, matched_probe.seq),
-        matched_pair,
-        now + Duration::from_millis(100),
-    );
+    a.ack_probe(&probes, matched_pair, now + ms(100));
     assert_eq!(
         a.primary(),
         Some(matched_pair),
@@ -744,27 +650,16 @@ fn family_match_dominates_ipv6_preference() {
     a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)));
     a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)));
     let now = Instant::now();
-    bootstrap_primary(&mut a, (v6_mismatched_local_alloc, addr_v6(20)), now);
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
     let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
-    let v6_probe = extract_probe_for(&outbound, v6_pair);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(v6_probe.id, v6_probe.seq),
-        v6_pair,
-        now + Duration::from_millis(50),
-    );
+    bootstrap_primary(&mut a, v6_pair, now);
+
+    let probes = a.tick(now);
+    a.ack_probe(&probes, v6_pair, now + ms(50));
     assert_eq!(a.primary(), Some(v6_pair));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     let v4_pair = (v4_matched_local_alloc, addr(30));
-    let v4_probe = extract_probe_for(&outbound, v4_pair);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(v4_probe.id, v4_probe.seq),
-        v4_pair,
-        now + Duration::from_millis(100),
-    );
+    a.ack_probe(&probes, v4_pair, now + ms(100));
     assert_eq!(
         a.primary(),
         Some(v4_pair),
@@ -782,25 +677,13 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
 
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
-    let incumbent_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
-        (addr(1), addr(3)),
-        now + Duration::from_millis(50),
-    );
+    let probes = a.tick(now);
+    a.ack_probe(&probes, (addr(1), addr(3)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     // 45ms is a 5ms gain over the 50ms incumbent — inside the 10ms floor.
-    let challenger_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(challenger_probe.id, challenger_probe.seq),
-        (addr(1), addr(4)),
-        now + Duration::from_millis(45),
-    );
+    a.ack_probe(&probes, (addr(1), addr(4)), now + ms(45));
 
     assert_eq!(
         a.primary(),
@@ -822,24 +705,12 @@ fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
-    a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
-
-    let incumbent_probe = extract_probe_for(&outbound, (addr(1), addr(3)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(incumbent_probe.id, incumbent_probe.seq),
-        (addr(1), addr(3)),
-        now + Duration::from_millis(50),
-    );
+    let probes = a.tick(now);
+    a.ack_probe(&probes, (addr(1), addr(3)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
-    let challenger_probe = extract_probe_for(&outbound, (addr(1), addr(4)));
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(challenger_probe.id, challenger_probe.seq),
-        (addr(1), addr(4)),
-        now + Duration::from_millis(30),
-    );
+    a.ack_probe(&probes, (addr(1), addr(4)), now + ms(30));
 
     assert_eq!(
         a.primary(),
@@ -861,7 +732,7 @@ fn stale_echo_reply_is_ignored() {
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     let stale_reply = build_echo_reply(0, 0xdead);
     let _ = a.handle_inbound_tun(stale_reply, (addr(1), addr(3)), now);
@@ -876,7 +747,7 @@ fn outbound_init_keeps_retransmitting_past_evaluation_window_without_response() 
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
 
     a.handle_timeout(now + EVALUATION_WINDOW + Duration::from_secs(1));
     assert!(a.poll_event().is_none(), "no BootstrapFailed-style event");
@@ -895,7 +766,7 @@ fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
 
     bootstrap_primary(&mut a, initial_path, now);
     a.handle_timeout(now);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let outbound = a.transmits();
     let initial_probe = extract_probe_for(&outbound, initial_path);
     let _ = a.handle_inbound_tun(
         build_echo_reply(initial_probe.id, initial_probe.seq),
@@ -903,14 +774,14 @@ fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
         now + Duration::from_millis(40),
     );
     assert_eq!(a.primary(), Some(initial_path));
-    while a.poll_event().is_some() {}
-    while a.poll_transmit().is_some() {}
+    a.drain_events();
+    let _ = a.transmits();
 
     let roam_at = now + Duration::from_secs(60);
     let mut hs2 = Handshake::new(roam_at).with_response(roam_at);
     let _ = a.handle_inbound_network(&mut hs2.initiator, &hs2.response, roam_path, roam_at);
     assert_eq!(a.primary(), Some(roam_path));
-    while a.poll_event().is_some() {}
+    a.drain_events();
 
     let _ = a.handle_inbound_tun(
         build_echo_reply(initial_probe.id, initial_probe.seq),
@@ -932,16 +803,16 @@ fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    let initial: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let initial = a.transmits();
     assert_eq!(initial.len(), 3, "handshake fans out on every relay pair");
 
     let mut hs = Handshake::new(now).with_response(now);
     let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
-    while a.poll_event().is_some() {}
-    while a.poll_transmit().is_some() {}
+    a.drain_events();
+    let _ = a.transmits();
 
     a.handle_outbound(handshake_init_bytes(), now + Duration::from_secs(120));
-    let rekey: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let rekey = a.transmits();
     assert_eq!(rekey.len(), 1, "re-key rides the primary: {rekey:?}");
     assert_eq!((rekey[0].local, rekey[0].remote), recv_path);
 }
@@ -954,11 +825,11 @@ fn rekey_without_primary_buffers_for_relay_fanout() {
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
-    while a.poll_transmit().is_some() {}
+    let _ = a.transmits();
     let mut hs = Handshake::new(now).with_response(now);
     let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
-    while a.poll_event().is_some() {}
-    while a.poll_transmit().is_some() {}
+    a.drain_events();
+    let _ = a.transmits();
 
     // Roam: the primary's local candidate goes away mid-session.
     assert!(a.remove_local_candidate(&Candidate::relayed(addr(2), addr(2)), now));
@@ -972,7 +843,7 @@ fn rekey_without_primary_buffers_for_relay_fanout() {
     );
 
     a.handle_timeout(rekey_at);
-    let outbound: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let outbound = a.transmits();
     assert!(
         outbound.iter().any(|t| t.remote == addr(4)),
         "buffered re-key must fan out on a relay-involving pair: {outbound:?}"
@@ -992,10 +863,64 @@ fn trickled_candidate_after_handshake_still_gets_probed() {
     a.add_remote_candidate(Candidate::host(addr(3)));
 
     a.handle_timeout(now);
-    let transmits: Vec<_> = std::iter::from_fn(|| a.poll_transmit()).collect();
+    let transmits = a.transmits();
 
     let _ = extract_probe_for(&transmits, (addr(1), addr(3)));
     let _ = extract_probe_for(&transmits, (addr(2), addr(3)));
+}
+
+// --- test harness ---
+
+type Pair = (SocketAddr, SocketAddr);
+
+fn ms(n: u64) -> Duration {
+    Duration::from_millis(n)
+}
+
+/// Ergonomic wrappers over the poll-based `PathAgent` API used throughout the
+/// tests, so each test reads as the sequence of events it exercises rather than
+/// the drain/collect boilerplate.
+trait AgentExt {
+    /// Collect every queued transmit.
+    fn transmits(&mut self) -> Vec<Transmit>;
+    /// Drop every queued event.
+    fn drain_events(&mut self);
+    /// `handle_timeout(now)`, then collect the transmits it produced.
+    fn tick(&mut self, now: Instant) -> Vec<Transmit>;
+    /// Reply to `pair`'s probe (looked up in `transmits`) at `reply_at`. Does not
+    /// drain events, so callers can still assert on `PrimaryChanged`.
+    fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant);
+}
+
+impl AgentExt for PathAgent {
+    fn transmits(&mut self) -> Vec<Transmit> {
+        std::iter::from_fn(|| self.poll_transmit()).collect()
+    }
+
+    fn drain_events(&mut self) {
+        while self.poll_event().is_some() {}
+    }
+
+    fn tick(&mut self, now: Instant) -> Vec<Transmit> {
+        self.handle_timeout(now);
+        self.transmits()
+    }
+
+    fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant) {
+        let probe = extract_probe_for(transmits, pair);
+        let _ = self.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, reply_at);
+    }
+}
+
+/// Bootstrap on `recv_path`, select `primary` by ack'ing its probe, then settle
+/// the evaluation window. Leaves the agent settled on `primary`.
+fn settle_with_primary(a: &mut PathAgent, recv_path: Pair, primary: Pair, now: Instant) {
+    bootstrap_primary(a, recv_path, now);
+    let probes = a.tick(now);
+    a.ack_probe(&probes, primary, now + ms(50));
+    a.drain_events();
+    a.handle_timeout(now + EVALUATION_WINDOW);
+    let _ = a.transmits();
 }
 
 // --- shared fixtures ---
@@ -1019,8 +944,8 @@ fn handshake_init_bytes() -> Vec<u8> {
 fn bootstrap_primary(a: &mut PathAgent, recv_path: (SocketAddr, SocketAddr), now: Instant) {
     let mut hs = Handshake::new(now).with_response(now);
     let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
-    while a.poll_event().is_some() {}
-    while a.poll_transmit().is_some() {}
+    a.drain_events();
+    let _ = a.transmits();
 }
 
 struct Handshake {
