@@ -26,7 +26,7 @@ use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
 use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 use tokio::time::Instant;
 use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
@@ -222,7 +222,6 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
-    telemetry: Telemetry,
     telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
@@ -333,7 +332,7 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        let telemetry = Telemetry::new(
+        telemetry::configure(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
         );
@@ -396,7 +395,6 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
-            telemetry,
             telemetry_release: None,
             tun_device,
             dns_notifier,
@@ -497,7 +495,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        self.telemetry.stop().await; // Flush telemetry as the service shuts down.
+        telemetry::stop().await; // Flush telemetry as the service shuts down.
 
         ret
     }
@@ -545,8 +543,7 @@ impl<'a> Handler<'a> {
     /// disconnected aren't attributed to the ended session.
     fn reset_telemetry_environment(&mut self) {
         if let Some(release) = &self.telemetry_release {
-            self.telemetry
-                .start("entrypoint", release, telemetry::GUI_DSN);
+            telemetry::start("entrypoint", release, telemetry::GUI_DSN);
         }
     }
 
@@ -682,16 +679,15 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
-                    self.telemetry
-                        .start(&environment, &release, telemetry::GUI_DSN);
-                    Telemetry::set_firezone_id(self.device_id.id.clone()).await;
+                    telemetry::start(&environment, &release, telemetry::GUI_DSN);
+                    telemetry::set_firezone_id(self.device_id.id.clone()).await;
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
                     );
 
                     if let Some(account_slug) = account_slug {
-                        Telemetry::set_account_slug(account_slug.clone());
+                        telemetry::set_account_slug(account_slug.clone());
 
                         analytics::identify(release, Some(account_slug));
                     }

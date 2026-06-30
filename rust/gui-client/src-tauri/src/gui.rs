@@ -22,10 +22,9 @@ use crate::{
 use anyhow::{Context, Result, bail};
 use futures::SinkExt as _;
 use logging::err_with_src;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tauri::Manager;
 use tauri_specta::Event;
-use telemetry::Telemetry;
 use tokio::{runtime::Runtime, sync::mpsc};
 use tokio_stream::StreamExt;
 use tracing::instrument;
@@ -246,12 +245,7 @@ pub enum ServerMsg {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
-pub fn run(
-    rt: &Runtime,
-    config: RunConfig,
-    reloader: logging::FilterReloadHandle,
-    telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
-) -> Result<()> {
+pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandle) -> Result<()> {
     tauri::async_runtime::set(rt.handle().clone());
 
     #[cfg(not(debug_assertions))]
@@ -367,7 +361,6 @@ pub fn run(
             legacy_advanced_settings_path,
             reloader,
             config.telemetry_allowed,
-            telemetry,
             updates_rx,
             gui_ipc,
         ));

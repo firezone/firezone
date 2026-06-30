@@ -6,7 +6,7 @@ use crate::fd::RawFd;
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock, OnceLock},
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 
@@ -19,15 +19,11 @@ use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
 uniffi::setup_scaffolding!();
-
-/// The process-global telemetry guard, outliving individual connlib sessions.
-static TELEMETRY: LazyLock<parking_lot::Mutex<Option<Telemetry>>> =
-    LazyLock::new(|| parking_lot::Mutex::new(None));
 
 #[derive(uniffi::Object)]
 pub struct Session {
@@ -503,11 +499,9 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    if let Some(telemetry) = TELEMETRY.lock().as_mut() {
-        telemetry.start(&api_url, RELEASE, platform::DSN);
-    }
-    runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
-    Telemetry::set_account_slug(account_slug.clone());
+    telemetry::start(&api_url, RELEASE, platform::DSN);
+    runtime.block_on(telemetry::set_firezone_id(device_id.clone()));
+    telemetry::set_account_slug(account_slug.clone());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
@@ -558,12 +552,10 @@ fn start_telemetry_inner(
 ) {
     install_rustls_crypto_provider();
 
-    let mut telemetry = Telemetry::new(tcp, udp);
-    telemetry.start("entrypoint", RELEASE, platform::DSN);
+    telemetry::configure(tcp, udp);
+    telemetry::start("entrypoint", RELEASE, platform::DSN);
 
     opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
-
-    *TELEMETRY.lock() = Some(telemetry);
 }
 
 #[uniffi::export]
@@ -583,9 +575,7 @@ pub fn start_telemetry() {
 
 #[uniffi::export]
 pub fn stop_telemetry() {
-    if let Some(mut telemetry) = TELEMETRY.lock().take() {
-        telemetry.stop_blocking();
-    }
+    telemetry::stop_blocking();
 }
 
 static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =

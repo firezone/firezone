@@ -31,7 +31,6 @@ use anyhow::{Context, ErrorExt, Result};
 use clap::Parser;
 use firezone_gui_client::PACKAGE_FAMILY_NAME;
 use std::{fmt, process::ExitCode};
-use telemetry::Telemetry;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
@@ -39,11 +38,11 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    let mut telemetry = Telemetry::new(
+    telemetry::configure(
         std::sync::Arc::new(socket_factory::tcp),
         std::sync::Arc::new(socket_factory::udp),
     );
-    telemetry.start(
+    telemetry::start(
         "entrypoint",
         firezone_gui_client::RELEASE,
         telemetry::GUI_DSN,
@@ -51,7 +50,7 @@ async fn main() -> ExitCode {
 
     let exit_code = run();
 
-    telemetry.stop().await;
+    telemetry::stop().await;
     exit_code
 }
 

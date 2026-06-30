@@ -10,8 +10,7 @@ use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging};
-use telemetry::Telemetry;
-use tokio::{runtime::Runtime, sync::Mutex};
+use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
 
 #[expect(
@@ -38,24 +37,21 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
-    let mut telemetry = if cli.is_telemetry_allowed() {
-        Telemetry::new(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))
-    } else {
-        Telemetry::disabled()
-    };
+    if cli.is_telemetry_allowed() {
+        telemetry::configure(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
 
-    // Start telemetry in `entrypoint` mode so that crashes during settings
-    // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
-    // The controller re-targets it at the real environment once `Hello`
-    // arrives; `main` keeps ownership so we can flush on every exit path.
-    telemetry.start(
-        "entrypoint",
-        firezone_gui_client::RELEASE,
-        telemetry::GUI_DSN,
-    );
-    let telemetry = Arc::new(Mutex::new(telemetry));
+        // Start telemetry in `entrypoint` mode so that crashes during settings
+        // load, Tauri setup, IPC connect, or the Hello-wait window are captured.
+        // The controller re-targets it at the real environment once `Hello`
+        // arrives; we flush on every exit path below.
+        telemetry::start(
+            "entrypoint",
+            firezone_gui_client::RELEASE,
+            telemetry::GUI_DSN,
+        );
+    }
 
-    let result = try_main(cli, &rt, &mut log_guard, Arc::clone(&telemetry));
+    let result = try_main(cli, &rt, &mut log_guard);
 
     let exit_code = match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -65,17 +61,12 @@ fn main() -> ExitCode {
         }
     };
 
-    rt.block_on(async { telemetry.lock().await.stop().await });
+    rt.block_on(async { telemetry::stop().await });
 
     exit_code
 }
 
-fn try_main(
-    cli: Cli,
-    rt: &Runtime,
-    log_guard: &mut Option<LogGuard>,
-    telemetry: Arc<Mutex<Telemetry>>,
-) -> Result<()> {
+fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<()> {
     #[cfg(debug_assertions)]
     if cli.skip_tunnel_pipe_owner_check {
         firezone_gui_client::ipc::skip_tunnel_pipe_owner_check();
@@ -173,7 +164,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, config, reloader, telemetry)?;
+            gui::run(rt, config, reloader)?;
 
             return Ok(());
         }
@@ -181,7 +172,7 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, config, reloader, telemetry) {
+    match gui::run(rt, config, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
             if cli.no_error_dialog {
