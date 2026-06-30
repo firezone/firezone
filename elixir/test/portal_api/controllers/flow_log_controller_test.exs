@@ -168,7 +168,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize(account, %{"policy_authorization_id" => authz_id})
         |> post_logs([build_record(%{"policy_authorization_id" => authz_id})])
 
-      assert %{"data" => %{"status" => "accepted"}} = json_response(conn, 202)
+      assert %{"data" => %{"status" => "ok"}} = json_response(conn, 200)
 
       [log] = Repo.all(FlowLog)
       assert log.policy_authorization_id == authz_id
@@ -185,7 +185,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize(account, %{"policy_authorization_id" => authz_id})
         |> post_logs([build_record()])
 
-      assert %{"data" => %{"status" => "accepted"}} = json_response(conn, 202)
+      assert %{"data" => %{"status" => "ok"}} = json_response(conn, 200)
 
       [log] = Repo.all(FlowLog)
       assert log.policy_authorization_id == authz_id
@@ -193,7 +193,7 @@ defmodule PortalAPI.FlowLogControllerTest do
   end
 
   describe "create/2 persistence" do
-    test "returns 202 and persists attribution from the token", %{conn: conn, account: account} do
+    test "returns 200 and persists attribution from the token", %{conn: conn, account: account} do
       device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
@@ -215,7 +215,7 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       conn = post_logs(conn, [build_record()])
 
-      assert %{"data" => %{"status" => "accepted"}} = json_response(conn, 202)
+      assert %{"data" => %{"status" => "ok"}} = json_response(conn, 200)
 
       [log] = Repo.all(FlowLog)
       assert log.account_id == account.id
@@ -239,8 +239,8 @@ defmodule PortalAPI.FlowLogControllerTest do
     } do
       conn = authorize(conn, account, %{"authorized_at" => "2026-03-20T09:59:00.123456Z"})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               post_logs(conn, [build_record()]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               post_logs(conn, [build_record()]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.authorized_at == ~U[2026-03-20 09:59:00.123456Z]
@@ -377,8 +377,8 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       open = build_record(%{"flow_end" => nil, "tx_bytes" => 100})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               build_conn() |> authorize(account, claims) |> post_logs([open]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               build_conn() |> authorize(account, claims) |> post_logs([open]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert is_nil(log.flow_end)
@@ -386,8 +386,8 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       close = build_record(%{"flow_end" => "2026-03-20T10:05:00.000000Z", "tx_bytes" => 999})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               build_conn() |> authorize(account, claims) |> post_logs([close]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               build_conn() |> authorize(account, claims) |> post_logs([close]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.flow_end == ~U[2026-03-20 10:05:00.000000Z]
@@ -400,8 +400,8 @@ defmodule PortalAPI.FlowLogControllerTest do
       claims = %{"device_id" => device_id, "resource_id" => resource_id}
       record = build_record()
 
-      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(202)
-      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(202)
+      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
+      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
 
       assert length(Repo.all(FlowLog)) == 1
     end
@@ -438,7 +438,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       # parallel flow, not a conflict.
       second = build_record(%{"inner_dst_port" => 8443})
 
-      assert build_conn() |> authorize(account, claims) |> post_logs([second]) |> json_response(202)
+      assert build_conn() |> authorize(account, claims) |> post_logs([second]) |> json_response(200)
 
       ports = Repo.all(FlowLog) |> Enum.map(& &1.inner_dst_port) |> Enum.sort()
       assert ports == [443, 8443]
@@ -453,7 +453,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         build_record(%{"inner_dst_port" => 8443})
       ]
 
-      assert conn |> authorize(account) |> post_logs(records) |> json_response(202)
+      assert conn |> authorize(account) |> post_logs(records) |> json_response(200)
 
       ports = Repo.all(FlowLog) |> Enum.map(& &1.inner_dst_port) |> Enum.sort()
       assert ports == [443, 8443]
@@ -489,8 +489,8 @@ defmodule PortalAPI.FlowLogControllerTest do
           "flow_end" => "2026-03-20T10:00:00.000000Z"
         })
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               conn |> authorize(account) |> post_logs([record]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               conn |> authorize(account) |> post_logs([record]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.flow_start == ~U[2026-03-20 10:05:00.000000Z]
@@ -501,8 +501,8 @@ defmodule PortalAPI.FlowLogControllerTest do
       conn = authorize(conn, account, %{"authorized_at" => "2026-03-20T10:01:00.000000Z"})
       record = build_record(%{"flow_start" => "2026-03-20T10:00:00.000000Z"})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               post_logs(conn, [record]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               post_logs(conn, [record]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.flow_start == ~U[2026-03-20 10:00:00.000000Z]
@@ -530,8 +530,8 @@ defmodule PortalAPI.FlowLogControllerTest do
     } do
       conn = authorize(conn, account, %{"resource_address" => nil})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               post_logs(conn, [build_record()]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               post_logs(conn, [build_record()]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert is_nil(log.resource_address)

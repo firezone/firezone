@@ -63,9 +63,9 @@ defmodule PortalAPI.FlowLogController do
 
       if errors == [] do
         conn
-        |> put_status(202)
+        |> put_status(200)
         |> put_view(json: PortalAPI.FlowLogJSON)
-        |> render(:accepted)
+        |> render(:ok)
       else
         ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
           validation_errors: render_validation_errors(Enum.reverse(errors))
