@@ -1318,13 +1318,6 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    /// Mirror of `snownet::Connections::all_iceless`: a client's
-    /// connections are all iceless iff the client itself negotiates
-    /// iceless and every gateway it currently has a connected
-    /// resource on does too. Used to gate
-    /// [`RefClient::reset_connections`] in transitions where the SUT
-    /// would soft-reset (no `ConnectionClosed`, no site-status drop)
-    /// instead of hard-resetting.
     fn all_iceless(&self, client_id: &ClientId) -> bool {
         let Some(client) = self.clients.get(client_id) else {
             return false;
