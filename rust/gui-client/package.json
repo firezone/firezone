@@ -23,7 +23,7 @@
     "@sentry/react": "^10.53.1",
     "@tailwindcss/cli": "^4.3.0",
     "@tailwindcss/vite": "^4.3.0",
-    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/cli": "^2.11.2",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@types/node": "^25.9.1",
