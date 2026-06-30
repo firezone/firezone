@@ -25,13 +25,10 @@ use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
 uniffi::setup_scaffolding!();
 
-/// Process-lifetime telemetry, decoupled from any single connlib session.
+/// The process-global telemetry guard.
 ///
-/// Started once at provider/process start via [`start_telemetry`] (in the
-/// `entrypoint` environment, to capture early crashes), re-pointed at each
-/// session's environment in [`connect`], and flushed at process teardown via
-/// [`stop_telemetry`]. It deliberately outlives connlib sessions so the
-/// post-disconnect flow-log uploader and late crashes still report.
+/// `Some` between [`start_telemetry`] and [`stop_telemetry`]. [`connect`] re-points
+/// it at the active session's environment.
 static TELEMETRY: LazyLock<std::sync::Mutex<Option<Telemetry>>> =
     LazyLock::new(|| std::sync::Mutex::new(None));
 
@@ -343,9 +340,6 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
-        // Telemetry is intentionally *not* stopped here: it lives for the
-        // provider-process lifetime (see `TELEMETRY`), so crashes and the
-        // post-disconnect flow-log uploader keep reporting after the session ends.
         self.inner.stop();
     }
 
@@ -470,9 +464,6 @@ impl Drop for Session {
         self.inner.stop(); // Instruct the event-loop to shut down.
 
         runtime.block_on(async {
-            // Telemetry is process-lifetime (see `TELEMETRY`); it is flushed at
-            // process teardown via `stop_telemetry`, not here.
-
             // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
             let drain = async { self.events.lock().await.drain().await };
             let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
@@ -515,10 +506,8 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    // Telemetry is started once at process start (`start_telemetry`) and lives for
-    // the provider-process lifetime. Re-point the process-global guard at this
-    // session's environment; if `start_telemetry` was never called (e.g. the
-    // Linux/Windows dummy path), telemetry simply stays off.
+    // Re-point the telemetry guard at this session's environment. A no-op if
+    // telemetry was never started.
     if let Some(telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         telemetry.start(&api_url, RELEASE, platform::DSN);
     }
@@ -568,12 +557,7 @@ fn connect(
     })
 }
 
-/// Starts process-lifetime telemetry in the `entrypoint` environment.
-///
-/// Call this once at provider/process start, before any session. It configures
-/// the tunnel-bypassing ingest socket factories and brings up the Sentry guard so
-/// early crashes are captured; [`connect`] later re-points it at the session's
-/// environment, and [`stop_telemetry`] flushes it at teardown.
+/// Brings up the telemetry guard in the neutral `entrypoint` environment.
 fn start_telemetry_inner(
     tcp: Arc<dyn SocketFactory<TcpSocket>>,
     udp: Arc<dyn SocketFactory<UdpSocket>>,
@@ -598,40 +582,17 @@ pub fn start_telemetry(protect_socket: Arc<dyn ProtectSocket>) {
 }
 
 #[uniffi::export]
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(not(target_os = "android"))]
 pub fn start_telemetry() {
     start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
 }
 
-#[uniffi::export]
-#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
-pub fn start_telemetry() {
-    start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
-}
-
-/// Flushes and stops process-lifetime telemetry.
-///
-/// Call this at provider/process teardown (after the last session has
-/// disconnected) for a graceful flush of any pending events.
+/// Flushes and tears down the telemetry guard.
 #[uniffi::export]
 pub fn stop_telemetry() {
-    let Some(mut telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).take() else {
-        return;
-    };
-
-    let runtime = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            tracing::error!("Failed to build runtime to stop telemetry: {e:#}");
-            return;
-        }
-    };
-
-    runtime.block_on(telemetry.stop());
+    if let Some(mut telemetry) = TELEMETRY.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        telemetry.stop_blocking();
+    }
 }
 
 static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =

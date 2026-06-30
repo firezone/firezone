@@ -273,6 +273,12 @@ impl Telemetry {
         }
     }
 
+    /// Blocking [`Self::stop`] for teardown paths with no runtime of their own,
+    /// run on telemetry's shared ingest runtime.
+    pub fn stop_blocking(&mut self) {
+        ingest::RUNTIME.block_on(self.stop());
+    }
+
     pub fn is_active(&self) -> bool {
         self.inner.is_some()
     }

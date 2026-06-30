@@ -27,21 +27,14 @@ pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 /// servers (never the system resolver itself, which may be connlib).
 static SOCKETS: LazyLock<Mutex<Option<SocketFactories>>> = LazyLock::new(|| Mutex::new(None));
 
-/// The resolvers used to look up all ingest hosts while a connlib session is
-/// active.
+/// Upstream resolvers for ingest-host lookups, tracking whether connlib owns the
+/// system resolver.
 ///
-/// These are the system's upstream DNS servers that connlib captured (never the
-/// system resolver itself, which connlib has hijacked). We deliberately don't use
-/// the portal-configured `upstream_do53`/`upstream_doh` here; honouring those for
-/// telemetry is left to a future change.
-///
-/// - `Some(servers)`: a session is active and has hijacked the system resolver,
-///   so we resolve via these captured servers directly. If the list is empty,
-///   resolution fails and telemetry is effectively disabled until servers arrive;
-///   we never fall back to the system resolver, which would loop back through
-///   connlib.
-/// - `None`: no session is active, so the system resolver is the real OS
-///   resolver. We resolve ingest hosts via `getaddrinfo` directly.
+/// - `Some`: a session is active and has hijacked the system resolver. Resolve via
+///   these captured upstreams directly; never `getaddrinfo`, which would loop back
+///   through connlib. An empty list disables telemetry until resolvers arrive.
+/// - `None`: no session is active, so `getaddrinfo` reaches the real OS resolver
+///   and reflects the current network.
 static SERVERS: LazyLock<Mutex<Option<Vec<IpAddr>>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Configures the socket factories used to reach all ingest hosts.
@@ -159,16 +152,12 @@ impl Client {
         RUNTIME
             .spawn(async move {
                 let addresses = match servers {
-                    // A connlib session is active and has hijacked the system
-                    // resolver. Resolve via the upstreams directly, never the system
-                    // resolver, which would loop back through connlib. With no
-                    // upstreams we cannot resolve at all and telemetry is disabled
-                    // until they arrive; don't fall back.
+                    // Session active: resolve via captured upstreams, never `getaddrinfo`.
                     Some(servers) => {
                         anyhow::ensure!(
                             !servers.is_empty(),
-                            "No upstream resolvers configured for ingest host {host}; \
-                             telemetry is disabled while the session is active"
+                            "No upstream resolvers for ingest host {host}; \
+                             telemetry disabled while session is active"
                         );
 
                         BootstrapDnsClient::new(udp, tcp.clone(), servers)
@@ -176,8 +165,7 @@ impl Client {
                             .await
                             .with_context(|| format!("Failed to resolve ingest host {host}"))?
                     }
-                    // No session is active, so the system resolver is the real OS
-                    // resolver. Resolve via `getaddrinfo` directly.
+                    // No session: `getaddrinfo` reaches the real OS resolver.
                     None => resolve_via_system(host).await?,
                 };
 

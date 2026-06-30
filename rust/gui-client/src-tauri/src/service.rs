@@ -223,6 +223,7 @@ struct Handler<'a> {
     mdm_settings: MdmSettings,
     session: Session,
     telemetry: Telemetry,
+    telemetry_release: String,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
@@ -396,6 +397,7 @@ impl<'a> Handler<'a> {
             mdm_settings,
             session: Session::None,
             telemetry,
+            telemetry_release: String::new(),
             tun_device,
             dns_notifier,
             network_notifier,
@@ -543,8 +545,12 @@ impl<'a> Handler<'a> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                // Telemetry is process-lifetime; it outlives sessions and is only
-                // flushed when the service itself shuts down.
+                // Re-point telemetry to the neutral environment so events emitted
+                // while disconnected aren't attributed to the ended session.
+                if self.telemetry.is_active() {
+                    self.telemetry
+                        .start("entrypoint", &self.telemetry_release, telemetry::GUI_DSN);
+                }
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
@@ -672,6 +678,7 @@ impl<'a> Handler<'a> {
                     std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
                 if !no_telemetry {
+                    self.telemetry_release = release.clone();
                     self.telemetry
                         .start(&environment, &release, telemetry::GUI_DSN);
                     Telemetry::set_firezone_id(self.device_id.id.clone()).await;
