@@ -1637,10 +1637,6 @@ where
         let relay_id = self.relay.id;
         let ecn = packet.ecn();
 
-        // Resolve everything that depends on the socket kind in one place. Direct sockets carry
-        // their own source and destination and write at offset 0. Relayed sockets are sent from any
-        // interface (`src` is `None`); their destination and channel come from the relay's
-        // allocation (looked up once), and they reserve room for the channel-data header.
         let (src, dst, packet_start, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
                 (Some(source), dest, 0, None)
