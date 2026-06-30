@@ -442,6 +442,17 @@ impl Io {
                 break;
             };
 
+            for segment in datagram.packet.chunks(datagram.segment_size) {
+                self.packet_counter.add(
+                    1,
+                    &[
+                        otel::attr::network_protocol_name(segment),
+                        otel::attr::network_transport_udp(),
+                        otel::attr::network_io_direction_transmit(),
+                    ],
+                );
+            }
+
             self.sockets.send(datagram)?;
         }
 
@@ -508,15 +519,6 @@ impl Io {
         ecn: Ecn,
     ) {
         self.gso_queue.enqueue(src, dst, payload, ecn);
-
-        self.packet_counter.add(
-            1,
-            &[
-                otel::attr::network_protocol_name(payload),
-                otel::attr::network_transport_udp(),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        );
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
