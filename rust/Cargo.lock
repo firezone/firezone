@@ -1231,6 +1231,7 @@ dependencies = [
  "backoff",
  "client-shared",
  "connlib-model",
+ "flow-log-upload",
  "ip-packet",
  "ip_network",
  "itertools",

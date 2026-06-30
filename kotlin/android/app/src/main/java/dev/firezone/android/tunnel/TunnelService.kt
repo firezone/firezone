@@ -347,6 +347,7 @@ class TunnelService : VpnService() {
                             deviceName = getDeviceName(),
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
+                            flowLogsDir = getFlowLogsDir(),
                             isInternetResourceActive = resourceState.isEnabled(),
                             protectSocket = protectSocket,
                             deviceInfo = deviceInfo,
@@ -547,6 +548,15 @@ class TunnelService : VpnService() {
         val logDir = cacheDir.absolutePath + "/logs"
         Files.createDirectories(Paths.get(logDir))
         return logDir
+    }
+
+    // Spool directory for flow logs the tunnel writes and the uploader drains. Under
+    // `filesDir` (persistent, unlike `cacheDir`) and outside the log directory so an
+    // exported log bundle never sweeps it up.
+    private fun getFlowLogsDir(): String {
+        val flowLogsDir = filesDir.absolutePath + "/flow_logs"
+        Files.createDirectories(Paths.get(flowLogsDir))
+        return flowLogsDir
     }
 
     fun startConnectedNotification() {
