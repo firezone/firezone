@@ -124,7 +124,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 .collect::<Vec<_>>()
                 .prop_map(BTreeMap::from_iter);
 
-            let gateway_selector = any::<sample::Selector>();
+            let gateway_selector = any::<u32>();
 
             let upstream_do53_servers = upstream_do53_servers();
             let upstream_doh_servers = upstream_doh_servers();
