@@ -695,7 +695,7 @@ dependencies = [
  "gat-lending-iterator",
  "hex",
  "hex-literal",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "http",
  "ip-packet",
  "ip_network",
@@ -714,7 +714,7 @@ dependencies = [
  "rtnetlink",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.11.0",
  "smbios-lib",
  "socket-factory",
  "telemetry",
@@ -1357,6 +1357,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-oid"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
+
+[[package]]
 name = "constant_time_eq"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1685,7 +1691,7 @@ dependencies = [
  "hkdf",
  "num",
  "once_cell",
- "sha2",
+ "sha2 0.10.9",
  "zeroize",
 ]
 
@@ -1830,6 +1836,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.0",
+ "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
 ]
@@ -2387,7 +2394,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_variant",
- "sha2",
+ "sha2 0.11.0",
  "socket-factory",
  "specta",
  "specta-typescript",
@@ -2521,7 +2528,7 @@ dependencies = [
  "rustls",
  "secrecy",
  "serde",
- "sha2",
+ "sha2 0.11.0",
  "smallvec",
  "socket-factory",
  "socket2",
@@ -5283,7 +5290,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.11.0",
  "socket-factory",
  "thiserror 2.0.18",
  "tokio",
@@ -6614,6 +6621,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.0",
+ "digest 0.11.3",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7255,7 +7273,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "syn 2.0.117",
  "tauri-utils",
  "thiserror 2.0.18",
@@ -7519,7 +7537,7 @@ dependencies = [
  "sentry",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.11.0",
  "smallvec",
  "socket-factory",
  "thiserror 2.0.18",
@@ -8259,7 +8277,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sha2",
+ "sha2 0.11.0",
  "smallvec",
  "snownet",
  "socket-factory",
@@ -9741,7 +9759,7 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "raw-window-handle",
- "sha2",
+ "sha2 0.10.9",
  "soup3",
  "tao-macros",
  "thiserror 2.0.18",
