@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::anyhow;
 use bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use clap::Parser as _;

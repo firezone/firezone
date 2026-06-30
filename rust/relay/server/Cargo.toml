@@ -23,6 +23,7 @@ eventloop-budget = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 logging = { workspace = true }
+mimalloc = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
@@ -53,6 +54,7 @@ uuid = { workspace = true, features = ["v4"] }
 aya = { workspace = true, optional = true }
 aya-log = { workspace = true, optional = true }
 ebpf-shared = { workspace = true, features = ["std"], optional = true }
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
 anyhow = { workspace = true }
