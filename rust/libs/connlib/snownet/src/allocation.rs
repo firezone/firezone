@@ -916,6 +916,8 @@ impl Allocation {
         let channel_number = match connected_channel_to_peer.or(inflight_channel_to_peer) {
             Some(cn) => cn,
             None => {
+                tracing::debug!(%peer, "Dropping packet; no channel bound to peer yet");
+
                 self.bind_channel(peer, now);
 
                 return None;

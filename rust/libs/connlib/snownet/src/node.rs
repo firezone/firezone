@@ -1670,11 +1670,14 @@ where
         debug_assert_eq!(packet_start + len, reserve_len);
 
         if let Some((peer, allocation)) = relay {
-            // Prepend the channel-data header into the reserved space. If no channel is bound to the
-            // peer yet, report the dropped packet; dropping the reservation rolls it back.
-            allocation
+            // A missing channel is an expected part of channel setup (`encode_channel_data_header`
+            // logs it and queues a binding), so drop the packet instead of surfacing an error.
+            if allocation
                 .encode_channel_data_header(peer, reservation.buffer(), now)
-                .with_context(|| format!("No channel for peer {peer} on relay {relay_id}"))?;
+                .is_none()
+            {
+                return Ok(None);
+            }
         }
 
         reservation.commit();
