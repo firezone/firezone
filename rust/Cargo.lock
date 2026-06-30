@@ -865,7 +865,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=claude/boringtun-aws-lc-rs-mabvyb#437fc32a7006a2695c271264c4b64bfd4e7eca4c"
+source = "git+https://github.com/firezone/boringtun?branch=claude%2Fboringtun-aws-lc-rs-mabvyb#5c925b41b611eada5be081b8fd3534feb1c9a026"
 dependencies = [
  "aead",
  "aws-lc-rs",
