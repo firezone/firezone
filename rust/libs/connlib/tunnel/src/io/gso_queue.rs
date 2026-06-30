@@ -6,6 +6,7 @@ use std::{
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::Ecn;
+use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
@@ -30,32 +31,37 @@ impl GsoQueue {
         }
     }
 
+    /// Copy an already-formed datagram into the queue.
+    ///
+    /// This is used for datagrams we cannot (or need not) encrypt in place, e.g. STUN/TURN control
+    /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
+    /// directly into the queue via the [`BufferProvider`] implementation.
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let payload_len = payload.len();
+        let mut reservation = self.reserve(src, dst, ecn, payload.len());
+        reservation.buffer().copy_from_slice(payload);
+        reservation.commit();
+    }
 
-        debug_assert!(
-            payload_len <= MAX_SEGMENT_SIZE,
-            "MAX_SEGMENT_SIZE is miscalculated"
-        );
-
-        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
-
-        let Some((batch_size, buffer)) = batches.back_mut() else {
-            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
-
+    /// Undo the most recent reservation for `connection`.
+    fn rollback(&mut self, connection: Connection, len: usize) {
+        let Some(batches) = self.inner.get_mut(&connection) else {
             return;
         };
-        let batch_size = *batch_size;
-
-        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
-        let batch_is_ongoing = buffer.len() % batch_size == 0;
-
-        if batch_is_ongoing && payload_len <= batch_size {
-            buffer.extend_from_slice(payload);
+        let Some((_, buffer)) = batches.back_mut() else {
             return;
-        }
+        };
 
-        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+        let new_len = buffer.len().saturating_sub(len);
+        buffer.truncate(new_len);
+
+        // Drop any batch (and connection) that became empty as a result.
+        if buffer.is_empty() {
+            batches.pop_back();
+
+            if batches.is_empty() {
+                self.inner.remove(&connection);
+            }
+        }
     }
 
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
@@ -64,6 +70,87 @@ impl GsoQueue {
 
     pub fn clear(&mut self) {
         self.inner.clear()
+    }
+}
+
+impl BufferProvider for GsoQueue {
+    type Reservation<'a> = GsoReservation<'a>;
+
+    fn reserve(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        ecn: Ecn,
+        len: usize,
+    ) -> GsoReservation<'_> {
+        debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
+
+        let connection = Connection { src, dst, ecn };
+        let batches = self.inner.entry(connection).or_default();
+
+        // Decide whether the datagram can extend the current batch or has to start a new one.
+        let needs_new_batch = match batches.back() {
+            None => true,
+            Some((batch_size, buffer)) => {
+                // A batch is "ongoing" as long as every segment so far has been full-size.
+                let batch_is_ongoing = buffer.len() % batch_size == 0;
+
+                !(batch_is_ongoing && len <= *batch_size)
+            }
+        };
+
+        if needs_new_batch {
+            let mut buffer = self.buffer_pool.pull();
+            buffer.clear();
+            batches.push_back((len, buffer));
+        }
+
+        let (_, buffer) = batches.back_mut().expect("we ensured a batch exists");
+        let new_len = buffer.len() + len;
+        buffer.resize(new_len, 0);
+
+        GsoReservation {
+            queue: self,
+            connection,
+            len,
+            committed: false,
+        }
+    }
+}
+
+/// A [`Reservation`] into a [`GsoQueue`], pointing at the tail of the current batch.
+pub struct GsoReservation<'a> {
+    queue: &'a mut GsoQueue,
+    connection: Connection,
+    len: usize,
+    committed: bool,
+}
+
+impl Reservation for GsoReservation<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        let (_, buffer) = self
+            .queue
+            .inner
+            .get_mut(&self.connection)
+            .expect("reserved connection to exist")
+            .back_mut()
+            .expect("reserved batch to exist");
+
+        let offset = buffer.len() - self.len;
+
+        &mut buffer[offset..]
+    }
+
+    fn commit(mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for GsoReservation<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.queue.rollback(self.connection, self.len);
+        }
     }
 }
 
@@ -206,6 +293,55 @@ mod tests {
         assert_eq!(datagrams[1].packet.as_ref(), b"barbaz");
         assert_eq!(datagrams[1].segment_size, 6);
         assert_eq!(datagrams[1].dst, DST_1);
+    }
+
+    #[test]
+    fn committing_a_reservation_keeps_the_datagram() {
+        let mut send_queue = GsoQueue::new();
+
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"foobar");
+            reservation.commit();
+        }
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+    }
+
+    #[test]
+    fn dropping_a_reservation_without_committing_rolls_it_back() {
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+
+        // Reserve a second segment in the same batch but drop it without committing.
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"barbaz");
+        }
+
+        // Only the committed datagram remains; the reserved bytes were rolled back.
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+        assert_eq!(datagrams[0].segment_size, 6);
+    }
+
+    #[test]
+    fn dropping_the_only_reservation_leaves_the_queue_empty() {
+        let mut send_queue = GsoQueue::new();
+
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"barbaz");
+        }
+
+        // Rolling back the last segment drops the empty batch and connection.
+        assert_eq!(send_queue.datagrams().count(), 0);
     }
 
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));

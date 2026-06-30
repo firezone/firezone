@@ -38,6 +38,9 @@ pub(crate) struct SimGateway {
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
     tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
+
+    /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
+    transmit_buffer: snownet::TransmitBuffer,
 }
 
 impl SimGateway {
@@ -68,6 +71,7 @@ impl SimGateway {
                     (address, server)
                 })
                 .collect(),
+            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -131,11 +135,40 @@ impl SimGateway {
             std::iter::from_fn(|| server.poll_outbound())
         });
 
-        udp_server_packets
+        // Collect first to end the mutable borrows of the resource maps before encapsulating.
+        let packets = udp_server_packets
             .chain(tcp_server_packets)
             .chain(tcp_resource_packets)
-            .filter_map(|packet| self.sut.handle_tun_input(packet, now).unwrap())
+            .collect::<Vec<_>>();
+
+        packets
+            .into_iter()
+            .filter_map(|packet| match self.handle_tun_input(packet, now) {
+                Ok(maybe_transmit) => maybe_transmit,
+                // The gateway could not encrypt the packet (e.g. no session during a re-key). In
+                // production this error bubbles up to the event loop and the packet is dropped;
+                // model that as a drop here rather than panicking.
+                Err(e) => {
+                    tracing::debug!("Gateway failed to encapsulate resource packet: {e:#}");
+                    None
+                }
+            })
             .collect()
+    }
+
+    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
+    ///
+    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
+    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    fn handle_tun_input(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<Option<snownet::Transmit>> {
+        self.sut
+            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+
+        Ok(self.transmit_buffer.poll_transmit())
     }
 
     pub(crate) fn deploy_new_dns_servers(
@@ -242,7 +275,7 @@ impl SimGateway {
 
         if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
             self.request_received(&packet, now);
-            let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
+            let transmit = self.handle_tun_input(reply, now).unwrap()?;
 
             return Some(transmit);
         }
@@ -298,7 +331,7 @@ impl SimGateway {
             .expect("src and dst are taken from incoming packet")
         });
 
-        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
+        let transmit = self.handle_tun_input(reply, now).unwrap()?;
 
         Some(transmit)
     }
