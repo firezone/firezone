@@ -244,3 +244,18 @@ config :portal, Portal.Mailer.Secondary, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev
+
+config :portal, Portal.Telemetry, metrics_debug: false
+
+if otlp_endpoint = System.get_env("OTLP_ENDPOINT") do
+  config :opentelemetry_experimental,
+    readers: [
+      %{
+        module: :otel_metric_reader,
+        config: %{
+          export_interval_ms: 30_000,
+          exporter: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
+        }
+      }
+    ]
+end
