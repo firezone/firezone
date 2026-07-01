@@ -20,12 +20,12 @@
 //! ambiguous failure retries the whole batch. Response handling:
 //! - 2xx: delete the sent files.
 //! - 422: the portal already persisted the valid records and the listed ones are
-//!   permanently invalid, so log the body (to Sentry) and drop the batch.
+//!   permanently invalid, so log the body and drop the batch.
 //! - 413: split the batch and retry each half.
 //! - 429: honor `Retry-After`, then retry the same batch.
 //! - 408 / 5xx / transport errors: exponential backoff, then retry; defer to the
 //!   next pass once the budget is spent (the files remain).
-//! - Other 4xx: permanent; log the status + body (to Sentry) and drop the batch.
+//! - Other 4xx: permanent; log the status + body and drop the batch.
 //!
 //! Uploads go through [`http_client::HttpClient`] over the caller's
 //! [`SocketFactory`], so they bypass the tunnel exactly like connlib's own traffic.
@@ -210,7 +210,7 @@ pub fn prune(spool_root: &Path) {
 
             match std::fs::remove_dir_all(&dir) {
                 Ok(()) => tracing::debug!(?dir, "Pruned stale flow-log spool directory"),
-                Err(e) => tracing::warn!(?dir, "Failed to prune flow-log spool dir: {e:#}"),
+                Err(e) => tracing::info!(?dir, "Failed to prune flow-log spool dir: {e:#}"),
             }
         }
     }
@@ -336,7 +336,7 @@ fn ingest_endpoint(base_url: &str) -> Option<String> {
     match Url::parse(base_url).and_then(|base| base.join(INGEST_PATH)) {
         Ok(url) => Some(url.to_string()),
         Err(e) => {
-            tracing::warn!(%base_url, "Invalid flow-log API URL; uploads disabled: {e}");
+            tracing::info!(%base_url, "Invalid flow-log API URL; uploads disabled: {e}");
             None
         }
     }
@@ -474,7 +474,7 @@ async fn process_authz_dir(client: &HttpClient, dir: &Path, url: &str, batch_siz
     let mut flows = match group_flows(dir) {
         Ok(flows) => flows,
         Err(e) => {
-            tracing::warn!(?dir, "Failed to list flow-log spool directory: {e:#}");
+            tracing::info!(?dir, "Failed to list flow-log spool directory: {e:#}");
             return false;
         }
     };
@@ -555,7 +555,7 @@ fn read_report(path: &Path) -> Option<Payload> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) => {
-            tracing::warn!(?path, "Failed to read flow-log report: {e:#}");
+            tracing::info!(?path, "Failed to read flow-log report: {e:#}");
             return None;
         }
     };
@@ -594,7 +594,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
         let response = match send(client, url, token, body.clone()).await {
             Ok(response) => response,
             Err(e) => {
-                tracing::warn!("Flow-log upload request failed: {e:#}");
+                tracing::info!("Flow-log upload request failed: {e:#}");
                 // A closed connection won't recover by retrying; defer to the next scan.
                 if client.is_closed() || !sleep_backoff(&mut backoff).await {
                     return; // the files remain on disk
@@ -604,45 +604,61 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
         };
 
         let status = response.status();
-        match status {
-            _ if status.is_success() => {
+        match classify_response(status) {
+            ResponseAction::Delete => {
                 delete_all(batch);
                 return;
             }
-            StatusCode::UNPROCESSABLE_ENTITY => {
-                let body = body_string(&response);
-                tracing::info!(%body, "Flow-log batch had validation errors; dropping batch");
-                delete_all(batch);
-                return;
-            }
-            StatusCode::PAYLOAD_TOO_LARGE => {
+            ResponseAction::Partition => {
                 partition(client, url, token, batch).await;
                 return;
             }
-            StatusCode::TOO_MANY_REQUESTS => {
+            ResponseAction::RateLimited => {
                 let wait = retry_after(&response).unwrap_or(CATCHUP_POLL);
                 tracing::debug!(?wait, "Flow-log upload rate-limited; waiting");
                 tokio::time::sleep(wait).await;
                 // Not a failure; keep retrying the same batch without spending the budget.
             }
-            StatusCode::REQUEST_TIMEOUT => {
+            ResponseAction::Retry => {
+                tracing::debug!(%status, "Flow-log upload transient failure; backing off");
                 if !sleep_backoff(&mut backoff).await {
                     return;
                 }
             }
-            _ if status.is_server_error() => {
-                tracing::debug!(%status, "Flow-log upload server error; backing off");
-                if !sleep_backoff(&mut backoff).await {
-                    return;
-                }
-            }
-            _ => {
+            ResponseAction::Drop => {
                 let body = body_string(&response);
                 tracing::info!(%status, %body, "Flow-log upload rejected; dropping batch");
                 delete_all(batch);
                 return;
             }
         }
+    }
+}
+
+/// What to do with a batch after a POST, decided from the response status.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum ResponseAction {
+    /// The batch was persisted (2xx); delete the sent files.
+    Delete,
+    /// The batch is too large (413); split it and retry each half.
+    Partition,
+    /// Rate-limited (429); honour `Retry-After`, then retry the same batch.
+    RateLimited,
+    /// Transient failure (408 / 5xx); back off, then retry the same batch.
+    Retry,
+    /// Permanently rejected (422 / other 4xx); log and drop the batch. The portal
+    /// upserts by flow identity, so a dropped batch is never a partial write.
+    Drop,
+}
+
+fn classify_response(status: StatusCode) -> ResponseAction {
+    match status {
+        s if s.is_success() => ResponseAction::Delete,
+        StatusCode::PAYLOAD_TOO_LARGE => ResponseAction::Partition,
+        StatusCode::TOO_MANY_REQUESTS => ResponseAction::RateLimited,
+        StatusCode::REQUEST_TIMEOUT => ResponseAction::Retry,
+        s if s.is_server_error() => ResponseAction::Retry,
+        _ => ResponseAction::Drop,
     }
 }
 
@@ -685,7 +701,7 @@ fn delete_all(batch: &[Pending]) {
     for flow in batch {
         for path in &flow.files {
             if let Err(e) = std::fs::remove_file(path) {
-                tracing::warn!(?path, "Failed to delete uploaded flow-log report: {e:#}");
+                tracing::info!(?path, "Failed to delete uploaded flow-log report: {e:#}");
             }
         }
     }
@@ -835,5 +851,44 @@ mod tests {
             !orphan.exists(),
             "token-less authorization dir should be pruned"
         );
+    }
+
+    #[test]
+    fn classify_response_maps_status_to_action() {
+        use ResponseAction::*;
+
+        assert_eq!(classify_response(StatusCode::OK), Delete);
+        assert_eq!(classify_response(StatusCode::ACCEPTED), Delete);
+        assert_eq!(classify_response(StatusCode::NO_CONTENT), Delete);
+        assert_eq!(classify_response(StatusCode::PAYLOAD_TOO_LARGE), Partition);
+        assert_eq!(
+            classify_response(StatusCode::TOO_MANY_REQUESTS),
+            RateLimited
+        );
+        assert_eq!(classify_response(StatusCode::REQUEST_TIMEOUT), Retry);
+        assert_eq!(classify_response(StatusCode::INTERNAL_SERVER_ERROR), Retry);
+        assert_eq!(classify_response(StatusCode::SERVICE_UNAVAILABLE), Retry);
+        assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Drop);
+        assert_eq!(classify_response(StatusCode::BAD_REQUEST), Drop);
+        assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Drop);
+        assert_eq!(classify_response(StatusCode::FORBIDDEN), Drop);
+    }
+
+    #[test]
+    fn retry_after_parses_the_seconds_header() {
+        let with_header = http::Response::builder()
+            .header(header::RETRY_AFTER, "30")
+            .body(Bytes::new())
+            .unwrap();
+        assert_eq!(retry_after(&with_header), Some(Duration::from_secs(30)));
+
+        let no_header = http::Response::builder().body(Bytes::new()).unwrap();
+        assert_eq!(retry_after(&no_header), None);
+
+        let non_numeric = http::Response::builder()
+            .header(header::RETRY_AFTER, "soon")
+            .body(Bytes::new())
+            .unwrap();
+        assert_eq!(retry_after(&non_numeric), None);
     }
 }
