@@ -160,7 +160,7 @@ fn main() -> ExitCode {
         }
     };
 
-    runtime.block_on(telemetry::stop());
+    telemetry::stop();
 
     code
 }

@@ -495,7 +495,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        telemetry::stop().await; // Flush telemetry as the service shuts down.
+        telemetry::stop(); // Flush telemetry as the service shuts down.
 
         ret
     }
@@ -680,7 +680,7 @@ impl<'a> Handler<'a> {
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
                     telemetry::start(&environment, &release, telemetry::GUI_DSN);
-                    telemetry::set_firezone_id(self.device_id.id.clone()).await;
+                    telemetry::set_firezone_id(self.device_id.id.clone());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),

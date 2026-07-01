@@ -330,7 +330,7 @@ fn try_main() -> Result<()> {
         );
 
         telemetry::start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
-        rt.block_on(telemetry::set_firezone_id(firezone_id.clone()));
+        telemetry::set_firezone_id(firezone_id.clone());
 
         analytics::identify(RELEASE.to_owned(), None);
     }
@@ -507,7 +507,7 @@ fn try_main() -> Result<()> {
         // Drain the event-stream to allow the event-loop to gracefully shutdown.
         let _ = tokio::time::timeout(Duration::from_secs(1), event_stream.drain()).await;
 
-        telemetry::stop().await;
+        telemetry::stop();
 
         result
     })?;

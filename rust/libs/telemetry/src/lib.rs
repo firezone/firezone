@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, bail};
 use api_url::ApiUrl;
 use parking_lot::Mutex;
 use sentry::{
@@ -240,44 +240,25 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
 }
 
 /// Flushes events to sentry.io and drops the guard. A no-op if not started.
-pub async fn stop() {
-    if let Err(e) = end_session().await {
-        tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
-    }
-}
+///
+/// Sentry's flush is blocking IO with its own timeout, so this needs no runtime and
+/// is safe to call from anywhere at teardown.
+pub fn stop() {
+    let Some(inner) = GUARD.lock().take() else {
+        return;
+    };
 
-/// Blocking [`stop`] for teardown paths with no runtime of their own, run on
-/// telemetry's shared ingest runtime.
-pub fn stop_blocking() {
-    ingest::RUNTIME.block_on(stop());
+    tracing::info!("Stopping telemetry");
+
+    if inner.flush(Some(Duration::from_secs(1))) {
+        tracing::debug!("Flushed telemetry");
+    } else {
+        tracing::error!("Failed to flush telemetry events to sentry.io");
+    }
 }
 
 pub fn is_active() -> bool {
     GUARD.lock().is_some()
-}
-
-async fn end_session() -> Result<()> {
-    let Some(inner) = GUARD.lock().take() else {
-        return Ok(());
-    };
-    tracing::info!("Stopping telemetry");
-
-    // Sentry uses blocking IO for flushing ..
-    let task = tokio::task::spawn_blocking(move || {
-        if !inner.flush(Some(Duration::from_secs(1))) {
-            return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
-        };
-
-        tracing::debug!("Flushed telemetry");
-
-        Ok(())
-    });
-
-    tokio::time::timeout(Duration::from_secs(1), task)
-        .await
-        .context("Failed to end session within 1s")???;
-
-    Ok(())
 }
 
 pub fn set_account_slug(slug: String) {
@@ -287,17 +268,16 @@ pub fn set_account_slug(slug: String) {
 }
 
 /// Attaches the Firezone ID to the active Sentry session.
-pub async fn set_firezone_id(firezone_id: String) {
+pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
     update_user(|user| {
         user.id = new_user.id;
         user.other.extend(new_user.other);
     });
 
-    // In case user and env are now available, re-eval feature-flags.
-    if let (Some(id), Some(env)) = (current_user(), current_env()) {
-        feature_flags::evaluate_now(id, env).await;
-    }
+    // The user (and maybe env) may now be available, so re-eval feature flags on
+    // telemetry's internal ingest runtime.
+    feature_flags::reevaluate_current();
 }
 
 #[doc(hidden)] // Only public for testing.
