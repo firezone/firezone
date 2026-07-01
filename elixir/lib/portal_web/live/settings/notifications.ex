@@ -6,7 +6,8 @@ defmodule PortalWeb.Settings.Notifications do
     socket =
       assign(socket,
         page_title: "Notifications",
-        form: to_form(build_changeset(socket.assigns.account))
+        form: to_form(build_changeset(socket.assigns.account)),
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
       )
 
     {:ok, socket}
@@ -15,7 +16,11 @@ defmodule PortalWeb.Settings.Notifications do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 overflow-y-auto p-6">
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">

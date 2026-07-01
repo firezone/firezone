@@ -375,5 +375,21 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       refute render(lv) =~ "Deletable CA"
       refute Repo.get_by(TrustAnchor, account_id: account.id, id: trust_anchor.id)
     end
+
+    test "does not crash when deleting an id that no longer exists", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors")
+
+      html = render_click(lv, "delete", %{"id" => Ecto.UUID.generate()})
+
+      assert Process.alive?(lv.pid)
+      assert html =~ "Trust Anchors"
+    end
   end
 end

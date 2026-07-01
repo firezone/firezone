@@ -48,7 +48,11 @@ defmodule PortalWeb.Settings.Authentication do
   }
 
   def mount(_params, _session, socket) do
-    socket = assign(socket, page_title: "Authentication")
+    socket =
+      assign(socket,
+        page_title: "Authentication",
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+      )
 
     if connected?(socket) do
       :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :client_tokens)
@@ -565,7 +569,11 @@ defmodule PortalWeb.Settings.Authentication do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
