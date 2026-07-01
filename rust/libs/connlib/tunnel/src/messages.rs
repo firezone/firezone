@@ -87,6 +87,28 @@ impl From<IceRole> for snownet::IceRole {
     }
 }
 
+/// Capabilities of a snownet implementation.
+///
+/// Reported by clients and gateways to the portal on connect. The portal
+/// intersects capabilities across both sides of each connection and re-emits
+/// the negotiated set with each `authorize_flow` / `flow_created` /
+/// `client_device_access_authorized` message.
+///
+/// New fields must always be added with a `false`-equivalent default so older
+/// peers that don't send them deserialize as "feature not supported", and
+/// existing fields must never be repurposed.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SnownetCapabilities {
+    /// The implementation can negotiate connections without ICE.
+    pub iceless: bool,
+}
+
+impl SnownetCapabilities {
+    /// Capabilities of the local snownet implementation, hard-coded at compile time.
+    pub const LOCAL: Self = Self { iceless: true };
+}
+
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum DnsServer {
@@ -255,4 +277,34 @@ fn min_port() -> u16 {
 
 fn max_port() -> u16 {
     u16::MAX
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snownet_capabilities_default_is_all_false() {
+        assert_eq!(
+            SnownetCapabilities::default(),
+            SnownetCapabilities { iceless: false }
+        );
+    }
+
+    // Compile-time guard so future edits to `LOCAL` don't accidentally turn
+    // off iceless support without us noticing.
+    const _: () = assert!(SnownetCapabilities::LOCAL.iceless);
+
+    #[test]
+    fn snownet_capabilities_deserialize_empty_object_is_default() {
+        let caps: SnownetCapabilities = serde_json::from_str("{}").unwrap();
+        assert_eq!(caps, SnownetCapabilities::default());
+    }
+
+    #[test]
+    fn snownet_capabilities_ignores_unknown_fields() {
+        let json = r#"{ "iceless": true, "future_feature": true }"#;
+        let caps: SnownetCapabilities = serde_json::from_str(json).unwrap();
+        assert!(caps.iceless);
+    }
 }

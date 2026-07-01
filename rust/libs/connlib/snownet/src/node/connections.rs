@@ -64,8 +64,9 @@ where
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
             self.disconnected_ids.insert(id, now);
-            self.disconnected_ufrags
-                .insert(conn.agent.local_credentials().ufrag.to_owned(), now);
+            if let Some(ufrag) = conn.agent.local_ufrag() {
+                self.disconnected_ufrags.insert(ufrag.to_owned(), now);
+            }
         }
 
         self.disconnected_ids
@@ -83,16 +84,18 @@ where
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
-        self.established_by_local_ufrag
-            .remove(&connection.agent.local_credentials().ufrag);
+        if let Some(ufrag) = connection.agent.local_ufrag() {
+            self.established_by_local_ufrag.remove(ufrag);
+        }
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
         self.disconnected_session_indices
             .insert(connection.index.global(), now);
-        self.disconnected_ufrags
-            .insert(connection.agent.local_credentials().ufrag.to_owned(), now);
+        if let Some(ufrag) = connection.agent.local_ufrag() {
+            self.disconnected_ufrags.insert(ufrag.to_owned(), now);
+        }
 
         Some(connection)
     }
@@ -149,7 +152,7 @@ where
         index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
-        let local_ufrag = connection.agent.local_credentials().ufrag.to_owned();
+        let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
@@ -157,7 +160,9 @@ where
             .retain(|_, c| c != &id);
         self.established_by_wireguard_session_index
             .insert(index.global(), id);
-        self.established_by_local_ufrag.insert(local_ufrag, id);
+        if let Some(ufrag) = local_ufrag {
+            self.established_by_local_ufrag.insert(ufrag, id);
+        }
 
         existing
     }
@@ -282,6 +287,10 @@ where
 
     pub(crate) fn all_idle(&self) -> bool {
         self.established.values().all(|c| c.is_idle())
+    }
+
+    pub(crate) fn all_iceless(&self) -> bool {
+        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -594,7 +603,7 @@ mod tests {
         let new_local = Index::new_local(idx);
 
         Connection {
-            agent: IceAgent::new(is::IceCreds::new()),
+            agent: crate::agent::Agent::ice(IceAgent::new(is::IceCreds::new())),
             index: new_local,
             tunnel: Tunn::new_at(
                 private,

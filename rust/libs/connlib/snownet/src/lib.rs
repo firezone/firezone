@@ -3,9 +3,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod agent;
 mod allocation;
 mod backoff;
 mod buffer;
+mod candidate;
 mod channel_data;
 mod index;
 mod node;

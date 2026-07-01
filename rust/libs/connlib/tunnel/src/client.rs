@@ -971,6 +971,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        use_iceless: bool,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -992,6 +993,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
+            use_iceless,
             now,
         ) {
             Ok(()) => {}
@@ -1073,6 +1075,7 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
+        use_iceless: bool,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -1089,6 +1092,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
+            use_iceless,
             now,
         )?;
 
@@ -2174,12 +2178,7 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(now); // Clear all network connections.
-        self.gateways.clear(); // Clear all state associated with Gateways.
-        self.clients.clear(); // Clear all state associated with Clients.
-        self.pending_packets.clear(); // Drop packets buffered for pending connections.
-
-        self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
+        self.node.reset(now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

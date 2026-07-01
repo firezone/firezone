@@ -287,6 +287,7 @@ impl GatewayState {
         gateway_ice: IceCredentials,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
+        use_iceless: bool,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
@@ -298,6 +299,7 @@ impl GatewayState {
             IceRole::Controlled,
             IceConfig::server_default(),
             IceConfig::server_idle(),
+            use_iceless,
             now,
         )?;
 

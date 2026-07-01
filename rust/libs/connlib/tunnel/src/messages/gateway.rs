@@ -1,6 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
+use crate::messages::{
+    Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey, SnownetCapabilities,
+};
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -178,6 +180,9 @@ pub struct AuthorizeFlow {
 
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
+
+    #[serde(default)]
+    pub use_iceless: bool,
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
@@ -222,6 +227,7 @@ pub enum EgressMessages {
         reference: String,
     },
     NoRelays {},
+    SetSnownetCapabilities(SnownetCapabilities),
 }
 
 #[cfg(test)]
@@ -389,13 +395,26 @@ mod tests {
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(message, IngressMessages::AuthorizeFlow(_)));
+        let IngressMessages::AuthorizeFlow(flow) = message else {
+            panic!("expected AuthorizeFlow");
+        };
+        // Old portals don't send the flag; default is `false`.
+        assert!(!flow.use_iceless);
     }
 
     #[test]
     fn serialize_no_relays_message() {
         let message = EgressMessages::NoRelays {};
         let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_set_snownet_capabilities_message() {
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
+        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
