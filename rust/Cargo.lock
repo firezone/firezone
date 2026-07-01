@@ -1350,7 +1350,6 @@ dependencies = [
  "boringtun",
  "derive_more",
  "ip_network",
- "is",
  "itertools",
  "serde",
  "uuid",

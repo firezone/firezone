@@ -310,6 +310,8 @@ where
             c.state
                 .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
 
+            let iceless = c.agent.is_iceless();
+
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
 
@@ -322,7 +324,7 @@ where
                 std::iter::empty()
                     .chain(current_candidates)
                     .chain(new_candidates)
-                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
+                    .map(|candidate| new_ice_candidate_event(cid, candidate, iceless)),
             );
 
             // Initiate a new WG session.
@@ -366,7 +368,7 @@ where
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
                     let candidate = agent.add_local_candidate(candidate)?;
-                    let event = new_ice_candidate_event(cid, candidate.clone());
+                    let event = new_ice_candidate_event(cid, candidate.clone(), want_iceless);
 
                     Some(event)
                 }),
@@ -474,13 +476,17 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        tracing::debug!(?candidate, "Received candidate from remote");
-
+    pub fn add_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
         let Ok(c) = self.connections.get_mut(&cid, now) else {
-            tracing::warn!(kind = ?candidate.kind(), "Received candidate for unknown connection");
+            tracing::warn!(%candidate, "Received candidate for unknown connection");
             return;
         };
+
+        let Some(candidate) = crate::candidate::decode(c.agent.is_iceless(), &candidate) else {
+            return;
+        };
+
+        tracing::debug!(?candidate, "Received candidate from remote");
 
         c.add_remote_candidate(cid, candidate.clone(), now);
 
@@ -504,13 +510,17 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        tracing::debug!(?candidate, "Received invalidated candidate from remote");
-
+    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
         let Ok(c) = self.connections.get_mut(&cid, now) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
+
+        let Some(candidate) = crate::candidate::decode(c.agent.is_iceless(), &candidate) else {
+            return;
+        };
+
+        tracing::debug!(?candidate, "Received invalidated candidate from remote");
 
         c.remove_remote_candidate(cid, candidate, now);
     }
@@ -1184,8 +1194,10 @@ fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
     }
 }
 
-fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Event<TId> {
-    tracing::debug!(?candidate, "Signalling candidate to remote");
+fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) -> Event<TId> {
+    let candidate = crate::candidate::encode(iceless, &candidate);
+
+    tracing::debug!(%candidate, "Signalling candidate to remote");
 
     Event::NewIceCandidate {
         connection: id,
@@ -1243,15 +1255,17 @@ impl From<is::IceCreds> for Credentials {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
+    ///
+    /// Already SDP-encoded (str0m for ICE, path-agent for ICE-less).
     NewIceCandidate {
         connection: TId,
-        candidate: Candidate,
+        candidate: String,
     },
 
     /// We invalidated a candidate for this connection and ask to signal that to the remote party.
     InvalidateIceCandidate {
         connection: TId,
-        candidate: Candidate,
+        candidate: String,
     },
 
     ConnectionEstablished(TId),
@@ -2075,7 +2089,8 @@ where
         TId: fmt::Display + Copy,
     {
         if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
-            pending_events.push_back(new_ice_candidate_event(cid, candidate));
+            let iceless = self.agent.is_iceless();
+            pending_events.push_back(new_ice_candidate_event(cid, candidate, iceless));
         }
 
         self.state
@@ -2105,7 +2120,7 @@ where
         if was_present {
             pending_events.push_back(Event::InvalidateIceCandidate {
                 connection: id,
-                candidate: candidate.clone(),
+                candidate: crate::candidate::encode(self.agent.is_iceless(), candidate),
             })
         }
     }
