@@ -25,7 +25,6 @@ defmodule Portal.TelemetryTest do
 
       assert [:phoenix, :endpoint, :start, :system_time] in metric_names
       assert [:phoenix, :endpoint, :stop, :duration] in metric_names
-      assert [:phoenix, :router_dispatch, :stop] in metric_names
       assert [:phoenix, :router_dispatch, :stop, :duration] in metric_names
       assert [:phoenix, :socket_connected, :duration] in metric_names
       assert [:phoenix, :channel_join, :duration] in metric_names

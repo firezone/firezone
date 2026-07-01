@@ -102,7 +102,7 @@ defmodule Portal.Telemetry do
       summary("portal.repo.query.idle_time", unit: {:native, :millisecond}),
 
       # Phoenix Metrics
-      counter("phoenix.router_dispatch.stop",
+      counter("phoenix.router_dispatch.stop.duration",
         tags: [:route],
         description: "HTTP request count by route"
       ),
@@ -570,7 +570,7 @@ defmodule Portal.Telemetry do
     attrs = %{
       "http.route" => route,
       "http.request.method" => conn.method,
-      "http.response.status_code" => to_string(conn.status || 0),
+      "http.response.status_code" => conn.status || 0,
       "http.endpoint" => endpoint_name(conn),
       "node_name" => config.node_name
     }
