@@ -15,7 +15,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::{SentryMeterProvider, Telemetry};
+use telemetry::SentryMeterProvider;
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let mut telemetry = Telemetry::new(
+    telemetry::configure(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
     );
@@ -61,22 +61,22 @@ fn main() -> ExitCode {
         .build()
         .expect("Failed to create tokio runtime");
 
-    match runtime.block_on(try_main(cli, &mut telemetry)) {
+    match runtime.block_on(try_main(cli)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
-            runtime.block_on(telemetry.stop());
+            runtime.block_on(telemetry::stop());
 
             ExitCode::SUCCESS
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
-            runtime.block_on(telemetry.stop());
+            runtime.block_on(telemetry::stop());
 
             ExitCode::FAILURE
         }
         Err(e) => {
             tracing::info!("{e:#}");
-            runtime.block_on(telemetry.stop());
+            runtime.block_on(telemetry::stop());
 
             ExitCode::FAILURE
         }
@@ -97,7 +97,7 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
+async fn try_main(cli: Cli) -> Result<()> {
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
         layer::Identity::default(),
@@ -143,8 +143,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     };
 
     if cli.is_telemetry_allowed() {
-        telemetry.start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
-        Telemetry::set_firezone_id(firezone_id.clone()).await;
+        telemetry::start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
+        telemetry::set_firezone_id(firezone_id.clone()).await;
     }
 
     if let Some(backend) = cli.metrics {
@@ -192,8 +192,6 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .into_iter()
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
-
-    telemetry::update_system_resolvers(nameservers.iter().copied().collect());
 
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),

@@ -1,9 +1,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{collections::BTreeMap, fmt, mem, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
+use parking_lot::Mutex;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
@@ -24,6 +25,7 @@ mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
 
+pub use ingest::SystemResolvers;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
 
@@ -50,16 +52,6 @@ pub fn hosted_metric_exporter(
     env_or_api_url: &str,
 ) -> Option<impl opentelemetry_sdk::metrics::exporter::PushMetricExporter> {
     otlp::metric_exporter(Env::parse(env_or_api_url))
-}
-
-/// Updates the upstream DNS resolvers used to look up our telemetry ingest hosts.
-///
-/// Call this wherever connlib's system resolvers are updated. Triggers a
-/// feature-flag re-evaluation, since a prior attempt may have failed for lack of
-/// (working) resolvers.
-pub fn update_system_resolvers(servers: Vec<IpAddr>) {
-    ingest::update_system_resolvers(servers);
-    feature_flags::reevaluate_current();
 }
 
 /// Drops the current telemetry ingest connections so they are re-established lazily.
@@ -191,158 +183,153 @@ impl fmt::Display for Env {
     }
 }
 
-pub struct Telemetry {
-    inner: Option<sentry::ClientInitGuard>,
+/// The process-global Sentry guard.
+///
+/// Sentry is one client per process, and the rest of this crate (the Hub,
+/// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the guard is too. Every
+/// binary drives telemetry through the free functions below rather than holding an
+/// instance.
+static GUARD: Mutex<Option<sentry::ClientInitGuard>> = Mutex::new(None);
+
+/// Configures the shared, tunnel-bypassing ingest socket factories so telemetry
+/// never loops through connlib. Call once at process start before [`start`].
+pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
+    ingest::configure(tcp, udp);
 }
 
-impl Telemetry {
-    pub fn new(
-        tcp: Arc<dyn SocketFactory<TcpSocket>>,
-        udp: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> Self {
-        // Configure the shared ingest socket factories and seed each ingest host's
-        // addresses via the system resolver. Seeding here, at telemetry construction,
-        // ensures the lookup happens before connlib reconfigures the system resolver
-        // (which would otherwise route it through connlib itself). The socket
-        // factories must bypass the tunnel so telemetry never loops through connlib.
-        ingest::configure(tcp, udp);
-        posthog::init_addresses();
-        sentry::init_addresses();
+/// Starts (or re-points) the Sentry session for `env_or_api_url`.
+pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
+    let environment = Env::parse(env_or_api_url);
+    let mut guard = GUARD.lock();
 
-        Self { inner: None }
+    if guard
+        .as_ref()
+        .and_then(|i| i.options().environment.as_ref())
+        .is_some_and(|env| env == environment.as_str())
+    {
+        tracing::debug!(%environment, "Telemetry already initialised");
+
+        return;
     }
 
-    pub fn disabled() -> Self {
-        Self { inner: None }
+    // Stop any previous telemetry session.
+    if let Some(inner) = guard.take() {
+        tracing::debug!("Stopping previous telemetry session");
+
+        drop(inner);
+
+        set_current_user(None);
     }
 
-    /// Starts a Sentry session.
-    pub fn start(&mut self, env_or_api_url: &str, release: &str, dsn: Dsn) {
-        let environment = Env::parse(env_or_api_url);
+    if matches!(
+        environment,
+        Env::OnPrem | Env::Localhost | Env::DockerCompose
+    ) {
+        tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
+        return;
+    }
 
-        if self
-            .inner
-            .as_ref()
-            .and_then(|i| i.options().environment.as_ref())
-            .is_some_and(|env| env == environment.as_str())
-        {
-            tracing::debug!(%environment, "Telemetry already initialised");
+    tracing::info!(%environment, "Starting telemetry");
 
-            return;
+    let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
+    // Configure scope on the main hub so that all threads will get the tags.
+    let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
+    sentry::Hub::main().configure_scope(move |scope| {
+        if let Some(api_url) = api_url {
+            scope.set_tag("api_url", api_url);
         }
+        let ctx = sentry::integrations::contexts::utils::device_context();
+        scope.set_context("device", ctx);
+        let ctx = sentry::integrations::contexts::utils::rust_context();
+        scope.set_context("rust", ctx);
 
-        // Stop any previous telemetry session.
-        if let Some(inner) = self.inner.take() {
-            tracing::debug!("Stopping previous telemetry session");
-
-            drop(inner);
-
-            set_current_user(None);
+        if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
+            scope.set_context("os", ctx);
         }
+    });
 
-        if matches!(
-            environment,
-            Env::OnPrem | Env::Localhost | Env::DockerCompose
-        ) {
-            tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
-            return;
-        }
+    guard.replace(inner);
+}
 
-        tracing::info!(%environment, "Starting telemetry");
-
-        let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
-        // Configure scope on the main hub so that all threads will get the tags.
-        let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
-        sentry::Hub::main().configure_scope(move |scope| {
-            if let Some(api_url) = api_url {
-                scope.set_tag("api_url", api_url);
-            }
-            let ctx = sentry::integrations::contexts::utils::device_context();
-            scope.set_context("device", ctx);
-            let ctx = sentry::integrations::contexts::utils::rust_context();
-            scope.set_context("rust", ctx);
-
-            if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
-                scope.set_context("os", ctx);
-            }
-        });
-        self.inner.replace(inner);
+/// Flushes events to sentry.io and drops the guard. A no-op if not started.
+pub async fn stop() {
+    if let Err(e) = end_session().await {
+        tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
     }
+}
 
-    /// Flushes events to sentry.io and drops the guard
-    pub async fn stop(&mut self) {
-        if let Err(e) = self.end_session().await {
-            tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
-        }
-    }
+/// Blocking [`stop`] for teardown paths with no runtime of their own, run on
+/// telemetry's shared ingest runtime.
+pub fn stop_blocking() {
+    ingest::RUNTIME.block_on(stop());
+}
 
-    pub fn is_active(&self) -> bool {
-        self.inner.is_some()
-    }
+pub fn is_active() -> bool {
+    GUARD.lock().is_some()
+}
 
-    async fn end_session(&mut self) -> Result<()> {
-        let Some(inner) = self.inner.take() else {
-            return Ok(());
+async fn end_session() -> Result<()> {
+    let Some(inner) = GUARD.lock().take() else {
+        return Ok(());
+    };
+    tracing::info!("Stopping telemetry");
+
+    // Sentry uses blocking IO for flushing ..
+    let task = tokio::task::spawn_blocking(move || {
+        if !inner.flush(Some(Duration::from_secs(1))) {
+            return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
         };
-        tracing::info!("Stopping telemetry");
 
-        // Sentry uses blocking IO for flushing ..
-        let task = tokio::task::spawn_blocking(move || {
-            if !inner.flush(Some(Duration::from_secs(1))) {
-                return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
-            };
-
-            tracing::debug!("Flushed telemetry");
-
-            Ok(())
-        });
-
-        tokio::time::timeout(Duration::from_secs(1), task)
-            .await
-            .context("Failed to end session within 1s")???;
+        tracing::debug!("Flushed telemetry");
 
         Ok(())
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), task)
+        .await
+        .context("Failed to end session within 1s")???;
+
+    Ok(())
+}
+
+pub fn set_account_slug(slug: String) {
+    update_user(|user| {
+        user.other.insert("account_slug".to_owned(), slug.into());
+    });
+}
+
+/// Attaches the Firezone ID to the active Sentry session.
+pub async fn set_firezone_id(firezone_id: String) {
+    let new_user = compute_user(firezone_id);
+    update_user(|user| {
+        user.id = new_user.id;
+        user.other.extend(new_user.other);
+    });
+
+    // In case user and env are now available, re-eval feature-flags.
+    if let (Some(id), Some(env)) = (current_user(), current_env()) {
+        feature_flags::evaluate_now(id, env).await;
     }
+}
 
-    pub fn set_account_slug(slug: String) {
-        update_user(|user| {
-            user.other.insert("account_slug".to_owned(), slug.into());
-        });
-    }
+#[doc(hidden)] // Only public for testing.
+pub fn current_env() -> Option<Env> {
+    let client = sentry::Hub::main().client()?;
+    let env = client.options().environment.as_deref()?;
+    let env = Env::from_str(env).ok()?;
 
-    /// Attaches the Firezone ID to the active Sentry session.
-    pub async fn set_firezone_id(firezone_id: String) {
-        let new_user = compute_user(firezone_id);
-        update_user(|user| {
-            user.id = new_user.id;
-            user.other.extend(new_user.other);
-        });
+    Some(env)
+}
 
-        // In case user and env are now available, re-eval feature-flags.
-        if let (Some(id), Some(env)) = (Self::current_user(), Self::current_env()) {
-            feature_flags::evaluate_now(id, env).await;
-        }
-    }
+#[doc(hidden)] // Only public for testing.
+pub fn current_user() -> Option<String> {
+    sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
+}
 
-    #[doc(hidden)] // Only public for testing.
-    pub fn current_env() -> Option<Env> {
-        let client = sentry::Hub::main().client()?;
-        let env = client.options().environment.as_deref()?;
-        let env = Env::from_str(env).ok()?;
-
-        Some(env)
-    }
-
-    #[doc(hidden)] // Only public for testing.
-    pub fn current_user() -> Option<String> {
-        sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
-    }
-
-    #[doc(hidden)] // Only public for testing.
-    pub fn current_account_slug() -> Option<String> {
-        sentry::Hub::main()
-            .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
-    }
+#[doc(hidden)] // Only public for testing.
+pub fn current_account_slug() -> Option<String> {
+    sentry::Hub::main()
+        .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
 }
 
 /// Computes the [`User`] scope based on the contents of `firezone_id`.
@@ -437,7 +424,7 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
 }
 
 fn insert_user_account_slug_into_log(mut log: Log) -> Log {
-    let Some(account_slug) = Telemetry::current_account_slug() else {
+    let Some(account_slug) = current_account_slug() else {
         return log;
     };
 
@@ -450,7 +437,7 @@ fn insert_user_account_slug_into_log(mut log: Log) -> Log {
 }
 
 fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
-    let Some(account_slug) = Telemetry::current_account_slug() else {
+    let Some(account_slug) = current_account_slug() else {
         return metric;
     };
 

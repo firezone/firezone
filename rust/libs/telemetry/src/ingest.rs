@@ -20,13 +20,18 @@ type SocketFactories = (
 /// Runtime hosting all ingest connections and the feature-flag re-eval timer.
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 
-/// Socket factories and upstream resolvers shared by all ingest hosts.
+/// Socket factories shared by all ingest hosts.
 ///
 /// connlib processes configure tunnel-bypassing factories so telemetry never
-/// loops back through connlib; the resolvers are the system's upstream DNS
-/// servers (never the system resolver itself, which may be connlib).
+/// loops back through connlib.
 static SOCKETS: LazyLock<Mutex<Option<SocketFactories>>> = LazyLock::new(|| Mutex::new(None));
-static SERVERS: LazyLock<Mutex<Vec<IpAddr>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// How ingest hosts are currently resolved.
+///
+/// Defaults to the system resolver and is swapped for connlib's upstreams while a
+/// session owns the system resolver (see [`SystemResolvers`]).
+static RESOLVER: LazyLock<Mutex<IngestResolver>> =
+    LazyLock::new(|| Mutex::new(IngestResolver::System(LibcDnsClient)));
 
 /// Configures the socket factories used to reach all ingest hosts.
 pub(crate) fn configure(
@@ -36,9 +41,56 @@ pub(crate) fn configure(
     *SOCKETS.lock() = Some((tcp, udp));
 }
 
-/// Updates the upstream resolvers used to look up all ingest hosts.
-pub(crate) fn update_system_resolvers(servers: Vec<IpAddr>) {
-    *SERVERS.lock() = servers;
+/// Routes telemetry ingest-host lookups through connlib's upstream resolvers while
+/// a connlib session owns the system resolver.
+///
+/// connlib hijacks the system resolver for the lifetime of a session, so a plain
+/// `getaddrinfo` would loop ingest lookups back through connlib's stub. While the
+/// guard is held, lookups go through a [`BootstrapDnsClient`] against the captured
+/// upstreams. Dropping it restores resolution via the system resolver, tying the
+/// bypass to the session's lifetime.
+#[must_use = "dropping the guard restores system-resolver lookups for ingest hosts"]
+pub struct SystemResolvers {
+    _private: (),
+}
+
+impl SystemResolvers {
+    /// Captures `servers` as the ingest upstreams, bypassing the system resolver
+    /// until the guard is dropped.
+    pub fn capture(servers: Vec<IpAddr>) -> Self {
+        set_resolver(upstream(servers));
+
+        Self { _private: () }
+    }
+
+    /// Replaces the captured upstreams, e.g. when connlib learns updated resolvers.
+    pub fn set(&self, servers: Vec<IpAddr>) {
+        set_resolver(upstream(servers));
+    }
+}
+
+impl Drop for SystemResolvers {
+    fn drop(&mut self) {
+        set_resolver(IngestResolver::System(LibcDnsClient));
+    }
+}
+
+/// Swaps the active resolver and re-evaluates feature flags, which may have been
+/// disabled while (working) resolvers were missing.
+fn set_resolver(resolver: IngestResolver) {
+    *RESOLVER.lock() = resolver;
+    crate::feature_flags::reevaluate_current();
+}
+
+/// Builds an upstream resolver from `servers` and the configured socket factories.
+fn upstream(servers: Vec<IpAddr>) -> IngestResolver {
+    let Some((tcp, udp)) = SOCKETS.lock().clone() else {
+        // `configure` runs before any session captures resolvers; without socket
+        // factories telemetry cannot connect at all, so the resolver is moot.
+        return IngestResolver::System(LibcDnsClient);
+    };
+
+    IngestResolver::Upstream(BootstrapDnsClient::new(udp, tcp, servers))
 }
 
 /// Resets the shared socket factories so the next connection rebinds.
@@ -52,13 +104,13 @@ pub(crate) fn reset_sockets() {
 
 /// A self-healing HTTP/2 client for a single ingest host.
 ///
-/// The host is resolved via [`BootstrapDnsClient`] against the configured
-/// upstreams and connected through the shared, tunnel-bypassing socket factories,
-/// falling back to addresses seeded from the system resolver at startup. The
-/// connection is re-established on demand when it is closed.
+/// While a connlib session is active, the host is resolved via
+/// [`BootstrapDnsClient`] against the configured upstreams; otherwise it is
+/// resolved via the default system resolver. Either way the connection goes
+/// through the shared, tunnel-bypassing socket factories and is re-established
+/// on demand when it is closed.
 pub(crate) struct Client {
     host: &'static str,
-    seed_addresses: Mutex<Vec<IpAddr>>,
     connection: Mutex<Option<HttpClient>>,
     /// Serialises bootstrapping so concurrent senders share a single connection.
     bootstrap: tokio::sync::Mutex<()>,
@@ -68,29 +120,9 @@ impl Client {
     pub(crate) fn new(host: &'static str) -> Self {
         Self {
             host,
-            seed_addresses: Mutex::new(Vec::new()),
             connection: Mutex::new(None),
             bootstrap: tokio::sync::Mutex::new(()),
         }
-    }
-
-    /// Seeds the host addresses using the system resolver.
-    ///
-    /// Must run at startup, before connlib reconfigures the system resolver, so the
-    /// lookup reaches the real upstream and not connlib itself. Used as a fallback
-    /// until the bootstrap resolver has upstreams configured.
-    pub(crate) fn init_addresses(&self) {
-        let addresses = (self.host, 443u16)
-            .to_socket_addrs()
-            .inspect_err(|e| {
-                tracing::debug!(host = %self.host, "Failed to seed ingest host addresses: {e:#}")
-            })
-            .map(|addresses| addresses.map(|addr| addr.ip()).collect::<Vec<_>>())
-            .unwrap_or_default();
-
-        tracing::debug!(host = %self.host, ?addresses, "Seeded ingest host addresses from system resolver");
-
-        *self.seed_addresses.lock() = addresses;
     }
 
     /// Drops the current connection so the next request reconnects.
@@ -146,41 +178,17 @@ impl Client {
 
     async fn bootstrap(&self) -> Result<HttpClient> {
         let host = self.host;
-        let (tcp, udp) = SOCKETS
+        let (tcp, _) = SOCKETS
             .lock()
             .clone()
             .context("Ingest client has no socket factories configured")?;
-        let servers = SERVERS.lock().clone();
-        let seed_addresses = self.seed_addresses.lock().clone();
+        let resolver = RESOLVER.lock().clone();
 
         // Anchor the connection task on our own runtime so it outlives the caller,
         // which may be a short-lived `block_on` on another runtime.
         RUNTIME
             .spawn(async move {
-                // Resolve via the bootstrap resolver, which never uses the system
-                // resolver (i.e. connlib), and add the addresses seeded at startup as
-                // extra fallback candidates. `HttpClient` tries them in order and
-                // connects to the first that works.
-                //
-                // Skip the resolver while we have no upstreams yet (e.g. before
-                // connlib reports the system DNS servers); the seed covers that.
-                let mut addresses = if servers.is_empty() {
-                    Vec::new()
-                } else {
-                    BootstrapDnsClient::new(udp, tcp.clone(), servers)
-                        .resolve(host)
-                        .await
-                        .inspect_err(
-                            |e| tracing::debug!(%host, "Failed to resolve ingest host: {e:#}"),
-                        )
-                        .unwrap_or_default()
-                };
-
-                for address in seed_addresses {
-                    if !addresses.contains(&address) {
-                        addresses.push(address);
-                    }
-                }
+                let addresses = resolver.resolve(host).await?;
 
                 anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
 
@@ -190,6 +198,53 @@ impl Client {
             })
             .await
             .context("Bootstrap task failed")?
+    }
+}
+
+/// Resolves ingest hosts, either through connlib's upstreams or the system resolver.
+#[derive(Clone)]
+enum IngestResolver {
+    /// A connlib session owns the system resolver, so resolve via the captured
+    /// upstreams directly; `getaddrinfo` would loop back through connlib's stub.
+    Upstream(BootstrapDnsClient),
+    /// No session owns the system resolver, so resolve via libc (`getaddrinfo`).
+    System(LibcDnsClient),
+}
+
+impl IngestResolver {
+    async fn resolve(&self, host: &'static str) -> Result<Vec<IpAddr>> {
+        match self {
+            IngestResolver::Upstream(client) => client
+                .resolve(host)
+                .await
+                .with_context(|| format!("Failed to resolve ingest host {host}")),
+            IngestResolver::System(client) => client.resolve(host).await,
+        }
+    }
+}
+
+/// Resolves host names via the system resolver, i.e. libc's `getaddrinfo`.
+///
+/// Only safe when no connlib session owns the system resolver; otherwise the lookup
+/// would route through connlib's stub resolver and loop back into the tunnel.
+#[derive(Clone, Copy)]
+struct LibcDnsClient;
+
+impl LibcDnsClient {
+    async fn resolve(&self, host: &'static str) -> Result<Vec<IpAddr>> {
+        tokio::task::spawn_blocking(move || {
+            let addresses = (host, 443u16)
+                .to_socket_addrs()
+                .with_context(|| {
+                    format!("Failed to resolve ingest host {host} via system resolver")
+                })?
+                .map(|addr| addr.ip())
+                .collect::<Vec<_>>();
+
+            Ok(addresses)
+        })
+        .await
+        .context("System resolver task panicked")?
     }
 }
 
@@ -205,4 +260,23 @@ fn init_runtime() -> Runtime {
     runtime.spawn(crate::feature_flags::reeval_timer());
 
     runtime
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Exercises the shared `SOCKETS`/`RESOLVER` statics, so it stays a single test
+    // to avoid racing against parallel test threads.
+    #[test]
+    fn capture_switches_to_upstream_and_drop_restores_system() {
+        configure(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+
+        {
+            let _guard = SystemResolvers::capture(vec![IpAddr::from([1, 1, 1, 1])]);
+            assert!(matches!(*RESOLVER.lock(), IngestResolver::Upstream(_)));
+        }
+
+        assert!(matches!(*RESOLVER.lock(), IngestResolver::System(_)));
+    }
 }

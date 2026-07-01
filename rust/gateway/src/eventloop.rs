@@ -1,7 +1,7 @@
 use anyhow::{Context as _, ErrorExt, Result};
 use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 
 use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
@@ -361,7 +361,7 @@ impl Eventloop {
                 authorizations,
             }) => {
                 if let Some(account_slug) = account_slug {
-                    Telemetry::set_account_slug(account_slug.clone());
+                    telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }

@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
-use telemetry::{RELAY_DSN, Telemetry};
+use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
 use tracing::Subscriber;
 use tracing_core::Dispatch;
@@ -140,19 +140,17 @@ fn main() -> ExitCode {
         .build()
         .expect("Failed to build tokio runtime");
 
-    let mut telemetry = if args.telemetry {
-        Telemetry::new(
+    if args.telemetry {
+        telemetry::configure(
             std::sync::Arc::new(socket_factory::tcp),
             std::sync::Arc::new(socket_factory::udp),
-        )
-    } else {
-        Telemetry::disabled()
-    };
-    telemetry.start(
-        args.api_url.as_str(),
-        VERSION.unwrap_or("unknown"),
-        RELAY_DSN,
-    );
+        );
+        telemetry::start(
+            args.api_url.as_str(),
+            VERSION.unwrap_or("unknown"),
+            RELAY_DSN,
+        );
+    }
 
     let code = match runtime.block_on(try_main(args)) {
         Ok(()) => ExitCode::SUCCESS,
@@ -162,7 +160,7 @@ fn main() -> ExitCode {
         }
     };
 
-    runtime.block_on(telemetry.stop());
+    runtime.block_on(telemetry::stop());
 
     code
 }

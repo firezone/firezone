@@ -29,6 +29,7 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/eventloop-budget",
+    "libs/flow-log-spool",
     "libs/http-client",
     "libs/known-dirs",
     "libs/logging",
@@ -80,6 +81,7 @@ chrono = { version = "0.4.44", default-features = false, features = ["std", "clo
 clap = "4.6.1"
 client-shared = { path = "libs/client-shared" }
 connlib-model = { path = "libs/connlib/model" }
+crc32fast = "1.5.0"
 crossbeam-queue = "0.3.12"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
@@ -194,7 +196,7 @@ subprocess = "1.1.0"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 syn = "2.0.117"
-tauri = "2.10.3"
+tauri = "2.11.2"
 tauri-build = { version = "2.6.0", default-features = false }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-opener = "2.5.4"

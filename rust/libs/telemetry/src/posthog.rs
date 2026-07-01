@@ -24,11 +24,6 @@ pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
     }
 }
 
-/// Seeds the PostHog ingest-host addresses via the system resolver.
-pub(crate) fn init_addresses() {
-    CLIENT.init_addresses();
-}
-
 /// Drops the current connection so the next request reconnects.
 pub(crate) fn reset_client() {
     CLIENT.reset();
