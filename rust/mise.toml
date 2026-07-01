@@ -111,29 +111,45 @@ sudo perf stat -p "$statpids" -e task-clock,cycles,instructions,cpu-migrations,c
 wait # blocks until Ctrl-C fires the INT trap
 wait # reap the recorders once they have flushed
 echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-stat.txt"
+"""
 
 [tasks.setup-perf-env]
-description = "Configure this machine for connlib perf benchmarking: CI kernel sysctls + pin CPUs to 2.5 GHz. Latency is 0 by default (routers only add netem when LATENCY_ENABLED is set)."
+description = "Apply the CI kernel sysctls for connlib perf benchmarking (larger socket + backlog buffers). Pair with `mise run pin-cpu` to also fix the clock."
 raw = true
 run = """
 set -u
 
-echo "== 1/2 kernel sysctls (from .github/workflows/_perf_tests.yml) =="
+echo "Applying kernel sysctls (from .github/workflows/_perf_tests.yml)..."
 sudo sysctl -w net.core.wmem_max=16777216         # 16 MB
-sudo sysctl -w net.core.rmem_max=134217728        # 128 MB
+sudo sysctl -w net.core.rmem_max=134217728        # 128 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
 sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
 sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
 
-echo "== 2/2 pin all CPUs to 2.5 GHz (removes boost + throttle variance) =="
-khz=2500000
+echo "Done (persists until reboot). Run 'mise run pin-cpu [GHZ]' to pin the clock too."
+"""
+
+[tasks.pin-cpu]
+description = "Pin every CPU core to a fixed frequency (GHz, default 2.5) so boost + thermal throttling stop confounding perf runs. Caps boost, but the chip can still throttle BELOW the floor — always verify the effective clock via cycles/task-clock."
+usage = 'arg "ghz" default="2.5"'
+raw = true
+run = """
+set -u
+
+ghz="${usage_ghz:-2.5}"
+khz=$(awk -v g="$ghz" 'BEGIN{printf "%d", g*1000000}')
+
+echo "Pinning all CPUs to ${ghz} GHz (${khz} kHz)..."
+# Order-safe: drop the floor, set the ceiling, then raise the floor — works whether
+# we are raising or lowering from the current setting. Capping scaling_max disables boost.
 for p in /sys/devices/system/cpu/cpu*/cpufreq; do
   cat "$p/cpuinfo_min_freq" | sudo tee "$p/scaling_min_freq" >/dev/null
   echo "$khz" | sudo tee "$p/scaling_max_freq" >/dev/null
   echo "$khz" | sudo tee "$p/scaling_min_freq" >/dev/null
 done
-echo "  pinned to 2.5 GHz (verify under load: grep MHz /proc/cpuinfo | sort -u)"
 
-echo "Done. sysctls + clock pin persist until reboot/reset."
+echo "Pinned (persists until reboot). Verify the EFFECTIVE clock under load; the chip can"
+echo "still throttle below the floor: cycles / task-clock from perf stat, or:"
+echo "  grep MHz /proc/cpuinfo | sort -u"
 """
 
 # =============================================================================
