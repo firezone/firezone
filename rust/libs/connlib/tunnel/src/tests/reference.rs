@@ -937,8 +937,8 @@ impl ReferenceState {
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
-                    for c in state.clients.values_mut() {
-                        c.exec_mut(|c| c.reset_connections(now));
+                    for client in state.clients.values_mut() {
+                        client.exec_mut(|c| c.reset_connections(now));
                     }
                 }
             }
