@@ -2587,6 +2587,7 @@ dependencies = [
  "http-client",
  "serde",
  "serde_json",
+ "serde_with",
  "socket-factory",
  "telemetry",
  "tempfile",

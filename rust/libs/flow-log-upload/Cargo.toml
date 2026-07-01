@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
-[lints]
-workspace = true
-
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
@@ -17,14 +14,16 @@ http = { workspace = true }
 http-client = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_with = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net", "time"] }
 tracing = { workspace = true }
 url = { workspace = true }
-# Locks the spool (Bearer tokens) down to SYSTEM/Administrators on Windows; an
-# empty crate elsewhere.
-windows-security = { workspace = true }
+windows-security = { workspace = true } # Locks the spool (Bearer tokens) to SYSTEM/Administrators on Windows; empty crate elsewhere.
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

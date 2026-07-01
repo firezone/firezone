@@ -29,7 +29,6 @@
 //!
 //! Uploads go through [`http_client::HttpClient`] over the caller's
 //! [`SocketFactory`], so they bypass the tunnel exactly like connlib's own traffic.
-//! The client negotiates HTTP/2 and falls back to HTTP/1.1.
 //!
 //! Two drivers share this logic so parsing / CRC / request handling is not
 //! duplicated across platforms:
@@ -54,10 +53,11 @@ use anyhow::{Context as _, Result};
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use base64::Engine as _;
 use bytes::Bytes;
-use flow_log_spool::{Payload, read_spooled_entry};
+use flow_log_spool::{Payload, deserialize};
 use http::{StatusCode, header};
 use http_client::HttpClient;
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, serde_as};
 use socket_factory::{SocketFactory, TcpSocket};
 use url::Url;
 
@@ -84,72 +84,59 @@ const CONFIG_FILE: &str = "upload.json";
 /// The portal's flow-log upload config, persisted into the spool root so an uploader
 /// that runs independently of the session (a background task / daemon, or the
 /// service thread) can read it without a live connection to the portal.
+///
+/// Only written while uploads are enabled: an `interval` of `0` is never persisted
+/// (see [`write_upload_config`]), so the file's presence alone means "enabled".
+#[serde_as]
 #[derive(Serialize, Deserialize)]
 struct UploadConfig {
     /// Base URL flow logs are POSTed to.
     api_url: String,
-    /// How often, in seconds, to upload batched flow logs. `0` disables uploads.
-    interval_secs: u64,
-    /// Maximum flows per upload request. `0` / absent uses [`DEFAULT_BATCH_SIZE`].
-    #[serde(default)]
-    batch_size: u64,
+    /// How often to upload batched flow logs.
+    #[serde_as(as = "DurationSeconds<u64>")]
+    interval: Duration,
+    /// Maximum flows per upload request. Absent uses [`DEFAULT_BATCH_SIZE`].
+    #[serde(default = "default_batch_size")]
+    batch_size: usize,
 }
 
-/// The resolved upload config: ingest endpoint, scan interval, and batch size.
-struct ResolvedConfig {
-    url: String,
-    interval: Duration,
-    batch_size: usize,
+fn default_batch_size() -> usize {
+    DEFAULT_BATCH_SIZE
 }
 
 /// Persists the portal's flow-log upload config into the spool root. Called by the
 /// session, which alone receives it via `init`, so a session-independent uploader
-/// can read it. An `interval_secs` of `0` disables uploads; a `batch_size` of `0`
-/// falls back to [`DEFAULT_BATCH_SIZE`].
+/// can read it.
+///
+/// An `interval_secs` of `0` means the portal disabled uploads: any persisted config
+/// is removed so a running uploader stops, rather than keeping the last one.
 pub fn write_upload_config(
     spool_root: &Path,
     api_url: &str,
     interval_secs: u64,
     batch_size: u64,
 ) -> std::io::Result<()> {
+    let config_path = spool_root.join(CONFIG_FILE);
+
+    if interval_secs == 0 {
+        return match std::fs::remove_file(&config_path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+
     create_dir_secure(spool_root)?;
 
     let config = UploadConfig {
         api_url: api_url.to_owned(),
-        interval_secs,
-        batch_size,
+        interval: Duration::from_secs(interval_secs),
+        batch_size: clamp_batch_size(batch_size),
     };
     let body = serde_json::to_vec(&config).map_err(std::io::Error::other)?;
 
-    write_owner_only(&spool_root.join(CONFIG_FILE), &body)
-}
+    write_owner_only(&config_path, &body)?;
 
-/// Reads the persisted upload config. `None` when no (valid) config is present or
-/// uploads are disabled (interval `0`).
-fn read_upload_config(spool_root: &Path) -> Option<ResolvedConfig> {
-    let bytes = std::fs::read(spool_root.join(CONFIG_FILE)).ok()?;
-    let config: UploadConfig = serde_json::from_slice(&bytes).ok()?;
-
-    let url = ingest_endpoint(&config.api_url)?;
-    let interval = (config.interval_secs > 0).then(|| Duration::from_secs(config.interval_secs))?;
-    let batch_size = batch_size_or_default(config.batch_size);
-
-    Some(ResolvedConfig {
-        url,
-        interval,
-        batch_size,
-    })
-}
-
-/// Clamps the portal-provided batch size into `[1, MAX_BATCH_SIZE]`, defaulting when
-/// it is `0` / absent.
-fn batch_size_or_default(batch_size: u64) -> usize {
-    let batch_size = usize::try_from(batch_size).unwrap_or(MAX_BATCH_SIZE);
-
-    match batch_size {
-        0 => DEFAULT_BATCH_SIZE,
-        n => n.min(MAX_BATCH_SIZE),
-    }
+    Ok(())
 }
 
 /// Spawns the flow-log uploader thread for an always-running process (the gateway,
@@ -184,27 +171,19 @@ pub fn spawn(
 /// using the config persisted in the spool, over `socket_factory`. Intended for
 /// platforms that drive uploads from a short-lived OS background task / the
 /// provider process via FFI, so they can flush the spool independently of a
-/// long-running thread.
+/// long-running thread. The caller owns the runtime this runs on.
 ///
 /// Returns `true` when a backlog remained (an authorization had more than one batch
 /// pending), so the caller may schedule another pass sooner.
-pub fn upload_once(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> bool {
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            tracing::error!("Failed to build flow-log uploader runtime; skipping upload: {e:#}");
-            return false;
-        }
-    };
-
+pub async fn upload_once(
+    spool_root: &Path,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+) -> bool {
     let Some(config) = read_upload_config(spool_root) else {
         return false;
     };
 
-    runtime.block_on(scan(spool_root, &config, socket_factory))
+    scan(spool_root, &config, socket_factory).await == ScanOutcome::RescanSoon
 }
 
 /// Removes spooled authorizations whose Bearer token has expired (their flows can
@@ -225,13 +204,31 @@ pub fn prune(spool_root: &Path) {
 
         for entry in authz_dirs.flatten() {
             let dir = entry.path();
-            if dir.is_dir() && should_prune(&dir, now) {
-                match std::fs::remove_dir_all(&dir) {
-                    Ok(()) => tracing::debug!(?dir, "Pruned stale flow-log spool directory"),
-                    Err(e) => tracing::warn!(?dir, "Failed to prune flow-log spool dir: {e:#}"),
-                }
+            if !dir.is_dir() || !should_prune(&dir, now) {
+                continue;
+            }
+
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => tracing::debug!(?dir, "Pruned stale flow-log spool directory"),
+                Err(e) => tracing::warn!(?dir, "Failed to prune flow-log spool dir: {e:#}"),
             }
         }
+    }
+}
+
+/// Reads the persisted upload config, or `None` when none is present / valid.
+fn read_upload_config(spool_root: &Path) -> Option<UploadConfig> {
+    let bytes = std::fs::read(spool_root.join(CONFIG_FILE)).ok()?;
+
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Clamps the portal-provided batch size into `[1, MAX_BATCH_SIZE]`, defaulting when
+/// it is `0`.
+fn clamp_batch_size(batch_size: u64) -> usize {
+    match usize::try_from(batch_size).unwrap_or(MAX_BATCH_SIZE) {
+        0 => DEFAULT_BATCH_SIZE,
+        n => n.min(MAX_BATCH_SIZE),
     }
 }
 
@@ -346,18 +343,16 @@ fn ingest_endpoint(base_url: &str) -> Option<String> {
 }
 
 async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) {
-    tracing::info!("Flow-log uploader thread started");
+    tracing::info!("Flow-log uploader started");
 
     loop {
         match read_upload_config(spool_root) {
             Some(config) => {
-                let backlog = scan(spool_root, &config, socket_factory.clone()).await;
-                tokio::time::sleep(if backlog {
-                    CATCHUP_POLL
-                } else {
-                    config.interval
-                })
-                .await;
+                let delay = match scan(spool_root, &config, socket_factory.clone()).await {
+                    ScanOutcome::RescanSoon => CATCHUP_POLL,
+                    ScanOutcome::Drained => config.interval,
+                };
+                tokio::time::sleep(delay).await;
             }
             // No config persisted yet, or uploads disabled by the portal: idle and
             // re-check the config shortly.
@@ -401,26 +396,39 @@ struct FlowFiles {
     mtime: Option<SystemTime>,
 }
 
-/// Processes every authorization directory once; returns whether any directory
-/// still has a backlog (more than one batch pending) that warrants a quick rescan.
+/// Whether the uploader should scan again soon or wait the configured interval.
+#[derive(Clone, Copy, PartialEq)]
+enum ScanOutcome {
+    /// More work is pending: an authorization had more than one batch, or the
+    /// connection dropped mid-scan before everything was drained.
+    RescanSoon,
+    /// Everything pending was uploaded; wait the configured interval.
+    Drained,
+}
+
+/// Processes every authorization directory once.
 ///
 /// The spool nests authorization directories one level under a `<role>` directory
 /// (`<root>/<role>/<policy_authorization_id>/`), so this walks both levels.
 async fn scan(
     root: &Path,
-    config: &ResolvedConfig,
+    config: &UploadConfig,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-) -> bool {
-    let client = match connect(&config.url, socket_factory).await {
+) -> ScanOutcome {
+    let Some(url) = ingest_endpoint(&config.api_url) else {
+        return ScanOutcome::Drained;
+    };
+
+    let client = match connect(&url, socket_factory).await {
         Ok(client) => client,
         Err(e) => {
             tracing::debug!("Failed to open flow-log ingest connection: {e:#}");
-            return false;
+            return ScanOutcome::Drained;
         }
     };
 
     let Ok(role_dirs) = std::fs::read_dir(root) else {
-        return false;
+        return ScanOutcome::Drained;
     };
 
     let mut backlog = false;
@@ -436,15 +444,21 @@ async fn scan(
                 continue;
             }
 
-            // The connection died (e.g. roam); the next scan re-resolves and reconnects.
+            // The connection died (e.g. roam) before we finished, so scan again soon
+            // to drain the rest; the next scan re-resolves and reconnects.
             if client.is_closed() {
-                return backlog;
+                return ScanOutcome::RescanSoon;
             }
 
-            backlog |= process_authz_dir(&client, &dir, &config.url, config.batch_size).await;
+            backlog |= process_authz_dir(&client, &dir, &url, config.batch_size).await;
         }
     }
-    backlog
+
+    if backlog {
+        ScanOutcome::RescanSoon
+    } else {
+        ScanOutcome::Drained
+    }
 }
 
 /// Reads up to `batch_size` flows from one authorization's spool (oldest first),
@@ -546,7 +560,7 @@ fn read_report(path: &Path) -> Option<Payload> {
         }
     };
 
-    match read_spooled_entry(&bytes) {
+    match deserialize(&bytes) {
         Ok(payload) => Some(payload),
         Err(e) => {
             tracing::error!(?path, "Corrupt flow-log report, deleting: {e}");
@@ -597,7 +611,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
             }
             StatusCode::UNPROCESSABLE_ENTITY => {
                 let body = body_string(&response);
-                tracing::error!(%body, "Flow-log batch had validation errors; dropping batch");
+                tracing::warn!(%body, "Flow-log batch had validation errors; dropping batch");
                 delete_all(batch);
                 return;
             }
@@ -724,21 +738,27 @@ mod tests {
     }
 
     #[test]
-    fn write_then_read_config_builds_ingest_endpoint_interval_and_batch_size() {
+    fn write_then_read_config_roundtrips() {
         let root = tempfile::tempdir().unwrap();
         write_upload_config(root.path(), "https://flow-api.firezone.dev/", 90, 500).unwrap();
 
         let config = read_upload_config(root.path()).expect("config present");
-        assert_eq!(
-            config.url,
-            "https://flow-api.firezone.dev/ingestion/flow_logs"
-        );
+        assert_eq!(config.api_url, "https://flow-api.firezone.dev/");
         assert_eq!(config.interval, Duration::from_secs(90));
         assert_eq!(config.batch_size, 500);
     }
 
     #[test]
-    fn zero_or_missing_batch_size_uses_default() {
+    fn ingest_endpoint_appends_the_ingest_path() {
+        assert_eq!(
+            ingest_endpoint("https://flow-api.firezone.dev/").as_deref(),
+            Some("https://flow-api.firezone.dev/ingestion/flow_logs")
+        );
+        assert_eq!(ingest_endpoint("not a url"), None);
+    }
+
+    #[test]
+    fn zero_batch_size_uses_default() {
         let root = tempfile::tempdir().unwrap();
         write_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 0).unwrap();
 
@@ -748,7 +768,7 @@ mod tests {
 
     #[test]
     fn batch_size_is_clamped_to_max() {
-        assert_eq!(batch_size_or_default(1_000_000), MAX_BATCH_SIZE);
+        assert_eq!(clamp_batch_size(1_000_000), MAX_BATCH_SIZE);
     }
 
     #[test]
@@ -760,10 +780,12 @@ mod tests {
     }
 
     #[test]
-    fn invalid_url_disables_uploads() {
+    fn disabling_removes_an_existing_config() {
         let root = tempfile::tempdir().unwrap();
-        write_upload_config(root.path(), "not a url", 60, 1000).unwrap();
+        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 500).unwrap();
+        assert!(read_upload_config(root.path()).is_some());
 
+        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 500).unwrap();
         assert!(read_upload_config(root.path()).is_none());
     }
 
