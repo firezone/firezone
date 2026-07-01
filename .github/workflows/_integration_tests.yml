@@ -221,6 +221,12 @@ jobs:
         run: |
           set -xe
 
+          # Integration tests exercise realistic per-hop network latency; perf and
+          # load runs leave these unset so the routers add no netem.
+          export EDGE_ROUTER_LATENCY_MS=10
+          export RELAY_ROUTER_LATENCY_MS=30
+          export PORTAL_ROUTER_LATENCY_MS=50
+
           if [[ -n "${{ matrix.test.rust_log }}" ]]; then
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi

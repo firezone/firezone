@@ -80,7 +80,7 @@ services:
         8081 172.28.0.100 tcp
         8081 172:28:0::100 tcp
       MASQUERADE_TYPE: ""
-      NETWORK_LATENCY_MS: 50
+      NETWORK_LATENCY_MS: "${PORTAL_ROUTER_LATENCY_MS:-}"
     networks:
       app-internal:
         ipv4_address: 172.28.0.254
@@ -160,7 +160,7 @@ services:
       service: router
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
-      NETWORK_LATENCY_MS: 10
+      NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
       client-1-internal:
         ipv4_address: 172.30.0.254
@@ -207,7 +207,7 @@ services:
       service: router
     environment:
       MASQUERADE_TYPE: ${POOL_MEMBER_MASQUERADE:-}
-      NETWORK_LATENCY_MS: 10
+      NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
       client-2-internal:
         ipv4_address: 172.32.0.254
@@ -286,7 +286,7 @@ services:
       service: router
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
-      NETWORK_LATENCY_MS: 10
+      NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
       gateway-internal:
         ipv4_address: 172.31.0.254
@@ -334,7 +334,7 @@ services:
         49152-65535 172.29.1.100 udp
         3478 172:29:1::100 udp
         49152-65535 172:29:1::100 udp
-      NETWORK_LATENCY_MS: 30
+      NETWORK_LATENCY_MS: "${RELAY_ROUTER_LATENCY_MS:-}"
     networks:
       relay-1-internal:
         ipv4_address: 172.29.1.254
@@ -384,7 +384,7 @@ services:
         49152-65535 172.29.2.100 udp
         3478 172:29:2::100 udp
         49152-65535 172:29:2::100 udp
-      NETWORK_LATENCY_MS: 30
+      NETWORK_LATENCY_MS: "${RELAY_ROUTER_LATENCY_MS:-}"
     networks:
       relay-2-internal:
         ipv4_address: 172.29.2.254
