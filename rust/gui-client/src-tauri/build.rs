@@ -37,7 +37,7 @@ fn main() -> Result<()> {
     // MSIX identity claim makes the kernel fail `CreateProcess` with
     // `APPMODEL_ERROR_NO_PACKAGE` (15700) before `main` even runs. The
     // runtime's debug-only `test_pipe_dacl` path (gated on
-    // `SKIP_TUNNEL_PIPE_OWNER_CHECK`) covers IPC without needing
+    // `SKIP_PEER_VERIFICATION`) covers IPC without needing
     // identity.
     //
     // We gate on Cargo's `PROFILE` env var rather than
