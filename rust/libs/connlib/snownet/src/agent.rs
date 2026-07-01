@@ -2,14 +2,12 @@
 //! `Agent::Path` (iceless). Mode-irrelevant operations are no-ops on
 //! the wrong variant.
 
-use std::collections::VecDeque;
 use std::ops::ControlFlow;
 use std::time::Instant;
 
 use boringtun::noise::Tunn;
 use is::stun::StunPacket;
-use is::{Candidate, CandidateKind, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
-use smallvec::SmallVec;
+use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
 use crate::{IceConfig, IceRole};
 
@@ -21,10 +19,6 @@ const MAX_REMOTE_PER_KIND: usize = 6;
 pub(crate) enum Agent {
     Ice(IceAgent),
     Path {
-        local_candidates: Vec<Candidate>,
-        remote_host: VecDeque<Candidate>,
-        remote_srflx: VecDeque<Candidate>,
-        remote_relayed: VecDeque<Candidate>,
         #[debug(skip)]
         path: path_agent::PathAgent,
     },
@@ -37,10 +31,6 @@ impl Agent {
 
     pub(crate) fn path() -> Self {
         Self::Path {
-            local_candidates: Vec::new(),
-            remote_host: VecDeque::new(),
-            remote_srflx: VecDeque::new(),
-            remote_relayed: VecDeque::new(),
             path: path_agent::PathAgent::new(),
         }
     }
@@ -50,34 +40,13 @@ impl Agent {
     }
 
     /// Rebuild the inner `PathAgent`, dropping locals matching
-    /// `should_drop_local` and preserving every remote. No-op on
-    /// `Self::Ice`.
-    pub(crate) fn rebuild_path(&mut self, mut should_drop_local: impl FnMut(&Candidate) -> bool) {
-        let Self::Path {
-            local_candidates,
-            remote_host,
-            remote_srflx,
-            remote_relayed,
-            path,
-        } = self
-        else {
-            return;
-        };
-
-        let _dropped: SmallVec<[Candidate; 4]> = local_candidates
-            .extract_if(.., |c| should_drop_local(c))
-            .collect();
-
-        *path = path_agent::PathAgent::new();
-        for c in local_candidates.iter() {
-            path.add_local_candidate(crate::candidate::to_path_agent(c));
-        }
-        for c in remote_host
-            .iter()
-            .chain(remote_srflx.iter())
-            .chain(remote_relayed.iter())
-        {
-            path.add_remote_candidate(crate::candidate::to_path_agent(c));
+    /// `should_drop_local` and preserving every remote. No-op on `Self::Ice`.
+    pub(crate) fn rebuild_path(
+        &mut self,
+        should_drop_local: impl FnMut(&path_agent::Candidate) -> bool,
+    ) {
+        if let Self::Path { path } = self {
+            path.rebuild(should_drop_local);
         }
     }
 
@@ -147,52 +116,37 @@ impl Agent {
         }
     }
 
-    pub(crate) fn add_local_candidate(&mut self, c: Candidate) -> Option<&Candidate> {
+    pub(crate) fn add_local_candidate(&mut self, c: Candidate) -> Option<Candidate> {
         match self {
-            Self::Ice(a) => a.add_local_candidate(c),
-            Self::Path {
-                local_candidates,
-                path,
-                ..
-            } => {
-                if local_candidates.contains(&c) {
-                    return None;
-                }
-                path.add_local_candidate(crate::candidate::to_path_agent(&c));
-                local_candidates.push(c);
-                local_candidates.last()
-            }
+            Self::Ice(a) => a.add_local_candidate(c).cloned(),
+            Self::Path { path } => path
+                .add_local_candidate(crate::candidate::to_path_agent(&c))
+                .then_some(c),
         }
     }
 
     pub(crate) fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         match self {
             Self::Ice(a) => a.add_remote_candidate(c),
-            Self::Path {
-                remote_host,
-                remote_srflx,
-                remote_relayed,
-                path,
-                ..
-            } => {
-                let bucket =
-                    bucket_for_kind_mut(c.kind(), remote_host, remote_srflx, remote_relayed);
-                if bucket.contains(&c) {
-                    return;
+            Self::Path { path } => {
+                let candidate = crate::candidate::to_path_agent(&c);
+                let kind = candidate.kind();
+
+                // Per-kind FIFO cap, bounding `pairs` growth across relay rotations.
+                let at_cap = path
+                    .remote_candidates()
+                    .filter(|r| r.kind() == kind)
+                    .count()
+                    >= MAX_REMOTE_PER_KIND;
+                let evicted = at_cap
+                    .then(|| path.remote_candidates().find(|r| r.kind() == kind))
+                    .flatten();
+                if let Some(evicted) = evicted {
+                    tracing::debug!(?evicted, ?kind, "Evicting oldest remote candidate");
+                    path.remove_remote_candidate(&evicted, now);
                 }
-                if bucket.len() >= MAX_REMOTE_PER_KIND {
-                    let evicted = bucket
-                        .pop_front()
-                        .expect("len >= MAX_REMOTE_PER_KIND implies non-empty");
-                    tracing::debug!(
-                        evicted = ?evicted,
-                        kind = ?c.kind(),
-                        "Evicting oldest remote candidate to honour per-kind cap",
-                    );
-                    path.remove_remote_candidate(&crate::candidate::to_path_agent(&evicted), now);
-                }
-                path.add_remote_candidate(crate::candidate::to_path_agent(&c));
-                bucket.push_back(c);
+
+                path.add_remote_candidate(candidate);
             }
         }
     }
@@ -200,28 +154,11 @@ impl Agent {
     pub(crate) fn invalidate_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         match self {
             Self::Ice(a) => a.invalidate_candidate(c),
-            Self::Path {
-                local_candidates,
-                remote_host,
-                remote_srflx,
-                remote_relayed,
-                path,
-            } => {
-                let pa_c = crate::candidate::to_path_agent(c);
-                let removed_local = local_candidates
-                    .iter()
-                    .position(|x| x == c)
-                    .map(|i| local_candidates.remove(i))
-                    .is_some();
-                let removed_remote = remove_from_bucket(remote_host, c)
-                    || remove_from_bucket(remote_srflx, c)
-                    || remove_from_bucket(remote_relayed, c);
-                if removed_local {
-                    path.remove_local_candidate(&pa_c, now);
-                }
-                if removed_remote {
-                    path.remove_remote_candidate(&pa_c, now);
-                }
+            Self::Path { path } => {
+                let candidate = crate::candidate::to_path_agent(c);
+                let removed_local = path.remove_local_candidate(&candidate, now);
+                let removed_remote = path.remove_remote_candidate(&candidate, now);
+
                 removed_local || removed_remote
             }
         }
@@ -230,26 +167,19 @@ impl Agent {
     pub(crate) fn local_candidates(&self) -> Box<dyn Iterator<Item = Candidate> + '_> {
         match self {
             Self::Ice(a) => Box::new(a.local_candidates()),
-            Self::Path {
-                local_candidates, ..
-            } => Box::new(local_candidates.iter().cloned()),
+            Self::Path { path } => Box::new(
+                path.local_candidates()
+                    .filter_map(|c| crate::candidate::from_path_agent(&c)),
+            ),
         }
     }
 
     pub(crate) fn remote_candidates(&self) -> Box<dyn Iterator<Item = Candidate> + '_> {
         match self {
             Self::Ice(a) => Box::new(a.remote_candidates()),
-            Self::Path {
-                remote_host,
-                remote_srflx,
-                remote_relayed,
-                ..
-            } => Box::new(
-                remote_host
-                    .iter()
-                    .chain(remote_srflx.iter())
-                    .chain(remote_relayed.iter())
-                    .cloned(),
+            Self::Path { path } => Box::new(
+                path.remote_candidates()
+                    .filter_map(|c| crate::candidate::from_path_agent(&c)),
             ),
         }
     }
@@ -257,16 +187,9 @@ impl Agent {
     pub(crate) fn contains_remote_candidate(&self, c: &Candidate) -> bool {
         match self {
             Self::Ice(a) => a.remote_candidates().any(|x| &x == c),
-            Self::Path {
-                remote_host,
-                remote_srflx,
-                remote_relayed,
-                ..
-            } => remote_host
-                .iter()
-                .chain(remote_srflx.iter())
-                .chain(remote_relayed.iter())
-                .any(|x| x == c),
+            Self::Path { path } => {
+                path.contains_remote_candidate(&crate::candidate::to_path_agent(c))
+            }
         }
     }
 
@@ -371,26 +294,4 @@ impl Agent {
             Self::Path { path, .. } => path.poll_transmit(),
         }
     }
-}
-
-/// `PeerReflexive` collapses into the server-reflexive bucket.
-fn bucket_for_kind_mut<'a>(
-    kind: CandidateKind,
-    host: &'a mut VecDeque<Candidate>,
-    srflx: &'a mut VecDeque<Candidate>,
-    relayed: &'a mut VecDeque<Candidate>,
-) -> &'a mut VecDeque<Candidate> {
-    match kind {
-        CandidateKind::Host => host,
-        CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => srflx,
-        CandidateKind::Relayed => relayed,
-    }
-}
-
-fn remove_from_bucket(bucket: &mut VecDeque<Candidate>, c: &Candidate) -> bool {
-    bucket
-        .iter()
-        .position(|x| x == c)
-        .map(|i| bucket.remove(i))
-        .is_some()
 }

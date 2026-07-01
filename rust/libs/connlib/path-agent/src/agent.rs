@@ -144,9 +144,10 @@ impl PathAgent {
         self.events_queued_at = self.events_queued_at.or(Some(now));
     }
 
-    pub fn add_local_candidate(&mut self, c: Candidate) {
+    /// Returns whether the candidate was newly added (`false` if already known).
+    pub fn add_local_candidate(&mut self, c: Candidate) -> bool {
         if self.locals.contains(&c) {
-            return;
+            return false;
         }
 
         self.locals.push(c);
@@ -154,6 +155,8 @@ impl PathAgent {
         for &remote in &self.remotes.clone() {
             self.add_pair(c, remote);
         }
+
+        true
     }
 
     pub fn add_remote_candidate(&mut self, c: Candidate) {
@@ -244,6 +247,39 @@ impl PathAgent {
         }
 
         true
+    }
+
+    pub fn local_candidates(&self) -> impl Iterator<Item = Candidate> + '_ {
+        self.locals.iter().copied()
+    }
+
+    pub fn remote_candidates(&self) -> impl Iterator<Item = Candidate> + '_ {
+        self.remotes.iter().copied()
+    }
+
+    pub fn contains_remote_candidate(&self, c: &Candidate) -> bool {
+        self.remotes.contains(c)
+    }
+
+    /// Drops locals matching `drop_local` and rebuilds from scratch, preserving
+    /// every remote. Re-seeds after a roam or relay replacement.
+    pub fn rebuild(&mut self, mut drop_local: impl FnMut(&Candidate) -> bool) {
+        let locals: Vec<Candidate> = self
+            .locals
+            .iter()
+            .copied()
+            .filter(|c| !drop_local(c))
+            .collect();
+        let remotes = std::mem::take(&mut self.remotes);
+
+        *self = Self::new();
+
+        for local in locals {
+            self.add_local_candidate(local);
+        }
+        for remote in remotes {
+            self.add_remote_candidate(remote);
+        }
     }
 
     pub fn primary(&self) -> Option<(SocketAddr, SocketAddr)> {

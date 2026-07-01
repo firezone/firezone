@@ -24,7 +24,7 @@ pub(crate) fn to_path_agent(c: &is::Candidate) -> path_agent::Candidate {
 
 /// Inverse of [`to_path_agent`]: rebuilds the str0m `Candidate` the rest of
 /// snownet works with when decoding an ICE-less candidate off the wire.
-fn from_path_agent(c: &path_agent::Candidate) -> Option<is::Candidate> {
+pub(crate) fn from_path_agent(c: &path_agent::Candidate) -> Option<is::Candidate> {
     let candidate = match *c {
         path_agent::Candidate::Host(addr) => is::Candidate::host(addr, "udp"),
         path_agent::Candidate::ServerReflexive { addr, local } => {

@@ -368,7 +368,7 @@ where
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
                     let candidate = agent.add_local_candidate(candidate)?;
-                    let event = new_ice_candidate_event(cid, candidate.clone(), want_iceless);
+                    let event = new_ice_candidate_event(cid, candidate, want_iceless);
 
                     Some(event)
                 }),
@@ -1128,7 +1128,7 @@ where
 {
     allocations
         .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| agent.add_local_candidate(c).cloned())
+        .filter_map(move |c| agent.add_local_candidate(c))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -2015,6 +2015,7 @@ where
         // Host + reflexive per allocation.
         let dropped = allocation
             .current_relay_candidates()
+            .map(|c| crate::candidate::to_path_agent(&c))
             .collect::<SmallVec<[_; 2]>>();
         self.agent.rebuild_path(|c| dropped.contains(c));
 
@@ -2088,7 +2089,7 @@ where
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()).cloned() {
+        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()) {
             let iceless = self.agent.is_iceless();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, iceless));
         }
