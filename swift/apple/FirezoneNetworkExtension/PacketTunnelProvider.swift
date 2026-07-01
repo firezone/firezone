@@ -38,6 +38,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // on mach_msg when idle, causing false positive reports.
     Telemetry.start(enableAppHangTracking: false)
 
+    startTelemetry()
+
     super.init()
 
     // Log version information immediately on startup
@@ -49,6 +51,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
     migrateFirezoneId()
+  }
+
+  deinit {
+    stopTelemetry()
   }
 
   override func startTunnel(

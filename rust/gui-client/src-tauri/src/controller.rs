@@ -19,11 +19,9 @@ use secrecy::{ExposeSecret as _, SecretString};
 use std::{
     ops::ControlFlow,
     path::{Path, PathBuf},
-    sync::Arc,
     task::Poll,
     time::Duration,
 };
-use telemetry::Telemetry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -52,7 +50,6 @@ pub struct Controller<I: GuiIntegration> {
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
     telemetry_allowed: bool,
-    telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
     updates_rx: Option<ReceiverStream<Option<updates::Notification>>>,
     uptime: uptime::Tracker,
 
@@ -191,7 +188,6 @@ impl<I: GuiIntegration> Controller<I> {
         legacy_advanced_settings_path: PathBuf,
         log_filter_reloader: FilterReloadHandle,
         telemetry_allowed: bool,
-        telemetry: Arc<tokio::sync::Mutex<Telemetry>>,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
         gui_ipc: ipc::Server,
     ) -> Result<()> {
@@ -220,7 +216,7 @@ impl<I: GuiIntegration> Controller<I> {
             Some(false) => None,
         };
 
-        Telemetry::set_firezone_id(firezone_id).await;
+        telemetry::set_firezone_id(firezone_id).await;
 
         let auth = auth::Auth::new()?;
 
@@ -246,7 +242,6 @@ impl<I: GuiIntegration> Controller<I> {
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
             telemetry_allowed,
-            telemetry,
             updates_rx,
             uptime: Default::default(),
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
@@ -417,17 +412,14 @@ impl<I: GuiIntegration> Controller<I> {
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
         if let Some(account_slug) = account_slug.clone() {
-            Telemetry::set_account_slug(account_slug);
+            telemetry::set_account_slug(account_slug);
         }
 
         if !self.telemetry_allowed {
             return Ok(());
         }
 
-        self.telemetry
-            .lock()
-            .await
-            .start(&environment, crate::RELEASE, telemetry::GUI_DSN);
+        telemetry::start(&environment, crate::RELEASE, telemetry::GUI_DSN);
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
             environment: environment.clone(),
@@ -1691,7 +1683,6 @@ mod tests {
                 legacy_advanced_settings_path.clone(),
                 log_filter_reloader,
                 false,
-                Arc::new(tokio::sync::Mutex::new(Telemetry::disabled())),
                 updates_rx,
                 gui_ipc_server,
             ));

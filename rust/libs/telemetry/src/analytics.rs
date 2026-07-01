@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result, bail};
 use serde::Serialize;
 
-use crate::{ApiUrl, Env, Telemetry, ingest, posthog};
+use crate::{ApiUrl, Env, current_env, current_user, ingest, posthog};
 
 /// Records a `new_session` event for a particular user and API url.
 ///
@@ -27,11 +27,11 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
 
 /// Associate several properties with the current telemetry user.
 pub fn identify(release: String, account_slug: Option<String>) {
-    let Some(env) = Telemetry::current_env() else {
+    let Some(env) = current_env() else {
         tracing::debug!("Cannot send $identify: Unknown env");
         return;
     };
-    let Some(distinct_id) = Telemetry::current_user() else {
+    let Some(distinct_id) = current_user() else {
         tracing::debug!("Cannot send $identify: Unknown user");
         return;
     };
@@ -59,11 +59,11 @@ pub fn identify(release: String, account_slug: Option<String>) {
 }
 
 pub fn feature_flag_called(name: impl Into<String>) {
-    let Some(env) = Telemetry::current_env() else {
+    let Some(env) = current_env() else {
         tracing::debug!("Cannot send $feature_flag_called: Unknown env");
         return;
     };
-    let Some(distinct_id) = Telemetry::current_user() else {
+    let Some(distinct_id) = current_user() else {
         tracing::debug!("Cannot send $feature_flag_called: Unknown user");
         return;
     };
