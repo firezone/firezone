@@ -3,7 +3,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3]
 
-  alias Portal.{Features, Safe, TrustAnchor}
+  alias Portal.{Safe, TrustAnchor}
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
@@ -28,7 +28,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def mount(_params, _session, socket) do
-    if trust_anchors_feature_enabled?() do
+    trust_anchors_enabled? = PortalWeb.NavigationComponents.trust_anchors_enabled?()
+
+    if trust_anchors_enabled? do
       trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
 
       socket =
@@ -38,6 +40,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(pending_delete_id: nil, open_trust_anchor_actions_id: nil)
+        |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
           max_entries: @max_upload_entries,
@@ -92,7 +95,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
@@ -416,7 +423,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
               <.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload File
             </span>
-            <span class="text-xs text-body my-auto">Upload a single chain file.</span>
+            <span class="text-xs text-body my-auto">Upload one or more chain files.</span>
           </label>
         </div>
       </div>
@@ -573,20 +580,36 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    trust_anchor = Enum.find(socket.assigns.trust_anchors, &(&1.id == id))
+    case Enum.find(socket.assigns.trust_anchors, &(&1.id == id)) do
+      nil ->
+        {:noreply, assign(socket, pending_delete_id: nil, open_trust_anchor_actions_id: nil)}
 
-    with {:ok, _trust_anchor} <-
-           Safe.scoped(trust_anchor, socket.assigns.subject) |> Safe.delete() do
-      socket =
-        socket
-        |> assign(
-          trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
-          pending_delete_id: nil,
-          open_trust_anchor_actions_id: nil
-        )
-        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+      trust_anchor ->
+        case Safe.scoped(trust_anchor, socket.assigns.subject) |> Safe.delete() do
+          {:ok, _trust_anchor} ->
+            socket =
+              socket
+              |> assign(
+                trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
+                pending_delete_id: nil,
+                open_trust_anchor_actions_id: nil
+              )
+              |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
 
-      {:noreply, socket}
+            {:noreply, socket}
+
+          {:error, _reason} ->
+            socket =
+              socket
+              |> put_flash(:error, "Could not delete trust anchor. Please try again.")
+              |> assign(
+                trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
+                pending_delete_id: nil,
+                open_trust_anchor_actions_id: nil
+              )
+
+            {:noreply, socket}
+        end
     end
   end
 
@@ -664,19 +687,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
   end
 
-  defp upload_error_to_string(:too_large), do: "File is too large (max 1 MB)."
+  defp upload_error_to_string(:too_large),
+    do: "File is too large (max #{div(@max_upload_size, 1_000_000)} MB)."
 
   defp upload_error_to_string(:not_accepted),
     do: "Unsupported file type. Use .pem, .crt, .cer, .der, or .txt."
 
-  defp upload_error_to_string(:too_many_files), do: "Only one file may be uploaded."
+  defp upload_error_to_string(:too_many_files),
+    do: "Too many files selected (max #{@max_upload_entries})."
+
   defp upload_error_to_string(_reason), do: "Could not upload file."
-
-  defp trust_anchors_feature_enabled? do
-    import Ecto.Query
-
-    query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
-
-    Safe.unscoped(query, :replica) |> Safe.exists?()
-  end
 end

@@ -14,6 +14,13 @@ defmodule PortalWeb.NavigationComponents do
   end
 
   @doc """
+  Returns whether the global `trust_anchors` feature flag is enabled. Callers
+  should compute this once in `mount/3` and pass it to `settings_nav/1` as the
+  `trust_anchors_enabled?` assign, rather than calling this on every render.
+  """
+  def trust_anchors_enabled?, do: Database.trust_anchors_feature_enabled?()
+
+  @doc """
   Renders the top navigation bar.
   """
   attr :subject, :any, required: true
@@ -372,11 +379,10 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
+  attr :trust_anchors_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
-    assigns = assign(assigns, :trust_anchors_enabled?, Database.trust_anchors_feature_enabled?())
-
     ~H"""
     <div class="flex flex-col bg-surface">
       <%!-- Page header --%>
