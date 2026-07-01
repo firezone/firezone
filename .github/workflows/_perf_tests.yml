@@ -126,6 +126,21 @@ jobs:
           docker compose exec gateway /bin/sh -c 'nstat -s' |
             grep -i "error" && exit 1 || exit 0
 
+      - name: Ensure no TCP packets were re-ordered
+        if: "!cancelled() && startsWith(matrix.test, 'tcp')"
+        run: |
+          # The client is a TCP endpoint in both directions: it receives the bulk
+          # transfer for `server2client` (out-of-order arrivals bump `TCPOFOQueue`)
+          # and sends it for `client2server` (the peer's SACKs make the sender flag
+          # reordering via `TCP*Reorder`). Preserving packet order end-to-end is a
+          # deliberate goal of the data plane (see `scripts/router/router.sh`), so
+          # any reordering counter here is a regression.
+          #
+          # `-a` prints absolute values, ignoring nstat's history file, so this is
+          # independent of the `nstat` call in the step above.
+          docker compose exec client-1 /bin/sh -c 'nstat -as' |
+            grep -iE "reorder|ofoqueue" && exit 1 || exit 0
+
   upload-bencher:
     continue-on-error: true
     needs: perf-tests
