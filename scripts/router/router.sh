@@ -83,10 +83,22 @@ nft -f "$CONFIG_FILE"
 
 rm "$CONFIG_FILE"
 
+# Pin RPS (Receive Packet Steering) to a single host CPU so all of this router's
+# RX is processed on one core. This preserves packet ordering; otherwise whichever
+# CPU handled the interrupt would process the packet, causing reordering.
+#
+# Derive that CPU *uniquely* from the public interface's assigned address (unique
+# per router on the shared `internet` network), so each router lands on a different
+# core and the per-hop softirq load spreads across cores instead of piling every
+# hop onto CPU0. Wrapping modulo the online CPU count keeps this working on
+# few-core hosts (e.g. 2-core CI, where it degrades to alternating cores).
+ncpus=$(nproc)
+rps_cpu=$(( ${PUBLIC_IPV4##*.} % ncpus ))
+rps_mask=$(printf '%x' $(( 1 << rps_cpu )))
+echo "Pinning RPS to CPU ${rps_cpu}/${ncpus} (mask ${rps_mask}) from ${PUBLIC_IPV4}"
+
 for iface in internal internet; do
-    # Enable RPS (Receive Packet Steering) to always use CPU 1 to handle packets.
-    # This prevents packet reordering where otherwise the CPU which handles the interrupt would handle the packet.
-    echo 1 >"/sys/class/net/$iface/queues/rx-0/rps_cpus" 2>/dev/null
+    echo "$rps_mask" >"/sys/class/net/$iface/queues/rx-0/rps_cpus" 2>/dev/null
 done
 
 echo "1" >/tmp/setup_done # Health check marker
