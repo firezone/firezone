@@ -11,10 +11,6 @@ use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
 use crate::{IceConfig, IceRole};
 
-/// Per-kind FIFO cap on remote candidates, bounding `pairs` growth
-/// across portal-driven relay rotations.
-const MAX_REMOTE_PER_KIND: usize = 6;
-
 #[derive(derive_more::Debug)]
 pub(crate) enum Agent {
     Ice(IceAgent),
@@ -39,9 +35,10 @@ impl Agent {
     pub(crate) fn rebuild_path(
         &mut self,
         should_drop_local: impl FnMut(&path_agent::Candidate) -> bool,
+        now: Instant,
     ) {
         if let Self::Path(path) = self {
-            path.rebuild(should_drop_local);
+            path.rebuild(should_drop_local, now);
         }
     }
 
@@ -123,26 +120,7 @@ impl Agent {
     pub(crate) fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         match self {
             Self::Ice(a) => a.add_remote_candidate(c),
-            Self::Path(path) => {
-                let candidate = crate::candidate::to_path_agent(&c);
-                let kind = candidate.kind();
-
-                // Per-kind FIFO cap, bounding `pairs` growth across relay rotations.
-                let at_cap = path
-                    .remote_candidates()
-                    .filter(|r| r.kind() == kind)
-                    .count()
-                    >= MAX_REMOTE_PER_KIND;
-                let evicted = at_cap
-                    .then(|| path.remote_candidates().find(|r| r.kind() == kind))
-                    .flatten();
-                if let Some(evicted) = evicted {
-                    tracing::debug!(?evicted, ?kind, "Evicting oldest remote candidate");
-                    path.remove_remote_candidate(&evicted, now);
-                }
-
-                path.add_remote_candidate(candidate);
-            }
+            Self::Path(path) => path.add_remote_candidate(crate::candidate::to_path_agent(&c), now),
         }
     }
 

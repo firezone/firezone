@@ -104,6 +104,10 @@ pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
 const MAX_PEER_REFLEXIVE: usize = 4;
 
+/// Per-kind FIFO cap on remote candidates, bounding `pairs` growth
+/// across portal-driven relay rotations.
+const MAX_REMOTE_PER_KIND: usize = 6;
+
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
 
@@ -159,7 +163,7 @@ impl PathAgent {
         true
     }
 
-    pub fn add_remote_candidate(&mut self, c: Candidate) {
+    pub fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         // Promote a previously-registered peer-reflexive in place so
         // the existing `PairState` (RTT, inflight probe, schedule)
         // survives.
@@ -182,6 +186,18 @@ impl PathAgent {
 
         if self.remotes.contains(&c) {
             return;
+        }
+
+        // Per-kind FIFO cap, bounding `pairs` growth across relay rotations.
+        let kind = c.kind();
+        let at_cap =
+            self.remotes.iter().filter(|r| r.kind() == kind).count() >= MAX_REMOTE_PER_KIND;
+        if at_cap {
+            let evicted = self.remotes.iter().copied().find(|r| r.kind() == kind);
+            if let Some(evicted) = evicted {
+                tracing::debug!(?evicted, ?kind, "Evicting oldest remote candidate");
+                self.remove_remote_candidate(&evicted, now);
+            }
         }
 
         self.remotes.push(c);
@@ -263,7 +279,7 @@ impl PathAgent {
 
     /// Drops locals matching `drop_local` and rebuilds from scratch, preserving
     /// every remote. Re-seeds after a roam or relay replacement.
-    pub fn rebuild(&mut self, mut drop_local: impl FnMut(&Candidate) -> bool) {
+    pub fn rebuild(&mut self, mut drop_local: impl FnMut(&Candidate) -> bool, now: Instant) {
         let locals: Vec<Candidate> = self
             .locals
             .iter()
@@ -278,7 +294,7 @@ impl PathAgent {
             self.add_local_candidate(local);
         }
         for remote in remotes {
-            self.add_remote_candidate(remote);
+            self.add_remote_candidate(remote, now);
         }
     }
 
@@ -635,7 +651,7 @@ impl PathAgent {
                         "Discovered peer-reflexive remote candidate",
                     );
                     self.peer_reflexive_addrs.insert(pair.1);
-                    self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1));
+                    self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1), now);
                 }
             }
             crate::icmpv6::Echo::Reply => {

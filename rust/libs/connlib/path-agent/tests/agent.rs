@@ -199,7 +199,7 @@ fn srflx_local_uses_base_as_send_from_address() {
     let base = addr(11);
     a.add_local_candidate(Candidate::server_reflexive(mapped, base));
     a.add_local_candidate(Candidate::relayed(addr(20), addr(20)));
-    a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)));
+    a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)), now);
 
     a.handle_outbound(handshake_init_bytes(), now);
     a.handle_timeout(now);
@@ -510,13 +510,13 @@ fn signaled_candidate_promotes_peer_reflexive_in_place() {
 
     assert!(a.pairs().any(|p| p == (addr(1), addr(99))));
 
-    a.add_remote_candidate(Candidate::server_reflexive(addr(99), addr(98)));
+    a.add_remote_candidate(Candidate::server_reflexive(addr(99), addr(98)), now);
 
     assert!(a.pairs().any(|p| p == (addr(1), addr(99))));
     let count_at_99 = a.pairs().filter(|(_, r)| *r == addr(99)).count();
     assert_eq!(count_at_99, 2, "pairs at addr(99): one per local");
 
-    a.add_remote_candidate(Candidate::server_reflexive(addr(99), addr(98)));
+    a.add_remote_candidate(Candidate::server_reflexive(addr(99), addr(98)), now);
     let count_at_99_again = a.pairs().filter(|(_, r)| *r == addr(99)).count();
     assert_eq!(count_at_99_again, 2, "second signal must not duplicate");
 }
@@ -545,11 +545,11 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
 #[test]
 fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)));
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
-    a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
-    let now = Instant::now();
+    a.add_remote_candidate(Candidate::host(addr(3)), now);
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
 
     let remote_relay_pair = (addr(1), addr(4));
     bootstrap_primary(&mut a, remote_relay_pair, now);
@@ -571,11 +571,11 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
 #[test]
 fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)));
     a.add_local_candidate(Candidate::host(addr_v6(11)));
-    a.add_remote_candidate(Candidate::host(addr(2)));
-    a.add_remote_candidate(Candidate::host(addr_v6(12)));
-    let now = Instant::now();
+    a.add_remote_candidate(Candidate::host(addr(2)), now);
+    a.add_remote_candidate(Candidate::host(addr_v6(12)), now);
     bootstrap_primary(&mut a, (addr(1), addr(2)), now);
 
     let probes = a.tick(now);
@@ -594,11 +594,11 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
 #[test]
 fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)));
     a.add_local_candidate(Candidate::host(addr_v6(11)));
-    a.add_remote_candidate(Candidate::host(addr(2)));
-    a.add_remote_candidate(Candidate::host(addr_v6(12)));
-    let now = Instant::now();
+    a.add_remote_candidate(Candidate::host(addr(2)), now);
+    a.add_remote_candidate(Candidate::host(addr_v6(12)), now);
     let v6_pair = (addr_v6(11), addr_v6(12));
 
     bootstrap_primary(&mut a, v6_pair, now);
@@ -617,12 +617,12 @@ fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
 #[test]
 fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     let matched_local_alloc = addr_v6(10);
     let mismatched_local_alloc = addr_v6(11);
     a.add_local_candidate(Candidate::relayed(matched_local_alloc, addr_v6(100)));
     a.add_local_candidate(Candidate::relayed(mismatched_local_alloc, addr(101)));
-    a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)));
-    let now = Instant::now();
+    a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)), now);
     let mismatched_pair = (mismatched_local_alloc, addr_v6(20));
     bootstrap_primary(&mut a, mismatched_pair, now);
 
@@ -643,13 +643,13 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
 #[test]
 fn family_match_dominates_ipv6_preference() {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     let v6_mismatched_local_alloc = addr_v6(10);
     let v4_matched_local_alloc = addr(11);
     a.add_local_candidate(Candidate::relayed(v6_mismatched_local_alloc, addr(100)));
     a.add_local_candidate(Candidate::relayed(v4_matched_local_alloc, addr(101)));
-    a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)));
-    a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)));
-    let now = Instant::now();
+    a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)), now);
+    a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)), now);
     let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
     bootstrap_primary(&mut a, v6_pair, now);
 
@@ -670,10 +670,10 @@ fn family_match_dominates_ipv6_preference() {
 #[test]
 fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
     let mut a = PathAgent::new();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::host(addr(4)));
     let now = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_remote_candidate(Candidate::host(addr(3)), now);
+    a.add_remote_candidate(Candidate::host(addr(4)), now);
 
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
@@ -699,10 +699,10 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
 #[test]
 fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
     let mut a = PathAgent::new();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::host(addr(4)));
     let now = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_remote_candidate(Candidate::host(addr(3)), now);
+    a.add_remote_candidate(Candidate::host(addr(4)), now);
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
     let probes = a.tick(now);
@@ -853,14 +853,14 @@ fn rekey_without_primary_buffers_for_relay_fanout() {
 #[test]
 fn trickled_candidate_after_handshake_still_gets_probed() {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)));
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
-    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
 
-    let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    a.add_remote_candidate(Candidate::host(addr(3)));
+    a.add_remote_candidate(Candidate::host(addr(3)), now);
 
     a.handle_timeout(now);
     let transmits = a.transmits();
@@ -927,10 +927,11 @@ fn settle_with_primary(a: &mut PathAgent, recv_path: Pair, primary: Pair, now: I
 
 fn agent_with_relay_pairs() -> PathAgent {
     let mut a = PathAgent::new();
+    let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)));
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
-    a.add_remote_candidate(Candidate::host(addr(3)));
-    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)));
+    a.add_remote_candidate(Candidate::host(addr(3)), now);
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
     a
 }
 

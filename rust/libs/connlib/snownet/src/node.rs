@@ -1991,7 +1991,7 @@ where
     where
         RId: Ord + fmt::Display + Copy,
     {
-        self.agent.rebuild_path(|_| true);
+        self.agent.rebuild_path(|_| true, now);
         self.agent.initiate_handshake(&mut self.tunnel, true, now);
     }
 
@@ -2016,7 +2016,7 @@ where
             .current_relay_candidates()
             .map(|c| crate::candidate::to_path_agent(&c))
             .collect::<SmallVec<[_; 2]>>();
-        self.agent.rebuild_path(|c| dropped.contains(c));
+        self.agent.rebuild_path(|c| dropped.contains(c), now);
 
         self.agent.initiate_handshake(&mut self.tunnel, true, now);
 
