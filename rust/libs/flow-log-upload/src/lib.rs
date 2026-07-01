@@ -611,7 +611,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
             }
             StatusCode::UNPROCESSABLE_ENTITY => {
                 let body = body_string(&response);
-                tracing::warn!(%body, "Flow-log batch had validation errors; dropping batch");
+                tracing::info!(%body, "Flow-log batch had validation errors; dropping batch");
                 delete_all(batch);
                 return;
             }
@@ -638,7 +638,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
             }
             _ => {
                 let body = body_string(&response);
-                tracing::error!(%status, %body, "Flow-log upload rejected; dropping batch");
+                tracing::info!(%status, %body, "Flow-log upload rejected; dropping batch");
                 delete_all(batch);
                 return;
             }
