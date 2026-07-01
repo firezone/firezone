@@ -290,7 +290,6 @@ where
     ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
-        let want_iceless = use_iceless;
 
         // Reuse only if every parameter that feeds boringtun's
         // session matches, including the agent mode — a flag flip
@@ -300,7 +299,7 @@ where
                 &local_creds,
                 &remote_creds,
                 ice_role,
-                want_iceless,
+                use_iceless,
             )
             && c.tunnel.remote_static_public() == remote
             && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
@@ -351,7 +350,7 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
-        let mut agent = if want_iceless {
+        let mut agent = if use_iceless {
             tracing::debug!(%cid, "Using iceless path-agent for connection");
             Agent::path()
         } else {
@@ -368,7 +367,7 @@ where
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
                     let candidate = agent.add_local_candidate(candidate)?;
-                    let event = new_ice_candidate_event(cid, candidate, want_iceless);
+                    let event = new_ice_candidate_event(cid, candidate, use_iceless);
 
                     Some(event)
                 }),

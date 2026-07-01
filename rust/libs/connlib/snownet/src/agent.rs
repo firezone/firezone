@@ -18,10 +18,7 @@ const MAX_REMOTE_PER_KIND: usize = 6;
 #[derive(derive_more::Debug)]
 pub(crate) enum Agent {
     Ice(IceAgent),
-    Path {
-        #[debug(skip)]
-        path: path_agent::PathAgent,
-    },
+    Path(#[debug(skip)] path_agent::PathAgent),
 }
 
 impl Agent {
@@ -30,13 +27,11 @@ impl Agent {
     }
 
     pub(crate) fn path() -> Self {
-        Self::Path {
-            path: path_agent::PathAgent::new(),
-        }
+        Self::Path(path_agent::PathAgent::new())
     }
 
     pub(crate) fn is_iceless(&self) -> bool {
-        matches!(self, Self::Path { .. })
+        matches!(self, Self::Path(_))
     }
 
     /// Rebuild the inner `PathAgent`, dropping locals matching
@@ -45,7 +40,7 @@ impl Agent {
         &mut self,
         should_drop_local: impl FnMut(&path_agent::Candidate) -> bool,
     ) {
-        if let Self::Path { path } = self {
+        if let Self::Path(path) = self {
             path.rebuild(should_drop_local);
         }
     }
@@ -53,7 +48,7 @@ impl Agent {
     pub(crate) fn is_negotiation_complete(&self) -> bool {
         match self {
             Self::Ice(a) => a.state() == IceConnectionState::Connected,
-            Self::Path { path, .. } => path.primary().is_some(),
+            Self::Path(path) => path.primary().is_some(),
         }
     }
 
@@ -83,7 +78,7 @@ impl Agent {
                     && a.remote_credentials().is_some_and(|c| c == remote_creds)
                     && a.controlling() == matches!(ice_role, IceRole::Controlling)
             }
-            Self::Path { .. } => true,
+            Self::Path(_) => true,
         }
     }
 
@@ -91,35 +86,35 @@ impl Agent {
     pub(crate) fn send_wg_handshake_after_nomination(&self) -> bool {
         match self {
             Self::Ice(a) => a.controlling(),
-            Self::Path { .. } => false,
+            Self::Path(_) => false,
         }
     }
 
     pub(crate) fn local_ufrag(&self) -> Option<&str> {
         match self {
             Self::Ice(a) => Some(&a.local_credentials().ufrag),
-            Self::Path { .. } => None,
+            Self::Path(_) => None,
         }
     }
 
     pub(crate) fn set_local_credentials(&mut self, creds: IceCreds) {
         match self {
             Self::Ice(a) => a.set_local_credentials(creds),
-            Self::Path { .. } => {}
+            Self::Path(_) => {}
         }
     }
 
     pub(crate) fn set_remote_credentials(&mut self, creds: IceCreds) {
         match self {
             Self::Ice(a) => a.set_remote_credentials(creds),
-            Self::Path { .. } => {}
+            Self::Path(_) => {}
         }
     }
 
     pub(crate) fn add_local_candidate(&mut self, c: Candidate) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
-            Self::Path { path } => path
+            Self::Path(path) => path
                 .add_local_candidate(crate::candidate::to_path_agent(&c))
                 .then_some(c),
         }
@@ -128,7 +123,7 @@ impl Agent {
     pub(crate) fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         match self {
             Self::Ice(a) => a.add_remote_candidate(c),
-            Self::Path { path } => {
+            Self::Path(path) => {
                 let candidate = crate::candidate::to_path_agent(&c);
                 let kind = candidate.kind();
 
@@ -154,7 +149,7 @@ impl Agent {
     pub(crate) fn invalidate_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
         match self {
             Self::Ice(a) => a.invalidate_candidate(c),
-            Self::Path { path } => {
+            Self::Path(path) => {
                 let candidate = crate::candidate::to_path_agent(c);
                 let removed_local = path.remove_local_candidate(&candidate, now);
                 let removed_remote = path.remove_remote_candidate(&candidate, now);
@@ -167,7 +162,7 @@ impl Agent {
     pub(crate) fn local_candidates(&self) -> Box<dyn Iterator<Item = Candidate> + '_> {
         match self {
             Self::Ice(a) => Box::new(a.local_candidates()),
-            Self::Path { path } => Box::new(
+            Self::Path(path) => Box::new(
                 path.local_candidates()
                     .filter_map(|c| crate::candidate::from_path_agent(&c)),
             ),
@@ -177,7 +172,7 @@ impl Agent {
     pub(crate) fn remote_candidates(&self) -> Box<dyn Iterator<Item = Candidate> + '_> {
         match self {
             Self::Ice(a) => Box::new(a.remote_candidates()),
-            Self::Path { path } => Box::new(
+            Self::Path(path) => Box::new(
                 path.remote_candidates()
                     .filter_map(|c| crate::candidate::from_path_agent(&c)),
             ),
@@ -187,9 +182,7 @@ impl Agent {
     pub(crate) fn contains_remote_candidate(&self, c: &Candidate) -> bool {
         match self {
             Self::Ice(a) => a.remote_candidates().any(|x| &x == c),
-            Self::Path { path } => {
-                path.contains_remote_candidate(&crate::candidate::to_path_agent(c))
-            }
+            Self::Path(path) => path.contains_remote_candidate(&crate::candidate::to_path_agent(c)),
         }
     }
 
@@ -198,14 +191,14 @@ impl Agent {
             Self::Ice(a) => a
                 .remote_candidates()
                 .any(|c| c.addr() == addr && c.kind() == is::CandidateKind::Relayed),
-            Self::Path { path, .. } => path.remote_is_relayed(addr),
+            Self::Path(path) => path.remote_is_relayed(addr),
         }
     }
 
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),
-            Self::Path { .. } => false,
+            Self::Path(_) => false,
         }
     }
 
@@ -218,9 +211,7 @@ impl Agent {
     ) -> ControlFlow<(), &'b [u8]> {
         match self {
             Self::Ice(_) => ControlFlow::Continue(bytes),
-            Self::Path { path: agent, .. } => {
-                agent.handle_inbound_network(tunnel, bytes, path, now)
-            }
+            Self::Path(agent) => agent.handle_inbound_network(tunnel, bytes, path, now),
         }
     }
 
@@ -232,47 +223,47 @@ impl Agent {
     ) -> ControlFlow<(), ip_packet::IpPacket> {
         match self {
             Self::Ice(_) => ControlFlow::Continue(packet),
-            Self::Path { path: agent, .. } => agent.handle_inbound_tun(packet, path, now),
+            Self::Path(agent) => agent.handle_inbound_tun(packet, path, now),
         }
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         match self {
             Self::Ice(a) => a.handle_timeout(now),
-            Self::Path { path, .. } => path.handle_timeout(now),
+            Self::Path(path) => path.handle_timeout(now),
         }
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         match self {
             Self::Ice(a) => a.poll_timeout(),
-            Self::Path { path, .. } => path.poll_timeout(),
+            Self::Path(path) => path.poll_timeout(),
         }
     }
 
     pub(crate) fn poll_ice_event(&mut self) -> Option<IceAgentEvent> {
         match self {
             Self::Ice(a) => a.poll_event(),
-            Self::Path { .. } => None,
+            Self::Path(_) => None,
         }
     }
 
     pub(crate) fn poll_ice_transmit(&mut self) -> Option<str0m_proto::Transmit> {
         match self {
             Self::Ice(a) => a.poll_transmit(),
-            Self::Path { .. } => None,
+            Self::Path(_) => None,
         }
     }
 
     pub(crate) fn poll_path_event(&mut self) -> Option<path_agent::Event> {
         match self {
             Self::Ice(_) => None,
-            Self::Path { path, .. } => path.poll_event(),
+            Self::Path(path) => path.poll_event(),
         }
     }
 
     pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        if let Self::Path { path, .. } = self {
+        if let Self::Path(path) = self {
             path.handle_outbound(bytes, now);
         }
     }
@@ -283,7 +274,7 @@ impl Agent {
         force_resend: bool,
         now: Instant,
     ) {
-        if let Self::Path { path, .. } = self {
+        if let Self::Path(path) = self {
             path.initiate_handshake(tunnel, force_resend, now);
         }
     }
@@ -291,7 +282,7 @@ impl Agent {
     pub(crate) fn poll_path_transmit(&mut self) -> Option<path_agent::Transmit> {
         match self {
             Self::Ice(_) => None,
-            Self::Path { path, .. } => path.poll_transmit(),
+            Self::Path(path) => path.poll_transmit(),
         }
     }
 }
