@@ -111,6 +111,29 @@ sudo perf stat -p "$statpids" -e task-clock,cycles,instructions,cpu-migrations,c
 wait # blocks until Ctrl-C fires the INT trap
 wait # reap the recorders once they have flushed
 echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-stat.txt"
+
+[tasks.setup-perf-env]
+description = "Configure this machine for connlib perf benchmarking: CI kernel sysctls + pin CPUs to 2.5 GHz. Latency is 0 by default (routers only add netem when LATENCY_ENABLED is set)."
+raw = true
+run = """
+set -u
+
+echo "== 1/2 kernel sysctls (from .github/workflows/_perf_tests.yml) =="
+sudo sysctl -w net.core.wmem_max=16777216         # 16 MB
+sudo sysctl -w net.core.rmem_max=134217728        # 128 MB
+sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
+sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
+
+echo "== 2/2 pin all CPUs to 2.5 GHz (removes boost + throttle variance) =="
+khz=2500000
+for p in /sys/devices/system/cpu/cpu*/cpufreq; do
+  cat "$p/cpuinfo_min_freq" | sudo tee "$p/scaling_min_freq" >/dev/null
+  echo "$khz" | sudo tee "$p/scaling_max_freq" >/dev/null
+  echo "$khz" | sudo tee "$p/scaling_min_freq" >/dev/null
+done
+echo "  pinned to 2.5 GHz (verify under load: grep MHz /proc/cpuinfo | sort -u)"
+
+echo "Done. sysctls + clock pin persist until reboot/reset."
 """
 
 # =============================================================================
