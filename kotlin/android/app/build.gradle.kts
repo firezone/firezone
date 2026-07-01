@@ -261,7 +261,7 @@ dependencies {
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.43.2")
+    implementation("io.sentry:sentry-android:8.44.1")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
