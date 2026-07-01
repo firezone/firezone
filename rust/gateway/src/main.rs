@@ -178,6 +178,8 @@ async fn try_main(cli: Cli) -> Result<()> {
                 SdkMeterProvider::builder().with_resource(resource).build(),
             ),
         }
+
+        tokio::spawn(bin_shared::network_stats::run());
     }
 
     let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)

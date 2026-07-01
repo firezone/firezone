@@ -1,4 +1,4 @@
-//! Centralised definitions of the OpenTelemetry instruments recorded throughout connlib.
+//! Centralised definitions of the OpenTelemetry instruments recorded throughout the data plane.
 //!
 //! An instrument is identified by its name, kind and unit.
 //! All call sites recording to the same instrument must use a single, consistent definition.
@@ -12,6 +12,11 @@ use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
 
 fn meter() -> Meter {
     opentelemetry::global::meter("connlib")
+}
+
+/// Meter for OS-reported, host-level metrics in the `system.*` namespace.
+fn system_meter() -> Meter {
+    opentelemetry::global::meter("system")
 }
 
 /// How many packets we have processed.
@@ -62,6 +67,33 @@ pub fn network_packets_batch_count() -> Histogram<u64> {
         .with_description("How many batches of packets we have processed in a single syscall.")
         .with_unit("{batches}")
         .with_boundaries((1..32_u64).map(|i| i as f64).collect())
+        .build()
+}
+
+/// Count of errors encountered on a network interface, as reported by the OS.
+pub fn system_network_errors() -> Counter<u64> {
+    system_meter()
+        .u64_counter("system.network.errors")
+        .with_description("Count of errors encountered on a network interface.")
+        .with_unit("{error}")
+        .build()
+}
+
+/// Count of packets dropped on a network interface, as reported by the OS.
+pub fn system_network_dropped() -> Counter<u64> {
+    system_meter()
+        .u64_counter("system.network.dropped")
+        .with_description("Count of packets dropped on a network interface.")
+        .with_unit("{packet}")
+        .build()
+}
+
+/// Count of UDP datagrams dropped because the socket buffer was full, as reported by the OS.
+pub fn system_network_udp_buffer_errors() -> Counter<u64> {
+    system_meter()
+        .u64_counter("system.network.udp.buffer.errors")
+        .with_description("UDP datagrams dropped because the socket buffer was full.")
+        .with_unit("{datagram}")
         .build()
 }
 
