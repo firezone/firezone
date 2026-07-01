@@ -286,10 +286,21 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
         .create(path)
 }
 
+/// The spool holds Bearer tokens, so on Windows every spool directory is locked
+/// down to `LocalSystem` and `BUILTIN\Administrators` (the accounts the Gateway /
+/// Tunnel service runs as), the equivalent of `0700` on Unix. The directory ACEs
+/// inherit, so children get the same access.
 #[cfg(windows)]
 fn create_dir_secure(path: &Path) -> std::io::Result<()> {
+    use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
+
     std::fs::create_dir_all(path)?;
-    apply_sddl(path, DIR_SDDL)
+
+    let dacl = PipeDacl::new()
+        .allow_inheriting(FileRights::FullAccess, Trustee::local_system())
+        .allow_inheriting(FileRights::FullAccess, Trustee::builtin_administrators());
+
+    apply_dacl(path, &dacl)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -304,9 +315,16 @@ fn set_owner_only(path: &Path) -> std::io::Result<()> {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
 }
 
+/// The equivalent of `0600` on Unix (see [`create_dir_secure`]).
 #[cfg(windows)]
 fn set_owner_only(path: &Path) -> std::io::Result<()> {
-    apply_sddl(path, FILE_SDDL)
+    use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
+
+    let dacl = PipeDacl::new()
+        .allow(FileRights::FullAccess, Trustee::local_system())
+        .allow(FileRights::FullAccess, Trustee::builtin_administrators());
+
+    apply_dacl(path, &dacl)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -314,18 +332,9 @@ fn set_owner_only(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// The spool holds Bearer tokens, so on Windows every spool directory and file is
-/// locked down to `LocalSystem` and `BUILTIN\Administrators` (the accounts the
-/// Gateway / Tunnel service runs as), the equivalent of `0700`/`0600` on Unix.
-/// `OICI` on the directory ACEs makes children inherit the same access.
 #[cfg(windows)]
-const DIR_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
-#[cfg(windows)]
-const FILE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
-
-#[cfg(windows)]
-fn apply_sddl(path: &Path, sddl: &str) -> std::io::Result<()> {
-    windows_security::SecurityDescriptor::from_sddl(sddl)
+fn apply_dacl(path: &Path, dacl: &windows_security::pipe_dacl::PipeDacl) -> std::io::Result<()> {
+    dacl.build()
         .and_then(|descriptor| descriptor.apply_to_path(path))
         .map_err(|e| std::io::Error::other(format!("{e:#}")))
 }
