@@ -23,6 +23,13 @@ enum CreateZipError: Swift.Error {
 
 public final class ZipService {
 
+  // NSFileCoordinator's `.forUploading` zip synthesis goes through a system
+  // XPC service that occasionally fails transiently (NSPOSIXErrorDomain code
+  // 0, "Undefined error: 0") under load with no indication anything is
+  // actually wrong with the source directory. Retry before giving up.
+  private static let maxAttempts = 3
+  private static let retryDelay: TimeInterval = 0.2
+
   public static func createZip(
     source directoryURL: URL,
     to zipFinalURL: URL,
@@ -32,10 +39,23 @@ public final class ZipService {
       throw CreateZipError.urlNotADirectory(directoryURL)
     }
 
-    // Stage a copy of the directory and zip that instead: the source may contain
-    // symlinks (the Rust file appender maintains `*.latest` links), which Apple's
-    // zip-for-upload implementation chokes on when they dangle, and live log files
-    // can be rotated or deleted mid-archive.
+    for _ in 1..<maxAttempts {
+      do {
+        try stageAndZip(source: directoryURL, to: zipFinalURL)
+        return
+      } catch {
+        Thread.sleep(forTimeInterval: retryDelay)
+      }
+    }
+
+    try stageAndZip(source: directoryURL, to: zipFinalURL)
+  }
+
+  // Stage a copy of the directory and zip that instead: the source may contain
+  // symlinks (the Rust file appender maintains `*.latest` links), which Apple's
+  // zip-for-upload implementation chokes on when they dangle, and live log files
+  // can be rotated or deleted mid-archive.
+  private static func stageAndZip(source directoryURL: URL, to zipFinalURL: URL) throws {
     let fileManager = FileManager.default
     let stagingRootURL = fileManager
       .temporaryDirectory
