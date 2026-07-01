@@ -114,22 +114,22 @@ echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-
 """
 
 [tasks.setup-perf-env]
-description = "Apply the CI kernel sysctls for connlib perf benchmarking (larger socket + backlog buffers). Pair with `mise run pin-cpu` to also fix the clock."
+description = "Apply the kernel sysctls for connlib perf benchmarking (larger socket + backlog buffers)."
 raw = true
 run = """
 set -u
 
-echo "Applying kernel sysctls (from .github/workflows/_perf_tests.yml)..."
+echo "Applying kernel sysctls ..."
 sudo sysctl -w net.core.wmem_max=16777216         # 16 MB
 sudo sysctl -w net.core.rmem_max=134217728        # 128 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
 sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
 sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
 
-echo "Done (persists until reboot). Run 'mise run pin-cpu [GHZ]' to pin the clock too."
+echo "Done (persists until reboot)."
 """
 
 [tasks.pin-cpu]
-description = "Pin every CPU core to a fixed frequency (GHz, default 2.5) so boost + thermal throttling stop confounding perf runs. Caps boost, but the chip can still throttle BELOW the floor — always verify the effective clock via cycles/task-clock."
+description = "Pin every CPU core to a fixed frequency (GHz, default 2.5) so boost + thermal throttling stop confounding perf runs."
 usage = 'arg "ghz" default="2.5"'
 raw = true
 run = """
