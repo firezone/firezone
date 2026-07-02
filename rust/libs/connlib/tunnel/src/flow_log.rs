@@ -650,7 +650,6 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     /// We initiated the flow, i.e. we requested access to the peer / resource.
-    #[expect(dead_code, reason = "constructed once the Client tracks flows")]
     Initiator,
     /// The remote peer initiated the flow towards us.
     Responder,

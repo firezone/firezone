@@ -1115,6 +1115,7 @@ impl TunnelTest {
                             client_ice,
                             gateway_ice,
                             use_iceless,
+                            None,
                             now,
                         )
                     })
@@ -1180,6 +1181,7 @@ impl TunnelTest {
                                     use_iceless,
                                     "initiating client".to_owned(),
                                     Some(remote_authorization),
+                                    None,
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client {
@@ -1205,6 +1207,7 @@ impl TunnelTest {
                                     crate::messages::IceRole::Controlling,
                                     use_iceless,
                                     "target client".to_owned(),
+                                    None,
                                     None,
                                     now,
                                 )

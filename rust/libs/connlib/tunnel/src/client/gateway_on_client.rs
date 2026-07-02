@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr},
 };
 
@@ -14,9 +14,32 @@ use crate::{IpConfig, NotAllowedResource};
 pub(crate) struct GatewayOnClient {
     gateway_tun: IpConfig,
     allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
+
+    /// The portal's per-flow ingest token for each authorized resource, used to
+    /// attribute the Client's (initiator) flow logs. Same lifetime as the resource
+    /// authorization.
+    ingest_tokens: HashMap<ResourceId, String>,
 }
 
 impl GatewayOnClient {
+    /// Records the initiator-side ingest token minted for `id`, or clears it when
+    /// the portal sent none.
+    pub(crate) fn set_ingest_token(&mut self, id: ResourceId, token: Option<String>) {
+        match token {
+            Some(token) => {
+                self.ingest_tokens.insert(id, token);
+            }
+            None => {
+                self.ingest_tokens.remove(&id);
+            }
+        }
+    }
+
+    /// The ingest token for `id`, if one was minted.
+    pub(crate) fn ingest_token(&self, id: &ResourceId) -> Option<String> {
+        self.ingest_tokens.get(id).cloned()
+    }
+
     pub(crate) fn allow_ip_for_resource(&mut self, ip: impl Into<IpNetwork>, id: ResourceId) {
         let ip = ip.into();
 
@@ -28,6 +51,8 @@ impl GatewayOnClient {
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        self.ingest_tokens.remove(&id);
+
         // First we remove the id from all allowed ips
         for (_, resources) in self
             .allowed_ips
@@ -66,6 +91,7 @@ impl GatewayOnClient {
         GatewayOnClient {
             allowed_ips: IpNetworkTable::new(),
             gateway_tun,
+            ingest_tokens: HashMap::new(),
         }
     }
 }

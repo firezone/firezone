@@ -26,6 +26,7 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
+use crate::flow_log::{self, Tracker};
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
@@ -180,6 +181,10 @@ pub struct ClientState {
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
+
+    /// Tracks flow logs for this Client, keyed by the peer a flow is tunneled
+    /// through.
+    flow_tracker: Tracker<ClientOrGatewayId>,
 }
 
 impl ClientState {
@@ -192,6 +197,7 @@ impl ClientState {
     ) -> Self {
         Self {
             authorized_resources: Default::default(),
+            flow_tracker: Tracker::new(now, unix_ts),
             cidr_routing_table: RoutingTable::default(),
             dns_routing_table: RoutingTable::default(),
             client_routing_table: RoutingTable::default(),
@@ -413,9 +419,18 @@ impl ClientState {
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 
+        self.flow_tracker.close_all(now);
+
         self.clients.clear();
         self.gateways.clear();
         self.node.close_all(p2p_control::goodbye(), now);
+    }
+
+    /// Enables or disables flow-log emission at runtime.
+    ///
+    /// The portal drives this via its `init` config.
+    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
+        self.flow_tracker.set_enabled(enabled);
     }
 
     /// Updates the NAT for all domains resolved by the stub resolver on the corresponding gateway.
@@ -528,6 +543,19 @@ impl ClientState {
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
+        let flow = self.flow_tracker.begin_tun_packet(&packet);
+        let result = self.handle_tun_input_inner(packet, now, provider);
+        self.flow_tracker.commit(flow, now);
+
+        result
+    }
+
+    fn handle_tun_input_inner(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+        provider: &mut impl snownet::BufferProvider,
+    ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -584,6 +612,20 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
+        let flow = self.flow_tracker.begin_network_packet(local, from);
+        let result = self.handle_network_input_inner(local, from, packet, now);
+        self.flow_tracker.commit(flow, now);
+
+        result
+    }
+
+    fn handle_network_input_inner(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> Result<Option<IpPacket>> {
         let Some((pid, packet)) = self
             .node
             .decapsulate(local, from, packet.as_ref(), now)
@@ -591,6 +633,8 @@ impl ClientState {
         else {
             return Ok(None);
         };
+
+        flow_log::record_decrypted_packet(&packet);
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
@@ -662,6 +706,16 @@ impl ClientState {
                     }
                 };
 
+                // The peer initiates flows towards us if it holds an inbound
+                // authorization against us; otherwise this is a reply to a flow
+                // we initiated.
+                if peer.is_responder() {
+                    flow_log::record_peer(cid, flow_log::Role::Responder);
+                    flow_log::record_ingest_token(peer.ingest_token_for_inbound(&packet));
+                } else {
+                    flow_log::record_peer(cid, flow_log::Role::Initiator);
+                }
+
                 return Ok(Some(packet));
             }
             ClientOrGatewayId::Gateway(gid) => {
@@ -672,6 +726,9 @@ impl ClientState {
                 };
 
                 peer.ensure_allowed_src(&packet)?;
+
+                // To a gateway we are always the initiator; this is a reply.
+                flow_log::record_peer(gid, flow_log::Role::Initiator);
 
                 if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
@@ -827,6 +884,8 @@ impl ClientState {
             .map(|e| (e.resource_id, &e.domain))
             && let ClientOrGatewayId::Gateway(gid) = pid
         {
+            flow_log::record_domain(domain.clone());
+
             match self
                 .dns_resource_nat
                 .handle_outgoing(gid, domain, rid, packet, now)
@@ -834,6 +893,8 @@ impl ClientState {
                 Some(p) => packet = p,
                 None => return Ok(None),
             }
+
+            flow_log::record_translated_packet(&packet);
         }
 
         Ok(Some((pid, packet)))
@@ -855,6 +916,8 @@ impl ClientState {
     ) -> Result<Option<(ClientOrGatewayId, IpPacket)>> {
         // Fast-path: gateway TUN IPs (e.g. DNS resource NAT control packets).
         if let Some((gid, _)) = self.gateways.peer_by_ip(dst) {
+            flow_log::record_peer(gid, flow_log::Role::Initiator);
+
             return Ok(Some((ClientOrGatewayId::Gateway(gid), packet)));
         }
 
@@ -865,6 +928,8 @@ impl ClientState {
         if let Some((cid, peer)) = self.clients.peer_by_ip_mut(dst)
             && peer.is_known_flow(&packet)
         {
+            flow_log::record_peer(cid, flow_log::Role::Responder);
+
             return Ok(Some((ClientOrGatewayId::Client(cid), packet)));
         }
 
@@ -888,6 +953,13 @@ impl ClientState {
                 .is_some_and(|p| p.has_client(entry.client_id));
 
             if already_authorised {
+                flow_log::record_peer(entry.client_id, flow_log::Role::Initiator);
+                flow_log::record_ingest_token(
+                    self.clients
+                        .peer_by_id(&entry.client_id)
+                        .and_then(|peer| peer.ingest_token(&entry.resource_id)),
+                );
+
                 return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
             }
 
@@ -918,6 +990,13 @@ impl ClientState {
             .get(&resource)
             .and_then(|p| p.as_gateway())
         {
+            flow_log::record_peer(*gid, flow_log::Role::Initiator);
+            flow_log::record_ingest_token(
+                self.gateways
+                    .peer_by_id(gid)
+                    .and_then(|peer| peer.ingest_token(&resource)),
+            );
+
             return Ok(Some((ClientOrGatewayId::Gateway(*gid), packet)));
         }
 
@@ -959,6 +1038,7 @@ impl ClientState {
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
         use_iceless: bool,
+        flow_logs_ingest_token: Option<String>,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -996,6 +1076,8 @@ impl ClientState {
         let peer = self
             .gateways
             .upsert(gid, || GatewayOnClient::new(gateway_tun));
+
+        peer.set_ingest_token(rid, flow_logs_ingest_token);
 
         // Deal with buffered packets
 
@@ -1065,6 +1147,7 @@ impl ClientState {
         use_iceless: bool,
         client_name: String,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
+        flow_logs_ingest_token: Option<String>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
@@ -1096,6 +1179,17 @@ impl ClientState {
             .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
         peer.set_remote_name(client_name);
         tracing::debug!(%cid, name = %peer.remote_name(), "Updated client peer name");
+
+        // Attribute this peer's flow logs for the resource this authorization
+        // covers: the receiving side learns it from the resource, the initiating
+        // side from the pending access it is completing.
+        if let Some(resource_id) = authorization
+            .as_ref()
+            .map(|(resource_id, _, _)| *resource_id)
+            .or_else(|| pending_device_access.as_ref().map(|p| p.resource_id()))
+        {
+            peer.set_ingest_token(resource_id, flow_logs_ingest_token);
+        }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
@@ -1537,6 +1631,7 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
+        self.flow_tracker.handle_timeout(now);
 
         for peer in self.clients.iter_mut() {
             peer.handle_timeout(now);
@@ -2658,7 +2753,12 @@ fn encapsulate_or_buffer(
     }
 
     match node.encapsulate(pid, &packet, now, provider) {
-        Ok(_) => Ok(()),
+        Ok(Some(info)) => {
+            flow_log::record_transmit(info.src, info.dst);
+
+            Ok(())
+        }
+        Ok(None) => Ok(()),
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             pending_packets
                 .entry(pid)

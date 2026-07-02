@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use connlib_model::ResourceId;
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
@@ -33,6 +34,11 @@ pub(crate) struct ClientOnClient {
     inbound_filter: FilterEngine,
     /// Tracks outbound flows so legitimate return traffic is admitted.
     conn_track: ConnTrack,
+
+    /// The portal's per-flow ingest token for each resource of this peer, used to
+    /// attribute the client-to-client flow logs. On the initiating side it is the
+    /// initiator token; on the receiving side the responder token.
+    ingest_tokens: HashMap<ResourceId, String>,
 }
 
 /// An inbound resource: filters granted by a resource for traffic from the remote peer.
@@ -59,6 +65,7 @@ impl ClientOnClient {
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),
+            ingest_tokens: HashMap::new(),
         }
     }
 
@@ -72,6 +79,48 @@ impl ClientOnClient {
 
     pub(crate) fn set_remote_name(&mut self, name: String) {
         self.remote_name = name;
+    }
+
+    /// Records the ingest token minted for `resource_id`, or clears it when the
+    /// portal sent none.
+    pub(crate) fn set_ingest_token(&mut self, resource_id: ResourceId, token: Option<String>) {
+        match token {
+            Some(token) => {
+                self.ingest_tokens.insert(resource_id, token);
+            }
+            None => {
+                self.ingest_tokens.remove(&resource_id);
+            }
+        }
+    }
+
+    /// The ingest token for `resource_id`, if one was minted.
+    pub(crate) fn ingest_token(&self, resource_id: &ResourceId) -> Option<String> {
+        self.ingest_tokens.get(resource_id).cloned()
+    }
+
+    /// Whether this peer authorized us as a target, i.e. we are the responder for
+    /// its flows (it holds inbound resource authorizations against our TUN).
+    pub(crate) fn is_responder(&self) -> bool {
+        !self.resources.is_empty()
+    }
+
+    /// Resolves the ingest token attributing an inbound packet from this peer when
+    /// we are the responder. Picks the first resource whose filter admits the
+    /// packet, which is exact for the common single-resource case.
+    pub(crate) fn ingest_token_for_inbound(&self, packet: &IpPacket) -> Option<String> {
+        for (resource_id, resource) in self.resources.iter() {
+            let admits = resource.filters.is_empty()
+                || FilterEngine::new(&resource.filters)
+                    .apply(packet.destination_protocol())
+                    .is_ok();
+
+            if admits {
+                return self.ingest_tokens.get(resource_id).cloned();
+            }
+        }
+
+        None
     }
 
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
@@ -113,6 +162,8 @@ impl ClientOnClient {
 
     /// Drop a previously-active resource.
     pub(crate) fn remove_resource(&mut self, resource_id: &ResourceId) {
+        self.ingest_tokens.remove(resource_id);
+
         let Some(_entry) = self.resources.remove(resource_id) else {
             return;
         };
