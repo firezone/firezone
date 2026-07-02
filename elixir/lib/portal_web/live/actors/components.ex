@@ -499,7 +499,7 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_token"
                     phx-value-id={token.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Revoke session"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
@@ -587,7 +587,7 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_session"
                     phx-value-id={session.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Revoke session"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />

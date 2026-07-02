@@ -120,11 +120,12 @@ defmodule PortalWeb.Sites do
   end
 
   defp site_panel_assigns(site, params, socket) do
-    gateways =
+    all_gateways =
       site.id
       |> Database.list_gateways_for_site(socket.assigns.subject)
       |> Presence.Gateways.preload_gateways_presence()
-      |> Enum.filter(& &1.online?)
+
+    gateways = Enum.filter(all_gateways, & &1.online?)
 
     resources =
       if site.managed_by == :account do
@@ -139,13 +140,17 @@ defmodule PortalWeb.Sites do
         end
       end
 
+    gateway_tokens = Database.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
+
     [
       selected_site: site,
       site_panel:
         Map.merge(base_site_panel_state(), %{
           tab: parse_site_tab(Map.get(params, "tab", "gateways")),
           gateways: gateways,
-          resources: resources
+          total_gateway_count: length(all_gateways),
+          resources: resources,
+          gateway_tokens: gateway_tokens
         }),
       site_deploy: base_site_deploy_state(),
       site_resource_form: base_site_resource_form_state(),
@@ -421,7 +426,6 @@ defmodule PortalWeb.Sites do
         account={@account}
         resources_counts={@resources_counts}
         policies_counts={@policies_counts}
-        gateway_counts={@gateway_counts}
         panel={@site_panel}
         deploy_state={@site_deploy}
         resource_form_state={@site_resource_form}
@@ -437,10 +441,15 @@ defmodule PortalWeb.Sites do
     %{
       tab: :gateways,
       gateways: [],
+      total_gateway_count: 0,
       resources: [],
+      gateway_tokens: [],
       show_all_gateways: false,
       view: :gateways,
       confirm_delete_site: false,
+      confirm_delete_gateway_id: nil,
+      confirm_revoke_token_id: nil,
+      confirm_revoke_all_tokens: false,
       expanded_gateway_id: nil
     }
   end
@@ -608,6 +617,45 @@ defmodule PortalWeb.Sites do
     {:noreply, merge_state(socket, :site_panel, %{expanded_gateway_id: expanded})}
   end
 
+  def handle_event("delete_gateway", %{"id" => gateway_id}, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_delete_gateway_id: gateway_id})}
+  end
+
+  def handle_event("cancel_delete_gateway", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_delete_gateway_id: nil})}
+  end
+
+  def handle_event("confirm_delete_gateway", %{"id" => gateway_id}, socket) do
+    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, socket.assigns.subject),
+         {:ok, _} <- Database.delete_gateway(gateway, socket.assigns.subject) do
+      all_gateways =
+        socket.assigns.selected_site.id
+        |> Database.list_gateways_for_site(socket.assigns.subject)
+        |> Presence.Gateways.preload_gateways_presence()
+
+      gateways =
+        if socket.assigns.site_panel.show_all_gateways,
+          do: all_gateways,
+          else: Enum.filter(all_gateways, & &1.online?)
+
+      {:noreply,
+       socket
+       |> put_flash(:success, "Gateway deleted.")
+       |> merge_state(:site_panel, %{
+         gateways: gateways,
+         total_gateway_count: length(all_gateways),
+         confirm_delete_gateway_id: nil,
+         expanded_gateway_id: nil
+       })}
+    else
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to delete gateway.")
+         |> merge_state(:site_panel, %{confirm_delete_gateway_id: nil})}
+    end
+  end
+
   def handle_event("show_all_gateways", _params, socket) do
     gateways =
       socket.assigns.selected_site.id
@@ -631,6 +679,8 @@ defmodule PortalWeb.Sites do
     site = socket.assigns.selected_site
     {:ok, token, encoded_token} = Database.create_gateway_token(site, socket.assigns.subject)
 
+    gateway_tokens = Database.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
+
     socket =
       socket
       |> unsubscribe_deploy_site_presence()
@@ -647,7 +697,7 @@ defmodule PortalWeb.Sites do
 
     {:noreply,
      socket
-     |> merge_state(:site_panel, %{view: :deploy})
+     |> merge_state(:site_panel, %{view: :deploy, gateway_tokens: gateway_tokens})
      |> put_state(:site_deploy, %{
        env: env,
        tab: "debian-instructions",
@@ -825,6 +875,54 @@ defmodule PortalWeb.Sites do
     end
   end
 
+  def handle_event("revoke_gateway_token", %{"id" => token_id}, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_revoke_token_id: token_id})}
+  end
+
+  def handle_event("cancel_revoke_gateway_token", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_revoke_token_id: nil})}
+  end
+
+  def handle_event("confirm_revoke_gateway_token", %{"id" => token_id}, socket) do
+    with {:ok, token} <- Database.fetch_gateway_token(token_id, socket.assigns.subject),
+         {:ok, _} <- Database.delete_gateway_token(token, socket.assigns.subject) do
+      tokens =
+        Database.list_gateway_tokens_for_site(
+          socket.assigns.selected_site.id,
+          socket.assigns.subject
+        )
+
+      {:noreply,
+       socket
+       |> put_flash(:success, "Token revoked.")
+       |> merge_state(:site_panel, %{gateway_tokens: tokens, confirm_revoke_token_id: nil})}
+    else
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to revoke token.")
+         |> merge_state(:site_panel, %{confirm_revoke_token_id: nil})}
+    end
+  end
+
+  def handle_event("confirm_revoke_all_tokens", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_revoke_all_tokens: true})}
+  end
+
+  def handle_event("cancel_revoke_all_tokens", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_revoke_all_tokens: false})}
+  end
+
+  def handle_event("revoke_all_gateway_tokens", _params, socket) do
+    site = socket.assigns.selected_site
+    {_count, _} = Database.delete_all_gateway_tokens(site, socket.assigns.subject)
+
+    {:noreply,
+     socket
+     |> put_flash(:success, "All tokens revoked.")
+     |> merge_state(:site_panel, %{gateway_tokens: [], confirm_revoke_all_tokens: false})}
+  end
+
   def handle_event("toggle_resource_filters_dropdown", _params, socket) do
     {:noreply,
      update(
@@ -883,22 +981,28 @@ defmodule PortalWeb.Sites do
       ) do
     socket = load_sites_index_data(socket)
 
-    panel_gateways =
+    {panel_gateways, total_gateway_count} =
       if socket.assigns.selected_site do
         all =
           socket.assigns.selected_site.id
           |> Database.list_gateways_for_site(socket.assigns.subject)
           |> Presence.Gateways.preload_gateways_presence()
 
-        if socket.assigns.site_panel.show_all_gateways,
-          do: all,
-          else: Enum.filter(all, & &1.online?)
+        gateways =
+          if socket.assigns.site_panel.show_all_gateways,
+            do: all,
+            else: Enum.filter(all, & &1.online?)
+
+        {gateways, length(all)}
       else
-        socket.assigns.site_panel.gateways
+        {socket.assigns.site_panel.gateways, socket.assigns.site_panel.total_gateway_count}
       end
 
     socket =
-      merge_state(socket, :site_panel, %{gateways: panel_gateways})
+      merge_state(socket, :site_panel, %{
+        gateways: panel_gateways,
+        total_gateway_count: total_gateway_count
+      })
 
     {:noreply, socket}
   end
@@ -930,6 +1034,7 @@ defmodule PortalWeb.Sites do
 
   defp parse_site_tab("resources"), do: :resources
   defp parse_site_tab("gateways"), do: :gateways
+  defp parse_site_tab("tokens"), do: :tokens
   defp parse_site_tab(_), do: :gateways
 
   defp site_deploy_connection_status(%{connected?: true}, _joins), do: :noop
@@ -979,7 +1084,7 @@ defmodule PortalWeb.Sites do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Safe, Site, Resource, Device}
+    alias Portal.{Safe, Site, Resource, Device, GatewayToken}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
     def list_all_sites(subject, repo \\ :replica) do
@@ -1109,6 +1214,70 @@ defmodule PortalWeb.Sites do
       with {:ok, token} <- Portal.Authentication.create_gateway_token(site, subject) do
         {:ok, %{token | secret_fragment: nil}, Portal.Authentication.encode_fragment!(token)}
       end
+    end
+
+    @spec fetch_gateway(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Device.t()} | {:error, :not_found}
+    def fetch_gateway(id, subject) do
+      result =
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.id == ^id and d.type == :gateway)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      case result do
+        nil -> {:error, :not_found}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    @spec delete_gateway(Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Device.t()} | {:error, Ecto.Changeset.t()}
+    def delete_gateway(gateway, subject) do
+      Safe.scoped(gateway, subject)
+      |> Safe.delete()
+    end
+
+    @spec list_gateway_tokens_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
+            GatewayToken.t()
+          ]
+    def list_gateway_tokens_for_site(site_id, subject) do
+      from(t in GatewayToken, as: :gateway_tokens)
+      |> where([gateway_tokens: t], t.site_id == ^site_id)
+      |> order_by([gateway_tokens: t], desc: t.inserted_at)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+    end
+
+    @spec fetch_gateway_token(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, GatewayToken.t()} | {:error, :not_found}
+    def fetch_gateway_token(token_id, subject) do
+      result =
+        from(t in GatewayToken, as: :gateway_tokens)
+        |> where([gateway_tokens: t], t.id == ^token_id)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      case result do
+        nil -> {:error, :not_found}
+        token -> {:ok, token}
+      end
+    end
+
+    @spec delete_gateway_token(GatewayToken.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, GatewayToken.t()} | {:error, Ecto.Changeset.t()}
+    def delete_gateway_token(token, subject) do
+      token
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    @spec delete_all_gateway_tokens(Site.t(), Portal.Authentication.Subject.t()) ::
+            {non_neg_integer(), nil}
+    def delete_all_gateway_tokens(site, subject) do
+      from(t in GatewayToken, where: t.site_id == ^site.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
     end
 
     # credo:disable-for-next-line Credo.Check.Warning.SpecWithStruct
