@@ -13,7 +13,6 @@
 
 use std::net::IpAddr;
 
-use anyhow::Context as _;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -81,23 +80,54 @@ pub fn serialize(payload: &Payload) -> Result<Vec<u8>, serde_json::Error> {
 /// Parses and verifies a spooled flow-log report from its file bytes, returning the
 /// payload.
 ///
-/// Errors when the JSON is malformed or the CRC32 does not match the payload, so the
-/// uploader can drop the file rather than send bad data.
-pub fn deserialize(bytes: &[u8]) -> anyhow::Result<Payload> {
-    let stored: StoredEntry = serde_json::from_slice(bytes).context("Malformed report")?;
+/// The error distinguishes malformed JSON (should be impossible under atomic
+/// writes) from a CRC32 mismatch (environmental corruption the checksum exists to
+/// catch), so the uploader can report them with different severity.
+pub fn deserialize(bytes: &[u8]) -> Result<Payload, Error> {
+    let stored: StoredEntry = serde_json::from_slice(bytes).map_err(Error::Malformed)?;
 
     // The payload serializes deterministically (fixed struct, compact), so the CRC
     // of its re-serialization matches the one written alongside it.
-    let serialized =
-        serde_json::to_vec(&stored.payload).context("Could not re-serialize payload")?;
+    let serialized = serde_json::to_vec(&stored.payload).map_err(Error::Malformed)?;
     let computed = crc32fast::hash(&serialized);
-    anyhow::ensure!(
-        computed == stored.checksum,
-        "Checksum mismatch: stored {}, computed {computed}",
-        stored.checksum
-    );
+
+    if computed != stored.checksum {
+        return Err(Error::ChecksumMismatch {
+            stored: stored.checksum,
+            computed,
+        });
+    }
 
     Ok(stored.payload)
+}
+
+/// Why a spooled report could not be read back.
+#[derive(Debug)]
+pub enum Error {
+    /// The JSON structure is broken.
+    Malformed(serde_json::Error),
+    /// The payload does not match its stored CRC32 (a torn or corrupted file).
+    ChecksumMismatch { stored: u32, computed: u32 },
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Malformed(e) => write!(f, "Malformed report: {e}"),
+            Error::ChecksumMismatch { stored, computed } => {
+                write!(f, "Checksum mismatch: stored {stored}, computed {computed}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Malformed(e) => Some(e),
+            Error::ChecksumMismatch { .. } => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -141,6 +171,14 @@ mod tests {
             .unwrap()
             .replace("\"inner_dst_port\":443", "\"inner_dst_port\":444");
 
-        assert!(deserialize(tampered.as_bytes()).is_err());
+        assert!(matches!(
+            deserialize(tampered.as_bytes()),
+            Err(Error::ChecksumMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_malformed_json() {
+        assert!(matches!(deserialize(b"not json"), Err(Error::Malformed(_))));
     }
 }

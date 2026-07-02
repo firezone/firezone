@@ -2567,11 +2567,34 @@ dependencies = [
 name = "flow-log-spool"
 version = "0.1.0"
 dependencies = [
- "anyhow-ext",
  "chrono",
  "crc32fast",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "flow-log-upload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "backoff",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "flow-log-spool",
+ "http",
+ "http-client",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "socket-factory",
+ "telemetry",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+ "windows-security",
 ]
 
 [[package]]
