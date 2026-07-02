@@ -50,6 +50,10 @@ internal class SettingsViewModel
                 connectOnStart = false,
             )
 
+        // Snapshot of the persisted config as it was loaded, used to detect which
+        // fields the user actually changed when saving.
+        private var savedConfig = config
+
         // StateFlow that emits config only on load/reset, not during editing
         private val _configStateFlow = MutableStateFlow(config)
         val configStateFlow: StateFlow<Config> = _configStateFlow
@@ -61,12 +65,25 @@ internal class SettingsViewModel
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
+                    savedConfig = it
                     _configStateFlow.value = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
                     onFieldUpdated()
                 }
             }
         }
+
+        // The log filter can be applied live over the FFI, so it never requires a re-login.
+        fun logFilter(): String = config.logFilter
+
+        fun hasLogFilterChanged(): Boolean = config.logFilter != savedConfig.logFilter
+
+        // Changing the account or the portal endpoints invalidates the current session and
+        // only takes effect after signing out and back in.
+        fun requiresReLogin(): Boolean =
+            config.authUrl != savedConfig.authUrl ||
+                config.apiUrl != savedConfig.apiUrl ||
+                config.accountSlug != savedConfig.accountSlug
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")

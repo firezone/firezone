@@ -1,7 +1,11 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.settings.ui
 
+import android.content.ComponentName
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.activity.viewModels
@@ -18,6 +22,7 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.databinding.ActivitySettingsBinding
+import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -26,6 +31,24 @@ internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
+
+    // Bound only while signed in, so we can live-apply the log filter to the running tunnel.
+    private var tunnelService: TunnelService? = null
+    private var serviceBound = false
+
+    private val serviceConnection =
+        object : ServiceConnection {
+            override fun onServiceConnected(
+                name: ComponentName?,
+                service: IBinder?,
+            ) {
+                tunnelService = (service as TunnelService.LocalBinder).getService()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                tunnelService = null
+            }
+        }
 
     private val focusTracker =
         ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
@@ -50,6 +73,16 @@ internal class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        if (intent.getBooleanExtra("isUserSignedIn", false)) {
+            // Flags = 0 so we only attach to an already-running tunnel and never start one here.
+            serviceBound =
+                bindService(
+                    Intent(this, TunnelService::class.java),
+                    serviceConnection,
+                    0,
+                )
+        }
 
         setupViews()
         setupStateObservers()
@@ -98,13 +131,13 @@ internal class SettingsActivity : AppCompatActivity() {
             }.attach()
 
             val isUserSignedIn = intent.getBooleanExtra("isUserSignedIn", false)
-            if (isUserSignedIn) {
-                btSaveSettings.setOnClickListener {
+            btSaveSettings.setOnClickListener {
+                // The log filter is live-applied over the FFI, so only warn about a re-login when
+                // a setting that actually invalidates the session changed.
+                if (isUserSignedIn && viewModel.requiresReLogin()) {
                     showSaveWarningDialog()
-                }
-            } else {
-                btSaveSettings.setOnClickListener {
-                    viewModel.onSaveSettingsCompleted()
+                } else {
+                    saveSettings()
                 }
             }
 
@@ -131,12 +164,22 @@ internal class SettingsActivity : AppCompatActivity() {
         viewModel.onViewResume(this@SettingsActivity)
     }
 
+    private fun saveSettings() {
+        // Apply the new log filter to the running tunnel so it takes effect immediately. It is
+        // also persisted below and reused on the next connect.
+        if (viewModel.hasLogFilterChanged()) {
+            tunnelService?.setLogDirectives(viewModel.logFilter())
+        }
+
+        viewModel.onSaveSettingsCompleted()
+    }
+
     private fun showSaveWarningDialog() {
         AlertDialog.Builder(this).apply {
             setTitle("Warning")
             setMessage("Some changed settings will not be applied until you sign out and sign back in.")
             setPositiveButton("Okay") { _, _ ->
-                viewModel.onSaveSettingsCompleted()
+                saveSettings()
             }
             create().show()
         }
@@ -150,6 +193,11 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (serviceBound) {
+            unbindService(serviceConnection)
+            serviceBound = false
+            tunnelService = null
+        }
         window.decorView.viewTreeObserver.removeOnGlobalFocusChangeListener(focusTracker)
         binding.viewPager.unregisterOnPageChangeCallback(pageReselectionFocusRestorer)
         lastFocusedView = null

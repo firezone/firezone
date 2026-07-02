@@ -290,6 +290,12 @@ class TunnelService : VpnService() {
         sendTunnelCommand(TunnelCommand.SetDns(dnsList))
     }
 
+    // Live-applies new log directives to the running session, so changing the log
+    // filter takes effect without signing out and reconnecting.
+    fun setLogDirectives(directives: String) {
+        sendTunnelCommand(TunnelCommand.SetLogDirectives(directives))
+    }
+
     fun reset() {
         sendTunnelCommand(TunnelCommand.Reset)
     }
@@ -635,7 +641,13 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.SetLogDirectives -> {
-                                session.setLogDirectives(command.directives)
+                                // A malformed filter must not tear down the tunnel, so swallow the
+                                // error here instead of letting it bubble up to the event loop.
+                                try {
+                                    session.setLogDirectives(command.directives)
+                                } catch (e: ConnlibException) {
+                                    Log.w(TAG, "Failed to apply log directives '${command.directives}'", e)
+                                }
                             }
 
                             is TunnelCommand.SetTun -> {
