@@ -35,6 +35,16 @@ const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
+/// Maximum number of packets the kernel queues on a device's input backlog before dropping them.
+///
+/// The default of 1000 is easily saturated at the packet rates a gateway handles, causing drops.
+const NETDEV_MAX_BACKLOG: usize = 100_000;
+
+/// Maximum number of packets drained from the backlog per softirq poll cycle.
+///
+/// Raised from the kernel default of 300 so a single poll can keep up with high packet rates.
+const NETDEV_BUDGET: usize = 5_000;
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -129,6 +139,24 @@ async fn try_main(cli: Cli) -> Result<()> {
         match tokio::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()).await {
             Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
             Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
+        };
+        match tokio::fs::write(
+            "/proc/sys/net/core/netdev_max_backlog",
+            NETDEV_MAX_BACKLOG.to_string(),
+        )
+        .await
+        {
+            Ok(()) => tracing::info!("Set `core.netdev_max_backlog` to {NETDEV_MAX_BACKLOG}"),
+            Err(e) => tracing::info!("Failed to increase `core.netdev_max_backlog`: {e}"),
+        };
+        match tokio::fs::write(
+            "/proc/sys/net/core/netdev_budget",
+            NETDEV_BUDGET.to_string(),
+        )
+        .await
+        {
+            Ok(()) => tracing::info!("Set `core.netdev_budget` to {NETDEV_BUDGET}"),
+            Err(e) => tracing::info!("Failed to increase `core.netdev_budget`: {e}"),
         };
     }
 
@@ -361,7 +389,8 @@ struct Cli {
     )]
     validate_checksums: bool,
 
-    /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
+    /// Do not try to tune the `core.rmem_max`, `core.wmem_max`, `core.netdev_max_backlog` and
+    /// `core.netdev_budget` kernel parameters.
     #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
     no_inc_buf: bool,
 
