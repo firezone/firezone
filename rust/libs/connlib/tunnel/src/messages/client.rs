@@ -1,8 +1,8 @@
 //! Client related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence, SecretKey,
-    SnownetCapabilities,
+    Filter, FlowLogsConfig, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence,
+    SecretKey, SnownetCapabilities,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -119,6 +119,8 @@ pub struct InitClient {
     pub resources: Vec<ResourceDescription>,
     #[serde(default)]
     pub relays: Vec<Relay>,
+    #[serde(flatten)]
+    pub flow_logs: FlowLogsConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,6 +142,12 @@ pub struct FlowCreated {
     pub gateway_ice_credentials: IceCredentials,
     #[serde(default)]
     pub use_iceless: bool,
+
+    /// The initiator-side ingest token for this flow's logs.
+    ///
+    /// Used as the `Bearer` credential when uploading; see `flow_log_writer`.
+    #[serde(default)]
+    pub flow_logs_ingest_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -179,6 +187,13 @@ pub struct ClientDeviceAccessAuthorized {
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     #[serde(default)]
     pub authorization_expires_at: Option<Duration>,
+
+    /// This device's ingest token for the flow's logs.
+    ///
+    /// The initiator token on the initiating side, the responder token on the
+    /// receiving side; see `flow_log_writer`.
+    #[serde(default)]
+    pub flow_logs_ingest_token: Option<String>,
 }
 
 /// The portal's minimal `{id, filters}` resource view embedded in
@@ -384,6 +399,49 @@ pub enum EgressMessages {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn can_deserialize_init_with_flow_logs_config() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "flow_logs_api_url": "https://flow-api.firezone.dev",
+            "flow_logs_upload_interval_secs": 60,
+            "flow_logs_upload_batch_size": 1000
+        }"#;
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert_eq!(
+            init.flow_logs.api_url.as_deref(),
+            Some("https://flow-api.firezone.dev")
+        );
+        assert_eq!(init.flow_logs.upload_interval_secs, Some(60));
+        assert_eq!(init.flow_logs.upload_batch_size, Some(1000));
+        assert!(init.flow_logs.enabled());
+    }
+
+    #[test]
+    fn can_deserialize_init_without_flow_logs_config() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" }
+        }"#;
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert!(init.flow_logs.api_url.is_none());
+        assert!(!init.flow_logs.enabled());
+    }
+
+    #[test]
+    fn blank_flow_logs_api_url_is_disabled() {
+        let config = FlowLogsConfig {
+            api_url: Some(" ".to_owned()),
+            upload_interval_secs: Some(60),
+            upload_batch_size: None,
+        };
+
+        assert!(!config.enabled());
+    }
 
     #[test]
     fn can_deserialize_internet_resource() {

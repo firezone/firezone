@@ -101,7 +101,9 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli) -> Result<()> {
-    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(PathBuf::from(FLOW_LOGS_DIR));
+    let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
+
+    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
 
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
@@ -205,6 +207,9 @@ async fn try_main(cli: Cli) -> Result<()> {
         nameservers,
         cli.flow_logs,
     );
+
+    flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
+
     let max_partition_time = cli
         .max_partition_time
         .map(|d| d.into())
@@ -250,7 +255,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
+    Eventloop::new(tunnel, portal, tun_device_manager, resolver, flow_logs_dir)?
         .run()
         .await
         .context(EventloopFailed)?;

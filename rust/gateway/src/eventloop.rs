@@ -39,6 +39,10 @@ pub struct Eventloop {
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
 
+    /// Flow-log spool root, where the upload config and ingest tokens are
+    /// persisted for the uploader.
+    flow_logs_dir: std::path::PathBuf,
+
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         ResolveDnsRequest,
@@ -65,6 +69,7 @@ impl Eventloop {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
+        flow_logs_dir: std::path::PathBuf,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -81,6 +86,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             tun_device_manager,
             resolver,
+            flow_logs_dir,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -292,6 +298,12 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
+                if let Some(token) = msg.flow_logs_ingest_token.as_deref()
+                    && let Err(e) = flow_log_writer::write_token(&self.flow_logs_dir, token)
+                {
+                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                }
+
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
                     msg.client,
                     msg.subject,
@@ -360,11 +372,21 @@ impl Eventloop {
                 account_slug,
                 relays,
                 authorizations,
+                flow_logs,
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
+                }
+
+                if let Err(e) = flow_log_upload::configure_uploads(
+                    &self.flow_logs_dir,
+                    flow_logs.api_url.as_deref().unwrap_or_default(),
+                    flow_logs.effective_upload_interval_secs(),
+                    flow_logs.upload_batch_size.unwrap_or(0),
+                ) {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
                 }
 
                 tunnel.state_mut().update_relays(

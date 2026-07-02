@@ -202,6 +202,47 @@ pub struct UpstreamDo53 {
     pub ip: IpAddr,
 }
 
+/// Flow-log upload configuration the portal sends as part of `init`.
+///
+/// Flow logging is driven entirely by the portal: an upload interval > 0 plus an
+/// API URL enables it, anything else disables it.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct FlowLogsConfig {
+    /// Base URL flow logs are POSTed to (portal-provided, authoritative).
+    #[serde(default, rename = "flow_logs_api_url")]
+    pub api_url: Option<String>,
+    /// How often, in seconds, to upload batched flow logs. `0` disables uploads.
+    #[serde(default, rename = "flow_logs_upload_interval_secs")]
+    pub upload_interval_secs: Option<u64>,
+    /// Maximum flow-log records per upload request. `0` / absent uses the default.
+    #[serde(default, rename = "flow_logs_upload_batch_size")]
+    pub upload_batch_size: Option<u64>,
+}
+
+impl FlowLogsConfig {
+    /// The upload interval to persist.
+    ///
+    /// `0` unless flow logging is enabled; persisting `0` removes a previously
+    /// persisted config.
+    pub fn effective_upload_interval_secs(&self) -> u64 {
+        if self.enabled() {
+            self.upload_interval_secs.unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    /// Whether the portal enabled flow logging.
+    pub fn enabled(&self) -> bool {
+        let has_url = self
+            .api_url
+            .as_deref()
+            .is_some_and(|url| !url.trim().is_empty());
+
+        self.upload_interval_secs.unwrap_or(0) > 0 && has_url
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UpstreamDoH {
     pub url: DoHUrl,
