@@ -2146,6 +2146,7 @@ defmodule PortalWeb.Resources.Components do
 
     def search_clients(search_term, subject, selected_clients) do
       selected_ids = Enum.map(selected_clients, & &1.id)
+      online_ids = Portal.Presence.Clients.online_client_ids(subject.account.id)
       pattern = "%#{search_term}%"
 
       query =
@@ -2154,6 +2155,7 @@ defmodule PortalWeb.Resources.Components do
         |> join(:inner, [clients: c], a in assoc(c, :actor), as: :actors)
         |> where([clients: c], c.id not in ^selected_ids)
         |> where(^client_search_filter(pattern))
+        |> order_by([clients: c], desc: c.id in ^online_ids)
         |> limit(10)
 
       case query |> Safe.scoped(subject, :replica) |> Safe.all() do
@@ -2161,9 +2163,7 @@ defmodule PortalWeb.Resources.Components do
           []
 
         clients ->
-          clients
-          |> Portal.Presence.Clients.preload_clients_presence()
-          |> Enum.sort_by(&if &1.online?, do: 0, else: 1)
+          Enum.map(clients, &%{&1 | online?: &1.id in online_ids})
       end
     end
 

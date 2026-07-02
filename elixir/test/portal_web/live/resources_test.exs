@@ -14,6 +14,7 @@ defmodule PortalWeb.ResourcesTest do
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.PolicyFixtures
+  import Portal.SubjectFixtures
   import Portal.TokenFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
@@ -429,6 +430,26 @@ defmodule PortalWeb.ResourcesTest do
                lv,
                "button[phx-click='remove_client'][phx-value-client_id='#{client.id}']"
              )
+    end
+
+    test "client picker search surfaces online clients ahead of the result limit", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      for i <- 1..10 do
+        client_fixture(account: account, actor: actor, name: "Bulk Offline #{i}")
+      end
+
+      online_client = client_fixture(account: account, actor: actor, name: "Bulk Online")
+      :ok = Portal.Presence.Clients.Account.track(account.id, online_client.id)
+
+      results = PortalWeb.Resources.Components.Database.search_clients("Bulk", subject, [])
+
+      assert length(results) == 10
+      assert [%{id: id, online?: true} | _] = results
+      assert id == online_client.id
     end
   end
 
