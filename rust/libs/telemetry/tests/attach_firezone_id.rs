@@ -10,7 +10,7 @@ async fn set_firezone_id_attaches_user_to_running_session() {
     );
     telemetry::start("entrypoint", "1.0.0", TESTING);
 
-    telemetry::set_firezone_id("device-abc".to_owned()).await;
+    telemetry::set_firezone_id("device-abc".to_owned());
 
     assert_eq!(telemetry::current_user().as_deref(), Some("device-abc"));
 }

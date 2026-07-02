@@ -130,6 +130,10 @@ impl Client {
         *self.connection.lock() = None;
     }
 
+    pub(crate) async fn connect(&self) {
+        let _ = self.connection().await;
+    }
+
     /// Sends an HTTP request over a (re-)established connection to the host.
     pub(crate) async fn send_request(&self, request: Request<Bytes>) -> Result<Response<Bytes>> {
         let connection = self.connection().await?;

@@ -61,7 +61,7 @@ fn main() -> ExitCode {
         }
     };
 
-    rt.block_on(async { telemetry::stop().await });
+    telemetry::stop();
 
     exit_code
 }

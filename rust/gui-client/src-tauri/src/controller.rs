@@ -216,7 +216,7 @@ impl<I: GuiIntegration> Controller<I> {
             Some(false) => None,
         };
 
-        telemetry::set_firezone_id(firezone_id).await;
+        telemetry::set_firezone_id(firezone_id);
 
         let auth = auth::Auth::new()?;
 
