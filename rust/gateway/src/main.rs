@@ -254,10 +254,17 @@ async fn try_main(cli: Cli) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver, flow_logs_dir)?
-        .run()
-        .await
-        .context(EventloopFailed)?;
+    Eventloop::new(
+        tunnel,
+        portal,
+        tun_device_manager,
+        resolver,
+        flow_logs_dir,
+        cli.flow_logs,
+    )?
+    .run()
+    .await
+    .context(EventloopFailed)?;
 
     Ok(())
 }
@@ -342,9 +349,10 @@ struct Cli {
     #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
     log_format: LogFormat,
 
-    /// Emit flow logs to the log output by adding the `flow_logs=trace` log directive.
+    /// Track flow logs even when the portal has uploads disabled, and emit them
+    /// to the log output by adding the `flow_logs=trace` log directive.
     ///
-    /// Whether flow logs are recorded and uploaded is controlled by the portal.
+    /// Uploading flow logs is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 

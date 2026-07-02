@@ -47,6 +47,10 @@ pub struct Eventloop {
     /// uploader, so there is no point writing them to disk otherwise.
     upload_flow_logs: bool,
 
+    /// The `--flow-logs` flag: keeps flow tracking on even when the portal has
+    /// uploads disabled.
+    force_flow_logs: bool,
+
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         ResolveDnsRequest,
@@ -74,6 +78,7 @@ impl Eventloop {
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
+        force_flow_logs: bool,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -92,6 +97,7 @@ impl Eventloop {
             resolver,
             flow_logs_dir,
             upload_flow_logs: false,
+            force_flow_logs,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -392,7 +398,7 @@ impl Eventloop {
 
                 tunnel
                     .state_mut()
-                    .set_flow_logs_enabled(self.upload_flow_logs);
+                    .set_flow_logs_enabled(self.upload_flow_logs || self.force_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
