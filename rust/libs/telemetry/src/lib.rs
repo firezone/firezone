@@ -20,6 +20,7 @@ pub mod otel;
 mod api_url;
 mod ingest;
 mod noop_push_metrics_exporter;
+mod otlp;
 mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
@@ -40,6 +41,17 @@ pub fn maybe_hash_device_id(id: String) -> String {
     } else {
         id
     }
+}
+
+/// Builds a metric exporter targeting Firezone's hosted OTLP endpoint for the given
+/// environment or API URL, or `None` for environments without one.
+///
+/// Export is gated on the `stream_metrics` feature flag; callers must additionally
+/// honour `--no-telemetry` by not calling this when telemetry is disabled.
+pub fn hosted_metric_exporter(
+    env_or_api_url: &str,
+) -> Option<impl opentelemetry_sdk::metrics::exporter::PushMetricExporter> {
+    otlp::metric_exporter(Env::parse(env_or_api_url))
 }
 
 /// Drops the current telemetry ingest connections so they are re-established lazily.

@@ -2453,7 +2453,6 @@ dependencies = [
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
  "opentelemetry_sdk",
  "phoenix-channel",
  "rpassword",
@@ -7542,6 +7541,7 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "async-trait",
  "bootstrap-dns-client",
  "bytes",
  "hex",
@@ -7550,6 +7550,8 @@ dependencies = [
  "ip-packet",
  "moka",
  "opentelemetry",
+ "opentelemetry-http",
+ "opentelemetry-otlp",
  "opentelemetry_sdk",
  "parking_lot",
  "rand 0.10.1",
