@@ -365,8 +365,10 @@ jobs:
     secrets: inherit
 
   # Only the GUI client ships as an `.rpm`, so unlike the `.deb` promotion this
-  # is not a matrix.
+  # is not a matrix and the whole job is skipped for other releases (which also
+  # skips the dependent `regenerate-rpm-index`).
   promote-rpm-packages:
+    if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -387,7 +389,6 @@ jobs:
           allow-no-subscriptions: true
 
       - name: Copy preview archive to import-stable
-        if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
         run: |
           set -e
 

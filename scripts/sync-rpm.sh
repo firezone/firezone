@@ -78,7 +78,9 @@ for DISTRIBUTION in "stable" "preview"; do
 
             if [ -f "$pkg" ]; then
                 # Derive the canonical NEVRA filename from the package metadata.
-                NORMALIZED_NAME=$(rpm --query --package --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}.rpm' "$pkg" 2>/dev/null)
+                # `|| true` keeps a single unreadable package from aborting the
+                # whole sync under `set -e`; the `-z` check below skips it instead.
+                NORMALIZED_NAME=$(rpm --query --package --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}.rpm' "$pkg" 2>/dev/null || true)
 
                 # Skip if the metadata could not be read
                 if [ -z "$NORMALIZED_NAME" ]; then
@@ -102,7 +104,9 @@ for DISTRIBUTION in "stable" "preview"; do
     fi
 
     echo "Generating metadata..."
-    createrepo_c "${REPO_DIR}"
+    # Fixed metadata filenames (overwritten in place) so stale blobs do not
+    # accumulate in the `repodata/` prefix on every sync.
+    createrepo_c --simple-md-filenames "${REPO_DIR}"
 
     echo "Signing metadata..."
     gpg --default-key "${GPG_KEY_ID}" --detach-sign --armor "${REPO_DIR}/repodata/repomd.xml"
