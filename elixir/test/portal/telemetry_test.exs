@@ -1,7 +1,7 @@
 defmodule Portal.TelemetryTest do
   use ExUnit.Case, async: true
 
-  import ExUnit.CaptureIO
+  @config %{node_name: "test"}
 
   describe "metrics/0" do
     test "returns a non-empty list of metric definitions" do
@@ -277,172 +277,176 @@ defmodule Portal.TelemetryTest do
     end
   end
 
-  describe "debug_metrics/0" do
-    test "prints all BEAM metric sections and returns :ok" do
-      output =
-        capture_io(fn ->
-          assert Portal.Telemetry.debug_metrics() == :ok
-        end)
+  describe "handle_http_metric/4" do
+    test "returns :ok for a routed request" do
+      conn = %Plug.Conn{method: "GET", status: 200, request_path: "/users/abc-123"}
+      metadata = %{conn: conn, route: "/users/:id"}
 
-      assert output =~ "=== BEAM Health Metrics Debug ==="
-      assert output =~ "--- Process Info ---"
-      assert output =~ "Processes:"
-      assert output =~ "--- Memory Info (MB) ---"
-      assert output =~ "total:"
-      assert output =~ "--- Atom Info ---"
-      assert output =~ "Atoms:"
-      assert output =~ "--- Port Info ---"
-      assert output =~ "Ports:"
-      assert output =~ "--- ETS Info ---"
-      assert output =~ "ETS Tables:"
-      assert output =~ "--- Run Queue Info ---"
-      assert output =~ "Total run queue:"
+      assert :ok =
+               Portal.Telemetry.handle_http_metric(
+                 [:phoenix, :router_dispatch, :stop],
+                 %{duration: 1_000},
+                 metadata,
+                 @config
+               )
+    end
+
+    test "falls back to (unrouted) when route metadata is absent" do
+      conn = %Plug.Conn{method: "GET", status: 404, request_path: "/unknown-path"}
+      metadata = %{conn: conn}
+
+      assert :ok =
+               Portal.Telemetry.handle_http_metric(
+                 [:phoenix, :router_dispatch, :stop],
+                 %{duration: 500},
+                 metadata,
+                 @config
+               )
+    end
+
+    test "handles nil conn status" do
+      conn = %Plug.Conn{method: "POST", status: nil, request_path: "/sign_in"}
+      metadata = %{conn: conn, route: "/sign_in"}
+
+      assert :ok =
+               Portal.Telemetry.handle_http_metric(
+                 [:phoenix, :router_dispatch, :stop],
+                 %{duration: 2_000},
+                 metadata,
+                 @config
+               )
+    end
+
+    test "returns :ok for endpoint start" do
+      conn = %Plug.Conn{method: "GET", request_path: "/users"}
+
+      assert :ok =
+               Portal.Telemetry.handle_http_metric(
+                 [:phoenix, :endpoint, :start],
+                 %{system_time: System.system_time()},
+                 %{conn: conn},
+                 @config
+               )
+    end
+
+    test "returns :ok for endpoint stop" do
+      conn = %Plug.Conn{method: "GET", status: 200, request_path: "/users"}
+
+      assert :ok =
+               Portal.Telemetry.handle_http_metric(
+                 [:phoenix, :endpoint, :stop],
+                 %{duration: 1_000},
+                 %{conn: conn},
+                 @config
+               )
     end
   end
 
-  describe "OTEL instrument registration" do
-    test "register_otel_instruments/0 does not raise with SDK disabled" do
-      # The experimental SDK is disabled in test config,
-      # so this exercises the noop meter path without errors
-      meter = :opentelemetry_experimental.get_meter()
-
-      assert :otel_meter.create_observable_gauge(
-               meter,
-               :"test.gauge.#{System.unique_integer([:positive])}",
-               fn _args -> [{1, %{}}] end,
-               [],
-               %{description: "test"}
-             )
+  describe "handle_db_metric/4" do
+    test "returns :ok for a normal query" do
+      assert :ok =
+               Portal.Telemetry.handle_db_metric(
+                 [:portal, :repo, :query],
+                 %{total_time: 500_000, query_time: 400_000, queue_time: 100_000},
+                 %{},
+                 @config
+               )
     end
 
-    test "process count callback returns valid observations" do
-      count = :erlang.system_info(:process_count)
-      limit = :erlang.system_info(:process_limit)
-      utilization = Float.round(count / limit * 100, 2)
-
-      observations = [
-        {count, %{"type" => "total"}},
-        {limit, %{"type" => "limit"}},
-        {utilization, %{"type" => "utilization_percent"}}
-      ]
-
-      assert length(observations) == 3
-      assert Enum.all?(observations, fn {val, attrs} -> is_number(val) and is_map(attrs) end)
-      assert count > 0
-      assert limit > count
-      assert utilization > 0.0 and utilization < 100.0
+    test "returns :ok when total_time is nil" do
+      assert :ok =
+               Portal.Telemetry.handle_db_metric(
+                 [:portal, :repo, :query],
+                 %{total_time: nil},
+                 %{},
+                 @config
+               )
     end
 
-    test "atom count callback returns valid observations" do
-      count = :erlang.system_info(:atom_count)
-      limit = :erlang.system_info(:atom_limit)
-      utilization = Float.round(count / limit * 100, 2)
+    test "handles replica repo event" do
+      assert :ok =
+               Portal.Telemetry.handle_db_metric(
+                 [:portal, :repo, :replica, :query],
+                 %{total_time: 200_000},
+                 %{},
+                 @config
+               )
+    end
+  end
 
-      observations = [
-        {count, %{"type" => "count"}},
-        {limit, %{"type" => "limit"}},
-        {utilization, %{"type" => "utilization_percent"}}
-      ]
+  describe "handle_liveview_lifecycle_metric/4" do
+    test "returns :ok for a LiveView mount" do
+      socket = %{view: PortalWeb.SignInLive}
 
-      assert length(observations) == 3
-      assert count > 0
-      assert limit > count
-      assert utilization > 0.0
+      assert :ok =
+               Portal.Telemetry.handle_liveview_lifecycle_metric(
+                 [:phoenix, :live_view, :mount, :stop],
+                 %{duration: 5_000},
+                 %{socket: socket, params: %{}, session: %{}, uri: "https://example.com"},
+                 @config
+               )
     end
 
-    test "port count callback returns valid observations" do
-      count = :erlang.system_info(:port_count)
-      limit = :erlang.system_info(:port_limit)
-      utilization = Float.round(count / limit * 100, 2)
+    test "returns :ok for handle_params" do
+      socket = %{view: PortalWeb.SignInLive}
 
-      observations = [
-        {count, %{"type" => "count"}},
-        {limit, %{"type" => "limit"}},
-        {utilization, %{"type" => "utilization_percent"}}
-      ]
+      assert :ok =
+               Portal.Telemetry.handle_liveview_lifecycle_metric(
+                 [:phoenix, :live_view, :handle_params, :stop],
+                 %{duration: 1_000},
+                 %{socket: socket, params: %{}, uri: "https://example.com"},
+                 @config
+               )
+    end
+  end
 
-      assert length(observations) == 3
-      assert is_integer(count)
-      assert limit > 0
-      assert utilization >= 0.0
+  describe "handle_liveview_event_metric/4" do
+    test "returns :ok for a LiveView handle_event" do
+      socket = %{view: PortalWeb.SignInLive}
+
+      assert :ok =
+               Portal.Telemetry.handle_liveview_event_metric(
+                 [:phoenix, :live_view, :handle_event, :stop],
+                 %{duration: 2_000},
+                 %{socket: socket, event: "save", params: %{}},
+                 @config
+               )
     end
 
-    test "ETS count callback returns valid observations" do
-      ets_count = length(:ets.all())
-      observations = [{ets_count, %{}}]
+    test "returns :ok for a LiveComponent handle_event" do
+      assert :ok =
+               Portal.Telemetry.handle_liveview_event_metric(
+                 [:phoenix, :live_component, :handle_event, :stop],
+                 %{duration: 1_500},
+                 %{component: PortalWeb.Components.ResourceForm, event: "save", params: %{}},
+                 @config
+               )
+    end
+  end
 
-      assert length(observations) == 1
-      assert ets_count > 0
+  describe "handle_channel_metric/4" do
+    test "returns :ok for a channel join" do
+      socket = %{channel: PortalAPI.Client.Channel, transport: :websocket}
+
+      assert :ok =
+               Portal.Telemetry.handle_channel_metric(
+                 [:phoenix, :channel_joined],
+                 %{duration: 5_000},
+                 %{socket: socket, result: :ok, params: %{}},
+                 @config
+               )
     end
 
-    test "memory callback returns valid observations for all types" do
-      memory = :erlang.memory() |> Enum.into(%{})
+    test "returns :ok for a channel message" do
+      socket = %{channel: PortalAPI.Client.Channel, transport: :websocket}
 
-      observations = [
-        {memory[:processes], %{"type" => "processes"}},
-        {memory[:system], %{"type" => "system"}},
-        {memory[:atom], %{"type" => "atom"}},
-        {memory[:binary], %{"type" => "binary"}},
-        {memory[:code], %{"type" => "code"}},
-        {memory[:ets], %{"type" => "ets"}}
-      ]
-
-      assert length(observations) == 6
-      assert Enum.all?(observations, fn {val, _} -> is_integer(val) and val > 0 end)
-    end
-
-    test "scheduler utilization callback returns valid observations" do
-      total_run_queue = :erlang.statistics(:total_run_queue_lengths)
-      run_queue_lengths = :erlang.statistics(:run_queue_lengths)
-      max_run_queue = Enum.max(run_queue_lengths, fn -> 0 end)
-
-      avg_run_queue =
-        if run_queue_lengths != [] do
-          Float.round(Enum.sum(run_queue_lengths) / length(run_queue_lengths), 2)
-        else
-          0.0
-        end
-
-      observations = [
-        {total_run_queue, %{"type" => "total_run_queue"}},
-        {max_run_queue, %{"type" => "max_run_queue"}},
-        {avg_run_queue, %{"type" => "avg_run_queue"}},
-        {length(run_queue_lengths), %{"type" => "scheduler_count"}}
-      ]
-
-      assert length(observations) == 4
-      assert total_run_queue >= 0
-      assert max_run_queue >= 0
-      assert avg_run_queue >= 0.0
-      assert length(run_queue_lengths) > 0
-    end
-
-    test "GC collections callback returns valid observations" do
-      {collections, _words_reclaimed, _} = :erlang.statistics(:garbage_collection)
-      observations = [{collections, %{}}]
-
-      assert length(observations) == 1
-      assert collections >= 0
-    end
-
-    test "GC words reclaimed callback returns valid observations" do
-      {_collections, words_reclaimed, _} = :erlang.statistics(:garbage_collection)
-      observations = [{words_reclaimed, %{}}]
-
-      assert length(observations) == 1
-      assert words_reclaimed >= 0
-    end
-
-    test "observable counter can be created with SDK disabled" do
-      meter = :opentelemetry_experimental.get_meter()
-
-      assert :otel_meter.create_observable_counter(
-               meter,
-               :"test.counter.#{System.unique_integer([:positive])}",
-               fn _args -> [{42, %{}}] end,
-               [],
-               %{description: "test counter"}
-             )
+      assert :ok =
+               Portal.Telemetry.handle_channel_metric(
+                 [:phoenix, :channel_handled_in],
+                 %{duration: 1_000},
+                 %{socket: socket, event: "update_resource", params: %{}, ref: "1"},
+                 @config
+               )
     end
   end
 
