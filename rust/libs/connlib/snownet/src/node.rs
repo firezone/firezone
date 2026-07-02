@@ -232,11 +232,7 @@ where
         self.inflight_stun_requests.clear();
 
         if self.connections.all_iceless() {
-            let mut num_iceless = 0;
-            for (_, conn) in self.connections.iter_established_mut() {
-                conn.reset_for_roam(now);
-                num_iceless += 1;
-            }
+            let num_iceless = self.connections.reset_for_roam(now);
             tracing::debug!(
                 %num_iceless,
                 "Soft-reset iceless connections (path-agent reset, key kept)"
@@ -2170,7 +2166,7 @@ where
         &mut self,
         cid: TId,
         new_relay: RId,
-        new_allocation: &Allocation,
+        allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         now: Instant,
     ) where
@@ -2180,7 +2176,10 @@ where
 
         self.relay.id = new_relay;
 
-        for candidate in new_allocation.current_relay_candidates() {
+        // The full set, not just the relay candidates: a roam wipes the agent's
+        // locals, so host and reflexive candidates need re-seeding too.
+        // The agent dedups, so candidates it already knows are not re-signalled.
+        for candidate in allocations.candidates_for_relay(&new_relay) {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
     }
