@@ -1,0 +1,49 @@
+name: Sync RPM repository metadata
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: "create-rpm-repository" # Unique group name to force only a single job at a time.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # OIDC auth for Azure Storage
+
+jobs:
+  create-rpm-repository-metadata:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Install createrepo_c
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes createrepo-c rpm
+
+      - uses: ./.github/actions/setup-azure-cli
+
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
+      # Reuses the same signing key as the APT repository so users only need to
+      # trust a single Firezone package-signing key.
+      - uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.APT_REPOSITORY_GPG_KEY }}
+          email: packages@firezone.dev
+
+      - run: scripts/sync-rpm.sh
+        env:
+          AZURE_STORAGE_ACCOUNT: firezoneartifacts
+          GPG_KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}

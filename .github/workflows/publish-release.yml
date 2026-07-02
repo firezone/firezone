@@ -363,3 +363,51 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_apt.yml
     secrets: inherit
+
+  # Only the GUI client ships as an `.rpm`, so unlike the `.deb` promotion this
+  # is not a matrix.
+  promote-rpm-packages:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-azure-cli
+
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
+      - name: Copy preview archive to import-stable
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
+        run: |
+          set -e
+
+          # Extract version from release name
+          version=${{ inputs.release_name || github.event.release.name }}
+          version=${version#gui-client-}
+
+          # Copy `.rpm`s to `import-stable`
+          az storage blob copy start-batch \
+            --destination-container rpm \
+            --source-container rpm \
+            --pattern "preview/firezone-client-gui-$version-*" \
+            --destination-path import-stable \
+            --auth-mode login \
+            --account-name firezoneartifacts
+
+  regenerate-rpm-index:
+    needs: promote-rpm-packages
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_rpm.yml
+    secrets: inherit
