@@ -1,12 +1,11 @@
 mod client_on_gateway;
-mod flow_tracker;
 mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
+use crate::flow_log::{self, Tracker};
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
-use crate::gateway::flow_tracker::FlowTracker;
-use crate::messages::gateway::{Client, ResourceDescription, Subject};
+use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
 use crate::unix_ts::UnixTsClock;
@@ -36,7 +35,9 @@ pub struct GatewayState {
     /// All clients we are connected to and the associated, connection-specific state.
     peers: PeerStore<ClientId, ClientOnGateway>,
 
-    flow_tracker: FlowTracker,
+    /// Tracks flow logs for this Gateway, keyed by the client and the resource
+    /// it accesses.
+    flow_tracker: Tracker<(ClientId, ResourceId)>,
 
     tun_ip_config: Option<IpConfig>,
 
@@ -70,13 +71,13 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
-    pub(crate) fn new(flow_logs: bool, seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
+    pub(crate) fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
             node: Node::new(seed, now, unix_ts),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
-            flow_tracker: FlowTracker::new(flow_logs, now, unix_ts),
+            flow_tracker: Tracker::new(now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
@@ -95,6 +96,8 @@ impl GatewayState {
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 
+        self.flow_tracker.close_all(now);
+
         self.peers.clear();
         self.node.close_all(p2p_control::goodbye(), now);
     }
@@ -106,8 +109,19 @@ impl GatewayState {
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
-        let _guard = self.flow_tracker.new_inbound_tun(&packet, now);
+        let flow = self.flow_tracker.begin_tun_packet(&packet);
+        let result = self.handle_tun_input_inner(packet, now, provider);
+        self.flow_tracker.commit(flow, now);
 
+        result
+    }
+
+    fn handle_tun_input_inner(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+        provider: &mut impl snownet::BufferProvider,
+    ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -121,7 +135,7 @@ impl GatewayState {
             .peer_by_ip_mut(dst)
             .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
 
-        flow_tracker::inbound_tun::record_client(cid);
+        flow_log::record_peer(cid, flow_log::Role::Responder);
 
         let packet = peer
             .translate_inbound(packet, now)
@@ -131,7 +145,7 @@ impl GatewayState {
             return Ok(());
         };
 
-        flow_tracker::inbound_tun::record_wireguard_packet(info.src, info.dst);
+        flow_log::record_transmit(info.src, info.dst);
 
         Ok(())
     }
@@ -149,8 +163,20 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let _guard = self.flow_tracker.new_inbound_wireguard(local, from, now);
+        let flow = self.flow_tracker.begin_network_packet(local, from);
+        let result = self.handle_network_input_inner(local, from, packet, now);
+        self.flow_tracker.commit(flow, now);
 
+        result
+    }
+
+    fn handle_network_input_inner(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> Result<Option<IpPacket>> {
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
@@ -163,14 +189,14 @@ impl GatewayState {
             return Ok(None);
         }
 
-        flow_tracker::inbound_wg::record_decrypted_packet(&packet);
+        flow_log::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
             .peer_by_id_mut(&cid)
             .with_context(|| format!("No peer for connection {cid}"))?;
 
-        flow_tracker::inbound_wg::record_client(cid, peer.client_flow_properties());
+        flow_log::record_peer(cid, flow_log::Role::Responder);
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let immediate_response = match fz_p2p_control.event_type() {
@@ -210,13 +236,13 @@ impl GatewayState {
             .context("Failed to translate outbound packet")?
         {
             TranslateOutboundResult::Send(packet) => {
-                flow_tracker::inbound_wg::record_translated_packet(&packet);
+                flow_log::record_translated_packet(&packet);
 
                 Ok(Some(packet))
             }
             TranslateOutboundResult::DestinationUnreachable(reply)
             | TranslateOutboundResult::Filtered(reply) => {
-                flow_tracker::inbound_wg::record_icmp_error(&reply);
+                flow_log::record_icmp_error(&reply);
 
                 encrypt_packet(
                     reply,
@@ -282,13 +308,13 @@ impl GatewayState {
     pub fn authorize_flow(
         &mut self,
         client: Client,
-        subject: Subject,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         use_iceless: bool,
         now: Instant,
+        flow_logs_ingest_token: Option<String>,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
             client.id,
@@ -309,19 +335,7 @@ impl GatewayState {
                 v4: client.ipv4,
                 v6: client.ipv6,
             },
-            flow_tracker::ClientProperties {
-                version: client.version,
-                device_os_name: client.device_os_name,
-                device_os_version: client.device_os_version,
-                device_serial: client.device_serial,
-                device_uuid: client.device_uuid,
-                identifier_for_vendor: client.identifier_for_vendor,
-                firebase_installation_id: client.firebase_installation_id,
-                auth_provider_id: subject.auth_provider_id,
-                actor_name: subject.actor_name,
-                actor_id: subject.actor_id,
-                actor_email: subject.actor_email,
-            },
+            flow_logs_ingest_token,
             expires_at,
             resource,
             None,
@@ -339,7 +353,7 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         client_tun: IpConfig,
-        client_props: flow_tracker::ClientProperties,
+        flow_logs_ingest_token: Option<String>,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
@@ -358,10 +372,11 @@ impl GatewayState {
         );
 
         let peer = self.peers.upsert(client, || {
-            ClientOnGateway::new(client, client_tun, gateway_tun, client_props)
+            ClientOnGateway::new(client, client_tun, gateway_tun)
         });
 
         peer.add_resource(resource.clone(), expires_at, now);
+        peer.set_ingest_token(resource.id(), flow_logs_ingest_token);
 
         if let Some(entry) = dns_resource_nat {
             peer.setup_nat(
@@ -468,99 +483,13 @@ impl GatewayState {
         }
 
         self.next_periodic_tick = Some(now + Duration::from_secs(1));
+    }
 
-        while let Some(flow) = self.flow_tracker.poll_completed_flow() {
-            match flow {
-                flow_tracker::CompletedFlow::Tcp(flow) => {
-                    tracing::trace!(
-                        target: "flow_logs::tcp",
-
-                        client_id = %flow.client_id,
-                        client_version = flow.client_version.map(tracing::field::display),
-
-                        device_os_name = flow.device_os_name.map(tracing::field::display),
-                        device_os_version = flow.device_os_version.map(tracing::field::display),
-                        device_serial = flow.device_serial.map(tracing::field::display),
-                        device_uuid = flow.device_uuid.map(tracing::field::display),
-                        device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
-                        device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
-
-                        auth_provider_id = flow.auth_provider_id.map(tracing::field::display),
-                        actor_name = flow.actor_name.map(tracing::field::display),
-                        actor_id = flow.actor_id.map(tracing::field::display),
-                        actor_email = flow.actor_email.map(tracing::field::display),
-
-                        resource_id = %flow.resource_id,
-                        resource_name = %flow.resource_name,
-                        resource_address = %flow.resource_address,
-                        start = ?flow.start,
-                        end = ?flow.end,
-                        last_packet = ?flow.last_packet,
-
-                        inner_src_ip = %flow.inner_src_ip,
-                        inner_dst_ip = %flow.inner_dst_ip,
-                        inner_src_port = %flow.inner_src_port,
-                        inner_dst_port = %flow.inner_dst_port,
-                        inner_domain = flow.inner_domain.map(tracing::field::display),
-
-                        outer_src_ip = %flow.outer_src_ip,
-                        outer_dst_ip = %flow.outer_dst_ip,
-                        outer_src_port = %flow.outer_src_port,
-                        outer_dst_port = %flow.outer_dst_port,
-
-                        rx_packets = %flow.rx_packets,
-                        tx_packets = %flow.tx_packets,
-                        rx_bytes = %flow.rx_bytes,
-                        tx_bytes = %flow.tx_bytes,
-                        "TCP flow completed"
-                    );
-                }
-                flow_tracker::CompletedFlow::Udp(flow) => {
-                    tracing::trace!(
-                        target: "flow_logs::udp",
-
-                        client_id = %flow.client_id,
-                        client_version = flow.client_version.map(tracing::field::display),
-
-                        device_os_name = flow.device_os_name.map(tracing::field::display),
-                        device_os_version = flow.device_os_version.map(tracing::field::display),
-                        device_serial = flow.device_serial.map(tracing::field::display),
-                        device_uuid = flow.device_uuid.map(tracing::field::display),
-                        device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
-                        device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
-
-                        auth_provider_id = flow.auth_provider_id.map(tracing::field::display),
-                        actor_name = flow.actor_name.map(tracing::field::display),
-                        actor_id = flow.actor_id.map(tracing::field::display),
-                        actor_email = flow.actor_email.map(tracing::field::display),
-
-                        resource_id = %flow.resource_id,
-                        resource_name = %flow.resource_name,
-                        resource_address = %flow.resource_address,
-                        start = ?flow.start,
-                        end = ?flow.end,
-                        last_packet = ?flow.last_packet,
-
-                        inner_src_ip = %flow.inner_src_ip,
-                        inner_dst_ip = %flow.inner_dst_ip,
-                        inner_src_port = %flow.inner_src_port,
-                        inner_dst_port = %flow.inner_dst_port,
-                        inner_domain = flow.inner_domain.map(tracing::field::display),
-
-                        outer_src_ip = %flow.outer_src_ip,
-                        outer_dst_ip = %flow.outer_dst_ip,
-                        outer_src_port = %flow.outer_src_port,
-                        outer_dst_port = %flow.outer_dst_port,
-
-                        rx_packets = %flow.rx_packets,
-                        tx_packets = %flow.tx_packets,
-                        rx_bytes = %flow.rx_bytes,
-                        tx_bytes = %flow.tx_bytes,
-                        "UDP flow completed"
-                    );
-                }
-            }
-        }
+    /// Enables or disables flow-log emission at runtime.
+    ///
+    /// The portal drives this via its `init` config.
+    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
+        self.flow_tracker.set_enabled(enabled);
     }
 
     fn drain_node_events(&mut self) {

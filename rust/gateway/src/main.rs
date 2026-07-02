@@ -204,7 +204,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
-        cli.flow_logs,
     );
 
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
@@ -342,7 +341,9 @@ struct Cli {
     #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
     log_format: LogFormat,
 
-    /// Enable logging of tunneled UDP and TCP flows.
+    /// Emit flow logs to the log output by adding the `flow_logs=trace` log directive.
+    ///
+    /// Whether flow logs are recorded and uploaded is controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 
