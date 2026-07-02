@@ -120,5 +120,123 @@ defmodule Portal.Crypto.X509Test do
       assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
       assert X509.serial_number(cert) == 42_095_695_342_393_971_666_742_022_583_967_287_377_743_815_197
     end
+
+    test "reads the X.509 version" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.version(cert) == :v3
+    end
+
+    test "reads full subject and issuer distinguished names" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.subject_name(cert) == "CN=Company Issuing CA"
+      assert X509.issuer_name(cert) == "CN=Company Root CA"
+    end
+
+    test "reads the signature algorithm" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.signature_algorithm(cert) == "sha512WithRSAEncryption"
+    end
+
+    test "reads RSA public key algorithm and size" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.public_key_info(cert) == %{algorithm: "RSA", key_size: 4096}
+    end
+
+    test "reads Basic Constraints with an explicit path length" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.basic_constraints(cert) == %{ca: true, path_length: 0}
+    end
+
+    test "reads Key Usage flags" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.key_usages(cert) == [:digitalSignature, :keyCertSign, :cRLSign]
+    end
+
+    test "reads Extended Key Usage purposes" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.extended_key_usages(cert) == ["TLS Client Authentication"]
+    end
+
+    test "reads Subject and Authority Key Identifiers" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+
+      assert X509.subject_key_identifier(cert) ==
+               "0b:f6:da:82:21:43:2b:92:c2:dd:78:8b:08:ef:9a:7a:62:fe:7a:87"
+
+      assert X509.authority_key_identifier(cert) ==
+               "a6:75:24:dc:85:c2:66:f5:1d:02:49:78:cf:4f:f9:ea:e1:14:81:01"
+    end
+
+    test "reads CRL Distribution Points" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+
+      assert X509.crl_distribution_points(cert) == [
+               "http://primary-cdn.test.invalid/device-trust-anchor/current.crl",
+               "http://secondary.test.invalid/device-trust-anchor/current.crl"
+             ]
+    end
+
+    test "reads Authority Information Access URLs" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+
+      assert X509.authority_info_access(cert) == %{
+               ocsp: [],
+               ca_issuers: [
+                 "http://primary-cdn.test.invalid/device-trust-anchor/root.cer",
+                 "http://secondary.test.invalid/device-trust-anchor/root.cer"
+               ]
+             }
+    end
+
+    test "returns empty defaults when extensions are absent" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ed25519_ca_der())
+
+      assert X509.basic_constraints(cert) == %{ca: true, path_length: nil}
+      assert X509.extended_key_usages(cert) == []
+      assert X509.subject_alt_names(cert) == []
+      assert X509.crl_distribution_points(cert) == []
+      assert X509.authority_info_access(cert) == %{ocsp: [], ca_issuers: []}
+    end
+
+    test "reads EC public key algorithm, curve, and size" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.public_key_info(cert) == %{algorithm: "ECDSA P-256", key_size: 256}
+      assert X509.signature_algorithm(cert) == "ecdsa-with-SHA256"
+    end
+
+    test "reads Basic Constraints with no path length constraint" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.basic_constraints(cert) == %{ca: true, path_length: 1}
+    end
+
+    test "reads DNS and IP Subject Alternative Names" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.subject_alt_names(cert) == ["DNS:ca.test.invalid", "IP:10.0.0.1"]
+    end
+
+    test "reads Extended Key Usage with multiple purposes" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+
+      assert X509.extended_key_usages(cert) == [
+               "TLS Client Authentication",
+               "TLS Server Authentication"
+             ]
+    end
+
+    test "reads CRL Distribution Points and Authority Information Access together" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.crl_distribution_points(cert) == ["http://crl.test.invalid/ec-ca.crl"]
+
+      assert X509.authority_info_access(cert) == %{
+               ocsp: ["http://ocsp.test.invalid"],
+               ca_issuers: ["http://ca.test.invalid/root.cer"]
+             }
+    end
+
+    test "reads Ed25519 public key algorithm and fixed key size" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ed25519_ca_der())
+      assert X509.public_key_info(cert) == %{algorithm: "Ed25519", key_size: 256}
+      assert X509.signature_algorithm(cert) == "Ed25519"
+    end
   end
 end

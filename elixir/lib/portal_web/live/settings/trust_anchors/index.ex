@@ -371,35 +371,29 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Certificates ({length(@certificate_details)})
           </h3>
-          <div class="space-y-2">
+          <div class="space-y-3">
             <div
               :for={detail <- @certificate_details}
-              class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs border border-border rounded p-3 bg-surface"
+              class="border border-border rounded p-3 bg-surface space-y-3"
             >
-              <div>
-                <p class="text-subtle font-medium mb-1">Common Name</p>
-                <p class="text-heading truncate">{detail.common_name || "—"}</p>
-              </div>
-              <div>
-                <p class="text-subtle font-medium mb-1">Issuer</p>
-                <p class="text-heading truncate">{detail.issuer_common_name || "—"}</p>
-              </div>
-              <div>
-                <p class="text-subtle font-medium mb-1">Expires</p>
-                <p class="text-heading">
-                  {if detail.not_after,
-                    do: PortalWeb.Format.short_date(detail.not_after),
-                    else: "—"}
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-semibold text-heading truncate">
+                  {detail.common_name || "(no Common Name)"}
                 </p>
+                <a
+                  href={"data:application/x-pem-file;base64," <> Base.encode64(detail.pem)}
+                  download={download_filename(@trust_anchor.name, detail)}
+                  class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
+                >
+                  <.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
+                </a>
               </div>
-              <div>
-                <p class="text-subtle font-medium mb-1">Serial Number</p>
-                <p class="text-heading font-mono truncate">{detail.serial_number || "—"}</p>
-              </div>
-              <div class="col-span-2">
-                <p class="text-subtle font-medium mb-1">Fingerprint (SHA-256)</p>
-                <p class="text-heading font-mono break-all">{detail.fingerprint}</p>
-              </div>
+              <dl class="space-y-2">
+                <div :for={{label, value} <- certificate_detail_rows(detail)}>
+                  <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
+                  <dd class="text-xs text-heading font-mono break-all">{value}</dd>
+                </div>
+              </dl>
             </div>
           </div>
         </section>
@@ -793,24 +787,106 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp describe_certificate(certificate) do
     with {:ok, [{_type, der, _headers} | _rest]} <- X509.pem_decode(certificate.pem),
          {:ok, otp_cert} <- X509.decode_der_certificate(der) do
+      key_info = X509.public_key_info(otp_cert)
+      aia = X509.authority_info_access(otp_cert)
+
       %{
+        pem: certificate.pem,
         fingerprint: certificate.fingerprint,
         common_name: X509.subject_common_name(otp_cert),
-        issuer_common_name: X509.issuer_common_name(otp_cert),
+        subject_name: X509.subject_name(otp_cert),
+        issuer_name: X509.issuer_name(otp_cert),
+        serial_number: X509.serial_number(otp_cert),
+        version: X509.version(otp_cert),
+        not_before: X509.not_before(otp_cert),
         not_after: X509.not_after(otp_cert),
-        serial_number: X509.serial_number(otp_cert)
+        signature_algorithm: X509.signature_algorithm(otp_cert),
+        public_key_algorithm: key_info.algorithm,
+        public_key_size: key_info.key_size,
+        basic_constraints: X509.basic_constraints(otp_cert),
+        key_usages: X509.key_usages(otp_cert),
+        extended_key_usages: X509.extended_key_usages(otp_cert),
+        subject_key_identifier: X509.subject_key_identifier(otp_cert),
+        authority_key_identifier: X509.authority_key_identifier(otp_cert),
+        subject_alt_names: X509.subject_alt_names(otp_cert),
+        crl_distribution_points: X509.crl_distribution_points(otp_cert),
+        ocsp_urls: aia.ocsp,
+        ca_issuer_urls: aia.ca_issuers
       }
     else
       _other ->
-        %{
-          fingerprint: certificate.fingerprint,
-          common_name: nil,
-          issuer_common_name: nil,
-          not_after: nil,
-          serial_number: nil
-        }
+        %{pem: certificate.pem, fingerprint: certificate.fingerprint, common_name: nil}
     end
   end
+
+  # Ordered label/value pairs for display; fields with nothing to show
+  # (nil, empty string, or empty list) are dropped rather than shown blank.
+  defp certificate_detail_rows(detail) do
+    [
+      {"Subject", Map.get(detail, :subject_name)},
+      {"Issuer", Map.get(detail, :issuer_name)},
+      {"Serial Number", detail |> Map.get(:serial_number) |> format_serial()},
+      {"Version", detail |> Map.get(:version) |> format_version()},
+      {"Valid From", detail |> Map.get(:not_before) |> format_date()},
+      {"Expires", detail |> Map.get(:not_after) |> format_date()},
+      {"Public Key",
+       format_public_key(Map.get(detail, :public_key_algorithm), Map.get(detail, :public_key_size))},
+      {"Signature Algorithm", Map.get(detail, :signature_algorithm)},
+      {"Basic Constraints", detail |> Map.get(:basic_constraints) |> format_basic_constraints()},
+      {"Key Usage", detail |> Map.get(:key_usages, []) |> format_list()},
+      {"Extended Key Usage", detail |> Map.get(:extended_key_usages, []) |> format_list()},
+      {"Subject Key Identifier", Map.get(detail, :subject_key_identifier)},
+      {"Authority Key Identifier", Map.get(detail, :authority_key_identifier)},
+      {"Subject Alternative Names", detail |> Map.get(:subject_alt_names, []) |> format_list()},
+      {"CRL Distribution Points",
+       detail |> Map.get(:crl_distribution_points, []) |> format_list()},
+      {"OCSP", detail |> Map.get(:ocsp_urls, []) |> format_list()},
+      {"CA Issuers", detail |> Map.get(:ca_issuer_urls, []) |> format_list()},
+      {"Fingerprint (SHA-256)", Map.get(detail, :fingerprint)}
+    ]
+    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
+  end
+
+  defp format_serial(nil), do: nil
+
+  defp format_serial(serial) when is_integer(serial) do
+    hex = Integer.to_string(serial, 16)
+    hex = if rem(String.length(hex), 2) == 1, do: "0" <> hex, else: hex
+
+    hex
+    |> String.downcase()
+    |> String.to_charlist()
+    |> Enum.chunk_every(2)
+    |> Enum.map_join(":", &List.to_string/1)
+  end
+
+  defp format_version(nil), do: nil
+  defp format_version(version), do: version |> Atom.to_string() |> String.trim_leading("v")
+
+  defp format_date(nil), do: nil
+  defp format_date(datetime), do: PortalWeb.Format.short_date(datetime)
+
+  defp format_public_key(nil, _key_size), do: nil
+  defp format_public_key(algorithm, nil), do: algorithm
+  defp format_public_key(algorithm, key_size), do: "#{algorithm} (#{key_size}-bit)"
+
+  defp format_basic_constraints(nil), do: nil
+  defp format_basic_constraints(%{ca: false}), do: "CA:FALSE"
+  defp format_basic_constraints(%{ca: true, path_length: nil}), do: "CA:TRUE"
+
+  defp format_basic_constraints(%{ca: true, path_length: path_length}),
+    do: "CA:TRUE, pathlen:#{path_length}"
+
+  defp format_list([]), do: nil
+  defp format_list(list), do: Enum.join(list, ", ")
+
+  defp download_filename(trust_anchor_name, detail) do
+    base = detail.common_name || trust_anchor_name
+    suffix = String.slice(detail.fingerprint, 0, 8)
+    "#{sanitize_filename(base)}-#{suffix}.pem"
+  end
+
+  defp sanitize_filename(name), do: String.replace(name, ~r/[^a-zA-Z0-9._-]+/, "-")
 
   defp surface_certificate_errors(changeset) do
     cert_changesets = Map.get(changeset.changes, :certificates, [])

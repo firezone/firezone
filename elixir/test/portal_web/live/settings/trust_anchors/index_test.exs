@@ -113,6 +113,49 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       refute render(lv) =~ "Company Issuing CA"
     end
 
+    test "shows comprehensive certificate details and a PEM download link", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor =
+        trust_anchor_fixture(
+          account: account,
+          name: "EC Anchor",
+          certs: [sample_ec_ca_der()]
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      html = render(lv)
+
+      assert html =~ "CN=EC Trust Anchor CA"
+      assert html =~ "ecdsa-with-SHA256"
+      assert html =~ "ECDSA P-256 (256-bit)"
+      assert html =~ "CA:TRUE, pathlen:1"
+      assert html =~ "digitalSignature, keyCertSign, cRLSign"
+      assert html =~ "TLS Client Authentication, TLS Server Authentication"
+      assert html =~ "DNS:ca.test.invalid, IP:10.0.0.1"
+      assert html =~ "http://crl.test.invalid/ec-ca.crl"
+      assert html =~ "http://ocsp.test.invalid"
+      assert html =~ "http://ca.test.invalid/root.cer"
+
+      assert [download_link] =
+               html
+               |> Floki.parse_fragment!()
+               |> Floki.find("a[download]")
+
+      assert [href] = Floki.attribute(download_link, "href")
+      assert "data:application/x-pem-file;base64," <> encoded = href
+      assert {:ok, [{:Certificate, der, :not_encrypted}]} =
+               encoded |> Base.decode64!() |> X509.pem_decode()
+
+      assert der == sample_ec_ca_der()
+    end
+
     test "closes the show panel on escape", %{conn: conn, account: account, actor: actor} do
       trust_anchor = trust_anchor_fixture(account: account, name: "Corporate Issuing CA")
 

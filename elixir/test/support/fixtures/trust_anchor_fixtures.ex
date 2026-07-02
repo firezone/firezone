@@ -21,6 +21,28 @@ defmodule Portal.TrustAnchorFixtures do
   - SKI / AKI plus AIA / CRL extension presence
 
   The actual serial number, validity timestamps, keys, and URLs are synthetic.
+
+  `ec_ca.pem` / `ec_ca.der` and `ed25519_ca.pem` / `ed25519_ca.der` exercise
+  non-RSA key algorithms end to end (X509 field extraction, in particular).
+  Regenerated with:
+
+      openssl ecparam -name prime256v1 -genkey -noout -out key.pem
+      openssl req -x509 -new -key key.pem -days 3650 -out ec_ca.pem \\
+        -subj "/CN=EC Trust Anchor CA" \\
+        -addext "basicConstraints=critical,CA:true,pathlen:1" \\
+        -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \\
+        -addext "extendedKeyUsage=clientAuth,serverAuth" \\
+        -addext "subjectKeyIdentifier=hash" \\
+        -addext "authorityKeyIdentifier=keyid:always" \\
+        -addext "subjectAltName=DNS:ca.test.invalid,IP:10.0.0.1" \\
+        -addext "crlDistributionPoints=URI:http://crl.test.invalid/ec-ca.crl" \\
+        -addext "authorityInfoAccess=OCSP;URI:http://ocsp.test.invalid,caIssuers;URI:http://ca.test.invalid/root.cer"
+
+      openssl genpkey -algorithm ed25519 -out key.pem
+      openssl req -x509 -new -key key.pem -days 3650 -out ed25519_ca.pem \\
+        -subj "/CN=Ed25519 Trust Anchor CA" \\
+        -addext "basicConstraints=critical,CA:true" \\
+        -addext "keyUsage=critical,keyCertSign"
   """
 
   import Portal.AccountFixtures
@@ -35,6 +57,10 @@ defmodule Portal.TrustAnchorFixtures do
   @no_key_usage_ca_der_path Path.join(@fixtures_dir, "no_key_usage_ca.der")
   @missing_key_cert_sign_ca_der_path Path.join(@fixtures_dir, "missing_key_cert_sign_ca.der")
   @private_key_pem_path Path.join(@fixtures_dir, "invalid_private_key.pem")
+  @ec_ca_der_path Path.join(@fixtures_dir, "ec_ca.der")
+  @ec_ca_pem_path Path.join(@fixtures_dir, "ec_ca.pem")
+  @ed25519_ca_der_path Path.join(@fixtures_dir, "ed25519_ca.der")
+  @ed25519_ca_pem_path Path.join(@fixtures_dir, "ed25519_ca.pem")
 
   @doc """
   Returns the sample trust anchor certificate as base64-encoded DER.
@@ -105,6 +131,36 @@ defmodule Portal.TrustAnchorFixtures do
   """
   def sample_additional_ca_pem do
     File.read!(@additional_ca_pem_path)
+  end
+
+  @doc """
+  Returns a synthetic ECDSA P-256 CA certificate as raw DER bytes, covering
+  Subject Alternative Names, Extended Key Usage, CRL, and Authority
+  Information Access extensions.
+  """
+  def sample_ec_ca_der do
+    File.read!(@ec_ca_der_path)
+  end
+
+  @doc """
+  Returns the synthetic ECDSA P-256 CA certificate as PEM text.
+  """
+  def sample_ec_ca_pem do
+    File.read!(@ec_ca_pem_path)
+  end
+
+  @doc """
+  Returns a synthetic Ed25519 CA certificate as raw DER bytes.
+  """
+  def sample_ed25519_ca_der do
+    File.read!(@ed25519_ca_der_path)
+  end
+
+  @doc """
+  Returns the synthetic Ed25519 CA certificate as PEM text.
+  """
+  def sample_ed25519_ca_pem do
+    File.read!(@ed25519_ca_pem_path)
   end
 
   @doc """
