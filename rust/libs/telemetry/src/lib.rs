@@ -243,6 +243,9 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
     });
 
     guard.replace(inner);
+
+    sentry::warmup_connection();
+    posthog::warmup_connection();
 }
 
 /// Flushes events to sentry.io and drops the guard. A no-op if not started.
@@ -260,14 +263,14 @@ pub fn stop() {
     // thread, so delegate both to the blocking pool instead of the caller's thread.
     let (tx, rx) = mpsc::sync_channel(1);
     ingest::RUNTIME.spawn_blocking(move || {
-        let flushed = inner.flush(Some(Duration::from_secs(5)));
+        let flushed = inner.flush(Some(Duration::from_secs(1)));
         drop(inner);
         let _ = tx.send(flushed);
     });
 
     // Sentry's flush can block past its own timeout on a full transport queue;
     // this bound guarantees we return regardless.
-    match rx.recv_timeout(Duration::from_secs(5)) {
+    match rx.recv_timeout(Duration::from_secs(1)) {
         Ok(true) => tracing::debug!("Flushed telemetry"),
         Ok(false) => tracing::error!("Failed to flush telemetry events to sentry.io"),
         Err(_) => tracing::error!("Failed to stop telemetry session within 2s"),
