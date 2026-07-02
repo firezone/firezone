@@ -1,0 +1,561 @@
+//! Spools flow-log records to disk for later upload to the portal ingest API.
+//!
+//! Flow logs travel from the data plane to this writer as structured `tracing`
+//! events (targets `flow_logs::tcp` / `flow_logs::udp`): [`layer`] returns a
+//! subscriber layer that each entrypoint installs as part of its tracing
+//! configuration, so the tunnel itself needs no knowledge of where (or whether)
+//! flow logs are persisted.
+//!
+//! Reports are grouped by the flow's `role` and `policy_authorization_id` into a
+//! per-authorization sub-directory holding that authorization's Bearer token and
+//! one file per flow report, split into an "open" and a "completed" report:
+//!
+//! ```text
+//! <root>/<role>/<policy_authorization_id>/
+//!   token                                    # the Bearer JWT for this authorization
+//!   <flow_start>-<flow_identity>.start.json  # { "checksum": <crc32>, "payload": { open report } }
+//!   <flow_start>-<flow_identity>.end.json    # { "checksum": <crc32>, "payload": { completed report } }
+//! ```
+//!
+//! The `<role>` level (`initiator` / `responder`) separates the two perspectives a
+//! single device can log: a Gateway is always the responder, while a Client can be
+//! the initiator of some flows and the responder of others.
+//!
+//! The Bearer token deliberately does NOT ride the tracing events (a broad `trace`
+//! directive would copy it into log files); the eventloops receive it in the
+//! portal's authorization messages and persist it via [`write_token`] instead.
+//! The events carry only the `role` / `policy_authorization_id` claims plus the
+//! network fields.
+//!
+//! `<flow_start>` is the flow's start time as zero-padded unix seconds, so a
+//! lexical sort of the report names is oldest-first and the uploader needs no
+//! per-file metadata. `<flow_identity>` hashes the fields that identify a flow
+//! within an authorization (protocol, inner 4-tuple, flow_start), so a flow's open
+//! and completed reports share a stem. The `.end` report is self-describing (it
+//! carries the full report, not just the closing fields), so the uploader can send
+//! it on its own even after the `.start` has already been uploaded and deleted.
+//! Writing the completed report to its own file (rather than overwriting the open
+//! one) keeps both write-once, so the uploader can delete one without racing a
+//! concurrent write of the other.
+//!
+//! Each report is written immediately as an atomic, fsync'd file, so nothing
+//! already produced is lost on an unclean exit. Writing happens on a dedicated
+//! thread fed by a channel so the per-file fsync never blocks the packet-processing
+//! event loop; hold the returned [`Guard`] until process exit so the thread's
+//! backlog is drained before shutdown. The spool holds Bearer tokens and flow
+//! payloads, so its directories and files get restrictive permissions (0700 /
+//! 0600) and it lives outside the log directory, so an exported log bundle never
+//! sweeps it up.
+
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
+use std::{
+    collections::HashMap,
+    hash::{Hash as _, Hasher as _},
+    io::Write as _,
+    net::IpAddr,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    thread::JoinHandle,
+};
+
+use anyhow::Context as _;
+use atomicwrites::{AtomicFile, OverwriteBehavior};
+use base64::Engine as _;
+use chrono::{DateTime, Utc};
+use flow_log_spool::{Payload, serialize};
+use tracing::field::{Field, Visit};
+use tracing_subscriber::registry::LookupSpan;
+
+/// Creates the flow-log spooling layer plus the [`Guard`] keeping it durable.
+///
+/// Keep the guard alive until process exit; dropping it drains and joins the
+/// writer thread.
+pub fn layer<S>(spool_root: PathBuf) -> (impl tracing_subscriber::Layer<S>, Guard)
+where
+    S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+{
+    use tracing_subscriber::Layer as _;
+
+    let (tx, rx) = mpsc::channel::<Command>();
+    let handle = std::thread::Builder::new()
+        .name("flow-log-writer".to_owned())
+        .spawn(move || writer_loop(&spool_root, &rx))
+        .expect("Failed to spawn flow-log writer thread");
+
+    let layer = FlowLogLayer { tx: tx.clone() }.with_filter(tracing_subscriber::filter::filter_fn(
+        |metadata| metadata.target().starts_with("flow_logs::"),
+    ));
+
+    (
+        layer,
+        Guard {
+            tx,
+            handle: Some(handle),
+        },
+    )
+}
+
+/// Persists an authorization's ingest token where the uploader expects it.
+///
+/// The spool path derives from the token's (unverified) `role` and
+/// `policy_authorization_id` claims, which are validated first.
+pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct Claims {
+        role: Option<String>,
+        policy_authorization_id: Option<String>,
+    }
+
+    let payload = token
+        .split('.')
+        .nth(1)
+        .context("Token is not a JWT (no payload segment)")?;
+    let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .context("Token payload is not base64url")?;
+    let claims =
+        serde_json::from_slice::<Claims>(&json).context("Token payload is not valid JSON")?;
+
+    // The token is portal-issued but its signature is not verified here, so never
+    // trust a claim as a path component without validating it first.
+    let role = claims
+        .role
+        .filter(|role| is_valid_role(role))
+        .context("Token has a missing or invalid role")?;
+    let authz_id = claims
+        .policy_authorization_id
+        .filter(|id| is_valid_authz_id(id))
+        .context("Token has a missing or invalid policy_authorization_id")?;
+
+    let dir = spool_root.join(&role).join(&authz_id);
+    create_dir_secure(&dir)?;
+    write_file_secure(
+        &dir.join("token"),
+        token.as_bytes(),
+        OverwriteBehavior::AllowOverwrite,
+    )?;
+
+    Ok(())
+}
+
+/// Keeps the writer thread alive.
+///
+/// Dropping it drains the backlog and joins the thread, making every
+/// already-emitted report durable.
+pub struct Guard {
+    tx: mpsc::Sender<Command>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        let _ = self.tx.send(Command::Shutdown);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+enum Command {
+    Write(Report),
+    Shutdown,
+}
+
+/// One flow report reconstructed from a `flow_logs::*` tracing event.
+struct Report {
+    role: String,
+    authz_id: String,
+    payload: Payload,
+}
+
+struct FlowLogLayer {
+    tx: mpsc::Sender<Command>,
+}
+
+impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
+where
+    S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        let mut visitor = FieldVisitor::default();
+        event.record(&mut visitor);
+
+        let Some(report) = visitor.into_report() else {
+            // Flows without a portal-minted token (and thus no attribution claims)
+            // are emitted for observability but not spooled.
+            tracing::debug!(
+                target: "flow_log_writer",
+                "Dropping flow-log event with missing or invalid fields"
+            );
+
+            return;
+        };
+
+        if self.tx.send(Command::Write(report)).is_err() {
+            tracing::debug!(
+                target: "flow_log_writer",
+                "Flow-log writer thread is gone; dropping report"
+            );
+        }
+    }
+}
+
+/// Collects an event's fields.
+///
+/// String-ish values (IPs, timestamps, `Display`-recorded ports) arrive through
+/// `record_debug` / `record_str`, counters as `u64`.
+#[derive(Default)]
+struct FieldVisitor {
+    strings: HashMap<&'static str, String>,
+    numbers: HashMap<&'static str, u64>,
+}
+
+impl Visit for FieldVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.strings.insert(field.name(), format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.strings.insert(field.name(), value.to_owned());
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.numbers.insert(field.name(), value);
+    }
+}
+
+impl FieldVisitor {
+    /// Reassembles the [`Report`] from the recorded fields, or `None` if any
+    /// required field is missing or fails validation.
+    fn into_report(mut self) -> Option<Report> {
+        let role = self.strings.remove("role").filter(|r| is_valid_role(r))?;
+        let authz_id = self
+            .strings
+            .remove("policy_authorization_id")
+            .filter(|id| is_valid_authz_id(id))?;
+
+        let payload = Payload {
+            protocol: self.strings.remove("protocol")?,
+            inner_src_ip: self.ip("inner_src_ip")?,
+            inner_src_port: self.port("inner_src_port")?,
+            inner_dst_ip: self.ip("inner_dst_ip")?,
+            inner_dst_port: self.port("inner_dst_port")?,
+            domain: self.strings.remove("inner_domain"),
+            outer_src_ip: self.ip("outer_src_ip")?,
+            outer_src_port: self.port("outer_src_port")?,
+            outer_dst_ip: self.ip("outer_dst_ip")?,
+            outer_dst_port: self.port("outer_dst_port")?,
+            flow_start: self.timestamp("flow_start")?,
+            // A parse failure on a present closing field must fail the whole
+            // report rather than demote a completed flow to an open one.
+            flow_end: self.optional_timestamp("flow_end")?,
+            last_packet: self.optional_timestamp("last_packet")?,
+            rx_packets: self.numbers.remove("rx_packets"),
+            tx_packets: self.numbers.remove("tx_packets"),
+            rx_bytes: self.numbers.remove("rx_bytes"),
+            tx_bytes: self.numbers.remove("tx_bytes"),
+        };
+
+        Some(Report {
+            role,
+            authz_id,
+            payload,
+        })
+    }
+
+    fn ip(&mut self, name: &'static str) -> Option<IpAddr> {
+        self.strings.remove(name)?.parse().ok()
+    }
+
+    fn port(&mut self, name: &'static str) -> Option<u16> {
+        self.strings.remove(name)?.parse().ok()
+    }
+
+    /// Timestamps are emitted with `chrono`'s `Debug` representation, which is
+    /// RFC 3339 with nanosecond precision, so the round-trip is lossless.
+    fn timestamp(&mut self, name: &'static str) -> Option<DateTime<Utc>> {
+        parse_timestamp(&self.strings.remove(name)?)
+    }
+
+    fn optional_timestamp(&mut self, name: &'static str) -> Option<Option<DateTime<Utc>>> {
+        match self.strings.remove(name) {
+            None => Some(None),
+            Some(value) => parse_timestamp(&value).map(Some),
+        }
+    }
+}
+
+fn parse_timestamp(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
+    while let Ok(command) = rx.recv() {
+        let report = match command {
+            Command::Write(report) => report,
+            Command::Shutdown => break,
+        };
+
+        if let Err(e) = write_report(root, &report) {
+            tracing::warn!("Failed to write flow-log report: {e:#}");
+        }
+    }
+}
+
+fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
+    let dir = root.join(&report.role).join(&report.authz_id);
+    create_dir_secure(&dir)?;
+
+    let contents = serialize(&report.payload)?;
+
+    let suffix = if report.payload.flow_end.is_some() {
+        "end"
+    } else {
+        "start"
+    };
+    let path = dir.join(format!(
+        "{:010}-{}.{suffix}.json",
+        report.payload.flow_start.timestamp(),
+        flow_identity(&report.payload)
+    ));
+    write_file_secure(&path, &contents, OverwriteBehavior::AllowOverwrite)?;
+
+    Ok(())
+}
+
+/// A stable hash of the fields identifying a flow within an authorization.
+///
+/// A flow's open and completed reports share this stem; a reused 4-tuple gets a
+/// fresh `flow_start`, so distinct flows never collide. Only within-process
+/// determinism is needed.
+fn flow_identity(payload: &Payload) -> String {
+    let mut hasher = std::hash::DefaultHasher::new();
+    payload.protocol.hash(&mut hasher);
+    payload.inner_src_ip.hash(&mut hasher);
+    payload.inner_src_port.hash(&mut hasher);
+    payload.inner_dst_ip.hash(&mut hasher);
+    payload.inner_dst_port.hash(&mut hasher);
+    payload.flow_start.hash(&mut hasher);
+
+    format!("{:016x}", hasher.finish())
+}
+
+fn write_file_secure(
+    path: &Path,
+    bytes: &[u8],
+    overwrite: OverwriteBehavior,
+) -> anyhow::Result<()> {
+    // `AtomicFile` writes to a temp file, fsyncs it, then renames into place, so a
+    // reader never observes a partial file and a written file is durable.
+    AtomicFile::new(path, overwrite)
+        .write(|f| {
+            set_owner_only(f)?;
+            f.write_all(bytes)
+        })
+        .map_err(|e| anyhow::anyhow!("atomic write of {} failed: {e}", path.display()))
+}
+
+/// A policy-authorization id must be a hyphenated UUID; reject anything else so it
+/// can never escape the spool root as a path component.
+fn is_valid_authz_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(idx, byte)| match idx {
+            8 | 13 | 18 | 23 => *byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        })
+}
+
+/// Only the portal's two flow roles are valid as a path component, so an unverified
+/// token can never inject an arbitrary directory name.
+fn is_valid_role(role: &str) -> bool {
+    matches!(role, "initiator" | "responder")
+}
+
+#[cfg(unix)]
+fn create_dir_secure(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt as _;
+
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+}
+
+#[cfg(windows)]
+fn create_dir_secure(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)?;
+
+    // The spool holds Bearer tokens, so lock each authorization directory down to
+    // `LocalSystem` and `BUILTIN\Administrators` (the accounts the Gateway / Tunnel
+    // service runs as), the equivalent of `0700` on Unix. `OICI` makes the token and
+    // report files inside inherit the same access, so `set_owner_only` is a no-op.
+    windows_security::SecurityDescriptor::from_sddl("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+        .and_then(|descriptor| descriptor.apply_to_path(path))
+        .map_err(|e| std::io::Error::other(format!("{e:#}")))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn create_dir_secure(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)
+}
+
+#[cfg(unix)]
+fn set_owner_only(f: &std::fs::File) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    f.set_permissions(std::fs::Permissions::from_mode(0o600))
+}
+
+// On Windows the files inherit their directory's DACL (see `create_dir_secure`), so
+// there is nothing to do here.
+#[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "signature must match the unix version"
+)]
+fn set_owner_only(_f: &std::fs::File) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone as _, Utc};
+    use flow_log_spool::deserialize;
+    use tracing_subscriber::layer::SubscriberExt as _;
+
+    const AUTHZ_ID: &str = "11111111-1111-1111-1111-111111111111";
+
+    fn token_for(authz_id: &str) -> String {
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"policy_authorization_id":"{authz_id}","role":"responder"}}"#
+        ));
+
+        format!("header.{payload}.signature")
+    }
+
+    /// Emits a `flow_logs::tcp` event shaped like `tunnel`'s emission.
+    fn emit_event(completed: bool) {
+        let flow_start = Utc.timestamp_opt(1_700_000_000, 500).unwrap();
+        let flow_end = completed.then(|| Utc.timestamp_opt(1_700_000_060, 0).unwrap());
+
+        tracing::trace!(
+            target: "flow_logs::tcp",
+            protocol = "tcp",
+            role = "responder",
+            policy_authorization_id = AUTHZ_ID,
+            inner_src_ip = %"100.64.0.1",
+            inner_src_port = %1234,
+            inner_dst_ip = %"10.0.0.5",
+            inner_dst_port = %443,
+            outer_src_ip = %"198.51.100.1",
+            outer_src_port = %51820,
+            outer_dst_ip = %"203.0.113.7",
+            outer_dst_port = %51820,
+            flow_start = ?flow_start,
+            flow_end = flow_end.map(tracing::field::debug),
+            last_packet = flow_end.map(tracing::field::debug),
+            rx_packets = completed.then_some(10_u64),
+            tx_packets = completed.then_some(12_u64),
+            rx_bytes = completed.then_some(1024_u64),
+            tx_bytes = completed.then_some(2048_u64),
+            "TCP flow"
+        );
+    }
+
+    fn read_payload(path: &Path) -> Payload {
+        // `deserialize` verifies the CRC, so `unwrap` also asserts it.
+        deserialize(&std::fs::read(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn spools_start_and_end_reports_sharing_a_stem() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let (layer, guard) = layer(dir.path().to_owned());
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            emit_event(false);
+            emit_event(true);
+        });
+        drop(guard); // joins the writer thread, so everything is on disk
+
+        let authz_dir = dir.path().join("responder").join(AUTHZ_ID);
+        let stems = std::fs::read_dir(&authz_dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        // Both reports share one `<flow_start>-<flow_identity>` stem.
+        let mut prefixes = stems
+            .iter()
+            .map(|name| name.split('.').next().unwrap())
+            .collect::<Vec<_>>();
+        prefixes.dedup();
+        assert_eq!(prefixes.len(), 1, "start and end share a stem: {stems:?}");
+
+        let start = read_payload(&authz_dir.join(format!("{}.start.json", prefixes[0])));
+        let end = read_payload(&authz_dir.join(format!("{}.end.json", prefixes[0])));
+        assert!(start.flow_end.is_none());
+        assert_eq!(start.flow_start.timestamp_subsec_nanos(), 500); // lossless round-trip
+        assert_eq!(end.rx_bytes, Some(1024)); // the `.end` is a self-describing report
+        assert_eq!(end.inner_dst_port, 443);
+    }
+
+    #[test]
+    fn drops_event_without_policy_authorization_id() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let (layer, guard) = layer(dir.path().to_owned());
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::trace!(
+                target: "flow_logs::tcp",
+                protocol = "tcp",
+                role = "responder",
+                "TCP flow started"
+            );
+        });
+        drop(guard);
+
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn writes_token_file_from_claims() {
+        let dir = tempfile::tempdir().unwrap();
+        let token = token_for(AUTHZ_ID);
+
+        write_token(dir.path(), &token).unwrap();
+
+        let path = dir.path().join("responder").join(AUTHZ_ID).join("token");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), token);
+    }
+
+    #[test]
+    fn rejects_token_with_invalid_claims() {
+        let dir = tempfile::tempdir().unwrap();
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"policy_authorization_id":"../../evil","role":"responder"}"#);
+
+        assert!(write_token(dir.path(), &format!("h.{payload}.s")).is_err());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn authz_id_must_be_a_hyphenated_uuid() {
+        assert!(is_valid_authz_id("11111111-1111-1111-1111-111111111111"));
+        assert!(is_valid_authz_id("d31580cd-9c75-4eb1-93b0-1f43a68d5192"));
+
+        assert!(!is_valid_authz_id(""));
+        assert!(!is_valid_authz_id("11111111111111111111111111111111"));
+        assert!(!is_valid_authz_id("../../../../../../../etc/passwd"));
+        assert!(!is_valid_authz_id("11111111-1111-1111-1111-11111111111g"));
+        assert!(!is_valid_authz_id("11111111-1111-1111-1111-1111111111111"));
+    }
+}

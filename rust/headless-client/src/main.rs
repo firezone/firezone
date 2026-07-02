@@ -257,9 +257,13 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
+    let (flow_log_layer, _flow_log_guard) =
+        known_dirs::flow_logs().map(flow_log_writer::layer).unzip();
+
     logging::setup_global_subscriber(
         std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
         layer,
+        flow_log_layer,
         false,
     )
     .context("Failed to set up logging")?;

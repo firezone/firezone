@@ -2324,6 +2324,7 @@ dependencies = [
  "caps",
  "clap",
  "dns-types",
+ "flow-log-writer",
  "futures",
  "futures-bounded",
  "hickory-resolver",
@@ -2373,6 +2374,7 @@ dependencies = [
  "dirs",
  "embed-resource",
  "fd-lock",
+ "flow-log-writer",
  "futures",
  "hex",
  "humantime",
@@ -2444,6 +2446,7 @@ dependencies = [
  "bin-shared",
  "clap",
  "client-shared",
+ "flow-log-writer",
  "futures",
  "humantime",
  "ip-packet",
@@ -2594,6 +2597,23 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "windows-security",
+]
+
+[[package]]
+name = "flow-log-writer"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "atomicwrites",
+ "base64 0.22.1",
+ "chrono",
+ "flow-log-spool",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
  "windows-security",
 ]
 

@@ -129,8 +129,13 @@ fn init_tracing() -> Result<logging::file::Handle> {
 
     let (file_layer, file_handle) = logging::file::layer(&log_dir, "register-sparse");
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".to_string());
-    logging::setup_global_subscriber(directives, file_layer, false)
-        .context("setup_global_subscriber")?;
+    logging::setup_global_subscriber(
+        directives,
+        file_layer,
+        tracing_subscriber::layer::Identity::default(),
+        false,
+    )
+    .context("setup_global_subscriber")?;
 
     tracing::info!(log_dir = %log_dir.display(), "logging initialized");
 
