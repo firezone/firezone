@@ -1104,7 +1104,7 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let (rid, _) = self.allocations.sample().ok_or(NoTurnServers {})?;
+        let rid = self.allocations.sample().ok_or(NoTurnServers {})?;
 
         tracing::debug!(%rid, "Sampled relay");
 

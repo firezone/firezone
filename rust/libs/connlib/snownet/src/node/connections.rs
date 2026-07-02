@@ -130,7 +130,7 @@ where
 
         for removed_relay in removed_allocations {
             for (cid, c) in self.iter_mut_by_relay(removed_relay) {
-                let Some((new_relay, _)) = allocations.sample() else {
+                let Some(new_relay) = allocations.sample() else {
                     let was_inserted = connections_with_removed_relays.insert(cid);
 
                     if was_inserted {
@@ -145,7 +145,7 @@ where
         }
 
         for cid in connections_with_removed_relays {
-            let Some((new_relay, _)) = allocations.sample() else {
+            let Some(new_relay) = allocations.sample() else {
                 self.connections_with_removed_relays.insert(cid);
 
                 continue;

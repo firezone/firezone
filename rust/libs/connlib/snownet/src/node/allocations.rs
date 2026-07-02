@@ -175,30 +175,30 @@ where
         }
     }
 
-    /// Sample an allocation for a new connection, biased towards low RTT.
+    /// Sample a relay for a new connection, biased towards low RTT.
     ///
     /// We compute an inclusion threshold from the observed RTT distribution
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
     /// or below it. Allocations without an RTT measurement are skipped: we
     /// don't know whether they are healthy yet.
-    pub(crate) fn sample(&mut self) -> Option<(RId, &Allocation)> {
+    pub(crate) fn sample(&mut self) -> Option<RId> {
         let candidates = self
             .inner
             .iter()
-            .filter_map(|(id, a)| Some((*id, a, a.rtt()?)))
+            .filter_map(|(id, a)| Some((*id, a.rtt()?)))
             .collect::<SmallVec<[_; 8]>>();
 
         let rtts = candidates
             .iter()
-            .map(|(_, _, rtt)| *rtt)
+            .map(|(_, rtt)| *rtt)
             .collect::<SmallVec<[_; 8]>>();
         let threshold = inclusion_threshold(&rtts)?;
 
         candidates
             .iter()
-            .filter(|(_, _, rtt)| *rtt <= threshold)
+            .filter(|(_, rtt)| *rtt <= threshold)
             .choose(&mut self.rng)
-            .map(|(id, a, _)| (*id, *a))
+            .map(|(id, _)| *id)
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -487,7 +487,7 @@ mod tests {
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
         for _ in 0..1000 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             assert_ne!(rid, 5, "outlier relay must not be selected");
         }
     }
@@ -515,7 +515,7 @@ mod tests {
         let mut counts = [0u32; 2];
 
         for _ in 0..10_000 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             counts[(rid - 1) as usize] += 1;
         }
 
@@ -547,7 +547,7 @@ mod tests {
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
         for _ in 0..100 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             assert_eq!(rid, 1);
         }
     }
@@ -569,7 +569,7 @@ mod tests {
             .get_mut_by_id(&1)
             .unwrap()
             .set_rtt(Duration::from_millis(500));
-        let (rid, _) = allocations.sample().unwrap();
+        let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }
 
