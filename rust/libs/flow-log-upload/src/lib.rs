@@ -88,7 +88,7 @@ const END_SUFFIX: &str = ".end.json";
 /// service thread) can read it without a live connection to the portal.
 ///
 /// Only written while uploads are enabled: an `interval` of `0` is never persisted
-/// (see [`set_upload_config`]), so the file's presence alone means "enabled".
+/// (see [`configure_uploads`]), so the file's presence alone means "enabled".
 #[serde_as]
 #[derive(Serialize, Deserialize)]
 struct UploadConfig {
@@ -111,7 +111,7 @@ fn default_batch_size() -> usize {
 ///
 /// An `interval_secs` of `0` means the portal disabled uploads: the persisted config
 /// is removed so a running uploader stops, rather than keeping the last one.
-pub fn set_upload_config(
+pub fn configure_uploads(
     spool_root: &Path,
     api_url: &str,
     interval_secs: u64,
@@ -143,7 +143,7 @@ pub fn set_upload_config(
 /// Spawns the flow-log uploader thread for an always-running process (the gateway,
 /// the desktop tunnel service) or a provider process. The thread reads the spool's
 /// config file each pass, so it picks up whatever the session persisted via
-/// [`set_upload_config`], and uploads over `socket_factory` so it bypasses the
+/// [`configure_uploads`], and uploads over `socket_factory` so it bypasses the
 /// tunnel. It runs until the process exits.
 pub fn spawn(
     spool_root: PathBuf,
@@ -780,9 +780,9 @@ mod tests {
     }
 
     #[test]
-    fn set_then_read_config_roundtrips() {
+    fn configure_then_read_config_roundtrips() {
         let root = tempfile::tempdir().unwrap();
-        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 90, 500).unwrap();
+        configure_uploads(root.path(), "https://flow-api.firezone.dev/", 90, 500).unwrap();
 
         let config = read_upload_config(root.path()).expect("config present");
         assert_eq!(config.api_url, "https://flow-api.firezone.dev/");
@@ -802,7 +802,7 @@ mod tests {
     #[test]
     fn zero_batch_size_uses_default() {
         let root = tempfile::tempdir().unwrap();
-        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 0).unwrap();
+        configure_uploads(root.path(), "https://flow-api.firezone.dev/", 60, 0).unwrap();
 
         let config = read_upload_config(root.path()).expect("config present");
         assert_eq!(config.batch_size, DEFAULT_BATCH_SIZE);
@@ -816,7 +816,7 @@ mod tests {
     #[test]
     fn zero_interval_disables_uploads() {
         let root = tempfile::tempdir().unwrap();
-        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 1000).unwrap();
+        configure_uploads(root.path(), "https://flow-api.firezone.dev/", 0, 1000).unwrap();
 
         assert!(read_upload_config(root.path()).is_none());
     }
@@ -824,10 +824,10 @@ mod tests {
     #[test]
     fn disabling_removes_an_existing_config() {
         let root = tempfile::tempdir().unwrap();
-        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 500).unwrap();
+        configure_uploads(root.path(), "https://flow-api.firezone.dev/", 60, 500).unwrap();
         assert!(read_upload_config(root.path()).is_some());
 
-        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 500).unwrap();
+        configure_uploads(root.path(), "https://flow-api.firezone.dev/", 0, 500).unwrap();
         assert!(read_upload_config(root.path()).is_none());
     }
 
