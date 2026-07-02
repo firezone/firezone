@@ -74,10 +74,6 @@ pub fn metrics_reservoir_size() -> usize {
     FEATURE_FLAGS.metrics_reservoir_size()
 }
 
-pub fn show_connected_devices() -> bool {
-    FEATURE_FLAGS.show_connected_devices()
-}
-
 /// The current value of every feature flag, by name.
 pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -87,7 +83,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
-        show_connected_devices,
     } = &*FEATURE_FLAGS;
 
     [
@@ -105,10 +100,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
         ),
         ("stream_metrics", stream_metrics.read().enabled),
-        (
-            "show_connected_devices",
-            show_connected_devices.load(Ordering::Relaxed),
-        ),
     ]
 }
 
@@ -234,8 +225,6 @@ struct FeatureFlagsResponse {
     icmp_error_unreachable_prohibited_create_new_flow: bool,
     #[serde(default)]
     stream_metrics: bool,
-    #[serde(default)]
-    show_connected_devices: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -254,7 +243,6 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: RwLock<StreamMetrics>,
-    show_connected_devices: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -272,7 +260,6 @@ impl FeatureFlags {
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
-            show_connected_devices,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -285,8 +272,6 @@ impl FeatureFlags {
                 icmp_error_unreachable_prohibited_create_new_flow,
                 Ordering::Relaxed,
             );
-        self.show_connected_devices
-            .store(show_connected_devices, Ordering::Relaxed);
 
         *self.stream_metrics.write() = StreamMetrics {
             enabled: stream_metrics,
@@ -327,10 +312,6 @@ impl FeatureFlags {
     fn metrics_reservoir_size(&self) -> usize {
         self.stream_metrics.read().reservoir_size
     }
-
-    fn show_connected_devices(&self) -> bool {
-        self.show_connected_devices.load(Ordering::Relaxed)
-    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -349,7 +330,6 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
-        show_connected_devices: env_or("FZFF_SHOW_CONNECTED_DEVICES", flags.show_connected_devices),
     }
 }
 
