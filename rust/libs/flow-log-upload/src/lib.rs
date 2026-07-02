@@ -36,6 +36,9 @@
 //! - [`upload_once`] runs a single pass for platforms that drive uploads from a
 //!   provider-process / OS background task via FFI.
 //!
+//! The async fns offload all disk IO to the blocking pool: the HTTP/2 connection
+//! driver shares their runtime, so stalling it would starve the connection.
+//!
 //! [`prune`] removes expired / orphaned spool directories on startup so the spool
 //! cannot grow without bound.
 
@@ -180,7 +183,7 @@ pub async fn upload_once(
     spool_root: &Path,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> bool {
-    let Some(config) = read_upload_config(spool_root) else {
+    let Some(config) = load_upload_config(spool_root).await else {
         return false;
     };
 
@@ -191,6 +194,9 @@ pub async fn upload_once(
 /// no longer be authenticated to the ingest API) and orphaned directories that have
 /// no token at all (nothing in them can ever be uploaded). Call on startup, where it
 /// never races a writer, so the spool cannot grow without bound.
+///
+/// Does blocking IO: call it off any async runtime, or wrap it in
+/// [`tokio::task::spawn_blocking`].
 pub fn prune(spool_root: &Path) {
     let now = unix_now();
 
@@ -211,6 +217,28 @@ fn read_upload_config(spool_root: &Path) -> Option<UploadConfig> {
     let bytes = std::fs::read(spool_root.join(CONFIG_FILE)).ok()?;
 
     serde_json::from_slice(&bytes).ok()
+}
+
+/// [`read_upload_config`], off the runtime.
+async fn load_upload_config(spool_root: &Path) -> Option<UploadConfig> {
+    let root = spool_root.to_owned();
+
+    blocking(move || read_upload_config(&root)).await.flatten()
+}
+
+/// Runs `f` on the blocking pool, so disk IO never stalls the runtime.
+async fn blocking<T, F>(f: F) -> Option<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    match tokio::task::spawn_blocking(f).await {
+        Ok(value) => Some(value),
+        Err(e) => {
+            tracing::error!("Flow-log blocking task failed: {e}");
+            None
+        }
+    }
 }
 
 /// Clamps the portal-provided batch size into `[1, MAX_BATCH_SIZE]`, defaulting when
@@ -345,7 +373,7 @@ async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>
     tracing::info!("Flow-log uploader started");
 
     loop {
-        let delay = match read_upload_config(spool_root) {
+        let delay = match load_upload_config(spool_root).await {
             Some(config) => {
                 if upload_pending(spool_root, &config, socket_factory.clone()).await {
                     CATCHUP_POLL
@@ -411,16 +439,22 @@ async fn upload_pending(
         }
     };
 
+    let dirs = {
+        let root = root.to_owned();
+
+        blocking(move || authz_dirs(&root).collect::<Vec<_>>()).await
+    };
+
     let mut backlog = false;
 
-    for dir in authz_dirs(root) {
+    for dir in dirs.unwrap_or_default() {
         // The connection died (e.g. roam) before we finished; the next pass
         // re-resolves, reconnects, and drains the rest.
         if client.is_closed() {
             return true;
         }
 
-        backlog |= upload_authz_batch(&client, &dir, &url, config.batch_size).await;
+        backlog |= upload_authz_batch(&client, dir, &url, config.batch_size).await;
     }
 
     backlog
@@ -439,21 +473,39 @@ fn dir_entries(dir: &Path) -> impl Iterator<Item = std::fs::DirEntry> + use<> {
     std::fs::read_dir(dir).into_iter().flatten().flatten()
 }
 
-/// Reads up to `batch_size` flows from one authorization's spool (oldest first) and
-/// uploads them as a single batch. Returns whether more than one batch was pending
-/// (a backlog).
-async fn upload_authz_batch(client: &HttpClient, dir: &Path, url: &str, batch_size: usize) -> bool {
-    let token = match std::fs::read_to_string(dir.join("token")) {
-        Ok(token) => token,
-        // No token yet (or it was removed): nothing we can upload for this dir.
-        Err(_) => return false,
+/// Uploads one batch from one authorization's spool. Returns whether more than one
+/// batch was pending (a backlog).
+async fn upload_authz_batch(
+    client: &HttpClient,
+    dir: PathBuf,
+    url: &str,
+    batch_size: usize,
+) -> bool {
+    let collected = blocking(move || collect_batch(&dir, batch_size))
+        .await
+        .flatten();
+
+    let Some((token, batch, backlog)) = collected else {
+        return false;
     };
+
+    submit(client, url, &token, &batch).await;
+
+    backlog
+}
+
+/// Reads one authorization's token and up to `batch_size` flows (oldest first), or
+/// `None` when there is nothing to upload. The `bool` reports whether more than one
+/// batch was pending.
+fn collect_batch(dir: &Path, batch_size: usize) -> Option<(String, Vec<Pending>, bool)> {
+    // No token yet (or it was removed): nothing we can upload for this dir.
+    let token = std::fs::read_to_string(dir.join("token")).ok()?;
 
     let files = match report_files(dir) {
         Ok(files) => files,
         Err(e) => {
             tracing::info!(?dir, "Failed to list flow-log spool directory: {e:#}");
-            return false;
+            return None;
         }
     };
 
@@ -470,12 +522,10 @@ async fn upload_authz_batch(client: &HttpClient, dir: &Path, url: &str, batch_si
     }
 
     if batch.is_empty() {
-        return false;
+        return None;
     }
 
-    submit(client, url, &token, &batch).await;
-
-    backlog
+    Some((token, batch, backlog))
 }
 
 /// Lists a directory's report files, oldest first.
@@ -596,7 +646,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
         let status = response.status();
         match classify_response(status) {
             ResponseAction::Delete => {
-                delete_all(batch);
+                delete_all(batch).await;
                 return;
             }
             ResponseAction::Partition => {
@@ -618,7 +668,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
             ResponseAction::Drop => {
                 let body = body_string(&response);
                 tracing::info!(%status, %body, "Flow-log upload rejected; dropping batch");
-                delete_all(batch);
+                delete_all(batch).await;
                 return;
             }
         }
@@ -678,7 +728,7 @@ fn body_string(response: &http::Response<Bytes>) -> String {
 async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) {
     if batch.len() <= 1 {
         tracing::error!("A single flow exceeds the upload size limit; dropping");
-        delete_all(batch);
+        delete_all(batch).await;
         return;
     }
 
@@ -687,15 +737,22 @@ async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending
     Box::pin(submit(client, url, token, &batch[mid..])).await;
 }
 
-fn delete_all(batch: &[Pending]) {
-    for flow in batch {
-        for path in &flow.files {
-            // A shipped `.end` lists its `.start` too, which may already be gone.
-            if let Err(e) = std::fs::remove_file(path)
-                && e.kind() != std::io::ErrorKind::NotFound
-            {
-                tracing::info!(?path, "Failed to delete uploaded flow-log report: {e:#}");
-            }
+async fn delete_all(batch: &[Pending]) {
+    let files = batch
+        .iter()
+        .flat_map(|flow| flow.files.clone())
+        .collect::<Vec<_>>();
+
+    let _ = blocking(move || delete_files(files)).await;
+}
+
+fn delete_files(files: Vec<PathBuf>) {
+    for path in files {
+        // A shipped `.end` lists its `.start` too, which may already be gone.
+        if let Err(e) = std::fs::remove_file(&path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::info!(?path, "Failed to delete uploaded flow-log report: {e:#}");
         }
     }
 }
@@ -877,6 +934,29 @@ mod tests {
             !orphan.exists(),
             "token-less authorization dir should be pruned"
         );
+    }
+
+    #[test]
+    fn collect_batch_reports_backlog_beyond_batch_size() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("token"), "a-token").unwrap();
+        write_report(&dir.path().join("f1.start.json"));
+        write_report(&dir.path().join("f1.end.json"));
+        write_report(&dir.path().join("f2.start.json"));
+
+        let (token, batch, backlog) = collect_batch(dir.path(), 1).expect("one batch");
+
+        assert_eq!(token, "a-token");
+        assert_eq!(batch.len(), 1);
+        assert!(backlog, "second flow should count as backlog");
+    }
+
+    #[test]
+    fn collect_batch_without_token_yields_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        write_report(&dir.path().join("f1.start.json"));
+
+        assert!(collect_batch(dir.path(), 10).is_none());
     }
 
     #[test]
