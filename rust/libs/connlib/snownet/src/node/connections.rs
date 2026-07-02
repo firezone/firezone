@@ -148,12 +148,6 @@ where
                 continue;
             };
 
-            // The relay may have come back under the same ID in the meantime,
-            // e.g. after a roam where the portal handed out the same relays.
-            if allocations.get_by_id(&c.relay.id).is_some() {
-                continue;
-            }
-
             let Some((new_relay, _)) = allocations.sample() else {
                 self.connections_with_removed_relays.insert(cid);
 
@@ -586,34 +580,6 @@ mod tests {
         );
 
         assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
-    }
-
-    #[test]
-    fn does_not_migrate_connection_whose_relay_came_back() {
-        // After a roam, the portal may hand out the same relays again: the
-        // connection's relay re-appears under its old ID and must not be
-        // migrated away.
-        let mut connections: Connections<u32, u32> = Connections::default();
-        let mut allocations: Allocations<u32> = Allocations::for_test();
-        let now = Instant::now();
-
-        let mut conn = new_connection(12345, 1, [1u8; 32]);
-        conn.agent = crate::agent::Agent::path();
-        connections.insert_established(1, conn.index, conn);
-
-        connections.reset_for_roam(now);
-        add_sampleable_allocation(&mut allocations, 1, now);
-        add_sampleable_allocation(&mut allocations, 2, now);
-
-        let mut pending_events = VecDeque::new();
-        connections.migrate_relays(
-            std::iter::empty(),
-            &mut allocations,
-            &mut pending_events,
-            now,
-        );
-
-        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 1);
     }
 
     fn add_sampleable_allocation(allocations: &mut Allocations<u32>, rid: u32, now: Instant) {
