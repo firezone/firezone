@@ -35,8 +35,6 @@ jobs:
           subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
           allow-no-subscriptions: true
 
-      # Reuses the same signing key as the APT repository so users only need to
-      # trust a single Firezone package-signing key.
       - uses: ./.github/actions/setup-gpg
         id: setup-gpg
         with:

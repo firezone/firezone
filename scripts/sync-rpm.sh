@@ -2,10 +2,10 @@
 
 # Shell script for syncing the RPM (DNF/YUM) repository metadata from a set of `.rpm` files.
 #
-# This is the RPM counterpart to `sync-apt.sh`. It maintains two release channels: stable and preview.
+# It maintains two release channels: stable and preview.
 # To add new packages to the repository, upload them to the `import-stable` and `import-preview` directories NOT to the published channel directories.
 #
-# Unlike the APT layout, a DNF repository keeps the packages and the generated `repodata/` together in the directory pointed at by `baseurl`.
+# A DNF repository keeps the packages and the generated `repodata/` together in the directory pointed at by `baseurl`.
 # Each channel is therefore published under `<distribution>/` (holding the `.rpm` files and their `repodata/`) and the packages in there need to atomically change with the metadata.
 #
 # Every imported package is signed with the Firezone package-signing key so that clients work with DNF's default `gpgcheck=1`.
