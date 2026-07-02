@@ -304,7 +304,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.account_id == account.id
     end
 
-    test "preserves trust anchor certificate DER bytes", %{
+    test "redacts trust anchor certificate bytea fields", %{
       account: account,
       initial_state: initial_state
     } do
@@ -339,10 +339,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       attrs = result_state.flush_buffer[lsn]
 
       assert attrs.object == "trust_anchor_certificates"
-      assert attrs.before["der"] == "old DER bytes"
-      assert attrs.after["der"] == "new DER bytes"
-      assert attrs.before["fingerprint"] == "old fingerprint"
-      assert attrs.after["fingerprint"] == "new fingerprint"
+      assert attrs.before["der"] == "[redacted]"
+      assert attrs.after["der"] == "[redacted]"
+      assert attrs.before["fingerprint"] == "[redacted]"
+      assert attrs.after["fingerprint"] == "[redacted]"
     end
   end
 

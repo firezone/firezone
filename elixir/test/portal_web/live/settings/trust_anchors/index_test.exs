@@ -7,6 +7,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   import Portal.FeaturesFixtures
 
   alias Portal.TrustAnchor
+  alias Portal.Crypto.X509
 
   setup do
     account = account_fixture()
@@ -171,6 +172,33 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       assert Enum.map(trust_anchor.certificates, & &1.der) == [sample_cert_der()]
     end
 
+    test "re-armors a successfully pasted certificate as PEM instead of raw DER", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/new")
+
+      html =
+        lv
+        |> form("#trust-anchor-new-form",
+          trust_anchor: %{name: "Pasted CA", certs: [sample_cert_pem()]}
+        )
+        |> render_change()
+
+      assert [textarea] =
+               html
+               |> Floki.parse_fragment!()
+               |> Floki.find("textarea[name='trust_anchor[certs][]']")
+
+      textarea_value = Floki.text(textarea)
+      assert {:ok, [{:Certificate, der, :not_encrypted}]} = X509.pem_decode(textarea_value)
+      assert der == sample_cert_der()
+    end
+
     test "rejects a certificate already used by another trust anchor in the account", %{
       conn: conn,
       account: account,
@@ -314,7 +342,15 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert html =~ "Edit Trust Anchor"
       assert html =~ "Editable CA"
-      assert html =~ "-----BEGIN CERTIFICATE-----"
+
+      assert [textarea] =
+               html
+               |> Floki.parse_fragment!()
+               |> Floki.find("textarea[name='trust_anchor[certs][]']")
+
+      textarea_value = Floki.text(textarea)
+      assert {:ok, [{:Certificate, der, :not_encrypted}]} = X509.pem_decode(textarea_value)
+      assert der == sample_cert_der()
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
@@ -390,6 +426,26 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert Process.alive?(lv.pid)
       assert html =~ "Trust Anchors"
+    end
+
+    test "does not crash when the trust anchor was already deleted by another session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Raced CA")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors")
+
+      Repo.delete!(trust_anchor)
+
+      html = render_click(lv, "delete", %{"id" => trust_anchor.id})
+
+      assert Process.alive?(lv.pid)
+      refute html =~ "Raced CA"
     end
   end
 end

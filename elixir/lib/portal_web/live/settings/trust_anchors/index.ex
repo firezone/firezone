@@ -20,10 +20,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
 
     def get_trust_anchor!(id, subject) do
+      # A point lookup for the edit panel, not a hot path: `one!/2` already
+      # falls back to primary on replica lag, so preload certificates from
+      # primary too rather than risk a mismatched primary parent / stale
+      # replica children read.
       from(t in TrustAnchor, where: t.id == ^id)
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
-      |> Safe.preload(:certificates, :replica)
+      |> Safe.preload(:certificates, :primary)
     end
   end
 
@@ -360,7 +364,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         []
       end
 
-    assigns = assign(assigns, :certs_errors, certs_errors)
+    assigns =
+      assigns
+      |> assign(:certs_errors, certs_errors)
+      |> assign(:certs_display_value, certs_display_value(assigns.form))
 
     ~H"""
     <div>
@@ -433,7 +440,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           type="textarea"
           field={@form[:certs]}
           multiple={true}
-          value={List.first(@form[:certs].value || [], "")}
+          value={@certs_display_value}
           label="Certificate chain (PEM or base64 DER)"
           placeholder="-----BEGIN CERTIFICATE-----"
           rows="10"
@@ -611,6 +618,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             {:noreply, socket}
         end
     end
+  rescue
+    # Another session deleted this trust anchor after it was loaded into
+    # `socket.assigns.trust_anchors`, so `Repo.delete` affected zero rows.
+    # The end state already matches the user's intent, so just refresh.
+    Ecto.StaleEntryError ->
+      socket =
+        assign(socket,
+          trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
+          pending_delete_id: nil,
+          open_trust_anchor_actions_id: nil
+        )
+
+      {:noreply, socket}
   end
 
   def handle_event("toggle_trust_anchor_actions", %{"id" => id}, socket) do
@@ -647,8 +667,37 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   defp armor_certs_as_pem(certificates) do
     certificates
-    |> Enum.map(&{:Certificate, &1.der, :not_encrypted})
+    |> Enum.map(& &1.der)
+    |> armor_der_as_pem()
+  end
+
+  defp armor_der_as_pem(ders) do
+    ders
+    |> Enum.map(&{:Certificate, &1, :not_encrypted})
     |> :public_key.pem_encode()
+  end
+
+  # `TrustAnchor.changeset/1` normalizes `:certs` in place, replacing whatever
+  # PEM/base64/DER text the admin typed with the normalized raw DER bytes
+  # (see `normalize_certs/2` and the schema test asserting on that). Showing
+  # those bytes back in the textarea would corrupt the field, so once
+  # normalization has produced `:certificates` changesets, re-armor their DER
+  # as PEM for display instead of reading `@form[:certs].value` directly.
+  defp certs_display_value(form) do
+    case Ecto.Changeset.get_change(form.source, :certificates) do
+      [_ | _] = certificate_changesets ->
+        certificate_changesets
+        # `put_assoc/3` can't match freshly-built cert changesets against the
+        # existing (unsaved-input) `:id`-less ones they replace, so editing
+        # always emits a `:replace` entry for the old row alongside the
+        # `:insert` for the new one. Only the surviving side belongs on screen.
+        |> Enum.reject(&(&1.action == :replace))
+        |> Enum.map(&Ecto.Changeset.get_field(&1, :der))
+        |> armor_der_as_pem()
+
+      _ ->
+        List.first(form[:certs].value || [], "")
+    end
   end
 
   # sobelow_skip ["Traversal.FileModule"]

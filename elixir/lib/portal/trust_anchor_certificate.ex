@@ -22,8 +22,11 @@ defmodule Portal.TrustAnchorCertificate do
 
     belongs_to :trust_anchor, Portal.TrustAnchor
 
-    field :der, :binary
-    field :fingerprint, :binary
+    # Redacted from the change log: the replication decoder turns bytea hex
+    # back into raw binaries, which are often not valid UTF-8 and would break
+    # the JSONB change log insert.
+    field :der, :binary, redact: true
+    field :fingerprint, :binary, redact: true
 
     timestamps()
   end
