@@ -313,13 +313,14 @@ impl Eventloop {
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
                     msg.client,
-                    msg.subject,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
                     msg.use_iceless,
                     Instant::now(),
+                    msg.flow_logs_ingest_token
+                        .map(|token| token.as_str().to_owned()),
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
@@ -388,6 +389,10 @@ impl Eventloop {
                 }
 
                 self.upload_flow_logs = flow_logs.upload_enabled();
+
+                tunnel
+                    .state_mut()
+                    .set_flow_logs_enabled(self.upload_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
