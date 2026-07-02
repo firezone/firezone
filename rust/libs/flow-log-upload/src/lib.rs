@@ -8,13 +8,12 @@
 //! an upload pass:
 //!
 //! 1. reads the `token`,
-//! 2. groups reports by `<flow_identity>` (up to the configured batch size, oldest
-//!    first),
-//! 3. joins each flow into a single record — the `.end` if present (it is
-//!    self-describing), otherwise the `.start`,
-//! 4. POSTs the batch and, on success, deletes the files it sent (both halves of a
-//!    joined flow, or the lone `.start`). If a flow's `.end` arrives after its
-//!    `.start` was already sent and deleted, it ships as its own record next pass.
+//! 2. lists its report files oldest-first (up to the configured batch size),
+//!    skipping a `.start` whose `.end` is already on disk: the `.end` is
+//!    self-describing and supersedes it,
+//! 3. POSTs the batch and, on success, deletes the files it sent (a shipped `.end`
+//!    deletes its `.start` too). If a flow's `.end` arrives after its `.start` was
+//!    already sent and deleted, it ships as its own record next pass.
 //!
 //! The submit is idempotent (the portal upserts by flow identity), so any
 //! ambiguous failure retries the whole batch. Response handling:
@@ -43,7 +42,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -80,13 +78,17 @@ const MAX_UPLOAD_RETRY: Duration = Duration::from_secs(5 * 60);
 const INGEST_PATH: &str = "/ingestion/flow_logs";
 /// Name of the self-describing upload config file written into the spool root.
 const CONFIG_FILE: &str = "upload.json";
+/// Suffix of an "open" flow report (see `tunnel::FlowLogWriter`).
+const START_SUFFIX: &str = ".start.json";
+/// Suffix of a "completed" flow report.
+const END_SUFFIX: &str = ".end.json";
 
 /// The portal's flow-log upload config, persisted into the spool root so an uploader
 /// that runs independently of the session (a background task / daemon, or the
 /// service thread) can read it without a live connection to the portal.
 ///
 /// Only written while uploads are enabled: an `interval` of `0` is never persisted
-/// (see [`write_upload_config`]), so the file's presence alone means "enabled".
+/// (see [`set_upload_config`]), so the file's presence alone means "enabled".
 #[serde_as]
 #[derive(Serialize, Deserialize)]
 struct UploadConfig {
@@ -104,13 +106,12 @@ fn default_batch_size() -> usize {
     DEFAULT_BATCH_SIZE
 }
 
-/// Persists the portal's flow-log upload config into the spool root. Called by the
-/// session, which alone receives it via `init`, so a session-independent uploader
-/// can read it.
+/// Sets the upload config persisted in the spool root. Called by the session, which
+/// alone receives it via `init`, so a session-independent uploader can read it.
 ///
-/// An `interval_secs` of `0` means the portal disabled uploads: any persisted config
+/// An `interval_secs` of `0` means the portal disabled uploads: the persisted config
 /// is removed so a running uploader stops, rather than keeping the last one.
-pub fn write_upload_config(
+pub fn set_upload_config(
     spool_root: &Path,
     api_url: &str,
     interval_secs: u64,
@@ -142,7 +143,7 @@ pub fn write_upload_config(
 /// Spawns the flow-log uploader thread for an always-running process (the gateway,
 /// the desktop tunnel service) or a provider process. The thread reads the spool's
 /// config file each pass, so it picks up whatever the session persisted via
-/// [`write_upload_config`], and uploads over `socket_factory` so it bypasses the
+/// [`set_upload_config`], and uploads over `socket_factory` so it bypasses the
 /// tunnel. It runs until the process exits.
 pub fn spawn(
     spool_root: PathBuf,
@@ -183,7 +184,7 @@ pub async fn upload_once(
         return false;
     };
 
-    scan(spool_root, &config, socket_factory).await == ScanOutcome::RescanSoon
+    upload_pending(spool_root, &config, socket_factory).await
 }
 
 /// Removes spooled authorizations whose Bearer token has expired (their flows can
@@ -193,25 +194,14 @@ pub async fn upload_once(
 pub fn prune(spool_root: &Path) {
     let now = unix_now();
 
-    let Ok(role_dirs) = std::fs::read_dir(spool_root) else {
-        return;
-    };
-
-    for role_entry in role_dirs.flatten() {
-        let Ok(authz_dirs) = std::fs::read_dir(role_entry.path()) else {
+    for dir in authz_dirs(spool_root) {
+        if !should_prune(&dir, now) {
             continue;
-        };
+        }
 
-        for entry in authz_dirs.flatten() {
-            let dir = entry.path();
-            if !dir.is_dir() || !should_prune(&dir, now) {
-                continue;
-            }
-
-            match std::fs::remove_dir_all(&dir) {
-                Ok(()) => tracing::debug!(?dir, "Pruned stale flow-log spool directory"),
-                Err(e) => tracing::info!(?dir, "Failed to prune flow-log spool dir: {e:#}"),
-            }
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => tracing::debug!(?dir, "Pruned stale flow-log spool directory"),
+            Err(e) => tracing::info!(?dir, "Failed to prune flow-log spool dir: {e:#}"),
         }
     }
 }
@@ -355,18 +345,20 @@ async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>
     tracing::info!("Flow-log uploader started");
 
     loop {
-        match read_upload_config(spool_root) {
+        let delay = match read_upload_config(spool_root) {
             Some(config) => {
-                let delay = match scan(spool_root, &config, socket_factory.clone()).await {
-                    ScanOutcome::RescanSoon => CATCHUP_POLL,
-                    ScanOutcome::Drained => config.interval,
-                };
-                tokio::time::sleep(delay).await;
+                if upload_pending(spool_root, &config, socket_factory.clone()).await {
+                    CATCHUP_POLL
+                } else {
+                    config.interval
+                }
             }
             // No config persisted yet, or uploads disabled by the portal: idle and
             // re-check the config shortly.
-            None => tokio::time::sleep(DISABLED_POLL).await,
-        }
+            None => DISABLED_POLL,
+        };
+
+        tokio::time::sleep(delay).await;
     }
 }
 
@@ -397,113 +389,101 @@ struct Pending {
     files: Vec<PathBuf>,
 }
 
-/// The on-disk `.start`/`.end` files discovered for one flow identity.
-#[derive(Default)]
-struct FlowFiles {
-    start: Option<PathBuf>,
-    end: Option<PathBuf>,
-    mtime: Option<SystemTime>,
-}
-
-/// Whether the uploader should scan again soon or wait the configured interval.
-#[derive(Clone, Copy, PartialEq)]
-enum ScanOutcome {
-    /// More work is pending: an authorization had more than one batch, or the
-    /// connection dropped mid-scan before everything was drained.
-    RescanSoon,
-    /// Everything pending was uploaded; wait the configured interval.
-    Drained,
-}
-
-/// Processes every authorization directory once.
+/// Uploads one batch of pending flows per authorization directory.
 ///
-/// The spool nests authorization directories one level under a `<role>` directory
-/// (`<root>/<role>/<policy_authorization_id>/`), so this walks both levels.
-async fn scan(
+/// Returns whether a backlog remains: an authorization had more than one batch
+/// pending, or the connection dropped before the pass finished. The caller can then
+/// schedule the next pass promptly instead of waiting the configured interval.
+async fn upload_pending(
     root: &Path,
     config: &UploadConfig,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-) -> ScanOutcome {
+) -> bool {
     let Some(url) = ingest_endpoint(&config.api_url) else {
-        return ScanOutcome::Drained;
+        return false;
     };
 
     let client = match connect(&url, socket_factory).await {
         Ok(client) => client,
         Err(e) => {
             tracing::debug!("Failed to open flow-log ingest connection: {e:#}");
-            return ScanOutcome::Drained;
+            return false;
         }
-    };
-
-    let Ok(role_dirs) = std::fs::read_dir(root) else {
-        return ScanOutcome::Drained;
     };
 
     let mut backlog = false;
-    for role_entry in role_dirs.flatten() {
-        let role_dir = role_entry.path();
-        let Ok(authz_dirs) = std::fs::read_dir(&role_dir) else {
-            continue;
-        };
 
-        for entry in authz_dirs.flatten() {
-            let dir = entry.path();
-            if !dir.is_dir() {
-                continue;
-            }
-
-            // The connection died (e.g. roam) before we finished, so scan again soon
-            // to drain the rest; the next scan re-resolves and reconnects.
-            if client.is_closed() {
-                return ScanOutcome::RescanSoon;
-            }
-
-            backlog |= process_authz_dir(&client, &dir, &url, config.batch_size).await;
+    for dir in authz_dirs(root) {
+        // The connection died (e.g. roam) before we finished; the next pass
+        // re-resolves, reconnects, and drains the rest.
+        if client.is_closed() {
+            return true;
         }
+
+        backlog |= upload_authz_batch(&client, &dir, &url, config.batch_size).await;
     }
 
-    if backlog {
-        ScanOutcome::RescanSoon
-    } else {
-        ScanOutcome::Drained
-    }
+    backlog
 }
 
-/// Reads up to `batch_size` flows from one authorization's spool (oldest first),
-/// joins each into a record, and uploads them. Returns whether more than one batch
-/// was pending (a backlog), so the caller can rescan promptly.
-async fn process_authz_dir(client: &HttpClient, dir: &Path, url: &str, batch_size: usize) -> bool {
+/// Walks the spool's `<root>/<role>/<policy_authorization_id>` layout, yielding each
+/// authorization directory. An unreadable level yields nothing.
+fn authz_dirs(root: &Path) -> impl Iterator<Item = PathBuf> {
+    dir_entries(root)
+        .flat_map(|role| dir_entries(&role.path()))
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+}
+
+fn dir_entries(dir: &Path) -> impl Iterator<Item = std::fs::DirEntry> + use<> {
+    std::fs::read_dir(dir).into_iter().flatten().flatten()
+}
+
+/// Reads up to `batch_size` flows from one authorization's spool (oldest first) and
+/// uploads them as a single batch. Returns whether more than one batch was pending
+/// (a backlog).
+async fn upload_authz_batch(client: &HttpClient, dir: &Path, url: &str, batch_size: usize) -> bool {
     let token = match std::fs::read_to_string(dir.join("token")) {
         Ok(token) => token,
         // No token yet (or it was removed): nothing we can upload for this dir.
         Err(_) => return false,
     };
 
-    let mut flows = match group_flows(dir) {
-        Ok(flows) => flows,
+    let files = match report_files(dir) {
+        Ok(files) => files,
         Err(e) => {
             tracing::info!(?dir, "Failed to list flow-log spool directory: {e:#}");
             return false;
         }
     };
 
-    flows.sort_by_key(|files| files.mtime.unwrap_or(SystemTime::UNIX_EPOCH));
-    let backlog = flows.len() > batch_size;
-    flows.truncate(batch_size);
+    let mut batch = Vec::new();
+    let mut backlog = false;
 
-    let batch = flows.into_iter().filter_map(load_flow).collect::<Vec<_>>();
+    for path in files {
+        if batch.len() == batch_size {
+            backlog = true;
+            break;
+        }
+
+        batch.extend(load_flow(&path));
+    }
+
     if batch.is_empty() {
         return false;
     }
 
     submit(client, url, &token, &batch).await;
+
     backlog
 }
 
-/// Groups a directory's `.start`/`.end` report files by their flow-identity stem.
-fn group_flows(dir: &Path) -> std::io::Result<Vec<FlowFiles>> {
-    let mut flows = BTreeMap::<String, FlowFiles>::new();
+/// Lists a directory's report files, oldest first.
+///
+/// Directory iteration order is unspecified and report names are flow-identity
+/// hashes, so the ordering has to come from mtimes.
+fn report_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
 
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -511,50 +491,51 @@ fn group_flows(dir: &Path) -> std::io::Result<Vec<FlowFiles>> {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-
-        let (stem, is_end) = if let Some(stem) = name.strip_suffix(".end.json") {
-            (stem, true)
-        } else if let Some(stem) = name.strip_suffix(".start.json") {
-            (stem, false)
-        } else {
+        if !name.ends_with(START_SUFFIX) && !name.ends_with(END_SUFFIX) {
             continue;
-        };
-
-        let mtime = entry.metadata()?.modified().ok();
-        let flow = flows.entry(stem.to_owned()).or_default();
-        if is_end {
-            flow.end = Some(path);
-        } else {
-            flow.start = Some(path);
         }
-        flow.mtime = [flow.mtime, mtime].into_iter().flatten().min();
+
+        let mtime = entry
+            .metadata()?
+            .modified()
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        files.push((mtime, path));
     }
 
-    Ok(flows.into_values().collect())
+    files.sort();
+
+    Ok(files.into_iter().map(|(_, path)| path).collect())
 }
 
-/// Loads one flow into a [`Pending`], preferring the self-describing `.end`.
-/// Corrupt files are reported and deleted; a flow with no readable report yields
-/// `None`.
-fn load_flow(files: FlowFiles) -> Option<Pending> {
-    // Prefer the self-describing `.end`; if it is missing or corrupt (and thus
-    // deleted by `read_report`), fall back to the `.start`.
-    if let Some(end) = &files.end
-        && let Some(payload) = read_report(end)
-    {
-        let mut to_delete = vec![end.clone()];
-        to_delete.extend(files.start);
+/// Loads the flow reported at `path` into a [`Pending`] upload.
+///
+/// A `.start` whose `.end` is already on disk yields `None`: the `.end` is
+/// self-describing and supersedes it, so only the `.end` ships (deleting both files
+/// once it lands). A corrupt report is deleted by [`read_report`] and yields `None`;
+/// a superseded `.start` then ships on a later pass.
+fn load_flow(path: &Path) -> Option<Pending> {
+    let name = path.file_name()?.to_str()?;
+
+    if let Some(stem) = name.strip_suffix(START_SUFFIX) {
+        if path.with_file_name(format!("{stem}{END_SUFFIX}")).exists() {
+            return None;
+        }
+
+        let payload = read_report(path)?;
+
         return Some(Pending {
             payload,
-            files: to_delete,
+            files: vec![path.to_owned()],
         });
     }
 
-    let start = files.start?;
-    let payload = read_report(&start)?;
+    let stem = name.strip_suffix(END_SUFFIX)?;
+    let payload = read_report(path)?;
+    let start = path.with_file_name(format!("{stem}{START_SUFFIX}"));
+
     Some(Pending {
         payload,
-        files: vec![start],
+        files: vec![path.to_owned(), start],
     })
 }
 
@@ -709,7 +690,10 @@ async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending
 fn delete_all(batch: &[Pending]) {
     for flow in batch {
         for path in &flow.files {
-            if let Err(e) = std::fs::remove_file(path) {
+            // A shipped `.end` lists its `.start` too, which may already be gone.
+            if let Err(e) = std::fs::remove_file(path)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
                 tracing::info!(?path, "Failed to delete uploaded flow-log report: {e:#}");
             }
         }
@@ -762,10 +746,43 @@ mod tests {
         format!("header.{payload}.signature")
     }
 
+    fn write_report(path: &Path) {
+        let payload = Payload {
+            protocol: "tcp".to_owned(),
+            inner_src_ip: "10.0.0.1".parse().unwrap(),
+            inner_src_port: 1,
+            inner_dst_ip: "10.0.0.2".parse().unwrap(),
+            inner_dst_port: 2,
+            domain: None,
+            outer_src_ip: "192.0.2.1".parse().unwrap(),
+            outer_src_port: 3,
+            outer_dst_ip: "192.0.2.2".parse().unwrap(),
+            outer_dst_port: 4,
+            flow_start: chrono::Utc::now(),
+            flow_end: None,
+            last_packet: None,
+            rx_packets: None,
+            tx_packets: None,
+            rx_bytes: None,
+            tx_bytes: None,
+        };
+
+        std::fs::write(path, flow_log_spool::serialize(&payload).unwrap()).unwrap();
+    }
+
+    fn set_mtime(path: &Path, mtime: SystemTime) {
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(mtime)
+            .unwrap();
+    }
+
     #[test]
-    fn write_then_read_config_roundtrips() {
+    fn set_then_read_config_roundtrips() {
         let root = tempfile::tempdir().unwrap();
-        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 90, 500).unwrap();
+        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 90, 500).unwrap();
 
         let config = read_upload_config(root.path()).expect("config present");
         assert_eq!(config.api_url, "https://flow-api.firezone.dev/");
@@ -785,7 +802,7 @@ mod tests {
     #[test]
     fn zero_batch_size_uses_default() {
         let root = tempfile::tempdir().unwrap();
-        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 0).unwrap();
+        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 0).unwrap();
 
         let config = read_upload_config(root.path()).expect("config present");
         assert_eq!(config.batch_size, DEFAULT_BATCH_SIZE);
@@ -799,7 +816,7 @@ mod tests {
     #[test]
     fn zero_interval_disables_uploads() {
         let root = tempfile::tempdir().unwrap();
-        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 1000).unwrap();
+        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 1000).unwrap();
 
         assert!(read_upload_config(root.path()).is_none());
     }
@@ -807,10 +824,10 @@ mod tests {
     #[test]
     fn disabling_removes_an_existing_config() {
         let root = tempfile::tempdir().unwrap();
-        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 500).unwrap();
+        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 60, 500).unwrap();
         assert!(read_upload_config(root.path()).is_some());
 
-        write_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 500).unwrap();
+        set_upload_config(root.path(), "https://flow-api.firezone.dev/", 0, 500).unwrap();
         assert!(read_upload_config(root.path()).is_none());
     }
 
@@ -860,6 +877,61 @@ mod tests {
             !orphan.exists(),
             "token-less authorization dir should be pruned"
         );
+    }
+
+    #[test]
+    fn report_files_lists_oldest_first_and_skips_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = SystemTime::now();
+
+        std::fs::write(dir.path().join("token"), "a-token").unwrap();
+        for (name, age_secs) in [("b.start.json", 10), ("a.end.json", 30), ("c.end.json", 20)] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, "{}").unwrap();
+            set_mtime(&path, now - Duration::from_secs(age_secs));
+        }
+
+        let files = report_files(dir.path()).unwrap();
+        let names = files
+            .iter()
+            .map(|path| path.file_name().unwrap().to_str().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["a.end.json", "c.end.json", "b.start.json"]);
+    }
+
+    #[test]
+    fn start_with_an_end_on_disk_ships_only_the_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let start = dir.path().join("f1.start.json");
+        let end = dir.path().join("f1.end.json");
+        write_report(&start);
+        write_report(&end);
+
+        assert!(load_flow(&start).is_none());
+
+        let pending = load_flow(&end).expect("end should load");
+        assert_eq!(pending.files, vec![end, start]);
+    }
+
+    #[test]
+    fn lone_start_ships_by_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let start = dir.path().join("f1.start.json");
+        write_report(&start);
+
+        let pending = load_flow(&start).expect("start should load");
+        assert_eq!(pending.files, vec![start]);
+    }
+
+    #[test]
+    fn corrupt_report_is_deleted_and_not_uploaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let end = dir.path().join("f1.end.json");
+        std::fs::write(&end, "not a report").unwrap();
+
+        assert!(load_flow(&end).is_none());
+        assert!(!end.exists(), "corrupt report should be deleted");
     }
 
     #[test]
