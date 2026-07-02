@@ -184,6 +184,9 @@ async fn load_upload_config(spool_root: &Path) -> Option<UploadConfig> {
 }
 
 /// Runs `f` on the blocking pool, so disk IO never stalls the runtime.
+///
+/// Used instead of `tokio::fs`, which dispatches per syscall: a pass makes
+/// hundreds of small fs calls, so each phase does one hop as a whole.
 async fn blocking<T, F>(f: F) -> Option<T>
 where
     F: FnOnce() -> T + Send + 'static,
