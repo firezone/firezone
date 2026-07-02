@@ -3,44 +3,20 @@
 //! The spool, written by `tunnel::FlowLogWriter`, nests one directory per
 //! authorization under a role directory:
 //! `<root>/<role>/<policy_authorization_id>/`. Each holds that authorization's
-//! Bearer `token` plus per-flow reports split into `<flow_identity>.start.json`
-//! (open) and `<flow_identity>.end.json` (completed) files. For each authorization
-//! an upload pass:
+//! Bearer `token` plus per-flow reports: `<flow_identity>.start.json` (open) and
+//! `<flow_identity>.end.json` (completed). Each pass uploads one batch per
+//! authorization over the caller's tunnel-bypassing [`SocketFactory`] and deletes
+//! what it sent; submits are idempotent (the portal upserts by flow identity), so
+//! ambiguous failures retry the whole batch.
 //!
-//! 1. reads the `token`,
-//! 2. lists its report files oldest-first (up to the configured batch size),
-//!    skipping a `.start` whose `.end` is already on disk: the `.end` is
-//!    self-describing and supersedes it,
-//! 3. POSTs the batch and, on success, deletes the files it sent (a shipped `.end`
-//!    deletes its `.start` too). If a flow's `.end` arrives after its `.start` was
-//!    already sent and deleted, it ships as its own record next pass.
-//!
-//! The submit is idempotent (the portal upserts by flow identity), so any
-//! ambiguous failure retries the whole batch. Response handling:
-//! - 2xx: delete the sent files.
-//! - 422: the portal already persisted the valid records and the listed ones are
-//!   permanently invalid, so log the body and drop the batch.
-//! - 413: split the batch and retry each half.
-//! - 429: honor `Retry-After`, then retry the same batch.
-//! - 408 / 5xx / transport errors: exponential backoff, then retry; defer to the
-//!   next pass once the budget is spent (the files remain).
-//! - Other 4xx: permanent; log the status + body and drop the batch.
-//!
-//! Uploads go through [`http_client::HttpClient`] over the caller's
-//! [`SocketFactory`], so they bypass the tunnel exactly like connlib's own traffic.
-//!
-//! Two drivers share this logic so parsing / CRC / request handling is not
-//! duplicated across platforms:
+//! Two drivers share this logic:
 //! - [`spawn`] runs a long-lived thread (gateway and desktop clients, whose tunnel
 //!   service is always running).
-//! - [`upload_once`] runs a single pass for platforms that drive uploads from a
-//!   provider-process / OS background task via FFI.
+//! - [`upload_once`] runs a single pass for platforms that drive uploads from an
+//!   OS background task via FFI.
 //!
 //! The async fns offload all disk IO to the blocking pool: the HTTP/2 connection
 //! driver shares their runtime, so stalling it would starve the connection.
-//!
-//! [`prune`] removes expired / orphaned spool directories on startup so the spool
-//! cannot grow without bound.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -64,34 +40,24 @@ use url::Url;
 
 /// Default flows per upload when the portal doesn't specify one.
 const DEFAULT_BATCH_SIZE: usize = 1_000;
-/// Hard ceiling on flows per upload (matches the portal's per-request limit), so a
-/// misconfigured batch size can never produce a request the portal rejects.
+/// Hard ceiling on flows per upload (the portal's per-request limit).
 const MAX_BATCH_SIZE: usize = 10_000;
-/// Used instead of the portal's scan interval when a scan left a backlog (an
-/// authorization had more than one batch pending) so we drain it without falling
-/// behind.
+/// Poll used instead of the configured interval while a backlog remains.
 const CATCHUP_POLL: Duration = Duration::from_secs(1);
-/// How long to wait before re-checking config while uploads are unconfigured or
-/// disabled by the portal.
+/// How often to re-check config while uploads are unconfigured or disabled.
 const DISABLED_POLL: Duration = Duration::from_secs(30);
 /// Total time spent retrying one batch on transient failures before deferring it
-/// to the next scan.
+/// to the next pass.
 const MAX_UPLOAD_RETRY: Duration = Duration::from_secs(5 * 60);
-/// Path appended to the portal's base flow-log API URL to form the ingest endpoint.
 const INGEST_PATH: &str = "/ingestion/flow_logs";
-/// Name of the self-describing upload config file written into the spool root.
 const CONFIG_FILE: &str = "upload.json";
-/// Suffix of an "open" flow report (see `tunnel::FlowLogWriter`).
 const START_SUFFIX: &str = ".start.json";
-/// Suffix of a "completed" flow report.
 const END_SUFFIX: &str = ".end.json";
 
-/// The portal's flow-log upload config, persisted into the spool root so an uploader
-/// that runs independently of the session (a background task / daemon, or the
-/// service thread) can read it without a live connection to the portal.
+/// The portal's upload config, persisted into the spool root so an uploader that
+/// runs independently of the session can read it.
 ///
-/// Only written while uploads are enabled: an `interval` of `0` is never persisted
-/// (see [`configure_uploads`]), so the file's presence alone means "enabled".
+/// Only present while uploads are enabled (see [`configure_uploads`]).
 #[serde_as]
 #[derive(Serialize, Deserialize)]
 struct UploadConfig {
@@ -109,11 +75,10 @@ fn default_batch_size() -> usize {
     DEFAULT_BATCH_SIZE
 }
 
-/// Sets the upload config persisted in the spool root. Called by the session, which
-/// alone receives it via `init`, so a session-independent uploader can read it.
+/// Persists the portal's upload config into the spool root.
 ///
-/// An `interval_secs` of `0` means the portal disabled uploads: the persisted config
-/// is removed so a running uploader stops, rather than keeping the last one.
+/// An `interval_secs` of `0` means uploads are disabled: any persisted config is
+/// removed so a running uploader stops.
 pub fn configure_uploads(
     spool_root: &Path,
     api_url: &str,
@@ -143,11 +108,8 @@ pub fn configure_uploads(
     Ok(())
 }
 
-/// Spawns the flow-log uploader thread for an always-running process (the gateway,
-/// the desktop tunnel service) or a provider process. The thread reads the spool's
-/// config file each pass, so it picks up whatever the session persisted via
-/// [`configure_uploads`], and uploads over `socket_factory` so it bypasses the
-/// tunnel. It runs until the process exits.
+/// Spawns the long-lived uploader thread. It re-reads the persisted config each
+/// pass and runs until the process exits.
 pub fn spawn(
     spool_root: PathBuf,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -171,14 +133,11 @@ pub fn spawn(
         .expect("Failed to spawn flow-log uploader thread")
 }
 
-/// Runs a single upload pass: scans the spool once and uploads any pending flows,
-/// using the config persisted in the spool, over `socket_factory`. Intended for
-/// platforms that drive uploads from a short-lived OS background task / the
-/// provider process via FFI, so they can flush the spool independently of a
-/// long-running thread. The caller owns the runtime this runs on.
+/// Runs a single upload pass on the caller's runtime, for platforms that drive
+/// uploads from an OS background task via FFI.
 ///
-/// Returns `true` when a backlog remained (an authorization had more than one batch
-/// pending), so the caller may schedule another pass sooner.
+/// Returns `true` when a backlog remained, so the caller may schedule another pass
+/// sooner.
 pub async fn upload_once(
     spool_root: &Path,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -190,13 +149,11 @@ pub async fn upload_once(
     upload_pending(spool_root, &config, socket_factory).await
 }
 
-/// Removes spooled authorizations whose Bearer token has expired (their flows can
-/// no longer be authenticated to the ingest API) and orphaned directories that have
-/// no token at all (nothing in them can ever be uploaded). Call on startup, where it
-/// never races a writer, so the spool cannot grow without bound.
+/// Removes authorization directories whose token has expired or is missing, since
+/// nothing in them can ever be uploaded. Call on startup, where it never races a
+/// writer, so the spool cannot grow without bound.
 ///
-/// Does blocking IO: call it off any async runtime, or wrap it in
-/// [`tokio::task::spawn_blocking`].
+/// Does blocking IO: call it off any async runtime.
 pub fn prune(spool_root: &Path) {
     let now = unix_now();
 
@@ -241,8 +198,6 @@ where
     }
 }
 
-/// Clamps the portal-provided batch size into `[1, MAX_BATCH_SIZE]`, defaulting when
-/// it is `0`.
 fn clamp_batch_size(batch_size: u64) -> usize {
     match usize::try_from(batch_size).unwrap_or(MAX_BATCH_SIZE) {
         0 => DEFAULT_BATCH_SIZE,
@@ -250,11 +205,7 @@ fn clamp_batch_size(batch_size: u64) -> usize {
     }
 }
 
-/// Whether an authorization directory should be pruned.
-///
-/// A directory with no `token` file can never be uploaded (the Bearer token is the
-/// only credential), so it is a leftover orphan and is pruned immediately. Otherwise
-/// it is pruned once its token has expired. An undecodable token is kept, so a
+/// A missing token is pruned immediately; an undecodable one is kept, so a
 /// transient decode failure never deletes uploadable data.
 fn should_prune(dir: &Path, now: u64) -> bool {
     let Ok(token) = std::fs::read_to_string(dir.join("token")) else {
@@ -287,8 +238,8 @@ fn unix_now() -> u64 {
         .unwrap_or(0)
 }
 
-/// Writes `bytes` to `path`, restricting it to the owner (the spool holds Bearer
-/// tokens and the API URL).
+/// Writes `bytes` to `path`, readable only by the owner (the spool holds Bearer
+/// tokens).
 fn write_owner_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, bytes)?;
     set_owner_only(path)
@@ -304,10 +255,9 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
         .create(path)
 }
 
-/// The spool holds Bearer tokens, so on Windows every spool directory is locked
-/// down to `LocalSystem` and `BUILTIN\Administrators` (the accounts the Gateway /
-/// Tunnel service runs as), the equivalent of `0700` on Unix. The directory ACEs
-/// inherit, so children get the same access.
+/// Locks the directory down to `LocalSystem` and `BUILTIN\Administrators` (the
+/// service accounts), the equivalent of `0700` on Unix; the ACEs inherit to
+/// children.
 #[cfg(windows)]
 fn create_dir_secure(path: &Path) -> std::io::Result<()> {
     use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
@@ -357,8 +307,6 @@ fn apply_dacl(path: &Path, dacl: &windows_security::pipe_dacl::PipeDacl) -> std:
         .map_err(|e| std::io::Error::other(format!("{e:#}")))
 }
 
-/// Builds the full ingest endpoint from the portal's base URL, or `None` when the
-/// base URL is missing / invalid.
 fn ingest_endpoint(base_url: &str) -> Option<String> {
     match Url::parse(base_url).and_then(|base| base.join(INGEST_PATH)) {
         Ok(url) => Some(url.to_string()),
@@ -381,8 +329,6 @@ async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>
                     config.interval
                 }
             }
-            // No config persisted yet, or uploads disabled by the portal: idle and
-            // re-check the config shortly.
             None => DISABLED_POLL,
         };
 
@@ -390,13 +336,11 @@ async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>
     }
 }
 
-/// Opens a tunnel-bypassing HTTP client to the ingest host. Re-resolved on every
-/// scan, so a roamed / changed flow-api address is picked up without a restart.
+/// Opens a tunnel-bypassing HTTP client to the ingest host, re-resolved each pass
+/// so address changes are picked up.
 ///
-/// Resolution goes through [`telemetry::resolve_ingest_host`] so that, like
-/// telemetry, it uses connlib's captured upstream resolvers while a session is
-/// active rather than `getaddrinfo`, which would loop back through connlib's
-/// hijacked system resolver.
+/// Resolution goes through [`telemetry::resolve_ingest_host`]: while a session owns
+/// the system resolver, `getaddrinfo` would loop back through connlib.
 async fn connect(
     ingest_url: &str,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -420,8 +364,7 @@ struct Pending {
 /// Uploads one batch of pending flows per authorization directory.
 ///
 /// Returns whether a backlog remains: an authorization had more than one batch
-/// pending, or the connection dropped before the pass finished. The caller can then
-/// schedule the next pass promptly instead of waiting the configured interval.
+/// pending, or the connection dropped before the pass finished.
 async fn upload_pending(
     root: &Path,
     config: &UploadConfig,
@@ -448,8 +391,7 @@ async fn upload_pending(
     let mut backlog = false;
 
     for dir in dirs.unwrap_or_default() {
-        // The connection died (e.g. roam) before we finished; the next pass
-        // re-resolves, reconnects, and drains the rest.
+        // The connection died (e.g. roam); the next pass reconnects and drains the rest.
         if client.is_closed() {
             return true;
         }
@@ -498,7 +440,7 @@ async fn upload_authz_batch(
 /// `None` when there is nothing to upload. The `bool` reports whether more than one
 /// batch was pending.
 fn collect_batch(dir: &Path, batch_size: usize) -> Option<(String, Vec<Pending>, bool)> {
-    // No token yet (or it was removed): nothing we can upload for this dir.
+    // No token yet: nothing can be uploaded.
     let token = std::fs::read_to_string(dir.join("token")).ok()?;
 
     let files = match report_files(dir) {
@@ -559,10 +501,8 @@ fn report_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 
 /// Loads the flow reported at `path` into a [`Pending`] upload.
 ///
-/// A `.start` whose `.end` is already on disk yields `None`: the `.end` is
-/// self-describing and supersedes it, so only the `.end` ships (deleting both files
-/// once it lands). A corrupt report is deleted by [`read_report`] and yields `None`;
-/// a superseded `.start` then ships on a later pass.
+/// A `.start` whose `.end` is on disk yields `None`: the `.end` is self-describing
+/// and supersedes it, deleting both files when it ships.
 fn load_flow(path: &Path) -> Option<Pending> {
     let name = path.file_name()?.to_str()?;
 
@@ -589,8 +529,8 @@ fn load_flow(path: &Path) -> Option<Pending> {
     })
 }
 
-/// Reads and verifies one report. A corrupt report is reported and deleted (it can
-/// never be uploaded); a transient read error is left for the next scan.
+/// Reads and verifies one report. A corrupt report is deleted (it can never be
+/// uploaded); a transient read error is left for the next pass.
 fn read_report(path: &Path) -> Option<Payload> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
@@ -635,7 +575,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
             Ok(response) => response,
             Err(e) => {
                 tracing::info!("Flow-log upload request failed: {e:#}");
-                // A closed connection won't recover by retrying; defer to the next scan.
+                // A closed connection won't recover by retrying; defer to the next pass.
                 if client.is_closed() || !sleep_backoff(&mut backoff).await {
                     return; // the files remain on disk
                 }
@@ -702,7 +642,6 @@ fn classify_response(status: StatusCode) -> ResponseAction {
     }
 }
 
-/// Sends one batch and reads the full response.
 async fn send(
     client: &HttpClient,
     url: &str,
@@ -724,7 +663,7 @@ fn body_string(response: &http::Response<Bytes>) -> String {
     String::from_utf8_lossy(response.body()).into_owned()
 }
 
-/// Splits an over-sized batch in half and submits each (req: partition-and-retry).
+/// Splits an over-sized batch in half and submits each.
 async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) {
     if batch.len() <= 1 {
         tracing::error!("A single flow exceeds the upload size limit; dropping");
