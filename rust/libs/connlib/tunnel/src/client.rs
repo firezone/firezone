@@ -251,9 +251,9 @@ impl ClientState {
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers. The tunnel IPv4 is
-    /// taken from the live connection state; static-pool resources are joined in
-    /// only to label which pool(s) each device belongs to.
+    /// Builds the list of currently-connected device peers. The name and tunnel
+    /// IPs are taken from the live connection state; static-pool resources are
+    /// joined in only to label which pool(s) each device belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
@@ -268,6 +268,8 @@ impl ClientState {
                     return None;
                 };
                 let tunneled_ipv4 = peer.tun_ipv4();
+                let tunneled_ipv6 = peer.tun_ipv6();
+                let name = peer.remote_name().to_owned();
 
                 let mut pool_names = Vec::new();
                 for pool in &pools {
@@ -279,6 +281,15 @@ impl ClientState {
                                 pool_ipv4 = %device.ipv4.network_address(),
                                 %tunneled_ipv4,
                                 "Pool-provided IPv4 disagrees with the connection's tunnel IPv4"
+                            );
+                        }
+                        if device.ipv6.network_address() != tunneled_ipv6 {
+                            tracing::debug!(
+                                %client_id,
+                                pool = %pool.name,
+                                pool_ipv6 = %device.ipv6.network_address(),
+                                %tunneled_ipv6,
+                                "Pool-provided IPv6 disagrees with the connection's tunnel IPv6"
                             );
                         }
                         pool_names.push(pool.name.clone());
@@ -296,7 +307,9 @@ impl ClientState {
 
                 Some(ConnectedDeviceView {
                     id: *client_id,
+                    name,
                     tunneled_ipv4,
+                    tunneled_ipv6,
                     pools: pool_names,
                 })
             })

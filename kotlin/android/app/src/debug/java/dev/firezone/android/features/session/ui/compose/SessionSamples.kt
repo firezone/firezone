@@ -57,7 +57,13 @@ internal val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
         listOf("Sales Pool"),
         emptyList(),
     ).mapIndexed { index, pools ->
-        ConnectedDevice(id = "client-${index + 1}", tunIpv4 = "100.96.0.${index + 1}", pools = pools)
+        ConnectedDevice(
+            id = "client-${index + 1}",
+            name = "Demo Device ${index + 1}",
+            tunIpv4 = "100.96.0.${index + 1}",
+            tunIpv6 = "fd00:2021:1111::${(index + 1).toString(16)}",
+            pools = pools,
+        )
     }.toImmutableList()
 
 internal val sampleResources: ImmutableList<ResourceViewModel> =
