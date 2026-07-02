@@ -55,7 +55,10 @@ use std::{
     io::Write as _,
     net::IpAddr,
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread::JoinHandle,
 };
 
@@ -71,21 +74,38 @@ use tracing_subscriber::registry::LookupSpan;
 ///
 /// Keep the guard alive until process exit; dropping it drains and joins the
 /// writer thread.
+/// How many reports may queue for the writer thread before new ones are dropped.
+///
+/// Reports are a few hundred bytes each, so this bounds worst-case memory while
+/// absorbing flow-churn bursts (e.g. a port scan opening many flows at once)
+/// faster than the per-report fsync can drain them. Mobile gets a smaller buffer;
+/// it has less memory headroom and the OS may kill the tunnel process under
+/// memory pressure.
+const CHANNEL_CAPACITY: usize = if cfg!(any(target_os = "ios", target_os = "android")) {
+    1_000
+} else {
+    10_000
+};
+
 pub fn layer<S>(spool_root: PathBuf) -> (impl tracing_subscriber::Layer<S>, Guard)
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
     use tracing_subscriber::Layer as _;
 
-    let (tx, rx) = mpsc::channel::<Command>();
+    let (tx, rx) = mpsc::sync_channel::<Command>(CHANNEL_CAPACITY);
     let handle = std::thread::Builder::new()
         .name("flow-log-writer".to_owned())
         .spawn(move || writer_loop(&spool_root, &rx))
         .expect("Failed to spawn flow-log writer thread");
 
-    let layer = FlowLogLayer { tx: tx.clone() }.with_filter(tracing_subscriber::filter::filter_fn(
-        |metadata| metadata.target().starts_with("flow_logs::"),
-    ));
+    let layer = FlowLogLayer {
+        tx: tx.clone(),
+        dropped: AtomicU64::new(0),
+    }
+    .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+        metadata.target().starts_with("flow_logs::")
+    }));
 
     (
         layer,
@@ -144,7 +164,7 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 /// Dropping it drains the backlog and joins the thread, making every
 /// already-emitted report durable.
 pub struct Guard {
-    tx: mpsc::Sender<Command>,
+    tx: mpsc::SyncSender<Command>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -170,7 +190,9 @@ struct Report {
 }
 
 struct FlowLogLayer {
-    tx: mpsc::Sender<Command>,
+    tx: mpsc::SyncSender<Command>,
+    /// How many reports were dropped because the writer thread's queue was full.
+    dropped: AtomicU64,
 }
 
 impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
@@ -192,11 +214,27 @@ where
             return;
         };
 
-        if self.tx.send(Command::Write(report)).is_err() {
-            tracing::debug!(
-                target: "flow_log_writer",
-                "Flow-log writer thread is gone; dropping report"
-            );
+        // Never block the packet-processing path on disk IO: when the writer
+        // thread cannot keep up, drop the report instead.
+        match self.tx.try_send(Command::Write(report)) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Full(_)) => {
+                let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+
+                if dropped == 1 || dropped.is_multiple_of(1_000) {
+                    tracing::warn!(
+                        target: "flow_log_writer",
+                        dropped,
+                        "Flow-log writer cannot keep up; dropping reports"
+                    );
+                }
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                tracing::debug!(
+                    target: "flow_log_writer",
+                    "Flow-log writer thread is gone; dropping report"
+                );
+            }
         }
     }
 }
