@@ -15,8 +15,8 @@ use crate::updates::Release;
 /// `builder::Icon` is the icon shown *inside* a menu item (e.g. Site status),
 /// distinct from the tray `Icon` defined in this module.
 pub(crate) use builder::Icon as MenuItemIcon;
-use builder::item;
 pub use builder::{Entry, Event, Item, Menu, Window};
+use builder::{INTERNET_RESOURCE_DESCRIPTION, item, resource_detail};
 
 mod builder;
 mod compositor;
@@ -50,13 +50,10 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready 
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
-const NO_ACTIVITY: &str = "No activity";
-const GATEWAY_CONNECTED: &str = "Gateway connected";
-const ALL_GATEWAYS_OFFLINE: &str = "All Gateways offline";
-
 const ENABLED_SYMBOL: &str = "<->";
 const DISABLED_SYMBOL: &str = "—";
 
+const COPY_ADDRESS: &str = "Copy address";
 const ADD_FAVORITE: &str = "Add to favorites";
 const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
@@ -185,39 +182,49 @@ impl SignedIn {
         }
     }
 
-    /// Builds the submenu that has the resource address, name, desc,
-    /// sites online, etc.
+    /// Builds a Resource's submenu: its read-only details (address or
+    /// description, and Site status with a colored dot) above its actions (copy,
+    /// favorite, or enable / disable), separated by a divider.
     fn resource_submenu(&self, res: &ResourceView) -> Menu {
-        let mut submenu = Menu::default().resource_description(res);
+        let mut info = Menu::default();
 
         if res.is_internet_resource() {
-            submenu.add_separator();
-            if self.is_internet_resource_enabled() {
-                submenu.add_item(item(Event::DisableInternetResource, DISABLE));
-            } else {
-                submenu.add_item(item(Event::EnableInternetResource, ENABLE));
-            }
-        }
-
-        if !res.is_internet_resource() {
-            self.add_favorite_toggle(&mut submenu, res.id());
+            info = info.disabled(INTERNET_RESOURCE_DESCRIPTION);
+        } else if let Some(detail) = resource_detail(res) {
+            info.add_item(detail);
         }
 
         if let Some(site) = res.sites().first() {
-            let (status, icon) = match res.status() {
-                ResourceStatus::Unknown => (NO_ACTIVITY, MenuItemIcon::Grey),
-                ResourceStatus::Online => (GATEWAY_CONNECTED, MenuItemIcon::Green),
-                ResourceStatus::Offline => (ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
+            let icon = match res.status() {
+                ResourceStatus::Unknown => MenuItemIcon::Grey,
+                ResourceStatus::Online => MenuItemIcon::Green,
+                ResourceStatus::Offline => MenuItemIcon::Red,
             };
-
-            submenu
-                .separator()
-                .disabled("Site")
-                .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
-                .copyable_with_icon(status, icon)
-        } else {
-            submenu
+            info = info.copyable_with_icon(&site.name, icon);
         }
+
+        let mut actions = Menu::default();
+
+        if res.is_internet_resource() {
+            if self.is_internet_resource_enabled() {
+                actions = actions.item(Event::DisableInternetResource, DISABLE);
+            } else {
+                actions = actions.item(Event::EnableInternetResource, ENABLE);
+            }
+        } else {
+            let address = res.pastable();
+            if !address.is_empty() {
+                actions = actions.item(Event::Copy(address.into_owned()), COPY_ADDRESS);
+            }
+            self.add_favorite_toggle(&mut actions, res.id());
+        }
+
+        let mut submenu = info;
+        if !submenu.entries.is_empty() && !actions.entries.is_empty() {
+            submenu = submenu.separator();
+        }
+        submenu.entries.extend(actions.entries);
+        submenu
     }
 
     fn is_internet_resource_enabled(&self) -> bool {
@@ -452,8 +459,6 @@ mod tests {
     use anyhow::Result;
     use std::str::FromStr as _;
 
-    use builder::INTERNET_RESOURCE_DESCRIPTION;
-
     impl Menu {
         fn checkable<E: Into<Option<Event>>, S: Into<String>>(
             mut self,
@@ -516,6 +521,42 @@ mod tests {
         ]"#;
 
         serde_json::from_str(s).unwrap()
+    }
+
+    /// Expected submenu for the `cidr resource` from [`resources`].
+    fn cidr_submenu(toggle: Event, label: &str, checked: bool) -> Menu {
+        Menu::default()
+            .disabled("cidr resource")
+            .copyable_with_icon("test", MenuItemIcon::Grey)
+            .separator()
+            .item(Event::Copy("172.172.0.0/16".to_string()), COPY_ADDRESS)
+            .checkable(toggle, label, checked)
+    }
+
+    /// Expected submenu for the `MyCorp GitLab` resource from [`resources`].
+    fn gitlab_submenu(toggle: Event, label: &str, checked: bool) -> Menu {
+        Menu::default()
+            .item(
+                Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                "<https://gitlab.mycorp.com>",
+            )
+            .copyable_with_icon("test", MenuItemIcon::Green)
+            .separator()
+            .item(Event::Copy("gitlab.mycorp.com".to_string()), COPY_ADDRESS)
+            .checkable(toggle, label, checked)
+    }
+
+    /// Expected submenu for the Internet Resource from [`resources`].
+    fn internet_submenu() -> Menu {
+        Menu::default()
+            .disabled(INTERNET_RESOURCE_DESCRIPTION)
+            .copyable_with_icon("test", MenuItemIcon::Red)
+            .separator()
+            .item(Event::EnableInternetResource, ENABLE)
+    }
+
+    fn add_favorite(uuid: &str) -> Event {
+        Event::AddFavorite(ResourceId::from_str(uuid).unwrap())
     }
 
     #[test]
@@ -641,58 +682,21 @@ mod tests {
             .disabled(RESOURCES)
             .add_submenu(
                 "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .checkable(
-                        Event::AddFavorite(
-                            ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
+                cidr_submenu(
+                    add_favorite("73037362-715d-4a83-a749-f18eadd970e6"),
+                    ADD_FAVORITE,
+                    false,
+                ),
             )
             .add_submenu(
                 "MyCorp GitLab",
-                Menu::default()
-                    .item(
-                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
-                        "<https://gitlab.mycorp.com>",
-                    )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("MyCorp GitLab")
-                    .copyable("gitlab.mycorp.com")
-                    .checkable(
-                        Event::AddFavorite(
-                            ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
+                gitlab_submenu(
+                    add_favorite("03000143-e25e-45c7-aafb-144990e57dcd"),
+                    ADD_FAVORITE,
+                    false,
+                ),
             )
-            .add_submenu(
-                "— Internet Resource",
-                Menu::default()
-                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
-                    .separator()
-                    .item(Event::EnableInternetResource, ENABLE)
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
-            )
+            .add_submenu("— Internet Resource", internet_submenu())
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
@@ -721,60 +725,25 @@ mod tests {
             .disabled(FAVORITE_RESOURCES)
             .add_submenu(
                 "MyCorp GitLab",
-                Menu::default()
-                    .item(
-                        Event::Url("https://gitlab.mycorp.com".parse()?),
-                        "<https://gitlab.mycorp.com>",
-                    )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("MyCorp GitLab")
-                    .copyable("gitlab.mycorp.com")
-                    .checkable(
-                        Event::RemoveFavorite(ResourceId::from_str(
-                            "03000143-e25e-45c7-aafb-144990e57dcd",
-                        )?),
-                        REMOVE_FAVORITE,
-                        true,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
+                gitlab_submenu(
+                    Event::RemoveFavorite(ResourceId::from_str(
+                        "03000143-e25e-45c7-aafb-144990e57dcd",
+                    )?),
+                    REMOVE_FAVORITE,
+                    true,
+                ),
             )
-            .add_submenu(
-                "— Internet Resource",
-                Menu::default()
-                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
-                    .separator()
-                    .item(Event::EnableInternetResource, ENABLE)
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
-            )
+            .add_submenu("— Internet Resource", internet_submenu())
             .separator()
             .add_submenu(
                 OTHER_RESOURCES,
                 Menu::default().add_submenu(
                     "172.172.0.0/16",
-                    Menu::default()
-                        .copyable("cidr resource")
-                        .separator()
-                        .disabled("Resource")
-                        .copyable("172.172.0.0/16")
-                        .copyable("172.172.0.0/16")
-                        .checkable(
-                            Event::AddFavorite(ResourceId::from_str(
-                                "73037362-715d-4a83-a749-f18eadd970e6",
-                            )?),
-                            ADD_FAVORITE,
-                            false,
-                        )
-                        .separator()
-                        .disabled("Site")
-                        .copyable("test")
-                        .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
+                    cidr_submenu(
+                        add_favorite("73037362-715d-4a83-a749-f18eadd970e6"),
+                        ADD_FAVORITE,
+                        false,
+                    ),
                 ),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
@@ -807,58 +776,21 @@ mod tests {
             .disabled(RESOURCES)
             .add_submenu(
                 "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .checkable(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "73037362-715d-4a83-a749-f18eadd970e6",
-                        )?),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(NO_ACTIVITY, MenuItemIcon::Grey),
+                cidr_submenu(
+                    add_favorite("73037362-715d-4a83-a749-f18eadd970e6"),
+                    ADD_FAVORITE,
+                    false,
+                ),
             )
             .add_submenu(
                 "MyCorp GitLab",
-                Menu::default()
-                    .item(
-                        Event::Url("https://gitlab.mycorp.com".parse()?),
-                        "<https://gitlab.mycorp.com>",
-                    )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("MyCorp GitLab")
-                    .copyable("gitlab.mycorp.com")
-                    .checkable(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "03000143-e25e-45c7-aafb-144990e57dcd",
-                        )?),
-                        ADD_FAVORITE,
-                        false,
-                    )
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(GATEWAY_CONNECTED, MenuItemIcon::Green),
+                gitlab_submenu(
+                    add_favorite("03000143-e25e-45c7-aafb-144990e57dcd"),
+                    ADD_FAVORITE,
+                    false,
+                ),
             )
-            .add_submenu(
-                "— Internet Resource",
-                Menu::default()
-                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
-                    .separator()
-                    .item(Event::EnableInternetResource, ENABLE)
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable_with_icon(ALL_GATEWAYS_OFFLINE, MenuItemIcon::Red),
-            )
+            .add_submenu("— Internet Resource", internet_submenu())
             .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
