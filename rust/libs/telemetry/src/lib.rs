@@ -42,9 +42,6 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
-/// Resolves an ingest host through telemetry's resolver: connlib's captured
-/// upstreams while a session owns the system resolver, the system resolver
-/// otherwise.
 pub async fn resolve_ingest_host(host: &str) -> Result<Vec<std::net::IpAddr>> {
     ingest::resolve_host(host).await
 }
