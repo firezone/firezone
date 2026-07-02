@@ -42,6 +42,10 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
+pub async fn resolve_ingest_host(host: &str) -> Result<Vec<std::net::IpAddr>> {
+    ingest::resolve_host(host).await
+}
+
 /// Drops the current telemetry ingest connections so they are re-established lazily.
 ///
 /// Call this on network changes, alongside resetting connlib. Triggers a

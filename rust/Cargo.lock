@@ -2575,6 +2575,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-log-upload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "backoff",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "flow-log-spool",
+ "http",
+ "http-client",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "socket-factory",
+ "telemetry",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+ "windows-security",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
