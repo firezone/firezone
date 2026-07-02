@@ -7,6 +7,9 @@
 #
 # Unlike the APT layout, a DNF repository keeps the packages and the generated `repodata/` together in the directory pointed at by `baseurl`.
 # Each channel is therefore published under `<distribution>/` (holding the `.rpm` files and their `repodata/`) and the packages in there need to atomically change with the metadata.
+#
+# Every imported package is signed with the Firezone package-signing key so that clients work with DNF's default `gpgcheck=1`.
+# The armoured public key is published at the repository root (`firezone.gpg`) for use as the `gpgkey` in the client `.repo` file.
 
 set -euo pipefail
 shopt -s globstar
@@ -28,6 +31,15 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+# Configure `rpm --addsign` to sign non-interactively with our GnuPG key. The
+# loopback pinentry mirrors the GnuPG config set up by the `setup-gpg` action.
+cat >"${HOME}/.rpmmacros" <<EOF
+%_signature gpg
+%_gpg_name ${GPG_KEY_ID}
+%__gpg /usr/bin/gpg
+%__gpg_sign_cmd %{__gpg} --no-verbose --no-armor --batch --pinentry-mode loopback -u "%{_gpg_name}" --detach-sign --output %{__signature_filename} %{__plaintext_filename}
+EOF
 
 for DISTRIBUTION in "stable" "preview"; do
     REPO_DIR="${WORK_DIR}/${DISTRIBUTION}"
@@ -57,7 +69,7 @@ for DISTRIBUTION in "stable" "preview"; do
         2>&1 | grep -v "WARNING" || true
 
     if [ "$(ls -A "${IMPORT_DIR}")" ]; then
-        echo "Normalizing package names..."
+        echo "Normalizing and signing package names..."
 
         for pkg in "${IMPORT_DIR}"/**; do
             if [[ ! "$pkg" == *.rpm ]]; then
@@ -76,6 +88,9 @@ for DISTRIBUTION in "stable" "preview"; do
 
                 echo "Importing $(basename "$pkg") as ${NORMALIZED_NAME}"
                 mv --force "$pkg" "${REPO_DIR}/${NORMALIZED_NAME}"
+
+                # Sign so clients can verify with the default `gpgcheck=1`.
+                rpm --addsign "${REPO_DIR}/${NORMALIZED_NAME}"
             fi
         done
     fi
@@ -115,6 +130,18 @@ for DISTRIBUTION in "stable" "preview"; do
         --overwrite \
         --output table
 done
+
+# Publish the public key so it can be referenced as the `gpgkey` in the client `.repo`.
+echo "Uploading public signing key..."
+gpg --armor --export "${GPG_KEY_ID}" >"${WORK_DIR}/firezone.gpg"
+az storage blob upload \
+    --container-name rpm \
+    --name firezone.gpg \
+    --file "${WORK_DIR}/firezone.gpg" \
+    --auth-mode login \
+    --account-name "${AZURE_STORAGE_ACCOUNT}" \
+    --overwrite \
+    --output table
 
 # Delete import files
 az storage blob delete-batch \
