@@ -295,6 +295,7 @@ defmodule PortalWeb.Router do
           live "/", Index
           live "/new", Index, :new
           live "/:id/edit", Index, :edit
+          live "/:id", Index, :show
         end
       end
     end

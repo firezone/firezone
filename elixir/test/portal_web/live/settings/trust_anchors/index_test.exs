@@ -78,8 +78,8 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
     end
   end
 
-  describe "row details" do
-    test "expands and collapses a row to show certificate details", %{
+  describe "show panel" do
+    test "opens the show panel when a row is clicked and closes it", %{
       conn: conn,
       account: account,
       actor: actor
@@ -98,16 +98,49 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       refute html =~ "Company Issuing CA"
 
-      expanded_html = render_click(lv, "toggle_trust_anchor_row", %{"id" => trust_anchor.id})
+      html =
+        lv
+        |> element("tr[phx-click='select_trust_anchor'][phx-value-id='#{trust_anchor.id}']")
+        |> render_click()
 
-      assert expanded_html =~ "Company Issuing CA"
-      assert expanded_html =~ "Company Root CA"
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+      assert html =~ "Company Issuing CA"
+      assert html =~ "Company Root CA"
+      assert html =~ Base.encode16(:crypto.hash(:sha256, sample_cert_der()), case: :lower)
 
-      assert expanded_html =~
-               Base.encode16(:crypto.hash(:sha256, sample_cert_der()), case: :lower)
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+      refute render(lv) =~ "Company Issuing CA"
+    end
 
-      collapsed_html = render_click(lv, "toggle_trust_anchor_row", %{"id" => trust_anchor.id})
-      refute collapsed_html =~ "Company Issuing CA"
+    test "closes the show panel on escape", %{conn: conn, account: account, actor: actor} do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Corporate Issuing CA")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+    end
+
+    test "Edit button navigates to the edit form", %{conn: conn, account: account, actor: actor} do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Corporate Issuing CA")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      lv
+      |> element(
+        "a[href='#{~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit"}']"
+      )
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+      assert render(lv) =~ "Edit Trust Anchor"
     end
   end
 
@@ -419,7 +452,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   end
 
   describe "delete" do
-    test "deletes trust anchor through confirm flow", %{
+    test "deletes trust anchor through the show panel confirm flow", %{
       conn: conn,
       account: account,
       actor: actor
@@ -429,41 +462,16 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
-      lv
-      |> element("button[phx-click='toggle_trust_anchor_actions'][phx-value-id='#{trust_anchor.id}']")
-      |> render_click()
+      render_click(lv, "confirm_delete_trust_anchor")
+      assert render(lv) =~ "Delete this trust anchor?"
 
-      lv
-      |> element("button[phx-click='request_delete'][phx-value-id='#{trust_anchor.id}']")
-      |> render_click()
+      render_click(lv, "delete_trust_anchor")
 
-      html = render(lv)
-      assert html =~ "Delete this trust anchor?"
-
-      lv
-      |> element("button[phx-click='delete'][phx-value-id='#{trust_anchor.id}']")
-      |> render_click()
-
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
       refute render(lv) =~ "Deletable CA"
       refute Repo.get_by(TrustAnchor, account_id: account.id, id: trust_anchor.id)
-    end
-
-    test "does not crash when deleting an id that no longer exists", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors")
-
-      html = render_click(lv, "delete", %{"id" => Ecto.UUID.generate()})
-
-      assert Process.alive?(lv.pid)
-      assert html =~ "Trust Anchors"
     end
 
     test "does not crash when the trust anchor was already deleted by another session", %{
@@ -476,11 +484,12 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/trust_anchors")
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
 
       Repo.delete!(trust_anchor)
 
-      html = render_click(lv, "delete", %{"id" => trust_anchor.id})
+      render_click(lv, "confirm_delete_trust_anchor")
+      html = render_click(lv, "delete_trust_anchor")
 
       assert Process.alive?(lv.pid)
       refute html =~ "Raced CA"

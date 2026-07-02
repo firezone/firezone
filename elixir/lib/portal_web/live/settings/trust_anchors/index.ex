@@ -43,8 +43,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         |> assign(trust_anchors: trust_anchors)
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
-        |> assign(pending_delete_id: nil, open_trust_anchor_actions_id: nil)
-        |> assign(expanded_trust_anchor_id: nil)
+        |> assign(confirm_delete?: false)
         |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
@@ -64,7 +63,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     socket =
       socket
-      |> assign(selected_trust_anchor: nil, input_mode: :paste, open_trust_anchor_actions_id: nil)
+      |> assign(selected_trust_anchor: nil, input_mode: :paste, confirm_delete?: false)
       |> assign(form: to_form(changeset, as: "trust_anchor"))
 
     {:noreply, socket}
@@ -76,12 +75,21 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     socket =
       socket
-      |> assign(
-        selected_trust_anchor: trust_anchor,
-        input_mode: :paste,
-        open_trust_anchor_actions_id: nil
-      )
+      |> assign(selected_trust_anchor: trust_anchor, input_mode: :paste, confirm_delete?: false)
       |> assign(form: to_form(changeset, as: "trust_anchor"))
+
+    {:noreply, socket}
+  end
+
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :show}} = socket) do
+    trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
+
+    socket =
+      assign(socket,
+        selected_trust_anchor: trust_anchor,
+        form: nil,
+        confirm_delete?: false
+      )
 
     {:noreply, socket}
   end
@@ -92,8 +100,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
        selected_trust_anchor: nil,
        form: nil,
        input_mode: :paste,
-       pending_delete_id: nil,
-       open_trust_anchor_actions_id: nil
+       confirm_delete?: false
      )}
   end
 
@@ -158,23 +165,39 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Created
                   </th>
-                  <th class="px-6 py-2.5 w-6"></th>
-                  <th class="px-6 py-2.5 w-10"></th>
                 </tr>
               </thead>
               <tbody>
                 <.trust_anchor_row
                   :for={trust_anchor <- @trust_anchors}
-                  account={@account}
                   trust_anchor={trust_anchor}
-                  pending_delete_id={@pending_delete_id}
-                  open_trust_anchor_actions_id={@open_trust_anchor_actions_id}
-                  expanded_trust_anchor_id={@expanded_trust_anchor_id}
+                  selected?={
+                    !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
+                  }
                 />
               </tbody>
             </table>
           <% end %>
         </div>
+      </div>
+
+    <!-- Show Panel (:show) -->
+      <div
+        id="trust-anchor-show-panel"
+        class={[
+          "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+          "bg-elevated border-l border-border-strong",
+          "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+          "transition-transform duration-200 ease-in-out",
+          (@live_action == :show && "translate-x-0") || "translate-x-full"
+        ]}
+      >
+        <.trust_anchor_show_panel
+          :if={@live_action == :show && @selected_trust_anchor}
+          account={@account}
+          trust_anchor={@selected_trust_anchor}
+          confirm_delete?={@confirm_delete?}
+        />
       </div>
 
     <!-- Creation Panel (:new) -->
@@ -267,146 +290,160 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     """
   end
 
-  attr :account, :any, required: true
   attr :trust_anchor, :any, required: true
-  attr :pending_delete_id, :any, required: true
-  attr :open_trust_anchor_actions_id, :string, default: nil
-  attr :expanded_trust_anchor_id, :string, default: nil
+  attr :selected?, :boolean, required: true
 
   defp trust_anchor_row(assigns) do
-    is_pending_delete = assigns.pending_delete_id == assigns.trust_anchor.id
-    is_expanded = assigns.expanded_trust_anchor_id == assigns.trust_anchor.id
+    ~H"""
+    <tr
+      phx-click="select_trust_anchor"
+      phx-value-id={@trust_anchor.id}
+      class={[
+        "border-b border-border cursor-pointer transition-colors",
+        @selected? && "bg-raised",
+        !@selected? && "hover:bg-raised"
+      ]}
+    >
+      <td class="px-6 py-3">
+        <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
+        <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
+          {@trust_anchor.id}
+        </div>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <span class="text-sm text-body">{cert_count_label(@trust_anchor.certificates)}</span>
+      </td>
+      <td class="px-6 py-3 w-36">
+        <span class="text-sm text-body">
+          {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
+        </span>
+      </td>
+    </tr>
+    """
+  end
 
-    certificate_details =
-      if is_expanded, do: Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
+  attr :account, :any, required: true
+  attr :trust_anchor, :any, required: true
+  attr :confirm_delete?, :boolean, required: true
 
-    assigns =
-      assign(assigns,
-        is_pending_delete: is_pending_delete,
-        is_expanded: is_expanded,
-        certificate_details: certificate_details
-      )
+  defp trust_anchor_show_panel(assigns) do
+    certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
+    assigns = assign(assigns, :certificate_details, certificate_details)
 
     ~H"""
-    <tr class={[
-      "border-b transition-colors",
-      @is_pending_delete && "border-red-200 bg-red-50",
-      !@is_pending_delete && "border-border hover:bg-raised"
-    ]}>
-      <%= if @is_pending_delete do %>
-        <td class="px-6 py-3">
-          <div class="text-sm font-medium text-danger truncate">{@trust_anchor.name}</div>
-          <div class="font-mono text-[10px] text-danger/80 mt-0.5 truncate">{@trust_anchor.id}</div>
-        </td>
-        <td colspan="4" class="px-6 py-3">
-          <div class="flex items-center gap-4">
-            <span class="text-xs text-danger">
-              Delete this trust anchor? Certificates issued by it will no longer be trusted, and this cannot be undone.
-            </span>
-            <div class="flex items-center gap-2 ml-auto shrink-0">
-              <.button phx-click="cancel_delete" size="xs">
+    <div class="flex flex-col h-full overflow-hidden">
+      <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <h2 class="text-sm font-semibold text-heading truncate">{@trust_anchor.name}</h2>
+            <p class="font-mono text-[10px] text-subtle mt-0.5 truncate">{@trust_anchor.id}</p>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <.link
+              patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
+              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+            >
+              <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+            </.link>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <section>
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+            Details
+          </h3>
+          <dl class="space-y-2.5">
+            <div>
+              <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
+              <dd class="text-xs text-body">
+                {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <div class="border-t border-border"></div>
+
+        <section>
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
+            Certificates ({length(@certificate_details)})
+          </h3>
+          <div class="space-y-2">
+            <div
+              :for={detail <- @certificate_details}
+              class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs border border-border rounded p-3 bg-surface"
+            >
+              <div>
+                <p class="text-subtle font-medium mb-1">Common Name</p>
+                <p class="text-heading truncate">{detail.common_name || "—"}</p>
+              </div>
+              <div>
+                <p class="text-subtle font-medium mb-1">Issuer</p>
+                <p class="text-heading truncate">{detail.issuer_common_name || "—"}</p>
+              </div>
+              <div>
+                <p class="text-subtle font-medium mb-1">Expires</p>
+                <p class="text-heading">
+                  {if detail.not_after,
+                    do: PortalWeb.Format.short_date(detail.not_after),
+                    else: "—"}
+                </p>
+              </div>
+              <div>
+                <p class="text-subtle font-medium mb-1">Serial Number</p>
+                <p class="text-heading font-mono truncate">{detail.serial_number || "—"}</p>
+              </div>
+              <div class="col-span-2">
+                <p class="text-subtle font-medium mb-1">Fingerprint (SHA-256)</p>
+                <p class="text-heading font-mono break-all">{detail.fingerprint}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="border-t border-border"></div>
+
+        <section>
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+            Danger Zone
+          </h3>
+          <button
+            :if={!@confirm_delete?}
+            type="button"
+            phx-click="confirm_delete_trust_anchor"
+            class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
+          >
+            <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
+          </button>
+          <div
+            :if={@confirm_delete?}
+            class="rounded border border-error/20 bg-error-light p-3 space-y-3"
+          >
+            <p class="text-xs text-error">
+              <span class="font-medium">Delete this trust anchor?</span>
+              <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
+            </p>
+            <div class="flex items-center gap-2">
+              <.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
                 Cancel
               </.button>
               <.button
-                phx-click="delete"
-                phx-value-id={@trust_anchor.id}
-                size="xs"
+                type="button"
+                phx-click="delete_trust_anchor"
                 style="danger"
+                size="xs"
                 class="font-medium"
               >
                 Delete
               </.button>
             </div>
           </div>
-        </td>
-      <% else %>
-        <td class="px-6 py-3">
-          <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
-          <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
-            {@trust_anchor.id}
-          </div>
-        </td>
-        <td class="px-6 py-3 w-36">
-          <span class="text-sm text-body">{cert_count_label(@trust_anchor.certificates)}</span>
-        </td>
-        <td class="px-6 py-3 w-36">
-          <span class="text-sm text-body">
-            {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
-          </span>
-        </td>
-        <td class="px-6 py-3 w-6">
-          <button
-            type="button"
-            phx-click="toggle_trust_anchor_row"
-            phx-value-id={@trust_anchor.id}
-            class="text-subtle hover:text-heading"
-          >
-            <.icon
-              name={if @is_expanded, do: "ri-arrow-up-s-line", else: "ri-arrow-down-s-line"}
-              class="w-4 h-4"
-            />
-          </button>
-        </td>
-        <td class="px-6 py-3 w-10">
-          <div class="flex justify-end">
-            <.actions_dropdown
-              open={@open_trust_anchor_actions_id == @trust_anchor.id}
-              close_event="close_trust_anchor_actions"
-              phx-click="toggle_trust_anchor_actions"
-              phx-value-id={@trust_anchor.id}
-            >
-              <.link
-                patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
-                class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
-              >
-                <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-              </.link>
-              <div class="my-1 border-t border-border"></div>
-              <button
-                phx-click="request_delete"
-                phx-value-id={@trust_anchor.id}
-                class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
-              >
-                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
-              </button>
-            </.actions_dropdown>
-          </div>
-        </td>
-      <% end %>
-    </tr>
-    <tr :if={@is_expanded} class="border-b border-border bg-raised">
-      <td colspan="5" class="px-6 py-3">
-        <div class="space-y-2">
-          <div
-            :for={detail <- @certificate_details}
-            class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 text-xs border border-border rounded p-3 bg-surface"
-          >
-            <div>
-              <p class="text-subtle font-medium mb-1">Common Name</p>
-              <p class="text-heading truncate">{detail.common_name || "—"}</p>
-            </div>
-            <div>
-              <p class="text-subtle font-medium mb-1">Issuer</p>
-              <p class="text-heading truncate">{detail.issuer_common_name || "—"}</p>
-            </div>
-            <div>
-              <p class="text-subtle font-medium mb-1">Expires</p>
-              <p class="text-heading">
-                {if detail.not_after, do: PortalWeb.Format.short_date(detail.not_after), else: "—"}
-              </p>
-            </div>
-            <div>
-              <p class="text-subtle font-medium mb-1">Serial Number</p>
-              <p class="text-heading font-mono truncate">{detail.serial_number || "—"}</p>
-            </div>
-            <div class="col-span-2 sm:col-span-4">
-              <p class="text-subtle font-medium mb-1">Fingerprint (SHA-256)</p>
-              <p class="text-heading font-mono break-all">{detail.fingerprint}</p>
-            </div>
-          </div>
-        </div>
-      </td>
-    </tr>
+        </section>
+      </div>
+    </div>
     """
   end
 
@@ -558,12 +595,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         %{"key" => "Escape"},
         %{assigns: %{live_action: action}} = socket
       )
-      when action in [:new, :edit] do
+      when action in [:new, :edit, :show] do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors")}
   end
 
   def handle_event("handle_keydown", _params, socket) do
     {:noreply, socket}
+  end
+
+  def handle_event("select_trust_anchor", %{"id" => id}, socket) do
+    {:noreply,
+     push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/trust_anchors/#{id}")}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -638,77 +680,45 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
   end
 
-  def handle_event("request_delete", %{"id" => id}, socket) do
-    {:noreply, assign(socket, pending_delete_id: id, open_trust_anchor_actions_id: nil)}
+  def handle_event("confirm_delete_trust_anchor", _params, socket) do
+    {:noreply, assign(socket, confirm_delete?: true)}
   end
 
-  def handle_event("cancel_delete", _params, socket) do
-    {:noreply, assign(socket, pending_delete_id: nil)}
+  def handle_event("cancel_delete_trust_anchor", _params, socket) do
+    {:noreply, assign(socket, confirm_delete?: false)}
   end
 
-  def handle_event("delete", %{"id" => id}, socket) do
-    case Enum.find(socket.assigns.trust_anchors, &(&1.id == id)) do
-      nil ->
-        {:noreply, assign(socket, pending_delete_id: nil, open_trust_anchor_actions_id: nil)}
+  def handle_event("delete_trust_anchor", _params, socket) do
+    case Safe.scoped(socket.assigns.selected_trust_anchor, socket.assigns.subject)
+         |> Safe.delete() do
+      {:ok, _trust_anchor} ->
+        socket =
+          socket
+          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> put_flash(:success, "Trust anchor deleted successfully")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
 
-      trust_anchor ->
-        case Safe.scoped(trust_anchor, socket.assigns.subject) |> Safe.delete() do
-          {:ok, _trust_anchor} ->
-            socket =
-              socket
-              |> assign(
-                trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
-                pending_delete_id: nil,
-                open_trust_anchor_actions_id: nil
-              )
-              |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+        {:noreply, socket}
 
-            {:noreply, socket}
+      {:error, _reason} ->
+        socket =
+          socket
+          |> put_flash(:error, "Could not delete trust anchor. Please try again.")
+          |> assign(confirm_delete?: false)
 
-          {:error, _reason} ->
-            socket =
-              socket
-              |> put_flash(:error, "Could not delete trust anchor. Please try again.")
-              |> assign(
-                trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
-                pending_delete_id: nil,
-                open_trust_anchor_actions_id: nil
-              )
-
-            {:noreply, socket}
-        end
+        {:noreply, socket}
     end
   rescue
-    # Another session deleted this trust anchor after it was loaded into
-    # `socket.assigns.trust_anchors`, so `Repo.delete` affected zero rows.
-    # The end state already matches the user's intent, so just refresh.
+    # Another session deleted this trust anchor after it was loaded into the
+    # panel, so `Repo.delete` affected zero rows. The end state already
+    # matches the user's intent, so just refresh and close.
     Ecto.StaleEntryError ->
       socket =
-        assign(socket,
-          trust_anchors: Database.list_trust_anchors(socket.assigns.subject),
-          pending_delete_id: nil,
-          open_trust_anchor_actions_id: nil
-        )
+        socket
+        |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
 
       {:noreply, socket}
-  end
-
-  def handle_event("toggle_trust_anchor_actions", %{"id" => id}, socket) do
-    current = socket.assigns.open_trust_anchor_actions_id
-    next = if current == id, do: nil, else: id
-
-    {:noreply, assign(socket, open_trust_anchor_actions_id: next)}
-  end
-
-  def handle_event("close_trust_anchor_actions", _params, socket) do
-    {:noreply, assign(socket, open_trust_anchor_actions_id: nil)}
-  end
-
-  def handle_event("toggle_trust_anchor_row", %{"id" => id}, socket) do
-    current = socket.assigns.expanded_trust_anchor_id
-    next = if current == id, do: nil, else: id
-
-    {:noreply, assign(socket, expanded_trust_anchor_id: next)}
   end
 
   defp build_creation_changeset(attrs) do
