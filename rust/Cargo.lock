@@ -2582,6 +2582,7 @@ dependencies = [
  "backoff",
  "base64 0.22.1",
  "bytes",
+ "chrono",
  "flow-log-spool",
  "http",
  "http-client",
