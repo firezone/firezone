@@ -1,12 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    collections::BTreeMap,
-    fmt, mem,
-    str::FromStr,
-    sync::{Arc, mpsc},
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use api_url::ApiUrl;
@@ -249,32 +243,15 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
 }
 
 /// Flushes events to sentry.io and drops the guard. A no-op if not started.
-///
-/// Runs on the ingest runtime's blocking pool with a bounded wait, so it needs no
-/// caller runtime, never enters a runtime context and is guaranteed to return.
 pub fn stop() {
     let Some(inner) = GUARD.lock().take() else {
         return;
     };
 
-    tracing::info!("Stopping telemetry");
+    // This blocks the current thread but the transport uses its own runtime so this is safe.
+    let flushed = inner.flush(Some(Duration::from_secs(1)));
 
-    // Sentry uses blocking IO for flushing and the guard-drop joins the transport
-    // thread, so delegate both to the blocking pool instead of the caller's thread.
-    let (tx, rx) = mpsc::sync_channel(1);
-    ingest::RUNTIME.spawn_blocking(move || {
-        let flushed = inner.flush(Some(Duration::from_secs(1)));
-        drop(inner);
-        let _ = tx.send(flushed);
-    });
-
-    // Sentry's flush can block past its own timeout on a full transport queue;
-    // this bound guarantees we return regardless.
-    match rx.recv_timeout(Duration::from_secs(1)) {
-        Ok(true) => tracing::debug!("Flushed telemetry"),
-        Ok(false) => tracing::error!("Failed to flush telemetry events to sentry.io"),
-        Err(_) => tracing::error!("Failed to stop telemetry session within 2s"),
-    }
+    tracing::info!(%flushed, "Stopped telemetry");
 }
 
 pub fn is_active() -> bool {
