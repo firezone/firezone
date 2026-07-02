@@ -3,8 +3,10 @@
 //! The spool, written by `tunnel::FlowLogWriter`, nests one directory per
 //! authorization under a role directory:
 //! `<root>/<role>/<policy_authorization_id>/`. Each holds that authorization's
-//! Bearer `token` plus per-flow reports: `<flow_identity>.start.json` (open) and
-//! `<flow_identity>.end.json` (completed). Each pass uploads one batch per
+//! Bearer `token` plus per-flow reports: `<flow_start>-<flow_identity>.start.json`
+//! (open) and `<flow_start>-<flow_identity>.end.json` (completed), where
+//! `<flow_start>` is the flow's start time as zero-padded unix seconds, so lexical
+//! name order is oldest-first. Each pass uploads one batch per
 //! authorization over the caller's tunnel-bypassing [`SocketFactory`] and deletes
 //! what it sent; submits are idempotent (the portal upserts by flow identity), so
 //! ambiguous failures retry the whole batch.
@@ -475,14 +477,13 @@ fn collect_batch(dir: &Path, batch_size: usize) -> Option<(String, Vec<Pending>,
 
 /// Lists a directory's report files, oldest first.
 ///
-/// Directory iteration order is unspecified and report names are flow-identity
-/// hashes, so the ordering has to come from mtimes.
+/// Report names start with the flow's zero-padded start timestamp and `read_dir`
+/// order is unspecified, so a lexical sort of the names yields oldest-first.
 fn report_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
+        let path = entry?.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
@@ -490,16 +491,12 @@ fn report_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
             continue;
         }
 
-        let mtime = entry
-            .metadata()?
-            .modified()
-            .unwrap_or(SystemTime::UNIX_EPOCH);
-        files.push((mtime, path));
+        files.push(path);
     }
 
     files.sort();
 
-    Ok(files.into_iter().map(|(_, path)| path).collect())
+    Ok(files)
 }
 
 /// Loads the flow reported at `path` into a [`Pending`] upload.
@@ -769,15 +766,6 @@ mod tests {
         std::fs::write(path, flow_log_spool::serialize(&payload).unwrap()).unwrap();
     }
 
-    fn set_mtime(path: &Path, mtime: SystemTime) {
-        std::fs::File::options()
-            .write(true)
-            .open(path)
-            .unwrap()
-            .set_modified(mtime)
-            .unwrap();
-    }
-
     #[test]
     fn configure_then_read_config_roundtrips() {
         let root = tempfile::tempdir().unwrap();
@@ -904,13 +892,14 @@ mod tests {
     #[test]
     fn report_files_lists_oldest_first_and_skips_the_token() {
         let dir = tempfile::tempdir().unwrap();
-        let now = SystemTime::now();
 
         std::fs::write(dir.path().join("token"), "a-token").unwrap();
-        for (name, age_secs) in [("b.start.json", 10), ("a.end.json", 30), ("c.end.json", 20)] {
-            let path = dir.path().join(name);
-            std::fs::write(&path, "{}").unwrap();
-            set_mtime(&path, now - Duration::from_secs(age_secs));
+        for name in [
+            "1700000030-bbb.start.json",
+            "1700000010-aaa.end.json",
+            "1700000020-ccc.end.json",
+        ] {
+            std::fs::write(dir.path().join(name), "{}").unwrap();
         }
 
         let files = report_files(dir.path()).unwrap();
@@ -919,7 +908,14 @@ mod tests {
             .map(|path| path.file_name().unwrap().to_str().unwrap())
             .collect::<Vec<_>>();
 
-        assert_eq!(names, ["a.end.json", "c.end.json", "b.start.json"]);
+        assert_eq!(
+            names,
+            [
+                "1700000010-aaa.end.json",
+                "1700000020-ccc.end.json",
+                "1700000030-bbb.start.json"
+            ]
+        );
     }
 
     #[test]
