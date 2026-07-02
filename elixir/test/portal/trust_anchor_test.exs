@@ -6,11 +6,17 @@ defmodule Portal.TrustAnchorTest do
   import Portal.TrustAnchorFixtures
 
   alias Portal.{TrustAnchor, TrustAnchorCertificate}
+  alias Portal.Crypto.X509
 
   defp build_changeset(attrs) do
     %TrustAnchor{}
     |> cast(attrs, [:name, :certs, :account_id])
     |> TrustAnchor.changeset()
+  end
+
+  defp certificate_der(%TrustAnchorCertificate{pem: pem}) do
+    {:ok, [{_type, der, _headers}]} = X509.pem_decode(pem)
+    der
   end
 
   describe "changeset/1 basic validations" do
@@ -269,7 +275,7 @@ defmodule Portal.TrustAnchorTest do
 
       assert trust_anchor.account_id == account.id
       assert trust_anchor.name == "Corporate Issuing CA"
-      assert Enum.map(trust_anchor.certificates, & &1.der) == [sample_cert_der()]
+      assert Enum.map(trust_anchor.certificates, &certificate_der/1) == [sample_cert_der()]
       assert trust_anchor.inserted_at
       assert trust_anchor.updated_at
     end
@@ -296,7 +302,7 @@ defmodule Portal.TrustAnchorTest do
         |> Repo.preload(:certificates)
 
       assert reloaded_trust_anchor
-      certs = MapSet.new(reloaded_trust_anchor.certificates, & &1.der)
+      certs = MapSet.new(reloaded_trust_anchor.certificates, &certificate_der/1)
       assert certs == MapSet.new([sample_cert_der(), sample_additional_ca_der()])
     end
 
@@ -314,7 +320,7 @@ defmodule Portal.TrustAnchorTest do
 
       assert trust_anchor.name == "Updated Issuing CA"
 
-      certs = MapSet.new(trust_anchor.certificates, & &1.der)
+      certs = MapSet.new(trust_anchor.certificates, &certificate_der/1)
       assert certs == MapSet.new([sample_cert_der(), sample_additional_ca_der()])
     end
 
@@ -391,7 +397,7 @@ defmodule Portal.TrustAnchorTest do
         |> TrustAnchor.changeset()
         |> Repo.insert()
 
-      assert Enum.map(second_trust_anchor.certificates, & &1.der) == [sample_cert_der()]
+      assert Enum.map(second_trust_anchor.certificates, &certificate_der/1) == [sample_cert_der()]
     end
 
     test "allows replacing a trust anchor's certs with the same fingerprint on update" do
@@ -403,7 +409,7 @@ defmodule Portal.TrustAnchorTest do
         |> TrustAnchor.changeset()
         |> Repo.update()
 
-      assert Enum.map(updated.certificates, & &1.der) == [sample_cert_der()]
+      assert Enum.map(updated.certificates, &certificate_der/1) == [sample_cert_der()]
     end
   end
 end

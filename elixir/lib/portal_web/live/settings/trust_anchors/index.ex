@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3]
 
   alias Portal.{Safe, TrustAnchor}
+  alias Portal.Crypto.X509
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
@@ -43,6 +44,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         |> assign(selected_trust_anchor: nil)
         |> assign(form: nil, input_mode: :paste)
         |> assign(pending_delete_id: nil, open_trust_anchor_actions_id: nil)
+        |> assign(expanded_trust_anchor_id: nil)
         |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
@@ -156,6 +158,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
                     Created
                   </th>
+                  <th class="px-6 py-2.5 w-6"></th>
                   <th class="px-6 py-2.5 w-10"></th>
                 </tr>
               </thead>
@@ -166,6 +169,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   trust_anchor={trust_anchor}
                   pending_delete_id={@pending_delete_id}
                   open_trust_anchor_actions_id={@open_trust_anchor_actions_id}
+                  expanded_trust_anchor_id={@expanded_trust_anchor_id}
                 />
               </tbody>
             </table>
@@ -267,10 +271,21 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   attr :trust_anchor, :any, required: true
   attr :pending_delete_id, :any, required: true
   attr :open_trust_anchor_actions_id, :string, default: nil
+  attr :expanded_trust_anchor_id, :string, default: nil
 
   defp trust_anchor_row(assigns) do
     is_pending_delete = assigns.pending_delete_id == assigns.trust_anchor.id
-    assigns = assign(assigns, is_pending_delete: is_pending_delete)
+    is_expanded = assigns.expanded_trust_anchor_id == assigns.trust_anchor.id
+
+    certificate_details =
+      if is_expanded, do: Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
+
+    assigns =
+      assign(assigns,
+        is_pending_delete: is_pending_delete,
+        is_expanded: is_expanded,
+        certificate_details: certificate_details
+      )
 
     ~H"""
     <tr class={[
@@ -283,7 +298,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div class="text-sm font-medium text-danger truncate">{@trust_anchor.name}</div>
           <div class="font-mono text-[10px] text-danger/80 mt-0.5 truncate">{@trust_anchor.id}</div>
         </td>
-        <td colspan="3" class="px-6 py-3">
+        <td colspan="4" class="px-6 py-3">
           <div class="flex items-center gap-4">
             <span class="text-xs text-danger">
               Delete this trust anchor? Certificates issued by it will no longer be trusted, and this cannot be undone.
@@ -319,6 +334,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
           </span>
         </td>
+        <td class="px-6 py-3 w-6">
+          <button
+            type="button"
+            phx-click="toggle_trust_anchor_row"
+            phx-value-id={@trust_anchor.id}
+            class="text-subtle hover:text-heading"
+          >
+            <.icon
+              name={if @is_expanded, do: "ri-arrow-up-s-line", else: "ri-arrow-down-s-line"}
+              class="w-4 h-4"
+            />
+          </button>
+        </td>
         <td class="px-6 py-3 w-10">
           <div class="flex justify-end">
             <.actions_dropdown
@@ -345,6 +373,39 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           </div>
         </td>
       <% end %>
+    </tr>
+    <tr :if={@is_expanded} class="border-b border-border bg-raised">
+      <td colspan="5" class="px-6 py-3">
+        <div class="space-y-2">
+          <div
+            :for={detail <- @certificate_details}
+            class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 text-xs border border-border rounded p-3 bg-surface"
+          >
+            <div>
+              <p class="text-subtle font-medium mb-1">Common Name</p>
+              <p class="text-heading truncate">{detail.common_name || "—"}</p>
+            </div>
+            <div>
+              <p class="text-subtle font-medium mb-1">Issuer</p>
+              <p class="text-heading truncate">{detail.issuer_common_name || "—"}</p>
+            </div>
+            <div>
+              <p class="text-subtle font-medium mb-1">Expires</p>
+              <p class="text-heading">
+                {if detail.not_after, do: PortalWeb.Format.short_date(detail.not_after), else: "—"}
+              </p>
+            </div>
+            <div>
+              <p class="text-subtle font-medium mb-1">Serial Number</p>
+              <p class="text-heading font-mono truncate">{detail.serial_number || "—"}</p>
+            </div>
+            <div class="col-span-2 sm:col-span-4">
+              <p class="text-subtle font-medium mb-1">Fingerprint (SHA-256)</p>
+              <p class="text-heading font-mono break-all">{detail.fingerprint}</p>
+            </div>
+          </div>
+        </div>
+      </td>
     </tr>
     """
   end
@@ -643,6 +704,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     {:noreply, assign(socket, open_trust_anchor_actions_id: nil)}
   end
 
+  def handle_event("toggle_trust_anchor_row", %{"id" => id}, socket) do
+    current = socket.assigns.expanded_trust_anchor_id
+    next = if current == id, do: nil, else: id
+
+    {:noreply, assign(socket, expanded_trust_anchor_id: next)}
+  end
+
   defp build_creation_changeset(attrs) do
     %TrustAnchor{}
     |> cast(attrs, [:name, :certs])
@@ -665,23 +733,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   defp armor_certs_as_pem(certificates) do
-    certificates
-    |> Enum.map(& &1.der)
-    |> armor_der_as_pem()
-  end
-
-  defp armor_der_as_pem(ders) do
-    ders
-    |> Enum.map(&{:Certificate, &1, :not_encrypted})
-    |> :public_key.pem_encode()
+    Enum.map_join(certificates, & &1.pem)
   end
 
   # `TrustAnchor.changeset/1` normalizes `:certs` in place, replacing whatever
   # PEM/base64/DER text the admin typed with the normalized raw DER bytes
   # (see `normalize_certs/2` and the schema test asserting on that). Showing
   # those bytes back in the textarea would corrupt the field, so once
-  # normalization has produced `:certificates` changesets, re-armor their DER
-  # as PEM for display instead of reading `@form[:certs].value` directly.
+  # normalization has produced `:certificates` changesets, read their
+  # already-armored `:pem` back for display instead of `@form[:certs].value`.
   defp certs_display_value(form) do
     case Ecto.Changeset.get_change(form.source, :certificates) do
       [_ | _] = certificate_changesets ->
@@ -691,8 +751,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         # always emits a `:replace` entry for the old row alongside the
         # `:insert` for the new one. Only the surviving side belongs on screen.
         |> Enum.reject(&(&1.action == :replace))
-        |> Enum.map(&Ecto.Changeset.get_field(&1, :der))
-        |> armor_der_as_pem()
+        |> Enum.map_join(&Ecto.Changeset.get_field(&1, :pem))
 
       _ ->
         List.first(form[:certs].value || [], "")
@@ -719,6 +778,28 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp cert_count_label(certs) do
     count = length(certs)
     "#{count} certificate#{if count == 1, do: "", else: "s"}"
+  end
+
+  defp describe_certificate(certificate) do
+    with {:ok, [{_type, der, _headers} | _rest]} <- X509.pem_decode(certificate.pem),
+         {:ok, otp_cert} <- X509.decode_der_certificate(der) do
+      %{
+        fingerprint: certificate.fingerprint,
+        common_name: X509.subject_common_name(otp_cert),
+        issuer_common_name: X509.issuer_common_name(otp_cert),
+        not_after: X509.not_after(otp_cert),
+        serial_number: X509.serial_number(otp_cert)
+      }
+    else
+      _other ->
+        %{
+          fingerprint: certificate.fingerprint,
+          common_name: nil,
+          issuer_common_name: nil,
+          not_after: nil,
+          serial_number: nil
+        }
+    end
   end
 
   defp surface_certificate_errors(changeset) do

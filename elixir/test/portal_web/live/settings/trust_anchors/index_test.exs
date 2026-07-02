@@ -9,6 +9,11 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   alias Portal.TrustAnchor
   alias Portal.Crypto.X509
 
+  defp certificate_der(certificate) do
+    {:ok, [{_type, der, _headers}]} = X509.pem_decode(certificate.pem)
+    der
+  end
+
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
@@ -70,6 +75,39 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert html =~ "Corporate Issuing CA"
       assert html =~ "1 certificate"
+    end
+  end
+
+  describe "row details" do
+    test "expands and collapses a row to show certificate details", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor =
+        trust_anchor_fixture(
+          account: account,
+          name: "Corporate Issuing CA",
+          certs: [sample_cert_der()]
+        )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors")
+
+      refute html =~ "Company Issuing CA"
+
+      expanded_html = render_click(lv, "toggle_trust_anchor_row", %{"id" => trust_anchor.id})
+
+      assert expanded_html =~ "Company Issuing CA"
+      assert expanded_html =~ "Company Root CA"
+
+      assert expanded_html =~
+               Base.encode16(:crypto.hash(:sha256, sample_cert_der()), case: :lower)
+
+      collapsed_html = render_click(lv, "toggle_trust_anchor_row", %{"id" => trust_anchor.id})
+      refute collapsed_html =~ "Company Issuing CA"
     end
   end
 
@@ -169,7 +207,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert trust_anchor = Repo.get_by(TrustAnchor, account_id: account.id, name: "Pasted CA")
       trust_anchor = Repo.preload(trust_anchor, :certificates)
-      assert Enum.map(trust_anchor.certificates, & &1.der) == [sample_cert_der()]
+      assert Enum.map(trust_anchor.certificates, &certificate_der/1) == [sample_cert_der()]
     end
 
     test "re-armors a successfully pasted certificate as PEM instead of raw DER", %{
@@ -254,7 +292,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
       assert trust_anchor = Repo.get_by(TrustAnchor, account_id: account.id, name: "Uploaded CA")
       trust_anchor = Repo.preload(trust_anchor, :certificates)
-      assert Enum.map(trust_anchor.certificates, & &1.der) == [sample_cert_der()]
+      assert Enum.map(trust_anchor.certificates, &certificate_der/1) == [sample_cert_der()]
     end
 
     test "creates trust anchor from multiple uploaded files (root + intermediate)", %{
@@ -302,7 +340,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
                Repo.get_by(TrustAnchor, account_id: account.id, name: "Multi-file CA")
 
       trust_anchor = Repo.preload(trust_anchor, :certificates)
-      certs = MapSet.new(trust_anchor.certificates, & &1.der)
+      certs = MapSet.new(trust_anchor.certificates, &certificate_der/1)
       assert certs == MapSet.new([sample_cert_der(), sample_additional_ca_der()])
     end
 

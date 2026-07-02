@@ -92,4 +92,33 @@ defmodule Portal.Crypto.X509Test do
       refute X509.key_cert_sign_allowed?(cert)
     end
   end
+
+  describe "pem_encode/1" do
+    test "round-trips DER through PEM" do
+      pem = X509.pem_encode(sample_cert_der())
+
+      assert X509.pem_encoded?(pem)
+      assert {:ok, [{:Certificate, der, :not_encrypted}]} = X509.pem_decode(pem)
+      assert der == sample_cert_der()
+    end
+  end
+
+  describe "field extraction" do
+    test "reads subject and issuer common names" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.subject_common_name(cert) == "Company Issuing CA"
+      assert X509.issuer_common_name(cert) == "Company Root CA"
+    end
+
+    test "reads validity timestamps" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.not_before(cert) == ~U[2026-04-20 16:24:46Z]
+      assert X509.not_after(cert) == ~U[2028-04-19 16:24:46Z]
+    end
+
+    test "reads the serial number" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.serial_number(cert) == 42_095_695_342_393_971_666_742_022_583_967_287_377_743_815_197
+    end
+  end
 end

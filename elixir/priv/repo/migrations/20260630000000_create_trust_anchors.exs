@@ -38,8 +38,8 @@ defmodule Portal.Repo.Migrations.CreateTrustAnchors do
         null: false
       )
 
-      add(:der, :binary, null: false)
-      add(:fingerprint, :binary, null: false)
+      add(:pem, :text, null: false)
+      add(:fingerprint, :string, null: false)
 
       timestamps()
     end

@@ -224,10 +224,12 @@ defmodule Portal.TrustAnchor do
     account_id = resolve_account_id(changeset)
 
     Enum.map(normalized_certs, fn der ->
+      fingerprint = Base.encode16(:crypto.hash(:sha256, der), case: :lower)
+
       %TrustAnchorCertificate{}
       |> cast(
-        %{der: der, fingerprint: :crypto.hash(:sha256, der), account_id: account_id},
-        [:der, :fingerprint, :account_id]
+        %{pem: X509.pem_encode(der), fingerprint: fingerprint, account_id: account_id},
+        [:pem, :fingerprint, :account_id]
       )
       |> TrustAnchorCertificate.changeset()
     end)

@@ -10,8 +10,8 @@ defmodule Portal.TrustAnchorCertificate do
           id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           trust_anchor_id: Ecto.UUID.t(),
-          der: binary(),
-          fingerprint: binary(),
+          pem: String.t(),
+          fingerprint: String.t(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -22,18 +22,16 @@ defmodule Portal.TrustAnchorCertificate do
 
     belongs_to :trust_anchor, Portal.TrustAnchor
 
-    # Redacted from the change log: the replication decoder turns bytea hex
-    # back into raw binaries, which are often not valid UTF-8 and would break
-    # the JSONB change log insert.
-    field :der, :binary, redact: true
-    field :fingerprint, :binary, redact: true
+    field :pem, :string
+    # Hex-encoded SHA-256 over the certificate's DER bytes.
+    field :fingerprint, :string
 
     timestamps()
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:der, :fingerprint])
+    |> validate_required([:pem, :fingerprint])
     |> assoc_constraint(:account)
     |> assoc_constraint(:trust_anchor)
     |> unique_constraint(:fingerprint,

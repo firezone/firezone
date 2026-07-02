@@ -304,7 +304,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.account_id == account.id
     end
 
-    test "redacts trust anchor certificate bytea fields", %{
+    test "preserves trust anchor certificate PEM and fingerprint text", %{
       account: account,
       initial_state: initial_state
     } do
@@ -312,7 +312,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         "id" => Ecto.UUID.generate(),
         "account_id" => account.id,
         "trust_anchor_id" => Ecto.UUID.generate(),
-        "der" => "old DER bytes",
+        "pem" => "old PEM text",
         "fingerprint" => "old fingerprint"
       }
 
@@ -320,7 +320,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         "id" => old_data["id"],
         "account_id" => account.id,
         "trust_anchor_id" => old_data["trust_anchor_id"],
-        "der" => "new DER bytes",
+        "pem" => "new PEM text",
         "fingerprint" => "new fingerprint"
       }
 
@@ -339,10 +339,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       attrs = result_state.flush_buffer[lsn]
 
       assert attrs.object == "trust_anchor_certificates"
-      assert attrs.before["der"] == "[redacted]"
-      assert attrs.after["der"] == "[redacted]"
-      assert attrs.before["fingerprint"] == "[redacted]"
-      assert attrs.after["fingerprint"] == "[redacted]"
+      assert attrs.before["pem"] == "old PEM text"
+      assert attrs.after["pem"] == "new PEM text"
+      assert attrs.before["fingerprint"] == "old fingerprint"
+      assert attrs.after["fingerprint"] == "new fingerprint"
     end
   end
 
