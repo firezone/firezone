@@ -20,14 +20,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
 
     def get_trust_anchor!(id, subject) do
-      # A point lookup for the edit panel, not a hot path: `one!/2` already
-      # falls back to primary on replica lag, so preload certificates from
-      # primary too rather than risk a mismatched primary parent / stale
-      # replica children read.
-      from(t in TrustAnchor, where: t.id == ^id)
+      # Bake the preload into the query itself rather than a separate
+      # `Safe.preload/3` call, so on replica lag both the trust anchor and
+      # its certificates fall back to primary together instead of pairing a
+      # primary parent with stale (possibly empty) replica children.
+      from(t in TrustAnchor, where: t.id == ^id, preload: [:certificates])
       |> Safe.scoped(subject, :replica)
       |> Safe.one!(fallback_to_primary: true)
-      |> Safe.preload(:certificates, :primary)
     end
   end
 
