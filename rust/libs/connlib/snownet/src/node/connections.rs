@@ -145,13 +145,13 @@ where
         }
 
         for cid in connections_with_removed_relays {
-            let Ok(c) = self.get_mut(&cid, now) else {
-                continue;
-            };
-
             let Some((new_relay, _)) = allocations.sample() else {
                 self.connections_with_removed_relays.insert(cid);
 
+                continue;
+            };
+
+            let Ok(c) = self.get_mut(&cid, now) else {
                 continue;
             };
 
