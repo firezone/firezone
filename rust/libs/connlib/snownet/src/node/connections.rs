@@ -100,8 +100,9 @@ where
         Some(connection)
     }
 
-    /// Soft-resets all connections for a roam and queues them for relay migration:
-    /// the roam clears all allocations, so every connection's relay is gone until
+    /// Soft-resets all connections for a roam and queues them for relay migration.
+    ///
+    /// The roam clears all allocations, so every connection's relay is gone until
     /// [`update_relays`](crate::Node::update_relays) provides new ones.
     pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
         let mut num_connections = 0;
