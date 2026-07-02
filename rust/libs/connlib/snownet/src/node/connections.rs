@@ -141,6 +141,9 @@ where
                 };
 
                 c.migrate_relay(cid, new_relay, allocations, pending_events, now);
+
+                // Already migrated; don't migrate again in the retry loop below.
+                connections_with_removed_relays.remove(&cid);
             }
         }
 
