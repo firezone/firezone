@@ -500,7 +500,7 @@ fn connect(
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
     telemetry::start(&api_url, RELEASE, platform::DSN);
-    runtime.block_on(telemetry::set_firezone_id(device_id.clone()));
+    telemetry::set_firezone_id(device_id.clone());
     telemetry::set_account_slug(account_slug.clone());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
@@ -575,7 +575,7 @@ pub fn start_telemetry() {
 
 #[uniffi::export]
 pub fn stop_telemetry() {
-    telemetry::stop_blocking();
+    telemetry::stop();
 }
 
 static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =

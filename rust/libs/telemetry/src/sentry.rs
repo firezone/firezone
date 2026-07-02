@@ -22,6 +22,10 @@ pub(crate) fn reset_client() {
     CLIENT.reset();
 }
 
+pub(crate) fn warmup_connection() {
+    ingest::RUNTIME.spawn(CLIENT.connect());
+}
+
 /// Builds the Sentry [`ClientOptions`] with our [`Factory`] transport and starts the SDK.
 pub(crate) fn init_sdk_client(
     dsn: String,

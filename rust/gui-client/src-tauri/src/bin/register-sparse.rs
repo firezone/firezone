@@ -50,7 +50,7 @@ async fn main() -> ExitCode {
 
     let exit_code = run();
 
-    telemetry::stop().await;
+    telemetry::stop();
     exit_code
 }
 

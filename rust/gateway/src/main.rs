@@ -64,19 +64,19 @@ fn main() -> ExitCode {
     match runtime.block_on(try_main(cli)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
-            runtime.block_on(telemetry::stop());
+            telemetry::stop();
 
             ExitCode::SUCCESS
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
-            runtime.block_on(telemetry::stop());
+            telemetry::stop();
 
             ExitCode::FAILURE
         }
         Err(e) => {
             tracing::info!("{e:#}");
-            runtime.block_on(telemetry::stop());
+            telemetry::stop();
 
             ExitCode::FAILURE
         }
@@ -144,7 +144,7 @@ async fn try_main(cli: Cli) -> Result<()> {
 
     if cli.is_telemetry_allowed() {
         telemetry::start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
-        telemetry::set_firezone_id(firezone_id.clone()).await;
+        telemetry::set_firezone_id(firezone_id.clone());
     }
 
     if let Some(backend) = cli.metrics {
