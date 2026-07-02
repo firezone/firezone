@@ -24,7 +24,8 @@ defmodule PortalWeb.Settings.Account do
         service_accounts_count: Database.count_service_accounts_for_account(subject),
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
-        sites_count: Database.count_groups_for_account(subject)
+        sites_count: Database.count_groups_for_account(subject),
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
       )
 
     {:ok, socket}
@@ -33,7 +34,11 @@ defmodule PortalWeb.Settings.Account do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full relative">
-      <.settings_nav account={@account} current_path={@current_path}>
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      >
         <:actions>
           <.button phx-click="open_edit_account" size="xs">
             <.icon name="ri-pencil-line" class="w-3 h-3" /> Edit

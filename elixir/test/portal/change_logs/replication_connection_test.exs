@@ -36,6 +36,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert "client_sessions" in tables
       assert "gateway_sessions" in tables
     end
+
+    test "includes trust anchors in the audit publication", %{tables: tables} do
+      assert "trust_anchors" in tables
+      assert "trust_anchor_certificates" in tables
+    end
   end
 
   describe "on_begin/2" do
@@ -297,6 +302,47 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert attrs.object == "accounts"
       assert attrs.operation == :update
       assert attrs.account_id == account.id
+    end
+
+    test "preserves trust anchor certificate DER bytes", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      old_data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "trust_anchor_id" => Ecto.UUID.generate(),
+        "der" => "old DER bytes",
+        "fingerprint" => "old fingerprint"
+      }
+
+      data = %{
+        "id" => old_data["id"],
+        "account_id" => account.id,
+        "trust_anchor_id" => old_data["trust_anchor_id"],
+        "der" => "new DER bytes",
+        "fingerprint" => "new fingerprint"
+      }
+
+      lsn = 12347
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          lsn,
+          :update,
+          "trust_anchor_certificates",
+          old_data,
+          data
+        )
+
+      attrs = result_state.flush_buffer[lsn]
+
+      assert attrs.object == "trust_anchor_certificates"
+      assert attrs.before["der"] == "old DER bytes"
+      assert attrs.after["der"] == "new DER bytes"
+      assert attrs.before["fingerprint"] == "old fingerprint"
+      assert attrs.after["fingerprint"] == "new fingerprint"
     end
   end
 

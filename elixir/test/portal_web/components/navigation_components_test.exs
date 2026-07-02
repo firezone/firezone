@@ -3,6 +3,7 @@ defmodule PortalWeb.NavigationComponentsTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.FeaturesFixtures
 
   setup do
     account = account_fixture()
@@ -36,6 +37,38 @@ defmodule PortalWeb.NavigationComponentsTest do
       assert html =~ "Connection lost"
       assert html =~ "Attempting to reconnect"
       refute html =~ "We can't find the internet"
+    end
+  end
+
+  describe "settings_nav trust anchors tab" do
+    test "hidden when trust_anchors feature is disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      disable_feature(:trust_anchors)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Trust Anchors"
+    end
+
+    test "shown when trust_anchors feature is enabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:trust_anchors)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Trust Anchors"
     end
   end
 end
