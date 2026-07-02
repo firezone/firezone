@@ -273,7 +273,8 @@ defmodule Portal.Telemetry.DevAggregator do
          channels: channels,
          liveview: liveview
        }) do
-    Logger.info(header("HTTP Requests (last 30s) — #{total} total"))
+    routed = Enum.sum(for {_, s} <- requests, do: s.count)
+    Logger.info(header("HTTP Requests (last 30s) — #{routed} routed, #{total} total"))
 
     if map_size(requests) == 0 do
       Logger.info("[metrics]   (none)")
