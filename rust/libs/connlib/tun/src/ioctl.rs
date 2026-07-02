@@ -36,7 +36,12 @@ impl Request<SetTunFlagsPayload> {
         Self {
             name,
             payload: SetTunFlagsPayload {
-                flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE) as _,
+                // `IFF_NAPI` makes the kernel process packets written to the device
+                // through NAPI and thus GRO, coalescing consecutive TCP segments of
+                // the same flow into a single large one before they enter the IP
+                // stack. Kernels older than 4.14 ignore the flag.
+                flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE | libc::IFF_NAPI)
+                    as _,
             },
         }
     }
