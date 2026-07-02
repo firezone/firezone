@@ -27,14 +27,8 @@ pub struct Request<P> {
 #[cfg(target_os = "linux")]
 impl Request<SetTunFlagsPayload> {
     pub fn new(name: &str) -> Self {
-        let name_as_bytes = name.as_bytes();
-        debug_assert!(name_as_bytes.len() < libc::IF_NAMESIZE);
-
-        let mut name = [0u8; libc::IF_NAMESIZE];
-        name[..name_as_bytes.len()].copy_from_slice(name_as_bytes);
-
         Self {
-            name,
+            name: interface_name(name),
             payload: SetTunFlagsPayload {
                 // `IFF_NAPI` makes the kernel process packets written to the device
                 // through NAPI and thus GRO, coalescing consecutive TCP segments of
@@ -42,6 +36,21 @@ impl Request<SetTunFlagsPayload> {
                 // stack. Kernels older than 4.14 ignore the flag.
                 flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE | libc::IFF_NAPI)
                     as _,
+            },
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Request<EthtoolPayload> {
+    /// Creates a `SIOCETHTOOL` request, pointing at the given `ethtool` command struct.
+    ///
+    /// The command struct must be kept alive until the request has been executed.
+    pub fn new<C>(name: &str, cmd: &mut C) -> Self {
+        Self {
+            name: interface_name(name),
+            payload: EthtoolPayload {
+                cmd: std::ptr::from_mut(cmd).cast(),
             },
         }
     }
@@ -70,9 +79,26 @@ impl Default for Request<GetInterfaceNamePayload> {
 }
 
 #[cfg(target_os = "linux")]
+fn interface_name(name: &str) -> [std::ffi::c_uchar; libc::IF_NAMESIZE] {
+    let name_as_bytes = name.as_bytes();
+    debug_assert!(name_as_bytes.len() < libc::IF_NAMESIZE);
+
+    let mut buf = [0u8; libc::IF_NAMESIZE];
+    buf[..name_as_bytes.len()].copy_from_slice(name_as_bytes);
+
+    buf
+}
+
+#[cfg(target_os = "linux")]
 #[repr(C)]
 pub struct SetTunFlagsPayload {
     flags: std::ffi::c_short,
+}
+
+#[cfg(target_os = "linux")]
+#[repr(C)]
+pub struct EthtoolPayload {
+    cmd: *mut std::ffi::c_void,
 }
 
 #[derive(Default)]
