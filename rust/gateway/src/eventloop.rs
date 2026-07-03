@@ -43,13 +43,12 @@ pub struct Eventloop {
     /// persisted for the uploader.
     flow_logs_dir: std::path::PathBuf,
 
-    /// Whether the portal enabled uploads; tokens are only persisted for the
-    /// uploader, so there is no point writing them to disk otherwise.
-    upload_flow_logs: bool,
-
     /// The `--flow-logs` flag: keeps flow tracking on even when the portal has
     /// uploads disabled.
     force_flow_logs: bool,
+
+    /// Whether the portal enabled flow logging; set from `init`.
+    flow_logs_enabled: bool,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -96,8 +95,8 @@ impl Eventloop {
             tun_device_manager,
             resolver,
             flow_logs_dir,
-            upload_flow_logs: false,
             force_flow_logs,
+            flow_logs_enabled: false,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -309,8 +308,14 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
-                if self.upload_flow_logs
-                    && let Some(token) = &msg.flow_logs_ingest_token
+                // Withhold the token when flow tracking is only forced on via
+                // `--flow-logs`: an unattributed flow shows up on the log output
+                // but is never spooled for upload.
+                let flow_logs_ingest_token = msg
+                    .flow_logs_ingest_token
+                    .filter(|_| self.flow_logs_enabled);
+
+                if let Some(token) = &flow_logs_ingest_token
                     && let Err(e) =
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
                 {
@@ -325,8 +330,7 @@ impl Eventloop {
                     msg.resource,
                     msg.use_iceless,
                     Instant::now(),
-                    msg.flow_logs_ingest_token
-                        .map(|token| token.as_str().to_owned()),
+                    flow_logs_ingest_token.map(|token| token.as_str().to_owned()),
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
@@ -394,11 +398,11 @@ impl Eventloop {
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
-                self.upload_flow_logs = flow_logs.upload_enabled();
+                self.flow_logs_enabled = flow_logs.upload_enabled();
 
                 tunnel
                     .state_mut()
-                    .set_flow_logs_enabled(self.upload_flow_logs || self.force_flow_logs);
+                    .set_flow_logs_enabled(self.flow_logs_enabled || self.force_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
