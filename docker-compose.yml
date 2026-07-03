@@ -55,7 +55,7 @@ services:
 
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.28.0.254
-        ip -6 route add 203:0:113::/64 via 172:28:0::254
+        ip -6 route add 203:0:113::/64 via 172:28:0::254 || true
 
         exec su default -c "bin/server"
     depends_on:
@@ -137,10 +137,10 @@ services:
 
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.30.0.254
-        ip -6 route add 203:0:113::/64 via 172:30:0::254
+        ip -6 route add 203:0:113::/64 via 172:30:0::254 || true
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool iproute2
+        apk add --no-cache ethtool iproute2 || echo "apk add failed; assuming tools are preinstalled"
         ethtool -K eth0 tx off
 
         ip link set dev eth0 txqueuelen 100000
@@ -184,10 +184,10 @@ services:
 
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.32.0.254
-        ip -6 route add 203:0:113::/64 via 172:32:0::254
+        ip -6 route add 203:0:113::/64 via 172:32:0::254 || true
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool iproute2
+        apk add --no-cache ethtool iproute2 || echo "apk add failed; assuming tools are preinstalled"
         ethtool -K eth0 tx off
 
         ip link set dev eth0 txqueuelen 100000
@@ -237,7 +237,7 @@ services:
         ip -6 route add 203:0:113::/64 via 172:31:0::254 || true
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool iproute2
+        apk add --no-cache ethtool iproute2 || echo "apk add failed; assuming tools are preinstalled"
         ethtool -K eth0 tx off
         ethtool -K eth1 tx off
         ethtool -K eth2 tx off
@@ -310,9 +310,9 @@ services:
 
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.29.1.254
-        ip -6 route add 203:0:113::/64 via 172:29:1::254
+        ip -6 route add 203:0:113::/64 via 172:29:1::254 || true
 
-        apk add --no-cache ethtool
+        apk add --no-cache ethtool || echo "apk add failed; assuming tools are preinstalled"
         ethtool -K eth0 tx off
 
         firezone-relay
@@ -360,9 +360,9 @@ services:
 
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.29.2.254
-        ip -6 route add 203:0:113::/64 via 172:29:2::254
+        ip -6 route add 203:0:113::/64 via 172:29:2::254 || true
 
-        apk add --no-cache ethtool
+        apk add --no-cache ethtool || echo "apk add failed; assuming tools are preinstalled"
         ethtool -K eth0 tx off
 
         firezone-relay

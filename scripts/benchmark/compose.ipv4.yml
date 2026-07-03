@@ -1,0 +1,178 @@
+# IPv4-only overlay for kernels that have IPv6 disabled entirely
+# (e.g. `ipv6.disable=1` on Claude Code web VMs).
+#
+# Strips IPv6 subnets, static addresses and `net.ipv6.*` sysctls from the
+# standard docker-compose topology; everything else is inherited. Use it as an
+# override file:
+#
+#   docker compose -f docker-compose.yml -f scripts/benchmark/compose.ipv4.yml up
+
+services:
+  portal:
+    networks: !override
+      app-internal:
+        ipv4_address: 172.28.0.100
+
+  portal-router:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      app-internal:
+        ipv4_address: 172.28.0.254
+        interface_name: internal
+      internet:
+        ipv4_address: 203.0.113.10
+        interface_name: internet
+
+  client-1:
+    sysctls: !override []
+    networks: !override
+      client-1-internal:
+        ipv4_address: 172.30.0.100
+
+  client-1-router:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      client-1-internal:
+        ipv4_address: 172.30.0.254
+        interface_name: internal
+      internet:
+        interface_name: internet
+
+  client-2:
+    sysctls: !override []
+    networks: !override
+      client-2-internal:
+        ipv4_address: 172.32.0.100
+
+  client-2-router:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      client-2-internal:
+        ipv4_address: 172.32.0.254
+        interface_name: internal
+      internet:
+        interface_name: internet
+
+  gateway:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      gateway-internal:
+        ipv4_address: 172.31.0.100
+      dns_resources: {}
+      resources: {}
+
+  gateway-router:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      gateway-internal:
+        ipv4_address: 172.31.0.254
+        interface_name: internal
+      internet:
+        interface_name: internet
+
+  relay-1:
+    sysctls: !override []
+    environment:
+      # `!reset` does not remove keys from services that use `extends`;
+      # docker-init-relay.sh unsets empty address vars instead.
+      PUBLIC_IP6_ADDR: ""
+    networks: !override
+      relay-1-internal:
+        ipv4_address: 172.29.1.100
+
+  relay-1-router:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      relay-1-internal:
+        ipv4_address: 172.29.1.254
+        interface_name: internal
+      internet:
+        ipv4_address: 203.0.113.101
+        interface_name: internet
+
+  relay-2:
+    sysctls: !override []
+    environment:
+      # `!reset` does not remove keys from services that use `extends`;
+      # docker-init-relay.sh unsets empty address vars instead.
+      PUBLIC_IP6_ADDR: ""
+    networks: !override
+      relay-2-internal:
+        ipv4_address: 172.29.2.100
+
+  relay-2-router:
+    sysctls: !override
+      - net.ipv4.ip_forward=1
+    networks: !override
+      relay-2-internal:
+        ipv4_address: 172.29.2.254
+        interface_name: internal
+      internet:
+        ipv4_address: 203.0.113.102
+        interface_name: internet
+
+  httpbin:
+    command: !override ["gunicorn", "-b", "0.0.0.0:80", "httpbin:app"]
+    networks: !override
+      resources:
+        ipv4_address: 172.20.0.100
+
+  iperf3:
+    networks: !override
+      resources:
+        ipv4_address: 172.20.0.110
+
+networks:
+  internet:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 203.0.113.0/24
+
+  app-internal:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.28.0.0/24
+
+  relay-1-internal:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.29.1.0/24
+
+  relay-2-internal:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.29.2.0/24
+
+  client-1-internal:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.30.0.0/24
+
+  client-2-internal:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.32.0.0/24
+
+  gateway-internal:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.31.0.0/24
+
+  resources:
+    enable_ipv6: false
+    ipam: !override
+      config:
+        - subnet: 172.20.0.0/24

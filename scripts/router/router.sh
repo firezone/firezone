@@ -2,11 +2,25 @@
 
 set -euo pipefail
 
+# IPv6 may be unavailable altogether (e.g. kernels booted with `ipv6.disable=1`).
+if [ -f /proc/net/if_inet6 ]; then
+    IPV6_SUPPORTED=1
+else
+    IPV6_SUPPORTED=0
+    echo "Kernel has IPv6 disabled; configuring IPv4 only"
+fi
+
 # Get network configuration
 INTERNAL_NET_V4=$(ip -4 --json route | jq -r '.[] | select(.dev == "internal") | select(.dst == "default" | not) | .dst')
-INTERNAL_NET_V6=$(ip -6 --json route | jq -r '.[] | select(.dev == "internal") | select(.dst | startswith("fe80") | not) | select(.dst == "default" | not) | .dst')
 PUBLIC_IPV4=$(ip -4 -json addr show internet | jq -r '.[0].addr_info[0].local')
-PUBLIC_IPV6=$(ip -6 -json addr show internet | jq -r '.[0].addr_info[0].local')
+
+if [ "$IPV6_SUPPORTED" = "1" ]; then
+    INTERNAL_NET_V6=$(ip -6 --json route | jq -r '.[] | select(.dev == "internal") | select(.dst | startswith("fe80") | not) | select(.dst == "default" | not) | .dst')
+    PUBLIC_IPV6=$(ip -6 -json addr show internet | jq -r '.[0].addr_info[0].local')
+else
+    INTERNAL_NET_V6=""
+    PUBLIC_IPV6=""
+fi
 
 # Validate required configuration
 if [ -z "$INTERNAL_NET_V4" ]; then
@@ -14,7 +28,7 @@ if [ -z "$INTERNAL_NET_V4" ]; then
     exit 1
 fi
 
-if [ -z "$INTERNAL_NET_V6" ]; then
+if [ "$IPV6_SUPPORTED" = "1" ] && [ -z "$INTERNAL_NET_V6" ]; then
     echo "Error: Failed to identify internal IPv6 subnet"
     exit 1
 fi
@@ -24,7 +38,7 @@ if [ -z "$PUBLIC_IPV4" ]; then
     exit 1
 fi
 
-if [ -z "$PUBLIC_IPV6" ]; then
+if [ "$IPV6_SUPPORTED" = "1" ] && [ -z "$PUBLIC_IPV6" ]; then
     echo "Error: Failed to get public IPv6"
     exit 1
 fi
@@ -41,7 +55,9 @@ CONFIG_FILE="/tmp/router.nft"
 cp "$TEMPLATE_FILE" "$CONFIG_FILE"
 
 echo "add rule inet router postrouting ip saddr $INTERNAL_NET_V4 oifname \"internet\" masquerade ${MASQUERADE_TYPE:-}" >>"$CONFIG_FILE"
-echo "add rule inet router postrouting ip6 saddr $INTERNAL_NET_V6 oifname \"internet\" masquerade ${MASQUERADE_TYPE:-}" >>"$CONFIG_FILE"
+if [ -n "$INTERNAL_NET_V6" ]; then
+    echo "add rule inet router postrouting ip6 saddr $INTERNAL_NET_V6 oifname \"internet\" masquerade ${MASQUERADE_TYPE:-}" >>"$CONFIG_FILE"
+fi
 
 # Add port forwarding rules if specified
 if [ -n "${PORT_FORWARDS:-}" ]; then
@@ -53,6 +69,10 @@ if [ -n "${PORT_FORWARDS:-}" ]; then
         # Determine if internal IP is IPv4 or IPv6 and append rules to config file
         case "$internal_ip" in
         *:*) # IPv6 address
+            if [ -z "$PUBLIC_IPV6" ]; then
+                continue
+            fi
+
             echo "add rule inet router prerouting ip6 daddr $PUBLIC_IPV6 $protocol dport $port dnat to [$internal_ip]:$port" >>"$CONFIG_FILE"
             echo "add rule inet router input ip6 daddr $internal_ip $protocol dport $port accept" >>"$CONFIG_FILE"
             ;;

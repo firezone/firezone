@@ -1,0 +1,53 @@
+# Overlay that swaps the client/gateway/relay images for benchmark images:
+# locally-built release binaries layered onto the CI-built debug images
+# (same recipe as the CI `perf/*` images).
+#
+# Build the binaries first (see scripts/benchmark/build-binaries.sh), then:
+#
+#   docker compose -f docker-compose.yml -f scripts/benchmark/compose.bench.yml build client-1 gateway relay-1
+
+services:
+  client-1:
+    image: localhost/bench/client:latest
+    build: !override
+      context: rust
+      dockerfile: ../scripts/benchmark/Dockerfile
+      args:
+        BASE_IMAGE: ${BENCH_BASE_CLIENT:-ghcr.io/firezone/debug/client:main}
+        PACKAGE: firezone-headless-client
+
+  client-2:
+    image: localhost/bench/client:latest
+    build: !override
+      context: rust
+      dockerfile: ../scripts/benchmark/Dockerfile
+      args:
+        BASE_IMAGE: ${BENCH_BASE_CLIENT:-ghcr.io/firezone/debug/client:main}
+        PACKAGE: firezone-headless-client
+
+  gateway:
+    image: localhost/bench/gateway:latest
+    build: !override
+      context: rust
+      dockerfile: ../scripts/benchmark/Dockerfile
+      args:
+        BASE_IMAGE: ${BENCH_BASE_GATEWAY:-ghcr.io/firezone/debug/gateway:main}
+        PACKAGE: firezone-gateway
+
+  relay-1:
+    image: localhost/bench/relay:latest
+    build: !override
+      context: rust
+      dockerfile: ../scripts/benchmark/Dockerfile
+      args:
+        BASE_IMAGE: ${BENCH_BASE_RELAY:-ghcr.io/firezone/debug/relay:main}
+        PACKAGE: firezone-relay
+
+  relay-2:
+    image: localhost/bench/relay:latest
+    build: !override
+      context: rust
+      dockerfile: ../scripts/benchmark/Dockerfile
+      args:
+        BASE_IMAGE: ${BENCH_BASE_RELAY:-ghcr.io/firezone/debug/relay:main}
+        PACKAGE: firezone-relay

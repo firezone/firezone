@@ -35,3 +35,6 @@ gha-creds-*.json
 buildServer.json
 
 erl_crash.dump
+
+# Benchmark harness output (scripts/benchmark)
+/bench-results/

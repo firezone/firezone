@@ -1,3 +1,9 @@
 target/
 *.pem
 loadtest.toml
+
+# Binaries copied for docker image builds (CI and scripts/benchmark)
+/firezone-headless-client
+/firezone-gateway
+/firezone-relay
+/http-test-server

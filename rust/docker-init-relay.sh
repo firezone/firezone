@@ -54,6 +54,11 @@ if [ "${OTEL_METADATA_DISCOVERY_METHOD}" = "gce_metadata" ]; then
     echo "Discovered OTEL metadata: ${OTEL_RESOURCE_ATTRIBUTES}"
 fi
 
+# Compose overlays may set these to empty strings (e.g. the IPv4-only benchmark
+# overlay); clap treats an empty env var as present but fails to parse it, so unset them.
+if [ -z "${PUBLIC_IP4_ADDR:-}" ]; then unset PUBLIC_IP4_ADDR; fi
+if [ -z "${PUBLIC_IP6_ADDR:-}" ]; then unset PUBLIC_IP6_ADDR; fi
+
 # If eBPF offloading is enabled, we need the source address to use for cross-stack relaying
 if [ -n "${EBPF_OFFLOADING}" ]; then
     if [ -z "${EBPF_INT4_ADDR}" ]; then

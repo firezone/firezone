@@ -26,6 +26,8 @@ repos:
         description: Forces to replace line ending by the UNIX 'lf' character.
         exclude: "(^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^elixir/priv/static/)"
       - id: check-yaml
+        # compose override files use compose-specific YAML tags (!override, !reset)
+        exclude: ^scripts/benchmark/compose\..*\.yml$
       - id: check-xml
         files: '\.(xml|manifest|wxs|svg)$'
         types: [file]
