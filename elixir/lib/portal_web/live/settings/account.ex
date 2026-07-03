@@ -188,7 +188,7 @@ defmodule PortalWeb.Settings.Account do
               <p class="text-xs text-error/70 mb-1.5">
                 Type <strong>{@account.slug}</strong> to confirm:
               </p>
-              <form phx-change="update_slug_confirmation" phx-submit="delete_account">
+              <form id="delete-account-form" phx-change="update_slug_confirmation" phx-submit="delete_account">
                 <input
                   type="text"
                   name="slug_confirmation"
@@ -395,6 +395,7 @@ defmodule PortalWeb.Settings.Account do
       </div>
 
       <.form
+        id="account-name-form"
         for={@form}
         phx-change="change_account_name"
         phx-submit="submit_account_name"

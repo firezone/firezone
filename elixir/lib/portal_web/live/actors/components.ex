@@ -674,7 +674,7 @@ defmodule PortalWeb.Actors.Components do
 
         <div :if={is_nil(@created_token) and @adding_token} class="px-5 py-4 space-y-4">
           <p class="text-sm font-medium text-heading">New Token</p>
-          <form phx-change="validate_token" phx-submit="create_token" class="space-y-4">
+          <form id="create-token-form" phx-change="validate_token" phx-submit="create_token" class="space-y-4">
             <div>
               <label class="block text-xs font-medium text-body mb-1.5">
                 Token expiration
@@ -1018,6 +1018,7 @@ defmodule PortalWeb.Actors.Components do
 
     ~H"""
     <.form
+      id="actor-edit-form"
       for={@form}
       phx-change="validate"
       phx-submit="save"
@@ -1240,6 +1241,7 @@ defmodule PortalWeb.Actors.Components do
 
       <.form
         :if={@new_actor_type == :user and @form}
+        id="create-user-form"
         for={@form}
         phx-change="validate"
         phx-submit="create_user"
@@ -1351,6 +1353,7 @@ defmodule PortalWeb.Actors.Components do
 
       <.form
         :if={@new_actor_type == :service_account and @form}
+        id="create-service-account-form"
         for={@form}
         phx-change="validate"
         phx-submit="create_service_account"

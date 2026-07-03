@@ -257,6 +257,7 @@ defmodule PortalWeb.Clients.Components do
       <.client_edit_header />
       <.form
         :if={@client_edit_form}
+        id="client-edit-form"
         for={@client_edit_form}
         phx-submit="submit_client_edit_form"
         phx-change="change_client_edit_form"

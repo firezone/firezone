@@ -23,7 +23,7 @@ defmodule PortalWeb.Sites.Components do
           <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
         </div>
         <div class="flex-1 overflow-y-auto px-5 py-4">
-          <.form for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
+          <.form id="new-site-form" for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
             <div class="space-y-4">
               <.input
                 label="Name"
@@ -865,6 +865,7 @@ defmodule PortalWeb.Sites.Components do
       <.site_add_resource_header />
       <.form
         :if={@resource_form}
+        id="site-add-resource-form"
         for={@resource_form}
         phx-submit="resource_submit"
         phx-change="resource_change"
@@ -1280,6 +1281,7 @@ defmodule PortalWeb.Sites.Components do
       </div>
       <.form
         :if={@form}
+        id="site-edit-form"
         for={@form}
         phx-submit="submit_site_edit_form"
         phx-change="change_site_edit_form"

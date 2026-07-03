@@ -970,6 +970,7 @@ defmodule PortalWeb.Resources.Components do
         </div>
       </div>
       <.form
+        id="resource-form"
         for={@resource_form}
         phx-submit="submit_resource_form"
         phx-change="change_resource_form"
