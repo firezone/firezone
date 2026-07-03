@@ -23,8 +23,10 @@
 //! The Bearer token deliberately does NOT ride the tracing events (a broad `trace`
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
-//! A report's payload is the event's fields as emitted; the portal validates them
-//! on ingest, so the writer only interprets what routing and naming need.
+//! A report's payload is the event's record fields as emitted (see
+//! [`RECORD_FIELDS`]); attribution deliberately rides only the token, and the
+//! portal validates the payload on ingest, so the writer only interprets what
+//! routing and naming need.
 //!
 //! `<flow_start>` is the flow's start time as zero-padded unix seconds, so a
 //! lexical sort of the report names is oldest-first and the uploader needs no
@@ -254,6 +256,29 @@ where
     }
 }
 
+/// The ingest API's record fields: the payload spooled for upload. Kept in sync
+/// with the portal's ingest schema, which any new record field must be
+/// coordinated with anyway.
+const RECORD_FIELDS: &[&str] = &[
+    "protocol",
+    "inner_src_ip",
+    "inner_src_port",
+    "inner_dst_ip",
+    "inner_dst_port",
+    "domain",
+    "outer_src_ip",
+    "outer_src_port",
+    "outer_dst_ip",
+    "outer_dst_port",
+    "flow_start",
+    "flow_end",
+    "last_packet",
+    "rx_packets",
+    "tx_packets",
+    "rx_bytes",
+    "tx_bytes",
+];
+
 /// Collects an event's fields as emitted.
 ///
 /// Strings arrive through `record_str`, `Display` / `Debug` values through
@@ -303,6 +328,11 @@ impl FieldVisitor {
         if !is_valid_role(&role) || !is_valid_authz_id(&authz_id) {
             return None;
         }
+
+        // Everything else on the event (attribution claims, the human message)
+        // is display-only or already carried by the token.
+        self.fields
+            .retain(|name, _| RECORD_FIELDS.contains(&name.as_str()));
 
         // The only field the writer interprets: the file name needs it so a
         // lexical sort of the reports is oldest-first.
@@ -492,6 +522,7 @@ mod tests {
         assert_eq!(start["flow_start"], "2023-11-14T22:13:20.000000500Z");
         assert!(start.get("role").is_none());
         assert!(start.get("message").is_none());
+        assert!(start.get("actor_id").is_none()); // attribution rides the token only
         assert_eq!(end["rx_bytes"], 1024); // the `.end` is a self-describing report
         assert_eq!(end["inner_dst_port"], "443");
     }
@@ -574,6 +605,7 @@ mod tests {
             outer_src_port = %51820,
             outer_dst_ip = %"203.0.113.7",
             outer_dst_port = %51820,
+            actor_id = "a-1",
             flow_start = ?flow_start,
             flow_end = flow_end.map(tracing::field::debug),
             last_packet = flow_end.map(tracing::field::debug),
