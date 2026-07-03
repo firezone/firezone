@@ -3,7 +3,7 @@ mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
-use crate::flow_log::{self, Tracker};
+use crate::flow_log;
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, ResolveRequest};
@@ -34,10 +34,6 @@ pub struct GatewayState {
     node: Node<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
     peers: PeerStore<ClientId, ClientOnGateway>,
-
-    /// Tracks flow logs for this Gateway, keyed by the client and the resource
-    /// it accesses.
-    flow_tracker: Tracker<(ClientId, ResourceId)>,
 
     tun_ip_config: Option<IpConfig>,
 
@@ -77,7 +73,6 @@ impl GatewayState {
             node: Node::new(seed, now, unix_ts),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
-            flow_tracker: Tracker::new(now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
@@ -96,27 +91,12 @@ impl GatewayState {
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 
-        self.flow_tracker.close_all(now);
-
         self.peers.clear();
         self.node.close_all(p2p_control::goodbye(), now);
     }
 
     /// Handles packets received on the TUN device.
     pub(crate) fn handle_tun_input(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-        provider: &mut impl snownet::BufferProvider,
-    ) -> Result<()> {
-        let flow = self.flow_tracker.begin_tun_packet(&packet);
-        let result = self.handle_tun_input_inner(packet, now, provider);
-        self.flow_tracker.commit(flow, now);
-
-        result
-    }
-
-    fn handle_tun_input_inner(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -157,20 +137,6 @@ impl GatewayState {
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
     pub(crate) fn handle_network_input(
-        &mut self,
-        local: SocketAddr,
-        from: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-    ) -> Result<Option<IpPacket>> {
-        let flow = self.flow_tracker.begin_network_packet(local, from);
-        let result = self.handle_network_input_inner(local, from, packet, now);
-        self.flow_tracker.commit(flow, now);
-
-        result
-    }
-
-    fn handle_network_input_inner(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -469,7 +435,6 @@ impl GatewayState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
-        self.flow_tracker.handle_timeout(now);
 
         self.peers.iter_mut().for_each(|p| {
             p.handle_timeout(now);
@@ -483,13 +448,6 @@ impl GatewayState {
         }
 
         self.next_periodic_tick = Some(now + Duration::from_secs(1));
-    }
-
-    /// Enables or disables flow-log emission at runtime.
-    ///
-    /// The portal drives this via its `init` config.
-    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
-        self.flow_tracker.set_enabled(enabled);
     }
 
     fn drain_node_events(&mut self) {
