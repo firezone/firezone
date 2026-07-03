@@ -290,6 +290,13 @@ defmodule PortalWeb.Router do
           live "/", DNS
           live "/edit", DNS, :edit
         end
+
+        scope "/trust_anchors", TrustAnchors do
+          live "/", Index
+          live "/new", Index, :new
+          live "/:id/edit", Index, :edit
+          live "/:id", Index, :show
+        end
       end
     end
   end

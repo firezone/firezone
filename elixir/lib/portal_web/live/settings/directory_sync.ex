@@ -43,7 +43,11 @@ defmodule PortalWeb.Settings.DirectorySync do
   @programmatic_fields ~w[is_verified private_key_jwk kid tenant_id domain]a
 
   def mount(_params, _session, socket) do
-    socket = assign(socket, page_title: "Directory Sync")
+    socket =
+      assign(socket,
+        page_title: "Directory Sync",
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+      )
 
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
@@ -393,7 +397,11 @@ defmodule PortalWeb.Settings.DirectorySync do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>
         <div class="flex-1 flex flex-col overflow-hidden">

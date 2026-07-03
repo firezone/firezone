@@ -23,7 +23,8 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
         assign(
           socket,
           page_title: "API Clients",
-          requested: Portal.Account.rest_api_access_requested?(socket.assigns.account)
+          requested: Portal.Account.rest_api_access_requested?(socket.assigns.account),
+          trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
         )
 
       {:ok, socket}
@@ -33,7 +34,11 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
