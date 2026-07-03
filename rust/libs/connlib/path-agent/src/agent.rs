@@ -21,6 +21,9 @@ pub struct PathAgent {
     /// `true` once the first handshake has been taken over — later
     /// inits are re-keys.
     established: bool,
+    /// `true` while an outbound re-key init awaits its response; a second
+    /// init in this state is an unanswered retry, i.e. failure evidence.
+    awaiting_rekey_response: bool,
 
     window: EvaluationWindow,
     responder: Responder,
@@ -132,6 +135,7 @@ impl PathAgent {
             pairs: BTreeMap::new(),
             primary: None,
             established: false,
+            awaiting_rekey_response: false,
             window: EvaluationWindow::Pending,
             responder: Responder::default(),
             outbound_init: None,
@@ -350,14 +354,21 @@ impl PathAgent {
                 self.established = true;
             }
             Ok(Packet::HandshakeInit(_)) => {
-                tracing::debug!(
-                    bytes = bytes.len(),
-                    "Re-key HandshakeInit; restarting probes"
-                );
-
-                self.reopen_evaluation_window(now);
+                let is_retry = std::mem::replace(&mut self.awaiting_rekey_response, true);
 
                 if let Some((local, remote)) = self.primary {
+                    // A routine re-key rides the primary without restarting
+                    // probes; an unanswered one is failure evidence.
+                    if is_retry {
+                        tracing::debug!(
+                            bytes = bytes.len(),
+                            "Unanswered re-key HandshakeInit; restarting probes"
+                        );
+                        self.reopen_evaluation_window(now);
+                    } else {
+                        tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
+                    }
+
                     self.pending_transmits.push_back(Transmit {
                         local,
                         remote,
@@ -366,6 +377,7 @@ impl PathAgent {
                 } else {
                     // Lost the primary mid-session (roam, candidate
                     // retraction); fan out like the initial bootstrap.
+                    self.reopen_evaluation_window(now);
                     self.outbound_init = Some(OutboundInit {
                         bytes,
                         retransmits: BTreeMap::new(),
@@ -492,12 +504,16 @@ impl PathAgent {
                 // against `last_init`/`last_init_path`.
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
-                // A fresh inbound init (a roam re-keys to a new address)
-                // restarts evaluation unconditionally, even mid-window:
-                // the previous window's RTTs are stale and must not keep
-                // a now-dead pair as primary. Duplicates were dropped above.
-                self.restart_evaluation(now);
-                self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                self.awaiting_rekey_response = false;
+                // An init on the current primary is a routine re-key. Only an
+                // init from a new path (a roam re-keys to a new address)
+                // restarts evaluation, even mid-window: the previous window's
+                // RTTs are stale and must not keep a now-dead pair as primary.
+                // Duplicates were dropped above.
+                if self.primary != Some(path) {
+                    self.restart_evaluation(now);
+                    self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                }
 
                 for b in outbound {
                     self.handle_outbound(b, now);
@@ -538,8 +554,13 @@ impl PathAgent {
 
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
-                self.reopen_evaluation_window(now);
-                self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                self.awaiting_rekey_response = false;
+                // A response on the current primary completes a routine
+                // re-key; only one from a new path re-evaluates.
+                if self.primary != Some(path) {
+                    self.reopen_evaluation_window(now);
+                    self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                }
 
                 for b in outbound {
                     self.handle_outbound(b, now);
