@@ -38,7 +38,7 @@ jobs:
       - uses: ./.github/actions/setup-gpg
         id: setup-gpg
         with:
-          key: ${{ secrets.APT_REPOSITORY_GPG_KEY }}
+          key: ${{ secrets.RPM_REPOSITORY_GPG_KEY }}
           email: packages@firezone.dev
 
       - run: scripts/sync-rpm.sh
