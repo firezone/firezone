@@ -12,7 +12,7 @@ use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
-use crate::flow_log;
+use crate::flow_log::{self, IngestToken};
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
@@ -31,7 +31,7 @@ pub struct ClientOnGateway {
     ///
     /// Recorded into a flow when it is created so the flow log can be attributed
     /// and ingested. Has the same lifetime as the resource authorization.
-    ingest_tokens: HashMap<ResourceId, String>,
+    ingest_tokens: HashMap<ResourceId, IngestToken>,
 
     resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
@@ -199,7 +199,7 @@ impl ClientOnGateway {
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
-    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: Option<String>) {
+    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: Option<IngestToken>) {
         match token {
             Some(token) => {
                 self.ingest_tokens.insert(rid, token);

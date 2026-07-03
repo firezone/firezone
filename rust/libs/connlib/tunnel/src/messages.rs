@@ -237,6 +237,15 @@ impl IngestToken {
     }
 }
 
+/// Tests build unvalidated tokens with handcrafted claims; real tokens only
+/// ever enter through [`Deserialize`].
+#[cfg(test)]
+impl From<String> for IngestToken {
+    fn from(token: String) -> Self {
+        Self(token)
+    }
+}
+
 impl<'de> Deserialize<'de> for IngestToken {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

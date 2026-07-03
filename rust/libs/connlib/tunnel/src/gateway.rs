@@ -3,7 +3,7 @@ mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
-use crate::flow_log;
+use crate::flow_log::{self, IngestToken};
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, ResolveRequest};
@@ -280,7 +280,7 @@ impl GatewayState {
         resource: ResourceDescription,
         use_iceless: bool,
         now: Instant,
-        flow_logs_ingest_token: Option<String>,
+        flow_logs_ingest_token: Option<IngestToken>,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
             client.id,
@@ -319,7 +319,7 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         client_tun: IpConfig,
-        flow_logs_ingest_token: Option<String>,
+        flow_logs_ingest_token: Option<IngestToken>,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,

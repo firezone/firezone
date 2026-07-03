@@ -38,6 +38,21 @@ use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 /// A flow is closed if no packet is seen for this long.
 const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 
+pub use crate::messages::IngestToken;
+
+impl IngestToken {
+    /// Decodes the attribution claims of the token without verifying its
+    /// signature, purely for local observability.
+    pub fn attribution(&self) -> Option<Attribution> {
+        let payload = self.as_str().split('.').nth(1)?;
+        let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .ok()?;
+
+        serde_json::from_slice(&json).ok()
+    }
+}
+
 thread_local! {
     /// The [`FlowData`] for the packet currently being processed on this thread.
     static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
@@ -97,7 +112,7 @@ struct TxFlow<S> {
     tcp_fin: bool,
     tcp_rst: bool,
     payload_len: usize,
-    ingest_token: Option<String>,
+    ingest_token: Option<IngestToken>,
     domain: Option<DomainName>,
 }
 
@@ -683,7 +698,7 @@ struct FlowData {
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<String>,
+    ingest_token: Option<IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -741,7 +756,7 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-pub fn record_ingest_token(token: Option<String>) {
+pub fn record_ingest_token(token: Option<IngestToken>) {
     update_current_flow(|data| {
         data.ingest_token = token;
     });
@@ -866,7 +881,7 @@ pub struct FlowClose {
 /// for an open record and `Some` once the flow has ended.
 #[derive(Debug)]
 pub struct Record {
-    pub ingest_token: Option<String>,
+    pub ingest_token: Option<IngestToken>,
     pub protocol: FlowProtocol,
 
     pub inner_src_ip: IpAddr,
@@ -956,7 +971,7 @@ impl Record {
         inner_src_port: u16,
         inner_dst_ip: IpAddr,
         inner_dst_port: u16,
-        ingest_token: Option<String>,
+        ingest_token: Option<IngestToken>,
         domain: Option<DomainName>,
         context: FlowContext,
         flow_start: DateTime<Utc>,
@@ -1026,7 +1041,10 @@ pub struct Attribution {
 ///
 /// The token's attribution claims are included; the token itself is not.
 pub fn emit(record: &Record) {
-    let attr = record.ingest_token.as_deref().and_then(decode_attribution);
+    let attr = record
+        .ingest_token
+        .as_ref()
+        .and_then(IngestToken::attribution);
     let attr = attr.as_ref();
 
     let close = record.close.as_ref();
@@ -1093,16 +1111,6 @@ pub fn emit(record: &Record) {
     }
 }
 
-/// Decodes the attribution claims of an ingest token without verifying its signature.
-pub fn decode_attribution(token: &str) -> Option<Attribution> {
-    let payload = token.split('.').nth(1)?;
-    let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload)
-        .ok()?;
-
-    serde_json::from_slice(&json).ok()
-}
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 struct TcpFlowKey<S> {
     scope: S,
@@ -1131,7 +1139,7 @@ struct TcpFlowValue {
     domain: Option<DomainName>,
 
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<String>,
+    ingest_token: Option<IngestToken>,
 
     fin_tx: bool,
     fin_rx: bool,
@@ -1147,7 +1155,7 @@ struct UdpFlowValue {
     domain: Option<DomainName>,
 
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<String>,
+    ingest_token: Option<IngestToken>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1274,7 +1282,7 @@ mod tests {
         let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(required_claims(authz_id, "responder"));
         let record = Record {
-            ingest_token: Some(format!("header.{claims}.signature")),
+            ingest_token: Some(format!("header.{claims}.signature").into()),
             protocol: FlowProtocol::Tcp,
             inner_src_ip: "100.64.0.1".parse().unwrap(),
             inner_src_port: 1234,
@@ -1363,9 +1371,9 @@ mod tests {
         let claims = required_claims("pa-1", "responder")
             .replace(r#""actor_name""#, r#""actor_email":"a@b.c","actor_name""#);
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims);
-        let token = format!("ignored-header.{payload}.ignored-signature");
+        let token = IngestToken::from(format!("ignored-header.{payload}.ignored-signature"));
 
-        let attr = decode_attribution(&token).expect("decodes attribution");
+        let attr = token.attribution().expect("decodes attribution");
 
         assert_eq!(attr.policy_authorization_id, "pa-1");
         assert_eq!(attr.actor_email.as_deref(), Some("a@b.c"));
@@ -1379,7 +1387,8 @@ mod tests {
     fn rejects_token_missing_a_guaranteed_claim() {
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(r#"{"policy_authorization_id":"pa-1","role":"responder"}"#);
+        let token = IngestToken::from(format!("h.{payload}.s"));
 
-        assert!(decode_attribution(&format!("h.{payload}.s")).is_none());
+        assert!(token.attribution().is_none());
     }
 }

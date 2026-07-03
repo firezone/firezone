@@ -24,8 +24,10 @@ use tunnel::messages::client::{
     FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
     ResourceAuthorization, ResourceFiltersUpdated,
 };
-use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
-use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
+use tunnel::messages::{RelaysPresence, SnownetCapabilities};
+use tunnel::{
+    ClientEvent, ClientTunnel, DnsResourceRecord, IngestToken, IpConfig, TunConfig, TunnelError,
+};
 
 /// In-memory cache for DNS resource records.
 ///
