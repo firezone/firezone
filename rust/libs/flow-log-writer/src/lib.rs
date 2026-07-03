@@ -419,13 +419,9 @@ fn write_file_secure(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 /// A policy-authorization id must be a hyphenated UUID; reject anything else so it
 /// can never escape the spool root as a path component.
 fn is_valid_authz_id(id: &str) -> bool {
-    let bytes = id.as_bytes();
-
-    bytes.len() == 36
-        && bytes.iter().enumerate().all(|(idx, byte)| match idx {
-            8 | 13 | 18 | 23 => *byte == b'-',
-            _ => byte.is_ascii_hexdigit(),
-        })
+    // `Uuid` also parses the braced / urn / simple forms; 36 bytes pins it to
+    // the hyphenated one.
+    id.len() == 36 && uuid::Uuid::try_parse(id).is_ok()
 }
 
 /// Only the portal's two flow roles are valid as a path component, so an unverified

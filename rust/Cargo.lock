@@ -2613,6 +2613,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "windows-security",
 ]
 
