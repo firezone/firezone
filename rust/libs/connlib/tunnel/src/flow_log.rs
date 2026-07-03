@@ -360,6 +360,15 @@ where
             domain,
         } = tx;
 
+        // The portal mints an ingest token only for authorizations it wants
+        // flow logs for: without one, the flow is neither logged nor spooled.
+        // The rx direction only updates flows created here, so it is gated too.
+        if ingest_token.is_none() {
+            tracing::trace!("Authorization has no ingest token; not tracking flow");
+
+            return;
+        }
+
         match (src_proto, dst_proto) {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
                 let key = TcpFlowKey {
