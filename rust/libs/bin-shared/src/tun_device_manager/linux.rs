@@ -43,6 +43,7 @@ use tokio::time::Instant;
 use tun::ioctl;
 
 mod ethtool;
+mod napi;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
@@ -120,6 +121,12 @@ impl TunDeviceManager {
         // and kernels older than 5.12 don't support it at all.
         if let Err(e) = ethtool::enable_feature(Self::IFACE_NAME, "rx-udp-gro-forwarding") {
             tracing::debug!("Failed to enable `rx-udp-gro-forwarding` on TUN device: {e:#}");
+        }
+
+        // Requires a writable /sys; containers usually mount it read-only, in which
+        // case NAPI stays in softirq mode and this merely logs.
+        if let Err(e) = napi::enable_threaded(Self::IFACE_NAME) {
+            tracing::debug!("Failed to enable threaded NAPI on TUN device: {e:#}");
         }
 
         // Do this in a separate task because:
