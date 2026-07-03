@@ -35,6 +35,12 @@ const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
+/// Spool directory for flow logs pending upload.
+///
+/// Holds Bearer tokens, so it lives outside the log directory and is written
+/// with 0700/0600 permissions.
+const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -98,9 +104,12 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli) -> Result<()> {
+    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(PathBuf::from(FLOW_LOGS_DIR));
+
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
         layer::Identity::default(),
+        flow_log_layer,
         match cli.log_format {
             LogFormat::Json => true,
             LogFormat::Human => false,

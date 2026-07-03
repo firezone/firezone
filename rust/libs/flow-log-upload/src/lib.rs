@@ -32,7 +32,7 @@ use anyhow::{Context as _, Result};
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use base64::Engine as _;
 use bytes::Bytes;
-use flow_log_spool::{Payload, deserialize};
+use flow_log_spool::deserialize;
 use http::{StatusCode, header};
 use http_client::HttpClient;
 use serde::{Deserialize, Serialize};
@@ -406,7 +406,7 @@ async fn connect(
 
 /// One flow to upload: the record to send and the files to delete once it lands.
 struct Pending {
-    payload: Payload,
+    payload: serde_json::Value,
     files: Vec<PathBuf>,
 }
 
@@ -614,7 +614,7 @@ fn load_flow(path: &Path) -> Result<Option<Pending>> {
 ///
 /// Malformed JSON is a bug (reports are written atomically); a CRC mismatch is
 /// the checksum catching environmental corruption, working as designed.
-fn read_report(path: &Path) -> Result<Option<Payload>> {
+fn read_report(path: &Path) -> Result<Option<serde_json::Value>> {
     let bytes = std::fs::read(path).context("Failed to read report")?;
 
     match deserialize(&bytes) {
@@ -814,7 +814,7 @@ async fn sleep_backoff(backoff: &mut ExponentialBackoff) -> bool {
 
 #[derive(Serialize)]
 struct Batch<'a> {
-    flow_logs: &'a [&'a Payload],
+    flow_logs: &'a [&'a serde_json::Value],
 }
 
 #[cfg(test)]
@@ -829,25 +829,14 @@ mod tests {
     }
 
     fn write_report(path: &Path) {
-        let payload = Payload {
-            protocol: "tcp".to_owned(),
-            inner_src_ip: "10.0.0.1".parse().unwrap(),
-            inner_src_port: 1,
-            inner_dst_ip: "10.0.0.2".parse().unwrap(),
-            inner_dst_port: 2,
-            domain: None,
-            outer_src_ip: "192.0.2.1".parse().unwrap(),
-            outer_src_port: 3,
-            outer_dst_ip: "192.0.2.2".parse().unwrap(),
-            outer_dst_port: 4,
-            flow_start: chrono::Utc::now(),
-            flow_end: None,
-            last_packet: None,
-            rx_packets: None,
-            tx_packets: None,
-            rx_bytes: None,
-            tx_bytes: None,
-        };
+        let payload = serde_json::json!({
+            "protocol": "tcp",
+            "inner_src_ip": "10.0.0.1",
+            "inner_src_port": 1,
+            "inner_dst_ip": "10.0.0.2",
+            "inner_dst_port": 2,
+            "flow_start": chrono::Utc::now().to_rfc3339(),
+        });
 
         std::fs::write(path, flow_log_spool::serialize(&payload).unwrap()).unwrap();
     }
