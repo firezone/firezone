@@ -129,17 +129,34 @@ jobs:
       - name: Ensure no TCP packets were re-ordered
         if: "!cancelled() && startsWith(matrix.test, 'tcp')"
         run: |
-          # The client is a TCP endpoint in both directions: it receives the bulk
-          # transfer for `server2client` (out-of-order arrivals bump `TCPOFOQueue`)
-          # and sends it for `client2server` (the peer's SACKs make the sender flag
-          # reordering via `TCP*Reorder`). Preserving packet order end-to-end is a
-          # deliberate goal of the data plane (see `scripts/router/router.sh`), so
-          # any reordering counter here is a regression.
+          # Preserving packet order end-to-end is a deliberate goal of the data
+          # plane (see `scripts/router/router.sh`), so any reordering is a regression.
           #
-          # `-a` prints absolute values, ignoring nstat's history file, so this is
-          # independent of the `nstat` call in the step above.
-          docker compose exec client-1 /bin/sh -c 'nstat -as' |
-            grep -iE "reorder|ofoqueue" && exit 1 || exit 0
+          # The `TCP*Reorder` counters are what we want: they increment on the TCP
+          # *sender* when the peer's SACKs reveal that a segment presumed lost was
+          # merely reordered. We deliberately avoid `TCPOFOQueue`, which also counts
+          # loss-induced gaps and would flake whenever the run has retransmits.
+          #
+          # Detection is sender-side, so we check both TCP endpoints -- the iperf3
+          # client (`client-1`) and the iperf3 server -- each of which is the sender
+          # in one direction. The gateway only forwards IP for this flow, so it has
+          # no TCP state to inspect. `-a` prints absolute counters, ignoring nstat's
+          # history file, so this is independent of the `nstat` call above.
+          if docker compose exec client-1 /bin/sh -c 'nstat -as' | grep -iq "reorder"; then
+            echo "client-1 detected TCP reordering"
+            exit 1
+          fi
+
+          # The iperf3 server image ships no `nstat`, so read the counters straight
+          # from `/proc/net/netstat` and sum the reorder columns on the runner.
+          reorder=$(docker compose exec -T iperf3 cat /proc/net/netstat | awk '
+            $1 == "TcpExt:" && !seen { for (i = 2; i <= NF; i++) col[$i] = i; seen = 1; next }
+            $1 == "TcpExt:" { print $(col["TCPSACKReorder"]) + $(col["TCPRenoReorder"]) + $(col["TCPTSReorder"]) }
+          ')
+          if [ "${reorder:-0}" -ne 0 ]; then
+            echo "iperf3 server detected ${reorder} TCP reordering event(s)"
+            exit 1
+          fi
 
   upload-bencher:
     continue-on-error: true
