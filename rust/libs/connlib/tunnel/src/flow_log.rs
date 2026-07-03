@@ -2,11 +2,9 @@
 //!
 //! A [`Tracker`] turns a stream of packet observations into [`Record`]s, each of
 //! which is emitted as a structured tracing event (targets `flow_logs::tcp` /
-//! `flow_logs::udp`): the entrypoints decide what happens to them, e.g. by
-//! installing `flow_log_writer`'s spooling layer next to their log output. The
-//! tracker is generic over a [`Scope`] `S` that identifies which authorization a
-//! flow belongs to (e.g. a `(peer, resource)` pair); the scope plus the inner
-//! 4-tuple keys a flow. Internally, packets are recorded in one of two directions:
+//! `flow_logs::udp`). The tracker is generic over a [`Scope`] `S` that identifies
+//! which authorization a flow belongs to; the scope plus the inner 4-tuple keys a
+//! flow. Packets are recorded in one of two directions:
 //!
 //! - "tx" for packets in the initiator-to-responder direction.
 //!   This is where flows are created, split and TCP-closed.
@@ -15,18 +13,13 @@
 //!
 //! "tx" / "rx" are defined from the *initiator's* perspective regardless of which
 //! device observes the packet, so the initiator and responder label the same
-//! direction identically. That is what makes the portal's two-sided cross-check of
-//! byte / packet counts meaningful.
+//! direction identically.
 //!
-//! Both devices feed the tracker the same way: processing a packet begins with
-//! [`Tracker::begin_tun_packet`] / [`Tracker::begin_network_packet`], which yields
-//! a [`CurrentFlowGuard`] and stores a [`FlowData`] in a thread-local. The fields
-//! of a flow log are scattered across the call sites that process the packet
-//! (routing, peer lookup, NAT, encapsulation), so each site contributes what it
-//! knows via the `record_*` functions without threading a context object through
-//! every function. Packet processing can short-circuit on many errors via `?`;
-//! the guard ensures that the collected data is either committed as a whole (via
-//! [`Tracker::commit`]) or discarded, no matter which exit path is taken.
+//! Processing a packet begins with [`Tracker::begin_tun_packet`] /
+//! [`Tracker::begin_network_packet`], which stores a [`FlowData`] in a
+//! thread-local that the call sites processing the packet fill in via the
+//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] commits the
+//! gathered data, no matter which exit path the processing takes.
 
 use std::{
     cell::RefCell,
@@ -124,14 +117,8 @@ struct RxFlow<S> {
     payload_len: usize,
 }
 
-impl<S> Tracker<S>
-where
-    S: Scope,
-{
-    /// Creates a new tracker.
-    ///
-    /// It starts disabled until [`Tracker::set_enabled`] is called with the
-    /// portal's `init` config.
+impl<S> Tracker<S> {
+    /// Creates a new tracker; it starts disabled.
     pub fn new(now: Instant, unix_ts: Duration) -> Self {
         let created_at_utc = i64::try_from(unix_ts.as_secs())
             .ok()
@@ -153,46 +140,36 @@ where
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
     }
+}
 
+impl<S> Tracker<S>
+where
+    S: Scope,
+{
     /// Begins gathering flow data for one packet read from the TUN device.
-    pub fn begin_tun_packet(&self, packet: &IpPacket) -> CurrentFlowGuard {
-        if !self.enabled {
-            return CurrentFlowGuard(());
+    pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
+        if self.enabled {
+            set_current_flow(FlowData::new(Entry::Tun, Some(InnerFlow::from(packet))));
         }
 
-        set_current_flow(FlowData::new(Entry::Tun, Some(InnerFlow::from(packet))));
-
-        CurrentFlowGuard(())
+        CurrentFlowGuard { tracker: self, now }
     }
 
     /// Begins gathering flow data for one packet received on the network interface.
-    pub fn begin_network_packet(&self, local: SocketAddr, remote: SocketAddr) -> CurrentFlowGuard {
-        if !self.enabled {
-            return CurrentFlowGuard(());
+    pub fn begin_network_packet(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        now: Instant,
+    ) -> CurrentFlowGuard<'_, S> {
+        if self.enabled {
+            set_current_flow(FlowData::new(Entry::Network { local, remote }, None));
         }
 
-        set_current_flow(FlowData::new(Entry::Network { local, remote }, None));
-
-        CurrentFlowGuard(())
+        CurrentFlowGuard { tracker: self, now }
     }
 
-    /// Commits the current packet's flow data gathered since `guard` was created.
-    ///
-    /// Data that is still incomplete (e.g. because packet processing bailed early
-    /// or the packet was internal traffic) is discarded.
-    pub fn commit(&mut self, guard: CurrentFlowGuard, now: Instant) {
-        // The guard's only job is to discard the thread-local on early drops;
-        // we take it right here, so there is nothing left for `Drop` to do.
-        std::mem::forget(guard);
-
-        let Some(data) = CURRENT_FLOW.take() else {
-            return;
-        };
-
-        self.commit_data(data, now);
-    }
-
-    fn commit_data(&mut self, data: FlowData, now: Instant) {
+    fn commit(&mut self, data: FlowData, now: Instant) {
         let FlowData {
             entry,
             inner:
@@ -641,13 +618,23 @@ where
 
 /// Guards the [`FlowData`] of the packet currently being processed.
 ///
-/// Dropping the guard without [`Tracker::commit`] discards the gathered data.
+/// Dropping the guard commits the gathered data to the tracker; data that is
+/// still incomplete (e.g. because packet processing bailed early or the packet
+/// was internal traffic) is discarded. Holding a mutable borrow of the tracker
+/// also ensures at most one flow can be gathered at a time.
 #[must_use]
-pub struct CurrentFlowGuard(());
+pub struct CurrentFlowGuard<'a, S: Scope> {
+    tracker: &'a mut Tracker<S>,
+    now: Instant,
+}
 
-impl Drop for CurrentFlowGuard {
+impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
     fn drop(&mut self) {
-        let _ = CURRENT_FLOW.take();
+        let Some(data) = CURRENT_FLOW.take() else {
+            return;
+        };
+
+        self.tracker.commit(data, self.now);
     }
 }
 
