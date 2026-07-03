@@ -20,7 +20,7 @@
         Section("Connected Devices (\(store.connectedDevices.count))") {
           ForEach(store.connectedDevices) { device in
             NavigationLink(value: device) {
-              Text(device.tunIPv4)
+              Text(device.name)
             }
           }
         }
@@ -28,19 +28,21 @@
     }
   }
 
-  /// Detail screen for a connected device: tunnel IPv4, client ID, and pools,
+  /// Detail screen for a connected device: tunnel IPs, client details, and pools,
   /// each copyable via a long-press context menu.
   struct ConnectedDeviceView: View {
     let device: ConnectedDevice
 
     var body: some View {
       List {
-        Section(header: Text("Tunnel IPv4")) {
+        Section(header: Text("Tunnel IPs")) {
           copyableRow(device.tunIPv4)
+          copyableRow(device.tunIPv6)
         }
 
-        Section(header: Text("Client ID")) {
+        Section(header: Text("Client Details")) {
           copyableRow(device.id)
+          copyableRow(device.name)
         }
 
         if !device.pools.isEmpty {

@@ -35,35 +35,41 @@
     }
   }
 
-  /// A single connected device, labelled by its tunnel IPv4, with details in a submenu.
+  /// A single connected device, labelled by name, with details in a submenu.
   struct ConnectedDeviceMenuItem: View {
     let device: ConnectedDevice
 
     var body: some View {
-      Menu(device.tunIPv4) {
+      Menu(device.name) {
         ConnectedDeviceDetailsSubmenu(device: device)
       }
     }
   }
 
-  /// Copyable details for a connected device: tunnel IPv4, client ID, and pools.
+  /// Copyable details for a connected device: tunnel IPs, client details, and pools.
   struct ConnectedDeviceDetailsSubmenu: View {
     let device: ConnectedDevice
 
     var body: some View {
       Group {
-        Text("Tunnel IPv4")
+        Text("Tunnel IPs")
           .foregroundStyle(.secondary)
         Button(device.tunIPv4) {
           Clipboard.copy(device.tunIPv4)
         }
+        Button(device.tunIPv6) {
+          Clipboard.copy(device.tunIPv6)
+        }
 
         Divider()
 
-        Text("Client ID")
+        Text("Client Details")
           .foregroundStyle(.secondary)
         Button(device.id) {
           Clipboard.copy(device.id)
+        }
+        Button(device.name) {
+          Clipboard.copy(device.name)
         }
 
         if !device.pools.isEmpty {

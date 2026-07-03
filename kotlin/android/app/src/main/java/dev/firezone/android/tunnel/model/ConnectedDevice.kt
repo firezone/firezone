@@ -9,6 +9,8 @@ import kotlinx.parcelize.Parcelize
 @Parcelize
 data class ConnectedDevice(
     val id: String,
+    val name: String,
     val tunIpv4: String,
+    val tunIpv6: String,
     val pools: List<String>,
 ) : Parcelable

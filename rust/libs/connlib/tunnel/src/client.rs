@@ -251,9 +251,9 @@ impl ClientState {
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers. The tunnel IPv4 is
-    /// taken from the live connection state; static-pool resources are joined in
-    /// only to label which pool(s) each device belongs to.
+    /// Builds the list of currently-connected device peers. The name and tunnel
+    /// IPs are taken from the live connection state; static-pool resources are
+    /// joined in only to label which pool(s) each device belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
@@ -267,25 +267,16 @@ impl ClientState {
                     );
                     return None;
                 };
-                let tunneled_ipv4 = peer.tun_ipv4();
+                let tun_ipv4 = peer.tun_ipv4();
+                let tun_ipv6 = peer.tun_ipv6();
+                let name = peer.remote_name().to_owned();
 
-                let mut pool_names = Vec::new();
-                for pool in &pools {
-                    if let Some(device) = pool.devices.iter().find(|d| d.id == *client_id) {
-                        if device.ipv4.network_address() != tunneled_ipv4 {
-                            tracing::debug!(
-                                %client_id,
-                                pool = %pool.name,
-                                pool_ipv4 = %device.ipv4.network_address(),
-                                %tunneled_ipv4,
-                                "Pool-provided IPv4 disagrees with the connection's tunnel IPv4"
-                            );
-                        }
-                        pool_names.push(pool.name.clone());
-                    }
-                }
-
-                pool_names.sort();
+                let pool_names = pools
+                    .iter()
+                    .filter(|pool| pool.devices.iter().any(|d| d.id == *client_id))
+                    .map(|pool| pool.name.clone())
+                    .sorted()
+                    .collect_vec();
 
                 if pool_names.is_empty() {
                     tracing::debug!(
@@ -296,7 +287,9 @@ impl ClientState {
 
                 Some(ConnectedDeviceView {
                     id: *client_id,
-                    tunneled_ipv4,
+                    name,
+                    tun_ipv4,
+                    tun_ipv6,
                     pools: pool_names,
                 })
             })

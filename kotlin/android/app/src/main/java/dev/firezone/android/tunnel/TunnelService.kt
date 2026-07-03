@@ -737,7 +737,9 @@ class TunnelService : VpnService() {
     private fun convertConnectedDevice(device: uniffi.connlib.ConnectedDevice): ConnectedDevice =
         ConnectedDevice(
             id = device.id,
+            name = device.name,
             tunIpv4 = device.tunIpv4,
+            tunIpv6 = device.tunIpv6,
             pools = device.pools,
         )
 
