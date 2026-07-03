@@ -133,6 +133,10 @@ impl SpoolSwitch {
     pub fn set(&self, enabled: bool) {
         self.0.store(enabled, Ordering::Relaxed);
     }
+
+    pub fn is_enabled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
 }
 
 /// Persists an authorization's ingest token where the uploader expects it.
