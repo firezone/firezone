@@ -256,6 +256,7 @@ defmodule PortalWeb.Policies.Components do
     <div class="flex flex-col h-full overflow-hidden">
       <.policy_form_header mode={@mode} />
       <.form
+        id="policy-form"
         for={@panel_form}
         phx-submit="submit_policy_form"
         phx-change="change_policy_form"

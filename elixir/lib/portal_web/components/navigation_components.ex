@@ -146,7 +146,7 @@ defmodule PortalWeb.NavigationComponents do
     </ul>
     <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
       <li>
-        <form action={~p"/#{@subject.account}/sign_out"} method="post">
+        <form id="sign-out-form" action={~p"/#{@subject.account}/sign_out"} method="post">
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button
             type="submit"

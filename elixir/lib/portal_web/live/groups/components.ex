@@ -392,7 +392,7 @@ defmodule PortalWeb.Groups.Components do
         </.button>
       </div>
       <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
-        <form phx-change="filter_show_members">
+        <form id="filter-members-form" phx-change="filter_show_members">
           <div class="relative">
             <.icon
               name="ri-search-line"
