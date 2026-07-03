@@ -734,6 +734,7 @@ defmodule PortalAPI.Gateway.Channel do
     push(socket, "init", %{
       flow_logs_api_url: flow_logs_api_url(),
       flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
+      flow_logs_upload_batch_size: flow_logs_upload_batch_size(),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -755,6 +756,9 @@ defmodule PortalAPI.Gateway.Channel do
 
   defp flow_logs_upload_interval_secs,
     do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
+
+  defp flow_logs_upload_batch_size,
+    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
 
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)

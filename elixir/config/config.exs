@@ -33,6 +33,8 @@ config :portal, generators: [binary_id: true]
 config :portal, sql_sandbox: false
 config :portal, replica_repo: Portal.Repo.Replica
 
+config :portal, flow_logs_upload_batch_size: 1000
+
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
 

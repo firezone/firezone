@@ -305,6 +305,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         relays: relays,
         flow_logs_api_url: "https://flow-api.firezone.dev/",
         flow_logs_upload_interval_secs: 60,
+        flow_logs_upload_batch_size: 1000,
         config: %{
           ipv4_masquerade_enabled: true,
           ipv6_masquerade_enabled: true
