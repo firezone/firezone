@@ -1,8 +1,7 @@
 //! Flow-log tracking shared by the Gateway and the Client.
 //!
 //! A [`Tracker`] turns a stream of packet observations into [`Record`]s, each of
-//! which is emitted as a structured tracing event (targets `flow_logs::tcp` /
-//! `flow_logs::udp`). The tracker is generic over a [`Scope`] `S` that identifies
+//! which is emitted as a structured tracing event (target `flow_logs`). The tracker is generic over a [`Scope`] `S` that identifies
 //! which authorization a flow belongs to; the scope plus the inner 4-tuple keys a
 //! flow. Packets are recorded in one of two directions:
 //!
@@ -1025,9 +1024,9 @@ pub fn emit(record: &Record) {
     let close = record.close.as_ref();
 
     macro_rules! emit {
-        ($target:literal, $message:literal) => {
+        ($message:literal) => {
             tracing::trace!(
-                target: $target,
+                target: "flow_logs",
                 protocol = record.protocol.as_str(),
 
                 role = attr.map(|a| a.role.as_str()),
@@ -1056,15 +1055,15 @@ pub fn emit(record: &Record) {
                 device_firebase_installation_id = attr.and_then(|a| a.device_firebase_installation_id.as_deref()),
 
                 inner_src_ip = %record.inner_src_ip,
-                inner_src_port = %record.inner_src_port,
+                inner_src_port = record.inner_src_port,
                 inner_dst_ip = %record.inner_dst_ip,
-                inner_dst_port = %record.inner_dst_port,
-                inner_domain = record.domain.as_ref().map(tracing::field::display),
+                inner_dst_port = record.inner_dst_port,
+                domain = record.domain.as_ref().map(tracing::field::display),
 
                 outer_src_ip = %record.outer_src_ip,
-                outer_src_port = %record.outer_src_port,
+                outer_src_port = record.outer_src_port,
                 outer_dst_ip = %record.outer_dst_ip,
-                outer_dst_port = %record.outer_dst_port,
+                outer_dst_port = record.outer_dst_port,
 
                 flow_start = ?record.flow_start,
                 flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
@@ -1079,10 +1078,10 @@ pub fn emit(record: &Record) {
     }
 
     match (record.protocol, close.is_some()) {
-        (FlowProtocol::Tcp, false) => emit!("flow_logs::tcp", "TCP flow started"),
-        (FlowProtocol::Tcp, true) => emit!("flow_logs::tcp", "TCP flow completed"),
-        (FlowProtocol::Udp, false) => emit!("flow_logs::udp", "UDP flow started"),
-        (FlowProtocol::Udp, true) => emit!("flow_logs::udp", "UDP flow completed"),
+        (FlowProtocol::Tcp, false) => emit!("TCP flow started"),
+        (FlowProtocol::Tcp, true) => emit!("TCP flow completed"),
+        (FlowProtocol::Udp, false) => emit!("UDP flow started"),
+        (FlowProtocol::Udp, true) => emit!("UDP flow completed"),
     }
 }
 
@@ -1303,25 +1302,27 @@ mod tests {
             .expect("completed report exists");
         let payload = flow_log_spool::deserialize(&std::fs::read(report).unwrap()).unwrap();
 
-        assert_eq!(payload.protocol, "tcp");
-        assert_eq!(payload.inner_src_ip, record.inner_src_ip);
-        assert_eq!(payload.inner_src_port, record.inner_src_port);
-        assert_eq!(payload.inner_dst_ip, record.inner_dst_ip);
-        assert_eq!(payload.inner_dst_port, record.inner_dst_port);
-        assert_eq!(payload.domain.as_deref(), Some("download.httpbin"));
-        assert_eq!(payload.outer_src_ip, record.outer_src_ip);
-        assert_eq!(payload.outer_src_port, record.outer_src_port);
-        assert_eq!(payload.outer_dst_ip, record.outer_dst_ip);
-        assert_eq!(payload.outer_dst_port, record.outer_dst_port);
-        assert_eq!(payload.flow_start, record.flow_start);
+        assert_eq!(payload["protocol"], "tcp");
+        assert_eq!(payload["inner_src_ip"], record.inner_src_ip.to_string());
+        assert_eq!(payload["inner_src_port"], record.inner_src_port);
+        assert_eq!(payload["inner_dst_ip"], record.inner_dst_ip.to_string());
+        assert_eq!(payload["inner_dst_port"], record.inner_dst_port);
+        assert_eq!(payload["domain"], "download.httpbin");
+        assert_eq!(payload["outer_src_ip"], record.outer_src_ip.to_string());
+        assert_eq!(payload["outer_src_port"], record.outer_src_port);
+        assert_eq!(payload["outer_dst_ip"], record.outer_dst_ip.to_string());
+        assert_eq!(payload["outer_dst_port"], record.outer_dst_port);
+        assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
+        // Attribution rides the token, not the spooled record.
+        assert!(payload.get("actor_id").is_none());
 
         let close = record.close.as_ref().unwrap();
-        assert_eq!(payload.flow_end, Some(close.flow_end));
-        assert_eq!(payload.last_packet, Some(close.last_packet));
-        assert_eq!(payload.rx_packets, Some(close.rx_packets));
-        assert_eq!(payload.tx_packets, Some(close.tx_packets));
-        assert_eq!(payload.rx_bytes, Some(close.rx_bytes));
-        assert_eq!(payload.tx_bytes, Some(close.tx_bytes));
+        assert_eq!(payload["flow_end"], format!("{:?}", close.flow_end));
+        assert_eq!(payload["last_packet"], format!("{:?}", close.last_packet));
+        assert_eq!(payload["rx_packets"], close.rx_packets);
+        assert_eq!(payload["tx_packets"], close.tx_packets);
+        assert_eq!(payload["rx_bytes"], close.rx_bytes);
+        assert_eq!(payload["tx_bytes"], close.tx_bytes);
     }
 
     #[test]
