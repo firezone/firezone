@@ -7,6 +7,17 @@
 #   docker compose -f docker-compose.yml -f scripts/benchmark/compose.bench.yml build client-1 gateway relay-1
 
 services:
+  portal-router: &bench-router
+    build: !override
+      context: scripts/router
+      dockerfile: ../benchmark/Dockerfile.router
+
+  client-1-router: *bench-router
+  client-2-router: *bench-router
+  gateway-router: *bench-router
+  relay-1-router: *bench-router
+  relay-2-router: *bench-router
+
   client-1:
     image: localhost/bench/client:latest
     build: !override
@@ -15,6 +26,7 @@ services:
       args:
         BASE_IMAGE: ${BENCH_BASE_CLIENT:-ghcr.io/firezone/debug/client:main}
         PACKAGE: firezone-headless-client
+        INIT_SCRIPT: docker-init-client.sh
 
   client-2:
     image: localhost/bench/client:latest
@@ -24,6 +36,7 @@ services:
       args:
         BASE_IMAGE: ${BENCH_BASE_CLIENT:-ghcr.io/firezone/debug/client:main}
         PACKAGE: firezone-headless-client
+        INIT_SCRIPT: docker-init-client.sh
 
   gateway:
     image: localhost/bench/gateway:latest
@@ -33,6 +46,7 @@ services:
       args:
         BASE_IMAGE: ${BENCH_BASE_GATEWAY:-ghcr.io/firezone/debug/gateway:main}
         PACKAGE: firezone-gateway
+        INIT_SCRIPT: docker-init-gateway.sh
 
   relay-1:
     image: localhost/bench/relay:latest
@@ -42,6 +56,7 @@ services:
       args:
         BASE_IMAGE: ${BENCH_BASE_RELAY:-ghcr.io/firezone/debug/relay:main}
         PACKAGE: firezone-relay
+        INIT_SCRIPT: docker-init-relay.sh
 
   relay-2:
     image: localhost/bench/relay:latest
@@ -51,3 +66,4 @@ services:
       args:
         BASE_IMAGE: ${BENCH_BASE_RELAY:-ghcr.io/firezone/debug/relay:main}
         PACKAGE: firezone-relay
+        INIT_SCRIPT: docker-init-relay.sh

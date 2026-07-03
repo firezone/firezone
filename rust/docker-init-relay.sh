@@ -59,8 +59,11 @@ fi
 if [ -z "${PUBLIC_IP4_ADDR:-}" ]; then unset PUBLIC_IP4_ADDR; fi
 if [ -z "${PUBLIC_IP6_ADDR:-}" ]; then unset PUBLIC_IP6_ADDR; fi
 
+# Allow overlays to disable eBPF offloading by setting the var to an empty string.
+if [ -z "${EBPF_OFFLOADING:-}" ]; then unset EBPF_OFFLOADING; fi
+
 # If eBPF offloading is enabled, we need the source address to use for cross-stack relaying
-if [ -n "${EBPF_OFFLOADING}" ]; then
+if [ -n "${EBPF_OFFLOADING:-}" ]; then
     if [ -z "${EBPF_INT4_ADDR}" ]; then
         # Get the address of the EBPF_OFFLOADING interface used to reach the default gw
         EBPF_INT4_ADDR=$(ip -4 addr show dev "${EBPF_OFFLOADING}" | awk '/inet / {print $2}' | cut -d/ -f1)
@@ -71,6 +74,11 @@ if [ -n "${EBPF_OFFLOADING}" ]; then
         EBPF_INT6_ADDR=$(ip -6 addr show dev "${EBPF_OFFLOADING}" scope global | awk '/inet6 / {print $2; exit}' | cut -d/ -f1)
         export EBPF_INT6_ADDR
     fi
+
+    # Discovery yields empty strings on single-stack hosts; clap treats an empty
+    # env var as present but fails to parse it, so unset them.
+    if [ -z "${EBPF_INT4_ADDR:-}" ]; then unset EBPF_INT4_ADDR; fi
+    if [ -z "${EBPF_INT6_ADDR:-}" ]; then unset EBPF_INT6_ADDR; fi
 fi
 
 exec "$@"

@@ -67,5 +67,9 @@ Teardown: `docker compose down` (add `-v` to reset the seeded database).
   compose overlay): latency emulation via `*_LATENCY_MS` env vars silently
   cannot work here, and IPv6 paths are not exercised.
 - Debug-image bases run release binaries (same recipe as CI `perf/*` images).
+- This kernel's default TCP congestion control is BBR (CI hosts default to
+  cubic) and containers inherit it — pin `-C cubic`/`-C bbr` explicitly when
+  running iperf3 by hand. The relay runs without eBPF offload here (the
+  kernel's verifier rejects the TURN router program).
 - Check `docker compose logs client-1 gateway relay-1` for WARNs after a run;
   CI treats those as failures.

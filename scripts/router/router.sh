@@ -103,6 +103,16 @@ nft -f "$CONFIG_FILE"
 
 rm "$CONFIG_FILE"
 
+# Software flow offload. Established TCP/UDP flows (added in the forward chain)
+# take a fast forwarding path that skips conntrack re-eval + the ruleset on every
+# packet. Requires CONFIG_NF_FLOW_TABLE, which some VM kernels lack (e.g. Claude
+# Code web), so apply it only when the kernel supports it.
+if nft add flowtable inet router ft '{ hook ingress priority filter; devices = { internal, internet }; }' 2>/dev/null; then
+    nft add rule inet router forward 'meta l4proto { tcp, udp } flow add @ft'
+else
+    echo "Kernel lacks nftables flowtable support; skipping software flow offload"
+fi
+
 # Pin RPS (Receive Packet Steering) to a single host CPU so all of this router's
 # RX is processed on one core. This preserves packet ordering; otherwise whichever
 # CPU handled the interrupt would process the packet, causing reordering.

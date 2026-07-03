@@ -79,8 +79,11 @@ services:
     sysctls: !override []
     environment:
       # `!reset` does not remove keys from services that use `extends`;
-      # docker-init-relay.sh unsets empty address vars instead.
+      # docker-init-relay.sh unsets empty vars instead. eBPF offloading is
+      # disabled because these kernels reject the TURN router program
+      # (combined call stack > 512 bytes).
       PUBLIC_IP6_ADDR: ""
+      EBPF_OFFLOADING: ""
     networks: !override
       relay-1-internal:
         ipv4_address: 172.29.1.100
@@ -100,8 +103,11 @@ services:
     sysctls: !override []
     environment:
       # `!reset` does not remove keys from services that use `extends`;
-      # docker-init-relay.sh unsets empty address vars instead.
+      # docker-init-relay.sh unsets empty vars instead. eBPF offloading is
+      # disabled because these kernels reject the TURN router program
+      # (combined call stack > 512 bytes).
       PUBLIC_IP6_ADDR: ""
+      EBPF_OFFLOADING: ""
     networks: !override
       relay-2-internal:
         ipv4_address: 172.29.2.100

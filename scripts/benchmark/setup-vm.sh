@@ -46,6 +46,19 @@ sysctl -qw net.core.rmem_max=134217728        # 128 MB
 sysctl -qw net.core.netdev_max_backlog=100000 # matches the netem limit
 sysctl -qw net.core.netdev_budget=5000        # drain more per softirq poll
 
+# Kernels with built-in br_netfilter run bridged packets through iptables,
+# where docker's inter-network MASQUERADE breaks the compose router topology
+# (CI kernels have it off). Same-bridge L2 traffic must bypass iptables.
+if [ -f /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
+    sysctl -qw net.bridge.bridge-nf-call-iptables=0
+    sysctl -qw net.bridge.bridge-nf-call-ip6tables=0 2>/dev/null || true
+fi
+
+# Let unprivileged processes (e.g. the iperf3 server container) pick any of
+# these congestion controls via TCP_CONGESTION.
+sysctl -qw net.ipv4.tcp_allowed_congestion_control="reno cubic bbr" 2>/dev/null ||
+    echo "    WARN: could not extend tcp_allowed_congestion_control"
+
 echo "==> Installing Rust toolchain (per rust-toolchain.toml)"
 (cd "$REPO_ROOT/rust" && rustup show active-toolchain)
 
