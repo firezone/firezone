@@ -55,7 +55,8 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
     thread::JoinHandle,
@@ -99,9 +100,12 @@ where
         .spawn(move || writer_loop(&spool_root, &rx))
         .expect("Failed to spawn flow-log writer thread");
 
+    let spooling = Arc::new(AtomicBool::new(true));
+
     let layer = FlowLogLayer {
         tx: tx.clone(),
         dropped: AtomicU64::new(0),
+        spooling: spooling.clone(),
     }
     .with_filter(
         tracing_subscriber::filter::Targets::new().with_target("flow_logs", tracing::Level::TRACE),
@@ -112,8 +116,23 @@ where
         Guard {
             tx,
             handle: Some(handle),
+            spooling,
         },
     )
+}
+
+/// Controls at runtime whether the layer spools reports; obtained from
+/// [`Guard::spool_switch`].
+///
+/// Flow events emitted while spooling is off only reach the log output, e.g. on
+/// a Gateway that runs with `--flow-logs` while the portal has uploads disabled.
+#[derive(Clone)]
+pub struct SpoolSwitch(Arc<AtomicBool>);
+
+impl SpoolSwitch {
+    pub fn set(&self, enabled: bool) {
+        self.0.store(enabled, Ordering::Relaxed);
+    }
 }
 
 /// Persists an authorization's ingest token where the uploader expects it.
@@ -163,6 +182,16 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 pub struct Guard {
     tx: mpsc::SyncSender<Command>,
     handle: Option<JoinHandle<()>>,
+    spooling: Arc<AtomicBool>,
+}
+
+impl Guard {
+    /// Returns the switch controlling whether the layer spools reports.
+    ///
+    /// Spooling starts enabled.
+    pub fn spool_switch(&self) -> SpoolSwitch {
+        SpoolSwitch(self.spooling.clone())
+    }
 }
 
 impl Drop for Guard {
@@ -220,6 +249,8 @@ struct FlowLogLayer {
     tx: mpsc::SyncSender<Command>,
     /// How many reports were dropped because the writer thread's queue was full.
     dropped: AtomicU64,
+    /// See [`SpoolSwitch`].
+    spooling: Arc<AtomicBool>,
 }
 
 impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
@@ -227,6 +258,10 @@ where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if !self.spooling.load(Ordering::Relaxed) {
+            return;
+        }
+
         let mut visitor = FieldVisitor::default();
         event.record(&mut visitor);
 
@@ -521,6 +556,22 @@ mod tests {
         assert!(start.get("actor_id").is_none()); // attribution rides the token only
         assert_eq!(end["rx_bytes"], 1024); // the `.end` is a self-describing report
         assert_eq!(end["inner_dst_port"], "443");
+    }
+
+    #[test]
+    fn spools_nothing_while_spooling_is_off() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let (layer, guard) = layer(dir.path().to_owned());
+        guard.spool_switch().set(false);
+
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            emit_event(true);
+        });
+        drop(guard);
+
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
     #[test]
