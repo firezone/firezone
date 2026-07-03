@@ -348,10 +348,11 @@ struct Cli {
     #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
     log_format: LogFormat,
 
-    /// Track flow logs even when the portal has uploads disabled, and emit them
+    /// Track flow logs even when the portal has them disabled, and emit them
     /// to the log output by adding the `flow_logs=trace` log directive.
     ///
-    /// Uploading flow logs is always controlled by the portal.
+    /// Flows tracked only because of this flag stay on the log output;
+    /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 
