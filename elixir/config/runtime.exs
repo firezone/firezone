@@ -333,6 +333,9 @@ if config_env() == :prod do
     # Delete old session_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
 
+    # Delete old api_request_logs every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteOldAPIRequestLogs},
+
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
   ]

@@ -1,5 +1,6 @@
 defmodule PortalAPI.LogJSON do
   alias PortalAPI.Pagination
+  alias Portal.APIRequestLog
   alias Portal.ChangeLog
   alias Portal.FlowLog
   alias Portal.SessionLog
@@ -69,6 +70,26 @@ defmodule PortalAPI.LogJSON do
       tx_packets: log.tx_packets,
       rx_bytes: log.rx_bytes,
       tx_bytes: log.tx_bytes
+    }
+  end
+
+  defp data(%APIRequestLog{} = log) do
+    %{
+      type: "api_request",
+      event_id: log.event_id,
+      timestamp: log.inserted_at,
+      actor_id: log.actor_id,
+      api_token_id: log.api_token_id,
+      method: log.method,
+      path: log.path,
+      content_length: log.content_length,
+      request_id: log.request_id,
+      user_agent: log.user_agent,
+      remote_ip: log.remote_ip && "#{log.remote_ip}",
+      remote_ip_location_region: log.remote_ip_location_region,
+      remote_ip_location_city: log.remote_ip_location_city,
+      remote_ip_location_lat: log.remote_ip_location_lat,
+      remote_ip_location_lon: log.remote_ip_location_lon
     }
   end
 end

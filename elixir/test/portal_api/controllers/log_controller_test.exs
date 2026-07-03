@@ -3,6 +3,7 @@ defmodule PortalAPI.LogControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.APIRequestLogFixtures
   import Portal.ChangeLogFixtures
   import Portal.FlowLogFixtures
   import Portal.SessionLogFixtures
@@ -419,6 +420,88 @@ defmodule PortalAPI.LogControllerTest do
     end
   end
 
+  describe "index/2 type=api_request" do
+    test "lists api request logs including the listing request itself", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      log1 = api_request_log_fixture(account: account)
+      log2 = api_request_log_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs?type=api_request")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      # The RequestLog plug records this request before the controller runs,
+      # so the listing includes its own entry.
+      assert length(data) == 3
+      assert Enum.all?(data, &(&1["type"] == "api_request"))
+
+      event_ids = MapSet.new(data, & &1["event_id"])
+      assert MapSet.member?(event_ids, log1.event_id)
+      assert MapSet.member?(event_ids, log2.event_id)
+    end
+
+    test "filters by actor_id", %{conn: conn, account: account, actor: actor} do
+      actor_id = Ecto.UUID.generate()
+      matching = api_request_log_fixture(account: account, actor_id: actor_id)
+      api_request_log_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs?type=api_request&actor_id=#{actor_id}")
+
+      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
+      assert event_id == matching.event_id
+    end
+
+    test "returns 400 when actor_email is combined with type=api_request", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs?type=api_request&actor_email=admin@example.com")
+
+      assert %{"detail" => detail} = json_response(conn, 400)
+      assert detail =~ "`actor_email` is not supported for `type=api_request`"
+    end
+
+    test "renders api request log fields", %{conn: conn, account: account, actor: actor} do
+      log =
+        api_request_log_fixture(
+          account: account,
+          method: "POST",
+          path: "/policies",
+          content_length: 42,
+          request_id: "GBKkV1jUWuW2sJoAACkB"
+        )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs?type=api_request&actor_id=#{log.actor_id}")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["event_id"] == log.event_id
+      assert data["actor_id"] == log.actor_id
+      assert data["api_token_id"] == log.api_token_id
+      assert data["method"] == "POST"
+      assert data["path"] == "/policies"
+      assert data["content_length"] == 42
+      assert data["request_id"] == "GBKkV1jUWuW2sJoAACkB"
+      assert data["user_agent"] == "testclient/1.0"
+      assert data["remote_ip"] == "189.172.73.1"
+      assert data["timestamp"]
+    end
+  end
+
   describe "index/2 window validation" do
     test "returns 400 when begin is not a timestamp", %{conn: conn, actor: actor} do
       conn =
@@ -549,6 +632,24 @@ defmodule PortalAPI.LogControllerTest do
       assert %{"data" => data} = json_response(conn, 200)
       assert data["type"] == "flow"
       assert data["event_id"] == flow_log.event_id
+    end
+
+    test "fetches an api request log by its a-prefixed event_id", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      log = api_request_log_fixture(account: account)
+      assert String.starts_with?(log.event_id, "a")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs/#{log.event_id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["type"] == "api_request"
+      assert data["event_id"] == log.event_id
     end
 
     test "normalizes uppercase event_ids", %{conn: conn, account: account, actor: actor} do

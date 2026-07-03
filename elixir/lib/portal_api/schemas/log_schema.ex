@@ -291,6 +291,83 @@ defmodule PortalAPI.Schemas.Log do
     })
   end
 
+  defmodule APIRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "APIRequestLog",
+      description: """
+      A single API Request Log entry, recording one authenticated REST API
+      request.
+      """,
+      type: :object,
+      properties: %{
+        type: %Schema{type: :string, enum: ["api_request"]},
+        event_id: %Schema{
+          type: :string,
+          description: """
+          Opaque identifier for the API Request Log entry. A 24-character
+          lowercase hexadecimal string starting with `a`.
+          """,
+          example: "a00060db0c2c8eb400000000"
+        },
+        timestamp: %Schema{
+          type: :string,
+          format: :"date-time",
+          description: "RFC 3339 timestamp identifying when the request was received."
+        },
+        actor_id: %Schema{type: :string, description: "ID of the API Client actor."},
+        api_token_id: %Schema{type: :string, description: "ID of the API token used."},
+        method: %Schema{type: :string, description: "HTTP request method.", example: "GET"},
+        path: %Schema{type: :string, description: "HTTP request path.", example: "/clients"},
+        content_length: %Schema{
+          type: :integer,
+          nullable: true,
+          description: "Value of the Content-Length request header, when present."
+        },
+        request_id: %Schema{
+          type: :string,
+          description: "Request ID assigned by the server, for correlating with server logs."
+        },
+        user_agent: %Schema{type: :string, nullable: true},
+        remote_ip: %Schema{type: :string},
+        remote_ip_location_region: %Schema{type: :string, nullable: true},
+        remote_ip_location_city: %Schema{type: :string, nullable: true},
+        remote_ip_location_lat: %Schema{type: :number, nullable: true},
+        remote_ip_location_lon: %Schema{type: :number, nullable: true}
+      },
+      required: [
+        :type,
+        :event_id,
+        :timestamp,
+        :actor_id,
+        :api_token_id,
+        :method,
+        :path,
+        :request_id,
+        :remote_ip
+      ],
+      example: %{
+        "type" => "api_request",
+        "event_id" => "a00060db0c2c8eb400000000",
+        "timestamp" => "2026-05-26T12:34:56.789Z",
+        "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "api_token_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "method" => "GET",
+        "path" => "/clients",
+        "content_length" => nil,
+        "request_id" => "GBKkV1jUWuW2sJoAACkB",
+        "user_agent" => "curl/8.7.1",
+        "remote_ip" => "189.172.73.1",
+        "remote_ip_location_region" => "MX",
+        "remote_ip_location_city" => "Mexico City",
+        "remote_ip_location_lat" => 19.4326,
+        "remote_ip_location_lon" => -99.1332
+      }
+    })
+  end
+
   defmodule Item do
     require OpenApiSpex
     alias PortalAPI.Schemas.Log
@@ -300,9 +377,9 @@ defmodule PortalAPI.Schemas.Log do
       description: """
       A single Log entry. The `type` field identifies the log stream the
       entry belongs to, which is also encoded in the first character of its
-      `event_id` (`c` change, `5` session, `f` flow).
+      `event_id` (`c` change, `5` session, `f` flow, `a` api_request).
       """,
-      oneOf: [Log.Change, Log.Session, Log.Flow]
+      oneOf: [Log.Change, Log.Session, Log.Flow, Log.APIRequest]
     })
   end
 
