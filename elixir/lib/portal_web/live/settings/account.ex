@@ -650,7 +650,7 @@ defmodule PortalWeb.Settings.Account do
         as: :session
       )
       |> where([devices: d], d.type == :client)
-      |> where([session: s], s.inserted_at > ago(1, "month"))
+      |> where([session: s], s.timestamp > ago(1, "month"))
       |> join(:inner, [devices: d], a in Actor,
         on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor

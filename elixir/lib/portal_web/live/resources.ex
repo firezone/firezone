@@ -1545,7 +1545,7 @@ defmodule PortalWeb.Resources do
           from(s in ClientSession,
             where: s.device_id == parent_as(:devices).id,
             where: s.account_id == parent_as(:devices).account_id,
-            order_by: [desc: s.inserted_at],
+            order_by: [desc_nulls_last: s.timestamp],
             limit: 1
           )
         ),
@@ -1555,7 +1555,7 @@ defmodule PortalWeb.Resources do
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^client_ids)
       |> select_merge([latest_session: s], %{
-        latest_session_inserted_at: s.inserted_at,
+        latest_session_timestamp: s.timestamp,
         latest_session_version: s.version,
         latest_session_user_agent: s.user_agent
       })
@@ -1577,12 +1577,12 @@ defmodule PortalWeb.Resources do
 
     defp build_latest_sessions(clients) do
       Enum.map(clients, fn client ->
-        if client.latest_session_inserted_at do
+        if client.latest_session_timestamp do
           %{
             client
             | latest_session: %ClientSession{
                 version: client.latest_session_version,
-                inserted_at: client.latest_session_inserted_at,
+                timestamp: client.latest_session_timestamp,
                 user_agent: client.latest_session_user_agent
               }
           }

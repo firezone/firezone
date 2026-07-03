@@ -156,6 +156,31 @@ if config_env() == :prod do
           else: [{:hostname, env_var_to_config!(:database_host_replica)}]
         )
 
+  config :portal, Portal.SessionLogs.ReplicationConnection,
+    enabled: env_var_to_config!(:session_logs_replication_enabled),
+    replication_slot_name: env_var_to_config!(:database_session_logs_replication_slot_name),
+    publication_name: env_var_to_config!(:database_session_logs_publication_name),
+    connection_opts:
+      [
+        port: env_var_to_config!(:database_port),
+        ssl: env_var_to_config!(:database_ssl),
+        parameters: env_var_to_config!(:database_parameters),
+        username: env_var_to_config!(:database_user),
+        database: env_var_to_config!(:database_name)
+      ] ++
+        if(env_var_to_config!(:database_socket_options) != [],
+          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
+          else: []
+        ) ++
+        if(env_var_to_config(:database_password),
+          do: [{:password, env_var_to_config!(:database_password)}],
+          else: []
+        ) ++
+        if(env_var_to_config(:database_socket_dir),
+          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
+        )
+
   config :portal, Portal.Changes.ReplicationConnection,
     enabled: env_var_to_config!(:changes_replication_enabled),
     region: env_var_to_config!(:region),
@@ -329,6 +354,9 @@ if config_env() == :prod do
 
     # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
     {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
+
+    # Delete old session_logs every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
 
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}

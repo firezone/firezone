@@ -27,12 +27,14 @@ defmodule Portal.Queue.CallbacksTest do
         id: session_id,
         account_id: account.id,
         device_id: client.id,
+        actor_id: client.actor_id,
         client_token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",
         version: "1.3.0",
+        timestamp: DateTime.utc_now(),
         inserted_at: DateTime.utc_now()
       }
 
@@ -64,6 +66,7 @@ defmodule Portal.Queue.CallbacksTest do
         remote_ip: {100, 64, 0, 2},
         remote_ip_location_region: "US",
         version: "1.3.0",
+        timestamp: DateTime.utc_now(),
         inserted_at: DateTime.utc_now()
       }
 

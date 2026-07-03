@@ -208,6 +208,16 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.ChangeLog, :account_admin_user) == :ok
       assert Safe.permit(:read, Portal.ChangeLog, :api_client) == :ok
     end
+
+    test "SessionLog: admin and api_client may read" do
+      assert Safe.permit(:read, Portal.SessionLog, :account_admin_user) == :ok
+      assert Safe.permit(:read, Portal.SessionLog, :api_client) == :ok
+    end
+
+    test "FlowLog: admin and api_client may read" do
+      assert Safe.permit(:read, Portal.FlowLog, :account_admin_user) == :ok
+      assert Safe.permit(:read, Portal.FlowLog, :api_client) == :ok
+    end
   end
 
   describe "permit/3 denials" do

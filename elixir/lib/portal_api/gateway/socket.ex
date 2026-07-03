@@ -127,7 +127,8 @@ defmodule PortalAPI.Gateway.Socket do
       remote_ip_location_city: context.remote_ip_location_city,
       remote_ip_location_lat: context.remote_ip_location_lat,
       remote_ip_location_lon: context.remote_ip_location_lon,
-      version: version
+      version: version,
+      timestamp: DateTime.utc_now()
     }
   end
 

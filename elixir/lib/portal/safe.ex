@@ -974,6 +974,14 @@ defmodule Portal.Safe do
   def permit(_action, Portal.TrustAnchor, :account_admin_user), do: :ok
   def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
 
+  # SessionLog permissions
+  def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.SessionLog, :api_client), do: :ok
+
+  # FlowLog permissions
+  def permit(:read, Portal.FlowLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.FlowLog, :api_client), do: :ok
+
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 
   # Helper function to emit subject information to the replication stream

@@ -354,7 +354,8 @@ defmodule Portal.DeviceFixtures do
         remote_ip_location_city: Map.get(session_attrs, :last_seen_remote_ip_location_city),
         remote_ip_location_lat: Map.get(session_attrs, :last_seen_remote_ip_location_lat),
         remote_ip_location_lon: Map.get(session_attrs, :last_seen_remote_ip_location_lon),
-        version: Map.get(session_attrs, :last_seen_version, "1.3.0")
+        version: Map.get(session_attrs, :last_seen_version, "1.3.0"),
+        timestamp: DateTime.utc_now()
       }
       |> Portal.Repo.insert!()
 
