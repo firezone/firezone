@@ -1,5 +1,5 @@
 use crate::IpConfig;
-use crate::conn_track::ConnTrack;
+use crate::conn_track::{ConnTrack, Originator};
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::messages::Filter;
@@ -36,8 +36,9 @@ pub(crate) struct ClientOnClient {
     conn_track: ConnTrack,
 
     /// The portal's per-flow ingest token for each resource of this peer, used to
-    /// attribute the client-to-client flow logs. On the initiating side it is the
-    /// initiator token; on the receiving side the responder token.
+    /// attribute the client-to-client flow logs. Per resource: the initiator token
+    /// when we access the resource on the peer, the responder token when the peer
+    /// accesses it on us.
     ingest_tokens: HashMap<ResourceId, String>,
 }
 
@@ -50,7 +51,12 @@ struct ResourceOnClient {
 /// The decision after applying inbound filters and the connection tracker.
 pub(crate) enum InboundResult {
     /// Forward the packet to the TUN.
-    Send(IpPacket),
+    Send {
+        packet: IpPacket,
+        /// Who initiated the flow the packet belongs to; `None` when the
+        /// tracker was not consulted (ICMP errors are always admitted).
+        flow_originator: Option<Originator>,
+    },
     /// Drop the original packet and send the included ICMP destination
     /// unreachable (prohibited) reply back to the peer.
     Filtered(IpPacket),
@@ -97,12 +103,6 @@ impl ClientOnClient {
     /// The ingest token for `resource_id`, if one was minted.
     pub(crate) fn ingest_token(&self, resource_id: &ResourceId) -> Option<String> {
         self.ingest_tokens.get(resource_id).cloned()
-    }
-
-    /// Whether this peer authorized us as a target, i.e. we are the responder for
-    /// its flows (it holds inbound resource authorizations against our TUN).
-    pub(crate) fn is_responder(&self) -> bool {
-        !self.resources.is_empty()
     }
 
     /// Resolves the ingest token attributing an inbound packet from this peer when
@@ -209,6 +209,7 @@ impl ClientOnClient {
             match event {
                 crate::expiring_map::Event::EntryExpired { key, .. } => {
                     tracing::info!(rid = %key, "Resource authorization expired, revoking");
+                    self.ingest_tokens.remove(&key);
                     any_expired = true;
                 }
             }
@@ -219,12 +220,11 @@ impl ClientOnClient {
         }
     }
 
-    /// Returns `true` if the *outbound* packet is part of an existing flow
-    /// with this peer (either initiated by us or in reply to inbound from
-    /// the peer). Lets `route_packet` skip the per-(resource, peer) intent
+    /// Who initiated the flow this *outbound* packet belongs to, if the flow
+    /// is tracked. Lets `route_packet` skip the per-(resource, peer) intent
     /// when the connection is already established.
-    pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
-        self.conn_track.is_known_flow(packet)
+    pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
+        self.conn_track.outbound_flow_originator(packet)
     }
 
     /// Decide whether an inbound packet from this peer is admitted.
@@ -237,11 +237,17 @@ impl ClientOnClient {
         // notifications can reach the application even if the inbound filter
         // would otherwise drop them.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(InboundResult::Send(packet));
+            return Ok(InboundResult::Send {
+                packet,
+                flow_originator: None,
+            });
         }
 
-        if self.conn_track.is_return_traffic(&packet) {
-            return Ok(InboundResult::Send(packet));
+        if let Some(originator) = self.conn_track.inbound_flow_originator(&packet) {
+            return Ok(InboundResult::Send {
+                packet,
+                flow_originator: Some(originator),
+            });
         }
 
         if let Err(e) = self.inbound_filter.apply(packet.destination_protocol()) {
@@ -253,6 +259,9 @@ impl ClientOnClient {
 
         // The packet passed our filters, record as successful inbound packet.
         self.conn_track.record_inbound(&packet, now);
-        Ok(InboundResult::Send(packet))
+        Ok(InboundResult::Send {
+            packet,
+            flow_originator: Some(Originator::Peer),
+        })
     }
 }

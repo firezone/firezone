@@ -21,6 +21,7 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_device_access::PendingDeviceAccessRequests;
 use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
 use crate::client::tracked_state::TrackedState;
+use crate::conn_track::Originator;
 use crate::dns::{
     DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, device_stub_resolver,
     resource_stub_resolver,
@@ -651,7 +652,28 @@ impl ClientState {
                 };
 
                 let packet = match peer.ensure_allowed_inbound(packet, now)? {
-                    InboundResult::Send(p) => p,
+                    InboundResult::Send {
+                        packet,
+                        flow_originator,
+                    } => {
+                        // Our role in the flow follows from who initiated it;
+                        // the same peer can access resources on us while we
+                        // access resources on it.
+                        match flow_originator {
+                            Some(Originator::Peer) => {
+                                flow_log::record_peer(cid, flow_log::Role::Responder);
+                                flow_log::record_ingest_token(
+                                    peer.ingest_token_for_inbound(&packet),
+                                );
+                            }
+                            Some(Originator::Us) => {
+                                flow_log::record_peer(cid, flow_log::Role::Initiator);
+                            }
+                            None => {}
+                        }
+
+                        packet
+                    }
                     InboundResult::Filtered(reply) => {
                         encapsulate_and_queue(
                             reply,
@@ -664,16 +686,6 @@ impl ClientState {
                         return Ok(None);
                     }
                 };
-
-                // The peer initiates flows towards us if it holds an inbound
-                // authorization against us; otherwise this is a reply to a flow
-                // we initiated.
-                if peer.is_responder() {
-                    flow_log::record_peer(cid, flow_log::Role::Responder);
-                    flow_log::record_ingest_token(peer.ingest_token_for_inbound(&packet));
-                } else {
-                    flow_log::record_peer(cid, flow_log::Role::Initiator);
-                }
 
                 return Ok(Some(packet));
             }
@@ -880,14 +892,26 @@ impl ClientState {
             return Ok(Some((ClientOrGatewayId::Gateway(gid), packet)));
         }
 
-        // Reply to an inbound flow from a peer whose IP is NOT in our
-        // routing table — we are a one-way *target* (the initiator
-        // installed the inbound resource on us, but our routing_table
-        // entry for them is absent).
+        // Traffic on a flow already tracked with a connected peer. Who
+        // initiated the flow decides our role; replies to peer-initiated
+        // flows must be admitted even when the peer's IP is NOT in our
+        // routing table — we are a one-way *target* (the initiator installed
+        // the inbound resource on us, but our routing_table entry for them
+        // is absent).
         if let Some((cid, peer)) = self.clients.peer_by_ip_mut(dst)
-            && peer.is_known_flow(&packet)
+            && let Some(originator) = peer.outbound_flow_originator(&packet)
         {
-            flow_log::record_peer(cid, flow_log::Role::Responder);
+            match originator {
+                Originator::Peer => flow_log::record_peer(cid, flow_log::Role::Responder),
+                Originator::Us => {
+                    flow_log::record_peer(cid, flow_log::Role::Initiator);
+                    flow_log::record_ingest_token(
+                        self.client_routing_table
+                            .matches(dst, Ok(dst_proto))
+                            .and_then(|entry| peer.ingest_token(&entry.resource_id)),
+                    );
+                }
+            }
 
             return Ok(Some((ClientOrGatewayId::Client(cid), packet)));
         }
