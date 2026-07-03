@@ -60,6 +60,7 @@ use std::{
         mpsc,
     },
     thread::JoinHandle,
+    time::{Duration, Instant},
 };
 
 use anyhow::Context as _;
@@ -70,10 +71,6 @@ use flow_log_spool::{Payload, serialize};
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
 
-/// Creates the flow-log spooling layer plus the [`Guard`] keeping it durable.
-///
-/// Keep the guard alive until process exit; dropping it drains and joins the
-/// writer thread.
 /// How many reports may queue for the writer thread before new ones are dropped.
 ///
 /// Reports are a few hundred bytes each, so this bounds worst-case memory while
@@ -87,6 +84,10 @@ const CHANNEL_CAPACITY: usize = if cfg!(any(target_os = "ios", target_os = "andr
     10_000
 };
 
+/// Creates the flow-log spooling layer plus the [`Guard`] keeping it durable.
+///
+/// Keep the guard alive until process exit; dropping it drains and joins the
+/// writer thread.
 pub fn layer<S>(spool_root: PathBuf) -> (impl tracing_subscriber::Layer<S>, Guard)
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
@@ -103,9 +104,9 @@ where
         tx: tx.clone(),
         dropped: AtomicU64::new(0),
     }
-    .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
-        metadata.target().starts_with("flow_logs::")
-    }));
+    .with_filter(
+        tracing_subscriber::filter::Targets::new().with_target("flow_logs", tracing::Level::TRACE),
+    );
 
     (
         layer,
@@ -150,11 +151,7 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 
     let dir = spool_root.join(&role).join(&authz_id);
     create_dir_secure(&dir)?;
-    write_file_secure(
-        &dir.join("token"),
-        token.as_bytes(),
-        OverwriteBehavior::AllowOverwrite,
-    )?;
+    write_file_secure(&dir.join("token"), token.as_bytes())?;
 
     Ok(())
 }
@@ -162,7 +159,8 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 /// Keeps the writer thread alive.
 ///
 /// Dropping it drains the backlog and joins the thread, making every
-/// already-emitted report durable.
+/// already-emitted report durable. The wait is bounded so a stalled disk
+/// cannot hang process exit.
 pub struct Guard {
     tx: mpsc::SyncSender<Command>,
     handle: Option<JoinHandle<()>>,
@@ -170,15 +168,35 @@ pub struct Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
+        const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
         let _ = self.tx.send(Command::Shutdown);
-        if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
+
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+
+        let deadline = Instant::now() + DRAIN_TIMEOUT;
+        while !handle.is_finished() {
+            if Instant::now() > deadline {
+                tracing::warn!(
+                    "Flow-log writer did not drain within {DRAIN_TIMEOUT:?}; abandoning it"
+                );
+
+                return;
+            }
+
+            std::thread::sleep(Duration::from_millis(10));
         }
+
+        let _ = handle.join();
     }
 }
 
 enum Command {
     Write(Report),
+    /// Explicit shutdown signal; the layer's sender clone lives in the global
+    /// subscriber for the rest of the process, so the channel never closes.
     Shutdown,
 }
 
@@ -206,10 +224,7 @@ where
         let Some(report) = visitor.into_report() else {
             // Flows without a portal-minted token (and thus no attribution claims)
             // are emitted for observability but not spooled.
-            tracing::debug!(
-                target: "flow_log_writer",
-                "Dropping flow-log event with missing or invalid fields"
-            );
+            tracing::debug!("Dropping flow-log event with missing or invalid fields");
 
             return;
         };
@@ -222,18 +237,11 @@ where
                 let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
 
                 if dropped == 1 || dropped.is_multiple_of(1_000) {
-                    tracing::warn!(
-                        target: "flow_log_writer",
-                        dropped,
-                        "Flow-log writer cannot keep up; dropping reports"
-                    );
+                    tracing::warn!(dropped, "Flow-log writer cannot keep up; dropping reports");
                 }
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
-                tracing::debug!(
-                    target: "flow_log_writer",
-                    "Flow-log writer thread is gone; dropping report"
-                );
+                tracing::debug!("Flow-log writer thread is gone; dropping report");
             }
         }
     }
@@ -359,7 +367,7 @@ fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
         report.payload.flow_start.timestamp(),
         flow_identity(&report.payload)
     ));
-    write_file_secure(&path, &contents, OverwriteBehavior::AllowOverwrite)?;
+    write_file_secure(&path, &contents)?;
 
     Ok(())
 }
@@ -381,19 +389,15 @@ fn flow_identity(payload: &Payload) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn write_file_secure(
-    path: &Path,
-    bytes: &[u8],
-    overwrite: OverwriteBehavior,
-) -> anyhow::Result<()> {
+fn write_file_secure(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     // `AtomicFile` writes to a temp file, fsyncs it, then renames into place, so a
     // reader never observes a partial file and a written file is durable.
-    AtomicFile::new(path, overwrite)
+    AtomicFile::new(path, OverwriteBehavior::AllowOverwrite)
         .write(|f| {
             set_owner_only(f)?;
             f.write_all(bytes)
         })
-        .map_err(|e| anyhow::anyhow!("atomic write of {} failed: {e}", path.display()))
+        .with_context(|| format!("Failed to atomically write {}", path.display()))
 }
 
 /// A policy-authorization id must be a hyphenated UUID; reject anything else so it
@@ -468,48 +472,6 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt as _;
 
     const AUTHZ_ID: &str = "11111111-1111-1111-1111-111111111111";
-
-    fn token_for(authz_id: &str) -> String {
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
-            r#"{{"policy_authorization_id":"{authz_id}","role":"responder"}}"#
-        ));
-
-        format!("header.{payload}.signature")
-    }
-
-    /// Emits a `flow_logs::tcp` event shaped like `tunnel`'s emission.
-    fn emit_event(completed: bool) {
-        let flow_start = Utc.timestamp_opt(1_700_000_000, 500).unwrap();
-        let flow_end = completed.then(|| Utc.timestamp_opt(1_700_000_060, 0).unwrap());
-
-        tracing::trace!(
-            target: "flow_logs::tcp",
-            protocol = "tcp",
-            role = "responder",
-            policy_authorization_id = AUTHZ_ID,
-            inner_src_ip = %"100.64.0.1",
-            inner_src_port = %1234,
-            inner_dst_ip = %"10.0.0.5",
-            inner_dst_port = %443,
-            outer_src_ip = %"198.51.100.1",
-            outer_src_port = %51820,
-            outer_dst_ip = %"203.0.113.7",
-            outer_dst_port = %51820,
-            flow_start = ?flow_start,
-            flow_end = flow_end.map(tracing::field::debug),
-            last_packet = flow_end.map(tracing::field::debug),
-            rx_packets = completed.then_some(10_u64),
-            tx_packets = completed.then_some(12_u64),
-            rx_bytes = completed.then_some(1024_u64),
-            tx_bytes = completed.then_some(2048_u64),
-            "TCP flow"
-        );
-    }
-
-    fn read_payload(path: &Path) -> Payload {
-        // `deserialize` verifies the CRC, so `unwrap` also asserts it.
-        deserialize(&std::fs::read(path).unwrap()).unwrap()
-    }
 
     #[test]
     fn spools_start_and_end_reports_sharing_a_stem() {
@@ -595,5 +557,47 @@ mod tests {
         assert!(!is_valid_authz_id("../../../../../../../etc/passwd"));
         assert!(!is_valid_authz_id("11111111-1111-1111-1111-11111111111g"));
         assert!(!is_valid_authz_id("11111111-1111-1111-1111-1111111111111"));
+    }
+
+    fn token_for(authz_id: &str) -> String {
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"policy_authorization_id":"{authz_id}","role":"responder"}}"#
+        ));
+
+        format!("header.{payload}.signature")
+    }
+
+    /// Emits a `flow_logs::tcp` event shaped like `tunnel`'s emission.
+    fn emit_event(completed: bool) {
+        let flow_start = Utc.timestamp_opt(1_700_000_000, 500).unwrap();
+        let flow_end = completed.then(|| Utc.timestamp_opt(1_700_000_060, 0).unwrap());
+
+        tracing::trace!(
+            target: "flow_logs::tcp",
+            protocol = "tcp",
+            role = "responder",
+            policy_authorization_id = AUTHZ_ID,
+            inner_src_ip = %"100.64.0.1",
+            inner_src_port = %1234,
+            inner_dst_ip = %"10.0.0.5",
+            inner_dst_port = %443,
+            outer_src_ip = %"198.51.100.1",
+            outer_src_port = %51820,
+            outer_dst_ip = %"203.0.113.7",
+            outer_dst_port = %51820,
+            flow_start = ?flow_start,
+            flow_end = flow_end.map(tracing::field::debug),
+            last_packet = flow_end.map(tracing::field::debug),
+            rx_packets = completed.then_some(10_u64),
+            tx_packets = completed.then_some(12_u64),
+            rx_bytes = completed.then_some(1024_u64),
+            tx_bytes = completed.then_some(2048_u64),
+            "TCP flow"
+        );
+    }
+
+    fn read_payload(path: &Path) -> Payload {
+        // `deserialize` verifies the CRC, so `unwrap` also asserts it.
+        deserialize(&std::fs::read(path).unwrap()).unwrap()
     }
 }
