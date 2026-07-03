@@ -46,11 +46,8 @@ pub struct Eventloop {
     /// uploads disabled.
     local_flow_logs: bool,
 
-    /// Whether the portal enabled flow-log uploads; set from `init`.
-    upload_flow_logs: bool,
-
-    /// Switch on the `flow_log_writer` layer: reports are only spooled for
-    /// upload when the portal enabled flow logs.
+    /// Switch on the `flow_log_writer` layer: tokens and reports are only
+    /// spooled for upload when the portal enabled flow logs; set from `init`.
     spool_switch: flow_log_writer::SpoolSwitch,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
@@ -101,7 +98,6 @@ impl Eventloop {
             flow_logs_dir,
             spool_switch,
             local_flow_logs,
-            upload_flow_logs: false,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -314,10 +310,10 @@ impl Eventloop {
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
                 // The token is the sole source of flow attribution, so it always
-                // rides into the tunnel (e.g. for `--flow-logs` output); it is
-                // only persisted when the portal enabled uploads, and the spool
-                // switch keeps reports off the disk otherwise.
-                if self.upload_flow_logs
+                // rides into the tunnel (e.g. for `--flow-logs` output); like the
+                // reports themselves, it is only spooled to disk when the portal
+                // enabled uploads.
+                if self.spool_switch.is_enabled()
                     && let Some(token) = &msg.flow_logs_ingest_token
                     && let Err(e) =
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
@@ -402,10 +398,11 @@ impl Eventloop {
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
-                self.upload_flow_logs = flow_logs.upload_enabled();
-                self.spool_switch.set(self.upload_flow_logs);
+                let upload_flow_logs = flow_logs.upload_enabled();
 
-                tunnel.set_flow_logs_enabled(self.upload_flow_logs || self.local_flow_logs);
+                self.spool_switch.set(upload_flow_logs);
+
+                tunnel.set_flow_logs_enabled(upload_flow_logs || self.local_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
