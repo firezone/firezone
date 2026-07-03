@@ -989,22 +989,24 @@ impl FlowClose {
 /// The attribution claims carried in an ingest token's JWT payload.
 ///
 /// Decoded without signature verification, purely for local observability.
-#[derive(Debug, Default, serde::Deserialize)]
+/// The portal guarantees the non-optional claims on every token it mints; a
+/// token missing any of them fails to decode and attributes nothing.
+#[derive(Debug, serde::Deserialize)]
 pub struct Attribution {
-    pub role: Option<String>,
-    pub device_id: Option<String>,
-    pub policy_authorization_id: Option<String>,
-    pub policy_id: Option<String>,
-    pub resource_id: Option<String>,
-    pub resource_name: Option<String>,
+    pub role: String,
+    pub device_id: String,
+    pub policy_authorization_id: String,
+    pub policy_id: String,
+    pub resource_id: String,
+    pub resource_name: String,
     pub resource_address: Option<String>,
-    pub actor_id: Option<String>,
+    pub actor_id: String,
     pub actor_email: Option<String>,
-    pub actor_name: Option<String>,
+    pub actor_name: String,
     pub auth_provider_id: Option<String>,
-    pub authorized_at: Option<String>,
-    pub authorization_expires_at: Option<String>,
-    pub client_version: Option<String>,
+    pub authorized_at: String,
+    pub authorization_expires_at: String,
+    pub client_version: String,
     pub device_os_name: Option<String>,
     pub device_os_version: Option<String>,
     pub device_serial: Option<String>,
@@ -1017,11 +1019,8 @@ pub struct Attribution {
 ///
 /// The token's attribution claims are included; the token itself is not.
 pub fn emit(record: &Record) {
-    let attr = record
-        .ingest_token
-        .as_deref()
-        .and_then(decode_attribution)
-        .unwrap_or_default();
+    let attr = record.ingest_token.as_deref().and_then(decode_attribution);
+    let attr = attr.as_ref();
 
     let close = record.close.as_ref();
 
@@ -1031,30 +1030,30 @@ pub fn emit(record: &Record) {
                 target: $target,
                 protocol = record.protocol.as_str(),
 
-                role = attr.role.as_deref(),
-                device_id = attr.device_id.as_deref(),
-                policy_authorization_id = attr.policy_authorization_id.as_deref(),
-                policy_id = attr.policy_id.as_deref(),
+                role = attr.map(|a| a.role.as_str()),
+                device_id = attr.map(|a| a.device_id.as_str()),
+                policy_authorization_id = attr.map(|a| a.policy_authorization_id.as_str()),
+                policy_id = attr.map(|a| a.policy_id.as_str()),
 
-                resource_id = attr.resource_id.as_deref(),
-                resource_name = attr.resource_name.as_deref(),
-                resource_address = attr.resource_address.as_deref(),
+                resource_id = attr.map(|a| a.resource_id.as_str()),
+                resource_name = attr.map(|a| a.resource_name.as_str()),
+                resource_address = attr.and_then(|a| a.resource_address.as_deref()),
 
-                actor_id = attr.actor_id.as_deref(),
-                actor_email = attr.actor_email.as_deref(),
-                actor_name = attr.actor_name.as_deref(),
-                auth_provider_id = attr.auth_provider_id.as_deref(),
+                actor_id = attr.map(|a| a.actor_id.as_str()),
+                actor_email = attr.and_then(|a| a.actor_email.as_deref()),
+                actor_name = attr.map(|a| a.actor_name.as_str()),
+                auth_provider_id = attr.and_then(|a| a.auth_provider_id.as_deref()),
 
-                authorized_at = attr.authorized_at.as_deref(),
-                authorization_expires_at = attr.authorization_expires_at.as_deref(),
+                authorized_at = attr.map(|a| a.authorized_at.as_str()),
+                authorization_expires_at = attr.map(|a| a.authorization_expires_at.as_str()),
 
-                client_version = attr.client_version.as_deref(),
-                device_os_name = attr.device_os_name.as_deref(),
-                device_os_version = attr.device_os_version.as_deref(),
-                device_serial = attr.device_serial.as_deref(),
-                device_uuid = attr.device_uuid.as_deref(),
-                device_identifier_for_vendor = attr.device_identifier_for_vendor.as_deref(),
-                device_firebase_installation_id = attr.device_firebase_installation_id.as_deref(),
+                client_version = attr.map(|a| a.client_version.as_str()),
+                device_os_name = attr.and_then(|a| a.device_os_name.as_deref()),
+                device_os_version = attr.and_then(|a| a.device_os_version.as_deref()),
+                device_serial = attr.and_then(|a| a.device_serial.as_deref()),
+                device_uuid = attr.and_then(|a| a.device_uuid.as_deref()),
+                device_identifier_for_vendor = attr.and_then(|a| a.device_identifier_for_vendor.as_deref()),
+                device_firebase_installation_id = attr.and_then(|a| a.device_firebase_installation_id.as_deref()),
 
                 inner_src_ip = %record.inner_src_ip,
                 inner_src_port = %record.inner_src_port,
@@ -1255,12 +1254,18 @@ mod tests {
 
     /// Guards the field contract between [`emit`] and `flow-log-writer`'s layer:
     /// an emitted record must round-trip losslessly into a spooled report.
+    /// A JWT payload carrying every claim the portal guarantees on a token.
+    fn required_claims(policy_authorization_id: &str, role: &str) -> String {
+        format!(
+            r#"{{"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z","client_version":"1.5.0"}}"#
+        )
+    }
+
     #[test]
     fn emitted_records_spool_via_flow_log_writer_layer() {
         let authz_id = "11111111-1111-1111-1111-111111111111";
-        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
-            r#"{{"policy_authorization_id":"{authz_id}","role":"responder"}}"#
-        ));
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(required_claims(authz_id, "responder"));
         let record = Record {
             ingest_token: Some(format!("header.{claims}.signature")),
             protocol: FlowProtocol::Tcp,
@@ -1346,16 +1351,24 @@ mod tests {
     fn decode_attribution_reads_jwt_payload_segment() {
         // An HS256 JWT is `header.payload.signature`; attribution is the middle
         // segment, and the (untrusted) signature is never inspected.
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
-            r#"{"policy_authorization_id":"pa-1","actor_email":"a@b.c","role":"responder"}"#,
-        );
+        let claims = required_claims("pa-1", "responder")
+            .replace(r#""actor_name""#, r#""actor_email":"a@b.c","actor_name""#);
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims);
         let token = format!("ignored-header.{payload}.ignored-signature");
 
         let attr = decode_attribution(&token).expect("decodes attribution");
 
-        assert_eq!(attr.policy_authorization_id.as_deref(), Some("pa-1"));
+        assert_eq!(attr.policy_authorization_id, "pa-1");
         assert_eq!(attr.actor_email.as_deref(), Some("a@b.c"));
-        assert_eq!(attr.role.as_deref(), Some("responder"));
-        assert!(attr.resource_id.is_none());
+        assert_eq!(attr.role, "responder");
+        assert!(attr.resource_address.is_none());
+    }
+
+    #[test]
+    fn rejects_token_missing_a_guaranteed_claim() {
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(r#"{"policy_authorization_id":"pa-1","role":"responder"}"#);
+
+        assert!(decode_attribution(&format!("h.{payload}.s")).is_none());
     }
 }
