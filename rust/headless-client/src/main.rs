@@ -187,6 +187,12 @@ enum Cmd {
         #[arg(long, short)]
         force: bool,
     },
+
+    /// Create the TUN device and wait until interrupted, without connecting to the portal.
+    ///
+    /// Allows testing the TUN device setup in isolation.
+    #[cfg(debug_assertions)]
+    CreateTunDevice,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -231,6 +237,10 @@ fn try_main() -> Result<()> {
         }
         Some(Cmd::Standalone) | None => {
             // Continue with normal operation
+        }
+        #[cfg(debug_assertions)]
+        Some(Cmd::CreateTunDevice) => {
+            // Dispatched after logging and the Tokio runtime are set up.
         }
     }
 
@@ -302,6 +312,12 @@ fn try_main() -> Result<()> {
         .enable_all()
         .build()
         .context("Failed to create tokio runtime")?;
+
+    match &cli._command {
+        #[cfg(debug_assertions)]
+        Some(Cmd::CreateTunDevice) => return rt.block_on(create_tun_device()),
+        Some(Cmd::SignIn { .. } | Cmd::SignOut { .. } | Cmd::Standalone) | None => {}
+    }
 
     if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
@@ -518,6 +534,20 @@ fn try_main() -> Result<()> {
 }
 
 /// Constructs the authentication URL for browser-based sign-in.
+/// Creates the TUN device and waits until interrupted, without connecting to the portal.
+#[cfg(debug_assertions)]
+async fn create_tun_device() -> Result<()> {
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)?;
+    let _tun = tun_device_manager.make_tun()?;
+
+    tracing::info!("TUN device created");
+
+    let mut terminate = signals::Terminate::new()?;
+    terminate.recv().await;
+
+    Ok(())
+}
+
 fn build_auth_url(auth_base_url: &url::Url, account_slug: Option<&str>) -> url::Url {
     let mut auth_url = auth_base_url.clone();
     if let Some(slug) = account_slug {
