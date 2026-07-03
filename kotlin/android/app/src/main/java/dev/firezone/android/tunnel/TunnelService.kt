@@ -43,8 +43,6 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -496,10 +494,11 @@ class TunnelService : VpnService() {
     // settings edits take effect live without signing out and reconnecting.
     private fun startLogFilterMonitoring() {
         logFilterJob =
-            repo
-                .observeLogFilter()
-                .onEach { directives -> sendTunnelCommand(TunnelCommand.SetLogDirectives(directives)) }
-                .launchIn(serviceScope)
+            serviceScope.launch {
+                repo.observeLogFilter().collect { directives ->
+                    sendTunnelCommand(TunnelCommand.SetLogDirectives(directives))
+                }
+            }
     }
 
     private fun stopLogFilterMonitoring() {
