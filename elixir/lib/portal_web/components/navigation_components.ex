@@ -27,7 +27,7 @@ defmodule PortalWeb.NavigationComponents do
 
   def topbar(assigns) do
     ~H"""
-    <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-20">
+    <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
       <div class="flex items-center gap-2 text-sm text-body"></div>
       <div class="flex items-center gap-3">
         <a
