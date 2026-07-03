@@ -2,6 +2,7 @@ use crate::IpConfig;
 use crate::conn_track::{ConnTrack, Originator};
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
+use crate::flow_log::IngestToken;
 use crate::messages::Filter;
 use anyhow::{Context, Result};
 use connlib_model::ResourceId;
@@ -39,7 +40,7 @@ pub(crate) struct ClientOnClient {
     /// attribute the client-to-client flow logs. Per resource: the initiator token
     /// when we access the resource on the peer, the responder token when the peer
     /// accesses it on us.
-    ingest_tokens: HashMap<ResourceId, String>,
+    ingest_tokens: HashMap<ResourceId, IngestToken>,
 }
 
 /// An inbound resource: filters granted by a resource for traffic from the remote peer.
@@ -89,7 +90,7 @@ impl ClientOnClient {
 
     /// Records the ingest token minted for `resource_id`, or clears it when the
     /// portal sent none.
-    pub(crate) fn set_ingest_token(&mut self, resource_id: ResourceId, token: Option<String>) {
+    pub(crate) fn set_ingest_token(&mut self, resource_id: ResourceId, token: Option<IngestToken>) {
         match token {
             Some(token) => {
                 self.ingest_tokens.insert(resource_id, token);
@@ -101,14 +102,14 @@ impl ClientOnClient {
     }
 
     /// The ingest token for `resource_id`, if one was minted.
-    pub(crate) fn ingest_token(&self, resource_id: &ResourceId) -> Option<String> {
+    pub(crate) fn ingest_token(&self, resource_id: &ResourceId) -> Option<IngestToken> {
         self.ingest_tokens.get(resource_id).cloned()
     }
 
     /// Resolves the ingest token attributing an inbound packet from this peer when
     /// we are the responder. Picks the first resource whose filter admits the
     /// packet, which is exact for the common single-resource case.
-    pub(crate) fn ingest_token_for_inbound(&self, packet: &IpPacket) -> Option<String> {
+    pub(crate) fn ingest_token_for_inbound(&self, packet: &IpPacket) -> Option<IngestToken> {
         for (resource_id, resource) in self.resources.iter() {
             let admits = resource.filters.is_empty()
                 || FilterEngine::new(&resource.filters)

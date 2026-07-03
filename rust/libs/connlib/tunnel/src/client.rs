@@ -27,7 +27,7 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
-use crate::flow_log;
+use crate::flow_log::{self, IngestToken};
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
@@ -1021,7 +1021,7 @@ impl ClientState {
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
         use_iceless: bool,
-        flow_logs_ingest_token: Option<String>,
+        flow_logs_ingest_token: Option<IngestToken>,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -1130,7 +1130,7 @@ impl ClientState {
         use_iceless: bool,
         client_name: String,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
-        flow_logs_ingest_token: Option<String>,
+        flow_logs_ingest_token: Option<IngestToken>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
