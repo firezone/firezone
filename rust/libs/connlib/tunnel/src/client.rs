@@ -26,7 +26,7 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
-use crate::flow_log::{self, Tracker};
+use crate::flow_log;
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
@@ -181,10 +181,6 @@ pub struct ClientState {
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
-
-    /// Tracks flow logs for this Client, keyed by the peer a flow is tunneled
-    /// through.
-    flow_tracker: Tracker<ClientOrGatewayId>,
 }
 
 impl ClientState {
@@ -197,7 +193,6 @@ impl ClientState {
     ) -> Self {
         Self {
             authorized_resources: Default::default(),
-            flow_tracker: Tracker::new(now, unix_ts),
             cidr_routing_table: RoutingTable::default(),
             dns_routing_table: RoutingTable::default(),
             client_routing_table: RoutingTable::default(),
@@ -419,18 +414,9 @@ impl ClientState {
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 
-        self.flow_tracker.close_all(now);
-
         self.clients.clear();
         self.gateways.clear();
         self.node.close_all(p2p_control::goodbye(), now);
-    }
-
-    /// Enables or disables flow-log emission at runtime.
-    ///
-    /// The portal drives this via its `init` config.
-    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
-        self.flow_tracker.set_enabled(enabled);
     }
 
     /// Updates the NAT for all domains resolved by the stub resolver on the corresponding gateway.
@@ -543,19 +529,6 @@ impl ClientState {
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
-        let flow = self.flow_tracker.begin_tun_packet(&packet);
-        let result = self.handle_tun_input_inner(packet, now, provider);
-        self.flow_tracker.commit(flow, now);
-
-        result
-    }
-
-    fn handle_tun_input_inner(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-        provider: &mut impl snownet::BufferProvider,
-    ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -606,20 +579,6 @@ impl ClientState {
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
     pub(crate) fn handle_network_input(
-        &mut self,
-        local: SocketAddr,
-        from: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-    ) -> Result<Option<IpPacket>> {
-        let flow = self.flow_tracker.begin_network_packet(local, from);
-        let result = self.handle_network_input_inner(local, from, packet, now);
-        self.flow_tracker.commit(flow, now);
-
-        result
-    }
-
-    fn handle_network_input_inner(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -1631,7 +1590,6 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
-        self.flow_tracker.handle_timeout(now);
 
         for peer in self.clients.iter_mut() {
             peer.handle_timeout(now);

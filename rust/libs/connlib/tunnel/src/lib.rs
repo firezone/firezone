@@ -179,8 +179,12 @@ impl ClientTunnel {
 
     /// Shut down the Client tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
+        let now = Instant::now();
+
+        self.flow_tracker.close_all(now);
+
         // Initiate shutdown.
-        self.role_state.shut_down(Instant::now());
+        self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
@@ -263,11 +267,14 @@ impl ClientTunnel {
 
                 if timeout {
                     self.role_state.handle_timeout(now);
+                    self.flow_tracker.handle_timeout(now);
                     tick.want_continue();
                 }
 
                 if let Some(packets) = device {
                     for packet in packets {
+                        let _flow = self.flow_tracker.begin_tun_packet(&packet, now);
+
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -297,6 +304,12 @@ impl ClientTunnel {
                                 otel::attr::network_transport_udp(),
                                 otel::attr::network_io_direction_receive(),
                             ],
+                        );
+
+                        let _flow = self.flow_tracker.begin_network_packet(
+                            received.local,
+                            received.from,
+                            now,
                         );
 
                         match self

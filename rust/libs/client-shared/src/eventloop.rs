@@ -472,7 +472,7 @@ impl Eventloop {
                 );
 
                 if let Some(spool_root) = &self.flow_logs_dir {
-                    tunnel.state_mut().set_flow_logs_enabled(self.upload_flow_logs);
+                    tunnel.set_flow_logs_enabled(self.upload_flow_logs);
 
                     if let Err(e) = flow_log_upload::configure_uploads(
                         spool_root,
