@@ -1,10 +1,9 @@
 //! Spools flow-log records to disk for later upload to the portal ingest API.
 //!
 //! Flow logs travel from the data plane to this writer as structured `tracing`
-//! events (targets `flow_logs::tcp` / `flow_logs::udp`): [`layer`] returns a
-//! subscriber layer that each entrypoint installs as part of its tracing
-//! configuration, so the tunnel itself needs no knowledge of where (or whether)
-//! flow logs are persisted.
+//! events (target `flow_logs`): [`layer`] returns a subscriber layer that each
+//! entrypoint installs as part of its tracing configuration, so the tunnel itself
+//! needs no knowledge of where (or whether) flow logs are persisted.
 //!
 //! Reports are grouped by the flow's `role` and `policy_authorization_id` into a
 //! per-authorization sub-directory holding that authorization's Bearer token and
@@ -24,8 +23,8 @@
 //! The Bearer token deliberately does NOT ride the tracing events (a broad `trace`
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
-//! The events carry only the `role` / `policy_authorization_id` claims plus the
-//! network fields.
+//! A report's payload is the event's fields as emitted; the portal validates them
+//! on ingest, so the writer only interprets what routing and naming need.
 //!
 //! `<flow_start>` is the flow's start time as zero-padded unix seconds, so a
 //! lexical sort of the report names is oldest-first and the uploader needs no
@@ -50,10 +49,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    collections::HashMap,
     hash::{Hash as _, Hasher as _},
     io::Write as _,
-    net::IpAddr,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -66,8 +63,8 @@ use std::{
 use anyhow::Context as _;
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use base64::Engine as _;
-use chrono::{DateTime, Utc};
-use flow_log_spool::{Payload, serialize};
+use chrono::DateTime;
+use flow_log_spool::serialize;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -200,11 +197,21 @@ enum Command {
     Shutdown,
 }
 
-/// One flow report reconstructed from a `flow_logs::*` tracing event.
+/// One flow report reconstructed from a `flow_logs` tracing event.
+///
+/// The payload is the event's fields as emitted (minus `role` /
+/// `policy_authorization_id`, which become the spool path, and the human
+/// `message`); the portal validates it on ingest, so nothing is re-parsed here
+/// beyond what the file name needs.
 struct Report {
     role: String,
     authz_id: String,
-    payload: Payload,
+    /// `flow_start` as unix seconds, for the lexically-sortable file name.
+    flow_start: i64,
+    /// Stable stem shared by a flow's open and completed reports.
+    identity: String,
+    completed: bool,
+    payload: serde_json::Map<String, serde_json::Value>,
 }
 
 struct FlowLogLayer {
@@ -222,7 +229,7 @@ where
         event.record(&mut visitor);
 
         let Some(report) = visitor.into_report() else {
-            // Flows without a portal-minted token (and thus no attribution claims)
+            // Flows without a portal-minted token (and thus no routing claims)
             // are emitted for observability but not spooled.
             tracing::debug!("Dropping flow-log event with missing or invalid fields");
 
@@ -247,95 +254,74 @@ where
     }
 }
 
-/// Collects an event's fields.
+/// Collects an event's fields as emitted.
 ///
-/// String-ish values (IPs, timestamps, `Display`-recorded ports) arrive through
-/// `record_debug` / `record_str`, counters as `u64`.
+/// Strings arrive through `record_str`, `Display` / `Debug` values through
+/// `record_debug` (as their rendered form), counters as numbers.
 #[derive(Default)]
 struct FieldVisitor {
-    strings: HashMap<&'static str, String>,
-    numbers: HashMap<&'static str, u64>,
+    fields: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Visit for FieldVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.strings.insert(field.name(), format!("{value:?}"));
+        self.fields
+            .insert(field.name().to_owned(), format!("{value:?}").into());
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.strings.insert(field.name(), value.to_owned());
+        self.fields.insert(field.name().to_owned(), value.into());
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        self.numbers.insert(field.name(), value);
+        self.fields.insert(field.name().to_owned(), value.into());
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.fields.insert(field.name().to_owned(), value.into());
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.fields.insert(field.name().to_owned(), value.into());
     }
 }
 
 impl FieldVisitor {
-    /// Reassembles the [`Report`] from the recorded fields, or `None` if any
-    /// required field is missing or fails validation.
+    /// Builds the [`Report`] from the recorded fields, or `None` if the routing /
+    /// naming fields are missing or fail validation.
     fn into_report(mut self) -> Option<Report> {
-        let role = self.strings.remove("role").filter(|r| is_valid_role(r))?;
-        let authz_id = self
-            .strings
-            .remove("policy_authorization_id")
-            .filter(|id| is_valid_authz_id(id))?;
+        self.fields.remove("message");
 
-        let payload = Payload {
-            protocol: self.strings.remove("protocol")?,
-            inner_src_ip: self.ip("inner_src_ip")?,
-            inner_src_port: self.port("inner_src_port")?,
-            inner_dst_ip: self.ip("inner_dst_ip")?,
-            inner_dst_port: self.port("inner_dst_port")?,
-            domain: self.strings.remove("inner_domain"),
-            outer_src_ip: self.ip("outer_src_ip")?,
-            outer_src_port: self.port("outer_src_port")?,
-            outer_dst_ip: self.ip("outer_dst_ip")?,
-            outer_dst_port: self.port("outer_dst_port")?,
-            flow_start: self.timestamp("flow_start")?,
-            // A parse failure on a present closing field must fail the whole
-            // report rather than demote a completed flow to an open one.
-            flow_end: self.optional_timestamp("flow_end")?,
-            last_packet: self.optional_timestamp("last_packet")?,
-            rx_packets: self.numbers.remove("rx_packets"),
-            tx_packets: self.numbers.remove("tx_packets"),
-            rx_bytes: self.numbers.remove("rx_bytes"),
-            tx_bytes: self.numbers.remove("tx_bytes"),
+        let serde_json::Value::String(role) = self.fields.remove("role")? else {
+            return None;
         };
+        let serde_json::Value::String(authz_id) = self.fields.remove("policy_authorization_id")?
+        else {
+            return None;
+        };
+
+        if !is_valid_role(&role) || !is_valid_authz_id(&authz_id) {
+            return None;
+        }
+
+        // The only field the writer interprets: the file name needs it so a
+        // lexical sort of the reports is oldest-first.
+        let flow_start = DateTime::parse_from_rfc3339(self.fields.get("flow_start")?.as_str()?)
+            .ok()?
+            .timestamp();
+
+        let identity = flow_identity(&self.fields);
+        let completed = self.fields.contains_key("flow_end");
 
         Some(Report {
             role,
             authz_id,
-            payload,
+            flow_start,
+            identity,
+            completed,
+            payload: self.fields,
         })
     }
-
-    fn ip(&mut self, name: &'static str) -> Option<IpAddr> {
-        self.strings.remove(name)?.parse().ok()
-    }
-
-    fn port(&mut self, name: &'static str) -> Option<u16> {
-        self.strings.remove(name)?.parse().ok()
-    }
-
-    /// Timestamps are emitted with `chrono`'s `Debug` representation, which is
-    /// RFC 3339 with nanosecond precision, so the round-trip is lossless.
-    fn timestamp(&mut self, name: &'static str) -> Option<DateTime<Utc>> {
-        parse_timestamp(&self.strings.remove(name)?)
-    }
-
-    fn optional_timestamp(&mut self, name: &'static str) -> Option<Option<DateTime<Utc>>> {
-        match self.strings.remove(name) {
-            None => Some(None),
-            Some(value) => parse_timestamp(&value).map(Some),
-        }
-    }
-}
-
-fn parse_timestamp(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
 }
 
 fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
@@ -355,17 +341,12 @@ fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
     let dir = root.join(&report.role).join(&report.authz_id);
     create_dir_secure(&dir)?;
 
-    let contents = serialize(&report.payload)?;
+    let contents = serialize(&serde_json::Value::Object(report.payload.clone()))?;
 
-    let suffix = if report.payload.flow_end.is_some() {
-        "end"
-    } else {
-        "start"
-    };
+    let suffix = if report.completed { "end" } else { "start" };
     let path = dir.join(format!(
         "{:010}-{}.{suffix}.json",
-        report.payload.flow_start.timestamp(),
-        flow_identity(&report.payload)
+        report.flow_start, report.identity
     ));
     write_file_secure(&path, &contents)?;
 
@@ -377,14 +358,19 @@ fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
 /// A flow's open and completed reports share this stem; a reused 4-tuple gets a
 /// fresh `flow_start`, so distinct flows never collide. Only within-process
 /// determinism is needed.
-fn flow_identity(payload: &Payload) -> String {
+fn flow_identity(fields: &serde_json::Map<String, serde_json::Value>) -> String {
     let mut hasher = std::hash::DefaultHasher::new();
-    payload.protocol.hash(&mut hasher);
-    payload.inner_src_ip.hash(&mut hasher);
-    payload.inner_src_port.hash(&mut hasher);
-    payload.inner_dst_ip.hash(&mut hasher);
-    payload.inner_dst_port.hash(&mut hasher);
-    payload.flow_start.hash(&mut hasher);
+
+    for name in [
+        "protocol",
+        "inner_src_ip",
+        "inner_src_port",
+        "inner_dst_ip",
+        "inner_dst_port",
+        "flow_start",
+    ] {
+        fields.get(name).map(|v| v.to_string()).hash(&mut hasher);
+    }
 
     format!("{:016x}", hasher.finish())
 }
@@ -501,10 +487,13 @@ mod tests {
 
         let start = read_payload(&authz_dir.join(format!("{}.start.json", prefixes[0])));
         let end = read_payload(&authz_dir.join(format!("{}.end.json", prefixes[0])));
-        assert!(start.flow_end.is_none());
-        assert_eq!(start.flow_start.timestamp_subsec_nanos(), 500); // lossless round-trip
-        assert_eq!(end.rx_bytes, Some(1024)); // the `.end` is a self-describing report
-        assert_eq!(end.inner_dst_port, 443);
+        assert!(start.get("flow_end").is_none());
+        // Fields are spooled as emitted; routing fields and the message are not.
+        assert_eq!(start["flow_start"], "2023-11-14T22:13:20.000000500Z");
+        assert!(start.get("role").is_none());
+        assert!(start.get("message").is_none());
+        assert_eq!(end["rx_bytes"], 1024); // the `.end` is a self-describing report
+        assert_eq!(end["inner_dst_port"], "443");
     }
 
     #[test]
@@ -515,7 +504,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(layer);
         tracing::subscriber::with_default(subscriber, || {
             tracing::trace!(
-                target: "flow_logs::tcp",
+                target: "flow_logs",
                 protocol = "tcp",
                 role = "responder",
                 "TCP flow started"
@@ -567,13 +556,13 @@ mod tests {
         format!("header.{payload}.signature")
     }
 
-    /// Emits a `flow_logs::tcp` event shaped like `tunnel`'s emission.
+    /// Emits a `flow_logs` event shaped like `tunnel`'s emission.
     fn emit_event(completed: bool) {
         let flow_start = Utc.timestamp_opt(1_700_000_000, 500).unwrap();
         let flow_end = completed.then(|| Utc.timestamp_opt(1_700_000_060, 0).unwrap());
 
         tracing::trace!(
-            target: "flow_logs::tcp",
+            target: "flow_logs",
             protocol = "tcp",
             role = "responder",
             policy_authorization_id = AUTHZ_ID,
@@ -596,7 +585,7 @@ mod tests {
         );
     }
 
-    fn read_payload(path: &Path) -> Payload {
+    fn read_payload(path: &Path) -> serde_json::Value {
         // `deserialize` verifies the CRC, so `unwrap` also asserts it.
         deserialize(&std::fs::read(path).unwrap()).unwrap()
     }

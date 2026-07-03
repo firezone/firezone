@@ -2570,7 +2570,6 @@ dependencies = [
 name = "flow-log-spool"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "crc32fast",
  "serde",
  "serde_json",
