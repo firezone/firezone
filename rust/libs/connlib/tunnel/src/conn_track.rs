@@ -4,13 +4,15 @@
 //! (local IP + protocol, peer IP + protocol). The same key is produced for:
 //!
 //! - An outbound we initiated (`record_outbound`) and the inbound reply
-//!   that comes back (`is_return_traffic`).
+//!   that comes back (`inbound_flow_originator`).
 //! - An inbound we received from a peer (`record_inbound`) and the outbound
-//!   reply we may produce (`is_known_flow`).
+//!   reply we may produce (`outbound_flow_originator`).
 //!
 //! That symmetry lets a single map serve both directions: a peer initiates
 //! to us → we record on inbound → our reply outbound is admitted as a known
-//! flow without firing a fresh connection intent. The IP pair is part of
+//! flow without firing a fresh connection intent. Each entry remembers who
+//! sent the flow's first packet, so packet processing can tell replies to
+//! our flows apart from flows the peer initiated. The IP pair is part of
 //! the key so a v4 flow and a v6 flow with identical port pairs don't
 //! collide.
 
@@ -21,7 +23,20 @@ use std::time::{Duration, Instant};
 
 #[derive(Default, Debug)]
 pub(crate) struct ConnTrack {
-    entries: BTreeMap<Key, Instant>,
+    entries: BTreeMap<Key, Entry>,
+}
+
+/// Which side sent the first packet of a tracked flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Originator {
+    Us,
+    Peer,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Entry {
+    last_seen: Instant,
+    originator: Originator,
 }
 
 impl ConnTrack {
@@ -34,13 +49,14 @@ impl ConnTrack {
             return;
         };
 
-        self.entries.insert(
+        self.record(
             Key {
                 local,
                 peer,
                 local_ip: packet.source(),
                 peer_ip: packet.destination(),
             },
+            Originator::Us,
             now,
         );
     }
@@ -54,58 +70,70 @@ impl ConnTrack {
             return;
         };
 
-        self.entries.insert(
+        self.record(
             Key {
                 local,
                 peer,
                 local_ip: packet.destination(),
                 peer_ip: packet.source(),
             },
+            Originator::Peer,
             now,
         );
     }
 
-    /// Returns `true` if the inbound packet matches a recorded flow (either
-    /// an outbound we initiated or an inbound we previously received from
-    /// the peer).
-    pub(crate) fn is_return_traffic(&self, packet: &IpPacket) -> bool {
+    /// The flow's first packet fixes the originator; later packets only refresh.
+    fn record(&mut self, key: Key, originator: Originator, now: Instant) {
+        self.entries
+            .entry(key)
+            .and_modify(|entry| entry.last_seen = now)
+            .or_insert(Entry {
+                last_seen: now,
+                originator,
+            });
+    }
+
+    /// Who initiated the flow this *inbound* packet belongs to, if it is tracked.
+    pub(crate) fn inbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
         let Ok(peer) = packet.source_protocol() else {
-            return false;
+            return None;
         };
         let Ok(local) = packet.destination_protocol() else {
-            return false;
+            return None;
         };
 
-        self.entries.contains_key(&Key {
+        let entry = self.entries.get(&Key {
             local,
             peer,
             local_ip: packet.destination(),
             peer_ip: packet.source(),
-        })
+        })?;
+
+        Some(entry.originator)
     }
 
-    /// Returns `true` if the *outbound* packet is part of an existing flow
-    /// (either initiated by us or in reply to inbound traffic from the
-    /// peer).
-    pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
+    /// Who initiated the flow this *outbound* packet belongs to, if it is tracked.
+    pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
         let Ok(local) = packet.source_protocol() else {
-            return false;
+            return None;
         };
         let Ok(peer) = packet.destination_protocol() else {
-            return false;
+            return None;
         };
 
-        self.entries.contains_key(&Key {
+        let entry = self.entries.get(&Key {
             local,
             peer,
             local_ip: packet.source(),
             peer_ip: packet.destination(),
-        })
+        })?;
+
+        Some(entry.originator)
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        for _ in self.entries.extract_if(.., |key, last_seen| {
-            now.saturating_duration_since(*last_seen) >= ttl(key)
+        for _ in self.entries.extract_if(.., |key, entry| {
+            now.saturating_duration_since(entry.last_seen) >= ttl(key)
         }) {}
     }
 }
@@ -152,7 +180,7 @@ mod tests {
 
         let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
-        assert!(ct.is_return_traffic(&reply));
+        assert_eq!(ct.inbound_flow_originator(&reply), Some(Originator::Us));
     }
 
     #[test]
@@ -167,7 +195,25 @@ mod tests {
         // Different source port — not the reply we expected.
         let unrelated = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 9999, 53535, &[])
             .expect("valid packet");
-        assert!(!ct.is_return_traffic(&unrelated));
+        assert_eq!(ct.inbound_flow_originator(&unrelated), None);
+    }
+
+    #[test]
+    fn originator_is_fixed_by_first_packet() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        // Our reply refreshes the entry but must not flip the originator.
+        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+            .expect("valid packet");
+        ct.record_outbound(&reply, now);
+
+        assert_eq!(ct.outbound_flow_originator(&reply), Some(Originator::Peer));
+        assert_eq!(ct.inbound_flow_originator(&inbound), Some(Originator::Peer));
     }
 
     #[test]
@@ -183,7 +229,7 @@ mod tests {
 
         let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
-        assert!(!ct.is_return_traffic(&reply));
+        assert_eq!(ct.inbound_flow_originator(&reply), None);
     }
 
     #[test]
@@ -197,7 +243,7 @@ mod tests {
 
         let reply =
             make::icmp_reply_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[]).expect("valid");
-        assert!(ct.is_return_traffic(&reply));
+        assert_eq!(ct.inbound_flow_originator(&reply), Some(Originator::Us));
     }
 
     #[test]
@@ -218,7 +264,7 @@ mod tests {
             &[],
         )
         .expect("valid packet");
-        assert!(!ct.is_return_traffic(&v6_reply));
+        assert_eq!(ct.inbound_flow_originator(&v6_reply), None);
     }
 
     fn ip(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
