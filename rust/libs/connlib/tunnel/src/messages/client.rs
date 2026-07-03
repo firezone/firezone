@@ -158,6 +158,7 @@ pub struct FlowCreationFailed {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
     pub client_id: ClientId,
+    pub client_name: String,
     pub client_public_key: Key,
     pub client_ipv4: Ipv4Addr,
     pub client_ipv6: Ipv6Addr,

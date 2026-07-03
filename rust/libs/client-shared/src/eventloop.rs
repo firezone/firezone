@@ -566,6 +566,7 @@ impl Eventloop {
             }
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
                 client_id,
+                client_name,
                 client_public_key,
                 client_ipv4,
                 client_ipv6,
@@ -598,6 +599,7 @@ impl Eventloop {
                     remote_ice_credentials,
                     ice_role,
                     use_iceless,
+                    client_name,
                     authorization,
                     Instant::now(),
                 ) {

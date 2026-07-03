@@ -5366,7 +5366,9 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       target_client_id = target_client.id
+      target_client_name = target_client.name
       initiating_client_id = client.id
+      initiating_client_name = client.name
 
       push(initiating_socket, "create_flow", %{
         "resource_id" => pool_resource.id,
@@ -5375,6 +5377,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
+        client_name: ^target_client_name,
         ice_role: :controlling
       } = source_payload
 
@@ -5385,11 +5388,11 @@ defmodule PortalAPI.Client.ChannelTest do
       refute Map.has_key?(source_payload, :resource)
       refute Map.has_key?(source_payload, :subject)
       refute Map.has_key?(source_payload, :expires_at)
-      refute Map.has_key?(source_payload, :client_name)
       refute Map.has_key?(source_payload, :client_fqdns)
 
       assert_push "client_device_access_authorized", %{
         client_id: ^initiating_client_id,
+        client_name: ^initiating_client_name,
         ice_role: :controlled,
         expires_at: target_expires_at
       } = target_payload
@@ -5413,7 +5416,6 @@ defmodule PortalAPI.Client.ChannelTest do
       assert actor_email == subject.actor.email
       assert actor_name == subject.actor.name
 
-      refute Map.has_key?(target_payload, :client_name)
       refute Map.has_key?(target_payload, :client_fqdns)
       assert is_integer(target_expires_at)
     end
@@ -5803,17 +5805,21 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       target_client_id = target_client.id
+      target_client_name = target_client.name
       initiating_client_id = client.id
+      initiating_client_name = client.name
 
       push(initiating_socket, "request_device_access", %{"ipv4" => target_ip})
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
+        client_name: ^target_client_name,
         ice_role: :controlling
       }
 
       assert_push "client_device_access_authorized", %{
         client_id: ^initiating_client_id,
+        client_name: ^initiating_client_name,
         ice_role: :controlled
       }
     end
@@ -6192,6 +6198,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       target_client_id = target_client.id
+      target_client_name = target_client.name
 
       push(initiating_socket, "create_flow", %{
         "resource_id" => pool_resource.id,
@@ -6200,6 +6207,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
+        client_name: ^target_client_name,
         ice_role: :controlling
       }
     end
@@ -6439,10 +6447,13 @@ defmodule PortalAPI.Client.ChannelTest do
       # The initiator must not be released before the target acks.
       refute_push "client_device_access_authorized", _, 200
 
-      send(ack_to, {:device_access_acked, ref, false})
+      target_client_name = target_client.name
+
+      send(ack_to, {:device_access_acked, ref, false, target_client_name})
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
+        client_name: ^target_client_name,
         ice_role: :controlling
       }
     end

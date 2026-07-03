@@ -1076,6 +1076,7 @@ impl ClientState {
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
         use_iceless: bool,
+        client_name: String,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -1103,7 +1104,11 @@ impl ClientState {
             (auth.resource_id, auth.filters, expires_at)
         });
 
-        let peer = self.clients.upsert(cid, || ClientOnClient::new(client_tun));
+        let peer = self
+            .clients
+            .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
+        peer.set_remote_name(client_name);
+        tracing::debug!(%cid, name = %peer.remote_name(), "Updated client peer name");
 
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.

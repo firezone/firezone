@@ -1190,6 +1190,7 @@ impl TunnelTest {
                                     local_client_ice.clone(),
                                     crate::messages::IceRole::Controlled,
                                     use_iceless,
+                                    "initiating client".to_owned(),
                                     Some(remote_authorization),
                                     now,
                                 )
@@ -1215,6 +1216,7 @@ impl TunnelTest {
                                     remote_client_ice,
                                     crate::messages::IceRole::Controlling,
                                     use_iceless,
+                                    "target client".to_owned(),
                                     None,
                                     now,
                                 )
