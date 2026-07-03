@@ -751,8 +751,8 @@ impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
         ConnectedDevice {
             id: device.id.to_string(),
             name: device.name,
-            tun_ipv4: device.tunneled_ipv4.to_string(),
-            tun_ipv6: device.tunneled_ipv6.to_string(),
+            tun_ipv4: device.tun_ipv4.to_string(),
+            tun_ipv6: device.tun_ipv6.to_string(),
             pools: device.pools,
         }
     }

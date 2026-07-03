@@ -267,36 +267,16 @@ impl ClientState {
                     );
                     return None;
                 };
-                let tunneled_ipv4 = peer.tun_ipv4();
-                let tunneled_ipv6 = peer.tun_ipv6();
+                let tun_ipv4 = peer.tun_ipv4();
+                let tun_ipv6 = peer.tun_ipv6();
                 let name = peer.remote_name().to_owned();
 
-                let mut pool_names = Vec::new();
-                for pool in &pools {
-                    if let Some(device) = pool.devices.iter().find(|d| d.id == *client_id) {
-                        if device.ipv4.network_address() != tunneled_ipv4 {
-                            tracing::debug!(
-                                %client_id,
-                                pool = %pool.name,
-                                pool_ipv4 = %device.ipv4.network_address(),
-                                %tunneled_ipv4,
-                                "Pool-provided IPv4 disagrees with the connection's tunnel IPv4"
-                            );
-                        }
-                        if device.ipv6.network_address() != tunneled_ipv6 {
-                            tracing::debug!(
-                                %client_id,
-                                pool = %pool.name,
-                                pool_ipv6 = %device.ipv6.network_address(),
-                                %tunneled_ipv6,
-                                "Pool-provided IPv6 disagrees with the connection's tunnel IPv6"
-                            );
-                        }
-                        pool_names.push(pool.name.clone());
-                    }
-                }
-
-                pool_names.sort();
+                let pool_names = pools
+                    .iter()
+                    .filter(|pool| pool.devices.iter().any(|d| d.id == *client_id))
+                    .map(|pool| pool.name.clone())
+                    .sorted()
+                    .collect_vec();
 
                 if pool_names.is_empty() {
                     tracing::debug!(
@@ -308,8 +288,8 @@ impl ClientState {
                 Some(ConnectedDeviceView {
                     id: *client_id,
                     name,
-                    tunneled_ipv4,
-                    tunneled_ipv6,
+                    tun_ipv4,
+                    tun_ipv6,
                     pools: pool_names,
                 })
             })

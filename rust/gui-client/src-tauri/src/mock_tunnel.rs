@@ -168,8 +168,8 @@ fn mock_resource_list() -> ResourceList {
         .map(|i| ConnectedDeviceView {
             id: ClientId::from_u128(i + 1),
             name: format!("Demo Device {}", i + 1),
-            tunneled_ipv4: Ipv4Addr::new(100, 96, 0, (i as u8) + 1),
-            tunneled_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16 + 1]),
+            tun_ipv4: Ipv4Addr::new(100, 96, 0, (i as u8) + 1),
+            tun_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16 + 1]),
             pools: POOL_PATTERNS[(i as usize) % POOL_PATTERNS.len()]
                 .iter()
                 .map(|name| (*name).to_string())

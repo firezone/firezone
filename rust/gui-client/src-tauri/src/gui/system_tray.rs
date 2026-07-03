@@ -355,8 +355,8 @@ fn device_submenu(device: &ConnectedDeviceView) -> Menu {
     menu = menu
         .separator()
         .disabled("Tunnel IPs")
-        .copyable(&device.tunneled_ipv4.to_string())
-        .copyable(&device.tunneled_ipv6.to_string())
+        .copyable(&device.tun_ipv4.to_string())
+        .copyable(&device.tun_ipv6.to_string())
         .separator()
         .disabled("Client Details")
         .copyable(&device.id.to_string())
@@ -883,15 +883,15 @@ mod tests {
             ConnectedDeviceView {
                 id: alpha,
                 name: "Alpha".into(),
-                tunneled_ipv4: alpha_ip,
-                tunneled_ipv6: alpha_ipv6,
+                tun_ipv4: alpha_ip,
+                tun_ipv6: alpha_ipv6,
                 pools: vec!["Engineering Pool".into()],
             },
             ConnectedDeviceView {
                 id: beta,
                 name: "Beta".into(),
-                tunneled_ipv4: beta_ip,
-                tunneled_ipv6: beta_ipv6,
+                tun_ipv4: beta_ip,
+                tun_ipv6: beta_ipv6,
                 pools: vec!["Engineering Pool".into(), "QA Pool".into()],
             },
         ];
@@ -949,8 +949,8 @@ mod tests {
             .map(|i| ConnectedDeviceView {
                 id: ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
                 name: format!("Device {i}"),
-                tunneled_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
-                tunneled_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16]),
+                tun_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
+                tun_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16]),
                 pools: vec!["Engineering Pool".into()],
             })
             .collect();
@@ -959,8 +959,8 @@ mod tests {
 
         let mut expected = Menu::default();
         for device in &connected_devices[..MAX_DEVICES_INLINE] {
-            let ip = device.tunneled_ipv4.to_string();
-            let ipv6 = device.tunneled_ipv6.to_string();
+            let ip = device.tun_ipv4.to_string();
+            let ipv6 = device.tun_ipv6.to_string();
             expected = expected.add_submenu(
                 device.name.clone(),
                 Menu::default()

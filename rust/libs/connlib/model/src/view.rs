@@ -134,12 +134,12 @@ pub struct ConnectedDeviceView {
     ///
     /// Sourced from the live snownet connection state, so it is always known
     /// for a connected device regardless of pool membership.
-    pub tunneled_ipv4: Ipv4Addr,
+    pub tun_ipv4: Ipv4Addr,
     /// Tunnel IPv6 address the device is reachable on.
     ///
     /// Sourced from the live snownet connection state, so it is always known
     /// for a connected device regardless of pool membership.
-    pub tunneled_ipv6: Ipv6Addr,
+    pub tun_ipv6: Ipv6Addr,
     /// Names of the static device pools the device belongs to, sorted.
     pub pools: Vec<String>,
 }
