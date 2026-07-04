@@ -1,0 +1,6 @@
+# Local overlay for the threaded-NAPI experiments: the gateway needs a
+# writable /sys to flip /sys/class/net/tun-firezone/threaded (the client
+# service is already privileged).
+services:
+  gateway:
+    privileged: true
