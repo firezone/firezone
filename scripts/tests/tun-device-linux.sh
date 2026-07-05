@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 
 # Boots the headless Client and checks that the TUN device is created
-# with the offload features that we enable programmatically.
+# with the NAPI tuning that we apply programmatically.
 
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-headless-client
 DEVICE="tun-firezone"
-
-command -v ethtool >/dev/null || sudo apt-get install -y ethtool
 
 cd rust || exit 1
 cargo build -p "$BINARY_NAME"
@@ -25,8 +23,8 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
-# `rx-udp-gro-forwarding` is off by default, so this proves we enabled it.
-sudo ethtool --show-features "$DEVICE" | grep "rx-udp-gro-forwarding: on"
+# NAPI polling is not threaded by default, so this proves we enabled it.
+test "$(cat /sys/class/net/$DEVICE/threaded)" = "1"
 
 sudo kill "$CLIENT_PID"
 

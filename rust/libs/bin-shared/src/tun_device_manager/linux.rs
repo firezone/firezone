@@ -42,7 +42,6 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tun::ioctl;
 
-mod ethtool;
 mod napi;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
@@ -115,13 +114,6 @@ impl TunDeviceManager {
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
         let tun = Box::new(Tun::new()?);
-
-        // The GRO engine only coalesces UDP packets that are _forwarded_ (i.e. on the Gateway)
-        // if `rx-udp-gro-forwarding` is enabled on the receiving device; it is off by default
-        // and kernels older than 5.12 don't support it at all.
-        if let Err(e) = ethtool::enable_feature(Self::IFACE_NAME, "rx-udp-gro-forwarding") {
-            tracing::debug!("Failed to enable `rx-udp-gro-forwarding` on TUN device: {e:#}");
-        }
 
         // Requires a writable /sys; containers usually mount it read-only, in which
         // case NAPI stays in softirq mode and this merely logs.
