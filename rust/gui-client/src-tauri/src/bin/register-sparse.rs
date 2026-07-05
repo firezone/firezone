@@ -38,10 +38,7 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    tunnel_bypass_resolver::configure(
-        std::sync::Arc::new(socket_factory::tcp),
-        std::sync::Arc::new(socket_factory::udp),
-    );
+    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
     telemetry::start(
         "entrypoint",
         firezone_gui_client::RELEASE,

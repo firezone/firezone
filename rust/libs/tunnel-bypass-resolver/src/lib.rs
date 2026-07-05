@@ -25,10 +25,10 @@ type SocketFactories = (
     Arc<dyn SocketFactory<UdpSocket>>,
 );
 
-/// Socket factories shared by all tunnel-bypassing connections.
+/// Socket factories for queries against the captured upstreams.
 ///
-/// connlib processes configure tunnel-bypassing factories so lookups and the
-/// connections built from them never loop back through connlib.
+/// connlib processes configure tunnel-bypassing factories so lookups never
+/// loop back through connlib.
 static SOCKETS: LazyLock<Mutex<Option<SocketFactories>>> = LazyLock::new(|| Mutex::new(None));
 
 /// How names are currently resolved.
@@ -41,8 +41,11 @@ static RESOLVER: LazyLock<Mutex<Resolver>> =
 /// Notifies subscribers whenever the active resolver is swapped.
 static CHANGES: LazyLock<watch::Sender<()>> = LazyLock::new(|| watch::Sender::new(()));
 
-/// Configures the socket factories used for lookups and the connections built
-/// from them. Call once at process start.
+/// Configures the socket factories used for lookups against captured upstreams.
+///
+/// Call once at process start, before any session captures resolvers: without
+/// socket factories, [`SystemResolvers::capture`] cannot build the bypass and
+/// lookups keep using the system resolver.
 pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
     *SOCKETS.lock() = Some((tcp, udp));
 }
@@ -55,11 +58,6 @@ pub async fn resolve(host: &str) -> Result<Vec<IpAddr>> {
     anyhow::ensure!(!addresses.is_empty(), "No addresses for {host}");
 
     Ok(addresses)
-}
-
-/// The TCP socket factory for tunnel-bypassing connections, if configured.
-pub fn tcp_socket_factory() -> Option<Arc<dyn SocketFactory<TcpSocket>>> {
-    Some(SOCKETS.lock().as_ref()?.0.clone())
 }
 
 /// Resets the shared socket factories so the next connection rebinds.
@@ -92,7 +90,7 @@ pub struct SystemResolvers {
 
 impl SystemResolvers {
     /// Captures `servers` as the upstream resolvers, bypassing the system resolver
-    /// until the guard is dropped.
+    /// until the guard is dropped. Requires [`configure`] to have been called.
     pub fn capture(servers: Vec<IpAddr>) -> Self {
         set_resolver(upstream(servers));
 

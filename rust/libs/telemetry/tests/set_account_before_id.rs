@@ -4,10 +4,7 @@ use telemetry::TESTING;
 async fn set_account_slug_before_set_firezone_id_preserves_both() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    tunnel_bypass_resolver::configure(
-        std::sync::Arc::new(socket_factory::tcp),
-        std::sync::Arc::new(socket_factory::udp),
-    );
+    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
     telemetry::start("entrypoint", "1.0.0", TESTING);
 
     telemetry::set_account_slug("acme".to_owned());

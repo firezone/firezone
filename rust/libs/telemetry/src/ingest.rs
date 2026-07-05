@@ -1,19 +1,39 @@
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bytes::Bytes;
 use http::{Request, Response};
 use http_client::HttpClient;
 use parking_lot::Mutex;
+use socket_factory::{SocketFactory, TcpSocket};
 use tokio::runtime::Runtime;
 
 /// Runtime hosting all ingest connections and the feature-flag re-eval timer.
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 
+/// TCP socket factory shared by all ingest connections.
+///
+/// connlib processes configure a tunnel-bypassing factory so telemetry never
+/// loops back through connlib.
+static SOCKET_FACTORY: LazyLock<Mutex<Option<Arc<dyn SocketFactory<TcpSocket>>>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+/// Configures the socket factory used to reach all ingest hosts.
+pub(crate) fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    *SOCKET_FACTORY.lock() = Some(tcp);
+}
+
+/// Resets the shared socket factory so the next connection rebinds.
+pub(crate) fn reset_socket_factory() {
+    if let Some(tcp) = SOCKET_FACTORY.lock().clone() {
+        tcp.reset();
+    }
+}
+
 /// A self-healing HTTP/2 client for a single ingest host.
 ///
 /// The host is resolved through [`tunnel_bypass_resolver`] and the connection
-/// goes through its shared, tunnel-bypassing socket factories, so telemetry
+/// goes through the configured tunnel-bypassing socket factory, so telemetry
 /// never loops through connlib. The connection is re-established on demand
 /// when it is closed.
 pub(crate) struct Client {
@@ -89,8 +109,10 @@ impl Client {
 
     async fn bootstrap(&self) -> Result<HttpClient> {
         let host = self.host;
-        let tcp = tunnel_bypass_resolver::tcp_socket_factory()
-            .context("Ingest client has no socket factories configured")?;
+        let tcp = SOCKET_FACTORY
+            .lock()
+            .clone()
+            .context("Ingest client has no socket factory configured")?;
 
         // Anchor the connection task on our own runtime so it outlives the caller,
         // which may be a short-lived `block_on` on another runtime.

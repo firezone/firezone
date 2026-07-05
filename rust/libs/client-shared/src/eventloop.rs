@@ -250,6 +250,7 @@ impl Eventloop {
                 };
 
                 tunnel.reset(&reason);
+                tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(

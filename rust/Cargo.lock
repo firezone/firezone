@@ -2354,7 +2354,6 @@ dependencies = [
  "tracing-subscriber",
  "tun",
  "tunnel",
- "tunnel-bypass-resolver",
  "url",
 ]
 
@@ -2556,7 +2555,6 @@ dependencies = [
  "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "tunnel-bypass-resolver",
  "url",
  "uuid",
 ]

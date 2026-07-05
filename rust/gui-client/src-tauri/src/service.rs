@@ -336,6 +336,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
         );
+        telemetry::configure(Arc::new(tcp_socket_factory));
 
         tracing::info!(
             server_pid = std::process::id(),

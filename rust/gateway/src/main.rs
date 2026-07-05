@@ -57,10 +57,7 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    tunnel_bypass_resolver::configure(
-        Arc::new(tcp_socket_factory),
-        Arc::new(UdpSocketFactory::default()),
-    );
+    telemetry::configure(Arc::new(tcp_socket_factory));
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

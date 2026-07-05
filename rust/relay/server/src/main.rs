@@ -141,10 +141,7 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     if args.telemetry {
-        tunnel_bypass_resolver::configure(
-            std::sync::Arc::new(socket_factory::tcp),
-            std::sync::Arc::new(socket_factory::udp),
-        );
+        telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
         telemetry::start(
             args.api_url.as_str(),
             VERSION.unwrap_or("unknown"),

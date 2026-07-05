@@ -11,6 +11,7 @@ use sentry::{
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
+use socket_factory::{SocketFactory, TcpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -45,7 +46,7 @@ pub fn maybe_hash_device_id(id: String) -> String {
 /// Call this on network changes, alongside resetting connlib. Triggers a
 /// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
-    tunnel_bypass_resolver::reset_sockets();
+    ingest::reset_socket_factory();
     posthog::reset_client();
     sentry::reset_client();
     feature_flags::reevaluate_current();
@@ -171,11 +172,18 @@ impl fmt::Display for Env {
 
 /// The process-global Sentry guard.
 ///
-/// Sentry is one client per process, and the rest of this crate (the Hub,
-/// `RUNTIME`, the state in [`tunnel_bypass_resolver`]) is already global, so the
-/// guard is too. Every binary drives telemetry through the free functions below
-/// rather than holding an instance.
+/// Sentry is one client per process, and the rest of this crate (the Hub, the
+/// ingest socket factory, `RUNTIME`) is already global, so the guard is too.
+/// Every binary drives telemetry through the free functions below rather than
+/// holding an instance.
 static GUARD: Mutex<Option<sentry::ClientInitGuard>> = Mutex::new(None);
+
+/// Configures the tunnel-bypassing socket factory for telemetry's ingest
+/// connections so they never loop through connlib. Call once at process start
+/// before [`start`].
+pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    ingest::configure(tcp);
+}
 
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.
 pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
