@@ -81,12 +81,27 @@ struct InflightProbe {
     sent_at: Instant,
 }
 
+/// An outbound `HandshakeInit`, stored until its response arrives.
+///
+/// With a primary, `drive_handshake_retransmits` stays quiet and the
+/// stored init only tracks whether a response arrived. Without one,
+/// it fans out on the relay pairs like the initial bootstrap.
 struct OutboundInit {
     bytes: Vec<u8>,
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
     /// Reset when relay pairs arrive late so `EVALUATION_WINDOW`
     /// doesn't count waiting time.
     started_at: Instant,
+}
+
+impl OutboundInit {
+    fn new(bytes: Vec<u8>, started_at: Instant) -> Self {
+        Self {
+            bytes,
+            retransmits: BTreeMap::new(),
+            started_at,
+        }
+    }
 }
 
 struct ResponderDedup {
@@ -336,57 +351,58 @@ impl PathAgent {
     }
 
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        match Tunn::parse_incoming_packet(&bytes) {
-            Ok(Packet::HandshakeInit(_)) if !self.established => {
+        match (
+            Tunn::parse_incoming_packet(&bytes),
+            &mut self.outbound_init,
+            self.primary,
+        ) {
+            (Ok(Packet::HandshakeInit(_)), outbound_init, _) if !self.established => {
                 tracing::debug!(bytes = bytes.len(), "Buffered initial HandshakeInit");
 
                 self.forwarded_response = None;
                 self.established = true;
-                self.store_outbound_init(bytes, now);
+                *outbound_init = Some(OutboundInit::new(bytes, now));
             }
             // A still-stored init means the previous one went unanswered:
             // failure evidence. Retry on the incumbent while probes
             // re-evaluate.
-            Ok(Packet::HandshakeInit(_))
-                if let Some((local, remote)) = self.primary
-                    && self.outbound_init.is_some() =>
-            {
+            (Ok(Packet::HandshakeInit(_)), outbound_init @ Some(_), Some((local, remote))) => {
                 tracing::debug!(
                     bytes = bytes.len(),
                     "Unanswered re-key HandshakeInit; restarting probes"
                 );
 
-                self.reopen_evaluation_window(now);
+                *outbound_init = Some(OutboundInit::new(bytes.clone(), now));
                 self.pending_transmits.push_back(Transmit {
                     local,
                     remote,
-                    payload: Payload::Ciphertext(bytes.clone()),
+                    payload: Payload::Ciphertext(bytes),
                 });
-                self.store_outbound_init(bytes, now);
+                self.reopen_evaluation_window(now);
             }
             // A routine re-key rides the primary without restarting probes.
-            Ok(Packet::HandshakeInit(_)) if let Some((local, remote)) = self.primary => {
+            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, Some((local, remote))) => {
                 tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
 
+                *outbound_init = Some(OutboundInit::new(bytes.clone(), now));
                 self.pending_transmits.push_back(Transmit {
                     local,
                     remote,
-                    payload: Payload::Ciphertext(bytes.clone()),
+                    payload: Payload::Ciphertext(bytes),
                 });
-                self.store_outbound_init(bytes, now);
             }
             // Lost the primary mid-session (roam, candidate retraction):
             // fan out like the initial bootstrap.
-            Ok(Packet::HandshakeInit(_)) => {
+            (Ok(Packet::HandshakeInit(_)), outbound_init, None) => {
                 tracing::debug!(
                     bytes = bytes.len(),
                     "Re-key HandshakeInit without a primary; fanning out"
                 );
 
+                *outbound_init = Some(OutboundInit::new(bytes, now));
                 self.reopen_evaluation_window(now);
-                self.store_outbound_init(bytes, now);
             }
-            Ok(Packet::HandshakeResponse(_)) => {
+            (Ok(Packet::HandshakeResponse(_)), _, _) => {
                 if let (Some(init_bytes), Some(path)) = (
                     self.responder.last_init.take(),
                     self.responder.last_init_path.take(),
@@ -410,29 +426,16 @@ impl PathAgent {
                     self.established = true;
                 }
             }
-            _ => {
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
+            // Probes and data ride the primary; nothing to send without one.
+            (_, _, Some((local, remote))) => {
+                self.pending_transmits.push_back(Transmit {
+                    local,
+                    remote,
+                    payload: Payload::Ciphertext(bytes),
+                });
             }
+            (_, _, None) => {}
         }
-    }
-
-    /// Stores the init until its response arrives.
-    ///
-    /// With a primary, `drive_handshake_retransmits` stays quiet and the
-    /// stored init only tracks whether a response arrived. Without one,
-    /// it fans out on the relay pairs like the initial bootstrap.
-    fn store_outbound_init(&mut self, bytes: Vec<u8>, now: Instant) {
-        self.outbound_init = Some(OutboundInit {
-            bytes,
-            retransmits: BTreeMap::new(),
-            started_at: now,
-        });
     }
 
     /// Handshake bytes run through `tunnel` to authenticate before
