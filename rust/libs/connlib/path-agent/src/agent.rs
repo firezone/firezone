@@ -342,27 +342,49 @@ impl PathAgent {
 
                 self.forwarded_response = None;
                 self.established = true;
-                self.record_outbound_init(bytes, now);
+                self.store_outbound_init(bytes, now);
             }
-            // A still-stored init means the previous one went unanswered,
-            // and a lost primary (roam, candidate retraction) has nothing
-            // to ride: both are failure evidence.
-            Ok(Packet::HandshakeInit(_))
-                if self.outbound_init.is_some() || self.primary.is_none() =>
-            {
-                tracing::debug!(
-                    bytes = bytes.len(),
-                    "Re-key HandshakeInit; restarting probes"
-                );
+            Ok(Packet::HandshakeInit(_)) => match self.primary {
+                // A still-stored init means the previous one went unanswered:
+                // failure evidence. Retry on the incumbent while probes
+                // re-evaluate.
+                Some((local, remote)) if self.outbound_init.is_some() => {
+                    tracing::debug!(
+                        bytes = bytes.len(),
+                        "Unanswered re-key HandshakeInit; restarting probes"
+                    );
 
-                self.reopen_evaluation_window(now);
-                self.record_outbound_init(bytes, now);
-            }
-            Ok(Packet::HandshakeInit(_)) => {
-                tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
+                    self.reopen_evaluation_window(now);
+                    self.pending_transmits.push_back(Transmit {
+                        local,
+                        remote,
+                        payload: Payload::Ciphertext(bytes.clone()),
+                    });
+                    self.store_outbound_init(bytes, now);
+                }
+                // A routine re-key rides the primary without restarting probes.
+                Some((local, remote)) => {
+                    tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
 
-                self.record_outbound_init(bytes, now);
-            }
+                    self.pending_transmits.push_back(Transmit {
+                        local,
+                        remote,
+                        payload: Payload::Ciphertext(bytes.clone()),
+                    });
+                    self.store_outbound_init(bytes, now);
+                }
+                // Lost the primary mid-session (roam, candidate retraction):
+                // fan out like the initial bootstrap.
+                None => {
+                    tracing::debug!(
+                        bytes = bytes.len(),
+                        "Re-key HandshakeInit without a primary; fanning out"
+                    );
+
+                    self.reopen_evaluation_window(now);
+                    self.store_outbound_init(bytes, now);
+                }
+            },
             Ok(Packet::HandshakeResponse(_)) => {
                 if let (Some(init_bytes), Some(path)) = (
                     self.responder.last_init.take(),
@@ -399,21 +421,12 @@ impl PathAgent {
         }
     }
 
-    /// Sends the init on the primary (if any) and stores it until the
-    /// response arrives.
+    /// Stores the init until its response arrives.
     ///
     /// With a primary, `drive_handshake_retransmits` stays quiet and the
     /// stored init only tracks whether a response arrived. Without one,
-    /// it fans out like the initial bootstrap.
-    fn record_outbound_init(&mut self, bytes: Vec<u8>, now: Instant) {
-        if let Some((local, remote)) = self.primary {
-            self.pending_transmits.push_back(Transmit {
-                local,
-                remote,
-                payload: Payload::Ciphertext(bytes.clone()),
-            });
-        }
-
+    /// it fans out on the relay pairs like the initial bootstrap.
+    fn store_outbound_init(&mut self, bytes: Vec<u8>, now: Instant) {
         self.outbound_init = Some(OutboundInit {
             bytes,
             retransmits: BTreeMap::new(),
