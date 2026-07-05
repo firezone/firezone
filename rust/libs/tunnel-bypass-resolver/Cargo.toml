@@ -9,7 +9,7 @@ anyhow = { workspace = true }
 bootstrap-dns-client = { workspace = true }
 parking_lot = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
 
 [lints]
 workspace = true

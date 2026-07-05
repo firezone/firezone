@@ -10,7 +10,7 @@
 //! (see [`Bypass`]); otherwise they use the system resolver.
 
 use std::{
-    net::{IpAddr, ToSocketAddrs as _},
+    net::IpAddr,
     sync::{Arc, LazyLock},
 };
 
@@ -44,7 +44,7 @@ static CHANGES: LazyLock<watch::Sender<()>> = LazyLock::new(|| watch::Sender::ne
 /// Configures the socket factories used for lookups against captured upstreams.
 ///
 /// Call once at process start, before any session captures resolvers: without
-/// socket factories, [`Bypass::capture`] cannot build the bypass and
+/// socket factories, [`Bypass::with_servers`] cannot build the bypass and
 /// lookups keep using the system resolver.
 pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
     *SOCKETS.lock() = Some((tcp, udp));
@@ -89,16 +89,16 @@ pub struct Bypass {
 }
 
 impl Bypass {
-    /// Captures `servers` as the upstream resolvers, bypassing the system resolver
-    /// until the guard is dropped. Requires [`configure`] to have been called.
-    pub fn capture(servers: Vec<IpAddr>) -> Self {
+    /// Bypasses the system resolver by sending lookups to `servers` until the
+    /// guard is dropped. Requires [`configure`] to have been called.
+    pub fn with_servers(servers: Vec<IpAddr>) -> Self {
         set_resolver(upstream(servers));
 
         Self { _private: () }
     }
 
-    /// Replaces the captured upstreams, e.g. when connlib learns updated resolvers.
-    pub fn set(&self, servers: Vec<IpAddr>) {
+    /// Replaces the upstream servers, e.g. when connlib learns updated resolvers.
+    pub fn update_servers(&self, servers: Vec<IpAddr>) {
         set_resolver(upstream(servers));
     }
 }
@@ -157,19 +157,13 @@ struct LibcDnsClient;
 
 impl LibcDnsClient {
     async fn resolve(&self, host: &str) -> Result<Vec<IpAddr>> {
-        let host = host.to_owned();
+        let addresses = tokio::net::lookup_host((host, 443))
+            .await
+            .with_context(|| format!("Failed to resolve {host} via system resolver"))?
+            .map(|addr| addr.ip())
+            .collect();
 
-        tokio::task::spawn_blocking(move || {
-            let addresses = (host.as_str(), 443u16)
-                .to_socket_addrs()
-                .with_context(|| format!("Failed to resolve {host} via system resolver"))?
-                .map(|addr| addr.ip())
-                .collect::<Vec<_>>();
-
-            Ok(addresses)
-        })
-        .await
-        .context("System resolver task panicked")?
+        Ok(addresses)
     }
 }
 
@@ -180,11 +174,11 @@ mod tests {
     // Exercises the shared `SOCKETS`/`RESOLVER` statics, so it stays a single test
     // to avoid racing against parallel test threads.
     #[test]
-    fn capture_switches_to_upstream_and_drop_restores_system() {
+    fn bypass_switches_to_upstream_and_drop_restores_system() {
         configure(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
 
         {
-            let _guard = Bypass::capture(vec![IpAddr::from([1, 1, 1, 1])]);
+            let _guard = Bypass::with_servers(vec![IpAddr::from([1, 1, 1, 1])]);
             assert!(matches!(*RESOLVER.lock(), Resolver::Upstream(_)));
         }
 
