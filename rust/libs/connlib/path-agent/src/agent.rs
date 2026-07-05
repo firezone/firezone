@@ -21,9 +21,6 @@ pub struct PathAgent {
     /// `true` once the first handshake has been taken over — later
     /// inits are re-keys.
     established: bool,
-    /// `true` while an outbound re-key init awaits its response; a second
-    /// init in this state is an unanswered retry, i.e. failure evidence.
-    awaiting_rekey_response: bool,
 
     window: EvaluationWindow,
     responder: Responder,
@@ -135,7 +132,6 @@ impl PathAgent {
             pairs: BTreeMap::new(),
             primary: None,
             established: false,
-            awaiting_rekey_response: false,
             window: EvaluationWindow::Pending,
             responder: Responder::default(),
             outbound_init: None,
@@ -354,36 +350,39 @@ impl PathAgent {
                 self.established = true;
             }
             Ok(Packet::HandshakeInit(_)) => {
-                let is_retry = std::mem::replace(&mut self.awaiting_rekey_response, true);
+                // A still-stored init means the previous one went unanswered:
+                // failure evidence. A routine re-key rides the primary without
+                // restarting probes.
+                let unanswered = self.outbound_init.is_some();
+
+                if unanswered || self.primary.is_none() {
+                    tracing::debug!(
+                        bytes = bytes.len(),
+                        "Re-key HandshakeInit; restarting probes"
+                    );
+
+                    self.reopen_evaluation_window(now);
+                } else {
+                    tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
+                }
 
                 if let Some((local, remote)) = self.primary {
-                    // A routine re-key rides the primary without restarting
-                    // probes; an unanswered one is failure evidence.
-                    if is_retry {
-                        tracing::debug!(
-                            bytes = bytes.len(),
-                            "Unanswered re-key HandshakeInit; restarting probes"
-                        );
-                        self.reopen_evaluation_window(now);
-                    } else {
-                        tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
-                    }
-
                     self.pending_transmits.push_back(Transmit {
                         local,
                         remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                } else {
-                    // Lost the primary mid-session (roam, candidate
-                    // retraction); fan out like the initial bootstrap.
-                    self.reopen_evaluation_window(now);
-                    self.outbound_init = Some(OutboundInit {
-                        bytes,
-                        retransmits: BTreeMap::new(),
-                        started_at: now,
+                        payload: Payload::Ciphertext(bytes.clone()),
                     });
                 }
+
+                // With a primary, `drive_handshake_retransmits` stays quiet;
+                // the stored init only tracks whether a response arrived.
+                // Without one (roam, candidate retraction), it fans out like
+                // the initial bootstrap.
+                self.outbound_init = Some(OutboundInit {
+                    bytes,
+                    retransmits: BTreeMap::new(),
+                    started_at: now,
+                });
             }
             Ok(Packet::HandshakeResponse(_)) => {
                 if let (Some(init_bytes), Some(path)) = (
@@ -504,7 +503,6 @@ impl PathAgent {
                 // against `last_init`/`last_init_path`.
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
-                self.awaiting_rekey_response = false;
                 // An init on the current primary is a routine re-key. Only an
                 // init from a new path (a roam re-keys to a new address)
                 // restarts evaluation, even mid-window: the previous window's
@@ -554,7 +552,6 @@ impl PathAgent {
 
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
-                self.awaiting_rekey_response = false;
                 // A response on the current primary completes a routine
                 // re-key; only one from a new path re-evaluates.
                 if self.primary != Some(path) {
@@ -704,13 +701,20 @@ impl PathAgent {
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
         // Wake immediately if a buffered init is waiting on a relay
-        // pair that landed after the initial fanout.
-        let pending_fanout = self.outbound_init.as_ref().and_then(|i| {
-            self.pairs
-                .iter()
-                .any(|(addrs, state)| state.involves_relay() && !i.retransmits.contains_key(addrs))
-                .then_some(i.started_at)
-        });
+        // pair that landed after the initial fanout. With a primary, the
+        // init rode it directly and there is nothing to fan out.
+        let pending_fanout = self
+            .outbound_init
+            .as_ref()
+            .filter(|_| self.primary.is_none())
+            .and_then(|i| {
+                self.pairs
+                    .iter()
+                    .any(|(addrs, state)| {
+                        state.involves_relay() && !i.retransmits.contains_key(addrs)
+                    })
+                    .then_some(i.started_at)
+            });
         let dedup_expiry = self
             .responder
             .dedup
@@ -767,6 +771,12 @@ impl PathAgent {
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
+        // With a primary, the init rode it directly; boringtun's re-key
+        // timer is the retry mechanism, not the fanout ladder.
+        if self.primary.is_some() {
+            return;
+        }
+
         let pending = &mut self.pending_transmits;
         let Some(outbound) = self.outbound_init.as_mut() else {
             return;
