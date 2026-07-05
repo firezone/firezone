@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Durati
 
 use anyhow::{Result, bail};
 use api_url::ApiUrl;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
@@ -182,7 +182,7 @@ impl fmt::Display for Env {
 /// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the state is too. Every
 /// binary drives telemetry through the free functions below rather than holding an
 /// instance.
-static STATE: Mutex<State> = Mutex::new(State::new());
+static STATE: RwLock<State> = RwLock::new(State::new());
 
 struct State {
     env: Option<Env>,
@@ -211,7 +211,7 @@ pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFact
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.
 pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
     let environment = Env::parse(env_or_api_url);
-    let mut state = STATE.lock();
+    let mut state = STATE.write();
 
     if state.sentry_guard.is_some() && state.env == Some(environment) {
         tracing::debug!(%environment, "Telemetry already initialised");
@@ -268,7 +268,7 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
 
 /// Flushes events to sentry.io and drops the guard. A no-op if not started.
 pub fn stop() {
-    let Some(inner) = STATE.lock().sentry_guard.take() else {
+    let Some(inner) = STATE.write().sentry_guard.take() else {
         return;
     };
 
@@ -279,11 +279,11 @@ pub fn stop() {
 }
 
 pub fn is_active() -> bool {
-    STATE.lock().sentry_guard.is_some()
+    STATE.read().sentry_guard.is_some()
 }
 
 pub fn set_account_slug(slug: String) {
-    STATE.lock().account_slug = Some(slug.clone());
+    STATE.write().account_slug = Some(slug.clone());
 
     update_user(|user| {
         user.other.insert("account_slug".to_owned(), slug.into());
@@ -294,7 +294,7 @@ pub fn set_account_slug(slug: String) {
 pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
 
-    STATE.lock().firezone_id = new_user.id.clone();
+    STATE.write().firezone_id = new_user.id.clone();
 
     update_user(|user| {
         user.id = new_user.id;
@@ -308,24 +308,24 @@ pub fn set_firezone_id(firezone_id: String) {
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_env() -> Option<Env> {
-    STATE.lock().env
+    STATE.read().env
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_user() -> Option<String> {
-    STATE.lock().firezone_id.clone()
+    STATE.read().firezone_id.clone()
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
-    STATE.lock().account_slug.clone()
+    STATE.read().account_slug.clone()
 }
 
 /// The identity feature flags are evaluated for: the current user and environment.
 ///
 /// `None` unless telemetry is active and both are known.
 pub(crate) fn current_identity() -> Option<(String, Env)> {
-    let state = STATE.lock();
+    let state = STATE.read();
 
     state.sentry_guard.as_ref()?;
 
