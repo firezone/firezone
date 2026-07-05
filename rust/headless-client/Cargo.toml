@@ -34,6 +34,7 @@ telemetry = { workspace = true }
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
 tokio = { workspace = true, features = ["macros", "signal", "process", "time", "fs", "rt"] }
 tracing = { workspace = true }
+tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

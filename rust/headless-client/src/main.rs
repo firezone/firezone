@@ -328,7 +328,7 @@ fn try_main() -> Result<()> {
     };
 
     if cli.is_telemetry_allowed() {
-        telemetry::configure(
+        tunnel_bypass_resolver::configure(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
         );

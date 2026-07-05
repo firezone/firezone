@@ -556,7 +556,7 @@ fn start_telemetry_inner(
 ) {
     install_rustls_crypto_provider();
 
-    telemetry::configure(tcp, udp);
+    tunnel_bypass_resolver::configure(tcp, udp);
     telemetry::start("entrypoint", RELEASE, platform::DSN);
 
     opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());

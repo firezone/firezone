@@ -57,7 +57,7 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    telemetry::configure(
+    tunnel_bypass_resolver::configure(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
     );

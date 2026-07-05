@@ -25,6 +25,7 @@ tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }
 tunnel = { workspace = true }
+tunnel-bypass-resolver = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros"] }

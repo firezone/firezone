@@ -38,7 +38,7 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    telemetry::configure(
+    tunnel_bypass_resolver::configure(
         std::sync::Arc::new(socket_factory::tcp),
         std::sync::Arc::new(socket_factory::udp),
     );

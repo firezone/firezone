@@ -11,7 +11,6 @@ use sentry::{
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
-use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -24,7 +23,6 @@ mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
 
-pub use ingest::SystemResolvers;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
 
@@ -42,16 +40,12 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
-pub async fn resolve_ingest_host(host: &str) -> Result<Vec<std::net::IpAddr>> {
-    ingest::resolve_host(host).await
-}
-
 /// Drops the current telemetry ingest connections so they are re-established lazily.
 ///
 /// Call this on network changes, alongside resetting connlib. Triggers a
 /// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
-    ingest::reset_sockets();
+    tunnel_bypass_resolver::reset_sockets();
     posthog::reset_client();
     sentry::reset_client();
     feature_flags::reevaluate_current();
@@ -178,16 +172,10 @@ impl fmt::Display for Env {
 /// The process-global Sentry guard.
 ///
 /// Sentry is one client per process, and the rest of this crate (the Hub,
-/// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the guard is too. Every
-/// binary drives telemetry through the free functions below rather than holding an
-/// instance.
+/// `RUNTIME`, the state in [`tunnel_bypass_resolver`]) is already global, so the
+/// guard is too. Every binary drives telemetry through the free functions below
+/// rather than holding an instance.
 static GUARD: Mutex<Option<sentry::ClientInitGuard>> = Mutex::new(None);
-
-/// Configures the shared, tunnel-bypassing ingest socket factories so telemetry
-/// never loops through connlib. Call once at process start before [`start`].
-pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
-    ingest::configure(tcp, udp);
-}
 
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.
 pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {

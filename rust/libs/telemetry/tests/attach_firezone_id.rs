@@ -4,7 +4,7 @@ use telemetry::TESTING;
 async fn set_firezone_id_attaches_user_to_running_session() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    telemetry::configure(
+    tunnel_bypass_resolver::configure(
         std::sync::Arc::new(socket_factory::tcp),
         std::sync::Arc::new(socket_factory::udp),
     );
