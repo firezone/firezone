@@ -371,7 +371,7 @@ jobs:
       - name: Build Docker images (read-only cache)
         if: ${{ github.ref != 'refs/heads/main' }}
         id: build_ro
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -390,7 +390,7 @@ jobs:
       - name: Build Docker images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
         id: build_rw
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
