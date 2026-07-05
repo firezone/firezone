@@ -7,7 +7,7 @@
 //! plain `getaddrinfo` would route the lookup back through connlib's stub and
 //! into the tunnel. While a session owns the system resolver, lookups
 //! therefore go directly to the upstream resolvers captured from the system
-//! (see [`SystemResolvers`]); otherwise they use the system resolver.
+//! (see [`Bypass`]); otherwise they use the system resolver.
 
 use std::{
     net::{IpAddr, ToSocketAddrs as _},
@@ -34,7 +34,7 @@ static SOCKETS: LazyLock<Mutex<Option<SocketFactories>>> = LazyLock::new(|| Mute
 /// How names are currently resolved.
 ///
 /// Defaults to the system resolver and is swapped for connlib's upstreams while a
-/// session owns the system resolver (see [`SystemResolvers`]).
+/// session owns the system resolver (see [`Bypass`]).
 static RESOLVER: LazyLock<Mutex<Resolver>> =
     LazyLock::new(|| Mutex::new(Resolver::System(LibcDnsClient)));
 
@@ -44,7 +44,7 @@ static CHANGES: LazyLock<watch::Sender<()>> = LazyLock::new(|| watch::Sender::ne
 /// Configures the socket factories used for lookups against captured upstreams.
 ///
 /// Call once at process start, before any session captures resolvers: without
-/// socket factories, [`SystemResolvers::capture`] cannot build the bypass and
+/// socket factories, [`Bypass::capture`] cannot build the bypass and
 /// lookups keep using the system resolver.
 pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
     *SOCKETS.lock() = Some((tcp, udp));
@@ -83,12 +83,12 @@ pub fn changes() -> watch::Receiver<()> {
 /// guard is held, lookups go through a [`BootstrapDnsClient`] against the captured
 /// upstreams. Dropping it restores resolution via the system resolver, tying the
 /// bypass to the session's lifetime.
-#[must_use = "dropping the guard restores system-resolver lookups"]
-pub struct SystemResolvers {
+#[must_use = "dropping the `Bypass` restores system-resolver lookups"]
+pub struct Bypass {
     _private: (),
 }
 
-impl SystemResolvers {
+impl Bypass {
     /// Captures `servers` as the upstream resolvers, bypassing the system resolver
     /// until the guard is dropped. Requires [`configure`] to have been called.
     pub fn capture(servers: Vec<IpAddr>) -> Self {
@@ -103,7 +103,7 @@ impl SystemResolvers {
     }
 }
 
-impl Drop for SystemResolvers {
+impl Drop for Bypass {
     fn drop(&mut self) {
         set_resolver(Resolver::System(LibcDnsClient));
     }
@@ -184,7 +184,7 @@ mod tests {
         configure(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
 
         {
-            let _guard = SystemResolvers::capture(vec![IpAddr::from([1, 1, 1, 1])]);
+            let _guard = Bypass::capture(vec![IpAddr::from([1, 1, 1, 1])]);
             assert!(matches!(*RESOLVER.lock(), Resolver::Upstream(_)));
         }
 
