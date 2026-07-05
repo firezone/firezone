@@ -81,11 +81,6 @@ struct InflightProbe {
     sent_at: Instant,
 }
 
-/// An outbound `HandshakeInit`, stored until its response arrives.
-///
-/// With a primary, `drive_handshake_retransmits` stays quiet and the
-/// stored init only tracks whether a response arrived. Without one,
-/// it fans out on the relay pairs like the initial bootstrap.
 struct OutboundInit {
     bytes: Vec<u8>,
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
@@ -361,7 +356,7 @@ impl PathAgent {
 
                 self.forwarded_response = None;
                 self.established = true;
-                *outbound_init = Some(OutboundInit::new(bytes, now));
+                outbound_init.replace(OutboundInit::new(bytes, now));
             }
             // A still-stored init means the previous one went unanswered:
             // failure evidence. Retry on the incumbent while probes
@@ -372,7 +367,7 @@ impl PathAgent {
                     "Unanswered re-key HandshakeInit; restarting probes"
                 );
 
-                *outbound_init = Some(OutboundInit::new(bytes.clone(), now));
+                outbound_init.replace(OutboundInit::new(bytes.clone(), now));
                 self.pending_transmits.push_back(Transmit {
                     local,
                     remote,
@@ -384,7 +379,7 @@ impl PathAgent {
             (Ok(Packet::HandshakeInit(_)), outbound_init @ None, Some((local, remote))) => {
                 tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
 
-                *outbound_init = Some(OutboundInit::new(bytes.clone(), now));
+                outbound_init.replace(OutboundInit::new(bytes.clone(), now));
                 self.pending_transmits.push_back(Transmit {
                     local,
                     remote,
@@ -399,7 +394,7 @@ impl PathAgent {
                     "Re-key HandshakeInit without a primary; fanning out"
                 );
 
-                *outbound_init = Some(OutboundInit::new(bytes, now));
+                outbound_init.replace(OutboundInit::new(bytes, now));
                 self.reopen_evaluation_window(now);
             }
             (Ok(Packet::HandshakeResponse(_)), _, _) => {
