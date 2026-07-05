@@ -175,13 +175,45 @@ impl fmt::Display for Env {
     }
 }
 
-/// The process-global Sentry guard.
+/// The process-global telemetry state: the active session's environment, user
+/// identity and the Sentry guard keeping the client alive.
 ///
 /// Sentry is one client per process, and the rest of this crate (the Hub,
-/// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the guard is too. Every
+/// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the state is too. Every
 /// binary drives telemetry through the free functions below rather than holding an
 /// instance.
-static GUARD: Mutex<Option<sentry::ClientInitGuard>> = Mutex::new(None);
+///
+/// This struct is the single source of truth: Sentry's client options and scope
+/// are only ever written to, never read back, so no code path depends on which
+/// thread's hub the client happens to be bound to. Sentry's `before_send` hooks
+/// call back into this crate (e.g. [`current_account_slug`]), so to avoid
+/// lock-order inversions with Sentry's internal locks, never call into Sentry
+/// while holding this lock.
+static STATE: Mutex<State> = Mutex::new(State::new());
+
+/// Serialises [`start`] and [`stop`] so concurrent session swaps cannot interleave.
+///
+/// Held across calls into Sentry, so it must never be acquired while holding
+/// [`STATE`].
+static SESSION_SWAP: Mutex<()> = Mutex::new(());
+
+struct State {
+    env: Option<Env>,
+    firezone_id: Option<String>,
+    account_slug: Option<String>,
+    guard: Option<sentry::ClientInitGuard>,
+}
+
+impl State {
+    const fn new() -> Self {
+        Self {
+            env: None,
+            firezone_id: None,
+            account_slug: None,
+            guard: None,
+        }
+    }
+}
 
 /// Configures the shared, tunnel-bypassing ingest socket factories so telemetry
 /// never loops through connlib. Call once at process start before [`start`].
@@ -191,25 +223,33 @@ pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFact
 
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.
 pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
+    let _swap = SESSION_SWAP.lock();
+
     let environment = Env::parse(env_or_api_url);
-    let mut guard = GUARD.lock();
 
-    if guard
-        .as_ref()
-        .and_then(|i| i.options().environment.as_ref())
-        .is_some_and(|env| env == environment.as_str())
-    {
-        tracing::debug!(%environment, "Telemetry already initialised");
+    let previous = {
+        let mut state = STATE.lock();
 
-        return;
-    }
+        if state.guard.is_some() && state.env == Some(environment) {
+            tracing::debug!(%environment, "Telemetry already initialised");
+
+            return;
+        }
+
+        state.guard.take()
+    };
 
     // Stop any previous telemetry session.
-    if let Some(inner) = guard.take() {
+    if let Some(previous) = previous {
         tracing::debug!("Stopping previous telemetry session");
 
-        drop(inner);
+        drop(previous);
 
+        {
+            let mut state = STATE.lock();
+            state.firezone_id = None;
+            state.account_slug = None;
+        }
         set_current_user(None);
     }
 
@@ -217,6 +257,8 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
         environment,
         Env::OnPrem | Env::Localhost | Env::DockerCompose
     ) {
+        STATE.lock().env = None;
+
         tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
         return;
     }
@@ -240,7 +282,11 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
         }
     });
 
-    guard.replace(inner);
+    {
+        let mut state = STATE.lock();
+        state.env = Some(environment);
+        state.guard = Some(inner);
+    }
 
     sentry::warmup_connection();
     posthog::warmup_connection();
@@ -248,7 +294,9 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
 
 /// Flushes events to sentry.io and drops the guard. A no-op if not started.
 pub fn stop() {
-    let Some(inner) = GUARD.lock().take() else {
+    let _swap = SESSION_SWAP.lock();
+
+    let Some(inner) = STATE.lock().guard.take() else {
         return;
     };
 
@@ -259,10 +307,12 @@ pub fn stop() {
 }
 
 pub fn is_active() -> bool {
-    GUARD.lock().is_some()
+    STATE.lock().guard.is_some()
 }
 
 pub fn set_account_slug(slug: String) {
+    STATE.lock().account_slug = Some(slug.clone());
+
     update_user(|user| {
         user.other.insert("account_slug".to_owned(), slug.into());
     });
@@ -271,6 +321,9 @@ pub fn set_account_slug(slug: String) {
 /// Attaches the Firezone ID to the active Sentry session.
 pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
+
+    STATE.lock().firezone_id = new_user.id.clone();
+
     update_user(|user| {
         user.id = new_user.id;
         user.other.extend(new_user.other);
@@ -283,22 +336,28 @@ pub fn set_firezone_id(firezone_id: String) {
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_env() -> Option<Env> {
-    let client = sentry::Hub::main().client()?;
-    let env = client.options().environment.as_deref()?;
-    let env = Env::from_str(env).ok()?;
-
-    Some(env)
+    STATE.lock().env
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_user() -> Option<String> {
-    sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
+    STATE.lock().firezone_id.clone()
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
-    sentry::Hub::main()
-        .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
+    STATE.lock().account_slug.clone()
+}
+
+/// The identity feature flags are evaluated for: the current user and environment.
+///
+/// `None` unless telemetry is active and both are known.
+pub(crate) fn current_identity() -> Option<(String, Env)> {
+    let state = STATE.lock();
+
+    state.guard.as_ref()?;
+
+    Some((state.firezone_id.clone()?, state.env?))
 }
 
 /// Computes the [`User`] scope based on the contents of `firezone_id`.
