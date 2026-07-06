@@ -16,7 +16,7 @@ use dns_types::DomainName;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
-use io::{Buffers, Io};
+use io::Io;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -100,7 +100,6 @@ pub struct Tunnel<TRoleState> {
     ///
     /// Handles all side-effects.
     io: Io,
-    buffers: Buffers,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
 }
@@ -141,7 +140,6 @@ impl ClientTunnel {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
             ),
-            buffers: Buffers::default(),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -239,7 +237,7 @@ impl ClientTunnel {
                 device,
                 network,
                 mut error,
-            }) = self.io.poll(cx, &mut self.buffers)
+            }) = self.io.poll(cx)
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
@@ -343,7 +341,6 @@ impl GatewayTunnel {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
             ),
-            buffers: Buffers::default(),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -406,7 +403,7 @@ impl GatewayTunnel {
                 device,
                 network,
                 mut error,
-            }) = self.io.poll(cx, &mut self.buffers)
+            }) = self.io.poll(cx)
             {
                 if let Some(response) = dns_response {
                     let message = response.message.unwrap_or_else(|e| {

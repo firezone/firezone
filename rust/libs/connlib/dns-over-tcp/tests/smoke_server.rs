@@ -103,23 +103,17 @@ impl Eventloop {
 
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
-            // Send all outbound DNS packets
-            let mut sent_any = false;
+            // Send all outbound DNS packets as one batch.
+            let mut batch = Vec::new();
 
             while let Some(packet) = self.dns_server.poll_outbound() {
-                self.tun
-                    .sender()
-                    .try_send(tun::OutboundItem::Packet(packet))
-                    .expect("channels should be able to buffer all packets we send in this test");
-
-                sent_any = true;
+                batch.push(packet);
             }
 
-            // Mark the end of the batch so the TUN thread writes out buffered packets.
-            if sent_any {
+            if !batch.is_empty() {
                 self.tun
                     .sender()
-                    .try_send(tun::OutboundItem::Flush)
+                    .try_send(batch)
                     .expect("channels should be able to buffer all packets we send in this test");
             }
 
@@ -134,11 +128,13 @@ impl Eventloop {
                     .unwrap();
             }
 
-            let ip_packet = ready!(self.tun.receiver().poll_recv(cx)).unwrap();
+            let packets = ready!(self.tun.receiver().poll_recv(cx)).unwrap();
 
-            if self.dns_server.accepts(&ip_packet) {
-                self.dns_server.handle_inbound(ip_packet);
-                self.dns_server.handle_timeout(Instant::now());
+            for ip_packet in packets {
+                if self.dns_server.accepts(&ip_packet) {
+                    self.dns_server.handle_inbound(ip_packet);
+                    self.dns_server.handle_timeout(Instant::now());
+                }
             }
         }
     }

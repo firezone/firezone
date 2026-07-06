@@ -9,8 +9,6 @@ use ip_packet::Ecn;
 use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
 
-use super::MAX_INBOUND_PACKET_BATCH;
-
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
@@ -27,7 +25,7 @@ impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
             inner: Default::default(),
-            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH, "gso-queue"),
+            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * tun::MAX_BATCH_SIZE, "gso-queue"),
         }
     }
 

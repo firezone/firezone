@@ -15,13 +15,12 @@ use std::os::fd::{AsRawFd as _, RawFd};
 use tokio::io::{Interest, unix::AsyncFd};
 
 use super::sys;
+use crate::MAX_BATCH_SIZE;
 
 /// How many packets we exchange with the kernel per syscall.
 ///
-/// Mirrors the rationale of `MAX_INBOUND_PACKET_BATCH` in the `tunnel` crate: mobile
-/// is memory-constrained, so we keep the batch (and the buffers we pull for it) small
-/// there. The desktop value stays below the kernel's `kern.ipc.somaxrecvmsgx` clamp.
-const BATCH_SIZE: usize = if cfg!(target_os = "ios") { 25 } else { 100 };
+/// One channel batch maps onto one `recvmsg_x` / `sendmsg_x` call.
+const BATCH_SIZE: usize = MAX_BATCH_SIZE;
 
 const EMPTY_IOVEC: iovec = iovec {
     iov_base: std::ptr::null_mut(),
@@ -43,20 +42,8 @@ pub fn send(
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
-            let mut items = Vec::with_capacity(BATCH_SIZE);
-            let mut packets = Vec::with_capacity(BATCH_SIZE);
 
-            loop {
-                if outbound_rx.recv_many(&mut items, BATCH_SIZE).await == 0 {
-                    break; // Channel closed.
-                }
-
-                // Packets are written to the TUN device as they come in; there is nothing to flush.
-                packets.extend(items.drain(..).filter_map(|item| match item {
-                    crate::OutboundItem::Packet(packet) => Some(packet),
-                    crate::OutboundItem::Flush => None,
-                }));
-
+            while let Some(packets) = outbound_rx.recv().await {
                 let mut offset = 0;
                 while offset < packets.len() {
                     let result = fd
@@ -100,8 +87,6 @@ pub fn send(
                         }
                     }
                 }
-
-                packets.clear();
             }
 
             anyhow::Ok(())
@@ -152,10 +137,7 @@ pub fn recv(
                     ],
                 );
 
-                let Ok(mut permits) = inbound_tx.reserve_many(n).await else {
-                    tracing::debug!("Inbound packet receiver gone, shutting down task");
-                    break;
-                };
+                let mut batch = Vec::with_capacity(n);
 
                 for (buf, len) in bufs.into_iter().zip(lens).take(n) {
                     if len == 0 {
@@ -167,13 +149,20 @@ pub fn recv(
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            // We reserved `n` permits and send at most `n`, so this is always `Some`.
-                            let Some(permit) = permits.next() else { break };
-                            permit.send(packet);
+                            batch.push(packet);
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => tracing::debug!("{e:#}"),
                         Err(e) => tracing::warn!("{e:#}"),
                     }
+                }
+
+                if batch.is_empty() {
+                    continue;
+                }
+
+                if inbound_tx.send(batch).await.is_err() {
+                    tracing::debug!("Inbound packet receiver gone, shutting down task");
+                    break;
                 }
             }
 

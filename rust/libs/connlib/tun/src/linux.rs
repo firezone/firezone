@@ -7,9 +7,8 @@
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
 //!   kernel's network stack as a single skb ([`coalesce`]).
 //!
-//! Batch boundaries on the write path are signalled by the main thread via
-//! [`OutboundItem::Flush`]: it marks the end of each batch of packets it hands us, so
-//! coalescing extends across exactly the packets that arrived together upstream.
+//! Each item on the outbound channel is one batch of packets that arrived together
+//! upstream; coalescing extends across exactly that batch.
 
 mod checksum;
 mod coalesce;
@@ -24,15 +23,13 @@ use coalesce::{Outgoing, TunGsoQueue};
 use ip_packet::IpPacket;
 use opentelemetry::KeyValue;
 use std::io;
+use std::mem;
 use std::os::fd::{AsRawFd, RawFd};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
 
-use crate::{InboundTx, OutboundItem, OutboundRx};
-
-/// How many packets we at most pull from the outbound channel in one batch.
-const MAX_TUN_BATCH: usize = 100;
+use crate::{InboundTx, MAX_BATCH_SIZE, OutboundRx};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
@@ -93,24 +90,23 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
 
-            let mut items = Vec::with_capacity(MAX_TUN_BATCH);
             let mut ready = Vec::new();
             // `None` once the kernel rejected a GSO write; packets then pass through 1:1.
             let mut queue = Some(TunGsoQueue::new());
 
-            while outbound_rx.recv_many(&mut items, MAX_TUN_BATCH).await > 0 {
-                for item in items.drain(..) {
+            while let Some(batch) = outbound_rx.recv().await {
+                for packet in batch {
                     #[cfg(debug_assertions)]
-                    if let OutboundItem::Packet(packet) = &item {
-                        tracing::trace!(target: "wire::dev::send", ?packet);
-                    }
+                    tracing::trace!(target: "wire::dev::send", ?packet);
 
-                    match (item, &mut queue) {
-                        (OutboundItem::Packet(packet), Some(queue)) => queue.enqueue(packet),
-                        (OutboundItem::Packet(packet), None) => ready.push(Outgoing::from(packet)),
-                        (OutboundItem::Flush, Some(queue)) => ready.extend(queue.drain()),
-                        (OutboundItem::Flush, None) => {}
+                    match &mut queue {
+                        Some(queue) => queue.enqueue(packet),
+                        None => ready.push(Outgoing::from(packet)),
                     }
+                }
+
+                if let Some(queue) = &mut queue {
+                    ready.extend(queue.drain());
                 }
 
                 let gso_failed = write_all(
@@ -217,12 +213,12 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
-            let mut packets = Vec::<IpPacket>::with_capacity(MAX_TUN_BATCH);
+            let mut batch = Vec::<IpPacket>::new();
 
             loop {
                 let mut guard = fd.readable().await?;
 
-                while packets.len() < MAX_TUN_BATCH {
+                while batch.len() < MAX_BATCH_SIZE {
                     let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
                         Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
                         Ok(Ok(len)) => len,
@@ -238,7 +234,12 @@ where
                             batch_size_histogram
                                 .record(segments.len() as u64, &recv_metric_attributes());
 
-                            packets.extend(segments);
+                            #[cfg(debug_assertions)]
+                            for packet in &segments {
+                                tracing::trace!(target: "wire::dev::recv", ?packet);
+                            }
+
+                            batch.extend(segments);
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                             tracing::debug!("{e:#}"); // Log on debug to be less noisy.
@@ -247,21 +248,29 @@ where
                     }
                 }
 
-                if packets.is_empty() {
+                if batch.is_empty() {
                     continue;
                 }
 
-                let Ok(permits) = inbound_tx.reserve_many(packets.len()).await else {
+                // The last split may have overshot `MAX_BATCH_SIZE`; hand off in bounded chunks.
+                while batch.len() > MAX_BATCH_SIZE {
+                    let rest = batch.split_off(MAX_BATCH_SIZE);
+
+                    if inbound_tx
+                        .send(mem::replace(&mut batch, rest))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                        return anyhow::Ok(());
+                    }
+                }
+
+                if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
                     tracing::debug!("Inbound packet receiver gone, shutting down task");
 
                     return anyhow::Ok(());
-                };
-
-                for (permit, packet) in permits.zip(packets.drain(..)) {
-                    #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                    permit.send(packet);
                 }
             }
         })?;

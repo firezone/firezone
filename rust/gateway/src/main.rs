@@ -445,36 +445,13 @@ impl ValidateChecksumAdapter {
 
         // Spawn task to validate and forward inbound packets from TUN device
         let task = tokio::spawn(async move {
-            while let Some(packet) = inner.receiver().recv().await {
-                if let Some(ipv4) = packet.ipv4_header() {
-                    let expected = ipv4.calc_header_checksum();
-                    let actual = ipv4.header_checksum;
-
-                    if expected != actual {
-                        tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
-                    }
+            while let Some(batch) = inner.receiver().recv().await {
+                for packet in &batch {
+                    validate_checksums(packet);
                 }
 
-                if let Some(udp) = packet.as_udp() {
-                    let actual = udp.checksum();
-                    if let Ok(expected) = packet.calculate_udp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
-                    }
-                }
-
-                if let Some(tcp) = packet.as_tcp() {
-                    let actual = tcp.checksum();
-                    if let Ok(expected) = packet.calculate_tcp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
-                    }
-                }
-
-                // Forward the validated packet to our inbound channel
-                if inbound_tx.send(packet).await.is_err() {
+                // Forward the validated batch to our inbound channel
+                if inbound_tx.send(batch).await.is_err() {
                     break;
                 }
             }
@@ -486,6 +463,35 @@ impl ValidateChecksumAdapter {
             name,
             _task: AbortOnDropHandle::new(task),
         })
+    }
+}
+
+fn validate_checksums(packet: &ip_packet::IpPacket) {
+    if let Some(ipv4) = packet.ipv4_header() {
+        let expected = ipv4.calc_header_checksum();
+        let actual = ipv4.header_checksum;
+
+        if expected != actual {
+            tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
+        }
+    }
+
+    if let Some(udp) = packet.as_udp() {
+        let actual = udp.checksum();
+        if let Ok(expected) = packet.calculate_udp_checksum()
+            && expected != actual
+        {
+            tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
+        }
+    }
+
+    if let Some(tcp) = packet.as_tcp() {
+        let actual = tcp.checksum();
+        if let Ok(expected) = packet.calculate_tcp_checksum()
+            && expected != actual
+        {
+            tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
+        }
     }
 }
 
