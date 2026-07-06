@@ -104,7 +104,7 @@ defmodule PortalWeb.Clients.Components do
         <div>
           <span>Last started:</span>
           <.relative_datetime
-            datetime={@client.latest_session && @client.latest_session.timestamp}
+            datetime={@client.latest_session && @client.latest_session.inserted_at}
             popover={false}
           />
         </div>
@@ -706,7 +706,7 @@ defmodule PortalWeb.Clients.Components do
         <.client_detail_row label="Last Seen">
           <span class="text-xs text-body">
             <.relative_datetime
-              datetime={@client.latest_session && @client.latest_session.timestamp}
+              datetime={@client.latest_session && @client.latest_session.inserted_at}
             />
           </span>
         </.client_detail_row>

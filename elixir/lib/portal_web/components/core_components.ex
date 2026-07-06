@@ -831,7 +831,7 @@ defmodule PortalWeb.CoreComponents do
     last_seen_at =
       if Map.has_key?(assigns.schema, :latest_session) do
         session = Map.get(assigns.schema, :latest_session)
-        session && session.timestamp
+        session && session.inserted_at
       else
         assigns.schema.last_seen_at
       end

@@ -70,16 +70,15 @@ defmodule Portal.Repo.Migrations.MoveSessionLogsFromChangeLogs do
             (account_id, event_id, "timestamp", context, subject)
           SELECT m.account_id,
                  set_byte(m.event_id, 0, (get_byte(m.event_id, 0) & 15) | 80),
-                 COALESCE((m."after" ->> 'timestamp')::timestamptz, m."timestamp"),
+                 m."timestamp",
                  CASE m.object
                    WHEN 'client_sessions' THEN 'client'
                    WHEN 'gateway_sessions' THEN 'gateway'
                    ELSE 'portal'
                  END,
                  jsonb_build_object(
-                   -- Client session rows written before the actor_id column was
-                   -- added have none in the payload; recover it from the owning
-                   -- device when that device still exists.
+                   -- client_sessions do not store actor_id, so recover it from
+                   -- the owning device when that device still exists.
                    'actor_id', COALESCE(m."after" ->> 'actor_id', d.actor_id::text),
                    'actor_email', m."after" ->> 'actor_email',
                    'auth_provider_id', m."after" ->> 'auth_provider_id',

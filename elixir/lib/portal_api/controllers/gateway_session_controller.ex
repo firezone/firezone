@@ -102,7 +102,7 @@ defmodule PortalAPI.GatewaySessionController do
 
     def cursor_fields do
       [
-        {:gateway_sessions, :desc, :timestamp},
+        {:gateway_sessions, :desc, :inserted_at},
         {:gateway_sessions, :asc, :id}
       ]
     end

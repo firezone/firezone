@@ -109,7 +109,7 @@ defmodule PortalAPI.ClientSessionController do
 
     def cursor_fields do
       [
-        {:client_sessions, :desc, :timestamp},
+        {:client_sessions, :desc, :inserted_at},
         {:client_sessions, :asc, :id}
       ]
     end

@@ -6,8 +6,6 @@ defmodule Portal.ClientSession do
           id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           device_id: Ecto.UUID.t(),
-          actor_id: Ecto.UUID.t(),
-          actor_email: String.t() | nil,
           client_token_id: Ecto.UUID.t(),
           user_agent: String.t() | nil,
           remote_ip: :inet.ip_address() | nil,
@@ -17,7 +15,6 @@ defmodule Portal.ClientSession do
           remote_ip_location_lat: float() | nil,
           remote_ip_location_lon: float() | nil,
           version: String.t() | nil,
-          timestamp: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil
         }
 
@@ -32,11 +29,6 @@ defmodule Portal.ClientSession do
     belongs_to :device, Portal.Device, foreign_key: :device_id, references: :id
     belongs_to :client_token, Portal.ClientToken, references: :id
 
-    # No FK: copied into session_logs, which must survive actor deletion.
-    # actor_email is a snapshot taken at connect time for the same reason.
-    field :actor_id, :binary_id
-    field :actor_email, :string
-
     field :public_key, :string
     field :user_agent, :string
     field :remote_ip, Portal.Types.IP
@@ -46,16 +38,12 @@ defmodule Portal.ClientSession do
     field :remote_ip_location_lon, :float
     field :version, :string
 
-    # The moment the session connected; `inserted_at` lags by the time the
-    # entry spends in `Portal.Queue`.
-    field :timestamp, :utc_datetime_usec
-
     timestamps(updated_at: false)
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :device_id, :client_token_id, :actor_id])
+    |> validate_required([:account_id, :device_id, :client_token_id])
     |> validate_length(:user_agent, max: 255)
     |> validate_length(:version, max: 255)
     |> validate_length(:remote_ip_location_region, max: 255)

@@ -482,7 +482,7 @@ defmodule PortalWeb.Sites.Components do
             <span class="text-xs text-subtle">Last started</span>
             <span class="text-xs text-heading">
               <.relative_datetime
-                datetime={gateway.latest_session && gateway.latest_session.timestamp}
+                datetime={gateway.latest_session && gateway.latest_session.inserted_at}
                 popover={false}
                 empty="Unknown"
               />

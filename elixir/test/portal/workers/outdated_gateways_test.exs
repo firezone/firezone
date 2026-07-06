@@ -59,7 +59,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       # Age the session beyond one week
       session
-      |> Ecto.Changeset.change(timestamp: DateTime.utc_now() |> DateTime.add(-8, :day))
+      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-8, :day))
       |> Repo.update!()
 
       assert OutdatedGateways.Database.count_incompatible_for(account, "1.3.0") == 0
@@ -100,7 +100,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
         )
 
       old_session
-      |> Ecto.Changeset.change(timestamp: DateTime.utc_now() |> DateTime.add(-1, :hour))
+      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-1, :hour))
       |> Repo.update!()
 
       # Latest session with compatible version

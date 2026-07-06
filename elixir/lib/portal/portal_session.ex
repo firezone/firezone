@@ -13,10 +13,6 @@ defmodule Portal.PortalSession do
     belongs_to :actor, Portal.Actor
     belongs_to :auth_provider, Portal.AuthProvider
 
-    # Snapshot taken at sign-in; copied into session_logs, which must
-    # survive actor deletion and email changes.
-    field :actor_email, :string
-
     field :user_agent, :string
     field :remote_ip, Portal.Types.IP
     field :remote_ip_location_region, :string
@@ -25,11 +21,6 @@ defmodule Portal.PortalSession do
     field :remote_ip_location_lon, :float
 
     field :expires_at, :utc_datetime_usec
-
-    # The moment the session was created. Portal sessions are inserted
-    # synchronously, but the column exists on all three session tables so
-    # session_logs can treat it uniformly as the connect time.
-    field :timestamp, :utc_datetime_usec
 
     # Allows for convenient mapping of the corresponding auth provider for display
     field :auth_provider_name, :string, virtual: true

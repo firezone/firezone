@@ -97,7 +97,7 @@ defmodule PortalAPI.AccountJSON do
         on: s.device_id == c.id and s.account_id == c.account_id,
         as: :session
       )
-      |> where([session: s], s.timestamp > ago(1, "month"))
+      |> where([session: s], s.inserted_at > ago(1, "month"))
       |> join(:inner, [clients: c], a in Actor,
         on: c.actor_id == a.id and c.account_id == a.account_id,
         as: :actor

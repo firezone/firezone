@@ -23,7 +23,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
         client_session_fixture(account: account, client: client, token: token)
 
       old_session
-      |> Ecto.Changeset.change(timestamp: DateTime.utc_now() |> DateTime.add(-91, :day))
+      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-91, :day))
       |> Repo.update!()
 
       # Create a newer session so the old one isn't the latest for this client
@@ -46,7 +46,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
       session = client_session_fixture()
 
       session
-      |> Ecto.Changeset.change(timestamp: DateTime.utc_now() |> DateTime.add(-91, :day))
+      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-91, :day))
       |> Repo.update!()
 
       assert :ok = perform_job(DeleteOldClientSessions, %{})
@@ -54,7 +54,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
       assert Repo.get_by(ClientSession, id: session.id)
     end
 
-    test "keeps exactly one session when multiple share the same timestamp" do
+    test "keeps exactly one session when multiple share the same inserted_at" do
       account = account_fixture()
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
@@ -67,10 +67,10 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
           client_session_fixture(account: account, client: client, token: token)
         end
 
-      # Set all three to the exact same timestamp to simulate a batch flush
+      # Set all three to the exact same inserted_at to simulate a batch flush
       for session <- sessions do
         session
-        |> Ecto.Changeset.change(timestamp: old_timestamp)
+        |> Ecto.Changeset.change(inserted_at: old_timestamp)
         |> Repo.update!()
       end
 
@@ -99,7 +99,7 @@ defmodule Portal.Workers.DeleteOldClientSessionsTest do
 
       for session <- [old_session1, old_session2] do
         session
-        |> Ecto.Changeset.change(timestamp: DateTime.utc_now() |> DateTime.add(-91, :day))
+        |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-91, :day))
         |> Repo.update!()
       end
 

@@ -1597,7 +1597,7 @@ defmodule PortalWeb.Actors do
         from(s in ClientSession,
           where: s.client_token_id in ^token_ids,
           distinct: s.client_token_id,
-          order_by: [asc: s.client_token_id, desc_nulls_last: s.timestamp]
+          order_by: [asc: s.client_token_id, desc: s.inserted_at]
         )
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
@@ -1648,7 +1648,7 @@ defmodule PortalWeb.Actors do
             ap.id
           )
       })
-      |> order_by([portal_sessions: ps], desc_nulls_last: ps.timestamp)
+      |> order_by([portal_sessions: ps], desc: ps.inserted_at)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> Presence.PortalSessions.preload_portal_sessions_presence()

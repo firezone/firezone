@@ -108,8 +108,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         gateway.latest_session && gateway.latest_session.remote_ip_location_lat,
       remote_ip_location_lon:
         gateway.latest_session && gateway.latest_session.remote_ip_location_lon,
-      version: (gateway.latest_session && gateway.latest_session.version) || "1.3.0",
-      timestamp: DateTime.utc_now()
+      version: (gateway.latest_session && gateway.latest_session.version) || "1.3.0"
     }
   end
 

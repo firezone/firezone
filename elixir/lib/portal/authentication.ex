@@ -170,10 +170,11 @@ defmodule Portal.Authentication do
         %Context{} = context,
         expires_at
       ) do
+    now = DateTime.utc_now()
+
     %PortalSession{
       account_id: account_id,
       actor_id: actor_id,
-      actor_email: actor.email,
       auth_provider_id: auth_provider_id,
       user_agent: context.user_agent,
       remote_ip: %Postgrex.INET{address: context.remote_ip},
@@ -181,8 +182,7 @@ defmodule Portal.Authentication do
       remote_ip_location_city: context.remote_ip_location_city,
       remote_ip_location_lat: context.remote_ip_location_lat,
       remote_ip_location_lon: context.remote_ip_location_lon,
-      expires_at: expires_at,
-      timestamp: DateTime.utc_now()
+      expires_at: expires_at
     }
     |> Database.insert_portal_session()
     |> case do
@@ -190,7 +190,7 @@ defmodule Portal.Authentication do
         # Portal sessions are inserted synchronously at human-login rate (no
         # reconnect storm), so the session log is written inline alongside the
         # session row rather than through the batching queue.
-        Database.insert_session_log(portal_session_log_attrs(session, actor, auth_provider_id))
+        Database.insert_session_log(portal_session_log_attrs(session, actor, auth_provider_id, now))
         ok
 
       error ->
@@ -198,11 +198,11 @@ defmodule Portal.Authentication do
     end
   end
 
-  defp portal_session_log_attrs(session, actor, auth_provider_id) do
+  defp portal_session_log_attrs(session, actor, auth_provider_id, timestamp) do
     %{
       account_id: session.account_id,
       event_id: EventId.build_session_log(),
-      timestamp: session.timestamp,
+      timestamp: timestamp,
       context: :portal,
       subject: %{
         actor_id: actor.id,

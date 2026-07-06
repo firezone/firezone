@@ -128,8 +128,7 @@ defmodule PortalAPI.Gateway.Socket do
       remote_ip_location_city: context.remote_ip_location_city,
       remote_ip_location_lat: context.remote_ip_location_lat,
       remote_ip_location_lon: context.remote_ip_location_lon,
-      version: version,
-      timestamp: DateTime.utc_now()
+      version: version
     }
   end
 
@@ -177,11 +176,12 @@ defmodule PortalAPI.Gateway.Socket do
   # reconnect storm collapses into one bulk insert here rather than a write per
   # connect. Only durable sessions are logged. Gateways authenticate with a
   # token and have no actor, so the subject snapshot is the gateway identity
-  # and its connection context.
+  # and its connection context. The connect-time timestamp rides the queue
+  # entry's metadata rather than the session row's flush-time inserted_at.
   defp insert_session_logs(entries, failed_ids) do
     log_entries =
-      for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
-        {session_log_attrs(attrs), nil}
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+        {session_log_attrs(attrs, metadata), nil}
       end
 
     Batch.insert_all(SessionLog, log_entries,
@@ -192,11 +192,11 @@ defmodule PortalAPI.Gateway.Socket do
     )
   end
 
-  defp session_log_attrs(attrs) do
+  defp session_log_attrs(attrs, %{timestamp: timestamp}) do
     %{
       account_id: attrs.account_id,
       event_id: EventId.build_session_log(),
-      timestamp: attrs.timestamp,
+      timestamp: timestamp,
       context: :gateway,
       subject: %{
         gateway_id: attrs[:device_id],

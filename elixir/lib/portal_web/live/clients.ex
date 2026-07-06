@@ -34,7 +34,7 @@ defmodule PortalWeb.Clients do
         sortable_fields: [
           {:devices, :name},
           {:latest_session, :version},
-          {:latest_session, :timestamp},
+          {:latest_session, :inserted_at},
           {:devices, :inserted_at},
           {:latest_session, :user_agent}
         ],
@@ -199,13 +199,13 @@ defmodule PortalWeb.Clients do
           </:col>
           <:col
             :let={client}
-            field={{:latest_session, :timestamp}}
+            field={{:latest_session, :inserted_at}}
             label="Last Started"
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
               <.relative_datetime datetime={
-                client.latest_session && client.latest_session.timestamp
+                client.latest_session && client.latest_session.inserted_at
               } />
             </span>
           </:col>
@@ -603,7 +603,7 @@ defmodule PortalWeb.Clients do
           from(s in ClientSession,
             where: s.device_id == parent_as(:devices).id,
             where: s.account_id == parent_as(:devices).account_id,
-            order_by: [desc_nulls_last: s.timestamp],
+            order_by: [desc: s.inserted_at],
             limit: 1
           )
         ),
@@ -617,7 +617,7 @@ defmodule PortalWeb.Clients do
       subject
       |> page_query()
       |> select_merge([latest_session: s], %{
-        latest_session_timestamp: s.timestamp,
+        latest_session_inserted_at: s.inserted_at,
         latest_session_version: s.version,
         latest_session_user_agent: s.user_agent
       })
@@ -747,7 +747,7 @@ defmodule PortalWeb.Clients do
           session =
             from(s in ClientSession,
               where: s.device_id == ^client.id,
-              order_by: [desc_nulls_last: s.timestamp],
+              order_by: [desc: s.inserted_at],
               limit: 1
             )
             |> Safe.scoped(subject, :replica)
@@ -763,7 +763,7 @@ defmodule PortalWeb.Clients do
 
     def cursor_fields do
       [
-        {:latest_session, :desc, :timestamp},
+        {:latest_session, :desc, :inserted_at},
         {:devices, :asc, :id}
       ]
     end
@@ -780,12 +780,12 @@ defmodule PortalWeb.Clients do
     # We build the struct from those virtual fields to avoid a redundant DB round-trip.
     defp preload_latest_sessions(clients) do
       Enum.map(clients, fn client ->
-        if client.latest_session_timestamp do
+        if client.latest_session_inserted_at do
           %{
             client
             | latest_session: %ClientSession{
                 version: client.latest_session_version,
-                timestamp: client.latest_session_timestamp,
+                inserted_at: client.latest_session_inserted_at,
                 user_agent: client.latest_session_user_agent
               }
           }

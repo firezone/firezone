@@ -61,7 +61,6 @@ defmodule Portal.GatewaySessionTest do
                  },
                  [:account_id, :device_id, :gateway_token_id, :public_key]
                )
-               |> Ecto.Changeset.put_change(:timestamp, DateTime.utc_now())
                |> GatewaySession.changeset()
                |> Repo.insert()
 
@@ -85,7 +84,6 @@ defmodule Portal.GatewaySessionTest do
                  },
                  [:account_id, :device_id, :gateway_token_id, :public_key]
                )
-               |> Ecto.Changeset.put_change(:timestamp, DateTime.utc_now())
                |> GatewaySession.changeset()
                |> Repo.insert()
 
@@ -108,7 +106,6 @@ defmodule Portal.GatewaySessionTest do
                  },
                  [:account_id, :device_id, :gateway_token_id, :public_key]
                )
-               |> Ecto.Changeset.put_change(:timestamp, DateTime.utc_now())
                |> GatewaySession.changeset()
                |> Repo.insert()
 

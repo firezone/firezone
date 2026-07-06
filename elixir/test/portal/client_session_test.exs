@@ -19,7 +19,6 @@ defmodule Portal.ClientSessionTest do
       assert errors_on(changeset).account_id
       assert errors_on(changeset).device_id
       assert errors_on(changeset).client_token_id
-      assert errors_on(changeset).actor_id
     end
 
     test "valid changeset with all required fields" do
@@ -34,12 +33,11 @@ defmodule Portal.ClientSessionTest do
           %{
             account_id: account.id,
             device_id: client.id,
-            actor_id: actor.id,
             client_token_id: token.id,
             user_agent: "Test/1.0",
             version: "1.0.0"
           },
-          [:account_id, :device_id, :actor_id, :client_token_id, :user_agent, :version]
+          [:account_id, :device_id, :client_token_id, :user_agent, :version]
         )
         |> ClientSession.changeset()
 
@@ -58,11 +56,9 @@ defmodule Portal.ClientSessionTest do
                  %{
                    account_id: Ecto.UUID.generate(),
                    device_id: client.id,
-                   actor_id: actor.id,
-                   client_token_id: token.id,
-                   timestamp: DateTime.utc_now()
+                   client_token_id: token.id
                  },
-                 [:account_id, :device_id, :actor_id, :client_token_id, :timestamp]
+                 [:account_id, :device_id, :client_token_id]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
@@ -82,11 +78,9 @@ defmodule Portal.ClientSessionTest do
                  %{
                    account_id: account.id,
                    device_id: device_id,
-                   actor_id: actor.id,
-                   client_token_id: token.id,
-                   timestamp: DateTime.utc_now()
+                   client_token_id: token.id
                  },
-                 [:account_id, :device_id, :actor_id, :client_token_id, :timestamp]
+                 [:account_id, :device_id, :client_token_id]
                )
                |> ClientSession.changeset()
                |> Repo.insert()
@@ -105,11 +99,9 @@ defmodule Portal.ClientSessionTest do
                  %{
                    account_id: account.id,
                    device_id: client.id,
-                   actor_id: actor.id,
-                   client_token_id: Ecto.UUID.generate(),
-                   timestamp: DateTime.utc_now()
+                   client_token_id: Ecto.UUID.generate()
                  },
-                 [:account_id, :device_id, :actor_id, :client_token_id, :timestamp]
+                 [:account_id, :device_id, :client_token_id]
                )
                |> ClientSession.changeset()
                |> Repo.insert()

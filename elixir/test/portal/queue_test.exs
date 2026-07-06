@@ -173,7 +173,6 @@ defmodule Portal.QueueTest do
         id: Ecto.UUID.generate(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        actor_id: ctx.client.actor_id,
         client_token_id: ctx.token.id,
         user_agent: "macOS/14.0 apple-client/1.3.0",
         remote_ip: {100, 64, 0, 1},
@@ -182,8 +181,7 @@ defmodule Portal.QueueTest do
         remote_ip_location_lat: 40.7128,
         remote_ip_location_lon: -74.006,
         public_key: Base.encode64(:crypto.strong_rand_bytes(32)),
-        version: "1.3.0",
-        timestamp: DateTime.utc_now()
+        version: "1.3.0"
       }
 
       Map.merge(defaults, overrides)
@@ -306,8 +304,7 @@ defmodule Portal.QueueTest do
         user_agent: "Linux/6.1.0 connlib/1.3.0 (x86_64)",
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",
-        version: "1.3.0",
-        timestamp: DateTime.utc_now()
+        version: "1.3.0"
       }
 
       Map.merge(defaults, overrides)
@@ -504,7 +501,6 @@ defmodule Portal.QueueTest do
         id: Ecto.UUID.generate(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        actor_id: ctx.client.actor_id,
         client_token_id: ctx.token.id,
         user_agent: "test/1.0",
         public_key: Base.encode64(:crypto.strong_rand_bytes(32)),
@@ -513,8 +509,7 @@ defmodule Portal.QueueTest do
         remote_ip_location_region: "US",
         remote_ip_location_city: "NYC",
         remote_ip_location_lat: 40.0,
-        remote_ip_location_lon: -74.0,
-        timestamp: DateTime.utc_now()
+        remote_ip_location_lon: -74.0
       }
 
       Queue.enqueue(ctx.queue, attrs)
@@ -745,7 +740,6 @@ defmodule Portal.QueueTest do
         id: Ecto.UUID.generate(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        actor_id: ctx.client.actor_id,
         client_token_id: ctx.token.id,
         user_agent: "test/1.0",
         public_key: Base.encode64(:crypto.strong_rand_bytes(32)),
@@ -754,8 +748,7 @@ defmodule Portal.QueueTest do
         remote_ip_location_region: "US",
         remote_ip_location_city: "NYC",
         remote_ip_location_lat: 40.0,
-        remote_ip_location_lon: -74.0,
-        timestamp: DateTime.utc_now()
+        remote_ip_location_lon: -74.0
       }
     end
 
@@ -962,7 +955,6 @@ defmodule Portal.QueueTest do
         id: Ecto.UUID.generate(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        actor_id: ctx.client.actor_id,
         client_token_id: ctx.token.id,
         user_agent: "macOS/14.0 apple-client/1.3.0",
         remote_ip: {100, 64, 0, 1},
@@ -971,8 +963,7 @@ defmodule Portal.QueueTest do
         remote_ip_location_lat: 40.0,
         remote_ip_location_lon: -74.0,
         public_key: Base.encode64(:crypto.strong_rand_bytes(32)),
-        version: "1.3.0",
-        timestamp: DateTime.utc_now()
+        version: "1.3.0"
       }
 
       Map.merge(defaults, overrides)

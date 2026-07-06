@@ -185,8 +185,7 @@ defmodule Portal.Repo.Seeds do
       remote_ip_location_city: location_city,
       remote_ip_location_lat: location_lat,
       remote_ip_location_lon: location_lon,
-      version: version,
-      timestamp: DateTime.utc_now()
+      version: version
     }
     |> Repo.insert!()
 
@@ -238,8 +237,6 @@ defmodule Portal.Repo.Seeds do
     Repo.insert!(%ClientSession{
       account_id: subject.account.id,
       device_id: client.id,
-      actor_id: subject.actor.id,
-      actor_email: subject.actor.email,
       client_token_id: client_token_id,
       public_key: public_key,
       user_agent: user_agent,
@@ -248,8 +245,7 @@ defmodule Portal.Repo.Seeds do
       remote_ip_location_city: location_city,
       remote_ip_location_lat: location_lat,
       remote_ip_location_lon: location_lon,
-      version: version,
-      timestamp: DateTime.utc_now()
+      version: version
     })
 
     {:ok, client}
@@ -655,8 +651,6 @@ defmodule Portal.Repo.Seeds do
         Repo.insert!(%ClientSession{
           account_id: subject.account.id,
           device_id: client.id,
-          actor_id: subject.actor.id,
-          actor_email: subject.actor.email,
           client_token_id: token.id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           user_agent: user_agent,
@@ -665,8 +659,7 @@ defmodule Portal.Repo.Seeds do
           remote_ip_location_city: location_city,
           remote_ip_location_lat: location_lat,
           remote_ip_location_lon: location_lon,
-          version: version,
-          timestamp: DateTime.utc_now()
+          version: version
         })
       end
     end

@@ -829,14 +829,12 @@ defmodule Portal.AuthenticationTest do
       assert session.id != nil
       assert session.account_id == account.id
       assert session.actor_id == actor.id
-      assert session.actor_email == actor.email
       assert session.auth_provider_id == auth_provider.id
-      assert DateTime.diff(DateTime.utc_now(), session.timestamp, :second) < 5
 
       assert [session_log] = Portal.Repo.all(Portal.SessionLog)
       assert session_log.context == :portal
       assert session_log.account_id == account.id
-      assert session_log.timestamp == session.timestamp
+      assert DateTime.diff(DateTime.utc_now(), session_log.timestamp, :second) < 5
       assert session_log.subject["actor_id"] == actor.id
       assert session_log.subject["actor_email"] == actor.email
       assert session_log.subject["auth_provider_id"] == auth_provider.id

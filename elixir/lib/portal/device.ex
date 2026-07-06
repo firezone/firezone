@@ -21,7 +21,7 @@ defmodule Portal.Device do
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
           latest_session: any() | nil,
-          latest_session_timestamp: DateTime.t() | nil,
+          latest_session_inserted_at: DateTime.t() | nil,
           latest_session_version: String.t() | nil,
           latest_session_user_agent: String.t() | nil,
           account_id: Ecto.UUID.t(),
@@ -73,7 +73,7 @@ defmodule Portal.Device do
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
     field :latest_session, :any, virtual: true
-    field :latest_session_timestamp, :utc_datetime_usec, virtual: true
+    field :latest_session_inserted_at, :utc_datetime_usec, virtual: true
     field :latest_session_version, :string, virtual: true
     field :latest_session_user_agent, :string, virtual: true
 

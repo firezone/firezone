@@ -298,7 +298,7 @@ defmodule Portal.Workers.CheckAccountLimits do
           from(s in Portal.ClientSession,
             where: s.device_id == parent_as(:clients).id,
             where: s.account_id == parent_as(:clients).account_id,
-            where: s.timestamp > ago(1, "month"),
+            where: s.inserted_at > ago(1, "month"),
             select: s.id,
             limit: 1
           )

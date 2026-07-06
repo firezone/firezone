@@ -16,8 +16,7 @@ defmodule Portal.PortalSessionFixtures do
       remote_ip_location_city: "San Francisco",
       remote_ip_location_lat: 37.7749,
       remote_ip_location_lon: -122.4194,
-      expires_at: DateTime.utc_now() |> DateTime.add(86400, :second),
-      timestamp: DateTime.utc_now()
+      expires_at: DateTime.utc_now() |> DateTime.add(86400, :second)
     }
   end
 

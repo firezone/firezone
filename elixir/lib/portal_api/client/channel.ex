@@ -2615,7 +2615,10 @@ defmodule PortalAPI.Client.Channel do
         # after a PG scope crash share the same channel and session row.
         if is_nil(current_pid) do
           Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session),
-            metadata: Authentication.Subject.to_map(socket.assigns.subject)
+            metadata: %{
+              subject: Authentication.Subject.to_map(socket.assigns.subject),
+              timestamp: DateTime.utc_now()
+            }
           )
 
           {:noreply, arm_session_durability_timer(socket)}

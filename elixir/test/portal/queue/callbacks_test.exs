@@ -28,27 +28,28 @@ defmodule Portal.Queue.CallbacksTest do
         id: session_id,
         account_id: account.id,
         device_id: client.id,
-        actor_id: client.actor_id,
         client_token_id: token.id,
         public_key: generate_public_key(),
         user_agent: "test-client/1.0",
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",
         version: "1.3.0",
-        timestamp: DateTime.utc_now(),
         inserted_at: DateTime.utc_now()
       }
 
       on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
 
+      timestamp = DateTime.utc_now()
       subject = %{"actor_id" => actor.id, "actor_email" => actor.email}
+      metadata = %{subject: subject, timestamp: timestamp}
 
-      assert 1 = on_flush.([{attrs, subject}])
+      assert 1 = on_flush.([{attrs, metadata}])
       assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
       assert_receive {:confirm_session_durability, ^session_id}
 
       assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
       assert session_log.context == :client
+      assert session_log.timestamp == timestamp
       assert session_log.subject["actor_id"] == actor.id
       assert session_log.subject["actor_email"] == actor.email
       assert session_log.subject["device_id"] == client.id
@@ -76,18 +77,20 @@ defmodule Portal.Queue.CallbacksTest do
         remote_ip: {100, 64, 0, 2},
         remote_ip_location_region: "US",
         version: "1.3.0",
-        timestamp: DateTime.utc_now(),
         inserted_at: DateTime.utc_now()
       }
 
       on_flush = Keyword.fetch!(PortalAPI.Gateway.Socket.gateway_session_queue_opts(), :on_flush)
 
-      assert 1 = on_flush.([{attrs, nil}])
+      timestamp = DateTime.utc_now()
+
+      assert 1 = on_flush.([{attrs, %{timestamp: timestamp}}])
       assert Repo.get_by(GatewaySession, id: session_id, account_id: account.id)
       assert_receive {:confirm_session_durability, ^session_id}
 
       assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
       assert session_log.context == :gateway
+      assert session_log.timestamp == timestamp
       assert session_log.subject["gateway_id"] == gateway.id
       assert session_log.subject["token_id"] == token.id
     end
