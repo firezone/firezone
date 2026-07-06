@@ -1839,9 +1839,7 @@ defmodule PortalAPI.Client.Channel do
 
   defp init(socket, resources, relays) do
     push(socket, "init", %{
-      flow_logs_api_url: flow_logs_api_url(),
-      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
-      flow_logs_upload_batch_size: flow_logs_upload_batch_size(),
+      flow_logs: flow_logs_config(),
       resources: Views.Resource.render_many(resources, socket.assigns.session),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       # TODO: Re-enable after verifying compatibility with older clients
@@ -1868,13 +1866,13 @@ defmodule PortalAPI.Client.Channel do
     track_presence(socket)
   end
 
-  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
-
-  defp flow_logs_upload_interval_secs,
-    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
-
-  defp flow_logs_upload_batch_size,
-    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
+  defp flow_logs_config do
+    %{
+      api_url: Portal.Config.fetch_env!(:portal, :flow_logs_api_url),
+      upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
+      upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
+    }
+  end
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)

@@ -461,9 +461,11 @@ defmodule PortalAPI.Client.ChannelTest do
         resources: resources,
         interface: interface,
         relays: relays,
-        flow_logs_api_url: "https://flow-api.firezone.dev/",
-        flow_logs_upload_interval_secs: 60,
-        flow_logs_upload_batch_size: 1000
+        flow_logs: %{
+          api_url: "https://flow-api.firezone.dev/",
+          upload_interval_secs: 60,
+          upload_batch_size: 1000
+        }
       }
 
       assert length(resources) == 4
