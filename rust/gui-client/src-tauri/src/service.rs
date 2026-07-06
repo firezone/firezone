@@ -160,6 +160,11 @@ async fn ipc_listen(
         tracing::warn!("Failed to apply stored log filter: {e:#}");
     }
 
+    // The uploader runs for the lifetime of the process, signed in or not.
+    if let Some(dir) = known_dirs::flow_logs() {
+        flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+    }
+
     let mut server = ipc::Server::new(socket_id)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
@@ -749,23 +754,13 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        // One uploader for the process, no matter how many sessions come and go.
-        static SPAWN_UPLOADER: std::sync::Once = std::sync::Once::new();
-
-        let flow_logs_dir = known_dirs::flow_logs();
-        if let Some(dir) = flow_logs_dir.clone() {
-            SPAWN_UPLOADER.call_once(|| {
-                flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
-            });
-        }
-
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             is_internet_resource_active,
             dns,
-            flow_logs_dir,
+            known_dirs::flow_logs(),
             tokio::runtime::Handle::current(),
         );
 

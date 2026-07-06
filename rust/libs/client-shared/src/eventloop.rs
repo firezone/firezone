@@ -115,7 +115,6 @@ impl DisconnectError {
 }
 
 impl Eventloop {
-    #[expect(clippy::too_many_arguments)]
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,

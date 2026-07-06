@@ -87,7 +87,7 @@ pub struct InitGateway {
     pub account_slug: Option<String>,
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
-    #[serde(flatten)]
+    #[serde(default)]
     pub flow_logs: FlowLogsConfig,
 }
 

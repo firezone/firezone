@@ -209,13 +209,13 @@ pub struct UpstreamDo53 {
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct FlowLogsConfig {
     /// Base URL flow logs are POSTed to (portal-provided, authoritative).
-    #[serde(default, rename = "flow_logs_api_url")]
+    #[serde(default)]
     pub api_url: Option<String>,
     /// How often, in seconds, to upload batched flow logs. `0` disables uploads.
-    #[serde(default, rename = "flow_logs_upload_interval_secs")]
+    #[serde(default)]
     pub upload_interval_secs: Option<u64>,
     /// Maximum flow-log records per upload request. `0` / absent uses the default.
-    #[serde(default, rename = "flow_logs_upload_batch_size")]
+    #[serde(default)]
     pub upload_batch_size: Option<u64>,
 }
 

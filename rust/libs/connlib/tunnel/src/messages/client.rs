@@ -119,7 +119,7 @@ pub struct InitClient {
     pub resources: Vec<ResourceDescription>,
     #[serde(default)]
     pub relays: Vec<Relay>,
-    #[serde(flatten)]
+    #[serde(default)]
     pub flow_logs: FlowLogsConfig,
 }
 
@@ -404,9 +404,11 @@ mod tests {
     fn can_deserialize_init_with_flow_logs_config() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
-            "flow_logs_api_url": "https://flow-api.firezone.dev",
-            "flow_logs_upload_interval_secs": 60,
-            "flow_logs_upload_batch_size": 1000
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
         }"#;
 
         let init = serde_json::from_str::<InitClient>(init).unwrap();

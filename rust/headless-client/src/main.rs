@@ -142,10 +142,6 @@ struct Cli {
     /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(long, env = "FIREZONE_INC_BUF", hide = true, default_value_t = false)]
     inc_buf: bool,
-
-    /// Emit flow logs to stdout by adding the `flow_logs=trace` log directive.
-    #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
-    flow_logs: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -261,18 +257,17 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
-    let mut directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    if cli.flow_logs {
-        // CLI opt-in to print flow logs, mirroring the gateway's `FIREZONE_FLOW_LOGS`.
-        directives.push_str(",flow_logs=trace");
-    }
-
     let flow_logs_dir = known_dirs::flow_logs();
     let (flow_log_layer, _flow_log_guard) =
         flow_logs_dir.clone().map(flow_log_writer::layer).unzip();
 
-    logging::setup_global_subscriber(directives, layer, flow_log_layer, false)
-        .context("Failed to set up logging")?;
+    logging::setup_global_subscriber(
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
+        layer,
+        flow_log_layer,
+        false,
+    )
+    .context("Failed to set up logging")?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
