@@ -4,7 +4,6 @@ use opentelemetry::KeyValue;
 use std::io;
 use std::os::fd::AsRawFd;
 use tokio::io::unix::AsyncFd;
-use tokio::sync::mpsc;
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -27,7 +26,7 @@ const MAX_TUN_BATCH: usize = if cfg!(any(target_os = "ios", target_os = "android
 
 pub fn tun_send<T>(
     fd: T,
-    mut outbound_rx: mpsc::Receiver<IpPacket>,
+    mut outbound_rx: crate::OutboundRx,
     write: impl Fn(i32, &IpPacket) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where
@@ -165,7 +164,7 @@ fn drop_attributes(e: &io::Error) -> [KeyValue; 3] {
 
 pub fn tun_recv<T>(
     fd: T,
-    inbound_tx: mpsc::Sender<IpPacket>,
+    inbound_tx: crate::InboundTx,
     read: impl Fn(i32, &mut IpPacketBuf) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where

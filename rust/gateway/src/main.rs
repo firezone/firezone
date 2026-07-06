@@ -10,7 +10,6 @@ use bin_shared::{
 use clap::Parser;
 
 use hickory_resolver::config::ResolveHosts;
-use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -414,18 +413,18 @@ impl Cli {
 
 /// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
 struct ValidateChecksumAdapter {
-    outbound_tx: tokio::sync::mpsc::Sender<IpPacket>,
-    inbound_rx: tokio::sync::mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
     name: String,
     _task: AbortOnDropHandle<()>,
 }
 
 impl Tun for ValidateChecksumAdapter {
-    fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 
@@ -439,7 +438,7 @@ impl ValidateChecksumAdapter {
         let name = inner.name().to_string();
 
         // Channel for inbound packets (from TUN device to gateway)
-        let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(1000);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
 
         // Get reference to inner TUN's sender for outbound packets
         let outbound_tx = inner.sender().clone();

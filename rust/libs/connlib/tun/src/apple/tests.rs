@@ -9,8 +9,6 @@ use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::os::fd::RawFd;
 use std::time::{Duration, Instant};
 
-use ip_packet::IpPacket;
-
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
 
@@ -28,7 +26,7 @@ fn recv_reads_packets_routed_through_the_interface() {
     raise_max_pending_packets(fd, 64);
     configure(&name);
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<IpPacket>(1024);
+    let (tx, mut rx) = crate::inbound_channel_for_test(1024);
     std::thread::Builder::new()
         .name("test TUN recv".to_owned())
         .spawn(move || {

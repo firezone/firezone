@@ -20,7 +20,6 @@ use std::{
     sync::Arc,
 };
 use telemetry::otel;
-use tokio::sync::mpsc;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
@@ -46,8 +45,6 @@ use wintun::Adapter;
 /// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
 /// where that is configured.
 const RING_BUFFER_SIZE: u32 = 0x10_0000;
-
-const QUEUE_SIZE: usize = 1000;
 
 pub struct TunDeviceManager {
     mtu: u32,
@@ -214,8 +211,8 @@ pub struct Tun {
 struct TunState {
     session: Arc<wintun::Session>,
 
-    outbound_tx: mpsc::Sender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
 }
 
 impl Drop for Tun {
@@ -303,8 +300,8 @@ impl Tun {
                 .start_session(capacity)
                 .context("Failed to start session")?,
         );
-        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE); // We want to be able to batch-receive from this.
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
 
         tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
@@ -345,7 +342,7 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self
             .state
             .as_ref()
@@ -353,7 +350,7 @@ impl tun::Tun for Tun {
             .outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self
             .state
             .as_mut()
@@ -380,7 +377,7 @@ const SPIN_LIMIT: u32 = 6;
 
 // Moves packets from Internet towards the user
 fn start_send_thread(
-    mut packet_rx: mpsc::Receiver<IpPacket>,
+    mut packet_rx: tun::OutboundRx,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     let write_retry_histogram = otel_instruments::network_retries();
@@ -512,7 +509,7 @@ fn drop_attributes(e: &wintun::Error) -> [KeyValue; 3] {
 }
 
 fn start_recv_thread(
-    packet_tx: mpsc::Sender<IpPacket>,
+    packet_tx: tun::InboundTx,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()

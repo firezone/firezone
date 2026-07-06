@@ -1,10 +1,6 @@
-use ip_packet::IpPacket;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
 use telemetry::otel;
-use tokio::sync::mpsc;
-
-const QUEUE_SIZE: usize = 10_000;
 
 /// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
 ///
@@ -33,8 +29,8 @@ const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
 
 pub struct Tun {
     name: String,
-    outbound_tx: mpsc::Sender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
 }
 
 impl Tun {
@@ -62,8 +58,8 @@ impl Tun {
         raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
 
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
 
         runtime.spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
@@ -108,11 +104,11 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 
