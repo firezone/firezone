@@ -29,6 +29,7 @@ jobs:
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
       FIREZONE_INC_BUF: true
+      COMPOSE_PROFILES: perf
     strategy:
       matrix:
         test:

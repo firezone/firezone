@@ -52,6 +52,9 @@ services:
   secnetperf:
     image: ghcr.io/firezone/secnetperf:latest
     command: secnetperf -exec:maxtput -stats:1
+    # Only used by the performance tests; keeps integration tests from pulling it.
+    profiles:
+      - perf
     healthcheck:
       # 4433 (the default secnetperf port) in hex
       test: ["CMD-SHELL", "grep -q :1151 /proc/net/udp /proc/net/udp6"]
