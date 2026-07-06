@@ -408,9 +408,7 @@ mod tests {
         let IngressMessages::AuthorizeFlow(flow) = message else {
             panic!("expected AuthorizeFlow");
         };
-        // Old portals don't send the flag; default is `false`.
         assert!(!flow.use_iceless);
-        // Old portals don't send an ingest token either.
         assert!(flow.flow_logs_ingest_token.is_none());
     }
 

@@ -551,7 +551,6 @@ mod tests {
             panic!("expected FlowCreated");
         };
         assert!(flow.use_iceless);
-        // Old portals don't send an ingest token.
         assert!(flow.flow_logs_ingest_token.is_none());
     }
 
