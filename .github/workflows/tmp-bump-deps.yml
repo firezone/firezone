@@ -1,0 +1,34 @@
+name: TMP bump deps
+on:
+  push:
+    branches:
+      - chore/bump-mint-and-hpax
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-elixir
+        with:
+          mix_env: test
+      - name: Update mint and hpax
+        working-directory: ./elixir
+        run: |
+          mix deps.update mint hpax
+          mix hex.audit
+      - name: Commit and push
+        run: |
+          if git diff --quiet elixir/mix.lock; then
+            echo "mix.lock already up to date"
+            exit 0
+          fi
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git add elixir/mix.lock
+          git commit -m "build(deps): bump mint and hpax"
+          git push origin HEAD:chore/bump-mint-and-hpax
