@@ -5,8 +5,6 @@
 //! Additionally, locally-generated packets arrive with *partial* checksums
 //! ([`VIRTIO_NET_HDR_F_NEEDS_CSUM`]): the transport checksum field only contains the
 //! pseudo-header sum and we have to complete it.
-//!
-//! This mirrors `handleVirtioRead` / `gsoSplit` in wireguard-go's `tun/offload_linux.go`.
 
 use anyhow::{Context as _, Result, bail, ensure};
 use ip_packet::{IpNumber, IpPacket, IpPacketBuf, IpVersion};

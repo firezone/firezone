@@ -82,9 +82,9 @@ where
                 .await;
 
                 if gso_failed {
-                    // Some kernels (e.g. those with e269d79c7d35 but not 89add40066f9)
-                    // reject GSO writes with `EINVAL`. Stop coalescing for the remainder
-                    // of the session; the dropped segments are re-sent by the endpoints.
+                    // Some kernel versions carry a bug that makes them reject GSO writes
+                    // with `EINVAL`. Stop coalescing for the remainder of the session;
+                    // the dropped segments are re-sent by the endpoints.
                     tracing::info!("Kernel rejected GSO write; disabling TUN segmentation offload");
 
                     queue = None;

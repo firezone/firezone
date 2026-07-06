@@ -4,12 +4,11 @@
 //! entire batch traverse the kernel's network stack as a single skb, which is where the
 //! bulk of the per-packet cost lives.
 //!
-//! The coalescing rules mirror `tcpGRO` / `udpGRO` in wireguard-go's `tun/offload_linux.go`:
-//! only packets that the kernel's own GRO would merge are combined, everything else is
+//! Only packets that the kernel's own GRO would merge are combined, everything else is
 //! passed through untouched.
 
 use bufferpool::{Buffer, BufferPool};
-use ip_packet::{IpNumber, IpPacket, TcpSlice, UdpSlice};
+use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6Header, TcpSlice, UdpSlice};
 use std::net::IpAddr;
 
 use super::checksum;
@@ -182,9 +181,9 @@ impl Candidate {
         let ip_hdr_len = ip_layout(packet)?;
 
         let candidate = if let Some(tcp) = packet.as_tcp() {
-            Self::from_tcp(&tcp, packet, ip_hdr_len)?
+            Self::from_tcp(packet, &tcp, ip_hdr_len)?
         } else if let Some(udp) = packet.as_udp() {
-            Self::from_udp(&udp, packet, ip_hdr_len)
+            Self::from_udp(packet, &udp, ip_hdr_len)
         } else {
             return None;
         };
@@ -214,7 +213,7 @@ impl Candidate {
         Some(candidate)
     }
 
-    fn from_tcp(tcp: &TcpSlice, packet: &IpPacket, ip_hdr_len: usize) -> Option<Self> {
+    fn from_tcp(packet: &IpPacket, tcp: &TcpSlice, ip_hdr_len: usize) -> Option<Self> {
         // Only plain data segments coalesce: exactly ACK, or ACK|PSH.
         if !tcp.ack() || tcp.syn() || tcp.fin() || tcp.rst() || tcp.urg() || tcp.ece() || tcp.cwr()
         {
@@ -222,7 +221,7 @@ impl Candidate {
         }
 
         Some(Self {
-            key: FlowKey::from_tcp(tcp, packet),
+            key: FlowKey::from_tcp(packet, tcp),
             ip_hdr_len,
             l4_hdr_len: tcp.header_len(),
             payload_len: tcp.payload().len(),
@@ -231,9 +230,9 @@ impl Candidate {
         })
     }
 
-    fn from_udp(udp: &UdpSlice, packet: &IpPacket, ip_hdr_len: usize) -> Self {
+    fn from_udp(packet: &IpPacket, udp: &UdpSlice, ip_hdr_len: usize) -> Self {
         Self {
-            key: FlowKey::from_udp(udp, packet),
+            key: FlowKey::from_udp(packet, udp),
             ip_hdr_len,
             l4_hdr_len: 8,
             payload_len: udp.payload().len(),
@@ -250,7 +249,7 @@ fn ip_layout(packet: &IpPacket) -> Option<usize> {
     match (packet.ipv4_header(), packet.ipv6_header()) {
         (Some(header), _) => {
             // IP options never coalesce.
-            if header.header_len() != 20 {
+            if !header.options.is_empty() {
                 return None;
             }
 
@@ -259,10 +258,10 @@ fn ip_layout(packet: &IpPacket) -> Option<usize> {
                 return None;
             }
 
-            Some(20)
+            Some(header.header_len())
         }
         (_, Some(header)) => {
-            if header.payload_length as usize + 40 != total_len {
+            if header.payload_length as usize + Ipv6Header::LEN != total_len {
                 return None;
             }
 
@@ -271,7 +270,7 @@ fn ip_layout(packet: &IpPacket) -> Option<usize> {
                 return None;
             }
 
-            Some(40)
+            Some(Ipv6Header::LEN)
         }
         (None, None) => None,
     }
@@ -284,14 +283,14 @@ struct FlowKey {
     dst: IpAddr,
     sport: u16,
     dport: u16,
-    /// Segments with differing ACK numbers must not be coalesced (part of the key, like wireguard-go).
+    /// Segments with differing ACK numbers must not be coalesced.
     ///
     /// Always zero for UDP.
     ack: u32,
 }
 
 impl FlowKey {
-    fn from_tcp(tcp: &TcpSlice, packet: &IpPacket) -> Self {
+    fn from_tcp(packet: &IpPacket, tcp: &TcpSlice) -> Self {
         Self {
             protocol: IpNumber::TCP,
             src: packet.source(),
@@ -302,7 +301,7 @@ impl FlowKey {
         }
     }
 
-    fn from_udp(udp: &UdpSlice, packet: &IpPacket) -> Self {
+    fn from_udp(packet: &IpPacket, udp: &UdpSlice) -> Self {
         Self {
             protocol: IpNumber::UDP,
             src: packet.source(),
@@ -313,8 +312,11 @@ impl FlowKey {
         }
     }
 
-    fn is_v4(&self) -> bool {
-        self.src.is_ipv4()
+    fn version(&self) -> IpVersion {
+        match self.src {
+            IpAddr::V4(_) => IpVersion::V4,
+            IpAddr::V6(_) => IpVersion::V6,
+        }
     }
 
     /// Whether `packet` belongs to the same connection (ignoring the ACK number).
@@ -362,6 +364,25 @@ enum BatchState {
     Coalesced(Buffer<Vec<u8>>),
 }
 
+impl BatchState {
+    /// The coalescing buffer, converting from [`BatchState::Single`] on first use.
+    fn coalesced(&mut self, pool: &BufferPool<Vec<u8>>) -> &mut Buffer<Vec<u8>> {
+        if let BatchState::Single(first) = &*self {
+            let mut buf = pool.pull();
+            buf.clear();
+            buf.resize(VNET_HDR_LEN, 0);
+            buf.extend_from_slice(first.packet());
+
+            *self = BatchState::Coalesced(buf);
+        }
+
+        match self {
+            BatchState::Coalesced(buf) => buf,
+            BatchState::Single(_) => unreachable!("converted to `Coalesced` above"),
+        }
+    }
+}
+
 impl Batch {
     fn new(candidate: Candidate, packet: IpPacket) -> Self {
         Self {
@@ -382,20 +403,7 @@ impl Batch {
         let bytes = packet.packet();
         let payload = &bytes[candidate.ip_hdr_len + candidate.l4_hdr_len..];
 
-        if let BatchState::Single(first) = &self.state {
-            let mut buf = pool.pull();
-            buf.clear();
-            buf.resize(VNET_HDR_LEN, 0);
-            buf.extend_from_slice(first.packet());
-
-            self.state = BatchState::Coalesced(buf);
-        }
-
-        let BatchState::Coalesced(buf) = &mut self.state else {
-            unreachable!("converted to `Coalesced` above")
-        };
-
-        buf.extend_from_slice(payload);
+        self.state.coalesced(pool).extend_from_slice(payload);
 
         self.total_len += payload.len();
         self.next_seq = self.next_seq.wrapping_add(payload.len() as u32);
@@ -467,7 +475,7 @@ impl Batch {
         headers_compatible(
             self.template(),
             packet.packet(),
-            self.key.is_v4(),
+            self.key.version(),
             self.ip_hdr_len,
             self.l4_hdr_len,
         )
@@ -486,25 +494,28 @@ impl Batch {
 fn headers_compatible(
     template: &[u8],
     packet: &[u8],
-    v4: bool,
+    version: IpVersion,
     ip_hdr_len: usize,
     l4_hdr_len: usize,
 ) -> bool {
-    if v4 {
-        // ToS, DF / reserved fragment bits and TTL must match.
-        if template[1] != packet[1]
-            || template[6] >> 5 != packet[6] >> 5
-            || template[8] != packet[8]
-        {
-            return false;
+    match version {
+        IpVersion::V4 => {
+            // ToS, DF / reserved fragment bits and TTL must match.
+            if template[1] != packet[1]
+                || template[6] >> 5 != packet[6] >> 5
+                || template[8] != packet[8]
+            {
+                return false;
+            }
         }
-    } else {
-        // Traffic class and hop limit must match (the flow label doesn't matter).
-        if template[0] != packet[0]
-            || template[1] >> 4 != packet[1] >> 4
-            || template[7] != packet[7]
-        {
-            return false;
+        IpVersion::V6 => {
+            // Traffic class and hop limit must match (the flow label doesn't matter).
+            if template[0] != packet[0]
+                || template[1] >> 4 != packet[1] >> 4
+                || template[7] != packet[7]
+            {
+                return false;
+            }
         }
     }
 
@@ -533,9 +544,9 @@ fn finalize(
     let total_len = buf.len() - VNET_HDR_LEN;
     let l4_len = total_len - ip_hdr_len;
 
-    let (gso_type, csum_offset) = match (key.protocol, key.is_v4()) {
-        (IpNumber::TCP, true) => (VIRTIO_NET_HDR_GSO_TCPV4, 16),
-        (IpNumber::TCP, false) => (VIRTIO_NET_HDR_GSO_TCPV6, 16),
+    let (gso_type, csum_offset) = match (key.protocol, key.version()) {
+        (IpNumber::TCP, IpVersion::V4) => (VIRTIO_NET_HDR_GSO_TCPV4, 16),
+        (IpNumber::TCP, IpVersion::V6) => (VIRTIO_NET_HDR_GSO_TCPV6, 16),
         (IpNumber::UDP, _) => (VIRTIO_NET_HDR_GSO_UDP_L4, 6),
         _ => unreachable!("only TCP and UDP packets are coalesced"),
     };
@@ -552,15 +563,18 @@ fn finalize(
 
     let packet = &mut buf[VNET_HDR_LEN..];
 
-    if key.is_v4() {
-        packet[2..4].copy_from_slice(&(total_len as u16).to_be_bytes());
+    match key.version() {
+        IpVersion::V4 => {
+            packet[2..4].copy_from_slice(&(total_len as u16).to_be_bytes());
 
-        packet[10] = 0;
-        packet[11] = 0;
-        let ip_checksum = !checksum::fold(checksum::sum(&packet[..ip_hdr_len], 0));
-        packet[10..12].copy_from_slice(&ip_checksum.to_be_bytes());
-    } else {
-        packet[4..6].copy_from_slice(&(l4_len as u16).to_be_bytes());
+            packet[10] = 0;
+            packet[11] = 0;
+            let ip_checksum = !checksum::fold(checksum::sum(&packet[..ip_hdr_len], 0));
+            packet[10..12].copy_from_slice(&ip_checksum.to_be_bytes());
+        }
+        IpVersion::V6 => {
+            packet[4..6].copy_from_slice(&(l4_len as u16).to_be_bytes());
+        }
     }
 
     let l4 = &mut packet[ip_hdr_len..];
