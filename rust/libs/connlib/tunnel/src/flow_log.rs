@@ -1014,7 +1014,7 @@ pub struct Attribution {
     pub auth_provider_id: Option<String>,
     pub authorized_at: String,
     pub authorization_expires_at: String,
-    pub client_version: String,
+    pub client_version: Option<String>,
     pub device_os_name: Option<String>,
     pub device_os_version: Option<String>,
     pub device_serial: Option<String>,
@@ -1055,7 +1055,7 @@ pub fn emit(record: &Record) {
                 authorized_at = attr.map(|a| a.authorized_at.as_str()),
                 authorization_expires_at = attr.map(|a| a.authorization_expires_at.as_str()),
 
-                client_version = attr.map(|a| a.client_version.as_str()),
+                client_version = attr.and_then(|a| a.client_version.as_deref()),
                 device_os_name = attr.and_then(|a| a.device_os_name.as_deref()),
                 device_os_version = attr.and_then(|a| a.device_os_version.as_deref()),
                 device_serial = attr.and_then(|a| a.device_serial.as_deref()),
@@ -1265,7 +1265,7 @@ mod tests {
     /// A JWT payload carrying every claim the portal guarantees on a token.
     fn required_claims(policy_authorization_id: &str, role: &str) -> String {
         format!(
-            r#"{{"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z","client_version":"1.5.0"}}"#
+            r#"{{"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z"}}"#
         )
     }
 
@@ -1372,6 +1372,8 @@ mod tests {
         assert_eq!(attr.actor_email.as_deref(), Some("a@b.c"));
         assert_eq!(attr.role, "responder");
         assert!(attr.resource_address.is_none());
+        // The portal omits `client_version` when the user agent is unparseable.
+        assert!(attr.client_version.is_none());
     }
 
     #[test]
