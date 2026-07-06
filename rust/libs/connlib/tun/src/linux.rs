@@ -2,7 +2,7 @@
 //!
 //! With offloads enabled, the kernel exchanges "super packets" of up to 64 KiB with us:
 //!
-//! - Reads may return a single TSO / USO packet that we split into MTU-sized [`IpPacket`]s
+//! - Reads may return a single TSO / USO packet that we split into MTU-sized [`IpPacket`](ip_packet::IpPacket)s
 //!   before handing them to the main thread ([`split`]).
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
 //!   kernel's network stack as a single skb ([`coalesce`]).
@@ -198,7 +198,7 @@ where
     .await
 }
 
-/// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`]s.
+/// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`](ip_packet::IpPacket)s.
 pub fn tun_recv<T>(fd: T, inbound_tx: InboundTx) -> Result<()>
 where
     T: AsRawFd,
