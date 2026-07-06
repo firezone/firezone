@@ -761,6 +761,7 @@ impl<'a> Handler<'a> {
             is_internet_resource_active,
             dns,
             known_dirs::flow_logs(),
+            false,
             tokio::runtime::Handle::current(),
         );
 

@@ -543,6 +543,7 @@ fn connect(
         // Mobile flow logging (spool dir + uploader) is wired up separately; until
         // then this client writes no flow logs.
         None,
+        false,
         runtime.handle().clone(),
     );
 

@@ -65,6 +65,10 @@ pub struct Eventloop {
     /// uploader, so there is no point writing them to disk otherwise.
     upload_flow_logs: bool,
 
+    /// The `--flow-logs` flag: keeps flow tracking on even when the portal has
+    /// uploads disabled.
+    local_flow_logs: bool,
+
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -127,6 +131,7 @@ impl Eventloop {
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
+        local_flow_logs: bool,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<ResourceList>,
@@ -160,6 +165,7 @@ impl Eventloop {
             resolver_bypass,
             flow_logs_dir,
             upload_flow_logs: false,
+            local_flow_logs,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -477,17 +483,19 @@ impl Eventloop {
                     "Flow-log config received from portal init"
                 );
 
-                if let Some(spool_root) = &self.flow_logs_dir {
-                    tunnel.set_flow_logs_enabled(self.upload_flow_logs);
+                tunnel.set_flow_logs_enabled(
+                    (self.upload_flow_logs && self.flow_logs_dir.is_some()) || self.local_flow_logs,
+                );
 
-                    if let Err(e) = flow_log_upload::configure_uploads(
+                if let Some(spool_root) = &self.flow_logs_dir
+                    && let Err(e) = flow_log_upload::configure_uploads(
                         spool_root,
                         &flow_logs.api_url,
                         flow_logs.effective_upload_interval_secs(),
                         flow_logs.upload_batch_size,
-                    ) {
-                        tracing::warn!("Failed to persist flow-log upload config: {e:#}");
-                    }
+                    )
+                {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
                 }
 
                 let state = tunnel.state_mut();
