@@ -238,14 +238,14 @@ impl FlowLogsConfig {
 
 /// A per-authorization flow-log ingest token minted by the portal.
 ///
-/// An opaque HS256 JWT: it carries the authorization's attribution claims and
-/// is the `Bearer` credential when uploading that authorization's flow logs.
+/// An HS256 JWT: it carries the authorization's attribution claims and is the
+/// `Bearer` credential when uploading that authorization's flow logs.
 ///
-/// Deliberately deserialized without validation so a malformed token can never
-/// fail the message that carries it; `flow_log_writer::write_token` validates
-/// what it needs when persisting.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(transparent)]
+/// Deserializing validates the token's structure and the claims the portal
+/// guarantees; only the portal mints these, so a malformed token is a contract
+/// violation worth failing loudly on, not an input to tolerate. The signature
+/// is not verified because only the portal and the ingest API hold the key.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestToken(String);
 
 impl IngestToken {
@@ -253,6 +253,107 @@ impl IngestToken {
         &self.0
     }
 }
+
+impl<'de> Deserialize<'de> for IngestToken {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let token = String::deserialize(deserializer)?;
+
+        validate_ingest_token(&token).map_err(serde::de::Error::custom)?;
+
+        Ok(Self(token))
+    }
+}
+
+fn validate_ingest_token(token: &str) -> Result<(), String> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    let [header, payload, signature]: [&str; 3] =
+        token
+            .split('.')
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| "ingest token is not made of three JWT segments".to_owned())?;
+
+    let header = URL_SAFE_NO_PAD
+        .decode(header)
+        .map_err(|e| format!("ingest token header is not base64url: {e}"))?;
+    let header = serde_json::from_slice::<JwtHeader>(&header)
+        .map_err(|e| format!("ingest token header is invalid: {e}"))?;
+
+    if header.alg != "HS256" {
+        return Err(format!("ingest token alg is not HS256: {}", header.alg));
+    }
+
+    let payload = URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|e| format!("ingest token payload is not base64url: {e}"))?;
+    serde_json::from_slice::<IngestTokenClaims>(&payload)
+        .map_err(|e| format!("ingest token claims are invalid: {e}"))?;
+
+    let signature = URL_SAFE_NO_PAD
+        .decode(signature)
+        .map_err(|e| format!("ingest token signature is not base64url: {e}"))?;
+
+    if signature.is_empty() {
+        return Err("ingest token signature is empty".to_owned());
+    }
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct JwtHeader {
+    alg: String,
+}
+
+/// The claims the portal stamps into every ingest token.
+///
+/// Deserialized only to validate a received token: the required fields are the
+/// claims the portal guarantees, the `Option`s are the nullable attribution
+/// claims it omits when absent. Unknown claims are tolerated so the portal can
+/// add attribution without breaking deployed clients.
+#[expect(dead_code, reason = "deserialized only to validate the token")]
+#[derive(Deserialize)]
+struct IngestTokenClaims {
+    account_id: String,
+    iat: u64,
+    exp: u64,
+    role: IngestTokenRole,
+    device_id: String,
+    policy_authorization_id: String,
+    policy_id: String,
+    resource_id: String,
+    resource_name: String,
+    actor_id: String,
+    actor_name: String,
+    authorized_at: String,
+    authorization_expires_at: String,
+    resource_address: Option<String>,
+    actor_email: Option<String>,
+    auth_provider_id: Option<String>,
+    client_version: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    device_identifier_for_vendor: Option<String>,
+    device_firebase_installation_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum IngestTokenRole {
+    Initiator,
+    Responder,
+}
+
+/// A portal-minted ingest token for tests, signed with a throwaway key.
+#[cfg(test)]
+pub(crate) const TEST_INGEST_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiMTJmMjA3ZTAtM2I2Yy00ZjBmLTlkMGYtY2MyMmNmOWZiZjNjIiwiaWF0IjoxNzgyNzU2MDAwLCJleHAiOjE3ODU0MzQ0MDAsInJvbGUiOiJpbml0aWF0b3IiLCJkZXZpY2VfaWQiOiJkMjYzZDQ5MC1hMGJiLTQ1MmEtODk5MC0wMWQyN2ExZjExNDQiLCJwb2xpY3lfYXV0aG9yaXphdGlvbl9pZCI6ImVlYjY2MjA1LTVmNTMtNGY2NC1hY2JjLWRlZWQ0NzI5M2YwNCIsInBvbGljeV9pZCI6IjQ0ZjE5YzM3LWNmNjItNGIxOS1iMTU4LTZmODZiZGNkMmI1NyIsInJlc291cmNlX2lkIjoiNzMzZThkMTQtYzE4ZC00OTMxLWFmMzAtMzYzOWZhMDljMGMwIiwicmVzb3VyY2VfbmFtZSI6IkdpdExhYiIsImFjdG9yX2lkIjoiMjRlYjYzMWUtYzUyOS00MTgyLWE3NDYtZDk5ZWU2NmY3NDI2IiwiYWN0b3JfbmFtZSI6IkphbmUgRG9lIiwiYXV0aG9yaXplZF9hdCI6IjIwMjYtMDctMDZUMTI6MDA6MDAuMDAwMDAwWiIsImF1dGhvcml6YXRpb25fZXhwaXJlc19hdCI6IjIwMjYtMDctMDdUMTI6MDA6MDAuMDAwMDAwWiIsInJlc291cmNlX2FkZHJlc3MiOiJnaXRsYWIubXljb3JwLmNvbSIsImFjdG9yX2VtYWlsIjoiamFuZUBteWNvcnAuY29tIiwiYXV0aF9wcm92aWRlcl9pZCI6ImY5NWVmMWE1LWI3NmItNGQ1OS05YjRiLTZiMGMyZDQ3ZTEyOCIsImNsaWVudF92ZXJzaW9uIjoiMS41LjExIiwiZGV2aWNlX29zX25hbWUiOiJtYWNPUyIsImRldmljZV9vc192ZXJzaW9uIjoiMTUuNSIsImRldmljZV9zZXJpYWwiOiJDMDJYTDBHWUpHSDUiLCJkZXZpY2VfdXVpZCI6IjBmMGMyMmIxLTY0ZmEtNGEwNC1hMWMxLTViNGI2YzBjMmQ0NyIsImRldmljZV9pZGVudGlmaWVyX2Zvcl92ZW5kb3IiOiI1YWMzNDdmOC1jYmI2LTRiMGYtOGYwZS0xZjRkNDdhMWMxNWIiLCJkZXZpY2VfZmlyZWJhc2VfaW5zdGFsbGF0aW9uX2lkIjoiY0FtcDFlRjFyZUJhc2VJZCJ9.aHR1FGQ-cqGS2PZQP5iePtTSUc1kRI6Xj9RWvpqIw_A";
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UpstreamDoH {
@@ -334,6 +435,42 @@ fn max_port() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const MINIMAL_INGEST_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiMTJmMjA3ZTAtM2I2Yy00ZjBmLTlkMGYtY2MyMmNmOWZiZjNjIiwiaWF0IjoxNzgyNzU2MDAwLCJleHAiOjE3ODU0MzQ0MDAsInJvbGUiOiJpbml0aWF0b3IiLCJkZXZpY2VfaWQiOiJkMjYzZDQ5MC1hMGJiLTQ1MmEtODk5MC0wMWQyN2ExZjExNDQiLCJwb2xpY3lfYXV0aG9yaXphdGlvbl9pZCI6ImVlYjY2MjA1LTVmNTMtNGY2NC1hY2JjLWRlZWQ0NzI5M2YwNCIsInBvbGljeV9pZCI6IjQ0ZjE5YzM3LWNmNjItNGIxOS1iMTU4LTZmODZiZGNkMmI1NyIsInJlc291cmNlX2lkIjoiNzMzZThkMTQtYzE4ZC00OTMxLWFmMzAtMzYzOWZhMDljMGMwIiwicmVzb3VyY2VfbmFtZSI6IkdpdExhYiIsImFjdG9yX2lkIjoiMjRlYjYzMWUtYzUyOS00MTgyLWE3NDYtZDk5ZWU2NmY3NDI2IiwiYWN0b3JfbmFtZSI6IkphbmUgRG9lIiwiYXV0aG9yaXplZF9hdCI6IjIwMjYtMDctMDZUMTI6MDA6MDAuMDAwMDAwWiIsImF1dGhvcml6YXRpb25fZXhwaXJlc19hdCI6IjIwMjYtMDctMDdUMTI6MDA6MDAuMDAwMDAwWiJ9.9kV77S1jxTqOo8xLjwxS0eBWOPR1lI68DlGK9eC_80g";
+    const UNKNOWN_CLAIM_INGEST_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiMTJmMjA3ZTAtM2I2Yy00ZjBmLTlkMGYtY2MyMmNmOWZiZjNjIiwiaWF0IjoxNzgyNzU2MDAwLCJleHAiOjE3ODU0MzQ0MDAsInJvbGUiOiJpbml0aWF0b3IiLCJkZXZpY2VfaWQiOiJkMjYzZDQ5MC1hMGJiLTQ1MmEtODk5MC0wMWQyN2ExZjExNDQiLCJwb2xpY3lfYXV0aG9yaXphdGlvbl9pZCI6ImVlYjY2MjA1LTVmNTMtNGY2NC1hY2JjLWRlZWQ0NzI5M2YwNCIsInBvbGljeV9pZCI6IjQ0ZjE5YzM3LWNmNjItNGIxOS1iMTU4LTZmODZiZGNkMmI1NyIsInJlc291cmNlX2lkIjoiNzMzZThkMTQtYzE4ZC00OTMxLWFmMzAtMzYzOWZhMDljMGMwIiwicmVzb3VyY2VfbmFtZSI6IkdpdExhYiIsImFjdG9yX2lkIjoiMjRlYjYzMWUtYzUyOS00MTgyLWE3NDYtZDk5ZWU2NmY3NDI2IiwiYWN0b3JfbmFtZSI6IkphbmUgRG9lIiwiYXV0aG9yaXplZF9hdCI6IjIwMjYtMDctMDZUMTI6MDA6MDAuMDAwMDAwWiIsImF1dGhvcml6YXRpb25fZXhwaXJlc19hdCI6IjIwMjYtMDctMDdUMTI6MDA6MDAuMDAwMDAwWiIsImJyYW5kX25ld19jbGFpbSI6InRvbGVyYXRlZCJ9.qwJhdnQviEc6oj2iAlPVDZvJwgShU_KuCpCfJhacmeA";
+    const MISSING_POLICY_ID_INGEST_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiMTJmMjA3ZTAtM2I2Yy00ZjBmLTlkMGYtY2MyMmNmOWZiZjNjIiwiaWF0IjoxNzgyNzU2MDAwLCJleHAiOjE3ODU0MzQ0MDAsInJvbGUiOiJpbml0aWF0b3IiLCJkZXZpY2VfaWQiOiJkMjYzZDQ5MC1hMGJiLTQ1MmEtODk5MC0wMWQyN2ExZjExNDQiLCJwb2xpY3lfYXV0aG9yaXphdGlvbl9pZCI6ImVlYjY2MjA1LTVmNTMtNGY2NC1hY2JjLWRlZWQ0NzI5M2YwNCIsInJlc291cmNlX2lkIjoiNzMzZThkMTQtYzE4ZC00OTMxLWFmMzAtMzYzOWZhMDljMGMwIiwicmVzb3VyY2VfbmFtZSI6IkdpdExhYiIsImFjdG9yX2lkIjoiMjRlYjYzMWUtYzUyOS00MTgyLWE3NDYtZDk5ZWU2NmY3NDI2IiwiYWN0b3JfbmFtZSI6IkphbmUgRG9lIiwiYXV0aG9yaXplZF9hdCI6IjIwMjYtMDctMDZUMTI6MDA6MDAuMDAwMDAwWiIsImF1dGhvcml6YXRpb25fZXhwaXJlc19hdCI6IjIwMjYtMDctMDdUMTI6MDA6MDAuMDAwMDAwWiJ9.M_OCjGvDSQPvdMN3kwFePSTMhocxzakwIz_PrvWPdsU";
+
+    fn parse_ingest_token(token: &str) -> Result<IngestToken, serde_json::Error> {
+        serde_json::from_str::<IngestToken>(&format!("\"{token}\""))
+    }
+
+    #[test]
+    fn accepts_portal_minted_ingest_token() {
+        let token = parse_ingest_token(TEST_INGEST_TOKEN).unwrap();
+
+        assert_eq!(token.as_str(), TEST_INGEST_TOKEN);
+    }
+
+    #[test]
+    fn accepts_ingest_token_without_nullable_claims() {
+        parse_ingest_token(MINIMAL_INGEST_TOKEN).unwrap();
+    }
+
+    #[test]
+    fn accepts_ingest_token_with_unknown_claims() {
+        parse_ingest_token(UNKNOWN_CLAIM_INGEST_TOKEN).unwrap();
+    }
+
+    #[test]
+    fn rejects_ingest_token_missing_a_guaranteed_claim() {
+        parse_ingest_token(MISSING_POLICY_ID_INGEST_TOKEN).unwrap_err();
+    }
+
+    #[test]
+    fn rejects_structurally_invalid_ingest_token() {
+        parse_ingest_token("header.payload.signature").unwrap_err();
+        parse_ingest_token("not-a-jwt").unwrap_err();
+    }
 
     #[test]
     fn snownet_capabilities_default_is_all_false() {

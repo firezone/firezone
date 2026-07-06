@@ -414,9 +414,10 @@ mod tests {
 
     #[test]
     fn authorize_flow_carries_ingest_token() {
+        let token = crate::messages::TEST_INGEST_TOKEN;
         let json = AUTHORIZE_FLOW.replace(
             r#""flow_id""#,
-            r#""flow_logs_ingest_token":"header.payload.signature","flow_id""#,
+            &format!(r#""flow_logs_ingest_token":"{token}","flow_id""#),
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -424,10 +425,7 @@ mod tests {
         let IngressMessages::AuthorizeFlow(flow) = message else {
             panic!("expected AuthorizeFlow");
         };
-        assert_eq!(
-            flow.flow_logs_ingest_token.unwrap().as_str(),
-            "header.payload.signature"
-        );
+        assert_eq!(flow.flow_logs_ingest_token.unwrap().as_str(), token);
     }
 
     #[test]
