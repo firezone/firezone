@@ -21,14 +21,18 @@ use super::virtio::*;
 /// from allocating unbounded numbers of buffers on malformed headers.
 const MAX_SEGMENTS: usize = 256;
 
-/// How many MTU-sized segments fit into a maximally-sized super packet.
-const MTU_SEGMENTS: usize = u16::MAX as usize / ip_packet::MAX_IP_SIZE + 1;
+/// How many segments we hold inline when splitting a super packet.
+///
+/// Segments of a super packet are packed by payload, i.e. the headers only count
+/// once: a maximally-sized train of MTU-sized TCP segments splits into up to 54
+/// packets. Rounding up to the next power of two gives some headroom.
+const INLINE_SEGMENTS: usize = (u16::MAX as usize / ip_packet::MAX_IP_SIZE).next_power_of_two();
 
 /// Splits the given TUN read (starting with a [`VirtioNetHdr`]) into individual [`IpPacket`]s.
 ///
 /// The returned `SmallVec` holds a super packet of MTU-sized segments inline; only
 /// smaller (and thus more) segments spill to the heap.
-pub fn split(buf: &[u8]) -> Result<SmallVec<[IpPacket; MTU_SEGMENTS]>> {
+pub fn split(buf: &[u8]) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
     let (hdr, packet) = VirtioNetHdr::parse(buf).context("Read is too short for virtio hdr")?;
 
     match hdr.gso_type {
@@ -89,7 +93,7 @@ fn complete_partial_checksum(packet: &mut [u8], start: usize, offset: usize) -> 
 }
 
 /// Splits a TSO / USO super packet into individual, fully check-summed segments.
-fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; MTU_SEGMENTS]>> {
+fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
     let gso_size = hdr.gso_size as usize;
     ensure!(gso_size > 0, "gso_size must not be zero");
 
