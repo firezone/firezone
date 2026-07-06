@@ -139,7 +139,7 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.30.0.254
         ip -6 route add 203:0:113::/64 via 172:30:0::254
 
-        ip link set dev eth0 txqueuelen 100000
+        ip link set dev eth0 qlen 100000
 
         exec firezone-headless-client
     depends_on:
@@ -182,7 +182,7 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.32.0.254
         ip -6 route add 203:0:113::/64 via 172:32:0::254
 
-        ip link set dev eth0 txqueuelen 100000
+        ip link set dev eth0 qlen 100000
 
         exec firezone-headless-client
     depends_on:
@@ -228,9 +228,9 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.31.0.254
         ip -6 route add 203:0:113::/64 via 172:31:0::254 || true
 
-        ip link set dev eth0 txqueuelen 100000
-        ip link set dev eth1 txqueuelen 100000
-        ip link set dev eth2 txqueuelen 100000
+        ip link set dev eth0 qlen 100000
+        ip link set dev eth1 qlen 100000
+        ip link set dev eth2 qlen 100000
 
         exec firezone-gateway
     init: true
