@@ -62,9 +62,6 @@ defmodule PortalAPI.Router do
     put "/clients/:id/verify", ClientController, :verify
     put "/clients/:id/unverify", ClientController, :unverify
 
-    resources "/client_sessions", ClientSessionController, only: [:index, :show]
-    resources "/gateway_sessions", GatewaySessionController, only: [:index, :show]
-
     get "/change_logs", ChangeLogController, :index
     get "/change_logs/:event_id", ChangeLogController, :show
 
