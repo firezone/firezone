@@ -160,8 +160,7 @@ defmodule Portal.Application do
   defp replication do
     connection_modules = [
       Portal.Changes.ReplicationConnection,
-      Portal.ChangeLogs.ReplicationConnection,
-      Portal.SessionLogs.ReplicationConnection
+      Portal.ChangeLogs.ReplicationConnection
     ]
 
     # Filter out disabled replication connections

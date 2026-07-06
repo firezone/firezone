@@ -1,6 +1,7 @@
 defmodule Portal.Queue.CallbacksTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
@@ -11,7 +12,7 @@ defmodule Portal.Queue.CallbacksTest do
   import Portal.SiteFixtures
   import Portal.TokenFixtures
 
-  alias Portal.{ClientSession, GatewaySession, PG, PolicyAuthorization}
+  alias Portal.{ClientSession, GatewaySession, PG, PolicyAuthorization, SessionLog}
 
   describe "client session queue callback" do
     test "inserts client sessions and confirms durability" do
@@ -40,9 +41,18 @@ defmodule Portal.Queue.CallbacksTest do
 
       on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
 
-      assert 1 = on_flush.([{attrs, nil}])
+      subject = %{"actor_id" => actor.id, "actor_email" => actor.email}
+
+      assert 1 = on_flush.([{attrs, subject}])
       assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
       assert_receive {:confirm_session_durability, ^session_id}
+
+      assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
+      assert session_log.context == :client
+      assert session_log.subject["actor_id"] == actor.id
+      assert session_log.subject["actor_email"] == actor.email
+      assert session_log.subject["device_id"] == client.id
+      assert session_log.subject["token_id"] == token.id
     end
   end
 
@@ -75,6 +85,11 @@ defmodule Portal.Queue.CallbacksTest do
       assert 1 = on_flush.([{attrs, nil}])
       assert Repo.get_by(GatewaySession, id: session_id, account_id: account.id)
       assert_receive {:confirm_session_durability, ^session_id}
+
+      assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
+      assert session_log.context == :gateway
+      assert session_log.subject["gateway_id"] == gateway.id
+      assert session_log.subject["token_id"] == token.id
     end
   end
 

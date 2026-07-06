@@ -37,11 +37,6 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
   publication_name: db_opts[:database] <> "_clog_pub",
   connection_opts: db_opts
 
-config :portal, Portal.SessionLogs.ReplicationConnection,
-  replication_slot_name: db_opts[:database] <> "_slog_slot",
-  publication_name: db_opts[:database] <> "_slog_pub",
-  connection_opts: db_opts
-
 config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
   publication_name: db_opts[:database] <> "_changes_pub",

@@ -78,6 +78,7 @@ defmodule PortalAPI.Schemas.Log do
   defmodule Session do
     require OpenApiSpex
     alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas
 
     OpenApiSpex.schema(%{
       title: "SessionLog",
@@ -107,42 +108,7 @@ defmodule PortalAPI.Schemas.Log do
           enum: ["client", "gateway", "portal"],
           description: "The kind of session that was created."
         },
-        actor_id: %Schema{
-          type: :string,
-          nullable: true,
-          description: "ID of the Actor that created the session."
-        },
-        actor_email: %Schema{
-          type: :string,
-          nullable: true,
-          description: """
-          The Actor's email as recorded when the session was created. `null`
-          for Gateway sessions and for Actors without an email.
-          """
-        },
-        device_id: %Schema{
-          type: :string,
-          nullable: true,
-          description:
-            "ID of the Client or Gateway that connected. Set for `client` and `gateway` sessions."
-        },
-        token_id: %Schema{
-          type: :string,
-          nullable: true,
-          description:
-            "ID of the Client or Gateway token used. Set for `client` and `gateway` sessions."
-        },
-        auth_provider_id: %Schema{
-          type: :string,
-          nullable: true,
-          description: "ID of the Auth Provider used to sign in. Set for `portal` sessions."
-        },
-        user_agent: %Schema{type: :string, nullable: true},
-        remote_ip: %Schema{type: :string, nullable: true},
-        remote_ip_location_region: %Schema{type: :string, nullable: true},
-        remote_ip_location_city: %Schema{type: :string, nullable: true},
-        remote_ip_location_lat: %Schema{type: :number, nullable: true},
-        remote_ip_location_lon: %Schema{type: :number, nullable: true}
+        subject: Schemas.Subject
       },
       required: [:type, :event_id, :timestamp, :context],
       example: %{
@@ -150,17 +116,18 @@ defmodule PortalAPI.Schemas.Log do
         "event_id" => "500060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
         "context" => "client",
-        "actor_id" => nil,
-        "actor_email" => nil,
-        "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "token_id" => "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "auth_provider_id" => nil,
-        "user_agent" => "Linux/6.5.0 connlib/1.5.1",
-        "remote_ip" => "189.172.73.1",
-        "remote_ip_location_region" => "MX",
-        "remote_ip_location_city" => "Mexico City",
-        "remote_ip_location_lat" => 19.4326,
-        "remote_ip_location_lon" => -99.1332
+        "subject" => %{
+          "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "actor_email" => "admin@example.com",
+          "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "token_id" => "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "ip" => "189.172.73.1",
+          "ip_region" => "MX",
+          "ip_city" => "Mexico City",
+          "ip_lat" => 19.4326,
+          "ip_lon" => -99.1332,
+          "user_agent" => "Linux/6.5.0 connlib/1.5.1"
+        }
       }
     })
   end

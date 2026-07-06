@@ -34,17 +34,7 @@ defmodule PortalAPI.LogJSON do
       event_id: log.event_id,
       timestamp: log.timestamp,
       context: log.context,
-      actor_id: log.actor_id,
-      actor_email: log.actor_email,
-      device_id: log.device_id,
-      token_id: log.token_id,
-      auth_provider_id: log.auth_provider_id,
-      user_agent: log.user_agent,
-      remote_ip: log.remote_ip && "#{log.remote_ip}",
-      remote_ip_location_region: log.remote_ip_location_region,
-      remote_ip_location_city: log.remote_ip_location_city,
-      remote_ip_location_lat: log.remote_ip_location_lat,
-      remote_ip_location_lon: log.remote_ip_location_lon
+      subject: log.subject
     }
   end
 

@@ -219,15 +219,17 @@ defmodule PortalAPI.LogControllerTest do
       assert %{"data" => [data]} = json_response(conn, 200)
       assert data["event_id"] == session_log.event_id
       assert data["context"] == "portal"
-      assert data["actor_email"] == "admin@example.com"
-      assert data["device_id"] == session_log.device_id
-      assert data["token_id"] == session_log.token_id
-      assert data["user_agent"] == "testclient/1.0"
-      assert data["remote_ip"] == "189.172.73.1"
-      assert data["remote_ip_location_region"] == "US"
-      assert data["remote_ip_location_city"] == "San Francisco"
-      assert data["remote_ip_location_lat"] == 37.7749
-      assert data["remote_ip_location_lon"] == -122.4194
+
+      assert data["subject"] == session_log.subject
+      assert data["subject"]["actor_email"] == "admin@example.com"
+      assert data["subject"]["device_id"] == session_log.subject["device_id"]
+      assert data["subject"]["token_id"] == session_log.subject["token_id"]
+      assert data["subject"]["user_agent"] == "testclient/1.0"
+      assert data["subject"]["ip"] == "189.172.73.1"
+      assert data["subject"]["ip_region"] == "US"
+      assert data["subject"]["ip_city"] == "San Francisco"
+      assert data["subject"]["ip_lat"] == 37.7749
+      assert data["subject"]["ip_lon"] == -122.4194
     end
 
     test "filters by actor_id", %{conn: conn, account: account, actor: actor} do

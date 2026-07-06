@@ -9,20 +9,12 @@ defmodule Portal.SessionLog do
     belongs_to :account, Portal.Account, primary_key: true
     field :event_id, Portal.Types.EventId, primary_key: true
     field :timestamp, :utc_datetime_usec
-    field :lsn, :integer
     field :context, Ecto.Enum, values: [:client, :gateway, :portal]
 
-    field :actor_id, :binary_id
-    field :actor_email, :string
-    field :device_id, :binary_id
-    field :token_id, :binary_id
-    field :auth_provider_id, :binary_id
-
-    field :user_agent, :string
-    field :remote_ip, Portal.Types.IP
-    field :remote_ip_location_region, :string
-    field :remote_ip_location_city, :string
-    field :remote_ip_location_lat, :float
-    field :remote_ip_location_lon, :float
+    # Snapshot of who connected and from where, taken at session creation.
+    # Mirrors the `subject` shape used by change_logs and api_request_logs, so
+    # the log survives actor/device/token deletion. Actor filters read
+    # `subject->>'actor_id'` / `subject->>'actor_email'`.
+    field :subject, :map
   end
 end

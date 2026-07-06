@@ -75,14 +75,6 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
-config :portal, Portal.SessionLogs.ReplicationConnection,
-  replication_slot_name: "test_session_logs_slot",
-  publication_name: "test_session_logs_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
-
 config :portal, Portal.Changes.ReplicationConnection,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",

@@ -5,6 +5,8 @@ defmodule Portal.Authentication do
   alias Portal.ClientToken
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
+  alias Portal.SessionLog
+  alias Portal.Types.EventId
   alias Portal.Authentication.Context
   alias Portal.Authentication.Credential
   alias Portal.Authentication.Subject
@@ -183,7 +185,44 @@ defmodule Portal.Authentication do
       timestamp: DateTime.utc_now()
     }
     |> Database.insert_portal_session()
+    |> case do
+      {:ok, session} = ok ->
+        # Portal sessions are inserted synchronously at human-login rate (no
+        # reconnect storm), so the session log is written inline alongside the
+        # session row rather than through the batching queue.
+        Database.insert_session_log(portal_session_log_attrs(session, actor, auth_provider_id))
+        ok
+
+      error ->
+        error
+    end
   end
+
+  defp portal_session_log_attrs(session, actor, auth_provider_id) do
+    %{
+      account_id: session.account_id,
+      event_id: EventId.build_session_log(),
+      timestamp: session.timestamp,
+      context: :portal,
+      subject: %{
+        actor_id: actor.id,
+        actor_name: actor.name,
+        actor_email: actor.email,
+        actor_type: to_string(actor.type),
+        auth_provider_id: auth_provider_id,
+        ip: format_ip(session.remote_ip),
+        ip_region: session.remote_ip_location_region,
+        ip_city: session.remote_ip_location_city,
+        ip_lat: session.remote_ip_location_lat,
+        ip_lon: session.remote_ip_location_lon,
+        user_agent: session.user_agent
+      }
+    }
+  end
+
+  defp format_ip(nil), do: nil
+  defp format_ip(%Postgrex.INET{address: address}), do: to_string(:inet.ntoa(address))
+  defp format_ip(address) when is_tuple(address), do: to_string(:inet.ntoa(address))
 
   def fetch_portal_session(account_id, session_id) do
     Database.fetch_portal_session(account_id, session_id)
@@ -387,6 +426,7 @@ defmodule Portal.Authentication do
 
     alias Portal.ClientToken
     alias Portal.OneTimePasscode
+    alias Portal.SessionLog
 
     def get_account_by_id!(id) do
       from(a in Account, where: a.id == ^id)
@@ -576,6 +616,11 @@ defmodule Portal.Authentication do
       session
       |> Safe.unscoped()
       |> Safe.insert()
+    end
+
+    def insert_session_log(attrs) do
+      Safe.unscoped()
+      |> Safe.insert_all(SessionLog, [attrs])
     end
 
     def fetch_portal_session(account_id, id) do

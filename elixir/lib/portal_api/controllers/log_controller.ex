@@ -407,13 +407,14 @@ defmodule PortalAPI.LogController do
       end
 
       defp filter_by_actor_id(queryable, actor_id) do
-        {queryable, dynamic([logs: l], l.actor_id == ^actor_id)}
+        {queryable, dynamic([logs: l], fragment("?->>'actor_id' = ?", l.subject, ^actor_id))}
       end
 
       # Matches the email snapshot taken at session creation, like change
       # and flow logs, so it survives actor deletion and email changes.
       defp filter_by_actor_email(queryable, actor_email) do
-        {queryable, dynamic([logs: l], l.actor_email == ^actor_email)}
+        {queryable,
+         dynamic([logs: l], fragment("?->>'actor_email' = ?", l.subject, ^actor_email))}
       end
     end
 

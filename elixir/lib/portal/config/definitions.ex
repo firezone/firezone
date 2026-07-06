@@ -72,11 +72,6 @@ defmodule Portal.Config.Definitions do
   """
   defconfig(:change_logs_replication_enabled, :boolean, default: false)
 
-  @doc """
-  Enable or disable the SessionLogs replication consumer for this app instance.
-  """
-  defconfig(:session_logs_replication_enabled, :boolean, default: false)
-
   ##############################################
   ## Web Server
   ##############################################
@@ -441,16 +436,6 @@ defmodule Portal.Config.Definitions do
   Name of the publication used by Firezone.
   """
   defconfig(:database_change_logs_publication_name, :string, default: "change_logs")
-
-  @doc """
-  Name of the replication slot used by Firezone.
-  """
-  defconfig(:database_session_logs_replication_slot_name, :string, default: "session_logs_slot")
-
-  @doc """
-  Name of the publication used by Firezone.
-  """
-  defconfig(:database_session_logs_publication_name, :string, default: "session_logs")
 
   @doc """
   SSL configuration for database connections.

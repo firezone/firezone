@@ -10,24 +10,13 @@ defmodule Portal.Repo.Migrations.CreateSessionLogs do
 
       add(:event_id, :bytea, primary_key: true, null: false)
       add(:timestamp, :timestamptz, null: false)
-      add(:lsn, :bigint, null: false)
       add(:context, :string, null: false)
 
-      # Intentionally no FKs: actors, devices, tokens, and auth providers can
-      # be deleted, but session history must survive them. actor_email is a
-      # snapshot taken at session creation for the same reason.
-      add(:actor_id, :binary_id)
-      add(:actor_email, :string)
-      add(:device_id, :binary_id)
-      add(:token_id, :binary_id)
-      add(:auth_provider_id, :binary_id)
-
-      add(:user_agent, :string)
-      add(:remote_ip, :inet)
-      add(:remote_ip_location_region, :string)
-      add(:remote_ip_location_city, :string)
-      add(:remote_ip_location_lat, :float)
-      add(:remote_ip_location_lon, :float)
+      # Snapshot of the connecting principal and its context, taken at session
+      # creation. Intentionally FK-free (it lives in the JSONB): actors,
+      # devices, tokens, and auth providers can be deleted, but session history
+      # must survive them.
+      add(:subject, :map, null: false)
     end
 
     create(constraint(:session_logs, :event_id_is_12_bytes, check: "octet_length(event_id) = 12"))
@@ -38,7 +27,9 @@ defmodule Portal.Repo.Migrations.CreateSessionLogs do
       )
     )
 
-    create(unique_index(:session_logs, [:lsn]))
+    # The (account_id, event_id) primary key already covers account-scoped
+    # reads; this index only serves retention, which deletes across all
+    # accounts by timestamp.
     create(index(:session_logs, [:timestamp]))
   end
 end
