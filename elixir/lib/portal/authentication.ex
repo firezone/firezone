@@ -172,7 +172,7 @@ defmodule Portal.Authentication do
       ) do
     now = DateTime.utc_now()
 
-    %PortalSession{
+    session = %PortalSession{
       account_id: account_id,
       actor_id: actor_id,
       auth_provider_id: auth_provider_id,
@@ -184,18 +184,15 @@ defmodule Portal.Authentication do
       remote_ip_location_lon: context.remote_ip_location_lon,
       expires_at: expires_at
     }
-    |> Database.insert_portal_session()
-    |> case do
-      {:ok, session} = ok ->
-        # Portal sessions are inserted synchronously at human-login rate (no
-        # reconnect storm), so the session log is written inline alongside the
-        # session row rather than through the batching queue.
-        Database.insert_session_log(portal_session_log_attrs(session, actor, auth_provider_id, now))
-        ok
 
-      error ->
-        error
-    end
+    # Portal sessions are inserted synchronously at human-login rate (no
+    # reconnect storm), so the session log is written inline rather than
+    # through the batching queue. Both writes share one transaction so a login
+    # cannot succeed without its audit record.
+    Database.insert_portal_session_with_log(
+      session,
+      portal_session_log_attrs(session, actor, auth_provider_id, now)
+    )
   end
 
   defp portal_session_log_attrs(session, actor, auth_provider_id, timestamp) do
@@ -220,9 +217,7 @@ defmodule Portal.Authentication do
     }
   end
 
-  defp format_ip(nil), do: nil
   defp format_ip(%Postgrex.INET{address: address}), do: to_string(:inet.ntoa(address))
-  defp format_ip(address) when is_tuple(address), do: to_string(:inet.ntoa(address))
 
   def fetch_portal_session(account_id, session_id) do
     Database.fetch_portal_session(account_id, session_id)
@@ -611,6 +606,15 @@ defmodule Portal.Authentication do
     end
 
     # Portal Session functions
+
+    def insert_portal_session_with_log(session, log_attrs) do
+      Safe.transact(fn ->
+        with {:ok, session} <- insert_portal_session(session) do
+          insert_session_log(log_attrs)
+          {:ok, session}
+        end
+      end)
+    end
 
     def insert_portal_session(session) do
       session

@@ -7,6 +7,7 @@ defmodule Portal.AuthenticationTest do
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
   import Portal.SiteFixtures
+  alias Portal.Authentication
   alias Portal.ClientToken
 
   describe "create_non_interactive_client_token/3" do
@@ -838,6 +839,42 @@ defmodule Portal.AuthenticationTest do
       assert session_log.subject["actor_id"] == actor.id
       assert session_log.subject["actor_email"] == actor.email
       assert session_log.subject["auth_provider_id"] == auth_provider.id
+    end
+
+    test "rolls back the portal session when the session log write fails" do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+      event_id = Portal.Types.EventId.build_session_log()
+
+      log_attrs = %{
+        account_id: account.id,
+        event_id: event_id,
+        timestamp: DateTime.utc_now(),
+        context: :portal,
+        subject: %{}
+      }
+
+      # Pre-seed the log row so the transaction's log insert collides on the
+      # (account_id, event_id) primary key and fails.
+      Portal.Repo.insert_all(Portal.SessionLog, [log_attrs])
+
+      session = %Portal.PortalSession{
+        account_id: account.id,
+        actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
+        user_agent: "test-browser/1.0",
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 1}},
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+      }
+
+      assert_raise Postgrex.Error, fn ->
+        Authentication.Database.insert_portal_session_with_log(session, log_attrs)
+      end
+
+      # Fail closed: the session must not persist without its audit record.
+      assert Portal.Repo.all(Portal.PortalSession) == []
+      assert [%Portal.SessionLog{event_id: ^event_id}] = Portal.Repo.all(Portal.SessionLog)
     end
 
     test "creates a portal session for disabled account" do
