@@ -204,8 +204,9 @@ pub struct UpstreamDo53 {
 
 /// Flow-log upload configuration the portal always sends as part of `init`.
 ///
-/// Plumbing for the uploader only: whether an authorization's flow logs are
-/// uploaded at all is decided by the presence of its [`IngestToken`].
+/// Uploads are driven entirely by the portal: an upload interval > 0 plus an
+/// API URL enables them, anything else disables them. [`IngestToken`]s arrive
+/// regardless, because their claims also attribute local flow-log output.
 #[derive(Debug, Deserialize, Clone)]
 pub struct FlowLogsConfig {
     /// Base URL flow logs are POSTed to.
@@ -214,6 +215,25 @@ pub struct FlowLogsConfig {
     pub upload_interval_secs: u64,
     /// Maximum flow-log records per upload request. `0` uses the default.
     pub upload_batch_size: u64,
+}
+
+impl FlowLogsConfig {
+    /// The upload interval to persist.
+    ///
+    /// `0` unless uploads are enabled; persisting `0` removes a previously
+    /// persisted config.
+    pub fn effective_upload_interval_secs(&self) -> u64 {
+        if self.upload_enabled() {
+            self.upload_interval_secs
+        } else {
+            0
+        }
+    }
+
+    /// Whether the portal enabled flow-log uploads.
+    pub fn upload_enabled(&self) -> bool {
+        self.upload_interval_secs > 0 && !self.api_url.trim().is_empty()
+    }
 }
 
 /// A per-authorization flow-log ingest token minted by the portal.

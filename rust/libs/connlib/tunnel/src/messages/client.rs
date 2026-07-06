@@ -413,6 +413,7 @@ mod tests {
         assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
+        assert!(init.flow_logs.upload_enabled());
     }
 
     #[test]
@@ -422,6 +423,17 @@ mod tests {
         }"#;
 
         serde_json::from_str::<InitClient>(init).unwrap_err();
+    }
+
+    #[test]
+    fn blank_flow_logs_api_url_disables_uploads() {
+        let config = FlowLogsConfig {
+            api_url: " ".to_owned(),
+            upload_interval_secs: 60,
+            upload_batch_size: 0,
+        };
+
+        assert!(!config.upload_enabled());
     }
 
     #[test]
