@@ -21,6 +21,7 @@ mod tests;
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use coalesce::{Outgoing, TunGsoQueue};
 use opentelemetry::KeyValue;
+use std::collections::VecDeque;
 use std::io;
 use std::mem;
 use std::os::fd::{AsRawFd, RawFd};
@@ -213,11 +214,29 @@ where
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
             let mut batch = PacketBatch::default();
+            let mut overflow = VecDeque::new();
 
             loop {
                 let mut guard = fd.readable().await?;
 
                 loop {
+                    // A full batch spills the rest of its super packet into `overflow`:
+                    // hand off the batch and continue the drain with the spilled packets.
+                    while !overflow.is_empty() {
+                        if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
+                            tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                            return anyhow::Ok(());
+                        }
+
+                        while let Some(packet) = overflow.pop_front() {
+                            if let Err(packet) = batch.try_push(packet) {
+                                overflow.push_front(packet);
+                                break;
+                            }
+                        }
+                    }
+
                     let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
                         Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
                         Ok(Ok(len)) => len,
@@ -229,29 +248,16 @@ where
                     };
 
                     match split::split(&buf[..len]) {
-                        Ok(segments) => {
+                        Ok(mut segments) => {
                             batch_size_histogram
                                 .record(segments.len() as u64, &recv_metric_attributes());
 
-                            for packet in segments {
+                            for packet in segments.drain(..) {
                                 #[cfg(debug_assertions)]
                                 tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                                let Err(packet) = batch.try_push(packet) else {
-                                    continue;
-                                };
-
-                                // The batch is full: hand it off and start a new one.
-                                if inbound_tx
-                                    .send(mem::replace(&mut batch, PacketBatch::new(packet)))
-                                    .await
-                                    .is_err()
-                                {
-                                    tracing::debug!(
-                                        "Inbound packet receiver gone, shutting down task"
-                                    );
-
-                                    return anyhow::Ok(());
+                                if let Err(packet) = batch.try_push(packet) {
+                                    overflow.push_back(packet);
                                 }
                             }
                         }

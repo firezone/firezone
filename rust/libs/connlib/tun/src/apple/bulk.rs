@@ -17,11 +17,6 @@ use tokio::io::{Interest, unix::AsyncFd};
 use super::sys;
 use crate::{MAX_BATCH_SIZE, PacketBatch};
 
-/// How many packets we exchange with the kernel per syscall.
-///
-/// One channel batch maps onto one `recvmsg_x` / `sendmsg_x` call.
-const BATCH_SIZE: usize = MAX_BATCH_SIZE;
-
 const EMPTY_IOVEC: iovec = iovec {
     iov_base: std::ptr::null_mut(),
     iov_len: 0,
@@ -112,8 +107,8 @@ pub fn recv(
 
             'recv: loop {
                 let mut bufs: Vec<IpPacketBuf> =
-                    (0..BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
-                let mut lens = [0usize; BATCH_SIZE];
+                    (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
+                let mut lens = [0usize; MAX_BATCH_SIZE];
 
                 let n = fd
                     .async_io(Interest::READABLE, |fd| {
@@ -195,12 +190,12 @@ unsafe fn send_batch(
     fd: RawFd,
     batch: &[IpPacket],
 ) -> io::Result<usize> {
-    let count = batch.len().min(BATCH_SIZE);
+    let count = batch.len().min(MAX_BATCH_SIZE);
 
     // The first 4 bytes of each datagram carry the address family in network byte order.
-    let mut afs = [[0u8; 4]; BATCH_SIZE];
-    let mut iovs = [[EMPTY_IOVEC; 2]; BATCH_SIZE];
-    let mut msgs = [sys::msghdr_x::ZEROED; BATCH_SIZE];
+    let mut afs = [[0u8; 4]; MAX_BATCH_SIZE];
+    let mut iovs = [[EMPTY_IOVEC; 2]; MAX_BATCH_SIZE];
+    let mut msgs = [sys::msghdr_x::ZEROED; MAX_BATCH_SIZE];
 
     for i in 0..count {
         #[cfg(debug_assertions)]
@@ -250,11 +245,11 @@ unsafe fn recv_batch(
     bufs: &mut [IpPacketBuf],
     lens: &mut [usize],
 ) -> io::Result<usize> {
-    let count = bufs.len().min(BATCH_SIZE);
+    let count = bufs.len().min(MAX_BATCH_SIZE);
 
-    let mut afs = [[0u8; 4]; BATCH_SIZE];
-    let mut iovs = [[EMPTY_IOVEC; 2]; BATCH_SIZE];
-    let mut msgs = [sys::msghdr_x::ZEROED; BATCH_SIZE];
+    let mut afs = [[0u8; 4]; MAX_BATCH_SIZE];
+    let mut iovs = [[EMPTY_IOVEC; 2]; MAX_BATCH_SIZE];
+    let mut msgs = [sys::msghdr_x::ZEROED; MAX_BATCH_SIZE];
 
     for i in 0..count {
         let dst = bufs[i].buf();

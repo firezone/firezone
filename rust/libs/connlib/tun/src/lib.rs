@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use ip_packet::IpPacket;
-use smallvec::SmallVec;
 use tokio::sync::mpsc;
 
 #[cfg(target_family = "unix")]
@@ -41,19 +40,26 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
 
 /// A batch of packets, exchanged over the TUN channels as a single item.
 ///
-/// Storage is inline: a batch holds at most [`MAX_BATCH_SIZE`] packets and never
-/// allocates. [`PacketBatch::try_push`] hands the packet back once the batch is
-/// full; callers then send off the batch and start a new one with [`PacketBatch::new`].
-#[derive(Debug, Default)]
-pub struct PacketBatch(SmallVec<[IpPacket; MAX_BATCH_SIZE]>);
+/// A batch holds at most [`MAX_BATCH_SIZE`] packets in one fixed allocation:
+/// [`PacketBatch::try_push`] hands the packet back once the batch is full, so the
+/// storage never grows and moving a batch only copies a pointer. Callers send off
+/// a full batch and start a new one with [`PacketBatch::new`].
+#[derive(Debug)]
+pub struct PacketBatch(Vec<IpPacket>);
+
+impl Default for PacketBatch {
+    fn default() -> Self {
+        Self(Vec::with_capacity(MAX_BATCH_SIZE))
+    }
+}
 
 impl PacketBatch {
     /// Starts a new batch containing the given packet.
     pub fn new(first: IpPacket) -> Self {
-        let mut packets = SmallVec::new();
-        packets.push(first);
+        let mut batch = Self::default();
+        batch.0.push(first);
 
-        Self(packets)
+        batch
     }
 
     /// Appends a packet to the batch, handing it back if the batch is full.
@@ -82,7 +88,7 @@ impl std::ops::Deref for PacketBatch {
 
 impl IntoIterator for PacketBatch {
     type Item = IpPacket;
-    type IntoIter = smallvec::IntoIter<[IpPacket; MAX_BATCH_SIZE]>;
+    type IntoIter = std::vec::IntoIter<IpPacket>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -131,10 +137,6 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 pub struct OutboundTx(mpsc::Sender<PacketBatch>);
 
 impl OutboundTx {
-    #[expect(
-        clippy::result_large_err,
-        reason = "The error carries the unsent batch by design"
-    )]
     pub fn try_send(
         &self,
         batch: PacketBatch,
@@ -179,10 +181,6 @@ impl InboundTx {
         self.0.send(batch).await
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "The error carries the unsent batch by design"
-    )]
     pub fn blocking_send(
         &self,
         batch: PacketBatch,
@@ -224,7 +222,8 @@ mod tests {
     /// [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
     const MAX_CHANNEL_MEMORY: usize = 2
         * CHANNEL_CAPACITY
-        * (size_of::<PacketBatch>() + MAX_BATCH_SIZE * ip_packet::MAX_FZ_PAYLOAD);
+        * (size_of::<PacketBatch>()
+            + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
 
     /// iOS network extensions are limited to 50 MB of memory; the channels must only
     /// ever use a small fraction of that.
