@@ -569,6 +569,35 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
 }
 
 #[test]
+fn primary_prefers_single_relay_hop_over_double_regardless_of_rtt() {
+    // Scoring compares both ends' tiers: (relay, srflx) traverses one
+    // relay, (relay, relay) two — the former must win on tier, not flap
+    // on RTT jitter.
+    let mut a = PathAgent::new();
+    let now = Instant::now();
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
+    a.add_remote_candidate(Candidate::server_reflexive(addr(3), addr(3)), now);
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
+
+    let double_hop = (addr(2), addr(4));
+    bootstrap_primary(&mut a, double_hop, now);
+
+    let probes = a.tick(now);
+    a.ack_probe(&probes, double_hop, now + ms(20));
+    assert_eq!(a.primary(), Some(double_hop));
+    a.drain_events();
+
+    // Even with a much worse RTT, one relay hop beats two.
+    let single_hop = (addr(2), addr(3));
+    a.ack_probe(&probes, single_hop, now + ms(500));
+    assert_eq!(
+        a.primary(),
+        Some(single_hop),
+        "single-relay-hop pair should beat double-relay-hop pair",
+    );
+}
+
+#[test]
 fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     let mut a = PathAgent::new();
     let now = Instant::now();
