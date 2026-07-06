@@ -204,9 +204,8 @@ pub struct UpstreamDo53 {
 
 /// Flow-log upload configuration the portal always sends as part of `init`.
 ///
-/// Uploads are driven entirely by the portal: an upload interval > 0 enables
-/// them, `0` disables them. [`IngestToken`]s arrive regardless, because their
-/// claims also attribute local flow-log output.
+/// [`IngestToken`]s arrive independently of whether uploads are enabled;
+/// their claims also attribute local flow-log output.
 #[derive(Debug, Deserialize, Clone)]
 pub struct FlowLogsConfig {
     /// Base URL flow logs are POSTed to.
@@ -218,21 +217,17 @@ pub struct FlowLogsConfig {
 }
 
 impl FlowLogsConfig {
-    /// Whether the portal enabled flow-log uploads.
     pub fn upload_enabled(&self) -> bool {
         self.upload_interval_secs > 0
     }
 }
 
-/// A per-authorization flow-log ingest token minted by the portal.
+/// A per-authorization flow-log ingest token minted by the portal: an HS256
+/// JWT carrying the attribution claims, used as the `Bearer` credential when
+/// uploading that authorization's flow logs.
 ///
-/// An HS256 JWT: it carries the authorization's attribution claims and is the
-/// `Bearer` credential when uploading that authorization's flow logs.
-///
-/// Deserializing validates the token's structure and the claims the portal
-/// guarantees; only the portal mints these, so a malformed token is a contract
-/// violation worth failing loudly on, not an input to tolerate. The signature
-/// is not verified because only the portal and the ingest API hold the key.
+/// Deserializing validates structure and guaranteed claims; the signature is
+/// not verified because only the portal and the ingest API hold the key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestToken(String);
 
@@ -298,12 +293,9 @@ struct JwtHeader {
     alg: String,
 }
 
-/// The claims the portal stamps into every ingest token.
-///
-/// Deserialized only to validate a received token: the required fields are the
-/// claims the portal guarantees, the `Option`s are the nullable attribution
-/// claims it omits when absent. Unknown claims are tolerated so the portal can
-/// add attribution without breaking deployed clients.
+/// The claims the portal stamps into every ingest token; deserialized only to
+/// validate it. The `Option`s are nullable attribution claims, and unknown
+/// claims are tolerated.
 #[expect(dead_code, reason = "deserialized only to validate the token")]
 #[derive(Deserialize)]
 struct IngestTokenClaims {

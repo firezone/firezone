@@ -185,10 +185,8 @@ pub struct ClientDeviceAccessAuthorized {
     #[serde(default)]
     pub authorization_expires_at: Option<Duration>,
 
-    /// This device's ingest token for the flow's logs.
-    ///
-    /// The initiator token on the initiating side, the responder token on the
-    /// receiving side.
+    /// This device's ingest token: the initiator token on the initiating side,
+    /// the responder token on the receiving side.
     #[serde(default)]
     pub flow_logs_ingest_token: Option<IngestToken>,
 }

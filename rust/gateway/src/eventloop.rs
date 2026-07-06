@@ -39,12 +39,10 @@ pub struct Eventloop {
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
 
-    /// Flow-log spool root, where the upload config and ingest tokens are
-    /// persisted for the uploader.
+    /// Flow-log spool root.
     flow_logs_dir: std::path::PathBuf,
 
-    /// Whether the portal enabled uploads; tokens are only persisted for the
-    /// uploader, so there is no point writing them to disk otherwise.
+    /// Whether the portal enabled uploads; gates persisting ingest tokens.
     upload_flow_logs: bool,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<

@@ -52,15 +52,11 @@ pub struct Eventloop {
 
     resolver_bypass: tunnel_bypass_resolver::Bypass,
 
-    /// Flow-log spool root, where the upload config and ingest tokens are
-    /// persisted for the uploader.
-    ///
-    /// The flow reports themselves are spooled by the entrypoint's
-    /// `flow_log_writer` layer.
+    /// Flow-log spool root; the reports themselves are spooled by the
+    /// entrypoint's `flow_log_writer` layer.
     flow_logs_dir: Option<std::path::PathBuf>,
 
-    /// Whether the portal enabled uploads; tokens are only persisted for the
-    /// uploader, so there is no point writing them to disk otherwise.
+    /// Whether the portal enabled uploads; gates persisting ingest tokens.
     upload_flow_logs: bool,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
@@ -763,8 +759,6 @@ impl Eventloop {
     }
 }
 
-/// Persists an authorization's ingest token into the spool for the uploader.
-///
 /// Tokens deliberately travel here rather than through the flow-log tracing
 /// events, so they can never leak into log output.
 fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: Option<&IngestToken>) {
