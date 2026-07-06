@@ -139,9 +139,11 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.30.0.254
         ip -6 route add 203:0:113::/64 via 172:30:0::254
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
+        # Enable TCP & UDP segmentation offload. This requires checksum offload
+        # to stay on; relay-bound packets still get software-computed checksums
+        # on the host-side veths (see the network-config service).
         apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx off
+        ethtool -K eth0 tx on tx-tcp-segmentation on tx-udp-segmentation on
 
         ip link set dev eth0 txqueuelen 100000
 
@@ -186,9 +188,11 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.32.0.254
         ip -6 route add 203:0:113::/64 via 172:32:0::254
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
+        # Enable TCP & UDP segmentation offload. This requires checksum offload
+        # to stay on; relay-bound packets still get software-computed checksums
+        # on the host-side veths (see the network-config service).
         apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx off
+        ethtool -K eth0 tx on tx-tcp-segmentation on tx-udp-segmentation on
 
         ip link set dev eth0 txqueuelen 100000
 
@@ -236,11 +240,13 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.31.0.254
         ip -6 route add 203:0:113::/64 via 172:31:0::254 || true
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
+        # Enable TCP & UDP segmentation offload. This requires checksum offload
+        # to stay on; relay-bound packets still get software-computed checksums
+        # on the host-side veths (see the network-config service).
         apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx off
-        ethtool -K eth1 tx off
-        ethtool -K eth2 tx off
+        ethtool -K eth0 tx on tx-tcp-segmentation on tx-udp-segmentation on
+        ethtool -K eth1 tx on tx-tcp-segmentation on tx-udp-segmentation on
+        ethtool -K eth2 tx on tx-tcp-segmentation on tx-udp-segmentation on
 
         ip link set dev eth0 txqueuelen 100000
         ip link set dev eth1 txqueuelen 100000
