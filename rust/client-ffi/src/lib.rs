@@ -542,6 +542,7 @@ fn connect(
         Vec::default(),
         // Mobile flow-log wiring (spool dir + uploader) comes separately.
         None,
+        false,
         runtime.handle().clone(),
     );
 
