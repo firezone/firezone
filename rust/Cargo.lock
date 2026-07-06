@@ -8272,6 +8272,7 @@ dependencies = [
  "libc",
  "opentelemetry",
  "otel-instruments",
+ "smallvec",
  "tokio",
  "tracing",
 ]

@@ -25,13 +25,14 @@ const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 /// (`UDP_MAX_SEGMENTS` in `linux/udp.h`).
 const MAX_UDP_SEGMENTS: usize = 128;
 
-const TCP: u8 = 6;
-const UDP: u8 = 17;
-
 const TCP_FLAG_PSH: u8 = 0x08;
 
-/// A packet ready to be written to the TUN device.
-pub enum Outgoing {
+const ZEROED_VNET_HDR: [u8; VNET_HDR_LEN] = [0; VNET_HDR_LEN];
+
+/// A pending write to the TUN device.
+pub struct Outgoing(Inner);
+
+enum Inner {
     /// An individual IP packet; written with a zeroed [`VirtioNetHdr`].
     Packet(IpPacket),
     /// A coalesced batch of packets, including its [`VirtioNetHdr`].
@@ -39,6 +40,34 @@ pub enum Outgoing {
         buf: Buffer<Vec<u8>>,
         num_segments: usize,
     },
+}
+
+impl Outgoing {
+    /// How many IP packets this write carries.
+    pub fn num_segments(&self) -> usize {
+        match &self.0 {
+            Inner::Packet(_) => 1,
+            Inner::Batch { num_segments, .. } => *num_segments,
+        }
+    }
+
+    /// The [`VirtioNetHdr`] and packet bytes of this write, ready for `writev`.
+    pub fn bufs(&self) -> [&[u8]; 2] {
+        match &self.0 {
+            Inner::Packet(packet) => [ZEROED_VNET_HDR.as_slice(), packet.packet()],
+            Inner::Batch { buf, .. } => {
+                let (hdr, packet) = buf.split_at(VNET_HDR_LEN);
+
+                [hdr, packet]
+            }
+        }
+    }
+}
+
+impl From<IpPacket> for Outgoing {
+    fn from(packet: IpPacket) -> Self {
+        Self(Inner::Packet(packet))
+    }
 }
 
 /// Coalesces IP packets into GSO super packets.
@@ -115,7 +144,7 @@ impl Item {
 
     fn into_outgoing(self) -> Outgoing {
         match self {
-            Item::Packet(packet) => Outgoing::Packet(packet),
+            Item::Packet(packet) => Outgoing::from(packet),
             Item::Batch(batch) => batch.into_outgoing(),
         }
     }
@@ -250,7 +279,7 @@ fn ip_layout(packet: &IpPacket) -> Option<usize> {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 struct FlowKey {
-    protocol: u8,
+    protocol: IpNumber,
     src: IpAddr,
     dst: IpAddr,
     sport: u16,
@@ -264,7 +293,7 @@ struct FlowKey {
 impl FlowKey {
     fn from_tcp(tcp: &TcpSlice, packet: &IpPacket) -> Self {
         Self {
-            protocol: TCP,
+            protocol: IpNumber::TCP,
             src: packet.source(),
             dst: packet.destination(),
             sport: tcp.source_port(),
@@ -275,7 +304,7 @@ impl FlowKey {
 
     fn from_udp(udp: &UdpSlice, packet: &IpPacket) -> Self {
         Self {
-            protocol: UDP,
+            protocol: IpNumber::UDP,
             src: packet.source(),
             dst: packet.destination(),
             sport: udp.source_port(),
@@ -295,13 +324,13 @@ impl FlowKey {
         }
 
         if let Some(tcp) = packet.as_tcp() {
-            return self.protocol == TCP
+            return self.protocol == IpNumber::TCP
                 && tcp.source_port() == self.sport
                 && tcp.destination_port() == self.dport;
         }
 
         if let Some(udp) = packet.as_udp() {
-            return self.protocol == UDP
+            return self.protocol == IpNumber::UDP
                 && udp.source_port() == self.sport
                 && udp.destination_port() == self.dport;
         }
@@ -397,14 +426,14 @@ impl Batch {
         } = self;
 
         match state {
-            BatchState::Single(packet) => Outgoing::Packet(packet),
+            BatchState::Single(packet) => Outgoing::from(packet),
             BatchState::Coalesced(mut buf) => {
                 finalize(&mut buf, &key, ip_hdr_len, l4_hdr_len, seg_size, psh);
 
-                Outgoing::Batch {
+                Outgoing(Inner::Batch {
                     buf,
                     num_segments: num_segs,
-                }
+                })
             }
         }
     }
@@ -427,11 +456,11 @@ impl Batch {
             return false;
         }
 
-        if candidate.key.protocol == TCP && candidate.seq != self.next_seq {
+        if candidate.key.protocol == IpNumber::TCP && candidate.seq != self.next_seq {
             return false;
         }
 
-        if candidate.key.protocol == UDP && self.num_segs >= MAX_UDP_SEGMENTS {
+        if candidate.key.protocol == IpNumber::UDP && self.num_segs >= MAX_UDP_SEGMENTS {
             return false;
         }
 
@@ -505,9 +534,9 @@ fn finalize(
     let l4_len = total_len - ip_hdr_len;
 
     let (gso_type, csum_offset) = match (key.protocol, key.is_v4()) {
-        (TCP, true) => (VIRTIO_NET_HDR_GSO_TCPV4, 16),
-        (TCP, false) => (VIRTIO_NET_HDR_GSO_TCPV6, 16),
-        (UDP, _) => (VIRTIO_NET_HDR_GSO_UDP_L4, 6),
+        (IpNumber::TCP, true) => (VIRTIO_NET_HDR_GSO_TCPV4, 16),
+        (IpNumber::TCP, false) => (VIRTIO_NET_HDR_GSO_TCPV6, 16),
+        (IpNumber::UDP, _) => (VIRTIO_NET_HDR_GSO_UDP_L4, 6),
         _ => unreachable!("only TCP and UDP packets are coalesced"),
     };
 
@@ -538,16 +567,16 @@ fn finalize(
 
     let pseudo_sum = match (key.src, key.dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            checksum::pseudo_header_sum_v4(src, dst, key.protocol, l4_len)
+            checksum::pseudo_header_sum_v4(src, dst, key.protocol.0, l4_len)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            checksum::pseudo_header_sum_v6(src, dst, key.protocol, l4_len)
+            checksum::pseudo_header_sum_v6(src, dst, key.protocol.0, l4_len)
         }
         _ => unreachable!("src and dst are always the same IP version"),
     };
 
     match key.protocol {
-        TCP => {
+        IpNumber::TCP => {
             if psh {
                 l4[13] |= TCP_FLAG_PSH;
             }
@@ -556,7 +585,7 @@ fn finalize(
             // hold the folded, *uncomplemented* pseudo-header sum.
             l4[16..18].copy_from_slice(&checksum::fold(pseudo_sum).to_be_bytes());
         }
-        UDP => {
+        IpNumber::UDP => {
             l4[4..6].copy_from_slice(&(l4_len as u16).to_be_bytes());
             l4[6..8].copy_from_slice(&checksum::fold(pseudo_sum).to_be_bytes());
         }
@@ -569,7 +598,7 @@ fn l4_checksum_is_valid(
     bytes: &[u8],
     src: IpAddr,
     dst: IpAddr,
-    protocol: u8,
+    protocol: IpNumber,
     ip_hdr_len: usize,
 ) -> bool {
     let l4_len = bytes.len() - ip_hdr_len;
@@ -577,14 +606,14 @@ fn l4_checksum_is_valid(
     let pseudo_sum = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             // A zero UDP checksum means "not computed" and cannot be validated (nor coalesced).
-            if protocol == UDP && bytes[ip_hdr_len + 6..ip_hdr_len + 8] == [0, 0] {
+            if protocol == IpNumber::UDP && bytes[ip_hdr_len + 6..ip_hdr_len + 8] == [0, 0] {
                 return false;
             }
 
-            checksum::pseudo_header_sum_v4(src, dst, protocol, l4_len)
+            checksum::pseudo_header_sum_v4(src, dst, protocol.0, l4_len)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            checksum::pseudo_header_sum_v6(src, dst, protocol, l4_len)
+            checksum::pseudo_header_sum_v6(src, dst, protocol.0, l4_len)
         }
         _ => return false,
     };

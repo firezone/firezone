@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 
 use ip_packet::{IpHeaders, IpPacket, IpPacketBuf, Ipv4Header, PacketBuilder, ip_number};
 
-use super::coalesce::{Outgoing, TunGsoQueue};
+use super::coalesce::TunGsoQueue;
 use super::split::split;
 use super::virtio::*;
 use super::{checksum, virtio};
@@ -20,12 +20,13 @@ fn coalesces_sequential_tcp_segments() {
 
     let out = queue.drain().collect::<Vec<_>>();
 
-    let [Outgoing::Batch { buf, num_segments }] = out.as_slice() else {
+    let [super_packet] = out.as_slice() else {
         panic!("Expected a single super packet");
     };
-    assert_eq!(*num_segments, 3);
+    assert_eq!(super_packet.num_segments(), 3);
 
-    let (hdr, packet) = VirtioNetHdr::parse(buf).unwrap();
+    let buf = super_packet.bufs().concat();
+    let (hdr, packet) = VirtioNetHdr::parse(&buf).unwrap();
 
     assert_eq!(hdr.flags, VIRTIO_NET_HDR_F_NEEDS_CSUM);
     assert_eq!(hdr.gso_type, VIRTIO_NET_HDR_GSO_TCPV4);
@@ -62,12 +63,11 @@ fn coalesced_tcp_packet_splits_back_into_segments() {
     }
     let out = queue.drain().collect::<Vec<_>>();
 
-    let [Outgoing::Batch { buf, .. }] = out.as_slice() else {
+    let [super_packet] = out.as_slice() else {
         panic!("Expected a single super packet");
     };
 
-    let mut roundtripped = Vec::new();
-    split(buf, &mut roundtripped).unwrap();
+    let roundtripped = split(&super_packet.bufs().concat()).unwrap();
 
     assert_eq!(roundtripped.len(), 3);
 
@@ -87,14 +87,8 @@ fn does_not_coalesce_across_flows() {
     let out = queue.drain().collect::<Vec<_>>();
 
     assert_eq!(out.len(), 2);
-    assert!(matches!(
-        &out[0],
-        Outgoing::Batch {
-            num_segments: 2,
-            ..
-        }
-    ));
-    assert!(matches!(&out[1], Outgoing::Packet(_)));
+    assert_eq!(out[0].num_segments(), 2);
+    assert_eq!(out[1].num_segments(), 1);
 }
 
 #[test]
@@ -107,8 +101,8 @@ fn out_of_order_segment_starts_new_batch() {
     let out = queue.drain().collect::<Vec<_>>();
 
     assert_eq!(out.len(), 2);
-    assert!(matches!(&out[0], Outgoing::Packet(_)));
-    assert!(matches!(&out[1], Outgoing::Packet(_)));
+    assert_eq!(out[0].num_segments(), 1);
+    assert_eq!(out[1].num_segments(), 1);
 }
 
 #[test]
@@ -121,12 +115,14 @@ fn psh_closes_the_batch() {
 
     let out = queue.drain().collect::<Vec<_>>();
 
-    let [Outgoing::Batch { buf, num_segments }, Outgoing::Packet(_)] = out.as_slice() else {
+    let [super_packet, segment] = out.as_slice() else {
         panic!("Expected a super packet followed by the post-PSH segment");
     };
-    assert_eq!(*num_segments, 2);
+    assert_eq!(super_packet.num_segments(), 2);
+    assert_eq!(segment.num_segments(), 1);
 
-    let (_, packet) = VirtioNetHdr::parse(buf).unwrap();
+    let buf = super_packet.bufs().concat();
+    let (_, packet) = VirtioNetHdr::parse(&buf).unwrap();
     assert_eq!(
         packet[33] & 0x08,
         0x08,
@@ -144,19 +140,9 @@ fn short_segment_closes_the_batch() {
 
     let out = queue.drain().collect::<Vec<_>>();
 
-    assert!(
-        matches!(
-            out.as_slice(),
-            [
-                Outgoing::Batch {
-                    num_segments: 2,
-                    ..
-                },
-                Outgoing::Packet(_)
-            ]
-        ),
-        "A shorter segment must close the batch"
-    );
+    assert_eq!(out.len(), 2, "A shorter segment must close the batch");
+    assert_eq!(out[0].num_segments(), 2);
+    assert_eq!(out[1].num_segments(), 1);
 }
 
 #[test]
@@ -171,14 +157,8 @@ fn non_candidate_flushes_same_flow_first() {
 
     // Ordering within the flow must be preserved: batch first, then the ACK.
     assert_eq!(out.len(), 2);
-    assert!(matches!(
-        &out[0],
-        Outgoing::Batch {
-            num_segments: 2,
-            ..
-        }
-    ));
-    assert!(matches!(&out[1], Outgoing::Packet(_)));
+    assert_eq!(out[0].num_segments(), 2);
+    assert_eq!(out[1].num_segments(), 1);
 }
 
 #[test]
@@ -196,18 +176,18 @@ fn coalesces_udp_datagrams() {
     }
     let out = queue.drain().collect::<Vec<_>>();
 
-    let [Outgoing::Batch { buf, num_segments }] = out.as_slice() else {
+    let [super_packet] = out.as_slice() else {
         panic!("Expected a single super packet");
     };
-    assert_eq!(*num_segments, 3);
+    assert_eq!(super_packet.num_segments(), 3);
 
-    let (hdr, _) = VirtioNetHdr::parse(buf).unwrap();
+    let buf = super_packet.bufs().concat();
+    let (hdr, _) = VirtioNetHdr::parse(&buf).unwrap();
     assert_eq!(hdr.gso_type, VIRTIO_NET_HDR_GSO_UDP_L4);
     assert_eq!(hdr.gso_size, 100);
     assert_eq!(hdr.csum_offset, 6);
 
-    let mut roundtripped = Vec::new();
-    split(buf, &mut roundtripped).unwrap();
+    let roundtripped = split(&buf).unwrap();
 
     assert_eq!(roundtripped.len(), 3);
 
@@ -230,7 +210,7 @@ fn corrupt_checksum_is_not_coalesced() {
     let out = queue.drain().collect::<Vec<_>>();
 
     assert_eq!(out.len(), 2);
-    assert!(matches!(&out[1], Outgoing::Packet(_))); // Passed through for the kernel to drop.
+    assert_eq!(out[1].num_segments(), 1); // Passed through for the kernel to drop.
 }
 
 #[test]
@@ -264,8 +244,7 @@ fn completes_partial_checksum_of_non_gso_packet() {
     buf[virtio::VNET_HDR_LEN + 26..virtio::VNET_HDR_LEN + 28]
         .copy_from_slice(&pseudo.to_be_bytes());
 
-    let mut out = Vec::new();
-    split(&buf, &mut out).unwrap();
+    let out = split(&buf).unwrap();
 
     let [completed] = out.as_slice() else {
         panic!("Expected a single packet")

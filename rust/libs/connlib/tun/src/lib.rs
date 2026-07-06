@@ -23,7 +23,7 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 1_000 }
 };
 
-/// An instruction for the thread that writes packets to the TUN device.
+/// An item on the channel to the thread that writes packets to the TUN device.
 #[derive(Debug)]
 pub enum OutboundItem {
     /// Write this IP packet to the TUN device.
@@ -31,7 +31,6 @@ pub enum OutboundItem {
     /// Write out any packets that are buffered in the TUN thread.
     ///
     /// Marks the end of a batch of packets.
-    /// Platforms that write packets to the TUN device one-by-one treat this as a no-op.
     Flush,
 }
 
@@ -178,8 +177,9 @@ mod tests {
 
     /// Worst-case memory usage of the two TUN channels: every slot filled with a
     /// packet, each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
-    const MAX_CHANNEL_MEMORY: usize =
-        2 * CHANNEL_CAPACITY * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD);
+    const MAX_CHANNEL_MEMORY: usize = CHANNEL_CAPACITY
+        * (size_of::<OutboundItem>() + ip_packet::MAX_FZ_PAYLOAD)
+        + CHANNEL_CAPACITY * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD);
 
     /// iOS network extensions are limited to 50 MB of memory; the channels must only
     /// ever use a small fraction of that.

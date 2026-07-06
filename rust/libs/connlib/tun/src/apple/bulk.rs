@@ -44,7 +44,7 @@ pub fn send(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
             let mut items = Vec::with_capacity(BATCH_SIZE);
-            let mut batch = Vec::with_capacity(BATCH_SIZE);
+            let mut packets = Vec::with_capacity(BATCH_SIZE);
 
             loop {
                 if outbound_rx.recv_many(&mut items, BATCH_SIZE).await == 0 {
@@ -52,17 +52,17 @@ pub fn send(
                 }
 
                 // Packets are written to the TUN device as they come in; there is nothing to flush.
-                batch.extend(items.drain(..).filter_map(|item| match item {
+                packets.extend(items.drain(..).filter_map(|item| match item {
                     crate::OutboundItem::Packet(packet) => Some(packet),
                     crate::OutboundItem::Flush => None,
                 }));
 
                 let mut offset = 0;
-                while offset < batch.len() {
+                while offset < packets.len() {
                     let result = fd
                         .async_io(Interest::WRITABLE, |fd| {
                             // Safety: The file descriptor is valid within this module.
-                            unsafe { send_batch(syscalls, fd.as_raw_fd(), &batch[offset..]) }
+                            unsafe { send_batch(syscalls, fd.as_raw_fd(), &packets[offset..]) }
                         })
                         .await;
 
@@ -86,7 +86,7 @@ pub fn send(
                             // `sendmsg_x` does not report how many datagrams it sent before
                             // failing, so we cannot resubmit the tail without risking a
                             // re-injection of an already-sent prefix. Drop the rest of the batch.
-                            let dropped = batch.len() - offset;
+                            let dropped = packets.len() - offset;
                             dropped_packets.add(dropped as u64, &drop_attributes(&e));
 
                             if e.raw_os_error() == Some(libc::ENOSPC) {
@@ -101,7 +101,7 @@ pub fn send(
                     }
                 }
 
-                batch.clear();
+                packets.clear();
             }
 
             anyhow::Ok(())

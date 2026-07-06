@@ -60,11 +60,14 @@ where
 
             while outbound_rx.recv_many(&mut items, MAX_TUN_BATCH).await > 0 {
                 for item in items.drain(..) {
+                    #[cfg(debug_assertions)]
+                    if let OutboundItem::Packet(packet) = &item {
+                        tracing::trace!(target: "wire::dev::send", ?packet);
+                    }
+
                     match (item, &mut queue) {
                         (OutboundItem::Packet(packet), Some(queue)) => queue.enqueue(packet),
-                        (OutboundItem::Packet(packet), None) => {
-                            ready.push(Outgoing::Packet(packet))
-                        }
+                        (OutboundItem::Packet(packet), None) => ready.push(Outgoing::from(packet)),
                         (OutboundItem::Flush, Some(queue)) => ready.extend(queue.drain()),
                         (OutboundItem::Flush, None) => {}
                     }
@@ -88,8 +91,8 @@ where
                 }
             }
 
-            // The channel is closed, i.e. we are shutting down. Packets that are still
-            // buffered (their `Flush` never arrived) are dropped; endpoints re-send them.
+            tracing::debug!("Outbound packet sender gone, shutting down task");
+
             anyhow::Ok(())
         })?;
 
@@ -109,44 +112,35 @@ where
     let mut gso_failed = false;
 
     for outgoing in ready.drain(..) {
-        match outgoing {
-            Outgoing::Packet(packet) => match write_packet(fd, &packet).await {
-                Ok(_) => {}
-                Err(e) => {
-                    dropped_packets_counter.add(1, &drop_attributes(&e));
-                    tracing::warn!("Failed to write to TUN FD: {e}");
-                }
-            },
-            Outgoing::Batch { buf, num_segments } => match write_batch(fd, &buf).await {
-                Ok(()) => {
-                    batch_size_histogram.record(num_segments as u64, &metric_attributes());
-                }
-                Err(e) if e.raw_os_error() == Some(libc::EINVAL) => {
-                    dropped_packets_counter.add(num_segments as u64, &drop_attributes(&e));
+        let num_segments = outgoing.num_segments();
 
-                    gso_failed = true;
+        match write(fd, &outgoing).await {
+            Ok(_) => {
+                if num_segments > 1 {
+                    batch_size_histogram.record(num_segments as u64, &send_metric_attributes());
                 }
-                Err(e) => {
-                    dropped_packets_counter.add(num_segments as u64, &drop_attributes(&e));
-                    tracing::warn!("Failed to write GSO packet to TUN FD: {e}");
-                }
-            },
+            }
+            Err(e) if num_segments > 1 && e.raw_os_error() == Some(libc::EINVAL) => {
+                dropped_packets_counter.add(num_segments as u64, &drop_attributes(&e));
+
+                gso_failed = true;
+            }
+            Err(e) => {
+                dropped_packets_counter.add(num_segments as u64, &drop_attributes(&e));
+                tracing::warn!("Failed to write to TUN FD: {e}");
+            }
         }
     }
 
     gso_failed
 }
 
-/// Writes a single packet, prefixed with a zeroed `virtio_net_hdr`.
-async fn write_packet<T>(fd: &AsyncFd<T>, packet: &IpPacket) -> io::Result<usize>
+/// Writes a single [`Outgoing`] (its `virtio_net_hdr` plus packet bytes) to the TUN device.
+async fn write<T>(fd: &AsyncFd<T>, outgoing: &Outgoing) -> io::Result<usize>
 where
     T: AsRawFd,
 {
-    #[cfg(debug_assertions)]
-    tracing::trace!(target: "wire::dev::send", ?packet);
-
-    let hdr = [0u8; VNET_HDR_LEN];
-    let bytes = packet.packet();
+    let [hdr, packet] = outgoing.bufs();
 
     let iov = [
         libc::iovec {
@@ -154,8 +148,8 @@ where
             iov_len: hdr.len(),
         },
         libc::iovec {
-            iov_base: bytes.as_ptr() as *mut _,
-            iov_len: bytes.len(),
+            iov_base: packet.as_ptr() as *mut _,
+            iov_len: packet.len(),
         },
     ];
 
@@ -169,28 +163,13 @@ where
     .await
 }
 
-/// Writes a coalesced super packet (including its `virtio_net_hdr`).
-async fn write_batch<T>(fd: &AsyncFd<T>, buf: &[u8]) -> io::Result<()>
-where
-    T: AsRawFd,
-{
-    fd.async_io(Interest::WRITABLE, |fd| {
-        // Safety: The buffer is valid for the given length.
-        match unsafe { libc::write(fd.as_raw_fd(), buf.as_ptr() as *const _, buf.len()) } {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
-        }
-    })
-    .await?;
-
-    Ok(())
-}
-
 /// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`]s.
 pub fn tun_recv<T>(fd: T, inbound_tx: InboundTx) -> Result<()>
 where
     T: AsRawFd,
 {
+    let batch_size_histogram = otel_instruments::network_packets_batch_count();
+
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -214,12 +193,17 @@ where
                         Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
-                    if let Err(e) = split::split(&buf[..len], &mut packets) {
-                        if e.any_is::<ip_packet::Fragmented>() {
-                            tracing::debug!("{e:#}"); // Log on debug to be less noisy.
-                        } else {
-                            tracing::warn!("{e:#}");
+                    match split::split(&buf[..len]) {
+                        Ok(segments) => {
+                            batch_size_histogram
+                                .record(segments.len() as u64, &recv_metric_attributes());
+
+                            packets.extend(segments);
                         }
+                        Err(e) if e.any_is::<ip_packet::Fragmented>() => {
+                            tracing::debug!("{e:#}"); // Log on debug to be less noisy.
+                        }
+                        Err(e) => tracing::warn!("{e:#}"),
                     }
                 }
 
@@ -253,10 +237,17 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     }
 }
 
-fn metric_attributes() -> [KeyValue; 2] {
+fn send_metric_attributes() -> [KeyValue; 2] {
     [
         KeyValue::new("system.device", "tun"),
         KeyValue::new("network.io.direction", "transmit"),
+    ]
+}
+
+fn recv_metric_attributes() -> [KeyValue; 2] {
+    [
+        KeyValue::new("system.device", "tun"),
+        KeyValue::new("network.io.direction", "receive"),
     ]
 }
 
