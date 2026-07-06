@@ -2,7 +2,6 @@ name: Performance Tests
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
-  workflow_dispatch:
 
 env:
   COMPOSE_PARALLEL_LIMIT: 1 # Temporary fix for https://github.com/docker/compose/pull/12752 until compose v2.36.0 lands on GitHub actions runners.
@@ -16,18 +15,16 @@ jobs:
       id-token: write # OIDC auth
       pull-requests: write # post perf result comments
     env:
-      # Manual runs test the checked-out branch against the images built from
-      # `main` because per-SHA images only exist for commits built by `cd.yml`.
       PORTAL_IMAGE: "ghcr.io/firezone/portal"
-      PORTAL_TAG: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+      PORTAL_TAG: ${{ github.sha }}
       ELIXIR_IMAGE: "ghcr.io/firezone/elixir"
-      ELIXIR_TAG: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+      ELIXIR_TAG: ${{ github.sha }}
       GATEWAY_IMAGE: "ghcr.io/firezone/perf/gateway"
-      GATEWAY_TAG: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+      GATEWAY_TAG: ${{ github.sha }}
       CLIENT_IMAGE: "ghcr.io/firezone/perf/client"
-      CLIENT_TAG: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+      CLIENT_TAG: ${{ github.sha }}
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
-      RELAY_TAG: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+      RELAY_TAG: ${{ github.sha }}
       FIREZONE_INC_BUF: true
       COMPOSE_PROFILES: perf
     strategy:
@@ -135,7 +132,6 @@ jobs:
             grep -i "error" && exit 1 || exit 0
 
   upload-bencher:
-    if: github.event_name != 'workflow_dispatch' # don't pollute Bencher from ad-hoc runs
     continue-on-error: true
     needs: perf-tests
     runs-on: ubuntu-24.04
