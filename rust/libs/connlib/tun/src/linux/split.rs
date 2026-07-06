@@ -21,18 +21,21 @@ use super::virtio::*;
 /// from allocating unbounded numbers of buffers on malformed headers.
 const MAX_SEGMENTS: usize = 256;
 
+/// How many MTU-sized segments fit into a maximally-sized super packet.
+const MTU_SEGMENTS: usize = u16::MAX as usize / ip_packet::MAX_IP_SIZE + 1;
+
 /// Splits the given TUN read (starting with a [`VirtioNetHdr`]) into individual [`IpPacket`]s.
 ///
-/// Most reads are individual packets which the returned `SmallVec` stores inline;
-/// super packets spill to the heap where the allocation is amortised across their segments.
-pub fn split(buf: &[u8]) -> Result<SmallVec<[IpPacket; 1]>> {
+/// The returned `SmallVec` holds a super packet of MTU-sized segments inline; only
+/// smaller (and thus more) segments spill to the heap.
+pub fn split(buf: &[u8]) -> Result<SmallVec<[IpPacket; MTU_SEGMENTS]>> {
     let (hdr, packet) = VirtioNetHdr::parse(buf).context("Read is too short for virtio hdr")?;
 
     match hdr.gso_type {
         VIRTIO_NET_HDR_GSO_NONE => {
             let packet = copy_single(&hdr, packet)?;
 
-            Ok(SmallVec::from_buf([packet]))
+            Ok(smallvec::smallvec![packet])
         }
         VIRTIO_NET_HDR_GSO_TCPV4 | VIRTIO_NET_HDR_GSO_TCPV6 | VIRTIO_NET_HDR_GSO_UDP_L4 => {
             split_gso(&hdr, packet)
@@ -69,10 +72,10 @@ fn complete_partial_checksum(packet: &mut [u8], start: usize, offset: usize) -> 
     let at = start
         .checked_add(offset)
         .context("Checksum position overflows")?;
+    let len = packet.len();
     ensure!(
-        at + 2 <= packet.len() && start <= packet.len(),
-        "Checksum region out of bounds (len={}, csum_start={start}, csum_offset={offset})",
-        packet.len()
+        at + 2 <= len && start <= len,
+        "Checksum region out of bounds (len={len}, csum_start={start}, csum_offset={offset})"
     );
 
     let pseudo_sum = u64::from(u16::from_be_bytes([packet[at], packet[at + 1]]));
@@ -86,7 +89,7 @@ fn complete_partial_checksum(packet: &mut [u8], start: usize, offset: usize) -> 
 }
 
 /// Splits a TSO / USO super packet into individual, fully check-summed segments.
-fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; 1]>> {
+fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; MTU_SEGMENTS]>> {
     let gso_size = hdr.gso_size as usize;
     ensure!(gso_size > 0, "gso_size must not be zero");
 

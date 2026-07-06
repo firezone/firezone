@@ -181,7 +181,7 @@ impl Candidate {
         let ip_hdr_len = ip_layout(packet)?;
 
         let candidate = if let Some(tcp) = packet.as_tcp() {
-            Self::from_tcp(packet, &tcp, ip_hdr_len)?
+            Self::try_from_tcp(packet, &tcp, ip_hdr_len)?
         } else if let Some(udp) = packet.as_udp() {
             Self::from_udp(packet, &udp, ip_hdr_len)
         } else {
@@ -213,7 +213,7 @@ impl Candidate {
         Some(candidate)
     }
 
-    fn from_tcp(packet: &IpPacket, tcp: &TcpSlice, ip_hdr_len: usize) -> Option<Self> {
+    fn try_from_tcp(packet: &IpPacket, tcp: &TcpSlice, ip_hdr_len: usize) -> Option<Self> {
         // Only plain data segments coalesce: exactly ACK, or ACK|PSH.
         if !tcp.ack() || tcp.syn() || tcp.fin() || tcp.rst() || tcp.urg() || tcp.ece() || tcp.cwr()
         {
@@ -500,20 +500,21 @@ fn headers_compatible(
 ) -> bool {
     match version {
         IpVersion::V4 => {
-            // ToS, DF / reserved fragment bits and TTL must match.
-            if template[1] != packet[1]
-                || template[6] >> 5 != packet[6] >> 5
-                || template[8] != packet[8]
-            {
+            let tos_matches = template[1] == packet[1];
+            let fragment_flags_match = template[6] >> 5 == packet[6] >> 5;
+            let ttl_matches = template[8] == packet[8];
+
+            if !tos_matches || !fragment_flags_match || !ttl_matches {
                 return false;
             }
         }
         IpVersion::V6 => {
-            // Traffic class and hop limit must match (the flow label doesn't matter).
-            if template[0] != packet[0]
-                || template[1] >> 4 != packet[1] >> 4
-                || template[7] != packet[7]
-            {
+            // The flow label is allowed to differ.
+            let traffic_class_matches =
+                template[0] == packet[0] && template[1] >> 4 == packet[1] >> 4;
+            let hop_limit_matches = template[7] == packet[7];
+
+            if !traffic_class_matches || !hop_limit_matches {
                 return false;
             }
         }
