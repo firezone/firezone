@@ -392,7 +392,7 @@ impl Eventloop {
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
-                    flow_logs.effective_upload_interval_secs(),
+                    flow_logs.upload_interval_secs,
                     flow_logs.upload_batch_size,
                 ) {
                     tracing::warn!("Failed to persist flow-log upload config: {e:#}");

@@ -426,17 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn blank_flow_logs_api_url_disables_uploads() {
-        let config = FlowLogsConfig {
-            api_url: " ".to_owned(),
-            upload_interval_secs: 60,
-            upload_batch_size: 0,
-        };
-
-        assert!(!config.upload_enabled());
-    }
-
-    #[test]
     fn can_deserialize_internet_resource() {
         let resources = r#"[
             {

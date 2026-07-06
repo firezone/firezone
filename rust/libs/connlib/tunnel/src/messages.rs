@@ -204,9 +204,9 @@ pub struct UpstreamDo53 {
 
 /// Flow-log upload configuration the portal always sends as part of `init`.
 ///
-/// Uploads are driven entirely by the portal: an upload interval > 0 plus an
-/// API URL enables them, anything else disables them. [`IngestToken`]s arrive
-/// regardless, because their claims also attribute local flow-log output.
+/// Uploads are driven entirely by the portal: an upload interval > 0 enables
+/// them, `0` disables them. [`IngestToken`]s arrive regardless, because their
+/// claims also attribute local flow-log output.
 #[derive(Debug, Deserialize, Clone)]
 pub struct FlowLogsConfig {
     /// Base URL flow logs are POSTed to.
@@ -218,21 +218,9 @@ pub struct FlowLogsConfig {
 }
 
 impl FlowLogsConfig {
-    /// The upload interval to persist.
-    ///
-    /// `0` unless uploads are enabled; persisting `0` removes a previously
-    /// persisted config.
-    pub fn effective_upload_interval_secs(&self) -> u64 {
-        if self.upload_enabled() {
-            self.upload_interval_secs
-        } else {
-            0
-        }
-    }
-
     /// Whether the portal enabled flow-log uploads.
     pub fn upload_enabled(&self) -> bool {
-        self.upload_interval_secs > 0 && !self.api_url.trim().is_empty()
+        self.upload_interval_secs > 0
     }
 }
 

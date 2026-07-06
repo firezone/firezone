@@ -479,7 +479,7 @@ impl Eventloop {
                     && let Err(e) = flow_log_upload::configure_uploads(
                         spool_root,
                         &flow_logs.api_url,
-                        flow_logs.effective_upload_interval_secs(),
+                        flow_logs.upload_interval_secs,
                         flow_logs.upload_batch_size,
                     )
                 {
