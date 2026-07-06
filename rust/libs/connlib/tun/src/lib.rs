@@ -44,7 +44,9 @@ pub fn inbound_channel() -> (InboundTx, InboundRx) {
     (InboundTx(tx), InboundRx(rx))
 }
 
-/// Creates an outbound channel with an explicit capacity; only meant for tests.
+/// Creates an outbound channel with an explicit capacity.
+///
+/// Only meant for tests that need to exercise behaviour on a full channel.
 pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(capacity);
 

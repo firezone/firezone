@@ -850,7 +850,7 @@ mod tests {
 
     impl DummyTun {
         fn new() -> Self {
-            let (tx, outbound_rx) = tun::outbound_channel_for_test(1);
+            let (tx, outbound_rx) = tun::outbound_channel();
             let (inbound_tx, rx) = tun::inbound_channel();
 
             Self {
