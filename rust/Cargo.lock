@@ -1251,6 +1251,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
+ "tunnel-bypass-resolver",
  "uniffi",
 ]
 
@@ -1278,6 +1279,7 @@ dependencies = [
  "tracing",
  "tun",
  "tunnel",
+ "tunnel-bypass-resolver",
 ]
 
 [[package]]
@@ -2427,6 +2429,7 @@ dependencies = [
  "tracing-journald",
  "tracing-log",
  "tracing-subscriber",
+ "tunnel-bypass-resolver",
  "url",
  "uuid",
  "windows",
@@ -2467,6 +2470,7 @@ dependencies = [
  "telemetry",
  "tokio",
  "tracing",
+ "tunnel-bypass-resolver",
  "url",
 ]
 
@@ -2591,10 +2595,10 @@ dependencies = [
  "serde_json",
  "serde_with",
  "socket-factory",
- "telemetry",
  "tempfile",
  "tokio",
  "tracing",
+ "tunnel-bypass-resolver",
  "url",
  "windows-security",
 ]
@@ -7585,7 +7589,6 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "bootstrap-dns-client",
  "bytes",
  "hex",
  "http",
@@ -7608,6 +7611,7 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "tunnel-bypass-resolver",
  "uuid",
 ]
 
@@ -8353,6 +8357,17 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
+]
+
+[[package]]
+name = "tunnel-bypass-resolver"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bootstrap-dns-client",
+ "parking_lot",
+ "socket-factory",
+ "tokio",
 ]
 
 [[package]]

@@ -6,7 +6,6 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-bootstrap-dns-client = { workspace = true }
 bytes = { workspace = true }
 hex = { workspace = true }
 http = { workspace = true }
@@ -26,6 +25,7 @@ socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tunnel-bypass-resolver = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

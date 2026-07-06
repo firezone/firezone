@@ -327,11 +327,13 @@ fn try_main() -> Result<()> {
         None => device_id::get_or_create_client().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
+    tunnel_bypass_resolver::configure(
+        Arc::new(tcp_socket_factory),
+        Arc::new(UdpSocketFactory::default()),
+    );
+
     if cli.is_telemetry_allowed() {
-        telemetry::configure(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
-        );
+        telemetry::configure(Arc::new(tcp_socket_factory));
 
         telemetry::start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
         telemetry::set_firezone_id(firezone_id.clone());

@@ -388,7 +388,7 @@ async fn run(spool_root: &Path, socket_factory: Arc<dyn SocketFactory<TcpSocket>
 /// Opens a tunnel-bypassing HTTP client to the ingest host, re-resolved each pass
 /// so address changes are picked up.
 ///
-/// Resolution goes through [`telemetry::resolve_ingest_host`]: while a session owns
+/// Resolution goes through [`tunnel_bypass_resolver`]: while a session owns
 /// the system resolver, `getaddrinfo` would loop back through connlib.
 async fn connect(
     ingest_url: &str,
@@ -397,7 +397,7 @@ async fn connect(
     let url = Url::parse(ingest_url).context("Invalid ingest URL")?;
     let host = url.host_str().context("Ingest URL has no host")?.to_owned();
 
-    let addresses = telemetry::resolve_ingest_host(&host).await?;
+    let addresses = tunnel_bypass_resolver::resolve(&host).await?;
 
     HttpClient::new(host, addresses, socket_factory)
         .await

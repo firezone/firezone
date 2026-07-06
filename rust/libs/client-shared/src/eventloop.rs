@@ -50,7 +50,7 @@ static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::n
 pub struct Eventloop {
     tunnel: Option<ClientTunnel>,
 
-    telemetry_resolvers: telemetry::SystemResolvers,
+    resolver_bypass: tunnel_bypass_resolver::Bypass,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
@@ -129,7 +129,7 @@ impl Eventloop {
             is_internet_resource_active,
         );
         tunnel.update_system_resolvers(dns_servers.clone());
-        let telemetry_resolvers = telemetry::SystemResolvers::capture(dns_servers.clone());
+        let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
@@ -143,7 +143,7 @@ impl Eventloop {
 
         Self {
             tunnel: Some(tunnel),
-            telemetry_resolvers,
+            resolver_bypass,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -220,7 +220,7 @@ impl Eventloop {
                 };
 
                 let dns = tunnel.update_system_resolvers(dns);
-                self.telemetry_resolvers.set(dns.clone());
+                self.resolver_bypass.update_servers(dns.clone());
 
                 self.portal_cmd_tx
                     .send(PortalCommand::UpdateDnsServers(dns))
@@ -249,6 +249,7 @@ impl Eventloop {
                 };
 
                 tunnel.reset(&reason);
+                tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(

@@ -332,10 +332,11 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        telemetry::configure(
+        tunnel_bypass_resolver::configure(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
         );
+        telemetry::configure(Arc::new(tcp_socket_factory));
 
         tracing::info!(
             server_pid = std::process::id(),

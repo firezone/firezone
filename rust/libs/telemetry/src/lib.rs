@@ -11,7 +11,7 @@ use sentry::{
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
-use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -24,7 +24,6 @@ mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
 
-pub use ingest::SystemResolvers;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
 
@@ -42,16 +41,12 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
-pub async fn resolve_ingest_host(host: &str) -> Result<Vec<std::net::IpAddr>> {
-    ingest::resolve_host(host).await
-}
-
 /// Drops the current telemetry ingest connections so they are re-established lazily.
 ///
 /// Call this on network changes, alongside resetting connlib. Triggers a
 /// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
-    ingest::reset_sockets();
+    ingest::reset_socket_factory();
     posthog::reset_client();
     sentry::reset_client();
     feature_flags::reevaluate_current();
@@ -178,10 +173,10 @@ impl fmt::Display for Env {
 /// The process-global telemetry state: the active session's environment, user
 /// identity and the Sentry guard keeping the client alive.
 ///
-/// Sentry is one client per process, and the rest of this crate (the Hub,
-/// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the state is too. Every
-/// binary drives telemetry through the free functions below rather than holding an
-/// instance.
+/// Sentry is one client per process, and the rest of this crate (the Hub, the
+/// ingest socket factory, `RUNTIME`) is already global, so the state is too.
+/// Every binary drives telemetry through the free functions below rather than
+/// holding an instance.
 static STATE: RwLock<State> = RwLock::new(State::new());
 
 struct State {
@@ -202,10 +197,11 @@ impl State {
     }
 }
 
-/// Configures the shared, tunnel-bypassing ingest socket factories so telemetry
-/// never loops through connlib. Call once at process start before [`start`].
-pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
-    ingest::configure(tcp, udp);
+/// Configures the tunnel-bypassing socket factory for telemetry's ingest
+/// connections so they never loop through connlib. Call once at process start
+/// before [`start`].
+pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    ingest::configure(tcp);
 }
 
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.

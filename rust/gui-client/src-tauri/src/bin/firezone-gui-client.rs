@@ -38,7 +38,7 @@ fn main() -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
     if cli.is_telemetry_allowed() {
-        telemetry::configure(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+        telemetry::configure(Arc::new(socket_factory::tcp));
 
         // Start telemetry in `entrypoint` mode so that crashes during settings
         // load, Tauri setup, IPC connect, or the Hello-wait window are captured.

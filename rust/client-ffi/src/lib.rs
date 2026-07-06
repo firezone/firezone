@@ -503,6 +503,8 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
+    tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
+
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
     telemetry::set_account_slug(account_slug.clone());
@@ -550,13 +552,10 @@ fn connect(
     })
 }
 
-fn start_telemetry_inner(
-    tcp: Arc<dyn SocketFactory<TcpSocket>>,
-    udp: Arc<dyn SocketFactory<UdpSocket>>,
-) {
+fn start_telemetry_inner(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
     install_rustls_crypto_provider();
 
-    telemetry::configure(tcp, udp);
+    telemetry::configure(tcp);
     telemetry::start("entrypoint", RELEASE, platform::DSN);
 
     opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
@@ -565,16 +564,15 @@ fn start_telemetry_inner(
 #[uniffi::export]
 #[cfg(target_os = "android")]
 pub fn start_telemetry(protect_socket: Arc<dyn ProtectSocket>) {
-    let tcp = Arc::new(protected_tcp_socket_factory(protect_socket.clone()));
-    let udp = Arc::new(protected_udp_socket_factory(protect_socket));
+    let tcp = Arc::new(protected_tcp_socket_factory(protect_socket));
 
-    start_telemetry_inner(tcp, udp);
+    start_telemetry_inner(tcp);
 }
 
 #[uniffi::export]
 #[cfg(not(target_os = "android"))]
 pub fn start_telemetry() {
-    start_telemetry_inner(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp));
+    start_telemetry_inner(Arc::new(socket_factory::tcp));
 }
 
 #[uniffi::export]

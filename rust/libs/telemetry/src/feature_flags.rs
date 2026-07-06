@@ -147,6 +147,16 @@ pub(crate) async fn reeval_timer() {
     }
 }
 
+/// Re-evaluates feature flags whenever the tunnel-bypass resolver is swapped:
+/// flags may have been unfetchable while (working) resolvers were missing.
+pub(crate) async fn reeval_on_resolver_change() {
+    let mut changes = tunnel_bypass_resolver::changes();
+
+    while changes.changed().await.is_ok() {
+        reevaluate_current();
+    }
+}
+
 async fn decide(
     maybe_legacy_id: String,
     api_key: String,
