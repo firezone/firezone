@@ -1,8 +1,8 @@
 //! Client related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, IceRole, Interface, Key, Relay, RelaysPresence,
-    SecretKey, SnownetCapabilities,
+    Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
+    RelaysPresence, SecretKey, SnownetCapabilities,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -144,10 +144,8 @@ pub struct FlowCreated {
     pub use_iceless: bool,
 
     /// The initiator-side ingest token for this flow's logs.
-    ///
-    /// Used as the `Bearer` credential when uploading; see `flow_log_writer`.
     #[serde(default)]
-    pub flow_logs_ingest_token: Option<String>,
+    pub flow_logs_ingest_token: Option<IngestToken>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -191,9 +189,9 @@ pub struct ClientDeviceAccessAuthorized {
     /// This device's ingest token for the flow's logs.
     ///
     /// The initiator token on the initiating side, the responder token on the
-    /// receiving side; see `flow_log_writer`.
+    /// receiving side.
     #[serde(default)]
-    pub flow_logs_ingest_token: Option<String>,
+    pub flow_logs_ingest_token: Option<IngestToken>,
 }
 
 /// The portal's minimal `{id, filters}` resource view embedded in
@@ -413,13 +411,10 @@ mod tests {
 
         let init = serde_json::from_str::<InitClient>(init).unwrap();
 
-        assert_eq!(
-            init.flow_logs.api_url.as_deref(),
-            Some("https://flow-api.firezone.dev")
-        );
-        assert_eq!(init.flow_logs.upload_interval_secs, Some(60));
-        assert_eq!(init.flow_logs.upload_batch_size, Some(1000));
-        assert!(init.flow_logs.enabled());
+        assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
+        assert_eq!(init.flow_logs.upload_interval_secs, 60);
+        assert_eq!(init.flow_logs.upload_batch_size, 1000);
+        assert!(init.flow_logs.upload_enabled());
     }
 
     #[test]
@@ -430,19 +425,19 @@ mod tests {
 
         let init = serde_json::from_str::<InitClient>(init).unwrap();
 
-        assert!(init.flow_logs.api_url.is_none());
-        assert!(!init.flow_logs.enabled());
+        assert!(init.flow_logs.api_url.is_empty());
+        assert!(!init.flow_logs.upload_enabled());
     }
 
     #[test]
     fn blank_flow_logs_api_url_is_disabled() {
         let config = FlowLogsConfig {
-            api_url: Some(" ".to_owned()),
-            upload_interval_secs: Some(60),
-            upload_batch_size: None,
+            api_url: " ".to_owned(),
+            upload_interval_secs: 60,
+            upload_batch_size: 0,
         };
 
-        assert!(!config.enabled());
+        assert!(!config.upload_enabled());
     }
 
     #[test]

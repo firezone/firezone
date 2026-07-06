@@ -1,8 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey,
-    SnownetCapabilities,
+    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
+    SecretKey, SnownetCapabilities,
 };
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
@@ -187,12 +187,8 @@ pub struct AuthorizeFlow {
     #[serde(default)]
     pub use_iceless: bool,
 
-    /// Per-authorization ingest token (HS256 JWT) minted by the portal.
-    ///
-    /// Carries the attribution claims and is the `Bearer` credential when
-    /// uploading this authorization's flow logs; see `flow_log_writer`.
     #[serde(default)]
-    pub flow_logs_ingest_token: Option<String>,
+    pub flow_logs_ingest_token: Option<IngestToken>,
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.

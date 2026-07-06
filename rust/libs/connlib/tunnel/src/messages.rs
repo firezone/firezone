@@ -204,42 +204,53 @@ pub struct UpstreamDo53 {
 
 /// Flow-log upload configuration the portal sends as part of `init`.
 ///
-/// Flow logging is driven entirely by the portal: an upload interval > 0 plus an
-/// API URL enables it, anything else disables it.
+/// Uploads are driven entirely by the portal: an upload interval > 0 plus an
+/// API URL enables them, anything else disables them.
 #[derive(Debug, Deserialize, Clone, Default)]
+#[serde(default)]
 pub struct FlowLogsConfig {
     /// Base URL flow logs are POSTed to (portal-provided, authoritative).
-    #[serde(default)]
-    pub api_url: Option<String>,
+    pub api_url: String,
     /// How often, in seconds, to upload batched flow logs. `0` disables uploads.
-    #[serde(default)]
-    pub upload_interval_secs: Option<u64>,
-    /// Maximum flow-log records per upload request. `0` / absent uses the default.
-    #[serde(default)]
-    pub upload_batch_size: Option<u64>,
+    pub upload_interval_secs: u64,
+    /// Maximum flow-log records per upload request. `0` uses the default.
+    pub upload_batch_size: u64,
 }
 
 impl FlowLogsConfig {
     /// The upload interval to persist.
     ///
-    /// `0` unless flow logging is enabled; persisting `0` removes a previously
+    /// `0` unless uploads are enabled; persisting `0` removes a previously
     /// persisted config.
     pub fn effective_upload_interval_secs(&self) -> u64 {
-        if self.enabled() {
-            self.upload_interval_secs.unwrap_or(0)
+        if self.upload_enabled() {
+            self.upload_interval_secs
         } else {
             0
         }
     }
 
-    /// Whether the portal enabled flow logging.
-    pub fn enabled(&self) -> bool {
-        let has_url = self
-            .api_url
-            .as_deref()
-            .is_some_and(|url| !url.trim().is_empty());
+    /// Whether the portal enabled flow-log uploads.
+    pub fn upload_enabled(&self) -> bool {
+        self.upload_interval_secs > 0 && !self.api_url.trim().is_empty()
+    }
+}
 
-        self.upload_interval_secs.unwrap_or(0) > 0 && has_url
+/// A per-authorization flow-log ingest token minted by the portal.
+///
+/// An opaque HS256 JWT: it carries the authorization's attribution claims and
+/// is the `Bearer` credential when uploading that authorization's flow logs.
+///
+/// Deliberately deserialized without validation so a malformed token can never
+/// fail the message that carries it; `flow_log_writer::write_token` validates
+/// what it needs when persisting.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct IngestToken(String);
+
+impl IngestToken {
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 

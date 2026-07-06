@@ -24,7 +24,7 @@ use tunnel::messages::client::{
     FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
     ResourceAuthorization, ResourceFiltersUpdated,
 };
-use tunnel::messages::{RelaysPresence, SnownetCapabilities};
+use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -461,10 +461,8 @@ impl Eventloop {
                 relays,
                 flow_logs,
             }) => {
-                let enabled = flow_logs.enabled();
-
                 tracing::info!(
-                    enabled,
+                    upload_enabled = flow_logs.upload_enabled(),
                     has_spool_dir = self.flow_logs_dir.is_some(),
                     config = ?flow_logs,
                     "Flow-log config received from portal init"
@@ -473,9 +471,9 @@ impl Eventloop {
                 if let Some(spool_root) = &self.flow_logs_dir
                     && let Err(e) = flow_log_upload::configure_uploads(
                         spool_root,
-                        flow_logs.api_url.as_deref().unwrap_or_default(),
+                        &flow_logs.api_url,
                         flow_logs.effective_upload_interval_secs(),
-                        flow_logs.upload_batch_size.unwrap_or(0),
+                        flow_logs.upload_batch_size,
                     )
                 {
                     tracing::warn!("Failed to persist flow-log upload config: {e:#}");
@@ -536,7 +534,7 @@ impl Eventloop {
             }) => {
                 persist_ingest_token(
                     self.flow_logs_dir.as_deref(),
-                    flow_logs_ingest_token.as_deref(),
+                    flow_logs_ingest_token.as_ref(),
                 );
 
                 match tunnel.state_mut().handle_resource_access_authorized(
@@ -618,7 +616,7 @@ impl Eventloop {
             }) => {
                 persist_ingest_token(
                     self.flow_logs_dir.as_deref(),
-                    flow_logs_ingest_token.as_deref(),
+                    flow_logs_ingest_token.as_ref(),
                 );
 
                 // The portal only sends a resource to the target device; the
@@ -758,12 +756,12 @@ impl Eventloop {
 ///
 /// Tokens deliberately travel here rather than through the flow-log tracing
 /// events, so they can never leak into log output.
-fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: Option<&str>) {
+fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: Option<&IngestToken>) {
     let (Some(spool_root), Some(token)) = (spool_root, token) else {
         return;
     };
 
-    if let Err(e) = flow_log_writer::write_token(spool_root, token) {
+    if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
         tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
     }
 }

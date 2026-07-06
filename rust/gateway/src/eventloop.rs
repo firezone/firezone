@@ -298,8 +298,9 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
-                if let Some(token) = msg.flow_logs_ingest_token.as_deref()
-                    && let Err(e) = flow_log_writer::write_token(&self.flow_logs_dir, token)
+                if let Some(token) = &msg.flow_logs_ingest_token
+                    && let Err(e) =
+                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
                 {
                     tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
                 }
@@ -382,9 +383,9 @@ impl Eventloop {
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
-                    flow_logs.api_url.as_deref().unwrap_or_default(),
+                    &flow_logs.api_url,
                     flow_logs.effective_upload_interval_secs(),
-                    flow_logs.upload_batch_size.unwrap_or(0),
+                    flow_logs.upload_batch_size,
                 ) {
                     tracing::warn!("Failed to persist flow-log upload config: {e:#}");
                 }
