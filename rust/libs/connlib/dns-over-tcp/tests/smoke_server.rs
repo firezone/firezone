@@ -104,17 +104,22 @@ impl Eventloop {
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
             // Send all outbound DNS packets as one batch.
-            let mut batch = Vec::new();
+            let mut batch = tun::PacketBatch::default();
 
             while let Some(packet) = self.dns_server.poll_outbound() {
-                batch.push(packet);
+                if let Err(packet) = batch.try_push(packet) {
+                    self.tun
+                        .sender()
+                        .try_send(std::mem::replace(&mut batch, tun::PacketBatch::new(packet)))
+                        .expect("channels should be able to buffer all batches in this test");
+                }
             }
 
             if !batch.is_empty() {
                 self.tun
                     .sender()
                     .try_send(batch)
-                    .expect("channels should be able to buffer all packets we send in this test");
+                    .expect("channels should be able to buffer all batches in this test");
             }
 
             // Handle DNS queries and generate responses

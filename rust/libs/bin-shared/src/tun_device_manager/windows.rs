@@ -514,9 +514,9 @@ fn start_recv_thread(
     std::thread::Builder::new()
         .name("TUN recv".into())
         .spawn(move || {
-            let mut batch = Vec::new();
+            let mut batch = tun::PacketBatch::default();
 
-            loop {
+            'recv: loop {
                 let Some(session) = session.upgrade() else {
                     tracing::debug!(
                         "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
@@ -539,13 +539,23 @@ fn start_recv_thread(
                     }
                 };
 
-                batch.extend(parse_packet(&pkt));
+                if let Some(packet) = parse_packet(&pkt)
+                    && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
+                {
+                    break 'recv;
+                }
 
                 // Drain whatever else is already in the ring buffer, so one channel item
                 // carries the whole burst.
-                while batch.len() < tun::MAX_BATCH_SIZE {
+                loop {
                     match session.try_receive() {
-                        Ok(Some(pkt)) => batch.extend(parse_packet(&pkt)),
+                        Ok(Some(pkt)) => {
+                            if let Some(packet) = parse_packet(&pkt)
+                                && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
+                            {
+                                break 'recv;
+                            }
+                        }
                         // Ring buffer is drained; hand off what we have.
                         Ok(None) => break,
                         // Any genuine error will surface via `receive_blocking` above.
@@ -557,21 +567,41 @@ fn start_recv_thread(
                     continue;
                 }
 
-                // Use `blocking_send` so that if connlib is behind by a few packets,
-                // Wintun will queue up new packets in its ring buffer while we
-                // wait for our MPSC channel to clear.
-                // Unfortunately we don't know if Wintun is dropping packets, since
-                // it doesn't expose a sequence number or anything.
-                match packet_tx.blocking_send(std::mem::take(&mut batch)) {
-                    Ok(()) => {}
-                    Err(_) => {
-                        tracing::debug!(
-                            "Stopping TUN recv worker thread because the packet channel closed"
-                        );
-                        break;
-                    }
-                };
+                if packet_tx.blocking_send(std::mem::take(&mut batch)).is_err() {
+                    tracing::debug!(
+                        "Stopping TUN recv worker thread because the packet channel closed"
+                    );
+                    break 'recv;
+                }
             }
+        })
+}
+
+/// Appends the packet to the batch; if the batch is full, hands it off and starts a
+/// new one with the packet.
+///
+/// Uses `blocking_send` so that if connlib is behind by a few packets, Wintun will
+/// queue up new packets in its ring buffer while we wait for our MPSC channel to
+/// clear. Unfortunately we don't know if Wintun is dropping packets, since it
+/// doesn't expose a sequence number or anything.
+///
+/// Errors if the channel is closed.
+fn push_or_start_new_batch(
+    batch: &mut tun::PacketBatch,
+    packet: IpPacket,
+    packet_tx: &tun::InboundTx,
+) -> Result<(), ()> {
+    let Err(packet) = batch.try_push(packet) else {
+        return Ok(());
+    };
+
+    packet_tx
+        .blocking_send(std::mem::replace(
+            &mut *batch,
+            tun::PacketBatch::new(packet),
+        ))
+        .map_err(|_| {
+            tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
         })
 }
 

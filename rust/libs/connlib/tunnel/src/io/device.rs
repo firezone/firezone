@@ -6,16 +6,16 @@ use std::collections::VecDeque;
 use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
-use tun::Tun;
+use tun::{PacketBatch, Tun};
 
 pub struct Device {
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
     /// The batch of packets queued since the last call to [`Device::flush_batch`].
-    current_batch: Vec<IpPacket>,
+    current_batch: PacketBatch,
     /// Completed batches that did not fit into the channel yet.
-    pending_batches: VecDeque<Vec<IpPacket>>,
+    pending_batches: VecDeque<PacketBatch>,
     flush_future: Option<BoxFuture<'static, Result<()>>>,
 }
 
@@ -24,7 +24,7 @@ impl Device {
         Self {
             tun: None,
             waker: None,
-            current_batch: Vec::new(),
+            current_batch: PacketBatch::default(),
             pending_batches: VecDeque::new(),
             flush_future: None,
         }
@@ -40,7 +40,7 @@ impl Device {
         }
     }
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<Vec<IpPacket>>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<PacketBatch>> {
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
@@ -106,7 +106,12 @@ impl Device {
             return;
         }
 
-        self.current_batch.push(packet);
+        if let Err(packet) = self.current_batch.try_push(packet) {
+            // The batch is full: hand it off and start a new one.
+            let batch = mem::replace(&mut self.current_batch, PacketBatch::new(packet));
+
+            self.enqueue_batch(batch);
+        }
     }
 
     /// Marks the end of the current batch of packets, handing it to the TUN thread
@@ -116,20 +121,12 @@ impl Device {
             return;
         }
 
-        // Bound each channel item so the channel's worst-case memory use stays capped.
-        while self.current_batch.len() > tun::MAX_BATCH_SIZE {
-            let rest = self.current_batch.split_off(tun::MAX_BATCH_SIZE);
-            let batch = mem::replace(&mut self.current_batch, rest);
-
-            self.enqueue_batch(batch);
-        }
-
         let batch = mem::take(&mut self.current_batch);
 
         self.enqueue_batch(batch);
     }
 
-    fn enqueue_batch(&mut self, batch: Vec<IpPacket>) {
+    fn enqueue_batch(&mut self, batch: PacketBatch) {
         let Some(tun) = self.tun.as_ref() else {
             return;
         };
@@ -266,7 +263,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn oversized_batches_are_split_into_bounded_items() {
+    async fn queue_starts_new_batch_when_full() {
         let mut device = Device::new();
         let (test_tun, mut send_rx, _send_tx) = TestTun::with_capacity(3);
         device.set_tun(Box::new(test_tun));
@@ -285,11 +282,10 @@ mod tests {
         assert_eq!(send_rx.recv().await.unwrap().len(), 50);
     }
 
-    fn expect_single(batch: Vec<IpPacket>) -> IpPacket {
-        let [packet] =
-            <[IpPacket; 1]>::try_from(batch).expect("Expected exactly one packet in the batch");
+    fn expect_single(batch: PacketBatch) -> IpPacket {
+        assert_eq!(batch.len(), 1, "Expected exactly one packet in the batch");
 
-        packet
+        batch.into_iter().next().unwrap()
     }
 
     fn test_packet(dst_port: u16) -> IpPacket {

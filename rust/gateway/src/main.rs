@@ -446,7 +446,7 @@ impl ValidateChecksumAdapter {
         // Spawn task to validate and forward inbound packets from TUN device
         let task = tokio::spawn(async move {
             while let Some(batch) = inner.receiver().recv().await {
-                for packet in &batch {
+                for packet in batch.iter() {
                     validate_checksums(packet);
                 }
 

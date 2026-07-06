@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use ip_packet::IpPacket;
+use smallvec::SmallVec;
 use tokio::sync::mpsc;
 
 #[cfg(target_family = "unix")]
@@ -37,6 +38,56 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     target_os = "android" => { 40 }
     _ => { 40 }
 };
+
+/// A batch of packets, exchanged over the TUN channels as a single item.
+///
+/// Storage is inline: a batch holds at most [`MAX_BATCH_SIZE`] packets and never
+/// allocates. [`PacketBatch::try_push`] hands the packet back once the batch is
+/// full; callers then send off the batch and start a new one with [`PacketBatch::new`].
+#[derive(Debug, Default)]
+pub struct PacketBatch(SmallVec<[IpPacket; MAX_BATCH_SIZE]>);
+
+impl PacketBatch {
+    /// Starts a new batch containing the given packet.
+    pub fn new(first: IpPacket) -> Self {
+        let mut packets = SmallVec::new();
+        packets.push(first);
+
+        Self(packets)
+    }
+
+    /// Appends a packet to the batch, handing it back if the batch is full.
+    #[expect(
+        clippy::result_large_err,
+        reason = "The error carries the rejected packet by design"
+    )]
+    pub fn try_push(&mut self, packet: IpPacket) -> Result<(), IpPacket> {
+        if self.0.len() == MAX_BATCH_SIZE {
+            return Err(packet);
+        }
+
+        self.0.push(packet);
+
+        Ok(())
+    }
+}
+
+impl std::ops::Deref for PacketBatch {
+    type Target = [IpPacket];
+
+    fn deref(&self) -> &[IpPacket] {
+        &self.0
+    }
+}
+
+impl IntoIterator for PacketBatch {
+    type Item = IpPacket;
+    type IntoIter = smallvec::IntoIter<[IpPacket; MAX_BATCH_SIZE]>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 pub trait Tun: Send + Sync + 'static {
     /// Get a reference to the sender for outbound packets.
@@ -77,81 +128,89 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 /// Each item is one batch of packets; the end of a batch marks the boundary
 /// up to which the TUN thread may coalesce packets before writing them out.
 #[derive(Clone)]
-pub struct OutboundTx(mpsc::Sender<Vec<IpPacket>>);
+pub struct OutboundTx(mpsc::Sender<PacketBatch>);
 
 impl OutboundTx {
+    #[expect(
+        clippy::result_large_err,
+        reason = "The error carries the unsent batch by design"
+    )]
     pub fn try_send(
         &self,
-        batch: Vec<IpPacket>,
-    ) -> Result<(), mpsc::error::TrySendError<Vec<IpPacket>>> {
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
         self.0.try_send(batch)
     }
 
     pub async fn send(
         &self,
-        batch: Vec<IpPacket>,
-    ) -> Result<(), mpsc::error::SendError<Vec<IpPacket>>> {
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.send(batch).await
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<Vec<IpPacket>> {
+    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
         self.0.downgrade()
     }
 }
 
 /// The receiving half of the channel to the thread writing to the TUN device.
-pub struct OutboundRx(mpsc::Receiver<Vec<IpPacket>>);
+pub struct OutboundRx(mpsc::Receiver<PacketBatch>);
 
 impl OutboundRx {
-    pub async fn recv(&mut self) -> Option<Vec<IpPacket>> {
+    pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }
 
-    pub fn blocking_recv(&mut self) -> Option<Vec<IpPacket>> {
+    pub fn blocking_recv(&mut self) -> Option<PacketBatch> {
         self.0.blocking_recv()
     }
 }
 
 /// The sending half of the channel of packet batches read from the TUN device.
 #[derive(Clone)]
-pub struct InboundTx(mpsc::Sender<Vec<IpPacket>>);
+pub struct InboundTx(mpsc::Sender<PacketBatch>);
 
 impl InboundTx {
     pub async fn send(
         &self,
-        batch: Vec<IpPacket>,
-    ) -> Result<(), mpsc::error::SendError<Vec<IpPacket>>> {
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.send(batch).await
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "The error carries the unsent batch by design"
+    )]
     pub fn blocking_send(
         &self,
-        batch: Vec<IpPacket>,
-    ) -> Result<(), mpsc::error::SendError<Vec<IpPacket>>> {
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.blocking_send(batch)
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<Vec<IpPacket>> {
+    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
         self.0.downgrade()
     }
 }
 
 /// The receiving half of the channel of packet batches read from the TUN device.
-pub struct InboundRx(mpsc::Receiver<Vec<IpPacket>>);
+pub struct InboundRx(mpsc::Receiver<PacketBatch>);
 
 impl InboundRx {
     pub fn poll_recv(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Vec<IpPacket>>> {
+    ) -> std::task::Poll<Option<PacketBatch>> {
         self.0.poll_recv(cx)
     }
 
-    pub async fn recv(&mut self) -> Option<Vec<IpPacket>> {
+    pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }
 
-    pub fn try_recv(&mut self) -> Result<Vec<IpPacket>, mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
         self.0.try_recv()
     }
 }
@@ -165,8 +224,7 @@ mod tests {
     /// [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
     const MAX_CHANNEL_MEMORY: usize = 2
         * CHANNEL_CAPACITY
-        * (size_of::<Vec<IpPacket>>()
-            + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
+        * (size_of::<PacketBatch>() + MAX_BATCH_SIZE * ip_packet::MAX_FZ_PAYLOAD);
 
     /// iOS network extensions are limited to 50 MB of memory; the channels must only
     /// ever use a small fraction of that.

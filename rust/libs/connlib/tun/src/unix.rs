@@ -6,7 +6,7 @@ use std::mem;
 use std::os::fd::AsRawFd;
 use tokio::io::unix::AsyncFd;
 
-use crate::MAX_BATCH_SIZE;
+use crate::PacketBatch;
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -166,15 +166,15 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
-            let mut batch = Vec::with_capacity(MAX_BATCH_SIZE);
+            let mut batch = PacketBatch::default();
 
             loop {
                 let mut guard = fd.readable().await?;
 
-                // Drain up to `MAX_BATCH_SIZE` packets from the FD before handing them off
-                // as a single batch, so one channel item feeds a whole read burst into the
-                // state loop instead of one packet.
-                while batch.len() < MAX_BATCH_SIZE {
+                // Drain the FD before handing the packets off as a single batch, so one
+                // channel item feeds a whole read burst into the state loop instead of
+                // one packet.
+                loop {
                     let mut ip_packet_buf = IpPacketBuf::new();
 
                     let len = match guard
@@ -194,7 +194,20 @@ where
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            batch.push(packet);
+                            let Err(packet) = batch.try_push(packet) else {
+                                continue;
+                            };
+
+                            // The batch is full: hand it off and start a new one.
+                            if inbound_tx
+                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .await
+                                .is_err()
+                            {
+                                tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                                return anyhow::Ok(());
+                            }
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                             tracing::debug!("{e:#}") // Log on debug to be less noisy.

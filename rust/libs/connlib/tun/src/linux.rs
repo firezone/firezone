@@ -20,7 +20,6 @@ mod tests;
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use coalesce::{Outgoing, TunGsoQueue};
-use ip_packet::IpPacket;
 use opentelemetry::KeyValue;
 use std::io;
 use std::mem;
@@ -29,7 +28,7 @@ use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
 
-use crate::{InboundTx, MAX_BATCH_SIZE, OutboundRx};
+use crate::{InboundTx, OutboundRx, PacketBatch};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
@@ -213,12 +212,12 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
-            let mut batch = Vec::<IpPacket>::new();
+            let mut batch = PacketBatch::default();
 
             loop {
                 let mut guard = fd.readable().await?;
 
-                while batch.len() < MAX_BATCH_SIZE {
+                loop {
                     let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
                         Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
                         Ok(Ok(len)) => len,
@@ -234,12 +233,27 @@ where
                             batch_size_histogram
                                 .record(segments.len() as u64, &recv_metric_attributes());
 
-                            #[cfg(debug_assertions)]
-                            for packet in &segments {
+                            for packet in segments {
+                                #[cfg(debug_assertions)]
                                 tracing::trace!(target: "wire::dev::recv", ?packet);
-                            }
 
-                            batch.extend(segments);
+                                let Err(packet) = batch.try_push(packet) else {
+                                    continue;
+                                };
+
+                                // The batch is full: hand it off and start a new one.
+                                if inbound_tx
+                                    .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                                    .await
+                                    .is_err()
+                                {
+                                    tracing::debug!(
+                                        "Inbound packet receiver gone, shutting down task"
+                                    );
+
+                                    return anyhow::Ok(());
+                                }
+                            }
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                             tracing::debug!("{e:#}"); // Log on debug to be less noisy.
@@ -250,21 +264,6 @@ where
 
                 if batch.is_empty() {
                     continue;
-                }
-
-                // The last split may have overshot `MAX_BATCH_SIZE`; hand off in bounded chunks.
-                while batch.len() > MAX_BATCH_SIZE {
-                    let rest = batch.split_off(MAX_BATCH_SIZE);
-
-                    if inbound_tx
-                        .send(mem::replace(&mut batch, rest))
-                        .await
-                        .is_err()
-                    {
-                        tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                        return anyhow::Ok(());
-                    }
                 }
 
                 if inbound_tx.send(mem::take(&mut batch)).await.is_err() {

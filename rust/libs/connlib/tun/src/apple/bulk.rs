@@ -15,7 +15,7 @@ use std::os::fd::{AsRawFd as _, RawFd};
 use tokio::io::{Interest, unix::AsyncFd};
 
 use super::sys;
-use crate::MAX_BATCH_SIZE;
+use crate::{MAX_BATCH_SIZE, PacketBatch};
 
 /// How many packets we exchange with the kernel per syscall.
 ///
@@ -110,7 +110,7 @@ pub fn recv(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
 
-            loop {
+            'recv: loop {
                 let mut bufs: Vec<IpPacketBuf> =
                     (0..BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
                 let mut lens = [0usize; BATCH_SIZE];
@@ -137,7 +137,7 @@ pub fn recv(
                     ],
                 );
 
-                let mut batch = Vec::with_capacity(n);
+                let mut batch = PacketBatch::default();
 
                 for (buf, len) in bufs.into_iter().zip(lens).take(n) {
                     if len == 0 {
@@ -149,7 +149,20 @@ pub fn recv(
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            batch.push(packet);
+                            let Err(packet) = batch.try_push(packet) else {
+                                continue;
+                            };
+
+                            // Unreachable in practice: we read at most `MAX_BATCH_SIZE`
+                            // packets per syscall, but a full batch is handed off all the same.
+                            if inbound_tx
+                                .send(std::mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .await
+                                .is_err()
+                            {
+                                tracing::debug!("Inbound packet receiver gone, shutting down task");
+                                break 'recv;
+                            }
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => tracing::debug!("{e:#}"),
                         Err(e) => tracing::warn!("{e:#}"),
