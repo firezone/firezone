@@ -49,6 +49,17 @@ services:
         ipv4_address: 172.20.0.110
         ipv6_address: 172:20:0::110
 
+  secnetperf:
+    image: ghcr.io/firezone/secnetperf:latest
+    command: secnetperf -exec:maxtput -stats:1
+    healthcheck:
+      # 4433 (the default secnetperf port) in hex
+      test: ["CMD-SHELL", "grep -q :1151 /proc/net/udp /proc/net/udp6"]
+    networks:
+      resources:
+        ipv4_address: 172.20.0.111
+        ipv6_address: 172:20:0::111
+
 networks:
   dns_resources:
     ipam:

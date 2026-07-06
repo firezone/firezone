@@ -169,6 +169,16 @@ services:
       internet:
         interface_name: internet
 
+  # One-shot secnetperf client for QUIC performance tests. Shares the network
+  # namespace of `client-1` so its traffic is routed through the tunnel.
+  # Run with `docker compose run --rm secnetperf-client secnetperf -target:...`.
+  secnetperf-client:
+    image: ghcr.io/firezone/secnetperf:latest
+    network_mode: service:client-1
+    depends_on:
+      client-1:
+        condition: "service_healthy"
+
   client-2:
     extends:
       file: scripts/compose/client.yml

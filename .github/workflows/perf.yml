@@ -1,0 +1,41 @@
+name: Performance Tests (manual)
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Mirrors the perf-test job graph of `cd.yml` so that manual runs test the
+# dispatched ref with images built from that same ref.
+jobs:
+  data-plane-perf-images:
+    uses: ./.github/workflows/_data-plane.yml
+    secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      image_prefix: "perf"
+      profile: "release"
+      stage: "debug" # Only the debug images have perf tooling
+
+  control-plane-images:
+    uses: ./.github/workflows/_control-plane.yml
+    secrets: inherit
+    permissions:
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+
+  perf-tests:
+    needs: [data-plane-perf-images, control-plane-images]
+    uses: ./.github/workflows/_perf_tests.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      pull-requests: write # post perf result comments
+      checks: write # Bencher check annotations
