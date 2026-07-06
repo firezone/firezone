@@ -126,34 +126,17 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     tracing::debug!(%env, flags = ?FEATURE_FLAGS, "Evaluated feature-flags");
 }
 
-pub(crate) fn reevaluate(user_id: String, env: &str) {
-    let Ok(env) = env.parse() else {
+/// Re-evaluates feature flags using the current telemetry user and environment.
+///
+/// Does nothing until telemetry is active and both are known. Lets us refresh
+/// flags promptly when the network situation changes instead of waiting for the
+/// next periodic re-evaluation.
+pub(crate) fn reevaluate_current() {
+    let Some((user_id, env)) = crate::current_identity() else {
         return;
     };
 
     ingest::RUNTIME.spawn(evaluate_now(user_id, env));
-}
-
-/// Re-evaluates feature flags using the current telemetry user and environment.
-///
-/// Does nothing until both are known. Lets us refresh flags promptly when the
-/// network situation changes instead of waiting for the next periodic re-evaluation.
-pub(crate) fn reevaluate_current() {
-    let Some(client) = sentry::Hub::main().client() else {
-        return;
-    };
-
-    let Some(env) = client.options().environment.as_ref() else {
-        return; // Nothing to do if we don't have an environment set.
-    };
-
-    let Some(user_id) =
-        sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
-    else {
-        return; // Nothing to do if we don't have a user-id set.
-    };
-
-    reevaluate(user_id, env);
 }
 
 pub(crate) async fn reeval_timer() {

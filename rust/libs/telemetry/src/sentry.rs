@@ -32,7 +32,7 @@ pub(crate) fn init_sdk_client(
     environment: &'static str,
     release: &str,
 ) -> ClientInitGuard {
-    init((
+    let guard = init((
         dsn,
         ClientOptions {
             environment: Some(Cow::Borrowed(environment)),
@@ -65,7 +65,16 @@ pub(crate) fn init_sdk_client(
             transport: Some(Arc::new(Factory)),
             ..Default::default()
         },
-    ))
+    ));
+
+    // `init` binds the client to the calling thread's hub, which coincides with
+    // `Hub::main()` only on the first thread that ever used Sentry. This crate
+    // reads and configures `Hub::main()` throughout, so bind the client there
+    // explicitly to keep this function thread-agnostic; mobile clients call it
+    // from arbitrary dispatcher threads.
+    Hub::main().bind_client(Hub::current().client());
+
+    guard
 }
 
 /// Creates [`SentryTransport`]s for the Sentry SDK.

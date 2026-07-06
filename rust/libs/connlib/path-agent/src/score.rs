@@ -27,8 +27,10 @@ pub(crate) enum LocalFamily {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Bucket {
-    /// `Host < ServerReflexive < Relayed`; `max` of the two ends.
-    pub(crate) tier: crate::CandidateKind,
+    /// `Host < ServerReflexive < Relayed`; the worse end, then the better
+    /// end. Comparing both ends keeps e.g. relay->srflx (one relay hop)
+    /// ahead of relay->relay (two) instead of tying them on RTT.
+    pub(crate) tier: (crate::CandidateKind, crate::CandidateKind),
     pub(crate) relay_end: RelayEnd,
     pub(crate) family_match: FamilyMatch,
     pub(crate) local_family: LocalFamily,
@@ -43,7 +45,11 @@ pub(crate) struct PairScore {
 pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
     PairScore {
         bucket: Bucket {
-            tier: state.kinds.0.max(state.kinds.1),
+            tier: {
+                let (local, remote) = state.kinds;
+
+                (local.max(remote), local.min(remote))
+            },
             relay_end: if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
                 RelayEnd::Local
             } else {
