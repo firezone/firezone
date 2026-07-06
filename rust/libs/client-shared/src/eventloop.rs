@@ -462,7 +462,6 @@ impl Eventloop {
                 flow_logs,
             }) => {
                 tracing::info!(
-                    upload_enabled = flow_logs.upload_enabled(),
                     has_spool_dir = self.flow_logs_dir.is_some(),
                     config = ?flow_logs,
                     "Flow-log config received from portal init"
@@ -472,7 +471,7 @@ impl Eventloop {
                     && let Err(e) = flow_log_upload::configure_uploads(
                         spool_root,
                         &flow_logs.api_url,
-                        flow_logs.effective_upload_interval_secs(),
+                        flow_logs.upload_interval_secs,
                         flow_logs.upload_batch_size,
                     )
                 {

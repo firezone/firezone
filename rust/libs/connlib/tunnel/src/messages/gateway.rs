@@ -87,7 +87,6 @@ pub struct InitGateway {
     pub account_slug: Option<String>,
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
-    #[serde(default)]
     pub flow_logs: FlowLogsConfig,
 }
 
@@ -348,7 +347,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_init_message() {
-        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000}}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 

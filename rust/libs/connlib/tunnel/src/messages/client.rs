@@ -119,7 +119,6 @@ pub struct InitClient {
     pub resources: Vec<ResourceDescription>,
     #[serde(default)]
     pub relays: Vec<Relay>,
-    #[serde(default)]
     pub flow_logs: FlowLogsConfig,
 }
 
@@ -414,30 +413,15 @@ mod tests {
         assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
-        assert!(init.flow_logs.upload_enabled());
     }
 
     #[test]
-    fn can_deserialize_init_without_flow_logs_config() {
+    fn init_without_flow_logs_config_is_rejected() {
         let init = r#"{
             "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" }
         }"#;
 
-        let init = serde_json::from_str::<InitClient>(init).unwrap();
-
-        assert!(init.flow_logs.api_url.is_empty());
-        assert!(!init.flow_logs.upload_enabled());
-    }
-
-    #[test]
-    fn blank_flow_logs_api_url_is_disabled() {
-        let config = FlowLogsConfig {
-            api_url: " ".to_owned(),
-            upload_interval_secs: 60,
-            upload_batch_size: 0,
-        };
-
-        assert!(!config.upload_enabled());
+        serde_json::from_str::<InitClient>(init).unwrap_err();
     }
 
     #[test]
@@ -628,7 +612,12 @@ mod tests {
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     }
-                ]
+                ],
+                "flow_logs": {
+                    "api_url": "https://flow-api.firezone.dev",
+                    "upload_interval_secs": 60,
+                    "upload_batch_size": 1000
+                }
             },
             "ref": null,
             "topic": "client"
@@ -670,7 +659,12 @@ mod tests {
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     }
-                ]
+                ],
+                "flow_logs": {
+                    "api_url": "https://flow-api.firezone.dev",
+                    "upload_interval_secs": 60,
+                    "upload_batch_size": 1000
+                }
             },
             "ref": null,
             "topic": "client"
