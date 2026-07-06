@@ -11,7 +11,11 @@ pub mod apple;
 
 /// Capacity of the channels connecting the TUN device threads to the main thread.
 const CHANNEL_CAPACITY: usize = cfg_select! {
-    any(target_os = "linux", target_os = "macos", target_os = "ios") => { 10_000 }
+    target_os = "linux" => { 10_000 }
+    target_os = "windows" => { 10_000 }
+    target_os = "macos" => { 10_000 }
+    target_os = "ios" => { 1_000 }
+    target_os = "android" => { 1_000 }
     _ => { 1_000 }
 };
 
@@ -45,13 +49,6 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(capacity);
 
     (OutboundTx(tx), OutboundRx(rx))
-}
-
-/// Creates an inbound channel with an explicit capacity; only meant for tests.
-pub fn inbound_channel_for_test(capacity: usize) -> (InboundTx, InboundRx) {
-    let (tx, rx) = mpsc::channel(capacity);
-
-    (InboundTx(tx), InboundRx(rx))
 }
 
 /// The sending half of the channel to the thread writing to the TUN device.

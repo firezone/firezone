@@ -265,7 +265,7 @@ mod tests {
     impl TestTun {
         fn new() -> (Self, tun::OutboundRx, tun::InboundTx) {
             let (send_tx, send_rx) = tun::outbound_channel_for_test(1);
-            let (recv_tx, recv_rx) = tun::inbound_channel_for_test(1);
+            let (recv_tx, recv_rx) = tun::inbound_channel();
 
             (Self { send_tx, recv_rx }, send_rx, recv_tx)
         }

@@ -26,7 +26,7 @@ fn recv_reads_packets_routed_through_the_interface() {
     raise_max_pending_packets(fd, 64);
     configure(&name);
 
-    let (tx, mut rx) = crate::inbound_channel_for_test(1024);
+    let (tx, mut rx) = crate::inbound_channel();
     std::thread::Builder::new()
         .name("test TUN recv".to_owned())
         .spawn(move || {
