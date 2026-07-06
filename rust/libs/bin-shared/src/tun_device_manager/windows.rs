@@ -386,11 +386,17 @@ fn start_send_thread(
     std::thread::Builder::new()
         .name("TUN send".into())
         .spawn(move || 'next_packet: loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
+            let Some(item) = packet_rx.blocking_recv() else {
                 tracing::debug!(
                     "Stopping TUN send worker thread because the packet channel closed"
                 );
                 break 'next_packet;
+            };
+
+            let packet = match item {
+                tun::OutboundItem::Packet(packet) => packet,
+                // Packets are written to the TUN device as they come in; there is nothing to flush.
+                tun::OutboundItem::Flush => continue 'next_packet,
             };
 
             let bytes = packet.packet();

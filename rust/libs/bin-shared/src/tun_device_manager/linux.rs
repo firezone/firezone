@@ -7,7 +7,6 @@ use futures::{
     future::{self, Either},
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
@@ -25,7 +24,7 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{
     collections::HashMap,
-    os::fd::{FromRawFd as _, OwnedFd},
+    os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
 };
 use std::{
     collections::HashSet,
@@ -42,6 +41,14 @@ use tokio::time::Instant;
 use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
+const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
+
+const TUN_F_CSUM: libc::c_uint = 0x01;
+const TUN_F_TSO4: libc::c_uint = 0x02;
+const TUN_F_TSO6: libc::c_uint = 0x04;
+const TUN_F_USO4: libc::c_uint = 0x20;
+const TUN_F_USO6: libc::c_uint = 0x40;
+
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 
@@ -712,7 +719,7 @@ impl Tun {
 
                 move || {
                     logging::unwrap_or_warn!(
-                        tun::unix::tun_send(fd, outbound_rx, write),
+                        tun::linux::tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
@@ -722,7 +729,7 @@ impl Tun {
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::linux::tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
             })
@@ -746,21 +753,35 @@ fn open_tun() -> Result<OwnedFd> {
         fd => fd,
     };
 
-    unsafe {
-        ioctl::exec(
-            fd,
-            TUNSETIFF,
-            &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
-        )
-        .context("Failed to set flags on TUN device")?;
-    }
-
-    set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
-
     // Safety: We are not closing the FD.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
+    let mut request =
+        ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME);
+
+    unsafe {
+        ioctl::exec(fd.as_raw_fd(), TUNSETIFF, &mut request)
+            .context("Failed to set flags on TUN device")?;
+    }
+
+    enable_offloads(fd.as_raw_fd()).context("Failed to enable TUN offloads")?;
+    set_non_blocking(fd.as_raw_fd()).context("Failed to make TUN device non-blocking")?;
+
     Ok(fd)
+}
+
+/// Enables checksum and segmentation offloads on the TUN device.
+///
+/// UDP segmentation offload (`TUN_F_USO*`) requires Linux 6.2.
+fn enable_offloads(fd: RawFd) -> io::Result<()> {
+    const OFFLOADS: libc::c_uint = TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6;
+
+    // Safety: The file descriptor is valid.
+    if unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
 }
 
 impl tun::Tun for Tun {
@@ -816,26 +837,4 @@ fn create_tun_device() -> io::Result<()> {
     }
 
     Ok(())
-}
-
-/// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
-    }
-}
-
-/// Write the packet to the given file descriptor.
-fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
-    let buf = packet.packet();
-
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
-    }
 }

@@ -1,13 +1,13 @@
 mod device;
 mod doh;
-mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
 mod timeout;
 mod udp_dns;
+mod udp_gso_queue;
 
 pub use device::{Device, TunChannelClosed};
-pub(crate) use gso_queue::GsoQueue;
+pub(crate) use udp_gso_queue::UdpGsoQueue;
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -51,7 +51,7 @@ const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    gso_queue: GsoQueue,
+    gso_queue: UdpGsoQueue,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -189,7 +189,7 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
-            gso_queue: GsoQueue::new(),
+            gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -463,7 +463,7 @@ impl Io {
         self.tun.set_tun(tun);
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) {
+    pub fn queue_tun(&mut self, packet: IpPacket) {
         self.packet_counter.add(
             1,
             &[
@@ -472,7 +472,12 @@ impl Io {
             ],
         );
 
-        self.tun.send(packet);
+        self.tun.queue(packet);
+    }
+
+    /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
+    pub fn flush_tun_batch(&mut self) {
+        self.tun.flush_batch();
     }
 
     pub fn reset(&mut self) {
@@ -507,7 +512,7 @@ impl Io {
     }
 
     /// The GSO queue used as the destination buffer when encapsulating packets in place.
-    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
+    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
         &mut self.gso_queue
     }
 

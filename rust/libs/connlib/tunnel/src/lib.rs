@@ -210,9 +210,11 @@ impl ClientTunnel {
 
             // Drain all buffered IP packets.
             while let Some(packet) = self.role_state.poll_packets() {
-                self.io.send_tun(packet);
+                self.io.queue_tun(packet);
                 tick.want_continue();
             }
+
+            self.io.flush_tun_batch();
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -298,11 +300,13 @@ impl ClientTunnel {
                             }) {
                             Ok(Some(packet)) => self
                                 .io
-                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };
                     }
+
+                    self.io.flush_tun_batch();
 
                     tick.want_continue();
                 }
@@ -500,11 +504,13 @@ impl GatewayTunnel {
                             }) {
                             Ok(Some(packet)) => self
                                 .io
-                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };
                     }
+
+                    self.io.flush_tun_batch();
 
                     tick.want_continue();
                 }

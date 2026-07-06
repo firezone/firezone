@@ -46,7 +46,12 @@ where
             // Pull as many packets as are queued (up to `MAX_TUN_BATCH`) per wake-up,
             // so the cost of being scheduled is amortised across the whole batch.
             while outbound_rx.recv_many(&mut packets, MAX_TUN_BATCH).await > 0 {
-                for packet in packets.drain(..) {
+                for item in packets.drain(..) {
+                    let packet = match item {
+                        crate::OutboundItem::Packet(packet) => packet,
+                        // Packets are written to the TUN device as they come in; there is nothing to flush.
+                        crate::OutboundItem::Flush => continue,
+                    };
                     #[cfg(debug_assertions)]
                     tracing::trace!(target: "wire::dev::send", ?packet);
 

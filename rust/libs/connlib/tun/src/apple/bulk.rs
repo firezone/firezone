@@ -15,7 +15,6 @@ use std::os::fd::{AsRawFd as _, RawFd};
 use tokio::io::{Interest, unix::AsyncFd};
 
 use super::sys;
-use crate::{InboundTx, OutboundRx};
 
 /// How many packets we exchange with the kernel per syscall.
 ///
@@ -33,7 +32,7 @@ const EMPTY_IOVEC: iovec = iovec {
 pub fn send(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
-    mut outbound_rx: OutboundRx,
+    mut outbound_rx: crate::OutboundRx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
@@ -44,12 +43,19 @@ pub fn send(
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
+            let mut items = Vec::with_capacity(BATCH_SIZE);
             let mut batch = Vec::with_capacity(BATCH_SIZE);
 
             loop {
-                if outbound_rx.recv_many(&mut batch, BATCH_SIZE).await == 0 {
+                if outbound_rx.recv_many(&mut items, BATCH_SIZE).await == 0 {
                     break; // Channel closed.
                 }
+
+                // Packets are written to the TUN device as they come in; there is nothing to flush.
+                batch.extend(items.drain(..).filter_map(|item| match item {
+                    crate::OutboundItem::Packet(packet) => Some(packet),
+                    crate::OutboundItem::Flush => None,
+                }));
 
                 let mut offset = 0;
                 while offset < batch.len() {
@@ -105,7 +111,11 @@ pub fn send(
 }
 
 /// Receives batches of packets from the TUN device into `inbound_tx`.
-pub fn recv(fd: RawFd, syscalls: &'static sys::BatchSyscalls, inbound_tx: InboundTx) -> Result<()> {
+pub fn recv(
+    fd: RawFd,
+    syscalls: &'static sys::BatchSyscalls,
+    inbound_tx: crate::InboundTx,
+) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
 
     tokio::runtime::Builder::new_current_thread()

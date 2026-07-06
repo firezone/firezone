@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
-use tun::Tun;
+use tun::{OutboundItem, Tun};
 
 /// How many packets we at most expect to buffer on the stack.
 ///
@@ -22,7 +22,7 @@ pub struct Device {
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
-    outbound_buffer: SmallVec<[IpPacket; MAX_BUFFERED_PACKETS]>,
+    outbound_buffer: SmallVec<[OutboundItem; MAX_BUFFERED_PACKETS]>,
     flush_future: Option<BoxFuture<'static, Result<()>>>,
 }
 
@@ -105,12 +105,26 @@ impl Device {
         Poll::Ready(res)
     }
 
-    pub fn send(&mut self, packet: IpPacket) {
+    /// Queues a packet for the TUN device.
+    ///
+    /// The TUN thread may buffer queued packets for batching until the current batch
+    /// is completed with [`Device::flush_batch`].
+    pub fn queue(&mut self, packet: IpPacket) {
         debug_assert!(
             !packet.is_fz_p2p_control(),
             "FZ p2p control protocol packets should never leave `connlib`"
         );
 
+        self.enqueue(OutboundItem::Packet(packet));
+    }
+
+    /// Marks the end of the current batch of packets, instructing the TUN thread to
+    /// write out any packets it may have buffered for batching.
+    pub fn flush_batch(&mut self) {
+        self.enqueue(OutboundItem::Flush);
+    }
+
+    fn enqueue(&mut self, item: OutboundItem) {
         let Some(tun) = self.tun.as_ref() else {
             return;
         };
@@ -119,21 +133,21 @@ impl Device {
         // packets being flushed. Otherwise a `try_send` here could slip it into the channel ahead
         // of them, reordering the stream we write to the TUN device.
         if self.flush_future.is_some() {
-            self.outbound_buffer.push(packet);
+            self.outbound_buffer.push(item);
             return;
         }
 
         // Likewise, if we haven't started flushing yet but are already buffering (a previous
         // `try_send` hit a full channel), this packet must queue behind those buffered packets.
         if !self.outbound_buffer.is_empty() {
-            self.outbound_buffer.push(packet);
+            self.outbound_buffer.push(item);
             return;
         }
 
         // Fast path: nothing queued, send immediately if the channel has capacity.
-        if let Err(packet) = tun.sender().try_send(packet).map_err(|e| e.into_inner()) {
-            tracing::trace!(?packet, "Unable to send packet into channel, buffering");
-            self.outbound_buffer.push(packet);
+        if let Err(item) = tun.sender().try_send(item).map_err(|e| e.into_inner()) {
+            tracing::trace!("Unable to send packet into channel, buffering");
+            self.outbound_buffer.push(item);
         }
     }
 }
@@ -159,7 +173,7 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1234, 5678, &[])
                 .unwrap();
 
-        device.send(packet);
+        device.queue(packet);
 
         let err = std::future::poll_fn(|cx| device.poll_flush(cx))
             .await
@@ -186,8 +200,8 @@ mod tests {
 
         // We cycle 3 times to ensure we can send and flush again repeatedly.
         for _ in 0..3 {
-            device.send(packet.clone());
-            device.send(packet.clone()); // This one should get buffered.
+            device.queue(packet.clone());
+            device.queue(packet.clone()); // This one should get buffered.
 
             let poll = device.poll_flush_noop_waker();
             assert!(poll.is_pending(), "Flush should suspend if channel is full");
@@ -215,9 +229,9 @@ mod tests {
         let packet_c = test_packet(3);
 
         // A claims the single channel slot via the `try_send` fast-path.
-        device.send(packet_a.clone());
+        device.queue(packet_a.clone());
         // B finds the channel full and gets buffered.
-        device.send(packet_b.clone());
+        device.queue(packet_b.clone());
 
         // Start flushing B. It can't make progress while the channel is still full, so the flush
         // stays in-flight (`flush_future` is `Some`).
@@ -229,21 +243,28 @@ mod tests {
 
         // C arrives while the flush is in-flight. It must queue behind B rather than racing ahead
         // through `try_send`.
-        device.send(packet_c.clone());
+        device.queue(packet_c.clone());
 
         // Drain the channel and finish flushing. The receiver must observe A, then B, then C, and
         // never A, C, B.
-        assert_eq!(send_rx.recv().await.unwrap(), packet_a);
+        assert_eq!(expect_packet(send_rx.recv().await.unwrap()), packet_a);
 
         std::future::poll_fn(|cx| device.poll_flush(cx))
             .await
             .unwrap();
-        assert_eq!(send_rx.recv().await.unwrap(), packet_b);
+        assert_eq!(expect_packet(send_rx.recv().await.unwrap()), packet_b);
 
         std::future::poll_fn(|cx| device.poll_flush(cx))
             .await
             .unwrap();
-        assert_eq!(send_rx.recv().await.unwrap(), packet_c);
+        assert_eq!(expect_packet(send_rx.recv().await.unwrap()), packet_c);
+    }
+
+    fn expect_packet(item: OutboundItem) -> IpPacket {
+        match item {
+            OutboundItem::Packet(packet) => packet,
+            OutboundItem::Flush => panic!("Expected a packet, got a flush"),
+        }
     }
 
     fn test_packet(dst_port: u16) -> IpPacket {

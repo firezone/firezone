@@ -1,8 +1,12 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use ip_packet::IpPacket;
 use tokio::sync::mpsc;
 
 #[cfg(target_family = "unix")]
 pub mod ioctl;
+#[cfg(target_os = "linux")]
+pub mod linux;
 #[cfg(target_family = "unix")]
 pub mod unix;
 
@@ -18,6 +22,18 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     target_os = "android" => { 1_000 }
     _ => { 1_000 }
 };
+
+/// An instruction for the thread that writes packets to the TUN device.
+#[derive(Debug)]
+pub enum OutboundItem {
+    /// Write this IP packet to the TUN device.
+    Packet(IpPacket),
+    /// Write out any packets that are buffered in the TUN thread.
+    ///
+    /// Marks the end of a batch of packets.
+    /// Platforms that write packets to the TUN device one-by-one treat this as a no-op.
+    Flush,
+}
 
 pub trait Tun: Send + Sync + 'static {
     /// Get a reference to the sender for outbound packets.
@@ -55,39 +71,45 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 
 /// The sending half of the channel to the thread writing to the TUN device.
 #[derive(Clone)]
-pub struct OutboundTx(mpsc::Sender<IpPacket>);
+pub struct OutboundTx(mpsc::Sender<OutboundItem>);
 
 impl OutboundTx {
     #[expect(
         clippy::result_large_err,
-        reason = "The error carries the unsent packet by design"
+        reason = "The error carries the unsent item by design"
     )]
-    pub fn try_send(&self, packet: IpPacket) -> Result<(), mpsc::error::TrySendError<IpPacket>> {
-        self.0.try_send(packet)
+    pub fn try_send(
+        &self,
+        item: OutboundItem,
+    ) -> Result<(), mpsc::error::TrySendError<OutboundItem>> {
+        self.0.try_send(item)
     }
 
-    pub async fn send(&self, packet: IpPacket) -> Result<(), mpsc::error::SendError<IpPacket>> {
-        self.0.send(packet).await
+    pub async fn send(
+        &self,
+        item: OutboundItem,
+    ) -> Result<(), mpsc::error::SendError<OutboundItem>> {
+        self.0.send(item).await
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<IpPacket> {
+    pub fn downgrade(&self) -> mpsc::WeakSender<OutboundItem> {
         self.0.downgrade()
     }
 }
 
 /// The receiving half of the channel to the thread writing to the TUN device.
-pub struct OutboundRx(mpsc::Receiver<IpPacket>);
+pub struct OutboundRx(mpsc::Receiver<OutboundItem>);
 
 impl OutboundRx {
-    pub async fn recv(&mut self) -> Option<IpPacket> {
+    pub async fn recv(&mut self) -> Option<OutboundItem> {
         self.0.recv().await
     }
 
-    pub async fn recv_many(&mut self, buffer: &mut Vec<IpPacket>, limit: usize) -> usize {
+    pub async fn recv_many(&mut self, buffer: &mut Vec<OutboundItem>, limit: usize) -> usize {
         self.0.recv_many(buffer, limit).await
     }
 
-    pub fn blocking_recv(&mut self) -> Option<IpPacket> {
+    pub fn blocking_recv(&mut self) -> Option<OutboundItem> {
         self.0.blocking_recv()
     }
 }
@@ -110,7 +132,7 @@ impl InboundTx {
 
     #[expect(
         clippy::result_large_err,
-        reason = "The error carries the unsent packet by design"
+        reason = "The error carries the unsent item by design"
     )]
     pub fn blocking_send(&self, packet: IpPacket) -> Result<(), mpsc::error::SendError<IpPacket>> {
         self.0.blocking_send(packet)

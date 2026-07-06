@@ -104,11 +104,23 @@ impl Eventloop {
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
             // Send all outbound DNS packets
+            let mut sent_any = false;
+
             while let Some(packet) = self.dns_server.poll_outbound() {
                 self.tun
                     .sender()
-                    .try_send(packet)
-                    .expect("channels should be able to buffer all packets we send in this test")
+                    .try_send(tun::OutboundItem::Packet(packet))
+                    .expect("channels should be able to buffer all packets we send in this test");
+
+                sent_any = true;
+            }
+
+            // Mark the end of the batch so the TUN thread writes out buffered packets.
+            if sent_any {
+                self.tun
+                    .sender()
+                    .try_send(tun::OutboundItem::Flush)
+                    .expect("channels should be able to buffer all packets we send in this test");
             }
 
             // Handle DNS queries and generate responses
