@@ -710,7 +710,15 @@ impl Tun {
             ],
         ));
 
-        let fd = Arc::new(open_tun()?);
+        let offloads = tun::linux::offloads_supported();
+
+        if !offloads {
+            tracing::info!(
+                "Kernel does not support TUN segmentation offloads (requires Linux 6.2); using per-packet TUN I/O"
+            );
+        }
+
+        let fd = Arc::new(open_tun(offloads)?);
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
@@ -718,20 +726,26 @@ impl Tun {
                 let fd = fd.clone();
 
                 move || {
-                    logging::unwrap_or_warn!(
-                        tun::linux::tun_send(fd, outbound_rx),
-                        "Failed to send to TUN device: {}"
-                    )
+                    let result = if offloads {
+                        tun::linux::tun_send(fd, outbound_rx)
+                    } else {
+                        tun::unix::tun_send(fd, outbound_rx, write)
+                    };
+
+                    logging::unwrap_or_warn!(result, "Failed to send to TUN device: {}")
                 }
             })
             .map_err(io::Error::other)?;
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::linux::tun_recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
+                let result = if offloads {
+                    tun::linux::tun_recv(fd, inbound_tx)
+                } else {
+                    tun::unix::tun_recv(fd, inbound_tx, read)
+                };
+
+                logging::unwrap_or_warn!(result, "Failed to recv from TUN device: {}")
             })
             .map_err(io::Error::other)?;
 
@@ -742,7 +756,7 @@ impl Tun {
     }
 }
 
-fn open_tun() -> Result<OwnedFd> {
+fn open_tun(offloads: bool) -> Result<OwnedFd> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
             let file = TUN_FILE.to_str()?;
@@ -757,17 +771,44 @@ fn open_tun() -> Result<OwnedFd> {
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
     let mut request =
-        ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME);
+        ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME, offloads);
 
     unsafe {
         ioctl::exec(fd.as_raw_fd(), TUNSETIFF, &mut request)
             .context("Failed to set flags on TUN device")?;
     }
 
-    enable_offloads(fd.as_raw_fd()).context("Failed to enable TUN offloads")?;
+    if offloads {
+        enable_offloads(fd.as_raw_fd()).context("Failed to enable TUN offloads")?;
+    }
+
     set_non_blocking(fd.as_raw_fd()).context("Failed to make TUN device non-blocking")?;
 
     Ok(fd)
+}
+
+/// Reads a single packet from the TUN device; the per-packet fallback for kernels
+/// without segmentation offload support.
+fn read(fd: RawFd, dst: &mut ip_packet::IpPacketBuf) -> io::Result<usize> {
+    let dst = dst.buf();
+
+    // Safety: The buffer is valid for the given length.
+    match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
+        -1 => Err(io::Error::last_os_error()),
+        n => Ok(n as usize),
+    }
+}
+
+/// Writes a single packet to the TUN device; the per-packet fallback for kernels
+/// without segmentation offload support.
+fn write(fd: RawFd, packet: &ip_packet::IpPacket) -> io::Result<usize> {
+    let buf = packet.packet();
+
+    // Safety: The buffer is valid for the given length.
+    match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
+        -1 => Err(io::Error::last_os_error()),
+        n => Ok(n as usize),
+    }
 }
 
 /// Enables checksum and segmentation offloads on the TUN device.

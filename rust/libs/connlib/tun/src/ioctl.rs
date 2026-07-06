@@ -26,21 +26,22 @@ pub struct Request<P> {
 
 #[cfg(target_os = "linux")]
 impl Request<SetTunFlagsPayload> {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, vnet_hdr: bool) -> Self {
         let name_as_bytes = name.as_bytes();
         debug_assert!(name_as_bytes.len() < libc::IF_NAMESIZE);
 
         let mut name = [0u8; libc::IF_NAMESIZE];
         name[..name_as_bytes.len()].copy_from_slice(name_as_bytes);
 
+        let mut flags = libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE;
+
+        if vnet_hdr {
+            flags |= libc::IFF_VNET_HDR;
+        }
+
         Self {
             name,
-            payload: SetTunFlagsPayload {
-                flags: (libc::IFF_TUN
-                    | libc::IFF_NO_PI
-                    | libc::IFF_MULTI_QUEUE
-                    | libc::IFF_VNET_HDR) as _,
-            },
+            payload: SetTunFlagsPayload { flags: flags as _ },
         }
     }
 }
