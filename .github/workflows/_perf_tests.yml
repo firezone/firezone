@@ -26,7 +26,6 @@ jobs:
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
       FIREZONE_INC_BUF: true
-      COMPOSE_PROFILES: perf
     strategy:
       matrix:
         test:
