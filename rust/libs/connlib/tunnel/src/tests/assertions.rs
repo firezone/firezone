@@ -23,18 +23,21 @@ use std::{
 use tracing::{Level, Span, Subscriber};
 use tracing_subscriber::Layer;
 
-/// How long a client→gateway connection must have been idle before we tolerate
-/// a single dropped packet caused by the WireGuard re-key "dead window".
+/// Minimum idle time on a client→gateway connection before we tolerate a single
+/// dropped packet caused by a WireGuard re-key.
 ///
-/// While idle, boringtun only re-keys a session once it expires at
-/// `REJECT_AFTER_TIME` (180s), but the session already stops being usable
-/// `KEEPALIVE_TIMEOUT` (10s) earlier. A packet sent in that ~10s gap hits
+/// This is a *threshold*, not the width of the dead window. A session is usable
+/// for `REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT` (170s); it then spends the
+/// remaining `KEEPALIVE_TIMEOUT` (10s) in a "dead window" where it is no longer
+/// usable but, while idle, is not re-keyed until it fully expires at
+/// `REJECT_AFTER_TIME` (180s). A packet sent in that ~10s dead window hits
 /// `NoCurrentSession` in the side-effect-free `encapsulate_data_at` path and is
 /// dropped without being re-queued; the connection re-keys ~1 RTT later, so only
-/// the triggering packet is lost. The window recurs every `REJECT_AFTER_TIME`,
-/// so any packet sent at least this long after the previous one on the same
+/// the triggering packet is lost. The dead window recurs every
+/// `REJECT_AFTER_TIME` while idle, so any packet sent at least one usable
+/// session lifetime (this threshold) after the previous one on the same
 /// connection may land in it. See #13957.
-const REKEY_DEAD_WINDOW: Duration = Duration::from_secs(180 - 10);
+const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
 /// Asserts the following properties for all ICMP handshakes:
 /// 1. An ICMP request on the client MUST result in an ICMP response using the same sequence, identifier and flipped src & dst IP.
@@ -229,7 +232,7 @@ fn assert_packets_properties<T, U>(
 
     // Per client→gateway connection, the instants at which the client sent a
     // packet. Used to tolerate a packet dropped in the WireGuard re-key dead
-    // window (see `REKEY_DEAD_WINDOW`).
+    // window (see `MIN_IDLE_FOR_REKEY_DROP`).
     let gateway_send_times: BTreeMap<(ClientId, GatewayId), BTreeSet<Instant>> = {
         let all_sent_requests = &all_sent_requests;
         all_expected_gateway_handshakes
@@ -277,13 +280,13 @@ fn assert_packets_properties<T, U>(
             else {
                 // A client→gateway connection that was idle long enough for its
                 // WireGuard session to enter the re-key dead window drops this
-                // one packet without a reply (see `REKEY_DEAD_WINDOW`). Tolerate
+                // one packet without a reply (see `MIN_IDLE_FOR_REKEY_DROP`). Tolerate
                 // it when the previous packet on this connection was sent at
-                // least `REKEY_DEAD_WINDOW` earlier.
+                // least `MIN_IDLE_FOR_REKEY_DROP` earlier.
                 if gateway_send_times
                     .get(&(*cid, *gateway))
                     .and_then(|times| times.range(..*sent_at).next_back())
-                    .is_some_and(|prev| sent_at.duration_since(*prev) >= REKEY_DEAD_WINDOW)
+                    .is_some_and(|prev| sent_at.duration_since(*prev) >= MIN_IDLE_FOR_REKEY_DROP)
                 {
                     tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
