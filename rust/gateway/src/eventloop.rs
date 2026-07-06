@@ -43,6 +43,10 @@ pub struct Eventloop {
     /// persisted for the uploader.
     flow_logs_dir: std::path::PathBuf,
 
+    /// Whether the portal enabled uploads; tokens are only persisted for the
+    /// uploader, so there is no point writing them to disk otherwise.
+    upload_flow_logs: bool,
+
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         ResolveDnsRequest,
@@ -87,6 +91,7 @@ impl Eventloop {
             tun_device_manager,
             resolver,
             flow_logs_dir,
+            upload_flow_logs: false,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -298,7 +303,8 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
-                if let Some(token) = &msg.flow_logs_ingest_token
+                if self.upload_flow_logs
+                    && let Some(token) = &msg.flow_logs_ingest_token
                     && let Err(e) =
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
                 {
@@ -380,6 +386,8 @@ impl Eventloop {
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
+
+                self.upload_flow_logs = flow_logs.upload_enabled();
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,

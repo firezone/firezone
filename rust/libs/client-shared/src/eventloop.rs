@@ -59,6 +59,10 @@ pub struct Eventloop {
     /// `flow_log_writer` layer.
     flow_logs_dir: Option<std::path::PathBuf>,
 
+    /// Whether the portal enabled uploads; tokens are only persisted for the
+    /// uploader, so there is no point writing them to disk otherwise.
+    upload_flow_logs: bool,
+
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -153,6 +157,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             resolver_bypass,
             flow_logs_dir,
+            upload_flow_logs: false,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -461,8 +466,10 @@ impl Eventloop {
                 relays,
                 flow_logs,
             }) => {
+                self.upload_flow_logs = flow_logs.upload_enabled();
+
                 tracing::info!(
-                    upload_enabled = flow_logs.upload_enabled(),
+                    upload_enabled = self.upload_flow_logs,
                     has_spool_dir = self.flow_logs_dir.is_some(),
                     config = ?flow_logs,
                     "Flow-log config received from portal init"
@@ -532,10 +539,12 @@ impl Eventloop {
                 use_iceless,
                 flow_logs_ingest_token,
             }) => {
-                persist_ingest_token(
-                    self.flow_logs_dir.as_deref(),
-                    flow_logs_ingest_token.as_ref(),
-                );
+                if self.upload_flow_logs {
+                    persist_ingest_token(
+                        self.flow_logs_dir.as_deref(),
+                        flow_logs_ingest_token.as_ref(),
+                    );
+                }
 
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
@@ -614,10 +623,12 @@ impl Eventloop {
                 authorization_expires_at,
                 flow_logs_ingest_token,
             }) => {
-                persist_ingest_token(
-                    self.flow_logs_dir.as_deref(),
-                    flow_logs_ingest_token.as_ref(),
-                );
+                if self.upload_flow_logs {
+                    persist_ingest_token(
+                        self.flow_logs_dir.as_deref(),
+                        flow_logs_ingest_token.as_ref(),
+                    );
+                }
 
                 // The portal only sends a resource to the target device; the
                 // initiating side receives `None` and relies on conntrack to
