@@ -139,12 +139,6 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.30.0.254
         ip -6 route add 203:0:113::/64 via 172:30:0::254
 
-        # Enable TCP & UDP segmentation offload. This requires checksum offload
-        # to stay on; relay-bound packets still get software-computed checksums
-        # on the relays' host-side veths (see the network-config service).
-        apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx on tx-tcp-segmentation on tx-udp-segmentation on
-
         ip link set dev eth0 txqueuelen 100000
 
         exec firezone-headless-client
@@ -187,12 +181,6 @@ services:
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.32.0.254
         ip -6 route add 203:0:113::/64 via 172:32:0::254
-
-        # Enable TCP & UDP segmentation offload. This requires checksum offload
-        # to stay on; relay-bound packets still get software-computed checksums
-        # on the relays' host-side veths (see the network-config service).
-        apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx on tx-tcp-segmentation on tx-udp-segmentation on
 
         ip link set dev eth0 txqueuelen 100000
 
@@ -239,14 +227,6 @@ services:
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.31.0.254
         ip -6 route add 203:0:113::/64 via 172:31:0::254 || true
-
-        # Enable TCP & UDP segmentation offload. This requires checksum offload
-        # to stay on; relay-bound packets still get software-computed checksums
-        # on the relays' host-side veths (see the network-config service).
-        apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx on tx-tcp-segmentation on tx-udp-segmentation on
-        ethtool -K eth1 tx on tx-tcp-segmentation on tx-udp-segmentation on
-        ethtool -K eth2 tx on tx-tcp-segmentation on tx-udp-segmentation on
 
         ip link set dev eth0 txqueuelen 100000
         ip link set dev eth1 txqueuelen 100000
@@ -414,10 +394,10 @@ services:
   # that does XDP_PASS to the host side veth interface. The GRO method is not reliable and was shown to
   # only pass packets in large bursts every 15-20 seconds which breaks ICE setup, so we use the XDP method.
   #
-  # For correct behaviour, we also disable any kind of offloading for the relay-internal veth and
-  # bridge devices. This forces the kernel to segment packets and calculate their checksums in
-  # software before they reach the XDP programs. All other devices keep their default offloads
-  # so packets traverse the rest of the compose networks coalesced.
+  # For correct behaviour, we also disable tx offload (checksumming and, by dependency, TSO/USO)
+  # on the relay-internal veth and bridge devices. This forces the kernel to segment packets and
+  # calculate their checksums in software before they reach the XDP programs. All other devices
+  # keep their default offloads so packets traverse the rest of the compose networks coalesced.
   network-config:
     image: ghcr.io/firezone/xdp-pass
     pid: host
