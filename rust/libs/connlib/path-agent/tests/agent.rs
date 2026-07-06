@@ -394,8 +394,8 @@ fn inbound_handshake_reopens_evaluation_window_after_settle() {
 }
 
 #[test]
-fn new_handshake_inside_open_window_restarts_evaluation() {
-    // A roam re-keys to a new address while the *initial* evaluation
+fn new_path_handshake_inside_open_window_restarts_evaluation() {
+    // A roam re-keys from a new address while the *initial* evaluation
     // window is still open. The new handshake must restart the window so
     // stale RTTs are cleared; otherwise the original window settles on a
     // pre-roam pair that is now dead.
@@ -407,11 +407,11 @@ fn new_handshake_inside_open_window_restarts_evaluation() {
     let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), now);
     a.drain_events();
 
-    // A *different* handshake arrives late in the window (a roam re-key
-    // to a new address), still inside the original deadline.
+    // A *different* handshake arrives late in the window from a new path
+    // (a roam re-key), still inside the original deadline.
     let t2 = now + Duration::from_secs(8);
     let mut hs2 = Handshake::new(t2);
-    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
+    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(3)), t2);
     a.drain_events();
 
     // At the *original* deadline a non-restarted window settles and drops
@@ -427,7 +427,53 @@ fn new_handshake_inside_open_window_restarts_evaluation() {
     let probes = a.transmits();
     assert!(
         probes.len() > 1,
-        "a new handshake inside the open window must restart it (re-probe all pairs), got {probes:?}"
+        "a handshake from a new path inside the open window must restart it (re-probe all pairs), got {probes:?}"
+    );
+}
+
+#[test]
+fn same_path_rekey_does_not_restart_evaluation() {
+    // A routine re-key arrives on the current primary: the path evidently
+    // works, so probing must not restart — neither mid-window nor after
+    // settling.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    let mut hs1 = Handshake::new(now);
+    let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), now);
+    a.drain_events();
+
+    // A re-key arrives on the same path (= the adopted primary),
+    // still inside the original deadline.
+    let t2 = now + Duration::from_secs(8);
+    let mut hs2 = Handshake::new(t2);
+    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
+    a.drain_events();
+
+    // The window settles at the *original* deadline; nothing re-probes.
+    a.handle_timeout(now + EVALUATION_WINDOW);
+    let _ = a.transmits();
+
+    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_TIMEOUT + Duration::from_secs(1));
+    let probes = a.transmits();
+    assert!(
+        probes.is_empty(),
+        "a same-path re-key must not restart evaluation, got {probes:?}"
+    );
+
+    // Another re-key on the primary after settling stays quiet, too: only
+    // the live-cadence probe of the primary remains scheduled.
+    let t3 = now + EVALUATION_WINDOW + Duration::from_secs(10);
+    let mut hs3 = Handshake::new(t3);
+    let _ = a.handle_inbound_network(&mut hs3.responder, &hs3.init, (addr(2), addr(4)), t3);
+    a.drain_events();
+    let _ = a.transmits(); // Drop the HandshakeResponse.
+
+    a.handle_timeout(t3 + Duration::from_secs(1));
+    let probes = a.transmits();
+    assert!(
+        probes.is_empty(),
+        "a post-settle same-path re-key must not restart evaluation, got {probes:?}"
     );
 }
 
@@ -844,6 +890,47 @@ fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
     let rekey = a.transmits();
     assert_eq!(rekey.len(), 1, "re-key rides the primary: {rekey:?}");
     assert_eq!((rekey[0].local, rekey[0].remote), recv_path);
+}
+
+#[test]
+fn unanswered_rekey_retry_restarts_probing() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let recv_path = (addr(2), addr(4));
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+    let mut hs = Handshake::new(now).with_response(now);
+    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
+    a.drain_events();
+    let _ = a.transmits();
+
+    a.handle_timeout(now + EVALUATION_WINDOW);
+    let _ = a.transmits();
+
+    // A routine re-key rides the primary; at most the live-cadence probe
+    // of the primary fires alongside it.
+    let rekey_at = now + Duration::from_secs(120);
+    a.handle_outbound(handshake_init_bytes(), rekey_at);
+    let _ = a.transmits();
+    a.handle_timeout(rekey_at);
+    let probes = a.transmits();
+    assert!(
+        probes.len() <= 1,
+        "a routine re-key must not burst probes, got {probes:?}"
+    );
+
+    // The unanswered retry is failure evidence: probing restarts on all pairs.
+    let retry_at = rekey_at + Duration::from_secs(5);
+    a.handle_outbound(handshake_init_bytes(), retry_at);
+    let _ = a.transmits();
+    a.handle_timeout(retry_at);
+    let probes = a.transmits();
+    assert!(
+        probes.len() > 1,
+        "an unanswered re-key must restart probing on all pairs, got {probes:?}"
+    );
 }
 
 #[test]

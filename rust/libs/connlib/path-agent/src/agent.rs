@@ -89,6 +89,16 @@ struct OutboundInit {
     started_at: Instant,
 }
 
+impl OutboundInit {
+    fn new(bytes: Vec<u8>, started_at: Instant) -> Self {
+        Self {
+            bytes,
+            retransmits: BTreeMap::new(),
+            started_at,
+        }
+    }
+}
+
 struct ResponderDedup {
     init_bytes: Vec<u8>,
     response_bytes: Vec<u8>,
@@ -336,44 +346,58 @@ impl PathAgent {
     }
 
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        match Tunn::parse_incoming_packet(&bytes) {
-            Ok(Packet::HandshakeInit(_)) if !self.established => {
-                self.forwarded_response = None;
-
+        match (
+            Tunn::parse_incoming_packet(&bytes),
+            &mut self.outbound_init,
+            self.primary,
+        ) {
+            (Ok(Packet::HandshakeInit(_)), outbound_init, _) if !self.established => {
                 tracing::debug!(bytes = bytes.len(), "Buffered initial HandshakeInit");
 
-                self.outbound_init = Some(OutboundInit {
-                    bytes,
-                    retransmits: BTreeMap::new(),
-                    started_at: now,
-                });
+                self.forwarded_response = None;
                 self.established = true;
+                outbound_init.replace(OutboundInit::new(bytes, now));
             }
-            Ok(Packet::HandshakeInit(_)) => {
+            // A still-stored init means the previous one went unanswered:
+            // failure evidence. Retry on the incumbent while probes
+            // re-evaluate.
+            (Ok(Packet::HandshakeInit(_)), outbound_init @ Some(_), Some((local, remote))) => {
                 tracing::debug!(
                     bytes = bytes.len(),
-                    "Re-key HandshakeInit; restarting probes"
+                    "Unanswered re-key HandshakeInit; restarting probes"
                 );
 
+                outbound_init.replace(OutboundInit::new(bytes.clone(), now));
+                self.pending_transmits.push_back(Transmit {
+                    local,
+                    remote,
+                    payload: Payload::Ciphertext(bytes),
+                });
                 self.reopen_evaluation_window(now);
-
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                } else {
-                    // Lost the primary mid-session (roam, candidate
-                    // retraction); fan out like the initial bootstrap.
-                    self.outbound_init = Some(OutboundInit {
-                        bytes,
-                        retransmits: BTreeMap::new(),
-                        started_at: now,
-                    });
-                }
             }
-            Ok(Packet::HandshakeResponse(_)) => {
+            // A routine re-key rides the primary without restarting probes.
+            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, Some((local, remote))) => {
+                tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
+
+                outbound_init.replace(OutboundInit::new(bytes.clone(), now));
+                self.pending_transmits.push_back(Transmit {
+                    local,
+                    remote,
+                    payload: Payload::Ciphertext(bytes),
+                });
+            }
+            // Lost the primary mid-session (roam, candidate retraction):
+            // fan out like the initial bootstrap.
+            (Ok(Packet::HandshakeInit(_)), outbound_init, None) => {
+                tracing::debug!(
+                    bytes = bytes.len(),
+                    "Re-key HandshakeInit without a primary; fanning out"
+                );
+
+                outbound_init.replace(OutboundInit::new(bytes, now));
+                self.reopen_evaluation_window(now);
+            }
+            (Ok(Packet::HandshakeResponse(_)), _, _) => {
                 if let (Some(init_bytes), Some(path)) = (
                     self.responder.last_init.take(),
                     self.responder.last_init_path.take(),
@@ -397,15 +421,15 @@ impl PathAgent {
                     self.established = true;
                 }
             }
-            _ => {
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
+            // Probes and data ride the primary; nothing to send without one.
+            (_, _, Some((local, remote))) => {
+                self.pending_transmits.push_back(Transmit {
+                    local,
+                    remote,
+                    payload: Payload::Ciphertext(bytes),
+                });
             }
+            (_, _, None) => {}
         }
     }
 
@@ -492,12 +516,15 @@ impl PathAgent {
                 // against `last_init`/`last_init_path`.
                 self.responder.last_init = Some(bytes.to_vec());
                 self.responder.last_init_path = Some(path);
-                // A fresh inbound init (a roam re-keys to a new address)
-                // restarts evaluation unconditionally, even mid-window:
-                // the previous window's RTTs are stale and must not keep
-                // a now-dead pair as primary. Duplicates were dropped above.
-                self.restart_evaluation(now);
-                self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                // An init on the current primary is a routine re-key. Only an
+                // init from a new path (a roam re-keys to a new address)
+                // restarts evaluation, even mid-window: the previous window's
+                // RTTs are stale and must not keep a now-dead pair as primary.
+                // Duplicates were dropped above.
+                if self.primary != Some(path) {
+                    self.restart_evaluation(now);
+                    self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                }
 
                 for b in outbound {
                     self.handle_outbound(b, now);
@@ -538,8 +565,12 @@ impl PathAgent {
 
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
-                self.reopen_evaluation_window(now);
-                self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                // A response on the current primary completes a routine
+                // re-key; only one from a new path re-evaluates.
+                if self.primary != Some(path) {
+                    self.reopen_evaluation_window(now);
+                    self.maybe_adopt_handshake_primary(is_handshake, path, now);
+                }
 
                 for b in outbound {
                     self.handle_outbound(b, now);
@@ -683,13 +714,20 @@ impl PathAgent {
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
         let next_probe = self.pairs.values().filter_map(|s| s.next_probe_at).min();
         // Wake immediately if a buffered init is waiting on a relay
-        // pair that landed after the initial fanout.
-        let pending_fanout = self.outbound_init.as_ref().and_then(|i| {
-            self.pairs
-                .iter()
-                .any(|(addrs, state)| state.involves_relay() && !i.retransmits.contains_key(addrs))
-                .then_some(i.started_at)
-        });
+        // pair that landed after the initial fanout. With a primary, the
+        // init rode it directly and there is nothing to fan out.
+        let pending_fanout = self
+            .outbound_init
+            .as_ref()
+            .filter(|_| self.primary.is_none())
+            .and_then(|i| {
+                self.pairs
+                    .iter()
+                    .any(|(addrs, state)| {
+                        state.involves_relay() && !i.retransmits.contains_key(addrs)
+                    })
+                    .then_some(i.started_at)
+            });
         let dedup_expiry = self
             .responder
             .dedup
@@ -746,6 +784,12 @@ impl PathAgent {
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
+        // With a primary, the init rode it directly; boringtun's re-key
+        // timer is the retry mechanism, not the fanout ladder.
+        if self.primary.is_some() {
+            return;
+        }
+
         let pending = &mut self.pending_transmits;
         let Some(outbound) = self.outbound_init.as_mut() else {
             return;
