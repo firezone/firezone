@@ -14,8 +14,8 @@ use boringtun::noise::{Index, Tunn, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL_LIVE, PROBE_PACING, PROBE_SRC,
-    PathAgent, Payload, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL_LIVE, PROBE_SRC, PathAgent,
+    Payload, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, Transmit,
 };
 
 // --- bootstrap: handshake fan-out and nomination ---
@@ -439,6 +439,60 @@ fn signaled_candidate_promotes_peer_reflexive_in_place() {
     assert_eq!(count_at_99_again, 2, "second signal must not duplicate");
 }
 
+#[test]
+fn two_connected_agents_go_quiet_after_converging() {
+    // Regression test for a probe storm: every inbound probe used to
+    // trigger a probe back unconditionally, so two agents ping-ponged
+    // bursts at RTT cadence, forever.
+    let t0 = Instant::now();
+    let mut hs = Handshake::new(t0).with_response(t0);
+    let mut a = PathAgent::new();
+    let mut b = PathAgent::new();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    b.add_local_candidate(Candidate::host(addr(2)), t0);
+    b.add_remote_candidate(Candidate::host(addr(1)), t0);
+    let _ = b.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(1)), t0);
+    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(1), addr(2)), t0);
+
+    // Pump both agents against each other with instant delivery.
+    let mut sent_by_a = 0;
+    let mut now = t0;
+    while now < t0 + secs(60) {
+        now += ms(10);
+        a.handle_timeout(now);
+        b.handle_timeout(now);
+
+        for t in a.transmits() {
+            if matches!(t.payload, Payload::Plaintext(_)) {
+                sent_by_a += 1;
+            }
+            deliver(t, &mut b, now);
+        }
+        for t in b.transmits() {
+            deliver(t, &mut a, now);
+        }
+        a.drain_events();
+        b.drain_events();
+    }
+
+    // One burst plus live-cadence probes and the occasional triggered
+    // re-validation — orders of magnitude below a storm.
+    assert!(
+        sent_by_a < 30,
+        "expected probing to go quiet after convergence, got {sent_by_a} packets in 60s",
+    );
+}
+
+/// Deliver a plaintext transmit to the other agent, from its point of view.
+fn deliver(t: Transmit, to: &mut PathAgent, now: Instant) {
+    let Payload::Plaintext(packet) = t.payload else {
+        return;
+    };
+
+    let _ = to.handle_inbound_tun(*packet, (t.remote, t.local), now);
+}
+
 // --- selection: scoring, hysteresis, freshness ---
 
 #[test]
@@ -447,7 +501,7 @@ fn inbound_echo_reply_updates_rtt_and_selects_primary() {
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     let probe = extract_probe_for(&probes, (addr(1), addr(3)));
     let reply = build_echo_reply(probe.id, probe.seq);
     let handled = a.handle_inbound_tun(reply, (addr(1), addr(3)), now + ms(50));
@@ -468,7 +522,7 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, (addr(2), addr(4)), now + ms(100));
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     a.drain_events();
@@ -495,7 +549,7 @@ fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     let remote_relay_pair = (addr(1), addr(4));
     bootstrap_primary(&mut a, remote_relay_pair, now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, remote_relay_pair, now + ms(50));
     assert_eq!(a.primary(), Some(remote_relay_pair));
     a.drain_events();
@@ -523,7 +577,7 @@ fn primary_prefers_single_relay_hop_over_double_regardless_of_rtt() {
     let double_hop = (addr(2), addr(4));
     bootstrap_primary(&mut a, double_hop, now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, double_hop, now + ms(20));
     assert_eq!(a.primary(), Some(double_hop));
     a.drain_events();
@@ -548,7 +602,7 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     a.add_remote_candidate(Candidate::host(addr_v6(12)), now);
     bootstrap_primary(&mut a, (addr(1), addr(2)), now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, (addr(1), addr(2)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(2))));
     a.drain_events();
@@ -574,7 +628,7 @@ fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
     bootstrap_primary(&mut a, v6_pair, now);
     assert_eq!(a.primary(), Some(v6_pair));
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, (addr(1), addr(2)), now + ms(40));
 
     assert_eq!(
@@ -596,7 +650,7 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     let mismatched_pair = (mismatched_local_alloc, addr_v6(20));
     bootstrap_primary(&mut a, mismatched_pair, now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, mismatched_pair, now + ms(50));
     assert_eq!(a.primary(), Some(mismatched_pair));
     a.drain_events();
@@ -626,7 +680,7 @@ fn family_match_dominates_ipv6_preference() {
     let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
     bootstrap_primary(&mut a, v6_pair, now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, v6_pair, now + ms(50));
     assert_eq!(a.primary(), Some(v6_pair));
     a.drain_events();
@@ -650,7 +704,7 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
 
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, (addr(1), addr(3)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     a.drain_events();
@@ -678,7 +732,7 @@ fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
     a.add_remote_candidate(Candidate::host(addr(4)), now);
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     a.ack_probe(&probes, (addr(1), addr(3)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     a.drain_events();
@@ -910,7 +964,7 @@ fn retired_primary_stops_live_probing() {
     a.add_remote_candidate(Candidate::host(addr(4)), t0);
     bootstrap_primary(&mut a, (addr(1), addr(3)), t0);
 
-    let probes = a.probe_round(t0);
+    let probes = a.tick(t0);
     a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(50));
     a.ack_probe(&probes, (addr(1), addr(4)), t0 + ms(10));
     assert_eq!(a.primary(), Some((addr(1), addr(4))));
@@ -1064,9 +1118,6 @@ trait AgentExt {
     fn drain_events(&mut self);
     /// `handle_timeout(now)`, then collect the transmits it produced.
     fn tick(&mut self, now: Instant) -> Vec<Transmit>;
-    /// Fire the first probe of every pair, stepping across the pacing
-    /// stagger between pairs.
-    fn probe_round(&mut self, now: Instant) -> Vec<Transmit>;
     /// Reply to `pair`'s probe (looked up in `transmits`) at `reply_at`. Does not
     /// drain events, so callers can still assert on `PrimaryChanged`.
     fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant);
@@ -1087,19 +1138,6 @@ impl AgentExt for PathAgent {
     fn tick(&mut self, now: Instant) -> Vec<Transmit> {
         self.handle_timeout(now);
         self.transmits()
-    }
-
-    fn probe_round(&mut self, now: Instant) -> Vec<Transmit> {
-        // Enough pacing slots for every fixture's pair count while staying
-        // below the first burst gap, so no pair fires twice.
-        let slots = u32::try_from(PROBE_BURST_GAPS[0].as_millis() / PROBE_PACING.as_millis())
-            .expect("pacing slots fit into u32");
-
-        let mut out = Vec::new();
-        for slot in 0..slots {
-            out.extend(self.tick(now + PROBE_PACING * slot));
-        }
-        out
     }
 
     fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant) {
@@ -1154,7 +1192,7 @@ fn direct_primary_with_relay_fallback() -> (PathAgent, Instant) {
     let t0 = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
-    let probes = a.probe_round(t0);
+    let probes = a.tick(t0);
     a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(30));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     a.drain_events();
@@ -1169,7 +1207,7 @@ fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
     let _ = a.handle_inbound_tun(build_echo_request(0, 999), pair, now);
     let _ = a.transmits();
 
-    let probes = a.probe_round(now);
+    let probes = a.tick(now);
     let probe = extract_probe_for(&probes, pair);
     let _ = a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
 }

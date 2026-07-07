@@ -45,9 +45,6 @@ pub struct PathAgent {
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
 
-    /// `true` once the first handshake has been taken over — later
-    /// inits are re-keys.
-    established: bool,
     /// `true` once a handshake has been accepted from the peer. Probes ride
     /// the session, so they wait for this; it survives a [`Self::rebuild`]
     /// because the session does, too.
@@ -86,8 +83,8 @@ pub(crate) struct PairState {
     /// Probes awaiting their reply. Several can be outstanding on a
     /// high-RTT path because the burst fires faster than one round trip.
     inflight_probes: Vec<InflightProbe>,
-    /// Index into [`PROBE_BURST_GAPS`]; past the end means the burst is done.
-    burst_step: usize,
+    /// The remaining probe times of the current burst.
+    burst: std::vec::IntoIter<Instant>,
     next_probe_at: Option<Instant>,
     next_probe_seq: u16,
 }
@@ -144,10 +141,6 @@ pub const PROBE_BURST_GAPS: &[Duration] = &[
     Duration::from_millis(1000),
 ];
 
-/// Stagger between pair burst starts so a burst over many pairs doesn't hit
-/// NAT rate limits or congest itself (cf. ICE's pacing timer `Ta`).
-pub const PROBE_PACING: Duration = Duration::from_millis(50);
-
 /// Inflight probes older than this are forgotten; a reply that late is not
 /// meaningful anymore.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -174,9 +167,15 @@ pub const RTT_FRESHNESS: Duration = Duration::from_secs(10);
 pub const GUARD_SUSPENSION: Duration = Duration::from_secs(10);
 
 /// An accepted inbound init this soon after the previous one means the peer
-/// keeps re-keying: it isn't hearing our responses or data. Routine re-keys
-/// are minutes apart.
-pub const REKEY_DISTRESS_INTERVAL: Duration = Duration::from_secs(30);
+/// keeps re-keying: it isn't hearing our responses or data.
+///
+/// The signal being detected is boringtun's `REKEY_TIMEOUT` retry pacing (a
+/// stuck peer formats a new init every 5s); a few multiples of that catches
+/// it reliably. Routine re-keys arrive at `REKEY_AFTER_TIME` (120s) — using
+/// that as the threshold would classify roughly every other routine re-key
+/// as distress (arrival jitter around exactly 120s) and re-introduce
+/// re-evaluation chatter on every re-key.
+pub const REKEY_DISTRESS_INTERVAL: Duration = Duration::from_secs(15);
 
 pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
@@ -196,8 +195,20 @@ impl PairState {
     }
 
     fn start_burst(&mut self, at: Instant) {
-        self.burst_step = 0;
-        self.next_probe_at = Some(at);
+        let mut schedule = iter::once(at)
+            .chain(PROBE_BURST_GAPS.iter().scan(at, |t, gap| {
+                *t += *gap;
+                Some(*t)
+            }))
+            .collect::<Vec<_>>()
+            .into_iter();
+
+        self.next_probe_at = schedule.next();
+        self.burst = schedule;
+    }
+
+    fn is_bursting(&self) -> bool {
+        self.burst.len() > 0
     }
 }
 
@@ -214,7 +225,6 @@ impl PathAgent {
             remotes: Vec::new(),
             pairs: BTreeMap::new(),
             primary: None,
-            established: false,
             handshake_exchanged: false,
             guard_suspended_until: None,
             last_inbound_init_at: None,
@@ -236,8 +246,8 @@ impl PathAgent {
 
         self.locals.push(c);
 
-        for (i, &remote) in self.remotes.clone().iter().enumerate() {
-            self.add_pair(c, remote, now + PROBE_PACING * i as u32);
+        for &remote in &self.remotes.clone() {
+            self.add_pair(c, remote, now);
         }
 
         true
@@ -282,8 +292,8 @@ impl PathAgent {
 
         self.remotes.push(c);
 
-        for (i, &local) in self.locals.clone().iter().enumerate() {
-            self.add_pair(local, c, now + PROBE_PACING * i as u32);
+        for &local in &self.locals.clone() {
+            self.add_pair(local, c, now);
         }
 
         // Candidate arrival hints that the incumbent may be dead: the most
@@ -316,7 +326,7 @@ impl PathAgent {
             local_family_matched: local.is_family_matched(),
             rtt: None,
             inflight_probes: Vec::new(),
-            burst_step: 0,
+            burst: Vec::new().into_iter(),
             next_probe_at: None,
             next_probe_seq: 0,
         };
@@ -387,13 +397,11 @@ impl PathAgent {
             .filter(|c| !drop_local(c))
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
-        let established = self.established;
         let handshake_exchanged = self.handshake_exchanged;
         let last_inbound_init_at = self.last_inbound_init_at;
 
         *self = Self::new();
 
-        self.established = established;
         self.handshake_exchanged = handshake_exchanged;
         self.last_inbound_init_at = last_inbound_init_at;
 
@@ -448,11 +456,12 @@ impl PathAgent {
             &mut self.outbound_init,
             self.primary,
         ) {
-            (Ok(Packet::HandshakeInit(_)), outbound_init, _) if !self.established => {
+            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, _)
+                if !self.handshake_exchanged =>
+            {
                 tracing::debug!(bytes = bytes.len(), "Buffered initial HandshakeInit");
 
                 self.forwarded_response = None;
-                self.established = true;
                 outbound_init.replace(OutboundInit::new(bytes, now));
             }
             // A still-stored init means the previous one went unanswered:
@@ -517,7 +526,6 @@ impl PathAgent {
                         response_bytes: bytes,
                         cached_at: now,
                     });
-                    self.established = true;
                 }
             }
             // Probes and data ride the primary; nothing to send without one.
@@ -545,64 +553,34 @@ impl PathAgent {
             return ControlFlow::Continue(bytes);
         };
 
-        match parsed {
-            Packet::HandshakeInit(_) => {
-                if let Some(d) = self.responder.dedup.as_ref()
-                    && now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL
-                    && d.init_bytes == bytes
-                {
-                    tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
+        match (parsed, self.primary) {
+            // A replayed init is served from the cache without touching boringtun.
+            (Packet::HandshakeInit(_), _) if self.cached_response(bytes, now).is_some() => {
+                tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-                    self.pending_transmits.push_back(Transmit {
-                        local: path.0,
-                        remote: path.1,
-                        payload: Payload::Ciphertext(d.response_bytes.clone()),
-                    });
+                let response_bytes = self
+                    .cached_response(bytes, now)
+                    .expect("checked in the guard")
+                    .to_vec();
+                self.pending_transmits.push_back(Transmit {
+                    local: path.0,
+                    remote: path.1,
+                    payload: Payload::Ciphertext(response_bytes),
+                });
 
+                ControlFlow::Break(())
+            }
+            // Drop dups arriving on multiple pairs in one tick so
+            // boringtun doesn't reject as WrongTai64nTimestamp.
+            (Packet::HandshakeInit(_), _) if self.responder.last_init.as_deref() == Some(bytes) => {
+                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
+
+                ControlFlow::Break(())
+            }
+            (Packet::HandshakeInit(_), primary) => {
+                let Some(outbound) = self.decapsulate_init(tunnel, bytes, path, now) else {
                     return ControlFlow::Break(());
-                }
-
-                // Drop dups arriving on multiple pairs in one tick so
-                // boringtun doesn't reject as WrongTai64nTimestamp.
-                if self.responder.last_init.as_deref() == Some(bytes) {
-                    tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
-
-                    return ControlFlow::Break(());
-                }
-
-                // Source IP must be set so boringtun can emit cookie replies under load.
-                let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-                let outbound = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now)
-                {
-                    TunnResult::Done => Vec::new(),
-                    TunnResult::WriteToNetwork(response) => vec![response.to_vec()],
-                    TunnResult::Err(e) => {
-                        tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
-                        return ControlFlow::Break(());
-                    }
-                    TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                        tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeInit");
-                        return ControlFlow::Break(());
-                    }
                 };
-
-                // Cookie replies don't establish a session; return them without touching state.
-                if let Some(reply) = outbound.first()
-                    && matches!(
-                        Tunn::parse_incoming_packet(reply),
-                        Ok(Packet::PacketCookieReply(_))
-                    )
-                {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Replying with cookie under load");
-
-                    self.pending_transmits.push_back(Transmit {
-                        local: path.0,
-                        remote: path.1,
-                        payload: Payload::Ciphertext(reply.clone()),
-                    });
-
-                    return ControlFlow::Break(());
-                }
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
@@ -630,7 +608,7 @@ impl PathAgent {
                     self.select_primary(now);
                 }
 
-                if self.primary.is_none() {
+                if primary.is_none() {
                     self.set_primary(path, now);
                 }
 
@@ -640,45 +618,25 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            Packet::HandshakeResponse(_) => {
-                if self.forwarded_response.as_deref() == Some(bytes) {
-                    tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
+            (Packet::HandshakeResponse(_), _)
+                if self.forwarded_response.as_deref() == Some(bytes) =>
+            {
+                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
 
+                ControlFlow::Break(())
+            }
+            (Packet::HandshakeResponse(_), primary) => {
+                let Some(outbound) = self.decapsulate_response(tunnel, bytes, path, now) else {
                     return ControlFlow::Break(());
-                }
-
-                let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-                let mut outbound = Vec::<Vec<u8>>::new();
-                match tunnel.decapsulate_at(None, bytes, &mut buf, now) {
-                    TunnResult::Done => {}
-                    TunnResult::WriteToNetwork(first) => {
-                        outbound.push(first.to_vec());
-                        while let TunnResult::WriteToNetwork(more) =
-                            tunnel.decapsulate_at(None, &[], &mut buf, now)
-                        {
-                            outbound.push(more.to_vec());
-                        }
-                    }
-                    TunnResult::Err(e) => {
-                        tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeResponse rejected");
-                        return ControlFlow::Break(());
-                    }
-                    TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                        tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeResponse");
-                        return ControlFlow::Break(());
-                    }
-                }
+                };
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
 
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
-                // A response only authenticates if we initiated: the first
-                // handshake is done, later inits are re-keys.
-                self.established = true;
                 self.handshake_exchanged = true;
 
-                if self.primary.is_none() {
+                if primary.is_none() {
                     self.set_primary(path, now);
                 }
 
@@ -688,8 +646,98 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            Packet::PacketCookieReply(_) | Packet::PacketData(_) => ControlFlow::Continue(bytes),
+            (Packet::PacketCookieReply(_) | Packet::PacketData(_), _) => {
+                ControlFlow::Continue(bytes)
+            }
         }
+    }
+
+    fn cached_response(&self, init: &[u8], now: Instant) -> Option<&[u8]> {
+        let d = self.responder.dedup.as_ref()?;
+
+        (now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL && d.init_bytes == init)
+            .then_some(d.response_bytes.as_slice())
+    }
+
+    /// Authenticates an inbound init, returning the packets boringtun wants
+    /// to send in response. `None` means the packet was fully handled
+    /// (rejected, or answered with a cookie under load).
+    fn decapsulate_init(
+        &mut self,
+        tunnel: &mut Tunn,
+        bytes: &[u8],
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> Option<Vec<Vec<u8>>> {
+        // Source IP must be set so boringtun can emit cookie replies under load.
+        let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
+        let outbound = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
+            TunnResult::Done => Vec::new(),
+            TunnResult::WriteToNetwork(response) => vec![response.to_vec()],
+            TunnResult::Err(e) => {
+                tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
+                return None;
+            }
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeInit");
+                return None;
+            }
+        };
+
+        // Cookie replies don't establish a session; return them without touching state.
+        if let Some(reply) = outbound.first()
+            && matches!(
+                Tunn::parse_incoming_packet(reply),
+                Ok(Packet::PacketCookieReply(_))
+            )
+        {
+            tracing::debug!(local = %path.0, remote = %path.1, "Replying with cookie under load");
+
+            self.pending_transmits.push_back(Transmit {
+                local: path.0,
+                remote: path.1,
+                payload: Payload::Ciphertext(reply.clone()),
+            });
+
+            return None;
+        }
+
+        Some(outbound)
+    }
+
+    /// Authenticates an inbound response, returning the packets boringtun
+    /// wants to send afterwards (e.g. queued data). `None` means the packet
+    /// was rejected.
+    fn decapsulate_response(
+        &mut self,
+        tunnel: &mut Tunn,
+        bytes: &[u8],
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> Option<Vec<Vec<u8>>> {
+        let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
+        let mut outbound = Vec::<Vec<u8>>::new();
+        match tunnel.decapsulate_at(None, bytes, &mut buf, now) {
+            TunnResult::Done => {}
+            TunnResult::WriteToNetwork(first) => {
+                outbound.push(first.to_vec());
+                while let TunnResult::WriteToNetwork(more) =
+                    tunnel.decapsulate_at(None, &[], &mut buf, now)
+                {
+                    outbound.push(more.to_vec());
+                }
+            }
+            TunnResult::Err(e) => {
+                tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeResponse rejected");
+                return None;
+            }
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeResponse");
+                return None;
+            }
+        }
+
+        Some(outbound)
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
@@ -733,8 +781,12 @@ impl PathAgent {
                 // Triggered check (cf. RFC 8445, section 7.3.1.4): the
                 // inbound probe proves the reverse NAT filter is open right
                 // now, so probing back completes the hole punch in one round
-                // trip.
-                if let Some(state) = self.pairs.get_mut(&pair) {
+                // trip. Only for unvalidated pairs — probing back
+                // unconditionally would ping-pong bursts between the peers
+                // forever, at RTT cadence.
+                if let Some(state) = self.pairs.get_mut(&pair)
+                    && !state.rtt.is_some_and(|rtt| rtt.is_fresh(now))
+                {
                     state.start_burst(now);
                 }
             }
@@ -902,20 +954,12 @@ impl PathAgent {
             state
                 .inflight_probes
                 .push(InflightProbe { seq, sent_at: now });
-            state.next_probe_at = match PROBE_BURST_GAPS.get(state.burst_step) {
-                Some(gap) => {
-                    state.burst_step += 1;
-                    Some(now + *gap)
-                }
-                // The burst is done: the primary keeps its RTT fresh and its
-                // NAT mappings warm, everything else goes dormant until the
-                // next re-evaluation signal.
-                None => {
-                    state.burst_step = PROBE_BURST_GAPS.len() + 1;
-
-                    (primary == Some((*local, *remote))).then(|| now + PROBE_INTERVAL_LIVE)
-                }
-            };
+            // Once the burst is done, the primary keeps its RTT fresh and
+            // its NAT mappings warm, everything else goes dormant until the
+            // next re-evaluation signal.
+            state.next_probe_at = state.burst.next().or_else(|| {
+                (primary == Some((*local, *remote))).then(|| now + PROBE_INTERVAL_LIVE)
+            });
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 
@@ -928,8 +972,8 @@ impl PathAgent {
     }
 
     fn burst_all_pairs(&mut self, now: Instant) {
-        for (i, state) in self.pairs.values_mut().enumerate() {
-            state.start_burst(now + PROBE_PACING * i as u32);
+        for state in self.pairs.values_mut() {
+            state.start_burst(now);
         }
     }
 
@@ -1026,7 +1070,7 @@ impl PathAgent {
         if let Some(old) = from
             && old != path
             && let Some(state) = self.pairs.get_mut(&old)
-            && state.burst_step > PROBE_BURST_GAPS.len()
+            && !state.is_bursting()
         {
             state.next_probe_at = None;
         }

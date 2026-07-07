@@ -8,8 +8,8 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    GUARD_SUSPENSION, PROBE_BURST_GAPS, PROBE_INTERVAL_LIVE, PROBE_PACING, PROBE_TIMEOUT,
-    PathAgent, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, RTT_FRESHNESS,
+    GUARD_SUSPENSION, PROBE_BURST_GAPS, PROBE_INTERVAL_LIVE, PROBE_TIMEOUT, PathAgent,
+    REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, RTT_FRESHNESS,
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};
