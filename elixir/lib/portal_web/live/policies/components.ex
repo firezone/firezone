@@ -63,6 +63,15 @@ defmodule PortalWeb.Policies.Components do
     end)
   end
 
+  @doc """
+  Whether the global `flow_logs` feature flag is enabled. Gates the flow-log
+  reporting checkbox on every policy form and the details row on the policy
+  panel.
+  """
+  def flow_logs_feature_enabled? do
+    PortalWeb.Policies.flow_logs_feature_enabled?()
+  end
+
   defp maybe_filter(%{"values" => values}, empty_values: :drop) when is_list(values) do
     not (values
          |> List.wrap()
@@ -308,7 +317,12 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
       <.policy_form_error panel_form={@panel_form} />
-      <.policy_fields mode={@mode} panel_form={@panel_form} subject={@subject} />
+      <.policy_fields
+        mode={@mode}
+        panel_form={@panel_form}
+        panel_selected_resource={@panel_selected_resource}
+        subject={@subject}
+      />
       <.policy_conditions_section
         account={@account}
         mode={@mode}
@@ -340,6 +354,7 @@ defmodule PortalWeb.Policies.Components do
 
   attr :mode, :atom, required: true
   attr :panel_form, :any, default: nil
+  attr :panel_selected_resource, :any, default: nil
   attr :subject, :any, required: true
 
   def policy_fields(assigns) do
@@ -348,6 +363,10 @@ defmodule PortalWeb.Policies.Components do
       <.policy_group_field mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_resource_field mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_description_field panel_form={@panel_form} />
+      <.policy_flow_log_uploads_field
+        panel_form={@panel_form}
+        panel_selected_resource={@panel_selected_resource}
+      />
     </fieldset>
     """
   end
@@ -468,6 +487,66 @@ defmodule PortalWeb.Policies.Components do
     />
     """
   end
+
+  attr :panel_form, :any, default: nil
+  attr :panel_selected_resource, :any, default: nil
+
+  def policy_flow_log_uploads_field(assigns) do
+    assigns = assign(assigns, :feature_enabled?, flow_logs_feature_enabled?())
+
+    ~H"""
+    <div :if={@feature_enabled? and not internet_resource?(@panel_selected_resource)}>
+      <.flow_log_uploads_checkbox form={@panel_form} />
+      <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
+        Changing this setting immediately expires all active connections created by this Policy.
+      </p>
+    </div>
+    <p
+      :if={@feature_enabled? and internet_resource?(@panel_selected_resource)}
+      class="text-xs text-subtle"
+    >
+      Flow log uploads are not available for the Internet Resource.
+    </p>
+    """
+  end
+
+  # Warn only when flipping the flag on an existing policy: the flip expires
+  # the policy's active authorizations so fresh ingest tokens get minted.
+  defp flow_log_uploads_changed?(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
+    not is_nil(changeset.data.id) and Map.has_key?(changeset.changes, :flow_log_uploads_enabled)
+  end
+
+  defp flow_log_uploads_changed?(_form), do: false
+
+  @doc """
+  The flow-log reporting checkbox shared by every form that creates or edits a
+  policy. Checked by default (uploads default to on); posts the schema field
+  directly. Callers gate it behind `flow_logs_feature_enabled?/0`.
+  """
+  attr :form, :any, required: true
+
+  def flow_log_uploads_checkbox(assigns) do
+    ~H"""
+    <.input
+      type="checkbox"
+      name={"#{@form.name}[flow_log_uploads_enabled]"}
+      checked={flow_log_uploads_checked?(@form)}
+      label="Flow log reporting"
+    />
+    """
+  end
+
+  # A map-backed form (the grant panels before first submit) has no value for
+  # the field; absent means the schema default, which is enabled.
+  defp flow_log_uploads_checked?(form) do
+    case form[:flow_log_uploads_enabled].value do
+      nil -> true
+      value -> Phoenix.HTML.Form.normalize_value("checkbox", value)
+    end
+  end
+
+  defp internet_resource?(%{type: :internet}), do: true
+  defp internet_resource?(_resource), do: false
 
   attr :mode, :atom, required: true
   attr :account, :any, required: true
@@ -1111,6 +1190,12 @@ defmodule PortalWeb.Policies.Components do
           <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
           <dd class="text-xs text-body">
             <.relative_datetime datetime={@policy.inserted_at} />
+          </dd>
+        </div>
+        <div :if={flow_logs_feature_enabled?()}>
+          <dt class="text-[10px] text-subtle mb-0.5">Flow log reporting</dt>
+          <dd class="text-xs text-body">
+            {if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}
           </dd>
         </div>
         <div :if={@policy.description}>

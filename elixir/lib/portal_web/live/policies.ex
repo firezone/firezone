@@ -204,6 +204,10 @@ defmodule PortalWeb.Policies do
     end
   end
 
+  def flow_logs_feature_enabled? do
+    Database.flow_logs_feature_enabled?()
+  end
+
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
@@ -637,6 +641,7 @@ defmodule PortalWeb.Policies do
       changeset =
         change_policy(policy, params)
         |> validate_internet_resource_allowed(socket.assigns.subject)
+        |> Policy.disable_flow_log_uploads_for_internet_resource(socket.assigns.subject)
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -863,7 +868,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -874,12 +879,13 @@ defmodule PortalWeb.Policies do
     attrs
     |> new_policy(subject)
     |> validate_internet_resource_allowed(subject)
+    |> Policy.disable_flow_log_uploads_for_internet_resource(subject)
     |> Database.insert_policy(subject)
   end
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -1067,6 +1073,12 @@ defmodule PortalWeb.Policies do
     alias Portal.Actor
     alias Portal.Device
     alias Portal.Authentication
+
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
 
     def get_site(id, subject) do
       from(s in Site, as: :sites)

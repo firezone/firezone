@@ -5,7 +5,9 @@ defmodule PortalWeb.Groups.Components do
     only: [
       grant_condition_card: 1,
       available_conditions: 1,
-      condition_type_label: 1
+      condition_type_label: 1,
+      flow_log_uploads_checkbox: 1,
+      flow_logs_feature_enabled?: 0
     ]
 
   attr :account, :any, required: true
@@ -752,6 +754,9 @@ defmodule PortalWeb.Groups.Components do
                 conditions_state={@conditions_state}
               />
             </div>
+          </div>
+          <div :if={flow_logs_feature_enabled?()} class="border-t border-border pt-4">
+            <.flow_log_uploads_checkbox form={@grant_resource_form} />
           </div>
         </div>
       </div>

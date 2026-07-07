@@ -5,7 +5,9 @@ defmodule PortalWeb.Resources.Components do
     only: [
       grant_condition_card: 1,
       available_conditions: 1,
-      condition_type_label: 1
+      condition_type_label: 1,
+      flow_log_uploads_checkbox: 1,
+      flow_logs_feature_enabled?: 0
     ]
 
   import PortalWeb.Clients.Components,
@@ -1692,6 +1694,12 @@ defmodule PortalWeb.Resources.Components do
                 />
               </div>
             <% end %>
+          </div>
+          <div
+            :if={@resource.type != :internet and flow_logs_feature_enabled?()}
+            class="border-t border-border pt-4"
+          >
+            <.flow_log_uploads_checkbox form={@grant_form} />
           </div>
         </div>
       </div>

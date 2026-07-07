@@ -3479,6 +3479,143 @@ defmodule PortalAPI.Client.ChannelTest do
       assert client_ice_password != gateway_ice_password
     end
 
+    test "ingest tokens carry flow_log_uploads_enabled=true when the policy opts in", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      enable_feature(:flow_logs)
+      resource = resource_fixture(account: account, site: site)
+
+      policy_fixture(
+        account: account,
+        group: group,
+        resource: resource,
+        flow_log_uploads_enabled: true
+      )
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert is_binary(payload.flow_logs_ingest_token)
+
+      assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert responder_claims["flow_log_uploads_enabled"] == true
+      assert responder_claims["role"] == "responder"
+
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         payload.ice_credentials}
+      )
+
+      assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
+      assert is_binary(initiator_token)
+      assert initiator_token != payload.flow_logs_ingest_token
+
+      assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
+      assert initiator_claims["flow_log_uploads_enabled"] == true
+      assert initiator_claims["role"] == "initiator"
+    end
+
+    test "ingest tokens carry flow_log_uploads_enabled=false when the policy opts out", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      enable_feature(:flow_logs)
+      resource = resource_fixture(account: account, site: site)
+
+      policy_fixture(
+        account: account,
+        group: group,
+        resource: resource,
+        flow_log_uploads_enabled: false
+      )
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert is_binary(payload.flow_logs_ingest_token)
+
+      assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert responder_claims["flow_log_uploads_enabled"] == false
+
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         payload.ice_credentials}
+      )
+
+      assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
+      assert is_binary(initiator_token)
+
+      assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
+      assert initiator_claims["flow_log_uploads_enabled"] == false
+    end
+
+    test "ingest tokens carry flow_log_uploads_enabled=false when the feature is disabled", %{
+      dns_resource: resource,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      # No enable_feature(:flow_logs) — the policy defaults to enabled, but the
+      # global flag is off so the claim must be false.
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_policy, _refs, payload}
+      assert is_binary(payload.flow_logs_ingest_token)
+
+      assert {:ok, claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert claims["flow_log_uploads_enabled"] == false
+    end
+
     test "flow_created sends site_id to clients that support renamed site payloads", %{
       client: client,
       subject: subject,

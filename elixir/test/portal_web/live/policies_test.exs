@@ -7,6 +7,7 @@ defmodule PortalWeb.PoliciesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -214,6 +215,105 @@ defmodule PortalWeb.PoliciesTest do
                description: "Blocked by plan"
              )
     end
+
+    test "creates a policy with flow log reporting disabled on submit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:flow_logs)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Flow log reporting"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            flow_log_uploads_enabled: false
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == false
+    end
+
+    test "defaults flow log reporting to enabled on submit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:flow_logs)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      lv
+      |> form("[phx-submit='submit_policy_form']",
+        policy: %{group_id: group.id, resource_id: resource.id}
+      )
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == true
+    end
+
+    test "does not render the flow log reporting checkbox when the feature is disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute html =~ "Flow log reporting"
+    end
+
+    test "forces flow log reporting off for Internet Resource policies", %{conn: conn} do
+      enable_feature(:flow_logs)
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      internet_resource = internet_resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: internet_resource.id,
+            flow_log_uploads_enabled: true
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: internet_resource.id)
+      assert policy.flow_log_uploads_enabled == false
+    end
   end
 
   describe ":show action" do
@@ -373,6 +473,87 @@ defmodule PortalWeb.PoliciesTest do
 
       refute html =~ "10.10.0.0/16"
       refute html =~ ~s(phx-click="remove_condition")
+    end
+
+    test "hides flow log reporting checkbox when editing an Internet Resource policy", %{
+      conn: conn
+    } do
+      enable_feature(:flow_logs)
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "Flow log uploads are not available for the Internet Resource."
+      refute html =~ "policy[flow_log_uploads_enabled]"
+    end
+
+    test "warns when changing flow log reporting on an existing policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:flow_logs)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      refute html =~ "immediately expires all active connections"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            flow_log_uploads_enabled: false
+          }
+        )
+        |> render_change()
+
+      assert html =~ "immediately expires all active connections"
+    end
+
+    test "moving a policy onto the Internet Resource disables flow log reporting", %{
+      conn: conn
+    } do
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      internet_resource = internet_resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource, flow_log_uploads_enabled: true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: internet_resource.id
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      reloaded = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+      assert reloaded.flow_log_uploads_enabled == false
     end
 
     test "renders existing Internet Resource policy on edit after feature loss", %{conn: conn} do

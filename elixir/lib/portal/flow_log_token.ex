@@ -27,8 +27,10 @@ defmodule Portal.FlowLogToken do
   # Grace added to the authorization's expiry to allow late/sleep uploads (30d).
   @reporting_grace_seconds 2_592_000
 
-  # Attribution claims copied verbatim into the flow_logs row on ingest.
-  @attribution_claims ~w[role device_id policy_authorization_id policy_id resource_id resource_name
+  # Attribution claims copied verbatim into the flow_logs row on ingest, plus
+  # `flow_log_uploads_enabled`, which gates ingestion instead of being stored.
+  @attribution_claims ~w[role device_id policy_authorization_id policy_id flow_log_uploads_enabled
+                         resource_id resource_name
                          resource_address actor_id actor_email actor_name auth_provider_id
                          authorized_at authorization_expires_at
                          client_version device_os_name device_os_version device_serial device_uuid

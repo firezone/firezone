@@ -1701,12 +1701,13 @@ defmodule PortalWeb.Groups do
 
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[group_id resource_id]a)
+        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
+        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()
