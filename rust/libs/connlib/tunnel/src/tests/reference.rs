@@ -937,7 +937,11 @@ impl ReferenceState {
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic {
+                // With ICE-less connections, losing all relays does not fail
+                // the connection: the WG session idles until the relays return
+                // and probes revive the path. Classic ICE flows disconnect if
+                // direct traffic is dropped.
+                if state.drop_direct_client_traffic && !state.portal.iceless() {
                     for client in state.clients.values_mut() {
                         client.exec_mut(|c| c.reset_connections(now));
                     }
