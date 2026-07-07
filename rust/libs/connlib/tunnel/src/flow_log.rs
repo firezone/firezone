@@ -403,6 +403,13 @@ where
                             return;
                         }
 
+                        // A bare ACK cannot start a connection; it is the tail
+                        // of a flow that was already closed, e.g. the final ACK
+                        // of a FIN handshake arriving after the close sweep.
+                        if !tcp_syn && payload_len == 0 {
+                            return;
+                        }
+
                         tracing::debug!(key = ?vacant.key(), ?context, syn = %tcp_syn, "Creating new TCP flow");
 
                         let value = TcpFlowValue {
@@ -1419,6 +1426,36 @@ mod tests {
             vec![(1, 0), (1, 1)],
             "a new SYN closes the old flow and starts a fresh one"
         );
+    }
+
+    #[test]
+    fn bare_ack_does_not_create_flow() {
+        let authz_id = "44444444-4444-4444-4444-444444444444";
+        let spool = SpoolObserver::new(authz_id);
+        let mut tracker = enabled_tracker();
+        let t0 = Instant::now();
+
+        spool.observe(|| {
+            drive_tx(&mut tracker, &tcp_packet(false, &[]), authz_id, t0);
+            tracker.close_all(t0 + Duration::from_secs(1));
+        });
+
+        assert_eq!(packet_counts(&spool.completed_flows()), vec![]);
+    }
+
+    #[test]
+    fn data_packet_creates_flow_without_syn() {
+        let authz_id = "55555555-5555-5555-5555-555555555555";
+        let spool = SpoolObserver::new(authz_id);
+        let mut tracker = enabled_tracker();
+        let t0 = Instant::now();
+
+        spool.observe(|| {
+            drive_tx(&mut tracker, &tcp_packet(false, &[0; 100]), authz_id, t0);
+            tracker.close_all(t0 + Duration::from_secs(1));
+        });
+
+        assert_eq!(packet_counts(&spool.completed_flows()), vec![(1, 0)]);
     }
 
     fn enabled_tracker() -> Tracker<ClientOrGatewayId> {
