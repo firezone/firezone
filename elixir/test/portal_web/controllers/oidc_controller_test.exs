@@ -2810,6 +2810,11 @@ defmodule PortalWeb.OIDCControllerTest do
       account = account_fixture()
       %{provider: provider} = setup_oidc_provider(account, is_default: true)
 
+      # This test needs to invalidate the discovery document between
+      # iterations, so run against a private cache instance.
+      cache = start_supervised!({OpenIDConnect.Document.Cache, name: :transient_retry_cache})
+      Portal.Config.put_env_override(:portal, OpenIDConnect, document_cache: cache)
+
       for params <- [
             %{
               "as" => "client",
@@ -2829,7 +2834,7 @@ defmodule PortalWeb.OIDCControllerTest do
           ] do
         # Evict the doc cached by the previous iteration's successful retry so
         # the connection-refused stub is actually consulted.
-        OpenIDConnect.Document.Cache.delete(provider.discovery_document_uri)
+        OpenIDConnect.Document.Cache.clear()
         Mocks.OIDC.stub_connection_refused()
 
         failed_conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", params)

@@ -140,25 +140,6 @@ defmodule OpenIDConnect.Document.CacheTest do
     end
   end
 
-  describe "delete/2" do
-    test "removes the entry and cancels its removal timer" do
-      {:ok, pid} = start_link(name: :delete_test)
-      uri = uniq_uri()
-      document = %{@valid_document | expires_at: DateTime.utc_now() |> DateTime.add(60, :second)}
-      put(pid, uri, document)
-
-      assert %{^uri => {timer_ref, _last_fetched_at, _last_refresh_at, _document}} = flush(pid)
-      assert delete(pid, uri) == :ok
-      refute Map.has_key?(flush(pid), uri)
-      assert Process.read_timer(timer_ref) == false
-    end
-
-    test "is a no-op for URIs that are not cached" do
-      {:ok, pid} = start_link(name: :delete_test2)
-      assert delete(pid, uniq_uri()) == :ok
-    end
-  end
-
   describe "clear/1" do
     test "clears the cache and returns :ok" do
       {:ok, pid} = start_link(name: :clear_test1)

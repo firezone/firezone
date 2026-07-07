@@ -25,33 +25,28 @@ defmodule OpenIDConnect.Document.Cache do
   end
 
   @doc "Inserts `document` under `uri`, scheduling its removal at the document's expiry."
-  def put(pid \\ __MODULE__, uri, document) do
+  def put(pid \\ server(), uri, document) do
     GenServer.cast(pid, {:put, uri, document})
   end
 
   @doc "Returns the cached document for `uri`, bumping recency. Evicts expired entries on lookup."
-  def fetch(pid \\ __MODULE__, uri) do
+  def fetch(pid \\ server(), uri) do
     GenServer.call(pid, {:fetch, uri})
   end
 
   @doc "Non-mutating lookup: returns the cached doc as-is, without bumping recency or evicting on expiry."
-  def peek(pid \\ __MODULE__, uri) do
+  def peek(pid \\ server(), uri) do
     GenServer.call(pid, {:peek, uri})
   end
 
   @doc "Returns the full cache state map. Primarily intended for introspection in tests."
-  def flush(pid \\ __MODULE__) do
+  def flush(pid \\ server()) do
     GenServer.call(pid, :flush)
   end
 
   @doc "Empties the cache and cancels every scheduled removal timer."
-  def clear(pid \\ __MODULE__) do
+  def clear(pid \\ server()) do
     GenServer.call(pid, :clear)
-  end
-
-  @doc "Removes the entry for `uri` (if any), canceling its removal timer."
-  def delete(pid \\ __MODULE__, uri) do
-    GenServer.call(pid, {:delete, uri})
   end
 
   @doc """
@@ -60,7 +55,7 @@ defmodule OpenIDConnect.Document.Cache do
   elapsed (or no prior attempt is recorded); returns `false` otherwise, or when
   `uri` is not cached.
   """
-  def allow_refresh?(pid \\ __MODULE__, uri) do
+  def allow_refresh?(pid \\ server(), uri) do
     GenServer.call(pid, {:allow_refresh, uri})
   end
 
@@ -97,10 +92,6 @@ defmodule OpenIDConnect.Document.Cache do
     end
 
     {:reply, :ok, %{}}
-  end
-
-  def handle_call({:delete, uri}, _from, state) do
-    {:reply, :ok, evict(state, uri)}
   end
 
   def handle_call({:fetch, uri}, _from, state) do
@@ -177,6 +168,14 @@ defmodule OpenIDConnect.Document.Cache do
     Process.send_after(self(), :gc, :timer.minutes(1))
 
     {:noreply, state}
+  end
+
+  # Tests can point their process at a private cache instance via
+  # `Portal.Config.put_env_override(:portal, OpenIDConnect, document_cache: pid)`;
+  # everyone else gets the globally registered instance.
+  defp server do
+    Portal.Config.get_env(:portal, OpenIDConnect, [])
+    |> Keyword.get(:document_cache, __MODULE__)
   end
 
   # Drops `uri` from state and cancels its timer. A timer that already fired is
