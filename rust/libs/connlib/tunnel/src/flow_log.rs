@@ -505,8 +505,6 @@ where
                             "Splitting existing UDP flow; context changed"
                         );
 
-                        let ingest_token = value.ingest_token.clone();
-
                         emit(&Record::udp_close(key, value, now_utc));
 
                         let value = UdpFlowValue {
@@ -532,7 +530,7 @@ where
             }
             (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_)) => {}
             _ => {
-                tracing::error!("src and dst protocol must be the same");
+                tracing::trace!("src and dst protocol must be the same");
             }
         }
     }
@@ -567,7 +565,7 @@ where
 
                 match self.active_tcp_flows.entry(key) {
                     hash_map::Entry::Vacant(vacant) => {
-                        tracing::debug!(key = ?vacant.key(), "No existing TCP flow for inbound packet");
+                        tracing::trace!(key = ?vacant.key(), "No existing TCP flow for inbound packet");
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
@@ -599,7 +597,7 @@ where
 
                 match self.active_udp_flows.entry(key) {
                     hash_map::Entry::Vacant(vacant) => {
-                        tracing::debug!(key = ?vacant.key(), "No existing UDP flow for inbound packet");
+                        tracing::trace!(key = ?vacant.key(), "No existing UDP flow for inbound packet");
                     }
                     hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
@@ -610,7 +608,7 @@ where
             }
             (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_)) => {}
             _ => {
-                tracing::error!("src and dst protocol must be the same");
+                tracing::trace!("src and dst protocol must be the same");
             }
         }
     }
@@ -668,7 +666,6 @@ enum Entry {
 ///
 /// Which of these can be filled in depends on the entry point and this device's
 /// role; [`Tracker::commit`] interprets them (see the module docs).
-#[derive(Debug)]
 struct FlowData {
     entry: Entry,
     /// The inner (application) packet's flow fields.
@@ -684,6 +681,26 @@ struct FlowData {
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
+}
+
+/// Manual impl: `ingest_token` is a bearer credential and must never reach log
+/// output, not even at trace level.
+impl Debug for FlowData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FlowData")
+            .field("entry", &self.entry)
+            .field("inner", &self.inner)
+            .field("outer_tx", &self.outer_tx)
+            .field("peer", &self.peer)
+            .field("resource", &self.resource)
+            .field(
+                "ingest_token",
+                &self.ingest_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("domain", &self.domain)
+            .field("icmp_error", &self.icmp_error)
+            .finish()
+    }
 }
 
 impl FlowData {
@@ -1294,6 +1311,8 @@ mod tests {
         };
 
         let dir = tempfile::tempdir().unwrap();
+        flow_log_writer::write_token(dir.path(), record.ingest_token.as_deref().unwrap()).unwrap();
+
         let (layer, guard) = flow_log_writer::layer(dir.path().to_owned());
         let subscriber = tracing_subscriber::registry().with(layer);
         tracing::subscriber::with_default(subscriber, || emit(&record));
