@@ -2037,6 +2037,9 @@ impl ClientState {
                         self.resource_list.update(self.resource_list_snapshot());
                     }
                 }
+                snownet::Event::NoRelays => {
+                    self.buffered_events.push_back(ClientEvent::NoRelays);
+                }
             }
         }
 
@@ -2878,6 +2881,85 @@ mod tests {
                 GatewayId::from_u128(40)
             ]
         );
+    }
+
+    #[test]
+    fn requests_new_relays_when_all_allocations_fail() {
+        let mut now = Instant::now();
+        let mut state = ClientState::for_test();
+
+        // The relay never answers any of our requests, eventually failing the allocation.
+        state.update_relays(BTreeSet::default(), BTreeSet::from([relay(1)]), now);
+        now = advance(&mut state, now, Duration::from_secs(120));
+
+        assert_eq!(count_no_relays_events(&mut state), 1);
+
+        now = advance(&mut state, now, Duration::from_secs(120));
+
+        assert_eq!(
+            count_no_relays_events(&mut state),
+            0,
+            "should ask at most once per provided set of relays"
+        );
+
+        state.update_relays(BTreeSet::default(), BTreeSet::from([relay(2)]), now);
+        advance(&mut state, now, Duration::from_secs(120));
+
+        assert_eq!(count_no_relays_events(&mut state), 1);
+    }
+
+    #[test]
+    fn does_not_request_relays_after_reset() {
+        let mut now = Instant::now();
+        let mut state = ClientState::for_test();
+
+        state.update_relays(BTreeSet::default(), BTreeSet::from([relay(1)]), now);
+        state.reset(now, "test");
+        now = advance(&mut state, now, Duration::from_secs(120));
+
+        assert_eq!(
+            count_no_relays_events(&mut state),
+            0,
+            "portal reconnect after a reset re-provisions relays"
+        );
+
+        // Re-provisioned relays that fail again warrant a new request.
+        state.update_relays(BTreeSet::default(), BTreeSet::from([relay(2)]), now);
+        advance(&mut state, now, Duration::from_secs(120));
+
+        assert_eq!(count_no_relays_events(&mut state), 1);
+    }
+
+    fn advance(state: &mut ClientState, mut now: Instant, total: Duration) -> Instant {
+        let end = now + total;
+
+        while now < end {
+            now += Duration::from_secs(1);
+            state.handle_timeout(now);
+
+            while state.poll_transmit().is_some() {} // Discard all traffic; the relay is unreachable.
+        }
+
+        now
+    }
+
+    fn count_no_relays_events(state: &mut ClientState) -> usize {
+        iter::from_fn(|| state.poll_event())
+            .filter(|e| matches!(e, ClientEvent::NoRelays))
+            .count()
+    }
+
+    fn relay(id: u128) -> (RelayId, RelaySocket, String, String, String) {
+        (
+            RelayId::from_u128(id),
+            RelaySocket::V4(std::net::SocketAddrV4::new(
+                Ipv4Addr::new(203, 0, 113, 1),
+                3478,
+            )),
+            "user".to_owned(),
+            "pass".to_owned(),
+            "firezone".to_owned(),
+        )
     }
 
     #[test]

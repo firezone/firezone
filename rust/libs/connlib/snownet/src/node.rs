@@ -57,6 +57,11 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
+/// How long we wait between [`Event::NoRelays`] emissions.
+///
+/// Guards against a request-response loop with the portal in case allocations fail shortly after each provisioning (e.g. when UDP traffic to relays is blocked).
+const NO_RELAYS_EVENT_COOLDOWN: Duration = Duration::from_secs(60);
+
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -95,6 +100,14 @@ pub struct Node<TId, RId> {
     buffered_transmits: TransmitBuffer,
 
     next_rate_limiter_reset: Option<Instant>,
+
+    /// Whether to emit [`Event::NoRelays`] once we run out of allocations.
+    ///
+    /// Armed every time we are provided with relays, disarmed when we emit the event.
+    /// Thus, we ask at most once per provided set of relays.
+    request_relays_when_empty: bool,
+    /// Do not emit [`Event::NoRelays`] before this instant.
+    next_no_relays_event: Option<Instant>,
 
     allocations: Allocations<RId>,
 
@@ -202,6 +215,8 @@ where
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: TransmitBuffer::default(),
             next_rate_limiter_reset: None,
+            request_relays_when_empty: false,
+            next_no_relays_event: None,
             pending_events: VecDeque::default(),
             allocations,
             inflight_stun_requests: Default::default(),
@@ -230,6 +245,9 @@ where
         self.buffered_transmits.clear();
         self.pending_events.clear();
         self.inflight_stun_requests.clear();
+
+        // Upper layers MUST re-provision relays after a reset (e.g. by reconnecting to the portal); no need to ask for them.
+        self.request_relays_when_empty = false;
 
         if self.connections.all_iceless() {
             let num_iceless = self.connections.reset_for_roam(now);
@@ -686,6 +704,17 @@ where
         self.connections
             .handle_timeout(&mut self.pending_events, now);
         self.inflight_stun_requests.handle_timeout(now);
+
+        if self.request_relays_when_empty
+            && self.allocations.is_empty()
+            && self.next_no_relays_event.is_none_or(|at| now >= at)
+        {
+            tracing::info!("No relays left; requesting a new set");
+
+            self.pending_events.push_back(Event::NoRelays);
+            self.request_relays_when_empty = false;
+            self.next_no_relays_event = Some(now + NO_RELAYS_EVENT_COOLDOWN);
+        }
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -784,6 +813,10 @@ where
             &mut self.pending_events,
             now,
         );
+
+        if !self.allocations.is_empty() {
+            self.request_relays_when_empty = true;
+        }
     }
 
     #[must_use]
@@ -1272,6 +1305,12 @@ pub enum Event<TId> {
 
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
+
+    /// We ran out of relays and need a new set to make relayed connections.
+    ///
+    /// Upper layers should obtain new relays and pass them to [`Node::update_relays`].
+    /// Emitted at most once per set of relays provided via [`Node::update_relays`].
+    NoRelays,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
