@@ -2,8 +2,11 @@ use anyhow::{Context as _, ErrorExt, Result, bail};
 use ip_packet::{IpPacket, IpPacketBuf};
 use opentelemetry::KeyValue;
 use std::io;
+use std::mem;
 use std::os::fd::AsRawFd;
 use tokio::io::unix::AsyncFd;
+
+use crate::PacketBatch;
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -13,16 +16,6 @@ const MAX_ENOSPC_RETRIES: u32 = 24;
 ///
 /// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
 const SPIN_LIMIT: u32 = 6;
-
-/// How many packets we at most pull from the outbound channel in one batch before
-/// writing them, amortising task wake-ups across the batch.
-///
-/// Mobile platforms are memory-constrained, so we use a smaller batch there.
-const MAX_TUN_BATCH: usize = if cfg!(any(target_os = "ios", target_os = "android")) {
-    25
-} else {
-    100
-};
 
 pub fn tun_send<T>(
     fd: T,
@@ -41,12 +34,9 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
-            let mut packets = Vec::with_capacity(MAX_TUN_BATCH);
 
-            // Pull as many packets as are queued (up to `MAX_TUN_BATCH`) per wake-up,
-            // so the cost of being scheduled is amortised across the whole batch.
-            while outbound_rx.recv_many(&mut packets, MAX_TUN_BATCH).await > 0 {
-                for packet in packets.drain(..) {
+            while let Some(mut batch) = outbound_rx.recv().await {
+                for packet in batch.drain() {
                     #[cfg(debug_assertions)]
                     tracing::trace!(target: "wire::dev::send", ?packet);
 
@@ -176,14 +166,15 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
-            let mut packets = Vec::with_capacity(MAX_TUN_BATCH);
+            let mut batch = PacketBatch::default();
 
             loop {
                 let mut guard = fd.readable().await?;
 
-                // Drain up to `MAX_TUN_BATCH` packets from the FD before handing them off,
-                // so a single wake-up feeds a batch into the state loop instead of one packet.
-                while packets.len() < MAX_TUN_BATCH {
+                // Drain the FD before handing the packets off as a single batch, so one
+                // channel item feeds a whole read burst into the state loop instead of
+                // one packet.
+                loop {
                     let mut ip_packet_buf = IpPacketBuf::new();
 
                     let len = match guard
@@ -203,7 +194,20 @@ where
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            packets.push(packet);
+                            let Err(packet) = batch.try_push(packet) else {
+                                continue;
+                            };
+
+                            // The batch is full: hand it off and start a new one.
+                            if inbound_tx
+                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .await
+                                .is_err()
+                            {
+                                tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                                return anyhow::Ok(());
+                            }
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                             tracing::debug!("{e:#}") // Log on debug to be less noisy.
@@ -212,18 +216,14 @@ where
                     }
                 }
 
-                if packets.is_empty() {
+                if batch.is_empty() {
                     continue;
                 }
 
-                let Ok(permits) = inbound_tx.reserve_many(packets.len()).await else {
+                if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
                     tracing::debug!("Inbound packet receiver gone, shutting down task");
 
                     return anyhow::Ok(());
-                };
-
-                for (permit, packet) in permits.zip(packets.drain(..)) {
-                    permit.send(packet);
                 }
             }
         })?;

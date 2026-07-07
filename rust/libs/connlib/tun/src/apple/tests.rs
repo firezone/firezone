@@ -50,10 +50,11 @@ fn recv_reads_packets_routed_through_the_interface() {
     let deadline = Instant::now() + Duration::from_secs(5);
     while matched < COUNT && Instant::now() < deadline {
         match rx.try_recv() {
-            Ok(packet) => {
-                if packet.destination() == IpAddr::V4(PEER) && packet.as_udp().is_some() {
-                    matched += 1;
-                }
+            Ok(batch) => {
+                matched += batch
+                    .iter()
+                    .filter(|p| p.destination() == IpAddr::V4(PEER) && p.as_udp().is_some())
+                    .count();
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
                 std::thread::sleep(Duration::from_millis(10));

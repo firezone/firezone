@@ -64,14 +64,14 @@ impl Tun {
         runtime.spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
         runtime.spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_receive(),
             ],
         ));
