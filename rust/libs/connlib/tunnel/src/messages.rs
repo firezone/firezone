@@ -464,6 +464,14 @@ mod tests {
     }
 
     #[test]
+    fn flow_logs_config_ignores_unknown_fields() {
+        let json = r#"{ "api_url": "https://api.firezone.dev", "upload_interval_secs": 60, "upload_batch_size": 1000, "future_field": true }"#;
+        let config: FlowLogsConfig = serde_json::from_str(json).unwrap();
+
+        assert!(config.upload_enabled());
+    }
+
+    #[test]
     fn snownet_capabilities_default_is_all_false() {
         assert_eq!(
             SnownetCapabilities::default(),
