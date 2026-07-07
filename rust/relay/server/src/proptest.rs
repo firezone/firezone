@@ -4,6 +4,7 @@ use proptest::arbitrary::any;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::time::Duration;
 use stun_codec::TransactionId;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
@@ -55,6 +56,16 @@ pub fn channel_data() -> impl Strategy<Value = ChannelData<'static>> {
 
         ChannelData::parse(payload).unwrap()
     })
+}
+
+/// A client source address the relay can reply to, i.e. one with a non-zero port.
+pub fn source_v4() -> impl Strategy<Value = SocketAddrV4> {
+    (any::<Ipv4Addr>(), 1..=u16::MAX).prop_map(|(ip, port)| SocketAddrV4::new(ip, port))
+}
+
+/// A client source address the relay can reply to, i.e. one with a non-zero port.
+pub fn source_v6() -> impl Strategy<Value = SocketAddrV6> {
+    (any::<Ipv6Addr>(), 1..=u16::MAX).prop_map(|(ip, port)| SocketAddrV6::new(ip, port, 0, 0))
 }
 
 pub fn username_salt() -> impl Strategy<Value = String> {
