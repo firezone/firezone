@@ -67,7 +67,7 @@ defmodule Portal.DeviceFixtures do
 
     Enum.into(attrs, %{
       name: "Client #{unique_num}",
-      firezone_id: "client_#{unique_num}",
+      telemetry_id: "client_#{unique_num}",
       device_serial: "SN#{unique_num}",
       device_uuid: "UUID-#{unique_num}",
       firebase_installation_id: "firebase_#{unique_num}"
@@ -81,7 +81,7 @@ defmodule Portal.DeviceFixtures do
   """
   def client_changeset(attrs \\ %{}) do
     %Portal.Device{type: :client, actor_id: Ecto.UUID.generate()}
-    |> Ecto.Changeset.cast(attrs, [:name, :firezone_id, :hostname])
+    |> Ecto.Changeset.cast(attrs, [:name, :telemetry_id, :hostname])
     |> Portal.Device.changeset()
   end
 
@@ -93,7 +93,7 @@ defmodule Portal.DeviceFixtures do
   """
   def insert_client(account, actor, attrs) do
     %Portal.Device{}
-    |> Ecto.Changeset.cast(attrs, [:name, :firezone_id, :hostname])
+    |> Ecto.Changeset.cast(attrs, [:name, :telemetry_id, :hostname])
     |> Ecto.Changeset.put_change(:type, :client)
     |> Ecto.Changeset.put_change(:account_id, account.id)
     |> Ecto.Changeset.put_change(:actor_id, actor.id)
@@ -131,7 +131,7 @@ defmodule Portal.DeviceFixtures do
       %Portal.Device{}
       |> Ecto.Changeset.cast(device_attrs, [
         :name,
-        :firezone_id,
+        :telemetry_id,
         :device_serial,
         :device_uuid,
         :identifier_for_vendor,
@@ -245,7 +245,7 @@ defmodule Portal.DeviceFixtures do
 
     Enum.into(attrs, %{
       name: "Gateway #{unique_num}",
-      firezone_id: "gateway_#{unique_num}",
+      telemetry_id: "gateway_#{unique_num}",
       public_key: generate_public_key()
     })
   end
@@ -289,6 +289,7 @@ defmodule Portal.DeviceFixtures do
       |> Map.drop([
         :account,
         :site,
+        :token,
         :ipv4_address,
         :ipv6_address,
         :last_seen_user_agent,
@@ -306,7 +307,7 @@ defmodule Portal.DeviceFixtures do
       %Portal.Device{}
       |> Ecto.Changeset.cast(device_attrs, [
         :name,
-        :firezone_id
+        :telemetry_id
       ])
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, account.id)
@@ -337,8 +338,15 @@ defmodule Portal.DeviceFixtures do
       |> maybe_sync_device_ipv4(ipv4)
       |> maybe_sync_device_ipv6(ipv6)
 
-    # Always create a gateway session (gateways always have sessions in practice)
-    token = gateway_token_fixture(account: account, site: site)
+    # Always create a gateway session (gateways always have sessions in practice).
+    # Defaults to a legacy multi-owner site token; pass `token: :single_owner` to
+    # bind the session to a single-owner token, or pass a token struct directly.
+    token =
+      case Map.get(attrs, :token) do
+        nil -> gateway_token_fixture(account: account, site: site)
+        :single_owner -> gateway_token_fixture(gateway: gateway)
+        %Portal.GatewayToken{} = token -> token
+      end
 
     public_key = Map.get(device_attrs, :public_key, generate_public_key())
 

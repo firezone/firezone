@@ -8,14 +8,14 @@ defmodule Portal.GatewayTest do
 
   defp build_changeset(attrs) do
     %Device{type: :gateway, site_id: Ecto.UUID.generate()}
-    |> cast(attrs, [:name, :firezone_id])
+    |> cast(attrs, [:name, :telemetry_id])
     |> Device.changeset()
   end
 
   describe "changeset/1 basic validations" do
-    test "requires firezone_id" do
+    test "requires telemetry_id" do
       changeset = build_changeset(%{name: "Gateway"})
-      assert %{firezone_id: ["can't be blank"]} = errors_on(changeset)
+      assert %{telemetry_id: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "inserts name at maximum length" do
@@ -28,9 +28,9 @@ defmodule Portal.GatewayTest do
       assert %{name: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
 
-    test "rejects firezone_id exceeding maximum length" do
-      changeset = build_changeset(%{name: "Gateway", firezone_id: String.duplicate("a", 256)})
-      assert %{firezone_id: ["should be at most 255 character(s)"]} = errors_on(changeset)
+    test "rejects telemetry_id exceeding maximum length" do
+      changeset = build_changeset(%{name: "Gateway", telemetry_id: String.duplicate("a", 256)})
+      assert %{telemetry_id: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
   end
 end

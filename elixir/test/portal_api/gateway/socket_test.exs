@@ -20,17 +20,20 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
 
-      # Attrs without token param, but with other required fields
+      # Attrs without token param, but with other required fields. The legacy
+      # firezone_id wire name must keep working.
       attrs =
         valid_gateway_attrs()
-        |> Map.take([:firezone_id, :public_key])
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+        |> Map.take([:telemetry_id, :public_key])
+        |> then(fn attrs ->
+          %{"firezone_id" => attrs.telemetry_id, "public_key" => attrs.public_key}
+        end)
 
       connect_info = build_connect_info(token: encrypted_secret)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
-      assert gateway.firezone_id == attrs["firezone_id"]
+      assert gateway.telemetry_id == attrs["firezone_id"]
     end
 
     test "accepts external_id as the public parameter name" do
@@ -39,10 +42,10 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       attrs =
         valid_gateway_attrs()
-        |> Map.take([:firezone_id, :public_key])
+        |> Map.take([:telemetry_id, :public_key])
         |> then(fn attrs ->
           %{
-            "external_id" => attrs.firezone_id,
+            "external_id" => attrs.telemetry_id,
             "public_key" => attrs.public_key
           }
         end)
@@ -51,7 +54,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
-      assert gateway.firezone_id == attrs["external_id"]
+      assert gateway.telemetry_id == attrs["external_id"]
     end
 
     test "x-authorization header takes precedence over token param" do
@@ -86,7 +89,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
-      assert gateway.firezone_id == attrs["external_id"]
+      assert gateway.telemetry_id == attrs["external_id"]
 
       assert session = Map.fetch!(socket.assigns, :session)
       assert session.public_key == attrs["public_key"]
@@ -141,7 +144,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture(account: account, site: site)
       encrypted_secret = encode_gateway_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret, external_id: gateway.firezone_id)
+      attrs = connect_attrs(token: encrypted_secret, external_id: gateway.telemetry_id)
       connect_info = build_connect_info()
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
@@ -176,7 +179,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture(account: account, site: site)
       encrypted_secret = encode_gateway_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.firezone_id)
+      attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.telemetry_id)
       connect_info = build_connect_info()
 
       # Reconnect
@@ -192,6 +195,135 @@ defmodule PortalAPI.Gateway.SocketTest do
       attrs = connect_attrs(token: "foo")
       connect_info = build_connect_info()
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
+    end
+
+    test "connects a gateway with a single-owner token" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+      connect_info = build_connect_info()
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      # The token identifies the gateway directly; the reported external_id
+      # is ignored for identification
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.site.id == site.id
+      assert socket.assigns.session.gateway_token_id == token.id
+    end
+
+    test "single-owner connect persists the reported telemetry_id when blank" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      gateway =
+        gateway
+        |> Ecto.Changeset.change(telemetry_id: nil)
+        |> Portal.Repo.update!()
+
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: "reported-id")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.telemetry_id == "reported-id"
+    end
+
+    test "single-owner connect keeps an already-set telemetry_id" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: "different-id")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.telemetry_id == gateway.telemetry_id
+    end
+
+    test "rejects a single-owner token rotated past the grace period" do
+      gateway = gateway_fixture()
+
+      token =
+        gateway_token_fixture(
+          gateway: gateway,
+          rotated_at: DateTime.add(DateTime.utc_now(), -5, :hour)
+        )
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:error, :invalid_token} =
+               connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "accepts a single-owner token rotated within the grace period" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+    end
+
+    test "rejects a single-owner token whose gateway was deleted" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      encrypted_secret = encode_gateway_token(token)
+
+      Portal.Repo.delete!(gateway)
+
+      attrs = connect_attrs(token: encrypted_secret)
+
+      assert {:error, :invalid_token} =
+               connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "rejects connection when the gateway is already connected" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      # Simulate a live channel holding the gateway id
+      :ok = Portal.PG.join(gateway.id)
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:error, :conflict} = connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "rejects reconnect for an already-connected multi-owner gateway" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(account: account, site: site)
+
+      :ok = Portal.PG.join(gateway.id)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.telemetry_id)
+
+      assert {:error, :conflict} = connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "connecting with the replacement token deletes the rotated one" do
+      gateway = gateway_fixture()
+      rotated = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+      active = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(active))
+
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: build_connect_info())
+
+      refute Portal.Repo.get_by(Portal.GatewayToken,
+               account_id: rotated.account_id,
+               id: rotated.id
+             )
     end
 
     test "rate limits repeated connection attempts from same IP and token" do
@@ -298,7 +430,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
   defp connect_attrs(attrs) do
     valid_gateway_attrs()
-    |> then(fn attrs -> %{external_id: attrs.firezone_id, public_key: attrs.public_key} end)
+    |> then(fn attrs -> %{external_id: attrs.telemetry_id, public_key: attrs.public_key} end)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end

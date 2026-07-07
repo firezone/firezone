@@ -22,7 +22,7 @@ defmodule PortalAPI.ClientJSON do
   defp data(%Device{} = device) do
     %{
       id: device.id,
-      firezone_id: device.firezone_id,
+      firezone_id: device.telemetry_id,
       actor_id: device.actor_id,
       name: device.name,
       ipv4: device.ipv4,

@@ -18,6 +18,7 @@ defmodule PortalAPI.Gateway.Channel do
 
   # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
+  @enforce_single_gateway_every :timer.minutes(1)
 
   @session_durability_timeout :timer.seconds(15)
 
@@ -105,7 +106,8 @@ defmodule PortalAPI.Gateway.Channel do
     socket =
       assign(socket,
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
-        iceless_capable: false
+        iceless_capable: false,
+        connected_at: System.system_time(:millisecond)
       )
 
     Process.send_after(self(), :prune_cache, @prune_cache_every)
@@ -539,6 +541,38 @@ defmodule PortalAPI.Gateway.Channel do
     # attempting to immediately reconnect
     push(socket, "disconnect", %{reason: "token_expired"})
     {:stop, :shutdown, socket}
+  end
+
+  # Periodically assert our claim on the gateway id so duplicates that slipped
+  # past the connect-time check (nodes are eventually consistent) converge to a
+  # single connection: duplicates exchange claims and everyone but the
+  # earliest-connected process disconnects itself.
+  def handle_info(:enforce_single_gateway, socket) do
+    for pid <- PG.members(socket.assigns.gateway.id), pid != self() do
+      send(pid, {:gateway_connection_claim, self(), socket.assigns.connected_at})
+    end
+
+    Process.send_after(self(), :enforce_single_gateway, @enforce_single_gateway_every)
+    {:noreply, socket}
+  end
+
+  def handle_info({:gateway_connection_claim, pid, connected_at}, socket) do
+    if {connected_at, pid} < {socket.assigns.connected_at, self()} do
+      # The claiming process connected first; we are the duplicate. connlib
+      # only understands the token_expired disconnect reason, so we reuse it
+      # here like the pre-first-wins boot behavior did.
+      Logger.info("Disconnecting duplicate gateway connection",
+        gateway_id: socket.assigns.gateway.id
+      )
+
+      push(socket, "disconnect", %{reason: "token_expired"})
+      {:stop, :shutdown, socket}
+    else
+      # We hold the older claim; counter-claim so the younger duplicate
+      # disconnects itself immediately instead of on the next periodic tick
+      send(pid, {:gateway_connection_claim, self(), socket.assigns.connected_at})
+      {:noreply, socket}
+    end
   end
 
   # A monitored process crashed — determine which subsystem it belongs to and recover.
@@ -1055,9 +1089,13 @@ defmodule PortalAPI.Gateway.Channel do
 
       new_pid ->
         Process.monitor(new_pid)
-        :ok = PG.register(socket.assigns.gateway.id)
+        :ok = PG.join(socket.assigns.gateway.id)
         :ok = PG.join(socket.assigns.token_id)
         socket = assign(socket, :pg_scope_pid, new_pid)
+
+        # First-wins conflict resolution: assert our claim on the gateway id
+        # so any duplicate that raced past the connect-time check resolves
+        send(self(), :enforce_single_gateway)
 
         # Only enqueue + arm on the first successful registration; re-registrations
         # after a PG scope crash share the same channel and session row.

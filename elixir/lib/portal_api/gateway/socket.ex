@@ -53,10 +53,8 @@ defmodule PortalAPI.Gateway.Socket do
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
-         {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
-         changeset = insert_changeset(site, attrs),
-         {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
+         :ok <- ensure_gateway_not_connected(gateway) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       session = build_session(gateway, gateway_token.id, public_key, context, version)
@@ -98,9 +96,65 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
+  # First-wins: a gateway that appears connected must disconnect before a
+  # replacement is allowed. Cross-node registration races are resolved by the
+  # channel's connection-claim protocol after join.
+  defp ensure_gateway_not_connected(gateway) do
+    case PG.members(gateway.id) do
+      [] -> :ok
+      _pids -> {:error, :conflict}
+    end
+  end
+
+  # Multi-owner (site) token: gateways are identified by their reported
+  # telemetry_id and created on the fly
+  defp resolve_gateway(%Portal.GatewayToken{device_id: nil} = gateway_token, attrs) do
+    with {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
+         changeset = insert_changeset(site, attrs),
+         {:ok, _} <- apply_action(changeset, :validate),
+         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+      {:ok, site, gateway}
+    end
+  end
+
+  # Single-owner token: the token identifies the gateway directly; the
+  # reported telemetry_id is persisted as a telemetry hint on first connect
+  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, attrs) do
+    with {:ok, gateway} <-
+           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id),
+         {:ok, site} <- Database.fetch_site(gateway.account_id, gateway.site_id),
+         {:ok, gateway} <- maybe_put_telemetry_id(gateway, attrs) do
+      {:ok, site, gateway}
+    end
+  end
+
+  defp maybe_put_telemetry_id(%Device{telemetry_id: nil} = gateway, %{"telemetry_id" => reported})
+       when is_binary(reported) and reported != "" do
+    changeset =
+      gateway
+      |> cast(%{telemetry_id: reported}, [:telemetry_id])
+      |> Device.changeset()
+      |> unique_constraint(:telemetry_id, name: :devices_account_id_site_id_telemetry_id_index)
+
+    case Database.update_gateway(changeset) do
+      {:ok, gateway} ->
+        {:ok, gateway}
+
+      {:error, changeset} ->
+        # The telemetry hint is best-effort; never block the connection on it
+        Logger.info("Failed to persist reported gateway telemetry_id",
+          error: {:error, changeset}
+        )
+
+        {:ok, gateway}
+    end
+  end
+
+  defp maybe_put_telemetry_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
+
   defp insert_changeset(site, attrs) do
-    insert_fields = ~w[firezone_id name]a
-    required_fields = ~w[firezone_id name]a
+    insert_fields = ~w[telemetry_id name]a
+    required_fields = ~w[telemetry_id name]a
 
     %Device{}
     |> cast(attrs, insert_fields)
@@ -264,23 +318,24 @@ defmodule PortalAPI.Gateway.Socket do
   end
 
   defp normalize_device_attrs(attrs) do
-    firezone_id =
-      attrs["external_id"] || attrs[:external_id] || attrs["firezone_id"] || attrs[:firezone_id]
+    telemetry_id =
+      attrs["external_id"] || attrs[:external_id] || attrs["firezone_id"] || attrs[:firezone_id] ||
+        attrs["telemetry_id"] || attrs[:telemetry_id]
 
-    if firezone_id do
-      Map.put(attrs, "firezone_id", firezone_id)
+    if telemetry_id do
+      Map.put(attrs, "telemetry_id", telemetry_id)
     else
       attrs
     end
   end
 
   defp public_socket_changeset(changeset) do
-    %{changeset | errors: rename_firezone_id_errors(changeset.errors)}
+    %{changeset | errors: rename_telemetry_id_errors(changeset.errors)}
   end
 
-  defp rename_firezone_id_errors(errors) do
+  defp rename_telemetry_id_errors(errors) do
     Enum.map(errors, fn
-      {:firezone_id, details} -> {:external_id, details}
+      {:telemetry_id, details} -> {:external_id, details}
       error -> error
     end)
   end
@@ -291,6 +346,28 @@ defmodule PortalAPI.Gateway.Socket do
 
     alias Portal.Safe
     alias Portal.Site
+
+    def fetch_gateway(account_id, id) do
+      result =
+        from(d in Device,
+          where: d.account_id == ^account_id,
+          where: d.id == ^id,
+          where: d.type == :gateway
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      case result do
+        nil -> {:error, :not_found}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    def update_gateway(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
 
     def fetch_site(account_id, id) do
       result =
@@ -311,14 +388,14 @@ defmodule PortalAPI.Gateway.Socket do
     def find_or_create_gateway(changeset) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       site_id = Ecto.Changeset.get_field(changeset, :site_id)
-      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
+      telemetry_id = Ecto.Changeset.get_field(changeset, :telemetry_id)
 
       existing =
-        if firezone_id do
+        if telemetry_id do
           from(d in Device,
             where: d.account_id == ^account_id,
             where: d.site_id == ^site_id,
-            where: d.firezone_id == ^firezone_id,
+            where: d.telemetry_id == ^telemetry_id,
             where: d.type == :gateway
           )
           |> Safe.unscoped(:replica)

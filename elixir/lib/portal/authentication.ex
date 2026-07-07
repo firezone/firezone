@@ -115,6 +115,49 @@ defmodule Portal.Authentication do
     |> Database.insert_gateway_token(subject)
   end
 
+  # Single-owner token: bound to one gateway. At most one active token can
+  # exist per gateway; callers should map the unique constraint error on
+  # :device_id to a conflict response and point users at rotation instead.
+  def create_gateway_token(%Portal.Device{type: :gateway} = gateway, %Subject{} = subject) do
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
+
+    %Portal.GatewayToken{
+      account_id: gateway.account_id,
+      device_id: gateway.id,
+      secret_fragment: secret_fragment,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+    |> Ecto.Changeset.change()
+    |> Portal.GatewayToken.changeset()
+    |> Database.insert_gateway_token(subject)
+  end
+
+  @doc """
+  Rotates a gateway's single-owner token.
+
+  The current active token is stamped with `rotated_at` and remains valid until
+  the gateway first connects with the new token or the rotation grace period
+  elapses, whichever comes first. Rotating again while a rotation is still
+  unconfirmed replaces the pending token and leaves the in-use rotated token
+  and its original deadline untouched.
+  """
+  @spec rotate_gateway_token(Portal.Device.t(), Subject.t()) ::
+          {:ok, Portal.GatewayToken.t()} | {:error, Ecto.Changeset.t()} | {:error, :unauthorized}
+  def rotate_gateway_token(%Portal.Device{type: :gateway} = gateway, %Subject{} = subject) do
+    {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
+
+    new_token = %Portal.GatewayToken{
+      account_id: gateway.account_id,
+      device_id: gateway.id,
+      secret_fragment: secret_fragment,
+      secret_salt: secret_salt,
+      secret_hash: secret_hash
+    }
+
+    Database.rotate_gateway_token(gateway, new_token, subject)
+  end
+
   defp generate_token_secrets(nonce \\ "") do
     secret_fragment = Portal.Crypto.random_token(32, encoder: :hex32)
     secret_salt = Portal.Crypto.random_token(16)
@@ -265,13 +308,32 @@ defmodule Portal.Authentication do
   end
 
   def verify_gateway_token(encoded_token) when is_binary(encoded_token) do
-    verify_infrastructure_token(
-      encoded_token,
-      "gateway",
-      "gateway_group",
-      &Database.fetch_gateway_token/2
-    )
+    with {:ok, token} <-
+           verify_infrastructure_token(
+             encoded_token,
+             "gateway",
+             "gateway_group",
+             &Database.fetch_gateway_token/2
+           ) do
+      :ok = confirm_gateway_token_rotation(token)
+      {:ok, token}
+    end
   end
+
+  # The gateway presenting the active token proves it received the rotation
+  # replacement, which completes the rotation: the rotated sibling is deleted,
+  # disconnecting any straggler still using it via the delete hook.
+  defp confirm_gateway_token_rotation(%Portal.GatewayToken{
+         rotated_at: nil,
+         rotated_sibling_id: sibling_id,
+         account_id: account_id
+       })
+       when not is_nil(sibling_id) do
+    Database.delete_rotated_gateway_token(account_id, sibling_id)
+    :ok
+  end
+
+  defp confirm_gateway_token_rotation(_token), do: :ok
 
   defp verify_infrastructure_token(encoded_token, current_salt, legacy_salt, fetch_fn) do
     config = fetch_config!()
@@ -475,6 +537,79 @@ defmodule Portal.Authentication do
       |> Safe.insert()
     end
 
+    def rotate_gateway_token(gateway, new_token, subject) do
+      Safe.transact(fn ->
+        from(gt in Portal.GatewayToken,
+          where: gt.account_id == ^gateway.account_id,
+          where: gt.device_id == ^gateway.id,
+          lock: "FOR UPDATE"
+        )
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, :unauthorized} ->
+            {:error, :unauthorized}
+
+          tokens when is_list(tokens) ->
+            do_rotate_gateway_token(tokens, new_token, subject)
+        end
+      end)
+    end
+
+    defp do_rotate_gateway_token(tokens, new_token, subject) do
+      active = Enum.find(tokens, &is_nil(&1.rotated_at))
+
+      result =
+        case {active, length(tokens)} do
+          # Unconfirmed rotation in progress: replace the pending token and
+          # leave the rotated one (still in use) and its deadline untouched
+          {%Portal.GatewayToken{} = active, 2} ->
+            active
+            |> Safe.scoped(subject)
+            |> Safe.delete()
+
+          {%Portal.GatewayToken{} = active, 1} ->
+            stamp_or_replace_active_token(active, subject)
+
+          # No active token (none at all, or only a rotated one): just mint
+          {nil, _} ->
+            {:ok, nil}
+        end
+
+      with {:ok, _} <- result,
+           {:ok, token} <-
+             new_token
+             |> Ecto.Changeset.change()
+             |> Portal.GatewayToken.changeset()
+             |> insert_gateway_token(subject) do
+        {:ok, token}
+      end
+    end
+
+    # A token no session has ever referenced has nothing relying on it, so
+    # replace it outright instead of starting a pointless grace period
+    defp stamp_or_replace_active_token(active, subject) do
+      if gateway_token_used?(active, subject) do
+        active
+        |> Ecto.Changeset.change(rotated_at: DateTime.utc_now())
+        |> Safe.scoped(subject)
+        |> Safe.update()
+      else
+        active
+        |> Safe.scoped(subject)
+        |> Safe.delete()
+      end
+    end
+
+    defp gateway_token_used?(token, subject) do
+      from(s in Portal.GatewaySession,
+        where: s.account_id == ^token.account_id,
+        where: s.gateway_token_id == ^token.id
+      )
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
+    end
+
     def insert_api_token(changeset, subject) do
       changeset
       |> Safe.scoped(subject)
@@ -482,9 +617,17 @@ defmodule Portal.Authentication do
     end
 
     def fetch_gateway_token(account_id, id) do
+      grace_hours = Portal.GatewayToken.rotation_grace_hours()
+
       from(gt in Portal.GatewayToken,
         where: gt.account_id == ^account_id,
-        where: gt.id == ^id
+        where: gt.id == ^id,
+        where: is_nil(gt.rotated_at) or gt.rotated_at > ago(^grace_hours, "hour"),
+        left_join: sibling in Portal.GatewayToken,
+        on:
+          sibling.account_id == gt.account_id and sibling.device_id == gt.device_id and
+            sibling.id != gt.id,
+        select_merge: %{rotated_sibling_id: sibling.id}
       )
       |> Safe.unscoped(:replica)
       |> Safe.one(fallback_to_primary: true)
@@ -492,6 +635,16 @@ defmodule Portal.Authentication do
         nil -> {:error, :not_found}
         gateway_token -> {:ok, gateway_token}
       end
+    end
+
+    def delete_rotated_gateway_token(account_id, id) do
+      from(gt in Portal.GatewayToken,
+        where: gt.account_id == ^account_id,
+        where: gt.id == ^id,
+        where: not is_nil(gt.rotated_at)
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
     end
 
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{type: :client}) do

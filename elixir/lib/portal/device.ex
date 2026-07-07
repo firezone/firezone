@@ -14,7 +14,7 @@ defmodule Portal.Device do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           type: :client | :gateway,
-          firezone_id: String.t(),
+          telemetry_id: String.t(),
           name: String.t(),
           psk_base: binary(),
           ipv4: Postgrex.INET.t(),
@@ -43,7 +43,7 @@ defmodule Portal.Device do
 
     field :type, Ecto.Enum, values: [:client, :gateway]
 
-    field :firezone_id, :string
+    field :telemetry_id, :string
     field :name, :string
     field :psk_base, :binary, read_after_writes: true, redact: true
 
@@ -70,6 +70,10 @@ defmodule Portal.Device do
       foreign_key: :device_id,
       references: :id
 
+    has_many :gateway_tokens, Portal.GatewayToken,
+      foreign_key: :device_id,
+      references: :id
+
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
     field :latest_session, :any, virtual: true
@@ -82,12 +86,12 @@ defmodule Portal.Device do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> trim_change(~w[name firezone_id hostname]a)
+    |> trim_change(~w[name telemetry_id hostname]a)
     |> normalize_hostname()
-    |> validate_required([:type, :name, :firezone_id])
+    |> validate_required([:type, :name, :telemetry_id])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_length(:firezone_id, max: 255)
+    |> validate_length(:telemetry_id, max: 255)
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
@@ -96,7 +100,7 @@ defmodule Portal.Device do
     |> check_constraint(:type, name: :devices_type_check)
     |> check_constraint(:actor_id, name: :device_type_client_fields)
     |> check_constraint(:site_id, name: :device_type_gateway_fields)
-    |> unique_firezone_id_constraint()
+    |> unique_telemetry_id_constraint()
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
@@ -145,16 +149,16 @@ defmodule Portal.Device do
     end)
   end
 
-  defp unique_firezone_id_constraint(changeset) do
+  defp unique_telemetry_id_constraint(changeset) do
     case get_field(changeset, :type) do
       :client ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_actor_id_firezone_id_index
+        unique_constraint(changeset, :telemetry_id,
+          name: :devices_account_id_actor_id_telemetry_id_index
         )
 
       :gateway ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_site_id_firezone_id_index
+        unique_constraint(changeset, :telemetry_id,
+          name: :devices_account_id_site_id_telemetry_id_index
         )
 
       _ ->

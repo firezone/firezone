@@ -216,7 +216,7 @@
 #         %Portal.Device{
 #           account_id: account.id,
 #           site_id: site.id,
-#           firezone_id: "test-gateway-us-east",
+#           telemetry_id: "test-gateway-us-east",
 #           name: "Gateway US East",
 #           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
 #           last_seen_user_agent: "Linux/1.0.0",
@@ -232,7 +232,7 @@
 #         %Portal.Device{
 #           account_id: account.id,
 #           group_id: group.id,
-#           firezone_id: "test-gateway-eu-west",
+#           telemetry_id: "test-gateway-eu-west",
 #           name: "Gateway EU West",
 #           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
 #           last_seen_user_agent: "Linux/1.0.1",

@@ -1070,21 +1070,60 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
-    test "duplicate connection evicts the first gateway", %{
+    test "duplicate connection is evicted, first connection wins", %{
       gateway: gateway,
       site: site,
       token: token
     } do
       Process.flag(:trap_exit, true)
-      join_channel(gateway, site, token)
 
+      socket1 = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      # Simulate a second connection registering for the same gateway
-      PG.register(gateway.id)
+      socket2 = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      # The younger duplicate disconnects itself after the claim exchange
+      ref = Process.monitor(socket2.channel_pid)
+      assert_receive {:DOWN, ^ref, :process, _pid, :shutdown}
+      assert_push "disconnect", %{reason: "token_expired"}
+
+      assert Process.alive?(socket1.channel_pid)
+    end
+  end
+
+  describe "handle_info/2 :gateway_connection_claim" do
+    test "disconnects on a claim from an older connection", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:gateway_connection_claim, self(), 0})
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "counter-claims and stays connected on a claim from a younger connection", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      younger = System.system_time(:millisecond) + :timer.hours(1)
+      send(socket.channel_pid, {:gateway_connection_claim, self(), younger})
+
+      channel_pid = socket.channel_pid
+      assert_receive {:gateway_connection_claim, ^channel_pid, _connected_at}
+      assert Process.alive?(socket.channel_pid)
+      refute_push "disconnect", _payload
     end
   end
 

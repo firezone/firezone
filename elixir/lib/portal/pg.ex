@@ -37,6 +37,13 @@ defmodule Portal.PG do
   end
 
   @doc """
+  Returns the pids registered under `key`.
+  """
+  def members(key) do
+    :pg.get_members(scope(), key)
+  end
+
+  @doc """
   Delivers `message` to all processes registered under `key`.
 
   Returns `:ok` if at least one process is registered, `{:error, :not_found}` otherwise.
