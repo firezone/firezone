@@ -85,7 +85,7 @@ pub struct Tracker<S> {
 /// One packet in the initiator-to-responder direction.
 ///
 /// Recording this creates, updates or splits a flow.
-struct TxFlow<S> {
+struct TxPacket<S> {
     scope: S,
     /// The outer (transport) 4-tuple this flow is tunneled over.
     context: FlowContext,
@@ -105,7 +105,7 @@ struct TxFlow<S> {
 ///
 /// Recording this only updates the counters of an already-open flow; `src` /
 /// `dst` are in the packet's natural orientation and are flipped to match the key.
-struct RxFlow<S> {
+struct RxPacket<S> {
     scope: S,
     src_ip: IpAddr,
     dst_ip: IpAddr,
@@ -214,7 +214,7 @@ where
                 };
 
                 self.record_tx(
-                    TxFlow {
+                    TxPacket {
                         scope,
                         context,
                         src_ip,
@@ -234,7 +234,7 @@ where
             // The responder observes the tx direction arriving over the network.
             (Entry::Network { local, remote }, Role::Responder) => {
                 self.record_tx(
-                    TxFlow {
+                    TxPacket {
                         scope,
                         context: FlowContext::new(remote, local),
                         src_ip,
@@ -261,7 +261,7 @@ where
                 }
 
                 self.record_rx(
-                    RxFlow {
+                    RxPacket {
                         scope,
                         src_ip,
                         dst_ip,
@@ -277,7 +277,7 @@ where
             // The initiator observes the rx direction arriving over the network.
             (Entry::Network { .. }, Role::Initiator) => {
                 self.record_rx(
-                    RxFlow {
+                    RxPacket {
                         scope,
                         src_ip,
                         dst_ip,
@@ -339,13 +339,11 @@ where
     }
 
     /// Records a packet in the initiator-to-responder direction (see module docs).
-    fn record_tx(&mut self, tx: TxFlow<S>, now: Instant) {
-        if !self.enabled {
-            return;
-        }
+    fn record_tx(&mut self, tx: TxPacket<S>, now: Instant) {
+        debug_assert!(self.enabled, "flow data is only gathered while enabled");
 
         let now_utc = self.now_utc(now);
-        let TxFlow {
+        let TxPacket {
             scope,
             context,
             src_ip,
@@ -540,13 +538,11 @@ where
     }
 
     /// Records a packet in the responder-to-initiator direction (see module docs).
-    fn record_rx(&mut self, rx: RxFlow<S>, now: Instant) {
-        if !self.enabled {
-            return;
-        }
+    fn record_rx(&mut self, rx: RxPacket<S>, now: Instant) {
+        debug_assert!(self.enabled, "flow data is only gathered while enabled");
 
         let now_utc = self.now_utc(now);
-        let RxFlow {
+        let RxPacket {
             scope,
             src_ip,
             dst_ip,

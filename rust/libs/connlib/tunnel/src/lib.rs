@@ -99,8 +99,9 @@ pub struct Tunnel<TRoleState, TFlowScope> {
 
     /// Tracks the flows tunneled through this device.
     ///
-    /// It lives outside of the role state so that the [`flow_log::CurrentFlowGuard`]
-    /// can hold a mutable borrow of it while the role state processes the packet.
+    /// It lives here rather than in the role state because flow tracking works
+    /// the same for both roles: the IO loop begins gathering flow data before
+    /// handing a packet to the role state and commits it once it is done.
     flow_tracker: flow_log::Tracker<TFlowScope>,
 
     /// The I/O component of connlib.

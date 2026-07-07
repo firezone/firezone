@@ -100,12 +100,12 @@ where
         .spawn(move || writer_loop(&spool_root, &rx))
         .expect("Failed to spawn flow-log writer thread");
 
-    let spooling = Arc::new(AtomicBool::new(true));
+    let spool_switch = SpoolSwitch(Arc::new(AtomicBool::new(true)));
 
     let layer = FlowLogLayer {
         tx: tx.clone(),
         dropped: AtomicU64::new(0),
-        spooling: spooling.clone(),
+        spool_switch: spool_switch.clone(),
     }
     .with_filter(
         tracing_subscriber::filter::Targets::new().with_target("flow_logs", tracing::Level::TRACE),
@@ -116,7 +116,7 @@ where
         Guard {
             tx,
             handle: Some(handle),
-            spooling,
+            spool_switch,
         },
     )
 }
@@ -186,7 +186,7 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 pub struct Guard {
     tx: mpsc::SyncSender<Command>,
     handle: Option<JoinHandle<()>>,
-    spooling: Arc<AtomicBool>,
+    spool_switch: SpoolSwitch,
 }
 
 impl Guard {
@@ -194,7 +194,7 @@ impl Guard {
     ///
     /// Spooling starts enabled.
     pub fn spool_switch(&self) -> SpoolSwitch {
-        SpoolSwitch(self.spooling.clone())
+        self.spool_switch.clone()
     }
 }
 
@@ -253,8 +253,7 @@ struct FlowLogLayer {
     tx: mpsc::SyncSender<Command>,
     /// How many reports were dropped because the writer thread's queue was full.
     dropped: AtomicU64,
-    /// See [`SpoolSwitch`].
-    spooling: Arc<AtomicBool>,
+    spool_switch: SpoolSwitch,
 }
 
 impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
@@ -262,7 +261,7 @@ where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if !self.spooling.load(Ordering::Relaxed) {
+        if !self.spool_switch.is_enabled() {
             return;
         }
 

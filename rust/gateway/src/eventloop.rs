@@ -315,10 +315,10 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
-                // The token is the sole source of flow attribution, so it always
-                // rides into the tunnel (e.g. for `--flow-logs` output); like the
-                // reports themselves, it is only spooled to disk when the portal
-                // enabled uploads.
+                // The token is the sole source of flow attribution, so it is
+                // always passed to the tunnel state (e.g. for `--flow-logs`
+                // output); like the reports themselves, it is only spooled to
+                // disk when the portal enabled uploads.
                 if self.spool_switch.is_enabled()
                     && let Some(token) = &msg.flow_logs_ingest_token
                     && let Err(e) =
