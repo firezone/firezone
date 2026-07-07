@@ -117,48 +117,9 @@ jobs:
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
             grep "WARN" && exit 1 || exit 0
 
-      - name: Ensure no UDP socket errors
+      - name: Ensure no socket errors or TCP reordering
         if: "!cancelled() && startsWith(matrix.test, 'tcp')"
-        run: |
-          docker compose exec client-1 /bin/sh -c 'nstat -s' |
-            grep -i "error" && exit 1 || exit 0
-
-          docker compose exec gateway /bin/sh -c 'nstat -s' |
-            grep -i "error" && exit 1 || exit 0
-
-      - name: Ensure no TCP packets were re-ordered
-        if: "!cancelled() && startsWith(matrix.test, 'tcp')"
-        run: |
-          # Preserving packet order end-to-end is a deliberate goal of the data
-          # plane (see `scripts/router/router.sh`), so any reordering is a regression.
-          #
-          # The `TCP*Reorder` counters are what we want: they increment on the TCP
-          # *sender* when the peer's SACKs reveal that a segment presumed lost was
-          # merely reordered. We deliberately avoid `TCPOFOQueue`, which also counts
-          # loss-induced gaps and would flake whenever the run has retransmits.
-          #
-          # Detection is sender-side, so we check every TCP endpoint of the flow --
-          # the iperf3 clients and the iperf3 server -- each of which is the sender
-          # in one direction. The gateway only forwards IP for this flow, so it has
-          # no TCP state to inspect. We read the counters straight from
-          # `/proc/net/netstat` (raw counters need no `nstat`, which the iperf3
-          # image lacks). Endpoints that aren't running for a given test are skipped.
-          reorders() {
-            docker compose exec -T "$1" cat /proc/net/netstat | awk '
-              $1 == "TcpExt:" && !seen { for (i = 2; i <= NF; i++) col[$i] = i; seen = 1; next }
-              $1 == "TcpExt:" { print $(col["TCPSACKReorder"]) + $(col["TCPRenoReorder"]) + $(col["TCPTSReorder"]) }
-            '
-          }
-
-          for endpoint in client-1 client-2 iperf3; do
-            [ -n "$(docker compose ps -q "$endpoint")" ] || continue
-
-            count=$(reorders "$endpoint")
-            if [ "${count:-0}" -ne 0 ]; then
-              echo "$endpoint detected ${count} TCP reordering event(s)"
-              exit 1
-            fi
-          done
+        run: ./scripts/tests/perf/assert-clean-netstat.sh client-1 client-2 gateway iperf3
 
   upload-bencher:
     continue-on-error: true
