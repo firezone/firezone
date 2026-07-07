@@ -160,6 +160,11 @@ async fn ipc_listen(
         tracing::warn!("Failed to apply stored log filter: {e:#}");
     }
 
+    // The uploader runs for the lifetime of the process, signed in or not.
+    if let Some(dir) = known_dirs::flow_logs() {
+        flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+    }
+
     let mut server = ipc::Server::new(socket_id)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
@@ -755,6 +760,7 @@ impl<'a> Handler<'a> {
             portal,
             is_internet_resource_active,
             dns,
+            known_dirs::flow_logs(),
             tokio::runtime::Handle::current(),
         );
 

@@ -257,8 +257,9 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
+    let flow_logs_dir = known_dirs::flow_logs();
     let (flow_log_layer, _flow_log_guard) =
-        known_dirs::flow_logs().map(flow_log_writer::layer).unzip();
+        flow_logs_dir.clone().map(flow_log_writer::layer).unzip();
 
     logging::setup_global_subscriber(
         std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
@@ -423,12 +424,17 @@ fn try_main() -> Result<()> {
             },
             Arc::new(tcp_socket_factory),
         );
+        if let Some(dir) = flow_logs_dir.clone() {
+            flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+        }
+
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
+            flow_logs_dir.clone(),
             rt.handle().clone(),
         );
 
