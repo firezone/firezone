@@ -126,6 +126,36 @@ defmodule OpenIDConnectTest do
       assert authorization_uri(config, @redirect_uri) == {:error, :invalid_response_type}
     end
 
+    test "returns error when the response_type combination is not supported" do
+      {test_name, uri} =
+        start_fixture("google", %{"response_types_supported" => ["code", "id_token", "token"]})
+
+      config = %{
+        @config
+        | discovery_document_uri: uri,
+          response_type: "code id_token",
+          req_opts: req_test_options(test_name)
+      }
+
+      assert {:error, {:response_type_not_supported, _}} =
+               authorization_uri(config, @redirect_uri)
+    end
+
+    test "matches the response_type combination regardless of token order" do
+      {test_name, uri} =
+        start_fixture("google", %{"response_types_supported" => ["id_token code"]})
+
+      config = %{
+        @config
+        | discovery_document_uri: uri,
+          response_type: ["code", "id_token"],
+          req_opts: req_test_options(test_name)
+      }
+
+      assert {:ok, url} = authorization_uri(config, @redirect_uri)
+      assert url =~ "response_type=code+id_token"
+    end
+
     test "adds optional params" do
       {test_name, uri} = start_fixture("google")
       config = %{@config | discovery_document_uri: uri, req_opts: req_test_options(test_name)}

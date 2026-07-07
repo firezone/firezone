@@ -77,7 +77,35 @@ defmodule OpenIDConnect.DocumentTest do
       assert {:ok, ^document} = fetch_document(uri, req_test_options(test_name))
     end
 
-    test "returns error when JSWKS is invalid" do
+    test "returns document with empty response_types_supported when the field is missing" do
+      test_name = unique_test_name()
+      endpoint = "http://#{test_name}/"
+
+      Req.Test.stub(test_name, fn conn ->
+        case conn.request_path do
+          "/.well-known/jwks.json" ->
+            {status_code, body, headers} = load_fixture("google", "jwks")
+            send_response(conn, status_code, body, headers)
+
+          "/.well-known/discovery-document.json" ->
+            {status_code, body, headers} = load_fixture("google", "discovery_document")
+
+            body =
+              body
+              |> Map.put("jwks_uri", "#{endpoint}.well-known/jwks.json")
+              |> Map.delete("response_types_supported")
+
+            send_response(conn, status_code, body, headers)
+        end
+      end)
+
+      uri = "#{endpoint}.well-known/discovery-document.json"
+
+      assert {:ok, document} = fetch_document(uri, req_test_options(test_name))
+      assert document.response_types_supported == []
+    end
+
+    test "returns error when JWKS is invalid" do
       invalid_jwks = %{
         "keys" => [
           %{
@@ -222,6 +250,40 @@ defmodule OpenIDConnect.DocumentTest do
 
       assert {:ok, document} = fetch_document(uri, req_test_options(test_name))
       expected_expires_at = DateTime.add(DateTime.utc_now(), 300 - 100, :second)
+      assert DateTime.diff(document.expires_at, expected_expires_at) in -3..3
+    end
+
+    test "ignores an invalid Age header" do
+      test_name = unique_test_name()
+      endpoint = "http://#{test_name}/"
+      provider = "vault"
+
+      Req.Test.stub(test_name, fn conn ->
+        case conn.request_path do
+          "/.well-known/jwks.json" ->
+            {status_code, body, headers} = load_fixture(provider, "jwks")
+            send_response(conn, status_code, body, headers)
+
+          "/.well-known/discovery-document.json" ->
+            {status_code, body, headers} = load_fixture(provider, "discovery_document")
+            body = Map.merge(body, %{"jwks_uri" => "#{endpoint}.well-known/jwks.json"})
+
+            headers =
+              for {k, v} <- headers,
+                  k = String.downcase(k),
+                  k not in ["cache-control", "age"] do
+                {k, v}
+              end
+
+            headers = headers ++ [{"cache-control", "max-age=300"}, {"age", "not-a-number"}]
+            send_response(conn, status_code, body, headers)
+        end
+      end)
+
+      uri = "#{endpoint}.well-known/discovery-document.json"
+
+      assert {:ok, document} = fetch_document(uri, req_test_options(test_name))
+      expected_expires_at = DateTime.add(DateTime.utc_now(), 300, :second)
       assert DateTime.diff(document.expires_at, expected_expires_at) in -3..3
     end
 

@@ -39,7 +39,7 @@ defmodule OpenIDConnect.Document.CacheTest do
   }
 
   describe "put/2" do
-    test "persists a documents to the cache" do
+    test "persists a document to the cache" do
       uri = uniq_uri()
       document = %{@valid_document | expires_at: DateTime.utc_now() |> DateTime.add(60, :second)}
 
@@ -66,7 +66,7 @@ defmodule OpenIDConnect.Document.CacheTest do
       assert %{^uri => {ref, _last_fetched_at, _last_refresh_at, _document}} = flush()
       assert Process.read_timer(ref) in 58_000..62_000
 
-      send(OpenIDConnect.Document.Cache, {:remove, uri})
+      send(OpenIDConnect.Document.Cache, {:timeout, ref, {:remove, uri}})
       refute Map.has_key?(flush(), uri)
     end
   end
@@ -96,37 +96,22 @@ defmodule OpenIDConnect.Document.CacheTest do
       assert handle_call({:fetch, uri}, self(), state) == {:reply, :error, %{}}
     end
 
-    test "evicting an expired entry drains a stale {:remove, uri} queued behind the :fetch call" do
-      # Same race as `:expire`, but tripped when `:fetch` finds an expired doc.
-      {:ok, pid} = start_link(name: :fetch_race_test)
+    test "a stale removal timer does not wipe a fresh entry for the same URI" do
+      {:ok, pid} = start_link(name: :stale_timer_test)
       uri = uniq_uri()
-
-      # `put/2` rejects expired docs, so put a fresh one and swap in expired via :sys.replace_state.
       fresh = %{@valid_document | expires_at: DateTime.utc_now() |> DateTime.add(60, :second)}
-      expired = %{@valid_document | expires_at: DateTime.utc_now() |> DateTime.add(-1, :second)}
+
       put(pid, uri, fresh)
+      assert %{^uri => {ref, _last_fetched_at, _last_refresh_at, _document}} = flush(pid)
 
-      :sys.replace_state(pid, fn state ->
-        Map.update!(state, uri, fn {ref, fetched_at, refresh_at, _doc} ->
-          {ref, fetched_at, refresh_at, expired}
-        end)
-      end)
-
-      :sys.suspend(pid)
-
-      parent = self()
-      spawn_link(fn -> send(parent, {:fetch_result, fetch(pid, uri)}) end)
-
-      wait_for_mailbox(pid, 1)
-      send(pid, {:remove, uri})
-      assert {:message_queue_len, 2} = Process.info(pid, :message_queue_len)
-
-      :sys.resume(pid)
-      assert_receive {:fetch_result, :error}
-
-      # Without the drain, the queued `{:remove, uri}` would wipe this fresh put.
-      put(pid, uri, fresh)
+      # Simulate a timer from a previous entry (e.g. one dropped by :gc without
+      # a cancel) firing after the entry was replaced.
+      send(pid, {:timeout, make_ref(), {:remove, uri}})
       assert %{^uri => _} = flush(pid)
+
+      # The current entry's own timer still removes it.
+      send(pid, {:timeout, ref, {:remove, uri}})
+      refute Map.has_key?(flush(pid), uri)
     end
   end
 
@@ -204,27 +189,4 @@ defmodule OpenIDConnect.Document.CacheTest do
   end
 
   defp uniq_uri, do: "http://example.com:#{System.unique_integer([:positive])}"
-
-  defp wait_for_mailbox(pid, expected_len, timeout_ms \\ 500) do
-    deadline = System.monotonic_time(:millisecond) + timeout_ms
-    do_wait_for_mailbox(pid, expected_len, deadline)
-  end
-
-  defp do_wait_for_mailbox(pid, expected_len, deadline) do
-    case Process.info(pid, :message_queue_len) do
-      {:message_queue_len, len} when len >= expected_len ->
-        :ok
-
-      info ->
-        if System.monotonic_time(:millisecond) >= deadline do
-          flunk(
-            "wait_for_mailbox timed out waiting for mailbox length >= #{expected_len} on " <>
-              "#{inspect(pid)} (got: #{inspect(info)})"
-          )
-        else
-          Process.sleep(1)
-          do_wait_for_mailbox(pid, expected_len, deadline)
-        end
-    end
-  end
 end

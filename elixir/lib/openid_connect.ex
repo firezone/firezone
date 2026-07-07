@@ -114,15 +114,18 @@ defmodule OpenIDConnect do
   defp fetch_scope(%{scope: scopes}) when is_list(scopes),
     do: {:ok, Enum.join(scopes, " ")}
 
+  # Providers advertise supported response type *combinations* (normalized to
+  # sorted token order by `Document.build_document/1`), so compare the whole
+  # combination rather than its individual tokens.
   defp fetch_response_type(
          %{response_type: response_type},
          %Document{response_types_supported: response_types_supported}
        ) do
     with {:ok, response_type} <- parse_response_type(response_type) do
-      response_type = Enum.sort(response_type)
+      response_type = response_type |> Enum.sort() |> Enum.join(" ")
 
-      if Enum.all?(response_type, &(&1 in response_types_supported)) do
-        {:ok, Enum.join(response_type, " ")}
+      if response_type in response_types_supported do
+        {:ok, response_type}
       else
         {:error,
          {:response_type_not_supported, response_types_supported: response_types_supported}}

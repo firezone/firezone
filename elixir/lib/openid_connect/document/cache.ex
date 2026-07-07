@@ -71,10 +71,12 @@ defmodule OpenIDConnect.Document.Cache do
           nil -> nil
         end
 
-      # Evict first so a prior timer's stale `{:remove, uri}` can't wipe this fresh entry.
       state = evict(state, uri)
       expires_in_seconds = expires_in_seconds(document.expires_at)
-      timer_ref = Process.send_after(self(), {:remove, uri}, :timer.seconds(expires_in_seconds))
+
+      timer_ref =
+        :erlang.start_timer(:timer.seconds(expires_in_seconds), self(), {:remove, uri})
+
       state = Map.put(state, uri, {timer_ref, DateTime.utc_now(), prior_refresh_at, document})
       {:noreply, state}
     end
@@ -136,8 +138,17 @@ defmodule OpenIDConnect.Document.Cache do
     end
   end
 
-  def handle_info({:remove, uri}, state) do
-    {:noreply, Map.delete(state, uri)}
+  # Only remove when the ref matches the current entry: a stale timer from a
+  # previous entry for the same URI (e.g. one dropped by :gc without a cancel)
+  # must not wipe a fresh entry.
+  def handle_info({:timeout, timer_ref, {:remove, uri}}, state) do
+    case Map.get(state, uri) do
+      {^timer_ref, _last_fetched_at, _last_refresh_at, _document} ->
+        {:noreply, Map.delete(state, uri)}
+
+      _ ->
+        {:noreply, state}
+    end
   end
 
   def handle_info(:gc, state) do
@@ -159,7 +170,8 @@ defmodule OpenIDConnect.Document.Cache do
     {:noreply, state}
   end
 
-  # Drops `uri` from state, cancels its timer, and drains any queued `{:remove, ^uri}`.
+  # Drops `uri` from state and cancels its timer. A timer that already fired is
+  # harmless: its queued `{:timeout, ref, _}` no longer matches any entry.
   defp evict(state, uri) do
     case Map.pop(state, uri) do
       {nil, state} ->
@@ -167,7 +179,6 @@ defmodule OpenIDConnect.Document.Cache do
 
       {{timer_ref, _last_fetched_at, _last_refresh_at, _document}, state} ->
         Process.cancel_timer(timer_ref)
-        flush_remove_messages(uri)
         state
     end
   end
@@ -176,14 +187,6 @@ defmodule OpenIDConnect.Document.Cache do
 
   defp refresh_cooldown_elapsed?(last_refresh_at, now) do
     DateTime.diff(now, last_refresh_at, :second) >= @refresh_cooldown_seconds
-  end
-
-  defp flush_remove_messages(uri) do
-    receive do
-      {:remove, ^uri} -> flush_remove_messages(uri)
-    after
-      0 -> :ok
-    end
   end
 
   defp expires_in_seconds(%DateTime{} = datetime) do

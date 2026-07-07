@@ -174,9 +174,11 @@ defmodule OpenIDConnect.Document do
   end
 
   defp get_age(headers) do
-    case get_header(headers, "age") do
-      nil -> nil
-      age -> String.to_integer(age)
+    with age when is_binary(age) <- get_header(headers, "age"),
+         {age, ""} when age >= 0 <- Integer.parse(age) do
+      age
+    else
+      _ -> nil
     end
   end
 
@@ -192,6 +194,7 @@ defmodule OpenIDConnect.Document do
         userinfo_endpoint: Map.get(document_json, "userinfo_endpoint"),
         response_types_supported:
           Map.get(document_json, "response_types_supported")
+          |> List.wrap()
           |> Enum.map(fn response_type ->
             response_type
             |> String.split()
