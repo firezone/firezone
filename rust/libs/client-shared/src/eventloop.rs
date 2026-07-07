@@ -56,9 +56,6 @@ pub struct Eventloop {
     /// entrypoint's `flow_log_writer` layer.
     flow_logs_dir: Option<std::path::PathBuf>,
 
-    /// Whether the portal enabled uploads; gates persisting ingest tokens.
-    upload_flow_logs: bool,
-
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -153,7 +150,6 @@ impl Eventloop {
             tunnel: Some(tunnel),
             resolver_bypass,
             flow_logs_dir,
-            upload_flow_logs: false,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -468,10 +464,8 @@ impl Eventloop {
                 relays,
                 flow_logs,
             }) => {
-                self.upload_flow_logs = flow_logs.upload_enabled();
-
                 tracing::info!(
-                    upload_enabled = self.upload_flow_logs,
+                    upload_enabled = flow_logs.upload_enabled(),
                     spool_dir = ?self.flow_logs_dir,
                     config = ?flow_logs,
                     "Flow-log config received from portal init"

@@ -42,15 +42,8 @@ pub struct Eventloop {
     /// Flow-log spool root.
     flow_logs_dir: std::path::PathBuf,
 
-    /// The `--flow-logs` flag: keeps flow tracking on even when the portal has
-    /// uploads disabled.
+    /// The `--flow-logs` flag.
     local_flow_logs: bool,
-
-    /// Whether the portal enabled flow-log uploads; set from `init`.
-    ///
-    /// Gates persisting ingest tokens, whose on-disk presence in turn gates
-    /// spooling that authorization's reports.
-    upload_flow_logs: bool,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -97,7 +90,6 @@ impl Eventloop {
             tun_device_manager,
             resolver,
             flow_logs_dir,
-            upload_flow_logs: false,
             local_flow_logs,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
@@ -404,11 +396,9 @@ impl Eventloop {
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
-                self.upload_flow_logs = flow_logs.upload_enabled();
-
                 tunnel
                     .state_mut()
-                    .set_flow_logs_enabled(self.upload_flow_logs || self.local_flow_logs);
+                    .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
