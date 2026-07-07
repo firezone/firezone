@@ -55,6 +55,41 @@ defmodule Portal.Queue.CallbacksTest do
       assert session_log.subject["device_id"] == client.id
       assert session_log.subject["token_id"] == token.id
     end
+
+    test "does not confirm durability when the session log write fails" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      session_id = Ecto.UUID.generate()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        id: session_id,
+        account_id: account.id,
+        device_id: client.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        remote_ip_location_region: "US",
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      # A NUL byte in the subject fails only the session_log insert (jsonb
+      # rejects it), not the session row. The session lands but, because its log
+      # did not, its durability is left unconfirmed so the timer can retry.
+      metadata = %{subject: %{"actor_name" => "bad\0name"}, timestamp: DateTime.utc_now()}
+
+      assert 1 = on_flush.([{attrs, metadata}])
+      assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
+      assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
+      refute_receive {:confirm_session_durability, ^session_id}
+    end
   end
 
   describe "gateway session queue callback" do

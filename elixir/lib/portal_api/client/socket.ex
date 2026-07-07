@@ -121,8 +121,13 @@ defmodule PortalAPI.Client.Socket do
       end)
     end
 
-    dispatch_client_session_confirmed(entries, failed_ids)
-    insert_session_logs(entries, failed_ids)
+    # Durability is confirmed only once both the session and its log have
+    # landed: a session whose log write fails is left unconfirmed so its
+    # durability timer fires and the client reconnects to retry both. This keeps
+    # the session log fail-closed without a transaction (which is incompatible
+    # with Batch.insert_all's rescue-and-repartition retry).
+    log_failed_ids = insert_session_logs(entries, failed_ids)
+    dispatch_client_session_confirmed(entries, MapSet.union(failed_ids, log_failed_ids))
 
     if failed != [] do
       Logger.info(
@@ -148,19 +153,23 @@ defmodule PortalAPI.Client.Socket do
   # snapshot and the connect-time timestamp ride the queue entry's metadata; the
   # timestamp is captured at connect rather than read from the session row's
   # inserted_at, which is stamped at flush time and would be identical across a
-  # whole batch.
+  # whole batch. Each log entry carries its session id so the caller can learn
+  # which sessions' logs failed and withhold their durability confirmation.
   defp insert_session_logs(entries, failed_ids) do
     log_entries =
       for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
-        {session_log_attrs(attrs, metadata), nil}
+        {session_log_attrs(attrs, metadata), attrs[:id]}
       end
 
-    Batch.insert_all(SessionLog, log_entries,
-      label: "client session log",
-      fk_partitions: %{
-        "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
-      }
-    )
+    {_inserted, failed} =
+      Batch.insert_all(SessionLog, log_entries,
+        label: "client session log",
+        fk_partitions: %{
+          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+        }
+      )
+
+    MapSet.new(failed, fn {_log_attrs, session_id} -> session_id end)
   end
 
   defp session_log_attrs(attrs, %{subject: subject, timestamp: timestamp}) do

@@ -152,8 +152,13 @@ defmodule PortalAPI.Gateway.Socket do
       end)
     end
 
-    dispatch_gateway_session_confirmed(entries, failed_ids)
-    insert_session_logs(entries, failed_ids)
+    # Durability is confirmed only once both the session and its log have
+    # landed: a session whose log write fails is left unconfirmed so its
+    # durability timer fires and the gateway reconnects to retry both. This
+    # keeps the session log fail-closed without a transaction (which is
+    # incompatible with Batch.insert_all's rescue-and-repartition retry).
+    log_failed_ids = insert_session_logs(entries, failed_ids)
+    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_ids, log_failed_ids))
 
     if failed != [] do
       Logger.info(
@@ -177,19 +182,24 @@ defmodule PortalAPI.Gateway.Socket do
   # connect. Only durable sessions are logged. Gateways authenticate with a
   # token and have no actor, so the subject snapshot is the gateway identity
   # and its connection context. The connect-time timestamp rides the queue
-  # entry's metadata rather than the session row's flush-time inserted_at.
+  # entry's metadata rather than the session row's flush-time inserted_at. Each
+  # log entry carries its session id so the caller can learn which sessions'
+  # logs failed and withhold their durability confirmation.
   defp insert_session_logs(entries, failed_ids) do
     log_entries =
       for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
-        {session_log_attrs(attrs, metadata), nil}
+        {session_log_attrs(attrs, metadata), attrs[:id]}
       end
 
-    Batch.insert_all(SessionLog, log_entries,
-      label: "gateway session log",
-      fk_partitions: %{
-        "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
-      }
-    )
+    {_inserted, failed} =
+      Batch.insert_all(SessionLog, log_entries,
+        label: "gateway session log",
+        fk_partitions: %{
+          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+        }
+      )
+
+    MapSet.new(failed, fn {_log_attrs, session_id} -> session_id end)
   end
 
   defp session_log_attrs(attrs, %{timestamp: timestamp}) do
