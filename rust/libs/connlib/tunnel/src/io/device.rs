@@ -147,7 +147,6 @@ mod tests {
     use super::*;
     use anyhow::ErrorExt;
     use std::net::Ipv4Addr;
-    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn flush_returns_error_when_sender_channel_closed() {
@@ -259,25 +258,25 @@ mod tests {
     }
 
     struct TestTun {
-        send_tx: mpsc::Sender<IpPacket>,
-        recv_rx: mpsc::Receiver<IpPacket>,
+        send_tx: tun::OutboundTx,
+        recv_rx: tun::InboundRx,
     }
 
     impl TestTun {
-        fn new() -> (Self, mpsc::Receiver<IpPacket>, mpsc::Sender<IpPacket>) {
-            let (send_tx, send_rx) = mpsc::channel(1);
-            let (recv_tx, recv_rx) = mpsc::channel(1);
+        fn new() -> (Self, tun::OutboundRx, tun::InboundTx) {
+            let (send_tx, send_rx) = tun::outbound_channel_for_test(1);
+            let (recv_tx, recv_rx) = tun::inbound_channel();
 
             (Self { send_tx, recv_rx }, send_rx, recv_tx)
         }
     }
 
     impl Tun for TestTun {
-        fn sender(&self) -> &mpsc::Sender<IpPacket> {
+        fn sender(&self) -> &tun::OutboundTx {
             &self.send_tx
         }
 
-        fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+        fn receiver(&mut self) -> &mut tun::InboundRx {
             &mut self.recv_rx
         }
 

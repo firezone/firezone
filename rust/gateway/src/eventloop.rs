@@ -252,6 +252,12 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            tunnel::GatewayEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 

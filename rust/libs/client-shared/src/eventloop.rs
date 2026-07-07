@@ -387,6 +387,12 @@ impl Eventloop {
             ClientEvent::DnsRecordsChanged { records } => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
+            ClientEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             ClientEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 

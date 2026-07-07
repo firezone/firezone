@@ -2,24 +2,21 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::{io, os::fd::RawFd};
 use telemetry::otel;
-use tokio::sync::mpsc;
 use tun::ioctl;
-
-const QUEUE_SIZE: usize = 1000;
 
 pub struct Tun {
     name: String,
-    outbound_tx: mpsc::Sender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
     _fd: OwnedFd,
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 
@@ -38,8 +35,8 @@ impl Tun {
     pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
         let name = unsafe { interface_name(fd)? };
 
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
 
         runtime.spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),

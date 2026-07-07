@@ -13,9 +13,9 @@ use std::ffi::c_void;
 use std::io;
 use std::os::fd::{AsRawFd as _, RawFd};
 use tokio::io::{Interest, unix::AsyncFd};
-use tokio::sync::mpsc;
 
 use super::sys;
+use crate::{InboundTx, OutboundRx};
 
 /// How many packets we exchange with the kernel per syscall.
 ///
@@ -33,7 +33,7 @@ const EMPTY_IOVEC: iovec = iovec {
 pub fn send(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
-    mut outbound_rx: mpsc::Receiver<IpPacket>,
+    mut outbound_rx: OutboundRx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
@@ -105,11 +105,7 @@ pub fn send(
 }
 
 /// Receives batches of packets from the TUN device into `inbound_tx`.
-pub fn recv(
-    fd: RawFd,
-    syscalls: &'static sys::BatchSyscalls,
-    inbound_tx: mpsc::Sender<IpPacket>,
-) -> Result<()> {
+pub fn recv(fd: RawFd, syscalls: &'static sys::BatchSyscalls, inbound_tx: InboundTx) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
 
     tokio::runtime::Builder::new_current_thread()
