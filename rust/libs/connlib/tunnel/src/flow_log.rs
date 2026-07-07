@@ -447,7 +447,12 @@ where
 
                         self.active_tcp_flows.insert(key, value);
                     }
-                    hash_map::Entry::Occupied(occupied) if tcp_syn => {
+                    // A SYN only starts a new connection if the existing flow has
+                    // seen return traffic; on a half-open flow it is a
+                    // retransmission and just counts as another packet.
+                    hash_map::Entry::Occupied(occupied)
+                        if tcp_syn && occupied.get().stats.rx_packets > 0 =>
+                    {
                         let (key, value) = occupied.remove_entry();
 
                         tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
