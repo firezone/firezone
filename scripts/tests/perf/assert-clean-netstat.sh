@@ -29,18 +29,18 @@ for container in "$@"; do
   # layout. A `---` marker separates the two so one awk pass handles both.
   anomalies=$(
     docker compose exec -T "$container" sh -c \
-      'cat /proc/net/snmp /proc/net/netstat; echo ---; cat /proc/net/snmp6 2>/dev/null || true' |
+      'set -e; cat /proc/net/snmp /proc/net/netstat; echo ---; cat /proc/net/snmp6 2>/dev/null || true' |
       awk '
         /^---$/ { flat = 1; next }
         !flat {
           if ($1 != hdr) { hdr = $1; delete name; for (i = 2; i <= NF; i++) name[i] = $i; next }
           for (i = 2; i <= NF; i++)
-            if ((name[i] ~ /[Ee]rror/ || name[i] ~ /Reorder/) && $i + 0 != 0)
+            if ((name[i] ~ /[Ee]rror/ || name[i] ~ /^TCP.*Reorder$/) && $i + 0 != 0)
               printf "%s %s = %d\n", $1, name[i], $i
           hdr = ""
           next
         }
-        (($1 ~ /[Ee]rror/ || $1 ~ /Reorder/) && $2 + 0 != 0) { printf "%s = %d\n", $1, $2 }
+        (($1 ~ /[Ee]rror/ || $1 ~ /^TCP.*Reorder$/) && $2 + 0 != 0) { printf "%s = %d\n", $1, $2 }
       '
   )
 
