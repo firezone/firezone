@@ -1094,8 +1094,11 @@ impl ClientState {
         let peer = self
             .clients
             .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
-        peer.set_remote_name(client_name);
-        tracing::debug!(%cid, name = %peer.remote_name(), "Updated client peer name");
+
+        if peer.remote_name() != client_name {
+            tracing::debug!(%cid, name = %client_name, "Updated client peer name");
+            peer.set_remote_name(client_name);
+        }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
