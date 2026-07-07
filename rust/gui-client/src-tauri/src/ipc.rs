@@ -41,7 +41,7 @@ pub struct NotFound(String);
 pub struct WrongUser;
 
 #[cfg(debug_assertions)]
-pub use platform::skip_tunnel_pipe_owner_check;
+pub use platform::skip_peer_verification;
 
 /// A name that both the server and client can use to find each other
 ///
