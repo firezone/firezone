@@ -113,6 +113,31 @@ defmodule OpenIDConnect.Document.CacheTest do
       send(pid, {:timeout, ref, {:remove, uri}})
       refute Map.has_key?(flush(pid), uri)
     end
+
+    test "ignores a removal timer that fires after its entry was evicted" do
+      {:ok, pid} = start_link(name: :evicted_timer_test)
+      uri = uniq_uri()
+
+      fresh = %{@valid_document | expires_at: DateTime.utc_now() |> DateTime.add(60, :second)}
+      expired = %{@valid_document | expires_at: DateTime.utc_now() |> DateTime.add(-1, :second)}
+      put(pid, uri, fresh)
+
+      # `put/2` rejects expired docs, so swap in an expired one via :sys.replace_state.
+      :sys.replace_state(pid, fn state ->
+        Map.update!(state, uri, fn {ref, fetched_at, refresh_at, _doc} ->
+          {ref, fetched_at, refresh_at, expired}
+        end)
+      end)
+
+      assert %{^uri => {ref, _last_fetched_at, _last_refresh_at, _document}} = flush(pid)
+
+      # `:fetch` evicts the expired entry; its timer message can still arrive late.
+      assert fetch(pid, uri) == :error
+      send(pid, {:timeout, ref, {:remove, uri}})
+
+      put(pid, uri, fresh)
+      assert %{^uri => _} = flush(pid)
+    end
   end
 
   describe "clear/1" do
