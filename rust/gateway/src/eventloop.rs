@@ -308,8 +308,12 @@ impl Eventloop {
                     msg.use_iceless,
                     Instant::now(),
                 ) {
-                    // `GatewayState` emits `GatewayEvent::NoRelays` when we run out of relays.
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
+
+                    self.portal_cmd_tx
+                        .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                        .await
+                        .context("Failed to send message to portal")?;
 
                     return Ok(());
                 };

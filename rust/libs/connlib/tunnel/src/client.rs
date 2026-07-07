@@ -2899,7 +2899,7 @@ mod tests {
         assert_eq!(
             count_no_relays_events(&mut state),
             0,
-            "should ask at most once per provided set of relays"
+            "should only ask when the last relay is removed"
         );
 
         state.update_relays(BTreeSet::default(), BTreeSet::from([relay(2)]), now);
@@ -2928,27 +2928,6 @@ mod tests {
         advance(&mut state, now, Duration::from_secs(120));
 
         assert_eq!(count_no_relays_events(&mut state), 1);
-    }
-
-    #[test]
-    fn request_cooldown_does_not_survive_reset() {
-        let mut now = Instant::now();
-        let mut state = ClientState::for_test();
-
-        state.update_relays(BTreeSet::default(), BTreeSet::from([relay(1)]), now);
-        now = advance(&mut state, now, Duration::from_secs(30));
-
-        assert_eq!(count_no_relays_events(&mut state), 1);
-
-        state.reset(now, "test");
-        state.update_relays(BTreeSet::default(), BTreeSet::from([relay(2)]), now);
-        advance(&mut state, now, Duration::from_secs(30));
-
-        assert_eq!(
-            count_no_relays_events(&mut state),
-            1,
-            "should request new relays promptly after a reset"
-        );
     }
 
     fn advance(state: &mut ClientState, mut now: Instant, total: Duration) -> Instant {

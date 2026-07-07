@@ -526,8 +526,12 @@ impl Eventloop {
                 ) {
                     Ok(Ok(())) => {}
                     Ok(Err(e @ snownet::NoTurnServers {})) => {
-                        // `ClientState` emits `ClientEvent::NoRelays` when we run out of relays.
                         tracing::debug!("Failed to handle flow created: {e}");
+
+                        self.portal_cmd_tx
+                            .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                            .await
+                            .context("Failed to send message to portal")?;
                     }
                     Err(e) => {
                         tracing::warn!("Failed to handle flow created: {e:#}");
