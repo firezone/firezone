@@ -430,7 +430,7 @@ defmodule OpenIDConnect do
   end
 
   defp retry_option do
-    Application.get_env(:portal, OpenIDConnect, [])
+    Portal.Config.get_env(:portal, OpenIDConnect, [])
     |> Keyword.get(:retry, :safe_transient)
   end
 end
