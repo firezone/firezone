@@ -158,8 +158,9 @@ pub struct AuthorizeFlow {
     #[serde(default)]
     pub use_iceless: bool,
 
-    #[serde(default)]
-    pub flow_logs_ingest_token: Option<IngestToken>,
+    /// The responder-side ingest token for this flow's logs; it carries the
+    /// flow's attribution, so every authorization has one.
+    pub flow_logs_ingest_token: IngestToken,
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
@@ -375,17 +376,6 @@ mod tests {
 
     #[test]
     fn can_deserialize_authorize_flow() {
-        let message = serde_json::from_str::<IngressMessages>(AUTHORIZE_FLOW).unwrap();
-
-        let IngressMessages::AuthorizeFlow(flow) = message else {
-            panic!("expected AuthorizeFlow");
-        };
-        assert!(!flow.use_iceless);
-        assert!(flow.flow_logs_ingest_token.is_none());
-    }
-
-    #[test]
-    fn authorize_flow_carries_ingest_token() {
         let token = crate::messages::TEST_INGEST_TOKEN;
         let json = AUTHORIZE_FLOW.replace(
             r#""flow_id""#,
@@ -397,7 +387,13 @@ mod tests {
         let IngressMessages::AuthorizeFlow(flow) = message else {
             panic!("expected AuthorizeFlow");
         };
-        assert_eq!(flow.flow_logs_ingest_token.unwrap().as_str(), token);
+        assert!(!flow.use_iceless);
+        assert_eq!(flow.flow_logs_ingest_token.as_str(), token);
+    }
+
+    #[test]
+    fn authorize_flow_requires_ingest_token() {
+        serde_json::from_str::<IngressMessages>(AUTHORIZE_FLOW).unwrap_err();
     }
 
     #[test]

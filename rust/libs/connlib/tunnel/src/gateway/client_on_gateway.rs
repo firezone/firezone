@@ -199,15 +199,8 @@ impl ClientOnGateway {
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
-    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: Option<String>) {
-        match token {
-            Some(token) => {
-                self.ingest_tokens.insert(rid, token);
-            }
-            None => {
-                self.ingest_tokens.remove(&rid);
-            }
-        }
+    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: String) {
+        self.ingest_tokens.insert(rid, token);
     }
 
     // Note: we only allow updating filters and names

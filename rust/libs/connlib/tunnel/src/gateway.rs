@@ -280,7 +280,7 @@ impl GatewayState {
         resource: ResourceDescription,
         use_iceless: bool,
         now: Instant,
-        flow_logs_ingest_token: Option<String>,
+        flow_logs_ingest_token: String,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
             client.id,
@@ -319,7 +319,7 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         client_tun: IpConfig,
-        flow_logs_ingest_token: Option<String>,
+        flow_logs_ingest_token: String,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,

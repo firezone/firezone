@@ -318,11 +318,12 @@ impl Eventloop {
             IngressMessages::AuthorizeFlow(msg) => {
                 // The token is the sole source of flow attribution, so it is
                 // always passed to the tunnel state (e.g. for `--flow-logs`
-                // output). It is only persisted while the portal has uploads
-                // enabled; its on-disk presence gates spooling the
+                // output). It is only persisted when its `uploads_enabled`
+                // claim says so; its on-disk presence gates spooling the
                 // authorization's reports.
-                if self.upload_flow_logs
-                    && let Some(token) = &msg.flow_logs_ingest_token
+                let token = &msg.flow_logs_ingest_token;
+
+                if token.claims().uploads_enabled
                     && let Err(e) =
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
                 {
@@ -337,8 +338,7 @@ impl Eventloop {
                     msg.resource,
                     msg.use_iceless,
                     Instant::now(),
-                    msg.flow_logs_ingest_token
-                        .map(|token| token.as_str().to_owned()),
+                    msg.flow_logs_ingest_token.as_str().to_owned(),
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 

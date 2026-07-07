@@ -358,11 +358,11 @@ where
             domain,
         } = tx;
 
-        // The portal mints an ingest token only for authorizations it wants
-        // flow logs for: without one, the flow is neither logged nor spooled.
+        // Every authorization carries an ingest token, so a flow without one
+        // was never recorded against an authorization and is not tracked.
         // The rx direction only updates flows created here, so it is gated too.
         if ingest_token.is_none() {
-            tracing::trace!("Authorization has no ingest token; not tracking flow");
+            tracing::trace!("Flow carries no ingest token; not tracking it");
 
             return;
         }

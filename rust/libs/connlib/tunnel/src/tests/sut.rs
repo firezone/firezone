@@ -1095,7 +1095,7 @@ impl TunnelTest {
                             resource,
                             use_iceless,
                             now,
-                            None,
+                            "proptest-ingest-token".to_owned(),
                         )
                     })
                     .map_err(|error| ClientEventError::Gateway {
