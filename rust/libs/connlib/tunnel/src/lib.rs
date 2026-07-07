@@ -606,6 +606,8 @@ pub enum ClientEvent {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
+    /// We ran out of relays and need a new set from the portal.
+    NoRelays,
     Error(TunnelError),
 }
 
@@ -651,6 +653,8 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
+    /// We ran out of relays and need a new set from the portal.
+    NoRelays,
     Error(TunnelError),
 }
 

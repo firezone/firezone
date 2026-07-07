@@ -675,10 +675,16 @@ where
             }
         }
 
-        let removed_allocations = self.allocations.gc();
+        let gc = self.allocations.gc();
+
+        if gc.removed_last {
+            tracing::info!("Removed last relay; requesting a new set");
+
+            self.pending_events.push_back(Event::NoRelays);
+        }
 
         self.connections.migrate_relays(
-            removed_allocations,
+            gc.removed.into_iter(),
             &mut self.allocations,
             &mut self.pending_events,
             now,
@@ -1272,6 +1278,11 @@ pub enum Event<TId> {
 
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
+
+    /// The last remaining relay was removed and we need a new set to make relayed connections.
+    ///
+    /// Upper layers should obtain new relays and pass them to [`Node::update_relays`].
+    NoRelays,
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]

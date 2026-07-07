@@ -2040,6 +2040,9 @@ impl ClientState {
                         self.resource_list.update(self.resource_list_snapshot());
                     }
                 }
+                snownet::Event::NoRelays => {
+                    self.buffered_events.push_back(ClientEvent::NoRelays);
+                }
             }
         }
 
