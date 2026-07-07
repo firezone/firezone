@@ -898,6 +898,37 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
             .all(|(_, t)| matches!(t.payload, Payload::Plaintext(_))),
         "recovery must not require any handshake traffic",
     );
+    assert_eq!(recovery.events, vec![], "no path until the reply arrives");
+}
+
+#[test]
+fn retired_primary_stops_live_probing() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(3)), t0);
+    a.add_remote_candidate(Candidate::host(addr(4)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(3)), t0);
+
+    let probes = a.probe_round(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(50));
+    a.ack_probe(&probes, (addr(1), addr(4)), t0 + ms(10));
+    assert_eq!(a.primary(), Some((addr(1), addr(4))));
+    a.drain_events();
+
+    // Finish the bursts, then watch the live cadence.
+    let _ = a.advance(t0, t0 + secs(3));
+    let live = a.advance(t0 + secs(3), t0 + secs(60));
+
+    assert_eq!(
+        live.probe_times((addr(1), addr(3))),
+        vec![],
+        "the retired primary must not keep probing at the live cadence",
+    );
+    assert!(
+        !live.probe_times((addr(1), addr(4))).is_empty(),
+        "the new primary keeps probing at the live cadence",
+    );
 }
 
 #[test]
@@ -988,10 +1019,11 @@ fn burst_ladder(start: Instant) -> Vec<Instant> {
         .collect()
 }
 
-/// Everything an agent did while time advanced: transmits and events,
-/// stamped with the instant they were produced at.
+/// Everything an agent did while time advanced.
 struct Activity {
+    /// Transmits, stamped with the instant they were produced at.
     transmits: Vec<(Instant, Transmit)>,
+    events: Vec<Event>,
 }
 
 impl Activity {
@@ -1058,9 +1090,15 @@ impl AgentExt for PathAgent {
     }
 
     fn probe_round(&mut self, now: Instant) -> Vec<Transmit> {
-        let mut out = self.tick(now);
-        out.extend(self.tick(now + PROBE_PACING));
-        out.extend(self.tick(now + PROBE_PACING * 2));
+        // Enough pacing slots for every fixture's pair count while staying
+        // below the first burst gap, so no pair fires twice.
+        let slots = u32::try_from(PROBE_BURST_GAPS[0].as_millis() / PROBE_PACING.as_millis())
+            .expect("pacing slots fit into u32");
+
+        let mut out = Vec::new();
+        for slot in 0..slots {
+            out.extend(self.tick(now + PROBE_PACING * slot));
+        }
         out
     }
 
@@ -1072,6 +1110,7 @@ impl AgentExt for PathAgent {
     fn advance(&mut self, start: Instant, end: Instant) -> Activity {
         let mut activity = Activity {
             transmits: Vec::new(),
+            events: Vec::new(),
         };
         let mut now = start;
 
@@ -1080,6 +1119,11 @@ impl AgentExt for PathAgent {
             activity
                 .transmits
                 .extend(std::iter::from_fn(|| self.poll_transmit()).map(|t| (now, t)));
+            // Queued events keep `poll_timeout` at `now`; collect them so
+            // time can move on.
+            activity
+                .events
+                .extend(std::iter::from_fn(|| self.poll_event()));
 
             match self.poll_timeout() {
                 Some(next) if next <= end => now = next.max(now),

@@ -910,8 +910,11 @@ impl PathAgent {
                 // The burst is done: the primary keeps its RTT fresh and its
                 // NAT mappings warm, everything else goes dormant until the
                 // next re-evaluation signal.
-                None if primary == Some((*local, *remote)) => Some(now + PROBE_INTERVAL_LIVE),
-                None => None,
+                None => {
+                    state.burst_step = PROBE_BURST_GAPS.len() + 1;
+
+                    (primary == Some((*local, *remote))).then(|| now + PROBE_INTERVAL_LIVE)
+                }
             };
 
             tracing::trace!(%local, %remote, seq, "Probe send");
@@ -1017,6 +1020,16 @@ impl PathAgent {
         let from = self.primary;
 
         self.primary = Some(path);
+
+        // The old primary's live cadence retires with it; an unfinished
+        // burst keeps running.
+        if let Some(old) = from
+            && old != path
+            && let Some(state) = self.pairs.get_mut(&old)
+            && state.burst_step > PROBE_BURST_GAPS.len()
+        {
+            state.next_probe_at = None;
+        }
 
         // Keep the new primary on the live cadence once its burst is done.
         if let Some(state) = self.pairs.get_mut(&path)
