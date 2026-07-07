@@ -752,14 +752,14 @@ impl Eventloop {
 /// Tokens deliberately travel here rather than through the flow-log tracing
 /// events, so they can never leak into log output.
 ///
-/// A token is only persisted when its `flow_log_uploads_enabled` claim says
-/// so; its on-disk presence gates spooling the authorization's reports.
+/// A token is only persisted when its `uploads_enabled` claim says so; its
+/// on-disk presence gates spooling the authorization's reports.
 fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToken) {
     let Some(spool_root) = spool_root else {
         return;
     };
 
-    if !token.claims().flow_log_uploads_enabled {
+    if !token.claims().uploads_enabled {
         return;
     }
 
