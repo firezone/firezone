@@ -534,9 +534,6 @@ if config_env() == :prod do
   config :portal,
     http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
-  config :openid_connect,
-    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
-
   config :portal,
          Portal.Mailer,
          [

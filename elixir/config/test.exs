@@ -247,6 +247,9 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
 config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
 
+# Disable HTTP retries so error-path OIDC tests don't back off and retry
+config :portal, OpenIDConnect, retry: false
+
 # Allow asserting on info logs and higher
 config :logger, level: :info
 

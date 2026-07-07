@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Pull alpine package patches that landed after the hexpm/elixir base image
 # was published, then install build deps:
-#   - git: required for git-sourced mix deps (openid_connect, opentelemetry_*_experimental)
+#   - git: required for git-sourced mix deps (opentelemetry_*_experimental)
 #   - build-base: required for argon2_elixir's C NIF (provides gcc + make)
 #   - nodejs/npm: required to install pnpm, which installs assets/package.json deps
 RUN apk --no-cache update \

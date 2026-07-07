@@ -53,7 +53,8 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions
+      Portal.ComponentVersions,
+      OpenIDConnect.Document.Cache
     ]
 
     endpoint_children = [

@@ -466,9 +466,6 @@ config :portal, PortalWeb.RateLimit,
 config :portal,
   http_client_ssl_opts: []
 
-config :openid_connect,
-  finch_transport_opts: []
-
 config :mime, :types, %{
   "application/xml" => ["xml"],
   "application/x-pem-file" => ["pem"],
