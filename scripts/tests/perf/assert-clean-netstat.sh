@@ -16,6 +16,26 @@
 
 set -euo pipefail
 
+# `/proc/net/snmp` and `/proc/net/netstat` use a "header line / value line"
+# layout: for each protocol one line names the counters, the next lists their
+# values. Emit "<proto> <name> = <value>" for every flagged, non-zero counter.
+paired_anomalies() {
+  awk '
+    $1 != hdr { hdr = $1; delete name; for (i = 2; i <= NF; i++) name[i] = $i; next }
+    {
+      for (i = 2; i <= NF; i++)
+        if ((name[i] ~ /[Ee]rror/ || name[i] ~ /^TCP.*Reorder$/) && $i + 0 != 0)
+          printf "%s %s = %d\n", $1, name[i], $i
+      hdr = ""
+    }
+  '
+}
+
+# `/proc/net/snmp6` uses a flat "name value" layout, one counter per line.
+flat_anomalies() {
+  awk '($1 ~ /[Ee]rror/ || $1 ~ /^TCP.*Reorder$/) && $2 + 0 != 0 { printf "%s = %d\n", $1, $2 }'
+}
+
 status=0
 
 for container in "$@"; do
@@ -24,24 +44,15 @@ for container in "$@"; do
     continue
   fi
 
-  # `/proc/net/snmp` and `/proc/net/netstat` share a "header line / value line"
-  # layout; `/proc/net/snmp6` (when the netns has IPv6) is a flat "name value"
-  # layout. A `---` marker separates the two so one awk pass handles both.
+  # Fetch first, then parse. snmp and netstat are required, so a failed read
+  # aborts the script (`set -e` on the assignment). snmp6 only exists when the
+  # netns has IPv6, so its read is best-effort.
+  paired=$(docker compose exec -T "$container" cat /proc/net/snmp /proc/net/netstat)
+  snmp6=$(docker compose exec -T "$container" cat /proc/net/snmp6 2>/dev/null || true)
+
   anomalies=$(
-    docker compose exec -T "$container" sh -c \
-      'set -e; cat /proc/net/snmp /proc/net/netstat; echo ---; cat /proc/net/snmp6 2>/dev/null || true' |
-      awk '
-        /^---$/ { flat = 1; next }
-        !flat {
-          if ($1 != hdr) { hdr = $1; delete name; for (i = 2; i <= NF; i++) name[i] = $i; next }
-          for (i = 2; i <= NF; i++)
-            if ((name[i] ~ /[Ee]rror/ || name[i] ~ /^TCP.*Reorder$/) && $i + 0 != 0)
-              printf "%s %s = %d\n", $1, name[i], $i
-          hdr = ""
-          next
-        }
-        (($1 ~ /[Ee]rror/ || $1 ~ /^TCP.*Reorder$/) && $2 + 0 != 0) { printf "%s = %d\n", $1, $2 }
-      '
+    printf '%s\n' "$paired" | paired_anomalies
+    printf '%s\n' "$snmp6" | flat_anomalies
   )
 
   if [ -n "$anomalies" ]; then
