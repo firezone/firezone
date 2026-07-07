@@ -248,6 +248,8 @@ where
 
         // Upper layers MUST re-provision relays after a reset (e.g. by reconnecting to the portal); no need to ask for them.
         self.request_relays_when_empty = false;
+        // Failing allocations of the re-provisioned relays warrant a prompt new request.
+        self.next_no_relays_event = None;
 
         if self.connections.all_iceless() {
             let num_iceless = self.connections.reset_for_roam(now);
