@@ -24,6 +24,7 @@ windows-security = { workspace = true } # Locks the spool (Bearer tokens) to SYS
 
 [dev-dependencies]
 chrono = { workspace = true }
+filetime = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

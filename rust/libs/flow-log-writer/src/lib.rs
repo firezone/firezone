@@ -23,6 +23,9 @@
 //! The Bearer token deliberately does NOT ride the tracing events (a broad `trace`
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
+//! The token file is also the per-authorization spool gate: a report is only
+//! written if its authorization's token is on disk, so an authorization granted
+//! while the portal had uploads disabled never accumulates unuploadable reports.
 //! A report's payload is the event's record fields as emitted (see
 //! [`RECORD_FIELDS`]); attribution deliberately rides only the token, and the
 //! portal validates the payload on ingest, so the writer only interprets what
@@ -55,8 +58,7 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
         mpsc,
     },
     thread::JoinHandle,
@@ -100,12 +102,9 @@ where
         .spawn(move || writer_loop(&spool_root, &rx))
         .expect("Failed to spawn flow-log writer thread");
 
-    let spool_switch = SpoolSwitch(Arc::new(AtomicBool::new(true)));
-
     let layer = FlowLogLayer {
         tx: tx.clone(),
         dropped: AtomicU64::new(0),
-        spool_switch: spool_switch.clone(),
     }
     .with_filter(
         tracing_subscriber::filter::Targets::new().with_target("flow_logs", tracing::Level::TRACE),
@@ -116,30 +115,15 @@ where
         Guard {
             tx,
             handle: Some(handle),
-            spool_switch,
         },
     )
 }
 
-/// Controls at runtime whether the layer spools reports; obtained from
-/// [`Guard::spool_switch`].
-///
-/// Flow events emitted while spooling is off only reach the log output, e.g. on
-/// a Gateway that runs with `--flow-logs` while the portal has uploads disabled.
-#[derive(Clone)]
-pub struct SpoolSwitch(Arc<AtomicBool>);
-
-impl SpoolSwitch {
-    pub fn set(&self, enabled: bool) {
-        self.0.store(enabled, Ordering::Relaxed);
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
-}
-
 /// Persists an authorization's ingest token where the uploader expects it.
+///
+/// The token file doubles as the per-authorization spool gate: reports are
+/// only spooled for authorizations whose token is on disk, so callers persist
+/// tokens only while the portal has uploads enabled.
 ///
 /// The spool path derives from the token's (unverified) `role` and
 /// `policy_authorization_id` claims, which are validated first.
@@ -186,16 +170,6 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
 pub struct Guard {
     tx: mpsc::SyncSender<Command>,
     handle: Option<JoinHandle<()>>,
-    spool_switch: SpoolSwitch,
-}
-
-impl Guard {
-    /// Returns the switch controlling whether the layer spools reports.
-    ///
-    /// Spooling starts enabled.
-    pub fn spool_switch(&self) -> SpoolSwitch {
-        self.spool_switch.clone()
-    }
 }
 
 impl Drop for Guard {
@@ -253,7 +227,6 @@ struct FlowLogLayer {
     tx: mpsc::SyncSender<Command>,
     /// How many reports were dropped because the writer thread's queue was full.
     dropped: AtomicU64,
-    spool_switch: SpoolSwitch,
 }
 
 impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
@@ -261,10 +234,6 @@ where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if !self.spool_switch.is_enabled() {
-            return;
-        }
-
         let mut visitor = FieldVisitor::default();
         event.record(&mut visitor);
 
@@ -407,7 +376,15 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
 
 fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
     let dir = root.join(&report.role).join(&report.authz_id);
-    create_dir_secure(&dir)?;
+
+    // The token file is the per-authorization spool gate: it is only persisted
+    // while the portal has uploads enabled, and without it the uploader could
+    // never submit these reports.
+    if !dir.join("token").exists() {
+        tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
+
+        return Ok(());
+    }
 
     let contents = serialize(&serde_json::Value::Object(report.payload.clone()))?;
 
@@ -526,6 +503,7 @@ mod tests {
     #[test]
     fn spools_start_and_end_reports_sharing_a_stem() {
         let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
 
         let (layer, guard) = layer(dir.path().to_owned());
         let subscriber = tracing_subscriber::registry().with(layer);
@@ -539,6 +517,7 @@ mod tests {
         let stems = std::fs::read_dir(&authz_dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "token")
             .collect::<Vec<_>>();
 
         // Both reports share one `<flow_start>-<flow_identity>` stem.
@@ -562,12 +541,10 @@ mod tests {
     }
 
     #[test]
-    fn spools_nothing_while_spooling_is_off() {
+    fn spools_nothing_without_ingest_token() {
         let dir = tempfile::tempdir().unwrap();
 
         let (layer, guard) = layer(dir.path().to_owned());
-        guard.spool_switch().set(false);
-
         let subscriber = tracing_subscriber::registry().with(layer);
         tracing::subscriber::with_default(subscriber, || {
             emit_event(true);

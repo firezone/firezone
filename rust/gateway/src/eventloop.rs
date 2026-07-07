@@ -46,9 +46,11 @@ pub struct Eventloop {
     /// uploads disabled.
     local_flow_logs: bool,
 
-    /// Switch on the `flow_log_writer` layer: tokens and reports are only
-    /// spooled for upload when the portal enabled flow logs; set from `init`.
-    spool_switch: flow_log_writer::SpoolSwitch,
+    /// Whether the portal enabled flow-log uploads; set from `init`.
+    ///
+    /// Gates persisting ingest tokens, whose on-disk presence in turn gates
+    /// spooling that authorization's reports.
+    upload_flow_logs: bool,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -77,7 +79,6 @@ impl Eventloop {
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
-        spool_switch: flow_log_writer::SpoolSwitch,
         local_flow_logs: bool,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
@@ -96,7 +97,7 @@ impl Eventloop {
             tun_device_manager,
             resolver,
             flow_logs_dir,
-            spool_switch,
+            upload_flow_logs: false,
             local_flow_logs,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
@@ -317,9 +318,10 @@ impl Eventloop {
             IngressMessages::AuthorizeFlow(msg) => {
                 // The token is the sole source of flow attribution, so it is
                 // always passed to the tunnel state (e.g. for `--flow-logs`
-                // output); like the reports themselves, it is only spooled to
-                // disk when the portal enabled uploads.
-                if self.spool_switch.is_enabled()
+                // output). It is only persisted while the portal has uploads
+                // enabled; its on-disk presence gates spooling the
+                // authorization's reports.
+                if self.upload_flow_logs
                     && let Some(token) = &msg.flow_logs_ingest_token
                     && let Err(e) =
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
@@ -404,11 +406,9 @@ impl Eventloop {
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
-                let upload_flow_logs = flow_logs.upload_enabled();
+                self.upload_flow_logs = flow_logs.upload_enabled();
 
-                self.spool_switch.set(upload_flow_logs);
-
-                tunnel.set_flow_logs_enabled(upload_flow_logs || self.local_flow_logs);
+                tunnel.set_flow_logs_enabled(self.upload_flow_logs || self.local_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,

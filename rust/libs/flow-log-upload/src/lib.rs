@@ -235,15 +235,21 @@ fn clamp_batch_size(batch_size: u64) -> usize {
     }
 }
 
-/// A missing token is pruned immediately; an unreadable or undecodable one is
-/// kept, so a transient failure never deletes uploadable data.
+/// A missing token is pruned; an unreadable or undecodable one is kept, so a
+/// transient failure never deletes uploadable data.
 ///
-/// The writer creates a token before any report, so a missing or undecodable one
-/// is a bug.
+/// Reports are only spooled once their token is on disk, so a missing or
+/// undecodable one is a bug. A freshly-created directory is exempt: its token
+/// may not be written yet (`write_token` creates the directory first), and a
+/// prune racing that write must not delete it.
 fn should_prune(dir: &Path, now: u64) -> bool {
     let token = match std::fs::read_to_string(dir.join("token")) {
         Ok(token) => token,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if is_recently_modified(dir) {
+                return false;
+            }
+
             tracing::error!(?dir, "Flow-log spool directory has no ingest token");
             return true;
         }
@@ -260,6 +266,21 @@ fn should_prune(dir: &Path, now: u64) -> bool {
             false
         }
     }
+}
+
+/// Errs on the side of "recent" (keeping the directory) when the metadata or
+/// clock is unreadable.
+fn is_recently_modified(dir: &Path) -> bool {
+    const MIN_PRUNE_AGE: Duration = Duration::from_secs(60);
+
+    std::fs::metadata(dir)
+        .and_then(|meta| meta.modified())
+        .map(|modified| match modified.elapsed() {
+            Ok(age) => age < MIN_PRUNE_AGE,
+            // A modification time in the future counts as recent.
+            Err(_) => true,
+        })
+        .unwrap_or(true)
 }
 
 /// Decodes the `exp` (unix seconds) claim from an ingest token's JWT payload
@@ -939,10 +960,16 @@ mod tests {
         std::fs::create_dir_all(&valid).unwrap();
         std::fs::write(valid.join("token"), token_expiring_at(now + 3600)).unwrap();
 
-        // No token: can never be uploaded, so pruned immediately (no grace period).
+        // No token and not fresh: can never be uploaded, so pruned.
         let orphan = root.path().join("responder").join("orphan-pa");
         std::fs::create_dir_all(&orphan).unwrap();
         std::fs::write(orphan.join("a.start.json"), "{}").unwrap();
+        backdate(&orphan);
+
+        // No token but freshly created: `write_token` may be about to write
+        // it, so it must survive the prune.
+        let fresh = root.path().join("responder").join("fresh-pa");
+        std::fs::create_dir_all(&fresh).unwrap();
 
         prune(root.path());
 
@@ -955,6 +982,16 @@ mod tests {
             !orphan.exists(),
             "token-less authorization dir should be pruned"
         );
+        assert!(
+            fresh.exists(),
+            "freshly-created token-less dir should be kept"
+        );
+    }
+
+    fn backdate(dir: &Path) {
+        let mtime = filetime::FileTime::from_unix_time(unix_now() as i64 - 3600, 0);
+
+        filetime::set_file_mtime(dir, mtime).unwrap();
     }
 
     #[test]

@@ -102,8 +102,8 @@ fn has_necessary_permissions() -> bool {
 async fn try_main(cli: Cli) -> Result<()> {
     let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
 
-    let (flow_log_layer, flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
-    let flow_log_spool_switch = flow_log_guard.spool_switch();
+    // Hold the guard until exit so the writer thread drains on shutdown.
+    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
 
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
@@ -260,7 +260,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         tun_device_manager,
         resolver,
         flow_logs_dir,
-        flow_log_spool_switch,
         cli.flow_logs,
     )?
     .run()
