@@ -79,7 +79,7 @@ defmodule PortalAPI.FlowLogController do
       {:error, :uploads_disabled} ->
         ProblemDetails.send(
           conn,
-          403,
+          401,
           "Flow log uploads are not enabled for this authorization"
         )
 
@@ -109,10 +109,10 @@ defmodule PortalAPI.FlowLogController do
   end
 
   # Tokens are minted for every authorization so devices always receive their
-  # attribution, but the `flow_log_uploads_enabled` claim carries the policy's
-  # opt-in. Devices honor it client-side; this is the server-side backstop.
-  # A token without the claim fails closed.
-  defp ensure_uploads_enabled(%{"flow_log_uploads_enabled" => true}), do: :ok
+  # attribution, but the `uploads_enabled` claim carries the policy's opt-in.
+  # Devices honor it client-side; this is the server-side backstop. A token
+  # without the claim fails closed.
+  defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok
   defp ensure_uploads_enabled(_claims), do: {:error, :uploads_disabled}
 
   # The token names exactly one policy authorization; a record that declares a

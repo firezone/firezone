@@ -15,7 +15,7 @@ defmodule Portal.FlowLogFixtures do
         "device_id" => Ecto.UUID.generate(),
         "policy_authorization_id" => Ecto.UUID.generate(),
         "policy_id" => Ecto.UUID.generate(),
-        "flow_log_uploads_enabled" => true,
+        "uploads_enabled" => true,
         "resource_id" => Ecto.UUID.generate(),
         "resource_name" => "prod-db",
         "resource_address" => "10.0.0.5",

@@ -3479,7 +3479,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert client_ice_password != gateway_ice_password
     end
 
-    test "ingest tokens carry flow_log_uploads_enabled=true when the policy opts in", %{
+    test "ingest tokens carry uploads_enabled=true when the policy opts in", %{
       account: account,
       group: group,
       site: site,
@@ -3514,7 +3514,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_binary(payload.flow_logs_ingest_token)
 
       assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
-      assert responder_claims["flow_log_uploads_enabled"] == true
+      assert responder_claims["uploads_enabled"] == true
       assert responder_claims["role"] == "responder"
 
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -3531,11 +3531,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert initiator_token != payload.flow_logs_ingest_token
 
       assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
-      assert initiator_claims["flow_log_uploads_enabled"] == true
+      assert initiator_claims["uploads_enabled"] == true
       assert initiator_claims["role"] == "initiator"
     end
 
-    test "ingest tokens carry flow_log_uploads_enabled=false when the policy opts out", %{
+    test "ingest tokens carry uploads_enabled=false when the policy opts out", %{
       account: account,
       group: group,
       site: site,
@@ -3570,7 +3570,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_binary(payload.flow_logs_ingest_token)
 
       assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
-      assert responder_claims["flow_log_uploads_enabled"] == false
+      assert responder_claims["uploads_enabled"] == false
 
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
@@ -3585,10 +3585,10 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_binary(initiator_token)
 
       assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
-      assert initiator_claims["flow_log_uploads_enabled"] == false
+      assert initiator_claims["uploads_enabled"] == false
     end
 
-    test "ingest tokens carry flow_log_uploads_enabled=false when the feature is disabled", %{
+    test "ingest tokens carry uploads_enabled=false when the feature is disabled", %{
       dns_resource: resource,
       client: client,
       gateway_token: gateway_token,
@@ -3613,7 +3613,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_binary(payload.flow_logs_ingest_token)
 
       assert {:ok, claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
-      assert claims["flow_log_uploads_enabled"] == false
+      assert claims["uploads_enabled"] == false
     end
 
     test "flow_created sends site_id to clients that support renamed site payloads", %{

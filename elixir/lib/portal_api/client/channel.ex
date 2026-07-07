@@ -2509,10 +2509,12 @@ defmodule PortalAPI.Client.Channel do
       # endpoint rejects a request whose records mix more than one of these.
       "policy_authorization_id" => policy_authorization_id,
       "policy_id" => policy_id,
-      # Whether the authorizing policy allows this flow's logs to be uploaded.
+      # Whether the authorizing policy allows this flow's logs to be uploaded
+      # (policies.flow_log_uploads_enabled AND the global flow_logs feature).
       # Devices honor it and the ingest endpoint enforces it, so the token can
-      # always be minted while uploads stay policy-gated.
-      "flow_log_uploads_enabled" => flow_log_uploads_enabled,
+      # always be minted while uploads stay policy-gated. The claim name is the
+      # data-plane contract: connlib parses it as a required field.
+      "uploads_enabled" => flow_log_uploads_enabled,
       "resource_id" => resource_id,
       "resource_name" => resource_name,
       "resource_address" => resource_address,

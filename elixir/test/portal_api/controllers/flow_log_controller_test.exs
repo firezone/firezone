@@ -134,25 +134,25 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert %{"status" => 401} = json_response(conn, 401)
     end
 
-    test "returns 403 when the token says uploads are disabled", %{conn: conn, account: account} do
+    test "returns 401 when the token says uploads are disabled", %{conn: conn, account: account} do
       conn =
         conn
-        |> authorize(account, %{"flow_log_uploads_enabled" => false})
+        |> authorize(account, %{"uploads_enabled" => false})
         |> post_logs([build_record()])
 
       assert %{
-               "status" => 403,
+               "status" => 401,
                "detail" => "Flow log uploads are not enabled for this authorization"
-             } = json_response(conn, 403)
+             } = json_response(conn, 401)
 
       assert Repo.all(FlowLog) == []
     end
 
-    test "returns 403 when the token has no flow_log_uploads_enabled claim", %{
+    test "returns 401 when the token has no uploads_enabled claim", %{
       conn: conn,
       account: account
     } do
-      claims = Map.delete(flow_log_token_claims(), "flow_log_uploads_enabled")
+      claims = Map.delete(flow_log_token_claims(), "uploads_enabled")
       token = FlowLogToken.mint(account, claims, expires_at())
 
       conn =
@@ -160,7 +160,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> put_req_header("authorization", "Bearer " <> token)
         |> post_logs([build_record()])
 
-      assert %{"status" => 403} = json_response(conn, 403)
+      assert %{"status" => 401} = json_response(conn, 401)
     end
   end
 

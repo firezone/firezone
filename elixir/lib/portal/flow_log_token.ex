@@ -28,8 +28,9 @@ defmodule Portal.FlowLogToken do
   @reporting_grace_seconds 2_592_000
 
   # Attribution claims copied verbatim into the flow_logs row on ingest, plus
-  # `flow_log_uploads_enabled`, which gates ingestion instead of being stored.
-  @attribution_claims ~w[role device_id policy_authorization_id policy_id flow_log_uploads_enabled
+  # `uploads_enabled` (the policy's flow_log_uploads_enabled AND the global
+  # flow_logs feature), which gates ingestion instead of being stored.
+  @attribution_claims ~w[role device_id policy_authorization_id policy_id uploads_enabled
                          resource_id resource_name
                          resource_address actor_id actor_email actor_name auth_provider_id
                          authorized_at authorization_expires_at
