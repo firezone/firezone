@@ -675,17 +675,16 @@ where
             }
         }
 
-        let had_allocations = !self.allocations.is_empty();
-        let removed_allocations = self.allocations.gc();
+        let gc = self.allocations.gc();
 
-        if had_allocations && self.allocations.is_empty() {
+        if gc.removed_last {
             tracing::info!("Removed last relay; requesting a new set");
 
             self.pending_events.push_back(Event::NoRelays);
         }
 
         self.connections.migrate_relays(
-            removed_allocations,
+            gc.removed.into_iter(),
             &mut self.allocations,
             &mut self.pending_events,
             now,
