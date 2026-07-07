@@ -19,4 +19,9 @@ pub enum Event {
         local: SocketAddr,
         remote: SocketAddr,
     },
+    /// Probes regained a path after we had none (e.g. after a roam).
+    ///
+    /// The kept session already flows again; a re-key on the new primary lets
+    /// the remote know our situation changed so it can re-evaluate, too.
+    PathRecovered,
 }

@@ -312,7 +312,7 @@ where
 
             // Re-seed connection with all candidates.
             let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
+                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations, now);
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -362,7 +362,7 @@ where
             self.allocations
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
-                    let candidate = agent.add_local_candidate(candidate)?;
+                    let candidate = agent.add_local_candidate(candidate, now)?;
                     let event = new_ice_candidate_event(cid, candidate, use_iceless);
 
                     Some(event)
@@ -1117,13 +1117,14 @@ fn seed_agent_with_local_candidates<'a, RId>(
     selected_relay: RId,
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
+    now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
     RId: Ord + fmt::Display + Copy,
 {
     allocations
         .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| agent.add_local_candidate(c))
+        .filter_map(move |c| agent.add_local_candidate(c, now))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1566,6 +1567,9 @@ where
                         now,
                     );
                 }
+                path_agent::Event::PathRecovered => {
+                    self.initiate_wg_session_for_path(now);
+                }
             }
         }
 
@@ -1981,14 +1985,14 @@ where
         self.agent.initiate_handshake(&mut self.tunnel, false, now);
     }
 
-    /// Iceless-only soft roam: drop all locals, force-resend the init.
-    /// Connection state (peer_socket, WG session keys) stays put.
+    /// Iceless-only soft roam: drop all locals. Connection state
+    /// (peer_socket, WG session keys) stays put; new candidates probe the
+    /// kept session back to life, so no handshake is needed.
     fn reset_for_roam(&mut self, now: Instant)
     where
         RId: Ord + fmt::Display + Copy,
     {
         self.agent.rebuild_path(|_| true, now);
-        self.agent.initiate_handshake(&mut self.tunnel, true, now);
     }
 
     /// Iceless-only. Receiver rediscovers the connection by the
@@ -2013,8 +2017,6 @@ where
             .map(|c| crate::candidate::to_path_agent(&c))
             .collect::<SmallVec<[_; 2]>>();
         self.agent.rebuild_path(|c| dropped.contains(c), now);
-
-        self.agent.initiate_handshake(&mut self.tunnel, true, now);
 
         tracing::info!(%cid, "Reset iceless path-agent after relay invalidation");
     }
@@ -2084,7 +2086,7 @@ where
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()) {
+        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone(), now) {
             let iceless = self.agent.is_iceless();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, iceless));
         }

@@ -1,6 +1,10 @@
-//! Scoring, timing, peer-reflexive discovery, and the
-//! validate-then-commit regression. Flow-level coverage lives in the
-//! tunnel proptest.
+//! Scenario coverage for the probe-driven path model.
+//!
+//! Layout follows the model's life-cycle: bootstrap via handshake fan-out,
+//! probing (bursts, triggered checks, peer-reflexive discovery), selection
+//! (scoring, hysteresis, freshness), and failure handling (roam recovery,
+//! WireGuard distress signals). Flow-level coverage lives in the tunnel
+//! proptest.
 
 use std::net::{IpAddr, SocketAddr};
 use std::ops::ControlFlow;
@@ -10,20 +14,130 @@ use boringtun::noise::{Index, Tunn, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, EVALUATION_WINDOW, Event, PROBE_DST, PROBE_INTERVAL, PROBE_INTERVAL_LIVE, PROBE_SRC,
-    PROBE_TIMEOUT, PathAgent, Payload, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL_LIVE, PROBE_PACING, PROBE_SRC,
+    PathAgent, Payload, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, Transmit,
 };
 
-fn addr(p: u16) -> SocketAddr {
-    format!("127.0.0.1:{p}").parse().unwrap()
-}
+// --- bootstrap: handshake fan-out and nomination ---
 
-fn addr_v6(p: u16) -> SocketAddr {
-    format!("[::1]:{p}").parse().unwrap()
+#[test]
+fn outbound_handshake_init_fans_out_on_every_relay_pair() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+
+    let transmits = a.transmits();
+    assert_eq!(transmits.len(), 3);
+    let payload = Payload::Ciphertext(handshake_init_bytes());
+    for t in &transmits {
+        assert_eq!(t.payload, payload);
+    }
 }
 
 #[test]
-fn inbound_handshake_init_validates_then_adopts_primary() {
+fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+    let next = a.poll_timeout().expect("retransmit deadline");
+    assert_eq!(next, now + Duration::from_millis(50));
+}
+
+#[test]
+fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    let init = handshake_init_bytes();
+
+    a.handle_outbound(init.clone(), now);
+    a.handle_timeout(now);
+    let initial_count = std::iter::from_fn(|| a.poll_transmit()).count();
+    assert_eq!(initial_count, 3);
+
+    let later = now + Duration::from_millis(50);
+    a.handle_timeout(later);
+
+    let retransmits = a.transmits();
+    assert_eq!(retransmits.len(), 3);
+    for t in &retransmits {
+        assert_eq!(t.payload, Payload::Ciphertext(init.clone()));
+    }
+}
+
+#[test]
+fn handle_timeout_before_deadline_does_not_emit() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+    a.handle_timeout(now + Duration::from_millis(25));
+    assert!(a.poll_transmit().is_none());
+}
+
+#[test]
+fn retransmit_ladder_bursts_then_doubles_to_cap() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+
+    let mut t = now + Duration::from_millis(50);
+    let expected_step_ms: [u64; 8] = [50, 50, 100, 200, 400, 800, 1600, 1600];
+    for &expected_ms in &expected_step_ms {
+        a.handle_timeout(t);
+        let _ = a.transmits();
+        let next = a.poll_timeout().expect("deadline");
+        assert_eq!(next, t + Duration::from_millis(expected_ms));
+        t = next;
+    }
+}
+
+#[test]
+fn outbound_init_keeps_retransmitting_until_answered() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+
+    a.handle_timeout(now + Duration::from_secs(11));
+    assert!(a.poll_event().is_none(), "no BootstrapFailed-style event");
+    assert!(
+        a.poll_transmit().is_some(),
+        "retransmits should still be firing"
+    );
+}
+
+#[test]
+fn inbound_handshake_response_clears_retransmits() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+    let init_deadline = a.poll_timeout().expect("init armed retransmits");
+
+    let mut hs = Handshake::new(now).with_response(now);
+    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
+    a.drain_events();
+
+    let post_deadline = a.poll_timeout();
+    assert!(
+        post_deadline.is_none_or(|t| t != init_deadline),
+        "retransmit deadline should have cleared",
+    );
+}
+
+#[test]
+fn inbound_handshake_init_validates_then_nominates_when_pathless() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     let mut hs = Handshake::new(now);
@@ -107,98 +221,14 @@ fn responder_dedup_replays_within_window_then_expires() {
 }
 
 #[test]
-fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-    let next = a.poll_timeout().expect("retransmit deadline");
-    assert_eq!(next, now + Duration::from_millis(50));
-}
-
-#[test]
-fn handle_timeout_at_or_after_deadline_re_emits_init_per_pair() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let init = handshake_init_bytes();
-
-    a.handle_outbound(init.clone(), now);
-    a.handle_timeout(now);
-    let initial_count = std::iter::from_fn(|| a.poll_transmit()).count();
-    assert_eq!(initial_count, 3);
-
-    let later = now + Duration::from_millis(50);
-    a.handle_timeout(later);
-
-    let retransmits = a.transmits();
-    assert_eq!(retransmits.len(), 3);
-    for t in &retransmits {
-        assert_eq!(t.payload, Payload::Ciphertext(init.clone()));
-    }
-}
-
-#[test]
-fn retransmit_ladder_bursts_then_doubles_to_cap() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-
-    let mut t = now + Duration::from_millis(50);
-    let expected_step_ms: [u64; 8] = [50, 50, 100, 200, 400, 800, 1600, 1600];
-    for &expected_ms in &expected_step_ms {
-        a.handle_timeout(t);
-        let _ = a.transmits();
-        let next = a.poll_timeout().expect("deadline");
-        assert_eq!(next, t + Duration::from_millis(expected_ms));
-        t = next;
-    }
-}
-
-#[test]
-fn inbound_handshake_response_clears_retransmits() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-    let init_deadline = a.poll_timeout().expect("init armed retransmits");
-
-    let mut hs = Handshake::new(now).with_response(now);
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
-    a.drain_events();
-
-    let post_deadline = a.poll_timeout();
-    assert!(
-        post_deadline.is_none_or(|t| t != init_deadline),
-        "retransmit deadline should have cleared",
-    );
-}
-
-#[test]
-fn handle_timeout_before_deadline_does_not_emit() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-    a.handle_timeout(now + Duration::from_millis(25));
-    assert!(a.poll_transmit().is_none());
-}
-
-#[test]
 fn srflx_local_uses_base_as_send_from_address() {
     let mut a = PathAgent::new();
     let now = Instant::now();
 
     let mapped = addr(10);
     let base = addr(11);
-    a.add_local_candidate(Candidate::server_reflexive(mapped, base));
-    a.add_local_candidate(Candidate::relayed(addr(20), addr(20)));
+    a.add_local_candidate(Candidate::server_reflexive(mapped, base), now);
+    a.add_local_candidate(Candidate::relayed(addr(20), addr(20)), now);
     a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)), now);
 
     a.handle_outbound(handshake_init_bytes(), now);
@@ -213,320 +243,162 @@ fn srflx_local_uses_base_as_send_from_address() {
     assert_eq!(emitted, expected);
 }
 
-#[test]
-fn outbound_handshake_init_fans_out_on_every_relay_pair() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
+// --- probing: bursts, triggered checks, peer-reflexive discovery ---
 
-    let transmits = a.transmits();
-    assert_eq!(transmits.len(), 3);
-    let payload = Payload::Ciphertext(handshake_init_bytes());
-    for t in &transmits {
-        assert_eq!(t.payload, payload);
-    }
+#[test]
+fn pairs_probe_in_a_front_loaded_burst_then_only_the_primary_stays_on_live_cadence() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    a.add_remote_candidate(Candidate::host(addr(3)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
+
+    let burst = a.advance(t0, t0 + secs(5));
+
+    // Both pairs fire the full front-loaded ladder without waiting for
+    // replies — after a roam, the peer's NAT filter may open between two
+    // probes and the next one must follow promptly.
+    let expected = burst_ladder(t0);
+    assert_eq!(burst.probe_times((addr(1), addr(2))), expected);
+    assert_eq!(burst.probe_times((addr(1), addr(3))), expected);
+
+    let after_burst = a.advance(t0 + secs(5), t0 + secs(60));
+
+    // Dormant pairs stay quiet; the primary keeps its RTT fresh and its NAT
+    // mappings warm.
+    assert_eq!(after_burst.probe_times((addr(1), addr(3))), vec![]);
+    assert_eq!(
+        after_burst.probe_times((addr(1), addr(2))),
+        vec![
+            t0 + secs(2) + PROBE_INTERVAL_LIVE,
+            t0 + secs(2) + PROBE_INTERVAL_LIVE * 2
+        ],
+    );
+}
+
+#[test]
+fn late_reply_to_an_earlier_burst_probe_still_measures_rtt() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    a.add_remote_candidate(Candidate::host(addr(3)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
+
+    let pair = (addr(1), addr(3));
+    let burst = a.advance(t0, t0 + ms(300));
+    let probes = burst.probes_for(pair);
+    assert_eq!(probes.len(), 2, "two ladder steps within 300ms");
+
+    // The reply to the *first* probe arrives after the second was sent.
+    let first = probes[0];
+    let _ = a.handle_inbound_tun(build_echo_reply(first.id, first.seq), pair, t0 + ms(400));
+
+    assert_eq!(
+        a.primary(),
+        Some(pair),
+        "the late reply must measure and win against the reply-less incumbent"
+    );
 }
 
 #[test]
 fn probe_seq_advances_per_pair_per_fire() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    a.add_remote_candidate(Candidate::host(addr(3)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
 
-    a.handle_timeout(now);
-    let first = a.transmits();
-    let first_probe = extract_probe_for(&first, (addr(1), addr(3)));
-    let first_seq = first_probe.seq;
-
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(first_probe.id, first_probe.seq),
-        (addr(1), addr(3)),
-        now + Duration::from_millis(50),
-    );
-
-    a.handle_timeout(now + PROBE_INTERVAL);
-    let second = a.transmits();
-    let second_seq = extract_probe_for(&second, (addr(1), addr(3))).seq;
-
-    assert_eq!(second_seq, first_seq.wrapping_add(1));
-}
-
-#[test]
-fn probe_skips_while_inflight_until_probe_timeout_lapses() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
-
-    a.handle_timeout(now);
-    let first = a.transmits();
-    let pair = (addr(1), addr(3));
-    let first_seq = extract_probe_for(&first, pair).seq;
-
-    a.handle_timeout(now + PROBE_INTERVAL);
-    let mid: Vec<_> = std::iter::from_fn(|| a.poll_transmit())
-        .filter(|t| (t.local, t.remote) == pair)
+    let burst = a.advance(t0, t0 + secs(3));
+    let seqs: Vec<u16> = burst
+        .probes_for((addr(1), addr(3)))
+        .iter()
+        .map(|p| p.seq)
         .collect();
-    assert!(
-        mid.is_empty(),
-        "expected no probe re-fire while previous is inflight: {mid:?}"
-    );
 
-    a.handle_timeout(now + PROBE_TIMEOUT);
-    let after: Vec<_> = std::iter::from_fn(|| a.poll_transmit())
-        .filter(|t| (t.local, t.remote) == pair)
+    let first = seqs[0];
+    let expected: Vec<u16> = (0..seqs.len() as u16)
+        .map(|i| first.wrapping_add(i))
         .collect();
-    assert_eq!(
-        after.len(),
-        1,
-        "expected fresh probe after timeout: {after:?}"
-    );
-    let next_seq = extract_probe_for(&after, pair).seq;
-    assert_eq!(next_seq, first_seq.wrapping_add(1));
+    assert_eq!(seqs, expected);
 }
 
 #[test]
-fn drive_probes_only_emits_on_primary_after_settle() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let primary = (addr(1), addr(3));
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
+fn trickled_candidate_probes_immediately_even_while_dormant() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), t0);
+    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), t0);
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
 
-    let inside = a.tick(now);
-    assert!(!inside.is_empty(), "expected probes inside window");
-    a.ack_probe(&inside, primary, now + ms(50));
-    assert_eq!(a.primary(), Some(primary));
-    a.drain_events();
+    // Exhaust every burst; the agent is dormant except for the primary.
+    let _ = a.advance(t0, t0 + secs(10));
 
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    let _ = a.transmits();
+    let t1 = t0 + secs(10);
+    a.add_remote_candidate(Candidate::host(addr(3)), t1);
 
-    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE - ms(1));
-    assert!(a.poll_transmit().is_none(), "before live deadline");
-
-    let live = a.tick(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE);
-    assert_eq!(live.len(), 1, "expected primary-only probe: {live:?}");
-    assert_eq!((live[0].local, live[0].remote), primary);
+    let activity = a.advance(t1, t1 + secs(1));
+    assert!(!activity.probes_for((addr(1), addr(3))).is_empty());
+    assert!(!activity.probes_for((addr(2), addr(3))).is_empty());
 }
 
 #[test]
-fn settle_keeps_poll_timeout_armed_for_primary_probes() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let primary = (addr(1), addr(3));
-    settle_with_primary(&mut a, (addr(2), addr(4)), primary, now);
+fn candidate_arrival_reprobes_the_current_primary() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
+    let _ = a.advance(t0, t0 + secs(10));
 
-    assert_eq!(
-        a.poll_timeout(),
-        Some(now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE),
-    );
-}
+    // New candidates usually mean the peer's situation changed — the
+    // incumbent might be dead now.
+    let t1 = t0 + secs(10);
+    a.add_remote_candidate(Candidate::host(addr(3)), t1);
 
-#[test]
-fn settle_is_sticky_across_later_handshakes() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let primary = (addr(1), addr(3));
-    let mut hs = Handshake::new(now).with_response(now);
-
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
-    a.drain_events();
-
-    a.handle_timeout(now);
-    let outbound = a.transmits();
-    let host_probe = extract_probe_for(&outbound, primary);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(host_probe.id, host_probe.seq),
-        primary,
-        now + Duration::from_millis(50),
-    );
-    a.drain_events();
-
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    let _ = a.transmits();
-
-    let live_deadline = a.poll_timeout().expect("live cadence");
-
-    // Re-feeding the same bytes hits the dedup before Tunn runs;
-    // `reject_all()` proves it didn't.
-    let _ = a.handle_inbound_network(
-        &mut reject_all(),
-        &hs.response,
-        (addr(2), addr(4)),
-        now + EVALUATION_WINDOW + Duration::from_secs(60),
-    );
-    a.drain_events();
-
-    assert_eq!(a.poll_timeout(), Some(live_deadline));
-}
-
-#[test]
-fn inbound_handshake_reopens_evaluation_window_after_settle() {
-    // Reopen even when the recv path is already known — catches the
-    // roam case where signalling beats the data plane.
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let primary = (addr(1), addr(3));
-    settle_with_primary(&mut a, (addr(2), addr(4)), primary, now);
-
-    let live_tick = now + EVALUATION_WINDOW + PROBE_INTERVAL_LIVE;
-    let live_probes = a.tick(live_tick);
-    assert_eq!(
-        live_probes.len(),
-        1,
-        "post-settle only primary probes, got {live_probes:?}"
-    );
-
-    let reopen_at = live_tick + Duration::from_secs(1);
-    let mut hs2 = Handshake::new(reopen_at).with_response(reopen_at);
-    let _ = a.handle_inbound_network(
-        &mut hs2.initiator,
-        &hs2.response,
-        (addr(2), addr(4)),
-        reopen_at,
-    );
-    a.drain_events();
-    let reopened_probes = a.tick(reopen_at);
+    let activity = a.advance(t1, t1 + secs(1));
     assert!(
-        reopened_probes.len() > 1,
-        "all pairs should probe after reopen, got {reopened_probes:?}"
+        !activity.probes_for((addr(1), addr(2))).is_empty(),
+        "candidate arrival must re-probe the primary"
     );
 }
 
 #[test]
-fn new_path_handshake_inside_open_window_restarts_evaluation() {
-    // A roam re-keys from a new address while the *initial* evaluation
-    // window is still open. The new handshake must restart the window so
-    // stale RTTs are cleared; otherwise the original window settles on a
-    // pre-roam pair that is now dead.
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
+fn inbound_probe_triggers_a_probe_back_on_the_same_pair() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    a.add_remote_candidate(Candidate::host(addr(3)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
+    let _ = a.advance(t0, t0 + secs(10));
 
-    // Handshake 1 opens the window (deadline now + EVALUATION_WINDOW).
-    let mut hs1 = Handshake::new(now);
-    let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), now);
-    a.drain_events();
+    // An inbound probe proves the reverse NAT filter is open right now;
+    // probing back completes the hole punch in one round trip.
+    let t1 = t0 + secs(10);
+    let _ = a.handle_inbound_tun(build_echo_request(0, 7), (addr(1), addr(3)), t1);
 
-    // A *different* handshake arrives late in the window from a new path
-    // (a roam re-key), still inside the original deadline.
-    let t2 = now + Duration::from_secs(8);
-    let mut hs2 = Handshake::new(t2);
-    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(3)), t2);
-    a.drain_events();
+    let reply = a.poll_transmit().expect("echo reply queued");
+    assert_eq!((reply.local, reply.remote), (addr(1), addr(3)));
 
-    // At the *original* deadline a non-restarted window settles and drops
-    // to the live cadence (primary-only, +25s). The restart pushed the
-    // deadline out to t2 + EVALUATION_WINDOW, so it stays open and probes.
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    let _ = a.transmits();
-
-    // Past the inflight-probe timeout but well before the restarted
-    // deadline: an open window re-probes *every* pair; a settled window
-    // probes nothing (its primary isn't due for another ~25s).
-    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_TIMEOUT + Duration::from_secs(1));
-    let probes = a.transmits();
+    let activity = a.advance(t1, t1 + secs(1));
     assert!(
-        probes.len() > 1,
-        "a handshake from a new path inside the open window must restart it (re-probe all pairs), got {probes:?}"
+        !activity.probes_for((addr(1), addr(3))).is_empty(),
+        "inbound probe must trigger a probe back"
     );
 }
 
 #[test]
-fn same_path_rekey_does_not_restart_evaluation() {
-    // A routine re-key arrives on the current primary: the path evidently
-    // works, so probing must not restart — neither mid-window nor after
-    // settling.
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    let mut hs1 = Handshake::new(now);
-    let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), now);
-    a.drain_events();
-
-    // A re-key arrives on the same path (= the adopted primary),
-    // still inside the original deadline.
-    let t2 = now + Duration::from_secs(8);
-    let mut hs2 = Handshake::new(t2);
-    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
-    a.drain_events();
-
-    // The window settles at the *original* deadline; nothing re-probes.
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    let _ = a.transmits();
-
-    a.handle_timeout(now + EVALUATION_WINDOW + PROBE_TIMEOUT + Duration::from_secs(1));
-    let probes = a.transmits();
-    assert!(
-        probes.is_empty(),
-        "a same-path re-key must not restart evaluation, got {probes:?}"
-    );
-
-    // Another re-key on the primary after settling stays quiet, too: only
-    // the live-cadence probe of the primary remains scheduled.
-    let t3 = now + EVALUATION_WINDOW + Duration::from_secs(10);
-    let mut hs3 = Handshake::new(t3);
-    let _ = a.handle_inbound_network(&mut hs3.responder, &hs3.init, (addr(2), addr(4)), t3);
-    a.drain_events();
-    let _ = a.transmits(); // Drop the HandshakeResponse.
-
-    a.handle_timeout(t3 + Duration::from_secs(1));
-    let probes = a.transmits();
-    assert!(
-        probes.is_empty(),
-        "a post-settle same-path re-key must not restart evaluation, got {probes:?}"
-    );
-}
-
-#[test]
-fn inbound_echo_reply_updates_smoothed_rtt_and_selects_primary() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
-
-    let probes = a.tick(now);
-    let probe = extract_probe_for(&probes, (addr(1), addr(3)));
-    let reply = build_echo_reply(probe.id, probe.seq);
-    let handled = a.handle_inbound_tun(reply, (addr(1), addr(3)), now + ms(50));
-    assert!(matches!(handled, ControlFlow::Break(())));
-
-    assert_eq!(a.primary(), Some((addr(1), addr(3))));
-    match a.poll_event() {
-        Some(Event::PrimaryChanged { local, remote }) => {
-            assert_eq!((local, remote), (addr(1), addr(3)));
-        }
-        other => panic!("expected PrimaryChanged, got {other:?}"),
-    }
-}
-
-#[test]
-fn inbound_echo_request_queues_reply_on_same_pair() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    let request = build_echo_request(0, 42);
-    let handled = a.handle_inbound_tun(request, (addr(2), addr(4)), now);
-    assert!(matches!(handled, ControlFlow::Break(())));
-
-    let reply_transmit = a.poll_transmit().expect("queued reply");
-    assert_eq!(reply_transmit.local, addr(2));
-    assert_eq!(reply_transmit.remote, addr(4));
-    let Payload::Plaintext(packet) = reply_transmit.payload else {
-        panic!("expected Plaintext reply");
-    };
-    let parsed = parse_probe(&packet).expect("parses");
-    assert_eq!(parsed.kind, EchoKind::Reply);
-    assert_eq!(parsed.seq, 42);
-}
-
-#[test]
-fn inbound_echo_request_from_unknown_source_registers_peer_reflexive() {
+fn inbound_probe_from_unknown_source_registers_peer_reflexive_and_probes_it() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
     let request = build_echo_request(0, 1);
     let _ = a.handle_inbound_tun(request, (addr(1), addr(99)), now);
-
     let _ = a.transmits();
 
     a.handle_timeout(now);
@@ -547,7 +419,7 @@ fn signaled_candidate_promotes_peer_reflexive_in_place() {
     a.handle_timeout(now);
     let probes = a.transmits();
     let probe = extract_probe_for(&probes, (addr(1), addr(99)));
-    let later = now + Duration::from_millis(50);
+    let later = now + ms(50);
     let _ = a.handle_inbound_tun(
         build_echo_reply(probe.id, probe.seq),
         (addr(1), addr(99)),
@@ -567,13 +439,36 @@ fn signaled_candidate_promotes_peer_reflexive_in_place() {
     assert_eq!(count_at_99_again, 2, "second signal must not duplicate");
 }
 
+// --- selection: scoring, hysteresis, freshness ---
+
+#[test]
+fn inbound_echo_reply_updates_rtt_and_selects_primary() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
+
+    let probes = a.probe_round(now);
+    let probe = extract_probe_for(&probes, (addr(1), addr(3)));
+    let reply = build_echo_reply(probe.id, probe.seq);
+    let handled = a.handle_inbound_tun(reply, (addr(1), addr(3)), now + ms(50));
+    assert!(matches!(handled, ControlFlow::Break(())));
+
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+    match a.poll_event() {
+        Some(Event::PrimaryChanged { local, remote }) => {
+            assert_eq!((local, remote), (addr(1), addr(3)));
+        }
+        other => panic!("expected PrimaryChanged, got {other:?}"),
+    }
+}
+
 #[test]
 fn primary_changes_when_lower_tier_pair_becomes_alive() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, (addr(2), addr(4)), now + ms(100));
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     a.drain_events();
@@ -592,15 +487,15 @@ fn primary_changes_when_lower_tier_pair_becomes_alive() {
 fn primary_prefers_local_relay_over_remote_relay_at_same_tier() {
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
+    a.add_local_candidate(Candidate::host(addr(1)), now);
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), now);
     a.add_remote_candidate(Candidate::host(addr(3)), now);
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
 
     let remote_relay_pair = (addr(1), addr(4));
     bootstrap_primary(&mut a, remote_relay_pair, now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, remote_relay_pair, now + ms(50));
     assert_eq!(a.primary(), Some(remote_relay_pair));
     a.drain_events();
@@ -621,14 +516,14 @@ fn primary_prefers_single_relay_hop_over_double_regardless_of_rtt() {
     // on RTT jitter.
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), now);
     a.add_remote_candidate(Candidate::server_reflexive(addr(3), addr(3)), now);
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
 
     let double_hop = (addr(2), addr(4));
     bootstrap_primary(&mut a, double_hop, now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, double_hop, now + ms(20));
     assert_eq!(a.primary(), Some(double_hop));
     a.drain_events();
@@ -647,13 +542,13 @@ fn primary_prefers_single_relay_hop_over_double_regardless_of_rtt() {
 fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::host(addr_v6(11)));
+    a.add_local_candidate(Candidate::host(addr(1)), now);
+    a.add_local_candidate(Candidate::host(addr_v6(11)), now);
     a.add_remote_candidate(Candidate::host(addr(2)), now);
     a.add_remote_candidate(Candidate::host(addr_v6(12)), now);
     bootstrap_primary(&mut a, (addr(1), addr(2)), now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, (addr(1), addr(2)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(2))));
     a.drain_events();
@@ -670,8 +565,8 @@ fn primary_prefers_ipv6_over_ipv4_at_same_tier() {
 fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::host(addr_v6(11)));
+    a.add_local_candidate(Candidate::host(addr(1)), now);
+    a.add_local_candidate(Candidate::host(addr_v6(11)), now);
     a.add_remote_candidate(Candidate::host(addr(2)), now);
     a.add_remote_candidate(Candidate::host(addr_v6(12)), now);
     let v6_pair = (addr_v6(11), addr_v6(12));
@@ -679,7 +574,7 @@ fn primary_holds_better_bucket_when_incumbent_has_no_rtt() {
     bootstrap_primary(&mut a, v6_pair, now);
     assert_eq!(a.primary(), Some(v6_pair));
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, (addr(1), addr(2)), now + ms(40));
 
     assert_eq!(
@@ -695,13 +590,13 @@ fn primary_prefers_family_matched_relay_within_same_v6_bucket() {
     let now = Instant::now();
     let matched_local_alloc = addr_v6(10);
     let mismatched_local_alloc = addr_v6(11);
-    a.add_local_candidate(Candidate::relayed(matched_local_alloc, addr_v6(100)));
-    a.add_local_candidate(Candidate::relayed(mismatched_local_alloc, addr(101)));
+    a.add_local_candidate(Candidate::relayed(matched_local_alloc, addr_v6(100)), now);
+    a.add_local_candidate(Candidate::relayed(mismatched_local_alloc, addr(101)), now);
     a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)), now);
     let mismatched_pair = (mismatched_local_alloc, addr_v6(20));
     bootstrap_primary(&mut a, mismatched_pair, now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, mismatched_pair, now + ms(50));
     assert_eq!(a.primary(), Some(mismatched_pair));
     a.drain_events();
@@ -721,14 +616,17 @@ fn family_match_dominates_ipv6_preference() {
     let now = Instant::now();
     let v6_mismatched_local_alloc = addr_v6(10);
     let v4_matched_local_alloc = addr(11);
-    a.add_local_candidate(Candidate::relayed(v6_mismatched_local_alloc, addr(100)));
-    a.add_local_candidate(Candidate::relayed(v4_matched_local_alloc, addr(101)));
+    a.add_local_candidate(
+        Candidate::relayed(v6_mismatched_local_alloc, addr(100)),
+        now,
+    );
+    a.add_local_candidate(Candidate::relayed(v4_matched_local_alloc, addr(101)), now);
     a.add_remote_candidate(Candidate::relayed(addr_v6(20), addr_v6(20)), now);
     a.add_remote_candidate(Candidate::relayed(addr(30), addr(30)), now);
     let v6_pair = (v6_mismatched_local_alloc, addr_v6(20));
     bootstrap_primary(&mut a, v6_pair, now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, v6_pair, now + ms(50));
     assert_eq!(a.primary(), Some(v6_pair));
     a.drain_events();
@@ -746,13 +644,13 @@ fn family_match_dominates_ipv6_preference() {
 fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_local_candidate(Candidate::host(addr(1)), now);
     a.add_remote_candidate(Candidate::host(addr(3)), now);
     a.add_remote_candidate(Candidate::host(addr(4)), now);
 
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, (addr(1), addr(3)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     a.drain_events();
@@ -775,12 +673,12 @@ fn primary_holds_when_rtt_gain_is_within_hysteresis_margin() {
 fn primary_switches_when_rtt_gain_exceeds_hysteresis_margin() {
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
+    a.add_local_candidate(Candidate::host(addr(1)), now);
     a.add_remote_candidate(Candidate::host(addr(3)), now);
     a.add_remote_candidate(Candidate::host(addr(4)), now);
     bootstrap_primary(&mut a, (addr(1), addr(3)), now);
 
-    let probes = a.tick(now);
+    let probes = a.probe_round(now);
     a.ack_probe(&probes, (addr(1), addr(3)), now + ms(50));
     assert_eq!(a.primary(), Some((addr(1), addr(3))));
     a.drain_events();
@@ -815,143 +713,235 @@ fn stale_echo_reply_is_ignored() {
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
 }
 
-#[test]
-fn outbound_init_keeps_retransmitting_past_evaluation_window_without_response() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-
-    a.handle_timeout(now + EVALUATION_WINDOW + Duration::from_secs(1));
-    assert!(a.poll_event().is_none(), "no BootstrapFailed-style event");
-    assert!(
-        a.poll_transmit().is_some(),
-        "retransmits should still be firing"
-    );
-}
+// --- WireGuard-signalled failure handling ---
 
 #[test]
-fn fresh_handshake_clears_stale_rtt_so_old_pair_does_not_win_against_new_one() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let initial_path = (addr(2), addr(4));
-    let roam_path = (addr(1), addr(3));
+fn probe_loss_alone_never_demotes_the_primary() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
 
-    bootstrap_primary(&mut a, initial_path, now);
-    a.handle_timeout(now);
-    let outbound = a.transmits();
-    let initial_probe = extract_probe_for(&outbound, initial_path);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(initial_probe.id, initial_probe.seq),
-        initial_path,
-        now + Duration::from_millis(40),
-    );
-    assert_eq!(a.primary(), Some(initial_path));
-    a.drain_events();
-    let _ = a.transmits();
+    // The primary's live probes go unanswered for a minute (e.g. the peer is
+    // busy and drops probes while data flows fine): no WireGuard signal, no
+    // demotion — even when a relay pair proves alive via a triggered check.
+    let _ = a.advance(t0, t0 + secs(60));
+    let t1 = t0 + secs(60);
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t1);
 
-    let roam_at = now + Duration::from_secs(60);
-    let mut hs2 = Handshake::new(roam_at).with_response(roam_at);
-    let _ = a.handle_inbound_network(&mut hs2.initiator, &hs2.response, roam_path, roam_at);
-    assert_eq!(a.primary(), Some(roam_path));
-    a.drain_events();
-
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(initial_probe.id, initial_probe.seq),
-        initial_path,
-        roam_at + Duration::from_millis(10),
-    );
     assert_eq!(
         a.primary(),
-        Some(roam_path),
-        "stale reply on the old path must not flip primary back"
+        Some((addr(1), addr(3))),
+        "probe loss without a WireGuard signal must not demote the primary",
+    );
+    assert!(a.poll_event().is_none());
+}
+
+#[test]
+fn unanswered_rekey_fails_over_to_a_fresh_pair() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    // The primary dies silently; its RTT goes stale.
+    let _ = a.advance(t0, t0 + secs(60));
+    let t1 = t0 + secs(60);
+
+    // boringtun re-keys (rides the primary), gets no answer and retries:
+    // WireGuard-level failure evidence.
+    a.handle_outbound(handshake_init_bytes(), t1);
+    let _ = a.transmits();
+    a.handle_outbound(handshake_init_bytes(), t1 + secs(5));
+    let _ = a.transmits();
+
+    // The re-evaluation bursts every pair; the relay pair answers.
+    let t2 = t1 + secs(5);
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t2);
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(2), addr(4))),
+        "with WireGuard distress, the fresh relay pair must displace the dead direct primary",
     );
 }
 
 #[test]
-fn rekey_handshake_init_rides_primary_instead_of_re_fanning_out() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let recv_path = (addr(2), addr(4));
+fn peer_rekeying_early_fails_over_too() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
 
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let initial = a.transmits();
-    assert_eq!(initial.len(), 3, "handshake fans out on every relay pair");
+    // The peer stops hearing us (one-way blackhole): our WireGuard state
+    // stays healthy (we keep receiving), but the peer's escalation shows as
+    // repeated distinct inits in quick succession.
+    let _ = a.advance(t0, t0 + secs(60));
+    let t1 = t0 + secs(60);
 
-    let mut hs = Handshake::new(now).with_response(now);
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
+    let mut hs1 = Handshake::new(t1);
+    let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), t1);
+    let t2 = t1 + REKEY_DISTRESS_INTERVAL / 2;
+    let mut hs2 = Handshake::new(t2);
+    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
     a.drain_events();
     let _ = a.transmits();
 
-    a.handle_outbound(handshake_init_bytes(), now + Duration::from_secs(120));
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t2);
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(2), addr(4))),
+        "repeated early re-keys are peer distress; the fresh pair must take over",
+    );
+}
+
+#[test]
+fn routine_rekeys_do_not_restart_probing() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+    let _ = a.advance(t0, t0 + secs(10));
+
+    // An answered re-key minutes later is routine: it rides the primary and
+    // must not burst probes.
+    let t1 = t0 + secs(120);
+    a.handle_outbound(handshake_init_bytes(), t1);
     let rekey = a.transmits();
     assert_eq!(rekey.len(), 1, "re-key rides the primary: {rekey:?}");
-    assert_eq!((rekey[0].local, rekey[0].remote), recv_path);
-}
+    assert_eq!((rekey[0].local, rekey[0].remote), (addr(1), addr(3)));
 
-#[test]
-fn unanswered_rekey_retry_restarts_probing() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let recv_path = (addr(2), addr(4));
-
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-    let mut hs = Handshake::new(now).with_response(now);
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
-    a.drain_events();
-    let _ = a.transmits();
-
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    let _ = a.transmits();
-
-    // A routine re-key rides the primary; at most the live-cadence probe
-    // of the primary fires alongside it.
-    let rekey_at = now + Duration::from_secs(120);
-    a.handle_outbound(handshake_init_bytes(), rekey_at);
-    let _ = a.transmits();
-    a.handle_timeout(rekey_at);
-    let probes = a.transmits();
+    let activity = a.advance(t1, t1 + secs(3));
     assert!(
-        probes.len() <= 1,
-        "a routine re-key must not burst probes, got {probes:?}"
-    );
-
-    // The unanswered retry is failure evidence: probing restarts on all pairs.
-    let retry_at = rekey_at + Duration::from_secs(5);
-    a.handle_outbound(handshake_init_bytes(), retry_at);
-    let _ = a.transmits();
-    a.handle_timeout(retry_at);
-    let probes = a.transmits();
-    assert!(
-        probes.len() > 1,
-        "an unanswered re-key must restart probing on all pairs, got {probes:?}"
+        activity.probes_for((addr(2), addr(4))).is_empty(),
+        "a routine re-key must not burst probes on other pairs",
     );
 }
 
 #[test]
-fn rekey_without_primary_buffers_for_relay_fanout() {
-    let mut a = agent_with_relay_pairs();
-    let now = Instant::now();
-    let recv_path = (addr(2), addr(4));
+fn peer_rekeys_minutes_apart_are_not_distress() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+    let _ = a.advance(t0, t0 + secs(10));
 
-    a.handle_outbound(handshake_init_bytes(), now);
-    a.handle_timeout(now);
-    let _ = a.transmits();
-    let mut hs = Handshake::new(now).with_response(now);
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
+    let t1 = t0 + secs(120);
+    let mut hs = Handshake::new(t1);
+    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(1), addr(3)), t1);
     a.drain_events();
     let _ = a.transmits();
 
-    // Roam: the primary's local candidate goes away mid-session.
-    assert!(a.remove_local_candidate(&Candidate::relayed(addr(2), addr(2)), now));
+    let activity = a.advance(t1, t1 + secs(3));
+    assert!(
+        activity.probes_for((addr(2), addr(4))).is_empty(),
+        "a lone re-key minutes after the last one must not burst probes",
+    );
+}
+
+#[test]
+fn dead_pair_with_stale_rtt_does_not_win_back_the_primary() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    // Fail over to the relay pair via WireGuard distress.
+    let _ = a.advance(t0, t0 + secs(60));
+    let t1 = t0 + secs(60);
+    a.handle_outbound(handshake_init_bytes(), t1);
+    let _ = a.transmits();
+    a.handle_outbound(handshake_init_bytes(), t1 + secs(5));
+    let _ = a.transmits();
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t1 + secs(5));
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
+    a.drain_events();
+
+    // Later replies on the (still alive) relay pair re-run selection. The
+    // dead direct pair has a better bucket but only a stale RTT — it must
+    // not hijack the primary on a meaningless measurement.
+    let t2 = t1 + secs(30);
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t2);
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(2), addr(4))),
+        "a stale RTT must not put the dead direct pair back in charge",
+    );
+}
+
+// --- roam recovery ---
+
+#[test]
+fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(9)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(9)), t0);
+    let _ = a.advance(t0, t0 + secs(10));
+
+    // Roam: all local candidates are gone; the WireGuard session is kept.
+    let t1 = t0 + secs(60);
+    a.rebuild(|_| true, t1);
+    assert_eq!(a.primary(), None);
+
+    // The new socket produces a new host candidate; the peer's candidates
+    // survived the rebuild, so pairs form and probe immediately.
+    a.add_local_candidate(Candidate::host(addr(5)), t1);
+
+    let recovery = a.advance(t1, t1 + secs(1));
+    let probes = recovery.probes_for((addr(5), addr(9)));
+    assert!(
+        !probes.is_empty(),
+        "roamed pair must probe without any handshake"
+    );
+
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(probes[0].id, probes[0].seq),
+        (addr(5), addr(9)),
+        t1 + ms(50),
+    );
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(5), addr(9))),
+        "first probe reply must restore the data path",
+    );
+    assert!(
+        recovery
+            .transmits
+            .iter()
+            .all(|(_, t)| matches!(t.payload, Payload::Plaintext(_))),
+        "recovery must not require any handshake traffic",
+    );
+}
+
+#[test]
+fn recovering_a_path_requests_a_rekey_to_notify_the_remote() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(9)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(9)), t0);
+    a.drain_events();
+    let _ = a.advance(t0, t0 + secs(10));
+
+    let t1 = t0 + secs(60);
+    a.rebuild(|_| true, t1);
+    a.add_local_candidate(Candidate::host(addr(5)), t1);
+    let recovery = a.advance(t1, t1 + secs(1));
+    let probes = recovery.probes_for((addr(5), addr(9)));
+    let _ = a.handle_inbound_tun(
+        build_echo_reply(probes[0].id, probes[0].seq),
+        (addr(5), addr(9)),
+        t1 + ms(50),
+    );
+
+    let events: Vec<_> = std::iter::from_fn(|| a.poll_event()).collect();
+    assert!(
+        events.contains(&Event::PathRecovered),
+        "the remote can't observe our recovery; a re-key is the signal, got {events:?}",
+    );
+}
+
+#[test]
+fn rekey_without_a_primary_buffers_for_relay_fanout() {
+    // If probes can't find any path (e.g. no relays yet after a roam and
+    // direct is filtered), the buffered re-key fans out on relay pairs as
+    // soon as they exist — the bootstrap mechanism doubles as the fallback.
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
+    let _ = a.advance(now, now + secs(10));
+
+    assert!(a.remove_local_candidate(&Candidate::relayed(addr(2), addr(2)), now + secs(10)));
     assert_eq!(a.primary(), None, "removing primary's local must clear it");
 
-    let rekey_at = now + Duration::from_secs(120);
+    let rekey_at = now + secs(120);
     a.handle_outbound(handshake_init_bytes(), rekey_at);
     assert!(
         a.poll_transmit().is_none(),
@@ -961,36 +951,75 @@ fn rekey_without_primary_buffers_for_relay_fanout() {
     a.handle_timeout(rekey_at);
     let outbound = a.transmits();
     assert!(
-        outbound.iter().any(|t| t.remote == addr(4)),
+        outbound
+            .iter()
+            .any(|t| t.remote == addr(4) && matches!(t.payload, Payload::Ciphertext(_))),
         "buffered re-key must fan out on a relay-involving pair: {outbound:?}"
     );
-}
-
-#[test]
-fn trickled_candidate_after_handshake_still_gets_probed() {
-    let mut a = PathAgent::new();
-    let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
-    a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
-
-    bootstrap_primary(&mut a, (addr(2), addr(4)), now);
-
-    a.add_remote_candidate(Candidate::host(addr(3)), now);
-
-    a.handle_timeout(now);
-    let transmits = a.transmits();
-
-    let _ = extract_probe_for(&transmits, (addr(1), addr(3)));
-    let _ = extract_probe_for(&transmits, (addr(2), addr(3)));
 }
 
 // --- test harness ---
 
 type Pair = (SocketAddr, SocketAddr);
 
+fn addr(p: u16) -> SocketAddr {
+    format!("127.0.0.1:{p}").parse().unwrap()
+}
+
+fn addr_v6(p: u16) -> SocketAddr {
+    format!("[::1]:{p}").parse().unwrap()
+}
+
 fn ms(n: u64) -> Duration {
     Duration::from_millis(n)
+}
+
+fn secs(n: u64) -> Duration {
+    Duration::from_secs(n)
+}
+
+/// The probe send times of one burst starting at `start`.
+fn burst_ladder(start: Instant) -> Vec<Instant> {
+    std::iter::once(start)
+        .chain(PROBE_BURST_GAPS.iter().scan(start, |at, gap| {
+            *at += *gap;
+            Some(*at)
+        }))
+        .collect()
+}
+
+/// Everything an agent did while time advanced: transmits and events,
+/// stamped with the instant they were produced at.
+struct Activity {
+    transmits: Vec<(Instant, Transmit)>,
+}
+
+impl Activity {
+    fn probes_for(&self, pair: Pair) -> Vec<ProbeFields> {
+        self.transmits
+            .iter()
+            .filter(|(_, t)| (t.local, t.remote) == pair)
+            .filter_map(|(_, t)| match &t.payload {
+                Payload::Plaintext(packet) => parse_probe(packet),
+                Payload::Ciphertext(_) => None,
+            })
+            .filter(|p| p.kind == EchoKind::Request)
+            .collect()
+    }
+
+    fn probe_times(&self, pair: Pair) -> Vec<Instant> {
+        self.transmits
+            .iter()
+            .filter(|(_, t)| (t.local, t.remote) == pair)
+            .filter(|(_, t)| match &t.payload {
+                Payload::Plaintext(packet) => {
+                    parse_probe(packet).is_some_and(|p| p.kind == EchoKind::Request)
+                }
+                Payload::Ciphertext(_) => false,
+            })
+            .map(|(at, _)| *at)
+            .collect()
+    }
 }
 
 /// Ergonomic wrappers over the poll-based `PathAgent` API used throughout the
@@ -1003,9 +1032,15 @@ trait AgentExt {
     fn drain_events(&mut self);
     /// `handle_timeout(now)`, then collect the transmits it produced.
     fn tick(&mut self, now: Instant) -> Vec<Transmit>;
+    /// Fire the first probe of every pair, stepping across the pacing
+    /// stagger between pairs.
+    fn probe_round(&mut self, now: Instant) -> Vec<Transmit>;
     /// Reply to `pair`'s probe (looked up in `transmits`) at `reply_at`. Does not
     /// drain events, so callers can still assert on `PrimaryChanged`.
     fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant);
+    /// Step the agent from `start` to `end`, firing every deadline in
+    /// between and collecting the transmits it produces along the way.
+    fn advance(&mut self, start: Instant, end: Instant) -> Activity;
 }
 
 impl AgentExt for PathAgent {
@@ -1022,21 +1057,38 @@ impl AgentExt for PathAgent {
         self.transmits()
     }
 
+    fn probe_round(&mut self, now: Instant) -> Vec<Transmit> {
+        let mut out = self.tick(now);
+        out.extend(self.tick(now + PROBE_PACING));
+        out.extend(self.tick(now + PROBE_PACING * 2));
+        out
+    }
+
     fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant) {
         let probe = extract_probe_for(transmits, pair);
         let _ = self.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, reply_at);
     }
-}
 
-/// Bootstrap on `recv_path`, select `primary` by ack'ing its probe, then settle
-/// the evaluation window. Leaves the agent settled on `primary`.
-fn settle_with_primary(a: &mut PathAgent, recv_path: Pair, primary: Pair, now: Instant) {
-    bootstrap_primary(a, recv_path, now);
-    let probes = a.tick(now);
-    a.ack_probe(&probes, primary, now + ms(50));
-    a.drain_events();
-    a.handle_timeout(now + EVALUATION_WINDOW);
-    let _ = a.transmits();
+    fn advance(&mut self, start: Instant, end: Instant) -> Activity {
+        let mut activity = Activity {
+            transmits: Vec::new(),
+        };
+        let mut now = start;
+
+        for _ in 0..10_000 {
+            self.handle_timeout(now);
+            activity
+                .transmits
+                .extend(std::iter::from_fn(|| self.poll_transmit()).map(|t| (now, t)));
+
+            match self.poll_timeout() {
+                Some(next) if next <= end => now = next.max(now),
+                _ => return activity,
+            }
+        }
+
+        panic!("agent did not go quiet between {start:?} and {end:?}");
+    }
 }
 
 // --- shared fixtures ---
@@ -1044,11 +1096,38 @@ fn settle_with_primary(a: &mut PathAgent, recv_path: Pair, primary: Pair, now: I
 fn agent_with_relay_pairs() -> PathAgent {
     let mut a = PathAgent::new();
     let now = Instant::now();
-    a.add_local_candidate(Candidate::host(addr(1)));
-    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)));
+    a.add_local_candidate(Candidate::host(addr(1)), now);
+    a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), now);
     a.add_remote_candidate(Candidate::host(addr(3)), now);
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), now);
     a
+}
+
+/// A host↔host primary at `(1, 3)` with a fresh RTT plus a relay pair
+/// `(2, 4)` as the potential fail-over target.
+fn direct_primary_with_relay_fallback() -> (PathAgent, Instant) {
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+
+    let probes = a.probe_round(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(30));
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+    a.drain_events();
+    let _ = a.transmits();
+
+    (a, t0)
+}
+
+/// Simulate the peer probing us on `pair` and us measuring it: the inbound
+/// request triggers a probe back, which we then answer.
+fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
+    let _ = a.handle_inbound_tun(build_echo_request(0, 999), pair, now);
+    let _ = a.transmits();
+
+    let probes = a.probe_round(now);
+    let probe = extract_probe_for(&probes, pair);
+    let _ = a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
 }
 
 /// Synthetic — only the type byte matters to `handle_outbound`.
@@ -1058,7 +1137,7 @@ fn handshake_init_bytes() -> Vec<u8> {
     bytes
 }
 
-fn bootstrap_primary(a: &mut PathAgent, recv_path: (SocketAddr, SocketAddr), now: Instant) {
+fn bootstrap_primary(a: &mut PathAgent, recv_path: Pair, now: Instant) {
     let mut hs = Handshake::new(now).with_response(now);
     let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
     a.drain_events();
@@ -1194,7 +1273,7 @@ fn parse_probe(packet: &IpPacket) -> Option<ProbeFields> {
     })
 }
 
-fn extract_probe_for(transmits: &[Transmit], pair: (SocketAddr, SocketAddr)) -> ProbeFields {
+fn extract_probe_for(transmits: &[Transmit], pair: Pair) -> ProbeFields {
     let t = transmits
         .iter()
         .find(|t| (t.local, t.remote) == pair)

@@ -108,11 +108,11 @@ impl Agent {
         }
     }
 
-    pub(crate) fn add_local_candidate(&mut self, c: Candidate) -> Option<Candidate> {
+    pub(crate) fn add_local_candidate(&mut self, c: Candidate, now: Instant) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
             Self::Path(path) => path
-                .add_local_candidate(crate::candidate::to_path_agent(&c))
+                .add_local_candidate(crate::candidate::to_path_agent(&c), now)
                 .then_some(c),
         }
     }

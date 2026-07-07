@@ -66,6 +66,6 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
                 LocalFamily::V4
             },
         },
-        rtt: state.smoothed_rtt,
+        rtt: state.rtt.map(|rtt| rtt.smoothed),
     }
 }
