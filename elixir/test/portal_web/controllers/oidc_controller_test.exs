@@ -511,9 +511,6 @@ defmodule PortalWeb.OIDCControllerTest do
          %{
            conn: conn
          } do
-      Application.put_env(:openid_connect, :retry, false)
-      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
-
       id_token =
         Mocks.OIDC.sign_openid_connect_token(
           Mocks.OIDC.default_claims()
@@ -563,9 +560,6 @@ defmodule PortalWeb.OIDCControllerTest do
          %{
            conn: conn
          } do
-      Application.put_env(:openid_connect, :retry, false)
-      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
-
       id_token =
         Mocks.OIDC.sign_openid_connect_token(
           Mocks.OIDC.default_claims()
@@ -2198,10 +2192,6 @@ defmodule PortalWeb.OIDCControllerTest do
 
   describe "callback/2 with userinfo fetch failure" do
     setup do
-      # Disable Req retry for these tests to avoid multiple requests
-      Application.put_env(:openid_connect, :retry, false)
-      on_exit(fn -> Application.delete_env(:openid_connect, :retry) end)
-
       account = account_fixture()
       %{provider: provider} = setup_oidc_provider(account)
 
@@ -2540,21 +2530,6 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "sign_in/2 discovery document errors" do
-    setup do
-      # Disable Req retry for these tests to avoid timeouts
-      Application.put_env(:openid_connect, :retry, false)
-
-      # Clear the discovery document cache before each test in this block
-      # so the library will attempt to fetch the document again
-      OpenIDConnect.Document.Cache.clear()
-
-      on_exit(fn ->
-        Application.delete_env(:openid_connect, :retry)
-      end)
-
-      :ok
-    end
-
     test "redirects with descriptive error when discovery document is unreachable (econnrefused)",
          %{
            conn: conn
@@ -2852,7 +2827,9 @@ defmodule PortalWeb.OIDCControllerTest do
               "state" => "headless-state"
             }
           ] do
-        OpenIDConnect.Document.Cache.clear()
+        # Evict the doc cached by the previous iteration's successful retry so
+        # the connection-refused stub is actually consulted.
+        OpenIDConnect.Document.Cache.delete(provider.discovery_document_uri)
         Mocks.OIDC.stub_connection_refused()
 
         failed_conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}", params)

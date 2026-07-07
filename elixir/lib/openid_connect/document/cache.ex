@@ -49,6 +49,11 @@ defmodule OpenIDConnect.Document.Cache do
     GenServer.call(pid, :clear)
   end
 
+  @doc "Removes the entry for `uri` (if any), canceling its removal timer."
+  def delete(pid \\ __MODULE__, uri) do
+    GenServer.call(pid, {:delete, uri})
+  end
+
   @doc """
   Atomically gates JWKS refresh for `uri` behind a per-URI cooldown. Returns
   `true` and marks the attempt time if at least the configured cooldown has
@@ -92,6 +97,10 @@ defmodule OpenIDConnect.Document.Cache do
     end
 
     {:reply, :ok, %{}}
+  end
+
+  def handle_call({:delete, uri}, _from, state) do
+    {:reply, :ok, evict(state, uri)}
   end
 
   def handle_call({:fetch, uri}, _from, state) do
