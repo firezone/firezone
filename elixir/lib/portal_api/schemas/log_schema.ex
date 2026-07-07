@@ -110,7 +110,7 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:type, :event_id, :timestamp, :context],
+      required: [:type, :event_id, :timestamp, :context, :subject],
       example: %{
         "type" => "session",
         "event_id" => "500060db0c2c8eb400000000",
