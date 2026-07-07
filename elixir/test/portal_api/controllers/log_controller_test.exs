@@ -497,7 +497,7 @@ defmodule PortalAPI.LogControllerTest do
       assert data["content_length"] == 42
       assert data["request_id"] == "GBKkV1jUWuW2sJoAACkB"
       assert data["user_agent"] == "testclient/1.0"
-      assert data["remote_ip"] == "189.172.73.1"
+      assert data["ip"] == "189.172.73.1"
       assert data["timestamp"]
     end
   end

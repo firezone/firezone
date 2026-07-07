@@ -85,11 +85,11 @@ defmodule PortalAPI.LogJSON do
       content_length: log.content_length,
       request_id: log.request_id,
       user_agent: log.user_agent,
-      remote_ip: log.remote_ip && "#{log.remote_ip}",
-      remote_ip_location_region: log.remote_ip_location_region,
-      remote_ip_location_city: log.remote_ip_location_city,
-      remote_ip_location_lat: log.remote_ip_location_lat,
-      remote_ip_location_lon: log.remote_ip_location_lon
+      ip: log.ip && "#{log.ip}",
+      ip_region: log.ip_region,
+      ip_city: log.ip_city,
+      ip_lat: log.ip_lat,
+      ip_lon: log.ip_lon
     }
   end
 end

@@ -331,11 +331,11 @@ defmodule PortalAPI.Schemas.Log do
           description: "Request ID assigned by the server, for correlating with server logs."
         },
         user_agent: %Schema{type: :string, nullable: true},
-        remote_ip: %Schema{type: :string},
-        remote_ip_location_region: %Schema{type: :string, nullable: true},
-        remote_ip_location_city: %Schema{type: :string, nullable: true},
-        remote_ip_location_lat: %Schema{type: :number, nullable: true},
-        remote_ip_location_lon: %Schema{type: :number, nullable: true}
+        ip: %Schema{type: :string},
+        ip_region: %Schema{type: :string, nullable: true},
+        ip_city: %Schema{type: :string, nullable: true},
+        ip_lat: %Schema{type: :number, nullable: true},
+        ip_lon: %Schema{type: :number, nullable: true}
       },
       required: [
         :type,
@@ -346,7 +346,7 @@ defmodule PortalAPI.Schemas.Log do
         :method,
         :path,
         :request_id,
-        :remote_ip
+        :ip
       ],
       example: %{
         "type" => "api_request",
@@ -359,11 +359,11 @@ defmodule PortalAPI.Schemas.Log do
         "content_length" => nil,
         "request_id" => "GBKkV1jUWuW2sJoAACkB",
         "user_agent" => "curl/8.7.1",
-        "remote_ip" => "189.172.73.1",
-        "remote_ip_location_region" => "MX",
-        "remote_ip_location_city" => "Mexico City",
-        "remote_ip_location_lat" => 19.4326,
-        "remote_ip_location_lon" => -99.1332
+        "ip" => "189.172.73.1",
+        "ip_region" => "MX",
+        "ip_city" => "Mexico City",
+        "ip_lat" => 19.4326,
+        "ip_lon" => -99.1332
       }
     })
   end

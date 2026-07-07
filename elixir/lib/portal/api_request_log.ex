@@ -12,11 +12,11 @@ defmodule Portal.APIRequestLog do
           content_length: integer() | nil,
           request_id: String.t(),
           user_agent: String.t() | nil,
-          remote_ip: Postgrex.INET.t(),
-          remote_ip_location_region: String.t() | nil,
-          remote_ip_location_city: String.t() | nil,
-          remote_ip_location_lat: float() | nil,
-          remote_ip_location_lon: float() | nil,
+          ip: Postgrex.INET.t(),
+          ip_region: String.t() | nil,
+          ip_city: String.t() | nil,
+          ip_lat: float() | nil,
+          ip_lon: float() | nil,
           inserted_at: DateTime.t()
         }
 
@@ -36,11 +36,11 @@ defmodule Portal.APIRequestLog do
     field :request_id, :string
 
     field :user_agent, :string
-    field :remote_ip, Portal.Types.IP
-    field :remote_ip_location_region, :string
-    field :remote_ip_location_city, :string
-    field :remote_ip_location_lat, :float
-    field :remote_ip_location_lon, :float
+    field :ip, Portal.Types.IP
+    field :ip_region, :string
+    field :ip_city, :string
+    field :ip_lat, :float
+    field :ip_lon, :float
 
     field :inserted_at, :utc_datetime_usec, read_after_writes: true
   end
@@ -55,12 +55,12 @@ defmodule Portal.APIRequestLog do
       :method,
       :path,
       :request_id,
-      :remote_ip
+      :ip
     ])
     |> validate_length(:user_agent, max: 255)
     |> validate_length(:request_id, max: 255)
-    |> validate_length(:remote_ip_location_region, max: 255)
-    |> validate_length(:remote_ip_location_city, max: 255)
+    |> validate_length(:ip_region, max: 255)
+    |> validate_length(:ip_city, max: 255)
     |> assoc_constraint(:account)
   end
 end

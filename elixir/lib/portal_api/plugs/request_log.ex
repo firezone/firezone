@@ -37,11 +37,11 @@ defmodule PortalAPI.Plugs.RequestLog do
       content_length: content_length(conn),
       request_id: request_id(conn),
       user_agent: context.user_agent,
-      remote_ip: context.remote_ip,
-      remote_ip_location_region: context.remote_ip_location_region,
-      remote_ip_location_city: context.remote_ip_location_city,
-      remote_ip_location_lat: context.remote_ip_location_lat,
-      remote_ip_location_lon: context.remote_ip_location_lon
+      ip: context.remote_ip,
+      ip_region: context.remote_ip_location_region,
+      ip_city: context.remote_ip_location_city,
+      ip_lat: context.remote_ip_location_lat,
+      ip_lon: context.remote_ip_location_lon
     }
   end
 
@@ -81,11 +81,11 @@ defmodule PortalAPI.Plugs.RequestLog do
       content_length
       request_id
       user_agent
-      remote_ip
-      remote_ip_location_region
-      remote_ip_location_city
-      remote_ip_location_lat
-      remote_ip_location_lon
+      ip
+      ip_region
+      ip_city
+      ip_lat
+      ip_lon
     ]a
 
     def insert_api_request_log(attrs) do

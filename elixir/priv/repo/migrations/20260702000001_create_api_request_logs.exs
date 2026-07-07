@@ -20,17 +20,17 @@ defmodule Portal.Repo.Migrations.CreateApiRequestLogs do
       add(:content_length, :bigint)
 
       # Plug.RequestId runs in the endpoint before the router, so every
-      # logged request has one. remote_ip is the real client address: the
+      # logged request has one. ip is the real client address: the
       # endpoint's RemoteIp plug resolves x-forwarded-for behind trusted
       # proxies onto conn.remote_ip before the router runs.
       add(:request_id, :string, null: false)
 
       add(:user_agent, :string)
-      add(:remote_ip, :inet, null: false)
-      add(:remote_ip_location_region, :string)
-      add(:remote_ip_location_city, :string)
-      add(:remote_ip_location_lat, :float)
-      add(:remote_ip_location_lon, :float)
+      add(:ip, :inet, null: false)
+      add(:ip_region, :string)
+      add(:ip_city, :string)
+      add(:ip_lat, :float)
+      add(:ip_lon, :float)
 
       add(:inserted_at, :timestamptz, null: false, default: fragment("now()"))
     end

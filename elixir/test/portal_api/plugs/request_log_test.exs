@@ -44,7 +44,7 @@ defmodule PortalAPI.Plugs.RequestLogTest do
       assert log.path == "/account"
       assert log.content_length == nil
       assert is_binary(log.request_id)
-      assert log.remote_ip == %Postgrex.INET{address: {127, 0, 0, 1}}
+      assert log.ip == %Postgrex.INET{address: {127, 0, 0, 1}}
 
       # inserted_at is filled by the database default
       assert log.inserted_at
@@ -76,7 +76,7 @@ defmodule PortalAPI.Plugs.RequestLogTest do
       assert json_response(conn, 200)
 
       assert [log] = Repo.all(APIRequestLog)
-      assert log.remote_ip == %Postgrex.INET{address: {203, 0, 113, 5}}
+      assert log.ip == %Postgrex.INET{address: {203, 0, 113, 5}}
     end
 
     test "does not record unauthenticated requests", %{conn: conn} do
@@ -106,11 +106,11 @@ defmodule PortalAPI.Plugs.RequestLogTest do
 
       assert [log] = Repo.all(APIRequestLog)
       assert log.user_agent == "testclient/2.0"
-      assert log.remote_ip == %Postgrex.INET{address: {100, 64, 0, 1}}
-      assert log.remote_ip_location_region == "US"
-      assert log.remote_ip_location_city == "San Francisco"
-      assert log.remote_ip_location_lat == 37.7749
-      assert log.remote_ip_location_lon == -122.4194
+      assert log.ip == %Postgrex.INET{address: {100, 64, 0, 1}}
+      assert log.ip_region == "US"
+      assert log.ip_city == "San Francisco"
+      assert log.ip_lat == 37.7749
+      assert log.ip_lon == -122.4194
       assert log.api_token_id == subject.credential.id
     end
 
