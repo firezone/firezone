@@ -7,6 +7,42 @@ if config_env() == :prod do
   ##### Portal ##################
   ###############################
 
+  config :portal, Portal.Azure.ManagedIdentity,
+    client_id: env_var_to_config!(:azure_client_id)
+
+  if env_var_to_config!(:database_entra_auth) && !env_var_to_config(:azure_client_id) do
+    raise "AZURE_CLIENT_ID must be set when DATABASE_ENTRA_AUTH is enabled"
+  end
+
+  # With Entra auth the "password" is a short-lived Entra access token for the
+  # VM's managed identity, fetched before every connect attempt.
+  database_password_opts =
+    cond do
+      env_var_to_config!(:database_entra_auth) ->
+        [{:configure, {Portal.Azure.ManagedIdentity, :put_database_token, []}}]
+
+      env_var_to_config(:database_password) ->
+        [{:password, env_var_to_config!(:database_password)}]
+
+      true ->
+        []
+    end
+
+  # Postgrex.ReplicationConnection has no :configure hook, so it takes the
+  # password as an MFA that Portal.Replication.Manager resolves right before
+  # each connection attempt.
+  replication_password_opts =
+    cond do
+      env_var_to_config!(:database_entra_auth) ->
+        [{:password, {Portal.Azure.ManagedIdentity, :database_access_token!, []}}]
+
+      env_var_to_config(:database_password) ->
+        [{:password, env_var_to_config!(:database_password)}]
+
+      true ->
+        []
+    end
+
   config :portal,
          Portal.Repo,
          [
@@ -23,10 +59,7 @@ if config_env() == :prod do
              do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
              else: []
            ) ++
-           if(env_var_to_config(:database_password),
-             do: [{:password, env_var_to_config!(:database_password)}],
-             else: []
-           ) ++
+           database_password_opts ++
            if(env_var_to_config(:database_socket_dir),
              do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
              else: [{:hostname, env_var_to_config!(:database_host)}]
@@ -48,10 +81,7 @@ if config_env() == :prod do
              do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
              else: []
            ) ++
-           if(env_var_to_config(:database_password),
-             do: [{:password, env_var_to_config!(:database_password)}],
-             else: []
-           ) ++
+           database_password_opts ++
            if(env_var_to_config(:database_socket_dir),
              do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
              else: [{:hostname, env_var_to_config!(:database_host_replica)}]
@@ -71,10 +101,7 @@ if config_env() == :prod do
         do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
         else: []
       ) ++
-      if(env_var_to_config(:database_password),
-        do: [{:password, env_var_to_config!(:database_password)}],
-        else: []
-      ) ++
+      database_password_opts ++
       if(env_var_to_config(:database_socket_dir),
         do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
         else: [{:hostname, env_var_to_config!(:database_host)}]
@@ -94,10 +121,7 @@ if config_env() == :prod do
         do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
         else: []
       ) ++
-      if(env_var_to_config(:database_password),
-        do: [{:password, env_var_to_config!(:database_password)}],
-        else: []
-      ) ++
+      database_password_opts ++
       if(env_var_to_config(:database_socket_dir),
         do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
         else: [{:hostname, env_var_to_config!(:database_host_replica)}]
@@ -147,10 +171,7 @@ if config_env() == :prod do
           do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
           else: []
         ) ++
-        if(env_var_to_config(:database_password),
-          do: [{:password, env_var_to_config!(:database_password)}],
-          else: []
-        ) ++
+        replication_password_opts ++
         if(env_var_to_config(:database_socket_dir),
           do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
           else: [{:hostname, env_var_to_config!(:database_host_replica)}]
@@ -173,10 +194,7 @@ if config_env() == :prod do
           do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
           else: []
         ) ++
-        if(env_var_to_config(:database_password),
-          do: [{:password, env_var_to_config!(:database_password)}],
-          else: []
-        ) ++
+        replication_password_opts ++
         if(env_var_to_config(:database_socket_dir),
           do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
           else: [{:hostname, env_var_to_config!(:database_host_replica)}]

@@ -365,6 +365,21 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_password, :string, default: nil, sensitive: true)
 
   @doc """
+  Authenticate database connections using Microsoft Entra instead of a password.
+
+  When enabled, DATABASE_PASSWORD is ignored and every connection attempt uses
+  a Microsoft Entra access token fetched from the Azure Instance Metadata
+  Service for the managed identity selected by AZURE_CLIENT_ID.
+  """
+  defconfig(:database_entra_auth, :boolean, default: false)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity used to fetch Microsoft
+  Entra access tokens when DATABASE_ENTRA_AUTH is enabled.
+  """
+  defconfig(:azure_client_id, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,

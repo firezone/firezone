@@ -49,7 +49,7 @@ config :portal, Portal.Repo,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
   migration_lock: :pg_advisory_lock,
-  start_apps_before_migration: [:ssl, :logger_json],
+  start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
 
 config :portal, Portal.Repo.Replica,
@@ -225,6 +225,15 @@ config :portal, Portal.Health,
   ops_endpoint: PortalOps.Endpoint,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
+
+config :portal, Portal.Azure.ManagedIdentity,
+  endpoint: "http://169.254.169.254",
+  client_id: nil,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient
+  ]
 
 config :portal, Portal.Entra.APIClient,
   client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),

@@ -112,6 +112,13 @@ config :portal, Portal.Okta.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Azure.ManagedIdentity,
+  client_id: "test-azure-client-id",
+  req_opts: [
+    plug: {Req.Test, Portal.Azure.ManagedIdentity},
+    retry: false
+  ]
+
 config :portal, Portal.Entra.APIClient,
   client_id: "test_client_id",
   client_secret: "test_client_secret",
