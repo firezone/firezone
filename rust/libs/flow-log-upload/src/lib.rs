@@ -167,8 +167,13 @@ pub async fn upload_once(
 }
 
 /// Removes authorization directories whose token has expired or is missing, since
-/// nothing in them can ever be uploaded. Call on startup, where it never races a
-/// writer, so the spool cannot grow without bound.
+/// nothing in them can ever be uploaded. Runs on startup and at the top of every
+/// upload pass, so the spool cannot grow without bound.
+///
+/// Racing the writer is benign: freshly-created directories are exempt (see
+/// [`should_prune`]), a re-authorization always gets a fresh directory, and a
+/// report written into a just-pruned directory fails to write and belonged to
+/// an expired authorization the portal would reject anyway.
 ///
 /// Does blocking IO: call it off any async runtime.
 pub fn prune(spool_root: &Path) {
@@ -446,6 +451,15 @@ async fn upload_pending(
 ) -> Result<bool> {
     let url = ingest_endpoint(&config.api_url)?;
 
+    // Tokens expire mid-session on long-running gateways; sweep their
+    // directories before walking the spool so they cannot accumulate
+    // between restarts.
+    {
+        let root = root.to_owned();
+
+        blocking(move || prune(&root)).await?;
+    }
+
     // Routine while the device is offline or roaming; try again next pass.
     let client = match connect(&url, socket_factory).await {
         Ok(client) => client,
@@ -544,7 +558,7 @@ fn collect_batch(dir: &Path, batch_size: usize) -> Result<Option<(String, Vec<Pe
     let token = match std::fs::read_to_string(dir.join("token")) {
         Ok(token) => token,
         // The writer creates the token before any report, so this is a bug.
-        // Nothing here can be uploaded; startup prune removes the directory.
+        // Nothing here can be uploaded; the next prune removes the directory.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             tracing::error!(?dir, "Flow-log spool directory has no ingest token");
             return Ok(None);
