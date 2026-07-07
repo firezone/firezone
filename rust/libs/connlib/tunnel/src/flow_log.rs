@@ -1376,7 +1376,7 @@ mod tests {
         assert_eq!(attr.actor_email.as_deref(), Some("a@b.c"));
         assert_eq!(attr.role, "responder");
         assert!(attr.resource_address.is_none());
-        // The portal omits `client_version` when the user agent is unparseable.
+        // The portal omits `client_version` when the user agent is unparsable.
         assert!(attr.client_version.is_none());
     }
 
