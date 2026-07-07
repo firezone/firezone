@@ -1,13 +1,14 @@
 defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
-  alias Portal.{Device, Repo, Resource, Site}
+  alias Portal.{Device, GatewayToken, Repo, Resource, Site}
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -418,6 +419,167 @@ defmodule PortalWeb.SitesTest do
 
       assert to == ~p"/#{account}/sites"
       assert flash["error"] =~ "Site does not exist"
+    end
+  end
+
+  describe "gateways tab" do
+    test "deletes a gateway via inline confirmation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      html = render_click(lv, "delete_gateway", %{"id" => gateway.id})
+      assert html =~ "Delete this gateway?"
+
+      html = render_click(lv, "confirm_delete_gateway", %{"id" => gateway.id})
+      assert html =~ "Gateway deleted."
+      refute html =~ gateway.name
+      assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
+    end
+
+    test "cancel delete gateway dismisses the inline confirmation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      render_click(lv, "delete_gateway", %{"id" => gateway.id})
+      assert has_element?(lv, "span", "Delete this gateway?")
+
+      html = render_click(lv, "cancel_delete_gateway")
+      refute html =~ "Delete this gateway?"
+      assert html =~ gateway.name
+      assert Repo.get_by(Device, account_id: account.id, id: gateway.id)
+    end
+  end
+
+  describe "tokens tab" do
+    test "renders existing tokens on the tokens tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      token1 = gateway_token_fixture(account: account, site: site)
+      token2 = gateway_token_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      html = render(lv)
+      assert html =~ token1.id
+      assert html =~ token2.id
+      assert html =~ "Tokens"
+    end
+
+    test "revokes a single gateway token via inline confirmation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      html = render_click(lv, "revoke_gateway_token", %{"id" => token.id})
+      assert html =~ "Revoke this token?"
+
+      html = render_click(lv, "confirm_revoke_gateway_token", %{"id" => token.id})
+      assert html =~ "Token revoked."
+      refute html =~ token.id
+      refute Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+    end
+
+    test "cancel revoke single token dismisses the inline confirmation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      render_click(lv, "revoke_gateway_token", %{"id" => token.id})
+      assert has_element?(lv, "span", "Revoke this token?")
+
+      html = render_click(lv, "cancel_revoke_gateway_token")
+      refute html =~ "Revoke this token?"
+      assert html =~ token.id
+      assert Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
+    end
+
+    test "revoke all tokens shows confirmation then deletes all", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      token1 = gateway_token_fixture(account: account, site: site)
+      token2 = gateway_token_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      html = render_click(lv, "confirm_revoke_all_tokens")
+      assert html =~ "Revoke all tokens?"
+
+      html = render_click(lv, "revoke_all_gateway_tokens")
+      assert html =~ "All tokens revoked."
+      refute html =~ token1.id
+      refute html =~ token2.id
+      refute Repo.get_by(GatewayToken, account_id: account.id, id: token1.id)
+      refute Repo.get_by(GatewayToken, account_id: account.id, id: token2.id)
+    end
+
+    test "cancel revoke all tokens dismisses the confirmation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}?tab=tokens")
+
+      render_click(lv, "confirm_revoke_all_tokens")
+      assert has_element?(lv, "span", "Revoke all tokens?")
+
+      html = render_click(lv, "cancel_revoke_all_tokens")
+      refute html =~ "Revoke all tokens?"
+      assert html =~ token.id
+      assert Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
     end
   end
 
