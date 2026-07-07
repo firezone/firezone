@@ -509,7 +509,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      refute html =~ "immediately expires all active connections"
+      refute html =~ "a few seconds of interrupted connectivity"
 
       html =
         lv
@@ -522,7 +522,7 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_change()
 
-      assert html =~ "immediately expires all active connections"
+      assert html =~ "a few seconds of interrupted connectivity"
     end
 
     test "moving a policy onto the Internet Resource disables flow log reporting", %{

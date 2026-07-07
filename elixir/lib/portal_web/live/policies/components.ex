@@ -496,9 +496,10 @@ defmodule PortalWeb.Policies.Components do
 
     ~H"""
     <div :if={@feature_enabled? and not internet_resource?(@panel_selected_resource)}>
-      <.flow_log_uploads_checkbox form={@panel_form} />
+      <.flow_log_uploads_toggle form={@panel_form} />
       <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
-        Changing this setting immediately expires all active connections created by this Policy.
+        Changing this setting expires all active connections created by this Policy;
+        users may experience a few seconds of interrupted connectivity.
       </p>
     </div>
     <p
@@ -519,20 +520,29 @@ defmodule PortalWeb.Policies.Components do
   defp flow_log_uploads_changed?(_form), do: false
 
   @doc """
-  The flow-log reporting checkbox shared by every form that creates or edits a
-  policy. Checked by default (uploads default to on); posts the schema field
+  The flow-log reporting toggle shared by every form that creates or edits a
+  policy. On by default (uploads default to on); posts the schema field
   directly. Callers gate it behind `flow_logs_feature_enabled?/0`.
   """
   attr :form, :any, required: true
 
-  def flow_log_uploads_checkbox(assigns) do
+  def flow_log_uploads_toggle(assigns) do
     ~H"""
-    <.input
-      type="checkbox"
-      name={"#{@form.name}[flow_log_uploads_enabled]"}
-      checked={flow_log_uploads_checked?(@form)}
-      label="Flow log reporting"
-    />
+    <div class="flex items-center justify-between py-1">
+      <div>
+        <p class="text-sm font-medium text-body">Flow log reporting</p>
+        <p class="text-[11px] text-subtle">
+          Report flow logs for connections created by this Policy
+        </p>
+      </div>
+      <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
+      <.toggle
+        id={@form[:flow_log_uploads_enabled].id}
+        name={@form[:flow_log_uploads_enabled].name}
+        value="true"
+        checked={flow_log_uploads_checked?(@form)}
+      />
+    </div>
     """
   end
 
