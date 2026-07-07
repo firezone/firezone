@@ -466,7 +466,7 @@ impl Eventloop {
 
                 tracing::info!(
                     upload_enabled = self.upload_flow_logs,
-                    has_spool_dir = self.flow_logs_dir.is_some(),
+                    spool_dir = ?self.flow_logs_dir,
                     config = ?flow_logs,
                     "Flow-log config received from portal init"
                 );

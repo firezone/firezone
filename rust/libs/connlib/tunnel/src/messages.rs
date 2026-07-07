@@ -226,14 +226,21 @@ impl FlowLogsConfig {
 /// JWT carrying the attribution claims, used as the `Bearer` credential when
 /// uploading that authorization's flow logs.
 ///
-/// Deserializing validates structure and guaranteed claims; the signature is
-/// not verified because only the portal and the ingest API hold the key.
+/// Deserializing parses and retains the claims; the signature is not
+/// verified because only the portal and the ingest API hold the key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IngestToken(String);
+pub struct IngestToken {
+    raw: String,
+    claims: IngestTokenClaims,
+}
 
 impl IngestToken {
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.raw
+    }
+
+    pub fn claims(&self) -> &IngestTokenClaims {
+        &self.claims
     }
 }
 
@@ -242,15 +249,15 @@ impl<'de> Deserialize<'de> for IngestToken {
     where
         D: serde::Deserializer<'de>,
     {
-        let token = String::deserialize(deserializer)?;
+        let raw = String::deserialize(deserializer)?;
 
-        validate_ingest_token(&token).map_err(serde::de::Error::custom)?;
+        let claims = parse_ingest_token_claims(&raw).map_err(serde::de::Error::custom)?;
 
-        Ok(Self(token))
+        Ok(Self { raw, claims })
     }
 }
 
-fn validate_ingest_token(token: &str) -> Result<(), String> {
+fn parse_ingest_token_claims(token: &str) -> Result<IngestTokenClaims, String> {
     use base64::Engine as _;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
@@ -274,7 +281,7 @@ fn validate_ingest_token(token: &str) -> Result<(), String> {
     let payload = URL_SAFE_NO_PAD
         .decode(payload)
         .map_err(|e| format!("ingest token payload is not base64url: {e}"))?;
-    serde_json::from_slice::<IngestTokenClaims>(&payload)
+    let claims = serde_json::from_slice::<IngestTokenClaims>(&payload)
         .map_err(|e| format!("ingest token claims are invalid: {e}"))?;
 
     let signature = URL_SAFE_NO_PAD
@@ -285,7 +292,7 @@ fn validate_ingest_token(token: &str) -> Result<(), String> {
         return Err("ingest token signature is empty".to_owned());
     }
 
-    Ok(())
+    Ok(claims)
 }
 
 #[derive(Deserialize)]
@@ -293,40 +300,38 @@ struct JwtHeader {
     alg: String,
 }
 
-/// The claims the portal stamps into every ingest token; deserialized only to
-/// validate it. The `Option`s are nullable attribution claims, and unknown
-/// claims are tolerated.
-#[expect(dead_code, reason = "deserialized only to validate the token")]
-#[derive(Deserialize)]
-struct IngestTokenClaims {
-    account_id: String,
-    iat: u64,
-    exp: u64,
-    role: IngestTokenRole,
-    device_id: String,
-    policy_authorization_id: String,
-    policy_id: String,
-    resource_id: String,
-    resource_name: String,
-    actor_id: String,
-    actor_name: String,
-    authorized_at: String,
-    authorization_expires_at: String,
-    resource_address: Option<String>,
-    actor_email: Option<String>,
-    auth_provider_id: Option<String>,
-    client_version: Option<String>,
-    device_os_name: Option<String>,
-    device_os_version: Option<String>,
-    device_serial: Option<String>,
-    device_uuid: Option<String>,
-    device_identifier_for_vendor: Option<String>,
-    device_firebase_installation_id: Option<String>,
+/// The claims the portal stamps into every ingest token. The `Option`s are
+/// nullable attribution claims, and unknown claims are tolerated.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct IngestTokenClaims {
+    pub account_id: String,
+    pub iat: u64,
+    pub exp: u64,
+    pub role: IngestTokenRole,
+    pub device_id: String,
+    pub policy_authorization_id: String,
+    pub policy_id: String,
+    pub resource_id: String,
+    pub resource_name: String,
+    pub actor_id: String,
+    pub actor_name: String,
+    pub authorized_at: String,
+    pub authorization_expires_at: String,
+    pub resource_address: Option<String>,
+    pub actor_email: Option<String>,
+    pub auth_provider_id: Option<String>,
+    pub client_version: Option<String>,
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_identifier_for_vendor: Option<String>,
+    pub device_firebase_installation_id: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-enum IngestTokenRole {
+pub enum IngestTokenRole {
     Initiator,
     Responder,
 }
@@ -429,6 +434,12 @@ mod tests {
         let token = parse_ingest_token(TEST_INGEST_TOKEN).unwrap();
 
         assert_eq!(token.as_str(), TEST_INGEST_TOKEN);
+        assert_eq!(token.claims().role, IngestTokenRole::Initiator);
+        assert_eq!(token.claims().resource_name, "GitLab");
+        assert_eq!(
+            token.claims().actor_email.as_deref(),
+            Some("jane@mycorp.com")
+        );
     }
 
     #[test]
