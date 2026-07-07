@@ -843,23 +843,30 @@ mod tests {
     }
 
     struct DummyTun {
-        tx: tokio::sync::mpsc::Sender<IpPacket>,
-        rx: tokio::sync::mpsc::Receiver<IpPacket>,
+        tx: tun::OutboundTx,
+        rx: tun::InboundRx,
+        _keep_alive: (tun::OutboundRx, tun::InboundTx),
     }
 
     impl DummyTun {
         fn new() -> Self {
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
-            Self { tx, rx }
+            let (tx, outbound_rx) = tun::outbound_channel();
+            let (inbound_tx, rx) = tun::inbound_channel();
+
+            Self {
+                tx,
+                rx,
+                _keep_alive: (outbound_rx, inbound_tx),
+            }
         }
     }
 
     impl Tun for DummyTun {
-        fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+        fn sender(&self) -> &tun::OutboundTx {
             &self.tx
         }
 
-        fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+        fn receiver(&mut self) -> &mut tun::InboundRx {
             &mut self.rx
         }
 
