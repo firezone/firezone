@@ -137,26 +137,28 @@ jobs:
           # merely reordered. We deliberately avoid `TCPOFOQueue`, which also counts
           # loss-induced gaps and would flake whenever the run has retransmits.
           #
-          # Detection is sender-side, so we check both TCP endpoints -- the iperf3
-          # client (`client-1`) and the iperf3 server -- each of which is the sender
+          # Detection is sender-side, so we check every TCP endpoint of the flow --
+          # the iperf3 clients and the iperf3 server -- each of which is the sender
           # in one direction. The gateway only forwards IP for this flow, so it has
-          # no TCP state to inspect. `-a` prints absolute counters, ignoring nstat's
-          # history file, so this is independent of the `nstat` call above.
-          if docker compose exec client-1 /bin/sh -c 'nstat -as' | grep -iq "reorder"; then
-            echo "client-1 detected TCP reordering"
-            exit 1
-          fi
+          # no TCP state to inspect. We read the counters straight from
+          # `/proc/net/netstat` (raw counters need no `nstat`, which the iperf3
+          # image lacks). Endpoints that aren't running for a given test are skipped.
+          reorders() {
+            docker compose exec -T "$1" cat /proc/net/netstat | awk '
+              $1 == "TcpExt:" && !seen { for (i = 2; i <= NF; i++) col[$i] = i; seen = 1; next }
+              $1 == "TcpExt:" { print $(col["TCPSACKReorder"]) + $(col["TCPRenoReorder"]) + $(col["TCPTSReorder"]) }
+            '
+          }
 
-          # The iperf3 server image ships no `nstat`, so read the counters straight
-          # from `/proc/net/netstat` and sum the reorder columns on the runner.
-          reorder=$(docker compose exec -T iperf3 cat /proc/net/netstat | awk '
-            $1 == "TcpExt:" && !seen { for (i = 2; i <= NF; i++) col[$i] = i; seen = 1; next }
-            $1 == "TcpExt:" { print $(col["TCPSACKReorder"]) + $(col["TCPRenoReorder"]) + $(col["TCPTSReorder"]) }
-          ')
-          if [ "${reorder:-0}" -ne 0 ]; then
-            echo "iperf3 server detected ${reorder} TCP reordering event(s)"
-            exit 1
-          fi
+          for endpoint in client-1 client-2 iperf3; do
+            [ -n "$(docker compose ps -q "$endpoint")" ] || continue
+
+            count=$(reorders "$endpoint")
+            if [ "${count:-0}" -ne 0 ]; then
+              echo "$endpoint detected ${count} TCP reordering event(s)"
+              exit 1
+            fi
+          done
 
   upload-bencher:
     continue-on-error: true
