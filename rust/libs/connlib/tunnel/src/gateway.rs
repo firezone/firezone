@@ -35,6 +35,9 @@ pub struct GatewayState {
     /// All clients we are connected to and the associated, connection-specific state.
     peers: PeerStore<ClientId, ClientOnGateway>,
 
+    /// Tracks the flows tunneled through this Gateway.
+    flow_tracker: flow_log::Tracker<(ClientId, ResourceId)>,
+
     tun_ip_config: Option<IpConfig>,
 
     unix_ts_clock: UnixTsClock,
@@ -70,6 +73,7 @@ impl GatewayState {
     pub(crate) fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
+            flow_tracker: flow_log::Tracker::new(now, unix_ts),
             node: Node::new(seed, now, unix_ts),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
@@ -77,6 +81,10 @@ impl GatewayState {
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
         }
+    }
+
+    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
+        self.flow_tracker.set_enabled(enabled);
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -91,12 +99,26 @@ impl GatewayState {
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
 
+        self.flow_tracker.close_all(now);
         self.peers.clear();
         self.node.close_all(p2p_control::goodbye(), now);
     }
 
     /// Handles packets received on the TUN device.
     pub(crate) fn handle_tun_input(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+        provider: &mut impl snownet::BufferProvider,
+    ) -> Result<()> {
+        self.flow_tracker.begin_tun_packet(&packet);
+        let result = self.handle_tun_input_inner(packet, now, provider);
+        self.flow_tracker.commit_current(now);
+
+        result
+    }
+
+    fn handle_tun_input_inner(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -137,6 +159,20 @@ impl GatewayState {
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
     pub(crate) fn handle_network_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> Result<Option<IpPacket>> {
+        self.flow_tracker.begin_network_packet(local, from);
+        let result = self.handle_network_input_inner(local, from, packet, now);
+        self.flow_tracker.commit_current(now);
+
+        result
+    }
+
+    fn handle_network_input_inner(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -435,6 +471,8 @@ impl GatewayState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
+
+        self.flow_tracker.handle_timeout(now);
 
         self.peers.iter_mut().for_each(|p| {
             p.handle_timeout(now);

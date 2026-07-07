@@ -250,11 +250,10 @@ fn clamp_batch_size(batch_size: u64) -> usize {
 fn should_prune(dir: &Path, now: u64) -> bool {
     let token = match std::fs::read_to_string(dir.join("token")) {
         Ok(token) => token,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && is_recently_modified(dir) => {
+            return false;
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if is_recently_modified(dir) {
-                return false;
-            }
-
             tracing::error!(?dir, "Flow-log spool directory has no ingest token");
             return true;
         }

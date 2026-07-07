@@ -316,10 +316,8 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
-                // The token is the sole source of flow attribution, so it is
-                // always passed to the tunnel state (e.g. for `--flow-logs`
-                // output). It is only persisted when its `uploads_enabled`
-                // claim says so; its on-disk presence gates spooling the
+                // The token is only persisted when its `uploads_enabled` claim
+                // says so; its on-disk presence gates spooling the
                 // authorization's reports.
                 let token = &msg.flow_logs_ingest_token;
 
@@ -408,7 +406,9 @@ impl Eventloop {
 
                 self.upload_flow_logs = flow_logs.upload_enabled();
 
-                tunnel.set_flow_logs_enabled(self.upload_flow_logs || self.local_flow_logs);
+                tunnel
+                    .state_mut()
+                    .set_flow_logs_enabled(self.upload_flow_logs || self.local_flow_logs);
 
                 if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,

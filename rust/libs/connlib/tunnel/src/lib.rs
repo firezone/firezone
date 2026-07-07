@@ -77,8 +77,8 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Err(_) => unreachable!(),
     };
 
-pub type GatewayTunnel = Tunnel<GatewayState, (ClientId, ResourceId)>;
-pub type ClientTunnel = Tunnel<ClientState, ClientOrGatewayId>;
+pub type GatewayTunnel = Tunnel<GatewayState>;
+pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use client::dns_config::DnsMapping;
@@ -93,16 +93,9 @@ pub use utils::turn;
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
 /// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
-pub struct Tunnel<TRoleState, TFlowScope> {
+pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
-
-    /// Tracks the flows tunneled through this device.
-    ///
-    /// It lives here rather than in the role state because flow tracking works
-    /// the same for both roles: the IO loop begins gathering flow data before
-    /// handing a packet to the role state and commits it once it is done.
-    flow_tracker: flow_log::Tracker<TFlowScope>,
 
     /// The I/O component of connlib.
     ///
@@ -112,7 +105,7 @@ pub struct Tunnel<TRoleState, TFlowScope> {
     packet_counter: opentelemetry::metrics::Counter<u64>,
 }
 
-impl<TRoleState, TFlowScope> Tunnel<TRoleState, TFlowScope> {
+impl<TRoleState> Tunnel<TRoleState> {
     pub fn state_mut(&mut self) -> &mut TRoleState {
         &mut self.role_state
     }
@@ -123,10 +116,6 @@ impl<TRoleState, TFlowScope> Tunnel<TRoleState, TFlowScope> {
 
     pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
         self.io.rebind_dns(sockets)
-    }
-
-    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
-        self.flow_tracker.set_enabled(enabled);
     }
 }
 
@@ -155,7 +144,6 @@ impl ClientTunnel {
                 now,
                 unix_ts,
             ),
-            flow_tracker: flow_log::Tracker::new(now, unix_ts),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -354,7 +342,6 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(rand::random(), now, unix_ts),
-            flow_tracker: flow_log::Tracker::new(now, unix_ts),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -366,8 +353,6 @@ impl GatewayTunnel {
     /// Shut down the Gateway tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         let now = Instant::now();
-
-        self.flow_tracker.close_all(now);
 
         // Initiate shutdown.
         self.role_state.shut_down(now);
@@ -456,14 +441,11 @@ impl GatewayTunnel {
 
                 if timeout {
                     self.role_state.handle_timeout(now);
-                    self.flow_tracker.handle_timeout(now);
                     tick.want_continue();
                 }
 
                 if let Some(mut packets) = device {
                     for packet in packets.drain() {
-                        let _flow = self.flow_tracker.begin_tun_packet(&packet, now);
-
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -506,12 +488,6 @@ impl GatewayTunnel {
                                 otel::attr::network_transport_udp(),
                                 otel::attr::network_io_direction_receive(),
                             ],
-                        );
-
-                        let _flow = self.flow_tracker.begin_network_packet(
-                            received.local,
-                            received.from,
-                            now,
                         );
 
                         match self
