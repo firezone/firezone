@@ -53,7 +53,8 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions
+      Portal.ComponentVersions,
+      Portal.ClockDriftAlarm
     ]
 
     endpoint_children = [

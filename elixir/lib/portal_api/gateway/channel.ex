@@ -1062,7 +1062,10 @@ defmodule PortalAPI.Gateway.Channel do
         # Only enqueue + arm on the first successful registration; re-registrations
         # after a PG scope crash share the same channel and session row.
         if is_nil(current_pid) do
-          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session))
+          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session),
+            metadata: %{timestamp: DateTime.utc_now()}
+          )
+
           {:noreply, arm_session_durability_timer(socket)}
         else
           {:noreply, socket}

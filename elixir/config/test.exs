@@ -129,6 +129,7 @@ config :portal, Portal.Telemetry, enabled: false
 config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
+config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false

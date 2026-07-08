@@ -6,6 +6,7 @@ defmodule Portal.Types.EventId do
   belongs to can be read off its first hex character:
 
   - `0xC` change_log
+  - `0x5` session_log
   - `0xF` flow_log
 
   change_log event_ids encode ordering:
@@ -18,9 +19,9 @@ defmodule Portal.Types.EventId do
     giving prior events a strictly-lower prefix than anything generated post-restart.
   - `tenant_offset` is a per-tenant counter starting at 0 each consumer run.
 
-  flow_log event_ids carry no ordering semantics: the 92 bits after the
-  log_type nibble are random, and that stream is ordered by its timestamp
-  columns instead.
+  session_log and flow_log event_ids carry no ordering semantics: the 92 bits
+  after the log_type nibble are random, and those streams are ordered by their
+  timestamp column instead.
 
   Canonical Elixir representation is a 24-char lowercase hex string; on disk it
   is the 12-byte `bytea` it decodes to. Lex order on the hex string matches
@@ -33,6 +34,7 @@ defmodule Portal.Types.EventId do
   @type t :: String.t()
 
   @log_type_change_log 0xC
+  @log_type_session_log 0x5
   @log_type_flow_log 0xF
   @max_seq_start 2 ** 52 - 1
   @max_tenant_offset 2 ** 40 - 1
@@ -85,6 +87,14 @@ defmodule Portal.Types.EventId do
       <<@log_type_change_log::4, seq_start::52, tenant_offset::40>>,
       case: :lower
     )
+  end
+
+  @doc """
+  Build a session_log event_id: the `0x5` log_type nibble followed by 92
+  random bits. Returns the canonical 24-char lowercase hex string.
+  """
+  def build_session_log do
+    build_random(@log_type_session_log)
   end
 
   @doc """
