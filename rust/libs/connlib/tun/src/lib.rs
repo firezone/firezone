@@ -58,10 +58,6 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 pub struct OutboundTx(mpsc::Sender<IpPacket>);
 
 impl OutboundTx {
-    #[expect(
-        clippy::result_large_err,
-        reason = "The error carries the unsent packet by design"
-    )]
     pub fn try_send(&self, packet: IpPacket) -> Result<(), mpsc::error::TrySendError<IpPacket>> {
         self.0.try_send(packet)
     }
@@ -108,10 +104,6 @@ impl InboundTx {
         self.0.send(packet).await
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "The error carries the unsent packet by design"
-    )]
     pub fn blocking_send(&self, packet: IpPacket) -> Result<(), mpsc::error::SendError<IpPacket>> {
         self.0.blocking_send(packet)
     }
