@@ -26,8 +26,12 @@ pub struct PathAgent {
     responder: Responder,
 
     outbound_init: Option<OutboundInit>,
-    /// Arrival time of the last accepted inbound init, for distress detection.
-    last_inbound_init_at: Option<Instant>,
+    /// Consecutive re-key retransmits of our own that went unanswered. Reset
+    /// when a response clears `outbound_init` or a fresh fanout starts.
+    unanswered_rekeys: u32,
+    /// Distinct accepted inbound inits since we last saw peer data. Reset by any
+    /// inbound data packet, which proves the peer is hearing us.
+    peer_rekeys: u32,
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
@@ -234,16 +238,16 @@ pub const PROBE_GIVE_UP: Duration = Duration::from_secs(10);
 /// it is never stale.
 pub const PROBE_KEEPALIVE: Duration = Duration::from_secs(5);
 
-/// An accepted inbound init this soon after the previous one means the peer
-/// keeps re-keying: it isn't hearing our responses or data.
+/// Repeated re-keys — our own retransmits going unanswered, or distinct peer
+/// inits with no data in between — that count as WireGuard distress and trigger
+/// a path re-evaluation.
 ///
-/// The signal being detected is boringtun's `REKEY_TIMEOUT` retry pacing (a
-/// stuck peer formats a new init every 5s); a few multiples of that catches
-/// it reliably. Routine re-keys arrive at `REKEY_AFTER_TIME` (120s) — using
-/// that as the threshold would classify roughly every other routine re-key
-/// as distress (arrival jitter around exactly 120s) and re-introduce
-/// re-evaluation chatter on every re-key.
-pub const REKEY_DISTRESS_INTERVAL: Duration = Duration::from_secs(15);
+/// Counting rather than timing decouples the signal from boringtun's now-tunable
+/// `REKEY_TIMEOUT` retry pacing. A single stray re-key is ordinary loss; a
+/// second one with no progress in between is the peer (or us) stuck on a dead
+/// path. Routine re-keys never reach the threshold because data flows between
+/// them, resetting the count.
+pub const REKEY_DISTRESS_ATTEMPTS: u32 = 2;
 
 pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
@@ -279,7 +283,8 @@ impl PathAgent {
             established: false,
             responder: Responder::default(),
             outbound_init: None,
-            last_inbound_init_at: None,
+            unanswered_rekeys: 0,
+            peer_rekeys: 0,
             forwarded_response: None,
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
@@ -447,12 +452,12 @@ impl PathAgent {
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
         let established = self.established;
-        let last_inbound_init_at = self.last_inbound_init_at;
+        let peer_rekeys = self.peer_rekeys;
 
         *self = Self::new();
 
         self.established = established;
-        self.last_inbound_init_at = last_inbound_init_at;
+        self.peer_rekeys = peer_rekeys;
 
         for local in locals {
             self.add_local_candidate(local, now);
@@ -512,13 +517,10 @@ impl PathAgent {
                 outbound_init.replace(OutboundInit::new(bytes, now));
             }
             // A still-stored init means the previous one went unanswered:
-            // WireGuard-level failure evidence. Retry on the incumbent while
-            // an unguarded re-evaluation runs.
+            // WireGuard-level failure evidence. Always retry on the incumbent;
+            // only re-evaluate once enough retransmits have piled up unanswered.
             (Ok(Packet::HandshakeInit(_)), outbound_init @ Some(_), Some((local, remote))) => {
-                tracing::debug!(
-                    bytes = bytes.len(),
-                    "Unanswered re-key HandshakeInit; re-evaluating paths"
-                );
+                let bytes_len = bytes.len();
 
                 outbound_init.replace(OutboundInit::new(bytes.clone(), now));
                 self.pending_transmits.push_back(Transmit {
@@ -526,14 +528,27 @@ impl PathAgent {
                     remote,
                     payload: Payload::Ciphertext(bytes),
                 });
-                // Drop the primary pointer: an unanswered re-key is WireGuard
-                // telling us the path may be dead, so we re-evaluate from
-                // scratch. With no primary to protect, the bucket veto lifts and
-                // the first pair to answer wins — even a worse bucket, so we can
-                // fail over from direct to relayed if that is all that works.
-                self.primary = None;
-                self.probe_all_pairs(now);
-                self.select_primary(now);
+
+                self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
+
+                // A lone unanswered retransmit can be ordinary loss. Only once
+                // the peer has ignored `REKEY_DISTRESS_ATTEMPTS` of them do we
+                // treat the path as dead and drop the primary pointer: with no
+                // primary to protect the bucket veto lifts and the first pair to
+                // answer wins — even a worse bucket, so we fail over from a
+                // direct path to a relayed one if that is all that works.
+                if self.unanswered_rekeys >= REKEY_DISTRESS_ATTEMPTS {
+                    tracing::debug!(bytes = bytes_len, "Unanswered re-keys; re-evaluating paths");
+
+                    self.primary = None;
+                    self.probe_all_pairs(now);
+                    self.select_primary(now);
+                } else {
+                    tracing::debug!(
+                        bytes = bytes_len,
+                        "Unanswered re-key; retrying on incumbent"
+                    );
+                }
             }
             // A routine re-key rides the primary without restarting probes.
             (Ok(Packet::HandshakeInit(_)), outbound_init @ None, Some((local, remote))) => {
@@ -555,6 +570,7 @@ impl PathAgent {
                 );
 
                 outbound_init.replace(OutboundInit::new(bytes, now));
+                self.unanswered_rekeys = 0;
                 self.probe_all_pairs(now);
             }
             (Ok(Packet::HandshakeResponse(_)), _, _) => {
@@ -653,16 +669,15 @@ impl PathAgent {
                 self.register_peer_reflexive(path, now);
                 self.established = true;
 
-                // Distinct inits minutes apart are routine re-keys; in quick
-                // succession they mean the peer isn't hearing our responses
-                // or data (its passive-keepalive escalation formats a new
-                // init every few seconds). Duplicates of the same init were
-                // dropped above.
-                let previous_init_at = self.last_inbound_init_at.replace(now);
-                if previous_init_at
-                    .is_some_and(|prev| now.duration_since(prev) < REKEY_DISTRESS_INTERVAL)
-                {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed early; re-evaluating paths");
+                // A re-key with peer data flowing in between is routine (the
+                // count was reset by that data). Several distinct inits with no
+                // data between them mean the peer isn't hearing our responses or
+                // data — its passive-keepalive escalation formats a new init
+                // every few seconds. Duplicates of the same init were dropped
+                // above, so every increment here is a genuinely new attempt.
+                self.peer_rekeys = self.peer_rekeys.saturating_add(1);
+                if self.peer_rekeys >= REKEY_DISTRESS_ATTEMPTS {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; re-evaluating paths");
 
                     // Same as an unanswered outbound re-key: the peer isn't
                     // hearing us on the current primary, so drop the pointer and
@@ -690,6 +705,7 @@ impl PathAgent {
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
 
                 self.outbound_init = None;
+                self.unanswered_rekeys = 0;
                 self.forwarded_response = Some(bytes.to_vec());
                 self.established = true;
 
@@ -703,9 +719,14 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            (Packet::PacketCookieReply(_) | Packet::PacketData(_), _) => {
+            // Peer data proves the peer is hearing us, so the connection isn't
+            // in distress: clear the re-key counter that would otherwise build
+            // toward a false failover.
+            (Packet::PacketData(_), _) => {
+                self.peer_rekeys = 0;
                 ControlFlow::Continue(bytes)
             }
+            (Packet::PacketCookieReply(_), _) => ControlFlow::Continue(bytes),
         }
     }
 

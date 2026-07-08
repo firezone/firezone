@@ -15,7 +15,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
     Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL, PROBE_SAMPLES, PROBE_SRC,
-    PathAgent, Payload, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, Transmit,
+    PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
 
 // --- bootstrap: handshake fan-out and nomination ---
@@ -842,16 +842,20 @@ fn unanswered_rekey_fails_over_to_a_fresh_pair() {
     let _ = a.advance(t0, t0 + secs(60));
     let t1 = t0 + secs(60);
 
-    // boringtun re-keys (rides the primary), gets no answer and retries:
-    // WireGuard-level failure evidence.
+    // boringtun re-keys (rides the primary), gets no answer and retries.
+    // A lone retransmit is ordinary loss; only after REKEY_DISTRESS_ATTEMPTS
+    // unanswered retransmits is it WireGuard-level failure evidence.
     a.handle_outbound(handshake_init_bytes(), t1);
     let _ = a.transmits();
-    a.handle_outbound(handshake_init_bytes(), t1 + secs(5));
-    let _ = a.transmits();
+    let mut t = t1;
+    for _ in 0..REKEY_DISTRESS_ATTEMPTS {
+        t += secs(5);
+        a.handle_outbound(handshake_init_bytes(), t);
+        let _ = a.transmits();
+    }
 
     // The re-evaluation bursts every pair; the relay pair answers.
-    let t2 = t1 + secs(5);
-    prove_pair_alive(&mut a, (addr(2), addr(4)), t2);
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t);
 
     assert_eq!(
         a.primary(),
@@ -866,24 +870,24 @@ fn peer_rekeying_early_fails_over_too() {
 
     // The peer stops hearing us (one-way blackhole): our WireGuard state
     // stays healthy (we keep receiving), but the peer's escalation shows as
-    // repeated distinct inits in quick succession.
+    // REKEY_DISTRESS_ATTEMPTS distinct inits with no data in between.
     let _ = a.advance(t0, t0 + secs(60));
-    let t1 = t0 + secs(60);
+    let mut t = t0 + secs(60);
 
-    let mut hs1 = Handshake::new(t1);
-    let _ = a.handle_inbound_network(&mut hs1.responder, &hs1.init, (addr(2), addr(4)), t1);
-    let t2 = t1 + REKEY_DISTRESS_INTERVAL / 2;
-    let mut hs2 = Handshake::new(t2);
-    let _ = a.handle_inbound_network(&mut hs2.responder, &hs2.init, (addr(2), addr(4)), t2);
+    for _ in 0..REKEY_DISTRESS_ATTEMPTS {
+        let mut hs = Handshake::new(t);
+        let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t);
+        t += secs(5);
+    }
     a.drain_events();
     let _ = a.transmits();
 
-    prove_pair_alive(&mut a, (addr(2), addr(4)), t2);
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t);
 
     assert_eq!(
         a.primary(),
         Some((addr(2), addr(4))),
-        "repeated early re-keys are peer distress; the fresh pair must take over",
+        "repeated re-keys with no data are peer distress; the fresh pair must take over",
     );
 }
 
@@ -908,20 +912,32 @@ fn routine_rekeys_do_not_restart_probing() {
 }
 
 #[test]
-fn peer_rekeys_minutes_apart_are_not_distress() {
+fn peer_rekeys_with_data_in_between_are_not_distress() {
     let (mut a, t0) = direct_primary_with_relay_fallback();
     let _ = a.advance(t0, t0 + secs(10));
 
-    let t1 = t0 + secs(120);
-    let mut hs = Handshake::new(t1);
-    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(1), addr(3)), t1);
+    // Routine re-keys arrive one at a time with peer data flowing in between.
+    // Each data packet resets the re-key count, so it never reaches the
+    // distress threshold no matter how many routine re-keys go by.
+    let mut t = t0 + secs(120);
+    for _ in 0..(REKEY_DISTRESS_ATTEMPTS + 2) {
+        let mut hs = Handshake::new(t);
+        let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(1), addr(3)), t);
+        let _ = a.handle_inbound_network(
+            &mut reject_all(),
+            &data_packet_bytes(),
+            (addr(1), addr(3)),
+            t,
+        );
+        t += secs(120);
+    }
     a.drain_events();
     let _ = a.transmits();
 
-    let activity = a.advance(t1, t1 + secs(3));
+    let activity = a.advance(t, t + secs(3));
     assert!(
         activity.probes_for((addr(2), addr(4))).is_empty(),
-        "a lone re-key minutes after the last one must not burst probes",
+        "routine re-keys with data in between must not burst probes",
     );
 }
 
@@ -934,9 +950,13 @@ fn dead_pair_with_stale_rtt_does_not_win_back_the_primary() {
     let t1 = t0 + secs(60);
     a.handle_outbound(handshake_init_bytes(), t1);
     let _ = a.transmits();
-    a.handle_outbound(handshake_init_bytes(), t1 + secs(5));
-    let _ = a.transmits();
-    prove_pair_alive(&mut a, (addr(2), addr(4)), t1 + secs(5));
+    let mut t = t1;
+    for _ in 0..REKEY_DISTRESS_ATTEMPTS {
+        t += secs(5);
+        a.handle_outbound(handshake_init_bytes(), t);
+        let _ = a.transmits();
+    }
+    prove_pair_alive(&mut a, (addr(2), addr(4)), t);
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     a.drain_events();
 
@@ -1311,6 +1331,14 @@ fn answer_until_settled(a: &mut PathAgent, pairs: &[Pair], start: Instant) -> In
 fn handshake_init_bytes() -> Vec<u8> {
     let mut bytes = vec![0u8; 148];
     bytes[0] = 1;
+    bytes
+}
+
+/// Synthetic data packet: only the type byte and a length past the data
+/// overhead matter for it to parse as `PacketData`.
+fn data_packet_bytes() -> Vec<u8> {
+    let mut bytes = vec![0u8; 32];
+    bytes[0] = 4;
     bytes
 }
 

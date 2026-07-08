@@ -36,7 +36,8 @@
 //!
 //! A settled pair is re-armed only by a signal that something may have changed:
 //! a newly-signalled or peer-reflexive candidate arrives, or WireGuard shows
-//! distress (a re-key we can't get answered, or the peer re-keying early). The
+//! distress (several of our re-keys going unanswered, or the peer re-keying
+//! repeatedly with no data in between — see [`REKEY_DISTRESS_ATTEMPTS`]). The
 //! old global evaluation window still exists — but now it's implicit and scoped
 //! to just the pairs a signal touches, e.g. the current primary and a freshly
 //! arrived candidate, rather than a timer over all of them.
@@ -61,7 +62,7 @@ mod score;
 
 pub use agent::{
     PROBE_BURST_GAPS, PROBE_GIVE_UP, PROBE_INTERVAL, PROBE_KEEPALIVE, PROBE_SAMPLES, PROBE_TIMEOUT,
-    PathAgent, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL,
+    PathAgent, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};
