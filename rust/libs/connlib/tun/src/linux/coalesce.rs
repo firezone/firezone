@@ -28,47 +28,6 @@ const TCP_FLAG_PSH: u8 = 0x08;
 
 const ZEROED_VNET_HDR: [u8; VNET_HDR_LEN] = [0; VNET_HDR_LEN];
 
-/// A pending write to the TUN device.
-pub struct Outgoing(Inner);
-
-enum Inner {
-    /// An individual IP packet; written with a zeroed [`VirtioNetHdr`].
-    Packet(IpPacket),
-    /// A coalesced batch of packets, including its [`VirtioNetHdr`].
-    Batch {
-        buf: Buffer<Vec<u8>>,
-        num_segments: usize,
-    },
-}
-
-impl Outgoing {
-    /// How many IP packets this write carries.
-    pub fn num_segments(&self) -> usize {
-        match &self.0 {
-            Inner::Packet(_) => 1,
-            Inner::Batch { num_segments, .. } => *num_segments,
-        }
-    }
-
-    /// The [`VirtioNetHdr`] and packet bytes of this write, ready for `writev`.
-    pub fn bufs(&self) -> [&[u8]; 2] {
-        match &self.0 {
-            Inner::Packet(packet) => [ZEROED_VNET_HDR.as_slice(), packet.packet()],
-            Inner::Batch { buf, .. } => {
-                let (hdr, packet) = buf.split_at(VNET_HDR_LEN);
-
-                [hdr, packet]
-            }
-        }
-    }
-}
-
-impl From<IpPacket> for Outgoing {
-    fn from(packet: IpPacket) -> Self {
-        Self(Inner::Packet(packet))
-    }
-}
-
 /// Coalesces IP packets into GSO super packets.
 pub struct TunGsoQueue {
     /// Queued items, in write order.
@@ -121,6 +80,47 @@ impl TunGsoQueue {
     /// Drains all queued packets, in write order.
     pub fn drain(&mut self) -> impl Iterator<Item = Outgoing> + '_ {
         self.items.drain(..).map(Item::into_outgoing)
+    }
+}
+
+/// A pending write to the TUN device.
+pub struct Outgoing(Inner);
+
+enum Inner {
+    /// An individual IP packet; written with a zeroed [`VirtioNetHdr`].
+    Packet(IpPacket),
+    /// A coalesced batch of packets, including its [`VirtioNetHdr`].
+    Batch {
+        buf: Buffer<Vec<u8>>,
+        num_segments: usize,
+    },
+}
+
+impl Outgoing {
+    /// How many IP packets this write carries.
+    pub fn num_segments(&self) -> usize {
+        match &self.0 {
+            Inner::Packet(_) => 1,
+            Inner::Batch { num_segments, .. } => *num_segments,
+        }
+    }
+
+    /// The [`VirtioNetHdr`] and packet bytes of this write, ready for `writev`.
+    pub fn bufs(&self) -> [&[u8]; 2] {
+        match &self.0 {
+            Inner::Packet(packet) => [ZEROED_VNET_HDR.as_slice(), packet.packet()],
+            Inner::Batch { buf, .. } => {
+                let (hdr, packet) = buf.split_at(VNET_HDR_LEN);
+
+                [hdr, packet]
+            }
+        }
+    }
+}
+
+impl From<IpPacket> for Outgoing {
+    fn from(packet: IpPacket) -> Self {
+        Self(Inner::Packet(packet))
     }
 }
 
@@ -451,7 +451,11 @@ impl Batch {
             return false;
         }
 
-        if candidate.ip_hdr_len != self.ip_hdr_len || candidate.l4_hdr_len != self.l4_hdr_len {
+        if candidate.ip_hdr_len != self.ip_hdr_len {
+            return false;
+        }
+
+        if candidate.l4_hdr_len != self.l4_hdr_len {
             return false;
         }
 
@@ -472,13 +476,22 @@ impl Batch {
             return false;
         }
 
-        headers_compatible(
-            self.template(),
-            packet.packet(),
-            self.key.version(),
-            self.ip_hdr_len,
-            self.l4_hdr_len,
-        )
+        if !ip_headers_compatible(self.template(), packet.packet(), self.key.version()) {
+            return false;
+        }
+
+        if candidate.key.protocol == IpNumber::TCP
+            && !tcp_headers_compatible(
+                self.template(),
+                packet.packet(),
+                self.ip_hdr_len,
+                self.l4_hdr_len,
+            )
+        {
+            return false;
+        }
+
+        true
     }
 
     /// The first packet of the batch; all compatibility checks compare against its headers.
@@ -490,23 +503,16 @@ impl Batch {
     }
 }
 
-/// Whether the (non-key) header fields of `packet` match the batch `template`.
-fn headers_compatible(
-    template: &[u8],
-    packet: &[u8],
-    version: IpVersion,
-    ip_hdr_len: usize,
-    l4_hdr_len: usize,
-) -> bool {
+/// Whether the IP-header fields that must match for coalescing are equal in `packet` and the
+/// batch `template`.
+fn ip_headers_compatible(template: &[u8], packet: &[u8], version: IpVersion) -> bool {
     match version {
         IpVersion::V4 => {
             let tos_matches = template[1] == packet[1];
             let fragment_flags_match = template[6] >> 5 == packet[6] >> 5;
             let ttl_matches = template[8] == packet[8];
 
-            if !tos_matches || !fragment_flags_match || !ttl_matches {
-                return false;
-            }
+            tos_matches && fragment_flags_match && ttl_matches
         }
         IpVersion::V6 => {
             // The flow label is allowed to differ.
@@ -514,23 +520,26 @@ fn headers_compatible(
                 template[0] == packet[0] && template[1] >> 4 == packet[1] >> 4;
             let hop_limit_matches = template[7] == packet[7];
 
-            if !traffic_class_matches || !hop_limit_matches {
-                return false;
-            }
+            traffic_class_matches && hop_limit_matches
         }
     }
+}
 
-    if l4_hdr_len > 20 {
-        // TCP options must be byte-identical.
-        let start = ip_hdr_len + 20;
-        let end = ip_hdr_len + l4_hdr_len;
+/// Whether the TCP options of `packet` are byte-identical to the batch `template`.
+///
+/// The rest of the TCP header is either part of the [`FlowKey`] or checked separately (the
+/// sequence number and the PSH flag), so only the options can still differ. For a header
+/// without options the compared range is empty and this trivially holds.
+fn tcp_headers_compatible(
+    template: &[u8],
+    packet: &[u8],
+    ip_hdr_len: usize,
+    l4_hdr_len: usize,
+) -> bool {
+    let start = ip_hdr_len + 20;
+    let end = ip_hdr_len + l4_hdr_len;
 
-        if template[start..end] != packet[start..end] {
-            return false;
-        }
-    }
-
-    true
+    template[start..end] == packet[start..end]
 }
 
 /// Writes the [`VirtioNetHdr`] and fixes up the outer headers of a coalesced super packet.
