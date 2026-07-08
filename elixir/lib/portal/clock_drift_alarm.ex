@@ -3,10 +3,10 @@ defmodule Portal.ClockDriftAlarm do
   Periodically compares the system clock against the database clock and logs
   an error when they diverge by more than one second.
 
-  session_logs and flow_logs are ordered by timestamps sourced from both
-  clocks (WAL commit timestamps and database defaults on one side,
-  DateTime.utc_now/0 on the other), so unnoticed drift would silently skew
-  that ordering.
+  session_logs, api_request_logs, and flow_logs are ordered by timestamps
+  sourced from both clocks (WAL commit timestamps and database defaults on
+  one side, DateTime.utc_now/0 on the other), so unnoticed drift would
+  silently skew that ordering.
   """
   use GenServer
 

@@ -13,7 +13,8 @@ defmodule PortalAPI.LogController do
   @types %{
     "change" => :change,
     "session" => :session,
-    "flow" => :flow
+    "flow" => :flow,
+    "api_request" => :api_request
   }
 
   # The event_id high nibble (its first hex character) identifies the stream
@@ -21,7 +22,8 @@ defmodule PortalAPI.LogController do
   @nibbles_to_types %{
     "c" => :change,
     "5" => :session,
-    "f" => :flow
+    "f" => :flow,
+    "a" => :api_request
   }
 
   tags(["Logs"])
@@ -38,9 +40,11 @@ defmodule PortalAPI.LogController do
       most recent first.
     - `flow`: one entry per network flow reported by Clients and Gateways,
       most recently started first.
+    - `api_request`: one entry per authenticated REST API request, most
+      recent first.
 
     The `begin` and `end` query parameters bound the time window. For
-    `change` and `session`, entries match when their
+    `change`, `session`, and `api_request`, entries match when their
     `timestamp` falls inside the window; for `flow`, entries match when
     the flow was active at any point inside the window, i.e. when
     `[flow_start, flow_end)` overlaps it. Both must be RFC 3339 (ISO
@@ -50,8 +54,11 @@ defmodule PortalAPI.LogController do
     defaults to the current time. `begin` must be less than or equal to
     `end`.
 
-    Results can be further narrowed by `actor_id` or `actor_email`, which
-    matches the email recorded when the entry was created.
+    Results can be further narrowed by `actor_id` (every type) or
+    `actor_email` (`change`, `session`, and `flow`), which matches the
+    email recorded when the entry was created. API requests are made by
+    API clients, which have no email, so `actor_email` is not supported
+    for `api_request`.
 
     Use the `next_page` cursor returned in `metadata` to fetch the
     following page of results.
@@ -61,7 +68,7 @@ defmodule PortalAPI.LogController do
         in: :query,
         required: true,
         description:
-          "The log stream to list. One of `change`, `session`, or `flow`.",
+          "The log stream to list. One of `change`, `session`, `flow`, or `api_request`.",
         type: :string,
         example: "change"
       ],
@@ -148,7 +155,7 @@ defmodule PortalAPI.LogController do
     description: """
     Fetches a single Log entry by its `event_id`. The entry's type is
     determined from the `event_id` itself: its first character identifies
-    the log stream (`c` change, `5` session, `f` flow).
+    the log stream (`c` change, `5` session, `f` flow, `a` api_request).
     """,
     parameters: [
       event_id: [
@@ -182,12 +189,13 @@ defmodule PortalAPI.LogController do
   end
 
   defp parse_type(%{"type" => _type}) do
-    {:error, :bad_request, reason: "`type` must be one of: change, session, flow"}
+    {:error, :bad_request,
+     reason: "`type` must be one of: change, session, flow, api_request"}
   end
 
   defp parse_type(_params) do
     {:error, :bad_request,
-     reason: "`type` is required and must be one of: change, session, flow"}
+     reason: "`type` is required and must be one of: change, session, flow, api_request"}
   end
 
   defp type_from_event_id(<<nibble::binary-size(1), _rest::binary>>)
@@ -216,6 +224,12 @@ defmodule PortalAPI.LogController do
 
       {:ok, filters}
     end
+  end
+
+  # API requests are made by API clients, which have no email, so the filter
+  # could never match anything; reject it instead of returning empty pages.
+  defp validate_type_filters(:api_request, actor_email) when not is_nil(actor_email) do
+    {:error, :bad_request, reason: "`actor_email` is not supported for `type=api_request`"}
   end
 
   defp validate_type_filters(_type, _actor_email), do: :ok
@@ -280,6 +294,7 @@ defmodule PortalAPI.LogController do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.APIRequestLog
     alias Portal.ChangeLog
     alias Portal.FlowLog
     alias Portal.Safe
@@ -301,6 +316,12 @@ defmodule PortalAPI.LogController do
       from(fl in FlowLog, as: :logs)
       |> Safe.scoped(subject, :replica)
       |> Safe.list(__MODULE__.Flow, opts)
+    end
+
+    def list_logs(:api_request, subject, opts) do
+      from(arl in APIRequestLog, as: :logs)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.list(__MODULE__.APIRequest, opts)
     end
 
     def fetch_log(type, event_id, subject) do
@@ -327,6 +348,10 @@ defmodule PortalAPI.LogController do
 
     defp by_event_id_query(:flow, event_id) do
       from(fl in FlowLog, as: :logs, where: fl.event_id == ^event_id)
+    end
+
+    defp by_event_id_query(:api_request, event_id) do
+      from(arl in APIRequestLog, as: :logs, where: arl.event_id == ^event_id)
     end
 
     defmodule Change do
@@ -488,5 +513,38 @@ defmodule PortalAPI.LogController do
       end
     end
 
+    defmodule APIRequest do
+      import Ecto.Query
+
+      # api_request_log event_ids are random, so order by insertion time with
+      # the event_id as a unique tie-breaker.
+      def cursor_fields do
+        [{:logs, :desc, :inserted_at}, {:logs, :desc, :event_id}]
+      end
+
+      def filters do
+        [
+          %Portal.Repo.Filter{name: :begin, type: :datetime, fun: &filter_by_begin/2},
+          %Portal.Repo.Filter{name: :end, type: :datetime, fun: &filter_by_end/2},
+          %Portal.Repo.Filter{
+            name: :actor_id,
+            type: {:string, :uuid},
+            fun: &filter_by_actor_id/2
+          }
+        ]
+      end
+
+      defp filter_by_begin(queryable, %DateTime{} = begin_at) do
+        {queryable, dynamic([logs: l], l.inserted_at >= ^begin_at)}
+      end
+
+      defp filter_by_end(queryable, %DateTime{} = end_at) do
+        {queryable, dynamic([logs: l], l.inserted_at <= ^end_at)}
+      end
+
+      defp filter_by_actor_id(queryable, actor_id) do
+        {queryable, dynamic([logs: l], l.actor_id == ^actor_id)}
+      end
+    end
   end
 end
