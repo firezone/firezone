@@ -96,6 +96,7 @@ struct TxPacket<S> {
     src_proto: Protocol,
     dst_proto: Protocol,
     tcp_syn: bool,
+    tcp_ack: bool,
     tcp_fin: bool,
     tcp_rst: bool,
     payload_len: usize,
@@ -188,6 +189,7 @@ where
                     src_proto: Ok(src_proto),
                     dst_proto: Ok(dst_proto),
                     tcp_syn,
+                    tcp_ack,
                     tcp_fin,
                     tcp_rst,
                     payload_len,
@@ -241,6 +243,7 @@ where
                         src_proto,
                         dst_proto,
                         tcp_syn,
+                        tcp_ack,
                         tcp_fin,
                         tcp_rst,
                         payload_len,
@@ -270,6 +273,7 @@ where
                         src_proto,
                         dst_proto,
                         tcp_syn,
+                        tcp_ack,
                         tcp_fin,
                         tcp_rst,
                         payload_len,
@@ -379,6 +383,7 @@ where
             src_proto,
             dst_proto,
             tcp_syn,
+            tcp_ack,
             tcp_fin,
             tcp_rst,
             payload_len,
@@ -406,7 +411,7 @@ where
                         // A bare ACK cannot start a connection; it is the tail
                         // of a flow that was already closed, e.g. the final ACK
                         // of a FIN handshake arriving after the close sweep.
-                        if !tcp_syn && payload_len == 0 {
+                        if tcp_ack && !tcp_syn && payload_len == 0 {
                             return;
                         }
 
@@ -855,6 +860,7 @@ struct InnerFlow {
     dst_proto: Result<Protocol, UnsupportedProtocol>,
 
     tcp_syn: bool,
+    tcp_ack: bool,
     tcp_fin: bool,
     tcp_rst: bool,
 
@@ -869,6 +875,7 @@ impl From<&IpPacket> for InnerFlow {
             src_proto: packet.source_protocol(),
             dst_proto: packet.destination_protocol(),
             tcp_syn: packet.as_tcp().map(|tcp| tcp.syn()).unwrap_or(false),
+            tcp_ack: packet.as_tcp().map(|tcp| tcp.ack()).unwrap_or(false),
             tcp_fin: packet.as_tcp().map(|tcp| tcp.fin()).unwrap_or(false),
             tcp_rst: packet.as_tcp().map(|tcp| tcp.rst()).unwrap_or(false),
             payload_len: packet.layer4_payload_len(),
@@ -1379,10 +1386,10 @@ mod tests {
         let t0 = Instant::now();
 
         spool.observe(|| {
-            drive_tx(&mut tracker, &tcp_packet(true, &[]), authz_id, t0);
+            drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
             drive_tx(
                 &mut tracker,
-                &tcp_packet(true, &[]),
+                &tcp_packet(syn(), &[]),
                 authz_id,
                 t0 + Duration::from_secs(1),
             );
@@ -1405,7 +1412,7 @@ mod tests {
         let t0 = Instant::now();
 
         spool.observe(|| {
-            drive_tx(&mut tracker, &tcp_packet(true, &[]), authz_id, t0);
+            drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
             drive_rx(
                 &mut tracker,
                 &tcp_return_packet(&[0; 100]),
@@ -1413,7 +1420,7 @@ mod tests {
             );
             drive_tx(
                 &mut tracker,
-                &tcp_packet(true, &[]),
+                &tcp_packet(syn(), &[]),
                 authz_id,
                 t0 + Duration::from_secs(2),
             );
@@ -1436,7 +1443,7 @@ mod tests {
         let t0 = Instant::now();
 
         spool.observe(|| {
-            drive_tx(&mut tracker, &tcp_packet(false, &[]), authz_id, t0);
+            drive_tx(&mut tracker, &tcp_packet(ack(), &[]), authz_id, t0);
             tracker.close_all(t0 + Duration::from_secs(1));
         });
 
@@ -1451,7 +1458,7 @@ mod tests {
         let t0 = Instant::now();
 
         spool.observe(|| {
-            drive_tx(&mut tracker, &tcp_packet(false, &[0; 100]), authz_id, t0);
+            drive_tx(&mut tracker, &tcp_packet(ack(), &[0; 100]), authz_id, t0);
             tracker.close_all(t0 + Duration::from_secs(1));
         });
 
@@ -1494,16 +1501,27 @@ mod tests {
         );
     }
 
-    fn tcp_packet(syn: bool, payload: &[u8]) -> IpPacket {
+    fn syn() -> ip_packet::make::TcpFlags {
+        ip_packet::make::TcpFlags {
+            syn: true,
+            ..Default::default()
+        }
+    }
+
+    fn ack() -> ip_packet::make::TcpFlags {
+        ip_packet::make::TcpFlags {
+            ack: true,
+            ..Default::default()
+        }
+    }
+
+    fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
         ip_packet::make::tcp_packet(
             "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
             "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
             1234,
             443,
-            ip_packet::make::TcpFlags {
-                syn,
-                ..Default::default()
-            },
+            flags,
             payload,
         )
         .unwrap()

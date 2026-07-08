@@ -116,7 +116,7 @@ pub fn tcp_packet<IP>(
 where
     IP: Into<IpAddr>,
 {
-    let TcpFlags { syn, rst } = flags;
+    let TcpFlags { syn, ack, rst } = flags;
 
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
@@ -125,6 +125,10 @@ where
 
             if syn {
                 packet = packet.syn();
+            }
+
+            if ack {
+                packet = packet.ack(0);
             }
 
             if rst {
@@ -141,6 +145,10 @@ where
                 packet = packet.syn();
             }
 
+            if ack {
+                packet = packet.ack(0);
+            }
+
             if rst {
                 packet = packet.rst();
             }
@@ -154,6 +162,7 @@ where
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TcpFlags {
     pub syn: bool,
+    pub ack: bool,
     pub rst: bool,
 }
 
