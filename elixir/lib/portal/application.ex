@@ -54,7 +54,8 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
-      Portal.ClockDriftAlarm
+      Portal.ClockDriftAlarm,
+      OpenIDConnect.Document.Cache
     ]
 
     endpoint_children = [

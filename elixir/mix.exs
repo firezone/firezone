@@ -20,6 +20,7 @@ defmodule Portal.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r"^test/fixtures/"],
       listeners: listeners(),
       docs: [
         logo: "assets/static/images/logo.svg",
@@ -88,8 +89,6 @@ defmodule Portal.MixProject do
       # Auth
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
-      {:openid_connect,
-       github: "firezone/openid_connect", ref: "a38b96eb63bef690328ad2fd08202b8ffe36460f"},
       {:argon2_elixir, "~> 4.0"},
 
       # Background jobs

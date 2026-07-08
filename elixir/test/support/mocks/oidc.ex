@@ -25,29 +25,26 @@ defmodule PortalWeb.Mocks.OIDC do
   @mock_endpoint_base "https://mock.oidc.test"
 
   @doc """
-  Returns the static mock endpoint base URL.
-  Use this for tests that create their own Req.Test stubs with exact path matching.
-  """
-  def mock_endpoint_static, do: @mock_endpoint_base
-
-  @doc """
-  Returns a static discovery document URI.
-  Use this for tests that create their own Req.Test stubs with exact path matching.
-  """
-  def discovery_document_uri_static, do: "#{@mock_endpoint_base}/.well-known/openid-configuration"
-
-  @doc """
   Returns a unique mock endpoint for the current test process.
-  This ensures cache key isolation when tests run in parallel.
-  Use this with the stub_* functions which use suffix-based path matching.
+  This ensures cache key isolation in OpenIDConnect.Document.Cache when tests
+  run in parallel. Use this with the stub_* functions which use suffix-based
+  path matching.
   """
   def mock_endpoint do
-    # Use the test process PID to create a unique endpoint per test
-    # This prevents cache key collisions in OpenIDConnect.Document.Cache
-    pid_string =
-      self() |> :erlang.pid_to_list() |> List.to_string() |> String.replace(~r/[<>.]/, "")
+    # Unlike PIDs, unique integers are never recycled, so entries cached by
+    # dead tests can never collide with a running test's endpoint.
+    suffix =
+      case Process.get({__MODULE__, :mock_endpoint_suffix}) do
+        nil ->
+          suffix = System.unique_integer([:positive, :monotonic])
+          Process.put({__MODULE__, :mock_endpoint_suffix}, suffix)
+          suffix
 
-    "#{@mock_endpoint_base}/#{pid_string}"
+        suffix ->
+          suffix
+      end
+
+    "#{@mock_endpoint_base}/#{suffix}"
   end
 
   @doc """
