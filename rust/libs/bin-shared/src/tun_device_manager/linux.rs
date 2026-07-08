@@ -762,13 +762,15 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
         .context("Failed to set flags on TUN device")?;
     }
 
-    let offloads = offloads_supported();
+    // A successful `TUNSETOFFLOAD` is the kernel promising it handles these offloads on both the
+    // read (GRO) and write (GSO) side, so we use it directly as the capability probe rather than
+    // gating on a kernel version. It fails on kernels without UDP segmentation offload (added in
+    // Linux 6.2), where we run without offloads and exchange plain packets.
+    let offloads = try_enable_offloads(fd);
 
-    if offloads {
-        enable_offloads(fd).context("Failed to enable TUN offloads")?;
-    } else {
+    if !offloads {
         tracing::info!(
-            "Kernel does not support TUN segmentation offloads (requires Linux 6.2); packets will not be coalesced"
+            "Kernel does not support TUN segmentation offloads; packets will not be coalesced"
         );
     }
 
@@ -780,58 +782,17 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
     Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
 }
 
-/// Whether the running kernel supports the segmentation offloads we rely on.
+/// Enables checksum and segmentation offloads on the TUN device, returning whether the kernel
+/// accepted them.
 ///
-/// UDP segmentation offload (`TUN_F_USO4` / `TUN_F_USO6`) requires Linux 6.2.
-/// Offloads are all-or-nothing: on older kernels, we fall back to per-packet
-/// TUN I/O via [`tun::unix`].
-fn offloads_supported() -> bool {
-    match kernel_version() {
-        Some((major, minor)) => (major, minor) >= (6, 2),
-        None => {
-            tracing::warn!("Failed to determine kernel version; disabling TUN offloads");
-
-            false
-        }
-    }
-}
-
-fn kernel_version() -> Option<(u64, u64)> {
-    // Safety: An all-zeroes `utsname` is valid.
-    let mut utsname = unsafe { std::mem::zeroed::<libc::utsname>() };
-
-    // Safety: `utsname` is a valid struct for the kernel to write into.
-    if unsafe { libc::uname(&mut utsname) } != 0 {
-        return None;
-    }
-
-    // Safety: The kernel null-terminates `release`.
-    let release = unsafe { CStr::from_ptr(utsname.release.as_ptr()) };
-
-    parse_kernel_version(release.to_str().ok()?)
-}
-
-fn parse_kernel_version(release: &str) -> Option<(u64, u64)> {
-    let mut parts = release.split(['.', '-', '+']);
-
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-
-    Some((major, minor))
-}
-
-/// Enables checksum and segmentation offloads on the TUN device.
-///
-/// UDP segmentation offload (`TUN_F_USO*`) requires Linux 6.2.
-fn enable_offloads(fd: RawFd) -> io::Result<()> {
+/// A successful `TUNSETOFFLOAD` is the kernel's promise that it handles these offloads on both the
+/// read (GRO) and write (GSO) side. They are all-or-nothing: if any is unsupported - UDP
+/// segmentation offload in particular needs Linux 6.2 - the ioctl fails and we run without them.
+fn try_enable_offloads(fd: RawFd) -> bool {
     const OFFLOADS: libc::c_uint = TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6;
 
     // Safety: The file descriptor is valid.
-    if unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) } < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    Ok(())
+    unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) >= 0 }
 }
 
 impl tun::Tun for Tun {
@@ -887,19 +848,4 @@ fn create_tun_device() -> io::Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod kernel_version_tests {
-    use super::*;
-
-    #[test]
-    fn parses_common_release_strings() {
-        assert_eq!(parse_kernel_version("6.2.0"), Some((6, 2)));
-        assert_eq!(parse_kernel_version("6.8.0-45-generic"), Some((6, 8)));
-        assert_eq!(parse_kernel_version("5.15.0-1051-aws"), Some((5, 15)));
-        assert_eq!(parse_kernel_version("4.19.0-25-amd64"), Some((4, 19)));
-        assert_eq!(parse_kernel_version("6.18.5"), Some((6, 18)));
-        assert_eq!(parse_kernel_version("garbage"), None);
-    }
 }
