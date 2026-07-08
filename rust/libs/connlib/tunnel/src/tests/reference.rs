@@ -837,6 +837,7 @@ impl ReferenceState {
                             |r| state.portal.gateway_for_resource(r).copied(),
                             |ip| state.portal.gateway_by_ip(ip),
                             |ip| client_ip_to_id.get(&ip).copied(),
+                            now,
                         )
                     });
             }
@@ -862,6 +863,7 @@ impl ReferenceState {
                             |r| state.portal.gateway_for_resource(r).copied(),
                             |ip| state.portal.gateway_by_ip(ip),
                             |ip| client_ip_to_id.get(&ip).copied(),
+                            now,
                         )
                     });
             }

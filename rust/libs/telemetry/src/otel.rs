@@ -86,8 +86,8 @@ pub mod attr {
         KeyValue::new("error.type", value)
     }
 
-    pub fn queue_item_ip_packet() -> KeyValue {
-        KeyValue::new("queue.item", "ip-packet")
+    pub fn queue_item_ip_packet_batch() -> KeyValue {
+        KeyValue::new("queue.item", "ip-packet-batch")
     }
 
     pub fn queue_item_gro_batch() -> KeyValue {

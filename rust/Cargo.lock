@@ -8276,6 +8276,7 @@ name = "tun"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "bufferpool",
  "ip-packet",
  "libc",
  "opentelemetry",
