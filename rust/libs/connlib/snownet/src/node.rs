@@ -818,17 +818,19 @@ where
             self.unix_now,
             self.unix_ts,
         );
-        // By default, boringtun has a rekey attempt time of 90(!) seconds.
-        // In case of a state de-sync or other issues, this means we try for
-        // 90s to make a handshake, all whilst our ICE layer thinks the connection
-        // is working perfectly fine.
-        // This results in a bad UX as the user has to essentially wait for 90s
-        // before Firezone can fix the state and make a new connection.
+        // With classic ICE, a 90s rekey-attempt time is bad UX: ICE can think
+        // the pair is fine while WireGuard is desynced and stuck, so we shorten
+        // it to roughly our ICE timeout to fail fast and re-establish.
         //
-        // By aligning the rekey-attempt-time roughly with our ICE timeout, we ensure
-        // that even if the hole-punch was successful, it will take at most 20s
-        // until we have a WireGuard tunnel to send packets into.
-        tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
+        // Iceless has no such gap — probes ride the session, so a stuck
+        // handshake means the path is genuinely down, and probe loss must not
+        // retire a connection (WireGuard is the sole liveness authority). We
+        // therefore keep boringtun's 90s default so a transient outage (a relay
+        // partition, a roam) doesn't discard session state before the path can
+        // be probed back to life.
+        if !agent.is_iceless() {
+            tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
+        }
 
         Connection {
             agent,
