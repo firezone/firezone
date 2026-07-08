@@ -352,7 +352,7 @@ impl App {
             // pipe it creates legitimately has no `LocalSystem` owner. Tell
             // the GUI to skip that check. The flag only exists in debug
             // builds; release builds reject it.
-            .arg("--skip-tunnel-pipe-owner-check")
+            .arg("--skip-peer-verification")
             .args(args))
     }
 }

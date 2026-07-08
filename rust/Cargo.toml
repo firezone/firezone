@@ -104,6 +104,7 @@ fd-lock = "4.0.4"
 filetime = "0.2.29"
 firezone-relay = { path = "relay/server", default-features = false }
 flow-log-spool = { path = "libs/flow-log-spool" }
+flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"

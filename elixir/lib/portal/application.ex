@@ -54,6 +54,7 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
+      Portal.ClockDriftAlarm,
       OpenIDConnect.Document.Cache
     ]
 

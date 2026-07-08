@@ -1,7 +1,8 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Portal.{Authentication, ClientSession, Device, PG, Version}
+  alias Portal.{Authentication, ClientSession, Device, PG, SessionLog, Version}
   alias Portal.Repo.Batch
+  alias Portal.Types.EventId
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -112,13 +113,21 @@ defmodule PortalAPI.Client.Socket do
         }
       )
 
+    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+
     for {attrs, _metadata} <- failed do
       dispatch_queue_callback("client session", :on_failed, attrs, fn ->
         PG.deliver(attrs.device_id, :disconnect)
       end)
     end
 
-    dispatch_client_session_confirmed(entries, failed)
+    # Durability is confirmed only once both the session and its log have
+    # landed: a session whose log write fails is left unconfirmed so its
+    # durability timer fires and the client reconnects to retry both. This keeps
+    # the session log fail-closed without a transaction (which is incompatible
+    # with Batch.insert_all's rescue-and-repartition retry).
+    log_failed_ids = insert_session_logs(entries, failed_ids)
+    dispatch_client_session_confirmed(entries, MapSet.union(failed_ids, log_failed_ids))
 
     if failed != [] do
       Logger.info(
@@ -129,14 +138,52 @@ defmodule PortalAPI.Client.Socket do
     inserted
   end
 
-  defp dispatch_client_session_confirmed(entries, failed) do
-    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
-
+  defp dispatch_client_session_confirmed(entries, failed_ids) do
     for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
       dispatch_queue_callback("client session", :on_confirmed, attrs, fn ->
         PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
       end)
     end
+  end
+
+  # Session logs are written from the same flushed batch that persists the
+  # sessions, so a reconnect storm collapses into one bulk insert here instead
+  # of one write per connect. Only durable sessions are logged: entries that
+  # failed the session insert (deleted device/token) are skipped. The subject
+  # snapshot and the connect-time timestamp ride the queue entry's metadata; the
+  # timestamp is captured at connect rather than read from the session row's
+  # inserted_at, which is stamped at flush time and would be identical across a
+  # whole batch. Each log entry carries its session id so the caller can learn
+  # which sessions' logs failed and withhold their durability confirmation.
+  defp insert_session_logs(entries, failed_ids) do
+    log_entries =
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+        {session_log_attrs(attrs, metadata), attrs[:id]}
+      end
+
+    {_inserted, failed} =
+      Batch.insert_all(SessionLog, log_entries,
+        label: "client session log",
+        fk_partitions: %{
+          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+        }
+      )
+
+    MapSet.new(failed, fn {_log_attrs, session_id} -> session_id end)
+  end
+
+  defp session_log_attrs(attrs, %{subject: subject, timestamp: timestamp}) do
+    %{
+      account_id: attrs.account_id,
+      event_id: EventId.build_session_log(),
+      timestamp: timestamp,
+      context: :client,
+      subject:
+        Map.merge(subject || %{}, %{
+          device_id: attrs[:device_id],
+          token_id: attrs[:client_token_id]
+        })
+    }
   end
 
   defp dispatch_queue_callback(label, callback, attrs, fun) do

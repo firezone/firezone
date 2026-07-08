@@ -13,16 +13,9 @@ use std::ffi::c_void;
 use std::io;
 use std::os::fd::{AsRawFd as _, RawFd};
 use tokio::io::{Interest, unix::AsyncFd};
-use tokio::sync::mpsc;
 
 use super::sys;
-
-/// How many packets we exchange with the kernel per syscall.
-///
-/// Mirrors the rationale of `MAX_INBOUND_PACKET_BATCH` in the `tunnel` crate: mobile
-/// is memory-constrained, so we keep the batch (and the buffers we pull for it) small
-/// there. The desktop value stays below the kernel's `kern.ipc.somaxrecvmsgx` clamp.
-const BATCH_SIZE: usize = if cfg!(target_os = "ios") { 25 } else { 100 };
+use crate::{MAX_BATCH_SIZE, PacketBatch};
 
 const EMPTY_IOVEC: iovec = iovec {
     iov_base: std::ptr::null_mut(),
@@ -33,7 +26,7 @@ const EMPTY_IOVEC: iovec = iovec {
 pub fn send(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
-    mut outbound_rx: mpsc::Receiver<IpPacket>,
+    mut outbound_rx: crate::OutboundRx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
@@ -44,19 +37,14 @@ pub fn send(
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
-            let mut batch = Vec::with_capacity(BATCH_SIZE);
 
-            loop {
-                if outbound_rx.recv_many(&mut batch, BATCH_SIZE).await == 0 {
-                    break; // Channel closed.
-                }
-
+            while let Some(packets) = outbound_rx.recv().await {
                 let mut offset = 0;
-                while offset < batch.len() {
+                while offset < packets.len() {
                     let result = fd
                         .async_io(Interest::WRITABLE, |fd| {
                             // Safety: The file descriptor is valid within this module.
-                            unsafe { send_batch(syscalls, fd.as_raw_fd(), &batch[offset..]) }
+                            unsafe { send_batch(syscalls, fd.as_raw_fd(), &packets[offset..]) }
                         })
                         .await;
 
@@ -80,7 +68,7 @@ pub fn send(
                             // `sendmsg_x` does not report how many datagrams it sent before
                             // failing, so we cannot resubmit the tail without risking a
                             // re-injection of an already-sent prefix. Drop the rest of the batch.
-                            let dropped = batch.len() - offset;
+                            let dropped = packets.len() - offset;
                             dropped_packets.add(dropped as u64, &drop_attributes(&e));
 
                             if e.raw_os_error() == Some(libc::ENOSPC) {
@@ -94,8 +82,6 @@ pub fn send(
                         }
                     }
                 }
-
-                batch.clear();
             }
 
             anyhow::Ok(())
@@ -108,7 +94,7 @@ pub fn send(
 pub fn recv(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
-    inbound_tx: mpsc::Sender<IpPacket>,
+    inbound_tx: crate::InboundTx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
 
@@ -119,10 +105,10 @@ pub fn recv(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
 
-            loop {
+            'recv: loop {
                 let mut bufs: Vec<IpPacketBuf> =
-                    (0..BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
-                let mut lens = [0usize; BATCH_SIZE];
+                    (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
+                let mut lens = [0usize; MAX_BATCH_SIZE];
 
                 let n = fd
                     .async_io(Interest::READABLE, |fd| {
@@ -146,10 +132,7 @@ pub fn recv(
                     ],
                 );
 
-                let Ok(mut permits) = inbound_tx.reserve_many(n).await else {
-                    tracing::debug!("Inbound packet receiver gone, shutting down task");
-                    break;
-                };
+                let mut batch = PacketBatch::default();
 
                 for (buf, len) in bufs.into_iter().zip(lens).take(n) {
                     if len == 0 {
@@ -161,13 +144,33 @@ pub fn recv(
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            // We reserved `n` permits and send at most `n`, so this is always `Some`.
-                            let Some(permit) = permits.next() else { break };
-                            permit.send(packet);
+                            let Err(packet) = batch.try_push(packet) else {
+                                continue;
+                            };
+
+                            // Unreachable in practice: we read at most `MAX_BATCH_SIZE`
+                            // packets per syscall, but a full batch is handed off all the same.
+                            if inbound_tx
+                                .send(std::mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .await
+                                .is_err()
+                            {
+                                tracing::debug!("Inbound packet receiver gone, shutting down task");
+                                break 'recv;
+                            }
                         }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => tracing::debug!("{e:#}"),
                         Err(e) => tracing::warn!("{e:#}"),
                     }
+                }
+
+                if batch.is_empty() {
+                    continue;
+                }
+
+                if inbound_tx.send(batch).await.is_err() {
+                    tracing::debug!("Inbound packet receiver gone, shutting down task");
+                    break;
                 }
             }
 
@@ -187,12 +190,12 @@ unsafe fn send_batch(
     fd: RawFd,
     batch: &[IpPacket],
 ) -> io::Result<usize> {
-    let count = batch.len().min(BATCH_SIZE);
+    let count = batch.len().min(MAX_BATCH_SIZE);
 
     // The first 4 bytes of each datagram carry the address family in network byte order.
-    let mut afs = [[0u8; 4]; BATCH_SIZE];
-    let mut iovs = [[EMPTY_IOVEC; 2]; BATCH_SIZE];
-    let mut msgs = [sys::msghdr_x::ZEROED; BATCH_SIZE];
+    let mut afs = [[0u8; 4]; MAX_BATCH_SIZE];
+    let mut iovs = [[EMPTY_IOVEC; 2]; MAX_BATCH_SIZE];
+    let mut msgs = [sys::msghdr_x::ZEROED; MAX_BATCH_SIZE];
 
     for i in 0..count {
         #[cfg(debug_assertions)]
@@ -242,11 +245,11 @@ unsafe fn recv_batch(
     bufs: &mut [IpPacketBuf],
     lens: &mut [usize],
 ) -> io::Result<usize> {
-    let count = bufs.len().min(BATCH_SIZE);
+    let count = bufs.len().min(MAX_BATCH_SIZE);
 
-    let mut afs = [[0u8; 4]; BATCH_SIZE];
-    let mut iovs = [[EMPTY_IOVEC; 2]; BATCH_SIZE];
-    let mut msgs = [sys::msghdr_x::ZEROED; BATCH_SIZE];
+    let mut afs = [[0u8; 4]; MAX_BATCH_SIZE];
+    let mut iovs = [[EMPTY_IOVEC; 2]; MAX_BATCH_SIZE];
+    let mut msgs = [sys::msghdr_x::ZEROED; MAX_BATCH_SIZE];
 
     for i in 0..count {
         let dst = bufs[i].buf();

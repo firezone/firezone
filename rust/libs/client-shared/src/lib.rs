@@ -17,6 +17,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
 use std::future;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
@@ -72,6 +73,7 @@ impl Session {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<PathBuf>,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -82,6 +84,7 @@ impl Session {
                     udp_socket_factory,
                     is_internet_resource_active,
                     dns_servers,
+                    flow_logs_dir,
                     portal,
                     cmd_rx,
                     resource_list_sender,

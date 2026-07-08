@@ -24,7 +24,7 @@ use tunnel::messages::client::{
     FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
     ResourceAuthorization, ResourceFiltersUpdated,
 };
-use tunnel::messages::{RelaysPresence, SnownetCapabilities};
+use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -51,6 +51,13 @@ pub struct Eventloop {
     tunnel: Option<ClientTunnel>,
 
     resolver_bypass: tunnel_bypass_resolver::Bypass,
+
+    /// Flow-log spool root; the reports themselves are spooled by the
+    /// entrypoint's `flow_log_writer` layer.
+    flow_logs_dir: Option<std::path::PathBuf>,
+
+    /// Whether the portal enabled uploads; gates persisting ingest tokens.
+    upload_flow_logs: bool,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
@@ -113,6 +120,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<std::path::PathBuf>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<ResourceList>,
@@ -144,6 +152,8 @@ impl Eventloop {
         Self {
             tunnel: Some(tunnel),
             resolver_bypass,
+            flow_logs_dir,
+            upload_flow_logs: false,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -377,6 +387,12 @@ impl Eventloop {
             ClientEvent::DnsRecordsChanged { records } => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
+            ClientEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             ClientEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -450,7 +466,28 @@ impl Eventloop {
                 interface,
                 resources,
                 relays,
+                flow_logs,
             }) => {
+                self.upload_flow_logs = flow_logs.upload_enabled();
+
+                tracing::info!(
+                    upload_enabled = self.upload_flow_logs,
+                    spool_dir = ?self.flow_logs_dir,
+                    config = ?flow_logs,
+                    "Flow-log config received from portal init"
+                );
+
+                if let Some(spool_root) = &self.flow_logs_dir
+                    && let Err(e) = flow_log_upload::configure_uploads(
+                        spool_root,
+                        &flow_logs.api_url,
+                        flow_logs.upload_interval_secs,
+                        flow_logs.upload_batch_size,
+                    )
+                {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                }
+
                 let state = tunnel.state_mut();
 
                 state.update_interface_config(interface);
@@ -502,7 +539,15 @@ impl Eventloop {
                 client_ice_credentials,
                 gateway_ice_credentials,
                 use_iceless,
+                flow_logs_ingest_token,
             }) => {
+                if self.upload_flow_logs {
+                    persist_ingest_token(
+                        self.flow_logs_dir.as_deref(),
+                        flow_logs_ingest_token.as_ref(),
+                    );
+                }
+
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
                     gateway_id,
@@ -578,7 +623,15 @@ impl Eventloop {
                 use_iceless,
                 resource,
                 authorization_expires_at,
+                flow_logs_ingest_token,
             }) => {
+                if self.upload_flow_logs {
+                    persist_ingest_token(
+                        self.flow_logs_dir.as_deref(),
+                        flow_logs_ingest_token.as_ref(),
+                    );
+                }
+
                 // The portal only sends a resource to the target device; the
                 // initiating side receives `None` and relies on conntrack to
                 // admit return traffic.
@@ -709,6 +762,18 @@ impl Eventloop {
             .context("Failed to shut down tunnel")?;
 
         Ok(())
+    }
+}
+
+/// Tokens deliberately travel here rather than through the flow-log tracing
+/// events, so they can never leak into log output.
+fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: Option<&IngestToken>) {
+    let (Some(spool_root), Some(token)) = (spool_root, token) else {
+        return;
+    };
+
+    if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
+        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
     }
 }
 

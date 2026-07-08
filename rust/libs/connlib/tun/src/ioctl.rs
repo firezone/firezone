@@ -36,7 +36,10 @@ impl Request<SetTunFlagsPayload> {
         Self {
             name,
             payload: SetTunFlagsPayload {
-                flags: (libc::IFF_TUN | libc::IFF_NO_PI | libc::IFF_MULTI_QUEUE) as _,
+                flags: (libc::IFF_TUN
+                    | libc::IFF_NO_PI
+                    | libc::IFF_MULTI_QUEUE
+                    | libc::IFF_VNET_HDR) as _,
             },
         }
     }

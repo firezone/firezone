@@ -3,7 +3,8 @@ defmodule Portal.Cache.Cacheable.Policy do
     :id,
     :resource_id,
     :group_id,
-    :conditions
+    :conditions,
+    :flow_log_uploads_enabled
   ]
 
   @type condition :: %{
@@ -29,6 +30,7 @@ defmodule Portal.Cache.Cacheable.Policy do
           id: Portal.Cache.Cacheable.uuid_binary(),
           resource_id: Portal.Cache.Cacheable.uuid_binary(),
           group_id: Portal.Cache.Cacheable.uuid_binary() | nil,
-          conditions: [condition()]
+          conditions: [condition()],
+          flow_log_uploads_enabled: boolean()
         }
 end

@@ -259,6 +259,13 @@ where
     ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
+        // We cannot reply to port 0; only crafted packets (e.g. from Internet scanners) carry such a source.
+        if sender.into_socket().port() == 0 {
+            tracing::debug!(target: "relay", %sender, "Dropping packet from UDP source port 0");
+
+            return None;
+        }
+
         match client_message::decode(bytes) {
             Ok(Ok(message)) => {
                 return self.handle_client_message(message, sender, now);
