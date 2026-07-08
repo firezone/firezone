@@ -19,7 +19,7 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    io::{self, IoSliceMut},
+    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, Waker},
@@ -27,11 +27,10 @@ use std::{
 };
 
 use anyhow::Result;
-use bufferpool::BufferPool;
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::DatagramSegmentIter;
+use crate::{DatagramSegmentIter, RecvBuffers};
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -116,9 +115,9 @@ impl SocketPool {
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
-        buffer_pool: &BufferPool<Vec<u8>>,
+        recv_buffers: &RecvBuffers,
     ) -> Arc<OwnedSocket> {
-        self.get_or_connect(src, dst, buffer_pool)
+        self.get_or_connect(src, dst, recv_buffers)
             .unwrap_or_else(|| self.wildcard.clone())
     }
 
@@ -189,7 +188,7 @@ impl SocketPool {
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
-        pool: &BufferPool<Vec<u8>>,
+        recv_buffers: &RecvBuffers,
     ) -> Option<Arc<OwnedSocket>> {
         let key = (src, dst);
         let mut inner = self.lock();
@@ -203,7 +202,7 @@ impl SocketPool {
         }
 
         if inner.flows.len() >= MAX_FLOW_SOCKETS {
-            evict_one(&mut inner, self.local.port(), pool);
+            evict_one(&mut inner, self.local.port(), recv_buffers);
         }
 
         match connect(self.local, src, dst, inner.buffer_sizes) {
@@ -277,7 +276,7 @@ impl Flow {
 }
 
 /// Evicts the flow socket that is least likely to still be useful.
-fn evict_one(inner: &mut Inner, port: u16, pool: &BufferPool<Vec<u8>>) {
+fn evict_one(inner: &mut Inner, port: u16, recv_buffers: &RecvBuffers) {
     let Some(key) = inner
         .flows
         .iter()
@@ -295,7 +294,7 @@ fn evict_one(inner: &mut Inner, port: u16, pool: &BufferPool<Vec<u8>>) {
         return;
     };
 
-    drain(&victim, port, pool, &mut inner.drained);
+    drain(&victim, port, recv_buffers, &mut inner.drained);
 
     if !inner.drained.is_empty()
         && let Some(waker) = inner.recv_waker.take()
@@ -327,25 +326,29 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
 fn drain(
     victim: &Flow,
     port: u16,
-    pool: &BufferPool<Vec<u8>>,
+    recv_buffers: &RecvBuffers,
     out: &mut VecDeque<DatagramSegmentIter>,
 ) {
     let socket = victim.socket.as_socket();
 
     loop {
-        let mut bufs = std::array::from_fn(|_| pool.pull());
-        let mut metas = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
+        let mut batch = recv_buffers.pull_batch();
 
         let len = {
-            let mut io_bufs = bufs.each_mut().map(|b| IoSliceMut::new(b));
+            let (mut io_bufs, metas) = batch.recv_slices();
 
-            match socket.recv(&mut io_bufs, &mut metas) {
+            match socket.recv(&mut io_bufs, metas) {
                 Ok(len) => len,
                 Err(_) => break, // Typically `WouldBlock`: the socket is dry.
             }
         };
 
-        out.push_back(DatagramSegmentIter::new(bufs, metas, port, len));
+        out.push_back(DatagramSegmentIter::new(
+            batch.buffers,
+            batch.metas,
+            port,
+            len,
+        ));
     }
 }
 

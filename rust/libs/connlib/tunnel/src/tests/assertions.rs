@@ -12,7 +12,7 @@ use connlib_model::{ClientId, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque, hash_map::Entry},
+    collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
     hash::Hash,
     iter,
     marker::PhantomData,
@@ -230,28 +230,6 @@ fn assert_packets_properties<T, U>(
 
     let mut mappings = HashMap::new();
 
-    // Per client→gateway connection, the instants at which the client sent a
-    // packet. Used to tolerate a packet dropped in the WireGuard re-key dead
-    // window (see `MIN_IDLE_FOR_REKEY_DROP`).
-    let gateway_send_times: BTreeMap<(ClientId, GatewayId), BTreeSet<Instant>> = {
-        let all_sent_requests = &all_sent_requests;
-        all_expected_gateway_handshakes
-            .iter()
-            .flat_map(|(gateway, handshakes)| {
-                handshakes.iter().filter_map(move |(_, (cid, _, t, u))| {
-                    let (sent_at, _) = all_sent_requests.get(&(*cid, (*t, *u)))?;
-                    Some(((*cid, *gateway), *sent_at))
-                })
-            })
-            .fold(
-                BTreeMap::new(),
-                |mut acc: BTreeMap<_, BTreeSet<_>>, (key, at)| {
-                    acc.entry(key).or_default().insert(at);
-                    acc
-                },
-            )
-    };
-
     // Assert properties of the individual handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
     // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
@@ -283,10 +261,9 @@ fn assert_packets_properties<T, U>(
                 // one packet without a reply (see `MIN_IDLE_FOR_REKEY_DROP`). Tolerate
                 // it when the previous packet on this connection was sent at
                 // least `MIN_IDLE_FOR_REKEY_DROP` earlier.
-                if gateway_send_times
-                    .get(&(*cid, *gateway))
-                    .and_then(|times| times.range(..*sent_at).next_back())
-                    .is_some_and(|prev| sent_at.duration_since(*prev) >= MIN_IDLE_FOR_REKEY_DROP)
+                if ref_client
+                    .last_packet_sent_to_gateway_before(*gateway, *sent_at)
+                    .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
                 {
                     tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;

@@ -17,17 +17,57 @@ use opentelemetry::{
 /// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
 /// This minimizes contention even under high load where buffers are constantly needed and returned.
 pub struct BufferPool<B> {
-    inner: Arc<SegQueue<BufferStorage<B>>>,
-
-    new_buffer_fn: Arc<dyn Fn() -> BufferStorage<B> + Send + Sync>,
+    inner: Arc<PoolInner<B>>,
 }
 
 impl<B> Clone for BufferPool<B> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            new_buffer_fn: self.new_buffer_fn.clone(),
         }
+    }
+}
+
+/// The state shared between a pool and all of its buffers.
+///
+/// Everything that is constant per pool lives here (rather than in each buffer),
+/// keeping a [`Buffer`] handle at the size of the buffer itself plus one `Arc`.
+struct PoolInner<B> {
+    queue: SegQueue<B>,
+
+    /// Creates (and counts) a new buffer for when the queue is empty.
+    new_buffer_fn: Box<dyn Fn() -> B + Send + Sync>,
+
+    /// The size every buffer in the pool is allocated with.
+    ///
+    /// A returned buffer whose capacity deviates from this no longer fits the pool's
+    /// "all buffers are equal in size" invariant and indicates an accidental reallocation.
+    capacity: usize,
+    /// The pool's name, used to attribute a capacity deviation to a specific pool.
+    tag: &'static str,
+    /// Reads the current capacity of a buffer.
+    ///
+    /// Captured as a function pointer so the capacity can be inspected in `Buffer`'s
+    /// `Drop`, which cannot itself require the [`Buf`] bound.
+    capacity_of: fn(&B) -> usize,
+    /// Restores a buffer to a pristine state; see [`Buf::reset`].
+    ///
+    /// A function pointer for the same reason as `capacity_of`.
+    reset: fn(&mut B),
+
+    attributes: [KeyValue; 2],
+    counter: UpDownCounter<i64>,
+}
+
+impl<B> Drop for PoolInner<B> {
+    fn drop(&mut self) {
+        let mut num_buffers = 0;
+
+        while self.queue.pop().is_some() {
+            num_buffers += 1;
+        }
+
+        self.counter.add(-num_buffers, &self.attributes);
     }
 }
 
@@ -49,34 +89,53 @@ where
         tag: &'static str,
         buffer_counter: UpDownCounter<i64>,
     ) -> Self {
-        Self {
-            inner: Arc::new(SegQueue::new()),
+        let attributes = [
+            KeyValue::new("system.buffer.pool.name", tag),
+            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
+        ];
 
-            // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
-            // This however means that getting a buffer can fail which would require us to implement back-pressure.
-            new_buffer_fn: Arc::new(move || {
-                BufferStorage::new(
-                    B::with_capacity(capacity),
-                    capacity,
-                    tag,
-                    buffer_counter.clone(),
-                )
+        Self {
+            inner: Arc::new(PoolInner {
+                queue: SegQueue::new(),
+
+                // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
+                // This however means that getting a buffer can fail which would require us to implement back-pressure.
+                new_buffer_fn: Box::new({
+                    let counter = buffer_counter.clone();
+                    let attributes = attributes.clone();
+
+                    move || {
+                        counter.add(1, &attributes);
+
+                        B::with_capacity(capacity)
+                    }
+                }),
+                capacity,
+                tag,
+                capacity_of: B::capacity,
+                reset: B::reset,
+                attributes,
+                counter: buffer_counter,
             }),
         }
     }
 
     pub fn pull(&self) -> Buffer<B> {
         Buffer {
-            inner: Some(self.inner.pop().unwrap_or_else(|| (self.new_buffer_fn)())),
+            inner: Some(
+                self.inner
+                    .queue
+                    .pop()
+                    .unwrap_or_else(|| (self.inner.new_buffer_fn)()),
+            ),
             pool: self.inner.clone(),
-            new_buffer_fn: self.new_buffer_fn.clone(),
         }
     }
 }
 
 impl<B> BufferPool<B>
 where
-    B: Buf + DerefMut<Target = [u8]>,
+    B: ResizeBuf + DerefMut<Target = [u8]>,
 {
     pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B> {
         let mut buffer = self.pull();
@@ -90,10 +149,9 @@ where
 }
 
 pub struct Buffer<B> {
-    inner: Option<BufferStorage<B>>,
+    inner: Option<B>,
 
-    pool: Arc<SegQueue<BufferStorage<B>>>,
-    new_buffer_fn: Arc<dyn Fn() -> BufferStorage<B> + Send + Sync>,
+    pool: Arc<PoolInner<B>>,
 }
 
 impl Buffer<Vec<u8>> {
@@ -116,13 +174,13 @@ impl Buffer<Vec<u8>> {
 }
 
 impl<B> Buffer<B> {
-    fn storage(&self) -> &BufferStorage<B> {
+    fn storage(&self) -> &B {
         self.inner
             .as_ref()
             .expect("should always have buffer storage until dropped")
     }
 
-    fn storage_mut(&mut self) -> &mut BufferStorage<B> {
+    fn storage_mut(&mut self) -> &mut B {
         self.inner
             .as_mut()
             .expect("should always have buffer storage until dropped")
@@ -134,14 +192,17 @@ where
     B: Buf,
 {
     fn clone(&self) -> Self {
-        let mut copy = self.pool.pop().unwrap_or_else(|| (self.new_buffer_fn)());
+        let mut copy = self
+            .pool
+            .queue
+            .pop()
+            .unwrap_or_else(|| (self.pool.new_buffer_fn)());
 
-        self.storage().inner.clone(&mut copy);
+        self.storage().clone(&mut copy);
 
         Self {
             inner: Some(copy),
             pool: self.pool.clone(),
-            new_buffer_fn: self.new_buffer_fn.clone(),
         }
     }
 }
@@ -185,31 +246,33 @@ impl<B> Deref for Buffer<B> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
-        self.storage().deref()
+        self.storage()
     }
 }
 
 impl<B> DerefMut for Buffer<B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.storage_mut().deref_mut()
+        self.storage_mut()
     }
 }
 
 impl<B> Drop for Buffer<B> {
     fn drop(&mut self) {
-        let buffer_storage = self.inner.take().expect("should have storage in `Drop`");
+        let mut buffer = self.inner.take().expect("should have storage in `Drop`");
 
-        let actual = (buffer_storage.capacity_of)(&buffer_storage.inner);
-        if let Some(actual) = deviating_capacity(buffer_storage.capacity, actual) {
+        (self.pool.reset)(&mut buffer);
+
+        let actual = (self.pool.capacity_of)(&buffer);
+        if let Some(actual) = deviating_capacity(self.pool.capacity, actual) {
             tracing::warn!(
-                pool = %buffer_storage.tag,
-                expected_capacity = %buffer_storage.capacity,
+                pool = %self.pool.tag,
+                expected_capacity = %self.pool.capacity,
                 actual_capacity = %actual,
                 "Buffer returned to pool with a different capacity than it was allocated with"
             );
         }
 
-        self.pool.push(buffer_storage);
+        self.pool.queue.push(buffer);
     }
 }
 
@@ -221,8 +284,67 @@ fn deviating_capacity(expected: usize, actual: usize) -> Option<usize> {
 pub trait Buf: Sized {
     fn with_capacity(capacity: usize) -> Self;
     fn clone(&self, dst: &mut Self);
-    fn resize_to(&mut self, len: usize);
     fn capacity(&self) -> usize;
+
+    /// Restores the buffer to a pristine state before it returns to the pool.
+    ///
+    /// Byte buffers are plain scratch space and don't need this; containers like
+    /// [`VecBuf`] use it to drop their items so those don't stay alive inside an
+    /// idle pool.
+    fn reset(&mut self) {}
+}
+
+/// A [`Buf`] whose length can be set directly, e.g. to fit incoming data.
+///
+/// Only byte buffers implement this; containers like [`VecBuf`] deliberately
+/// don't: their length only ever changes by pushing or truncating actual items.
+pub trait ResizeBuf: Buf {
+    fn resize_to(&mut self, len: usize);
+}
+
+/// A pooled `Vec` of arbitrary items.
+///
+/// In contrast to the byte-oriented [`Buf`] implementations ([`Vec<u8>`] and
+/// [`BytesMut`]) - which hand out zero-initialised, full-length scratch space to be
+/// written into - a `VecBuf` is a container: it is pulled empty, pushed into, and
+/// emptied again when it returns to the pool.
+#[derive(Debug)]
+pub struct VecBuf<T>(Vec<T>);
+
+impl<T> Deref for VecBuf<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Vec<T> {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for VecBuf<T> {
+    fn deref_mut(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+
+impl<T> Buf for VecBuf<T>
+where
+    T: Clone,
+{
+    fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+
+    fn clone(&self, dst: &mut Self) {
+        dst.0.clear();
+        dst.0.extend(self.0.iter().cloned());
+    }
+
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.0.clear();
+    }
 }
 
 impl Buf for Vec<u8> {
@@ -235,12 +357,14 @@ impl Buf for Vec<u8> {
         dst.copy_from_slice(self);
     }
 
-    fn resize_to(&mut self, len: usize) {
-        self.resize(len, 0);
-    }
-
     fn capacity(&self) -> usize {
         Vec::capacity(self)
+    }
+}
+
+impl ResizeBuf for Vec<u8> {
+    fn resize_to(&mut self, len: usize) {
+        self.resize(len, 0);
     }
 }
 
@@ -254,76 +378,14 @@ impl Buf for BytesMut {
         dst.copy_from_slice(self);
     }
 
-    fn resize_to(&mut self, len: usize) {
-        self.resize(len, 0);
-    }
-
     fn capacity(&self) -> usize {
         BytesMut::capacity(self)
     }
 }
 
-/// A wrapper around a buffer `B` that keeps track of how many buffers there are in a counter.
-struct BufferStorage<B> {
-    inner: B,
-
-    /// The size every buffer in the pool is allocated with.
-    ///
-    /// A returned buffer whose capacity deviates from this no longer fits the pool's
-    /// "all buffers are equal in size" invariant and indicates an accidental reallocation.
-    capacity: usize,
-    /// The pool's name, used to attribute a capacity deviation to a specific pool.
-    tag: &'static str,
-    /// Reads the current capacity of `inner`.
-    ///
-    /// Captured as a function pointer so the capacity can be inspected in `Buffer`'s
-    /// `Drop`, which cannot itself require the [`Buf`] bound.
-    capacity_of: fn(&B) -> usize,
-
-    attributes: [KeyValue; 2],
-    counter: UpDownCounter<i64>,
-}
-
-impl<B> Drop for BufferStorage<B> {
-    fn drop(&mut self) {
-        self.counter.add(-1, &self.attributes);
-    }
-}
-
-impl<B> BufferStorage<B> {
-    fn new(inner: B, capacity: usize, tag: &'static str, counter: UpDownCounter<i64>) -> Self
-    where
-        B: Buf,
-    {
-        let attributes = [
-            KeyValue::new("system.buffer.pool.name", tag),
-            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
-        ];
-
-        counter.add(1, &attributes);
-
-        Self {
-            inner,
-            capacity,
-            tag,
-            capacity_of: B::capacity,
-            counter,
-            attributes,
-        }
-    }
-}
-
-impl<B> Deref for BufferStorage<B> {
-    type Target = B;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<B> DerefMut for BufferStorage<B> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+impl ResizeBuf for BytesMut {
+    fn resize_to(&mut self, len: usize) {
+        self.resize(len, 0);
     }
 }
 
@@ -387,6 +449,27 @@ mod tests {
         buffer.resize_to(8 * 1024); // Force a reallocation beyond the pool's capacity.
 
         drop(buffer); // Exercises the capacity-deviation check on return to the pool.
+    }
+
+    /// The whole point of pooling is passing buffers around cheaply: a handle is
+    /// the buffer itself plus one `Arc`; everything else lives in the pool.
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn handles_are_slim() {
+        assert_eq!(size_of::<Buffer<Vec<u8>>>(), 32);
+    }
+
+    #[test]
+    fn vec_buf_returns_to_the_pool_empty() {
+        let pool = BufferPool::<VecBuf<String>>::new(4, "test");
+
+        let mut buf = pool.pull();
+        buf.push("hello".to_owned());
+        drop(buf);
+
+        // The dropped buffer's storage is recycled; it must come back empty.
+        let buf = pool.pull();
+        assert!(buf.is_empty());
     }
 
     #[test]

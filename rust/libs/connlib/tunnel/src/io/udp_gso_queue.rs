@@ -9,8 +9,6 @@ use ip_packet::Ecn;
 use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
 
-use super::MAX_INBOUND_PACKET_BATCH;
-
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
@@ -18,16 +16,16 @@ const MAX_SEGMENT_SIZE: usize =
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
-pub struct GsoQueue {
+pub struct UdpGsoQueue {
     inner: BTreeMap<Connection, VecDeque<(usize, Buffer<BytesMut>)>>,
     buffer_pool: BufferPool<BytesMut>,
 }
 
-impl GsoQueue {
+impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
             inner: Default::default(),
-            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH, "gso-queue"),
+            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * tun::MAX_BATCH_SIZE, "gso-queue"),
         }
     }
 
@@ -73,7 +71,7 @@ impl GsoQueue {
     }
 }
 
-impl BufferProvider for GsoQueue {
+impl BufferProvider for UdpGsoQueue {
     type Reservation<'a> = GsoReservation<'a>;
 
     fn reserve(
@@ -118,9 +116,9 @@ impl BufferProvider for GsoQueue {
     }
 }
 
-/// A [`Reservation`] into a [`GsoQueue`], pointing at the tail of the current batch.
+/// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of the current batch.
 pub struct GsoReservation<'a> {
-    queue: &'a mut GsoQueue,
+    queue: &'a mut UdpGsoQueue,
     connection: Connection,
     len: usize,
     committed: bool,
@@ -161,9 +159,9 @@ struct Connection {
     ecn: Ecn,
 }
 
-/// An [`Iterator`] that drains datagrams from the [`GsoQueue`].
+/// An [`Iterator`] that drains datagrams from the [`UdpGsoQueue`].
 struct DrainDatagramsIter<'a> {
-    queue: &'a mut GsoQueue,
+    queue: &'a mut UdpGsoQueue,
 }
 
 impl Iterator for DrainDatagramsIter<'_> {
@@ -199,7 +197,7 @@ mod tests {
 
     #[test]
     fn dropping_datagram_iterator_does_not_drop_items() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
 
@@ -215,7 +213,7 @@ mod tests {
 
     #[test]
     fn appends_items_of_same_batch() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -231,7 +229,7 @@ mod tests {
 
     #[test]
     fn starts_new_batch_for_new_dst() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -252,7 +250,7 @@ mod tests {
 
     #[test]
     fn continues_batch_for_old_dst() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -276,7 +274,7 @@ mod tests {
 
     #[test]
     fn starts_new_batch_after_single_item_less_than_segment_length() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
         send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
@@ -297,7 +295,7 @@ mod tests {
 
     #[test]
     fn committing_a_reservation_keeps_the_datagram() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         {
             let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
@@ -313,7 +311,7 @@ mod tests {
 
     #[test]
     fn dropping_a_reservation_without_committing_rolls_it_back() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
 
@@ -333,7 +331,7 @@ mod tests {
 
     #[test]
     fn dropping_the_only_reservation_leaves_the_queue_empty() {
-        let mut send_queue = GsoQueue::new();
+        let mut send_queue = UdpGsoQueue::new();
 
         {
             let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
