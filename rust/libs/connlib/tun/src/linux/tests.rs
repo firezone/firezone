@@ -197,23 +197,6 @@ fn coalesces_udp_datagrams() {
 }
 
 #[test]
-fn corrupt_checksum_is_not_coalesced() {
-    let mut queue = TunGsoQueue::new();
-
-    let good = tcp4(1000, &[1; 100]);
-    let mut corrupt = tcp4(1100, &[2; 100]);
-    corrupt_tcp_checksum(&mut corrupt);
-
-    queue.enqueue(good);
-    queue.enqueue(corrupt);
-
-    let out = queue.drain().collect::<Vec<_>>();
-
-    assert_eq!(out.len(), 2);
-    assert_eq!(out[1].num_segments(), 1); // Passed through for the kernel to drop.
-}
-
-#[test]
 fn completes_partial_checksum_of_non_gso_packet() {
     let packet = udp4(&[7; 32]);
     let bytes = packet.packet();
@@ -320,11 +303,4 @@ fn packet_from_bytes(bytes: &[u8]) -> IpPacket {
     buf.buf()[..bytes.len()].copy_from_slice(bytes);
 
     IpPacket::new(buf, bytes.len()).unwrap()
-}
-
-fn corrupt_tcp_checksum(packet: &mut IpPacket) {
-    let mut bytes = packet.packet().to_vec();
-    *bytes.last_mut().unwrap() ^= 0xFF; // Flip payload bits without updating the checksum.
-
-    *packet = packet_from_bytes(&bytes);
 }

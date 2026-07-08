@@ -8,12 +8,23 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 pub fn sum(bytes: &[u8], initial: u64) -> u64 {
     let mut acc = initial;
 
-    let mut chunks = bytes.chunks_exact(2);
+    // Sum eight bytes at a time. Folding a wider big-endian word is equivalent to summing its
+    // 16-bit halves separately: the high bits just carry down later in [`fold`]. A `u64`
+    // accumulator holds the sum of ~8k such words without overflowing, so no intermediate
+    // fold is needed for a single packet (at most 65535 bytes).
+    let mut chunks = bytes.chunks_exact(8);
     for chunk in chunks.by_ref() {
+        let word = u64::from_be_bytes(chunk.try_into().expect("chunk is 8 bytes"));
+        acc += word >> 32;
+        acc += word & 0xFFFF_FFFF;
+    }
+
+    let mut tail = chunks.remainder().chunks_exact(2);
+    for chunk in tail.by_ref() {
         acc += u64::from(u16::from_be_bytes([chunk[0], chunk[1]]));
     }
 
-    if let [last] = chunks.remainder() {
+    if let [last] = tail.remainder() {
         acc += u64::from(u16::from_be_bytes([*last, 0]));
     }
 
@@ -68,5 +79,30 @@ mod tests {
         let acc = sum(&[0xab], 0);
 
         assert_eq!(fold(acc), 0xab00);
+    }
+
+    #[test]
+    fn matches_naive_sum_over_varied_lengths() {
+        // The straightforward 16-bit-word sum, against which the wide-word `sum` must agree
+        // across every chunk / tail / remainder combination.
+        fn naive(bytes: &[u8]) -> u16 {
+            let mut acc = 0u64;
+            let mut words = bytes.chunks_exact(2);
+            for word in words.by_ref() {
+                acc += u64::from(u16::from_be_bytes([word[0], word[1]]));
+            }
+            if let [last] = words.remainder() {
+                acc += u64::from(u16::from_be_bytes([*last, 0]));
+            }
+            fold(acc)
+        }
+
+        for len in 0..40usize {
+            let bytes: Vec<u8> = (0..len)
+                .map(|i| (i as u8).wrapping_mul(37).wrapping_add(3))
+                .collect();
+
+            assert_eq!(fold(sum(&bytes, 0)), naive(&bytes), "len={len}");
+        }
     }
 }

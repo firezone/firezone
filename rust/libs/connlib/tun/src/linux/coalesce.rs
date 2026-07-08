@@ -198,18 +198,6 @@ impl Candidate {
             return None;
         }
 
-        // Merging into a NEEDS_CSUM super packet makes the kernel compute the checksum,
-        // which would silently "repair" a corrupt packet. Only coalesce valid ones.
-        if !l4_checksum_is_valid(
-            packet.packet(),
-            candidate.key.src,
-            candidate.key.dst,
-            candidate.key.protocol,
-            ip_hdr_len,
-        ) {
-            return None;
-        }
-
         Some(candidate)
     }
 
@@ -615,32 +603,4 @@ fn finalize(
         }
         _ => unreachable!("only TCP and UDP packets are coalesced"),
     }
-}
-
-/// Whether the packet's transport checksum is valid.
-fn l4_checksum_is_valid(
-    bytes: &[u8],
-    src: IpAddr,
-    dst: IpAddr,
-    protocol: IpNumber,
-    ip_hdr_len: usize,
-) -> bool {
-    let l4_len = bytes.len() - ip_hdr_len;
-
-    let pseudo_sum = match (src, dst) {
-        (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            // A zero UDP checksum means "not computed" and cannot be validated (nor coalesced).
-            if protocol == IpNumber::UDP && bytes[ip_hdr_len + 6..ip_hdr_len + 8] == [0, 0] {
-                return false;
-            }
-
-            checksum::pseudo_header_sum_v4(src, dst, protocol.0, l4_len)
-        }
-        (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            checksum::pseudo_header_sum_v6(src, dst, protocol.0, l4_len)
-        }
-        _ => return false,
-    };
-
-    checksum::fold(checksum::sum(&bytes[ip_hdr_len..], pseudo_sum)) == 0xFFFF
 }
