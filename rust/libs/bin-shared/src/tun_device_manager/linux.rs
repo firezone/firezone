@@ -7,7 +7,6 @@ use futures::{
     future::{self, Either},
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
@@ -42,6 +41,14 @@ use tokio::time::Instant;
 use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
+const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
+
+const TUN_F_CSUM: libc::c_uint = 0x01;
+const TUN_F_TSO4: libc::c_uint = 0x02;
+const TUN_F_TSO6: libc::c_uint = 0x04;
+const TUN_F_USO4: libc::c_uint = 0x20;
+const TUN_F_USO6: libc::c_uint = 0x40;
+
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 
@@ -703,7 +710,7 @@ impl Tun {
             ],
         ));
 
-        let fd = Arc::new(open_tun()?);
+        let fd = open_tun()?;
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
@@ -712,7 +719,7 @@ impl Tun {
 
                 move || {
                     logging::unwrap_or_warn!(
-                        tun::unix::tun_send(fd, outbound_rx, write),
+                        tun::linux::tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
@@ -722,7 +729,7 @@ impl Tun {
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::linux::tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
             })
@@ -735,7 +742,7 @@ impl Tun {
     }
 }
 
-fn open_tun() -> Result<OwnedFd> {
+fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
             let file = TUN_FILE.to_str()?;
@@ -755,12 +762,76 @@ fn open_tun() -> Result<OwnedFd> {
         .context("Failed to set flags on TUN device")?;
     }
 
+    let offloads = offloads_supported();
+
+    if offloads {
+        enable_offloads(fd).context("Failed to enable TUN offloads")?;
+    } else {
+        tracing::info!(
+            "Kernel does not support TUN segmentation offloads (requires Linux 6.2); packets will not be coalesced"
+        );
+    }
+
     set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
 
     // Safety: We are not closing the FD.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
-    Ok(fd)
+    Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
+}
+
+/// Whether the running kernel supports the segmentation offloads we rely on.
+///
+/// UDP segmentation offload (`TUN_F_USO4` / `TUN_F_USO6`) requires Linux 6.2.
+/// Offloads are all-or-nothing: on older kernels, we fall back to per-packet
+/// TUN I/O via [`tun::unix`].
+fn offloads_supported() -> bool {
+    match kernel_version() {
+        Some((major, minor)) => (major, minor) >= (6, 2),
+        None => {
+            tracing::warn!("Failed to determine kernel version; disabling TUN offloads");
+
+            false
+        }
+    }
+}
+
+fn kernel_version() -> Option<(u64, u64)> {
+    // Safety: An all-zeroes `utsname` is valid.
+    let mut utsname = unsafe { std::mem::zeroed::<libc::utsname>() };
+
+    // Safety: `utsname` is a valid struct for the kernel to write into.
+    if unsafe { libc::uname(&mut utsname) } != 0 {
+        return None;
+    }
+
+    // Safety: The kernel null-terminates `release`.
+    let release = unsafe { CStr::from_ptr(utsname.release.as_ptr()) };
+
+    parse_kernel_version(release.to_str().ok()?)
+}
+
+fn parse_kernel_version(release: &str) -> Option<(u64, u64)> {
+    let mut parts = release.split(['.', '-', '+']);
+
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+
+    Some((major, minor))
+}
+
+/// Enables checksum and segmentation offloads on the TUN device.
+///
+/// UDP segmentation offload (`TUN_F_USO*`) requires Linux 6.2.
+fn enable_offloads(fd: RawFd) -> io::Result<()> {
+    const OFFLOADS: libc::c_uint = TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6;
+
+    // Safety: The file descriptor is valid.
+    if unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
 }
 
 impl tun::Tun for Tun {
@@ -818,24 +889,17 @@ fn create_tun_device() -> io::Result<()> {
     Ok(())
 }
 
-/// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
+#[cfg(test)]
+mod kernel_version_tests {
+    use super::*;
 
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
-    }
-}
-
-/// Write the packet to the given file descriptor.
-fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
-    let buf = packet.packet();
-
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
+    #[test]
+    fn parses_common_release_strings() {
+        assert_eq!(parse_kernel_version("6.2.0"), Some((6, 2)));
+        assert_eq!(parse_kernel_version("6.8.0-45-generic"), Some((6, 8)));
+        assert_eq!(parse_kernel_version("5.15.0-1051-aws"), Some((5, 15)));
+        assert_eq!(parse_kernel_version("4.19.0-25-amd64"), Some((4, 19)));
+        assert_eq!(parse_kernel_version("6.18.5"), Some((6, 18)));
+        assert_eq!(parse_kernel_version("garbage"), None);
     }
 }

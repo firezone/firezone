@@ -7,6 +7,8 @@ use tokio::sync::mpsc;
 
 #[cfg(target_family = "unix")]
 pub mod ioctl;
+#[cfg(target_os = "linux")]
+pub mod linux;
 #[cfg(target_family = "unix")]
 pub mod unix;
 
@@ -132,7 +134,8 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 
 /// The sending half of the channel to the thread writing to the TUN device.
 ///
-/// Each item is one batch of packets that were processed together upstream.
+/// Each item is one batch of packets; the end of a batch marks the boundary
+/// up to which the TUN thread may coalesce packets before writing them out.
 #[derive(Clone)]
 pub struct OutboundTx(mpsc::Sender<PacketBatch>);
 

@@ -18,10 +18,8 @@ mod tests;
 use anyhow::Result;
 use std::os::fd::RawFd;
 
-use crate::{InboundTx, OutboundRx};
-
 /// Sends packets from `outbound_rx` to the TUN `fd` until the channel closes.
-pub fn send(fd: RawFd, outbound_rx: OutboundRx) -> Result<()> {
+pub fn send(fd: RawFd, outbound_rx: crate::OutboundRx) -> Result<()> {
     match sys::batch_syscalls() {
         Some(syscalls) => bulk::send(fd, syscalls, outbound_rx),
         None => crate::unix::tun_send(fd, outbound_rx, per_packet::write),
@@ -29,7 +27,7 @@ pub fn send(fd: RawFd, outbound_rx: OutboundRx) -> Result<()> {
 }
 
 /// Receives packets from the TUN `fd` into `inbound_tx` until the fd closes.
-pub fn recv(fd: RawFd, inbound_tx: InboundTx) -> Result<()> {
+pub fn recv(fd: RawFd, inbound_tx: crate::InboundTx) -> Result<()> {
     match sys::batch_syscalls() {
         Some(syscalls) => bulk::recv(fd, syscalls, inbound_tx),
         None => crate::unix::tun_recv(fd, inbound_tx, per_packet::read),
