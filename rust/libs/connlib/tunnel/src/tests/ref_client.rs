@@ -128,13 +128,6 @@ pub struct RefClient {
 
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
-    ///
-    /// Unlike the `expected_*_handshakes` above, this is NOT reset by
-    /// `clear_packets`, so it records the full send history across the test. The
-    /// re-key dead-window tolerance in the assertions uses it to tell how long a
-    /// connection has been idle even when a resource change cleared the packet
-    /// window in between. It is reset on `reset_connections`, mirroring connlib
-    /// tearing the connection down.
     #[debug(skip)]
     gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
 }
@@ -1169,10 +1162,6 @@ impl RefClient {
 
     /// The most recent instant strictly before `at` at which this client sent a
     /// packet to `gateway`, or `None` if it never did.
-    ///
-    /// Backed by [`Self::gateway_send_times`], which survives `clear_packets`, so
-    /// the re-key dead-window tolerance can measure how long a connection has been
-    /// idle even across a resource change that cleared the packet window.
     pub(crate) fn last_packet_sent_to_gateway_before(
         &self,
         gateway: GatewayId,

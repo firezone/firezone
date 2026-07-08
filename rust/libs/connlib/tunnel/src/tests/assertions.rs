@@ -261,12 +261,6 @@ fn assert_packets_properties<T, U>(
                 // one packet without a reply (see `MIN_IDLE_FOR_REKEY_DROP`). Tolerate
                 // it when the previous packet on this connection was sent at
                 // least `MIN_IDLE_FOR_REKEY_DROP` earlier.
-                //
-                // The idle gap is read from the reference model's persistent send
-                // history rather than this run's packet window, because a resource
-                // change (`AddResource`, `DeauthorizeWhileGatewayIsPartitioned`, …)
-                // clears the window mid-connection and would otherwise hide the
-                // earlier packet that proves the connection was idle.
                 if ref_client
                     .last_packet_sent_to_gateway_before(*gateway, *sent_at)
                     .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
