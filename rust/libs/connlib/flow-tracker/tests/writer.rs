@@ -11,8 +11,9 @@ use std::{
 
 use base64::Engine as _;
 use chrono::TimeZone as _;
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use flow_tracker::{FlowClose, FlowProtocol, IngestToken, Record, Role, Tracker};
+use ip_packet::IpPacket;
 use tracing_subscriber::layer::SubscriberExt as _;
 
 /// Guards the field contract between [`flow_tracker::emit`] and the writer's
@@ -150,6 +151,183 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(completed["tx_bytes"], 5);
     assert_eq!(completed["rx_packets"], 1);
     assert_eq!(completed["rx_bytes"], 6);
+}
+
+#[test]
+fn syn_retransmit_updates_flow_instead_of_splitting() {
+    let authz_id = "33333333-3333-3333-3333-333333333333";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(true, &[]), authz_id, t0);
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(true, &[]),
+            authz_id,
+            t0 + Duration::from_secs(1),
+        );
+        tracker.close_all(t0 + Duration::from_secs(2));
+    });
+
+    let flows = spool.completed_flows();
+    assert_eq!(
+        packet_counts(&flows),
+        vec![(2, 0)],
+        "retransmitted SYN counts into the same flow"
+    );
+}
+
+#[test]
+fn syn_after_return_traffic_splits_flow() {
+    let authz_id = "44444444-4444-4444-4444-444444444444";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(true, &[]), authz_id, t0);
+        drive_rx(
+            &mut tracker,
+            &tcp_return_packet(&[0; 100]),
+            t0 + Duration::from_secs(1),
+        );
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(true, &[]),
+            authz_id,
+            t0 + Duration::from_secs(2),
+        );
+        tracker.close_all(t0 + Duration::from_secs(3));
+    });
+
+    let flows = spool.completed_flows();
+    assert_eq!(
+        packet_counts(&flows),
+        vec![(1, 0), (1, 1)],
+        "a new SYN closes the old flow and starts a fresh one"
+    );
+}
+
+fn enabled_tracker() -> Tracker<ClientOrGatewayId> {
+    let mut tracker = Tracker::new(Instant::now(), Duration::from_secs(1_700_000_000));
+    tracker.set_enabled(true);
+
+    tracker
+}
+
+/// Runs the initiator-to-responder packet through the tracker's public
+/// entry points, as the gateway does for a packet arriving over the network.
+fn drive_tx(
+    tracker: &mut Tracker<ClientOrGatewayId>,
+    packet: &IpPacket,
+    authz_id: &str,
+    now: Instant,
+) {
+    let _flow = tracker.begin_network_packet(
+        "198.51.100.1:51820".parse().unwrap(),
+        "203.0.113.7:51820".parse().unwrap(),
+        now,
+    );
+    flow_tracker::record_decrypted_packet(packet);
+    flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
+    flow_tracker::record_ingest_token(Some(test_token(authz_id, "responder")));
+}
+
+/// Runs the responder-to-initiator return packet through the tracker's
+/// public entry points, as the gateway does for a packet read from TUN.
+fn drive_rx(tracker: &mut Tracker<ClientOrGatewayId>, packet: &IpPacket, now: Instant) {
+    let _flow = tracker.begin_tun_packet(packet, now);
+    flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
+    flow_tracker::record_transmit(
+        Some("198.51.100.1:51820".parse().unwrap()),
+        "203.0.113.7:51820".parse().unwrap(),
+    );
+}
+
+fn tcp_packet(syn: bool, payload: &[u8]) -> IpPacket {
+    ip_packet::make::tcp_packet(
+        "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
+        "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
+        1234,
+        443,
+        ip_packet::make::TcpFlags {
+            syn,
+            ..Default::default()
+        },
+        payload,
+    )
+    .unwrap()
+}
+
+/// The matching return packet for [`tcp_packet`], in its natural
+/// (responder-to-initiator) orientation.
+fn tcp_return_packet(payload: &[u8]) -> IpPacket {
+    ip_packet::make::tcp_packet(
+        "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
+        "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
+        443,
+        1234,
+        ip_packet::make::TcpFlags::default(),
+        payload,
+    )
+    .unwrap()
+}
+
+/// Observes the tracker's only public output: the records it emits, spooled
+/// to disk by `flow-log-writer`'s layer.
+struct SpoolObserver {
+    dir: tempfile::TempDir,
+    authz_id: String,
+}
+
+impl SpoolObserver {
+    fn new(authz_id: &str) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        flow_log_writer::write_token(dir.path(), test_token(authz_id, "responder").as_str())
+            .unwrap();
+
+        Self {
+            dir,
+            authz_id: authz_id.to_owned(),
+        }
+    }
+
+    fn observe(&self, f: impl FnOnce()) {
+        let (layer, guard) = flow_log_writer::layer(self.dir.path().to_owned());
+        let subscriber = tracing_subscriber::registry().with(layer);
+
+        tracing::subscriber::with_default(subscriber, f);
+        drop(guard); // joins the writer thread, so the reports are on disk
+    }
+
+    fn completed_flows(&self) -> Vec<serde_json::Value> {
+        let authz_dir = self.dir.path().join("responder").join(&self.authz_id);
+
+        std::fs::read_dir(&authz_dir)
+            .expect("spooled report dir exists")
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.to_string_lossy().ends_with(".end.json"))
+            .map(|path| flow_log_spool::deserialize(&std::fs::read(path).unwrap()).unwrap())
+            .collect()
+    }
+}
+
+/// The `(tx_packets, rx_packets)` of each completed flow, in stable order.
+fn packet_counts(flows: &[serde_json::Value]) -> Vec<(u64, u64)> {
+    let mut counts = flows
+        .iter()
+        .map(|flow| {
+            (
+                flow["tx_packets"].as_u64().unwrap(),
+                flow["rx_packets"].as_u64().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    counts.sort_unstable();
+
+    counts
 }
 
 /// A JWT payload carrying every claim the portal guarantees on a token.
