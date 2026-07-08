@@ -111,19 +111,8 @@ impl GatewayState {
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
-        self.flow_tracker.begin_tun_packet(&packet);
-        let result = self.handle_tun_input_inner(packet, now, provider);
-        self.flow_tracker.commit_current(now);
+        let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
 
-        result
-    }
-
-    fn handle_tun_input_inner(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-        provider: &mut impl snownet::BufferProvider,
-    ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -165,20 +154,8 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        self.flow_tracker.begin_network_packet(local, from);
-        let result = self.handle_network_input_inner(local, from, packet, now);
-        self.flow_tracker.commit_current(now);
+        let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
-        result
-    }
-
-    fn handle_network_input_inner(
-        &mut self,
-        local: SocketAddr,
-        from: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-    ) -> Result<Option<IpPacket>> {
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)

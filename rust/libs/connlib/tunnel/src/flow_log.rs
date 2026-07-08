@@ -17,9 +17,9 @@
 //! Processing a packet begins with [`Tracker::begin_tun_packet`] /
 //! [`Tracker::begin_network_packet`], which stores a [`FlowData`] in a
 //! thread-local that the call sites processing the packet fill in via the
-//! `record_*` functions. [`Tracker::commit_current`] commits the gathered
-//! data; incomplete data (e.g. because packet processing bailed early or the
-//! packet was internal traffic) is discarded.
+//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] commits
+//! the gathered data on every exit path; incomplete data (e.g. because packet
+//! processing bailed early or the packet was internal traffic) is discarded.
 
 use std::{
     cell::RefCell,
@@ -153,31 +153,29 @@ where
 {
     /// Begins gathering flow data for one packet read from the TUN device.
     ///
-    /// Pair with [`Tracker::commit_current`] once the packet is processed.
-    pub fn begin_tun_packet(&mut self, packet: &IpPacket) {
+    /// Dropping the returned guard commits the gathered data.
+    pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(FlowData::new(Entry::Tun, Some(InnerFlow::from(packet))));
         }
+
+        CurrentFlowGuard { tracker: self, now }
     }
 
     /// Begins gathering flow data for one packet received on the network interface.
     ///
-    /// Pair with [`Tracker::commit_current`] once the packet is processed.
-    pub fn begin_network_packet(&mut self, local: SocketAddr, remote: SocketAddr) {
+    /// Dropping the returned guard commits the gathered data.
+    pub fn begin_network_packet(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        now: Instant,
+    ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(FlowData::new(Entry::Network { local, remote }, None));
         }
-    }
 
-    /// Commits the flow data gathered since the last `begin_*` call; a no-op
-    /// when none was gathered. Call on every exit path, so a flow that was
-    /// gathered but never committed cannot bleed into the next packet.
-    pub fn commit_current(&mut self, now: Instant) {
-        let Some(data) = CURRENT_FLOW.take() else {
-            return;
-        };
-
-        self.commit(data, now);
+        CurrentFlowGuard { tracker: self, now }
     }
 
     fn commit(&mut self, data: FlowData, now: Instant) {
@@ -636,6 +634,26 @@ where
 
     fn now_utc(&self, now: Instant) -> DateTime<Utc> {
         self.created_at_utc + now.duration_since(self.created_at)
+    }
+}
+
+/// Commits the current packet's flow data into the tracker when dropped.
+///
+/// Holding the tracker's `&mut` also guarantees at most one packet is
+/// gathered at a time.
+#[must_use]
+pub struct CurrentFlowGuard<'a, S: Scope> {
+    tracker: &'a mut Tracker<S>,
+    now: Instant,
+}
+
+impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
+    fn drop(&mut self) {
+        let Some(data) = CURRENT_FLOW.take() else {
+            return;
+        };
+
+        self.tracker.commit(data, self.now);
     }
 }
 
