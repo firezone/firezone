@@ -537,6 +537,33 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Grant access"
     end
 
+    test "grants access with flow log reporting disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:flow_logs)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+      assert html =~ "Flow log reporting"
+
+      render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+
+      lv
+      |> form("#grant-form", policy: %{flow_log_uploads_enabled: false})
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
+      assert policy.flow_log_uploads_enabled == false
+    end
+
     test "shows blurred upgrade state in grant access form for starter accounts without policy conditions",
          %{conn: conn} do
       account =

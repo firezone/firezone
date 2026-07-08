@@ -47,6 +47,7 @@ defmodule PortalAPI.FlowLogController do
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
     with {:ok, claims} <- authenticate(conn),
+         :ok <- ensure_uploads_enabled(claims),
          :ok <- ensure_single_authorization(records, claims) do
       now = DateTime.utc_now()
 
@@ -75,6 +76,13 @@ defmodule PortalAPI.FlowLogController do
       {:error, :unauthenticated} ->
         ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
 
+      {:error, :uploads_disabled} ->
+        ProblemDetails.send(
+          conn,
+          401,
+          "Flow log uploads are not enabled for this authorization"
+        )
+
       {:error, :multiple_authorizations} ->
         ProblemDetails.send(
           conn,
@@ -99,6 +107,13 @@ defmodule PortalAPI.FlowLogController do
       _ -> {:error, :unauthenticated}
     end
   end
+
+  # Tokens are minted for every authorization so devices always receive their
+  # attribution, but the `uploads_enabled` claim carries the policy's opt-in.
+  # Devices honor it client-side; this is the server-side backstop. A token
+  # without the claim fails closed.
+  defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok
+  defp ensure_uploads_enabled(_claims), do: {:error, :uploads_disabled}
 
   # The token names exactly one policy authorization; a record that declares a
   # different one means the reporter mixed authorizations into one request, which

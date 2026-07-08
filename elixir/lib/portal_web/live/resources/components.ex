@@ -5,7 +5,8 @@ defmodule PortalWeb.Resources.Components do
     only: [
       grant_condition_card: 1,
       available_conditions: 1,
-      condition_type_label: 1
+      condition_type_label: 1,
+      flow_log_uploads_toggle: 1
     ]
 
   import PortalWeb.Clients.Components,
@@ -1025,6 +1026,7 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :pool_member_ids, :list, default: []
   attr :pool_clients, :list, default: []
   attr :clients_expanded_id, :string, default: nil
@@ -1108,6 +1110,7 @@ defmodule PortalWeb.Resources.Components do
             :if={@tab == :groups && @panel_view == :grant_form}
             account={@account}
             resource={@resource}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             grant_state={@grant_state}
           />
           <.resource_policy_authorizations_tab
@@ -1463,6 +1466,7 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :grant_state, :map, required: true
 
   def resource_grant_form(assigns) do
@@ -1692,6 +1696,12 @@ defmodule PortalWeb.Resources.Components do
                 />
               </div>
             <% end %>
+          </div>
+          <div
+            :if={@resource.type != :internet and @flow_logs_feature_enabled?}
+            class="border-t border-border pt-4"
+          >
+            <.flow_log_uploads_toggle form={@grant_form} />
           </div>
         </div>
       </div>

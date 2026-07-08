@@ -1392,6 +1392,7 @@ defmodule PortalAPI.Client.Channel do
             {Ecto.UUID.load!(resource.id), resource.name, resource.address},
             policy_authorization_id,
             policy_id,
+            flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
             socket.assigns.client,
             gateway.id,
             expires_at
@@ -1768,6 +1769,7 @@ defmodule PortalAPI.Client.Channel do
           {Ecto.UUID.load!(resource.id), resource.name, resource.address},
           policy_authorization_id,
           policy_id,
+          flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
           client,
           target_client_id,
           expires_at
@@ -2467,6 +2469,23 @@ defmodule PortalAPI.Client.Channel do
     }
   end
 
+  # Whether flow logs may be uploaded for a flow this policy authorizes: the
+  # global flow_logs feature flag must be on and the policy must not have opted
+  # out. Stamped into the ingest token so devices know whether to upload and
+  # the ingest endpoint can enforce it. A policy missing from the cache (or the
+  # legacy shim's nil policy_id) fails closed to false.
+  defp flow_log_uploads_enabled?(_cache, nil), do: false
+
+  defp flow_log_uploads_enabled?(cache, policy_id) do
+    case Map.get(cache.policies, Ecto.UUID.dump!(policy_id)) do
+      %Cache.Cacheable.Policy{flow_log_uploads_enabled: true} ->
+        Database.flow_logs_feature_enabled?()
+
+      _ ->
+        false
+    end
+  end
+
   # Mints the pair of per-flow ingest tokens for an authorization: one for the
   # initiator (the client) and one for the responder (the gateway or receiving
   # client). Each token snapshots the attribution the corresponding device must
@@ -2477,6 +2496,7 @@ defmodule PortalAPI.Client.Channel do
          {resource_id, resource_name, resource_address},
          policy_authorization_id,
          policy_id,
+         flow_log_uploads_enabled,
          %Device{type: :client} = initiator_client,
          responder_device_id,
          expires_at
@@ -2489,6 +2509,12 @@ defmodule PortalAPI.Client.Channel do
       # endpoint rejects a request whose records mix more than one of these.
       "policy_authorization_id" => policy_authorization_id,
       "policy_id" => policy_id,
+      # Whether the authorizing policy allows this flow's logs to be uploaded
+      # (policies.flow_log_uploads_enabled AND the global flow_logs feature).
+      # Devices honor it and the ingest endpoint enforces it, so the token can
+      # always be minted while uploads stay policy-gated. The claim name is the
+      # data-plane contract: connlib parses it as a required field.
+      "uploads_enabled" => flow_log_uploads_enabled,
       "resource_id" => resource_id,
       "resource_name" => resource_name,
       "resource_address" => resource_address,
@@ -2691,6 +2717,12 @@ defmodule PortalAPI.Client.Channel do
       account_feature_enabled? = account.features.client_to_client == true
 
       Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
+    end
+
+    def flow_logs_feature_enabled? do
+      query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)
+
+      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?()
     end
 
     def all_compatible_gateways_for_client_and_resource(
