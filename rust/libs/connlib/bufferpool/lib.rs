@@ -76,7 +76,7 @@ where
 
 impl<B> BufferPool<B>
 where
-    B: Buf + DerefMut<Target = [u8]>,
+    B: ResizeBuf + DerefMut<Target = [u8]>,
 {
     pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B> {
         let mut buffer = self.pull();
@@ -197,7 +197,9 @@ impl<B> DerefMut for Buffer<B> {
 
 impl<B> Drop for Buffer<B> {
     fn drop(&mut self) {
-        let buffer_storage = self.inner.take().expect("should have storage in `Drop`");
+        let mut buffer_storage = self.inner.take().expect("should have storage in `Drop`");
+
+        (buffer_storage.reset)(&mut buffer_storage.inner);
 
         let actual = (buffer_storage.capacity_of)(&buffer_storage.inner);
         if let Some(actual) = deviating_capacity(buffer_storage.capacity, actual) {
@@ -221,8 +223,67 @@ fn deviating_capacity(expected: usize, actual: usize) -> Option<usize> {
 pub trait Buf: Sized {
     fn with_capacity(capacity: usize) -> Self;
     fn clone(&self, dst: &mut Self);
-    fn resize_to(&mut self, len: usize);
     fn capacity(&self) -> usize;
+
+    /// Restores the buffer to a pristine state before it returns to the pool.
+    ///
+    /// Byte buffers are plain scratch space and don't need this; containers like
+    /// [`VecBuf`] use it to drop their items so those don't stay alive inside an
+    /// idle pool.
+    fn reset(&mut self) {}
+}
+
+/// A [`Buf`] whose length can be set directly, e.g. to fit incoming data.
+///
+/// Only byte buffers implement this; containers like [`VecBuf`] deliberately
+/// don't: their length only ever changes by pushing or truncating actual items.
+pub trait ResizeBuf: Buf {
+    fn resize_to(&mut self, len: usize);
+}
+
+/// A pooled `Vec` of arbitrary items.
+///
+/// In contrast to the byte-oriented [`Buf`] implementations ([`Vec<u8>`] and
+/// [`BytesMut`]) - which hand out zero-initialised, full-length scratch space to be
+/// written into - a `VecBuf` is a container: it is pulled empty, pushed into, and
+/// emptied again when it returns to the pool.
+#[derive(Debug)]
+pub struct VecBuf<T>(Vec<T>);
+
+impl<T> Deref for VecBuf<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Vec<T> {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for VecBuf<T> {
+    fn deref_mut(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+
+impl<T> Buf for VecBuf<T>
+where
+    T: Clone,
+{
+    fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+
+    fn clone(&self, dst: &mut Self) {
+        dst.0.clear();
+        dst.0.extend(self.0.iter().cloned());
+    }
+
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.0.clear();
+    }
 }
 
 impl Buf for Vec<u8> {
@@ -235,12 +296,14 @@ impl Buf for Vec<u8> {
         dst.copy_from_slice(self);
     }
 
-    fn resize_to(&mut self, len: usize) {
-        self.resize(len, 0);
-    }
-
     fn capacity(&self) -> usize {
         Vec::capacity(self)
+    }
+}
+
+impl ResizeBuf for Vec<u8> {
+    fn resize_to(&mut self, len: usize) {
+        self.resize(len, 0);
     }
 }
 
@@ -254,12 +317,14 @@ impl Buf for BytesMut {
         dst.copy_from_slice(self);
     }
 
-    fn resize_to(&mut self, len: usize) {
-        self.resize(len, 0);
-    }
-
     fn capacity(&self) -> usize {
         BytesMut::capacity(self)
+    }
+}
+
+impl ResizeBuf for BytesMut {
+    fn resize_to(&mut self, len: usize) {
+        self.resize(len, 0);
     }
 }
 
@@ -279,6 +344,10 @@ struct BufferStorage<B> {
     /// Captured as a function pointer so the capacity can be inspected in `Buffer`'s
     /// `Drop`, which cannot itself require the [`Buf`] bound.
     capacity_of: fn(&B) -> usize,
+    /// Restores `inner` to a pristine state; see [`Buf::reset`].
+    ///
+    /// A function pointer for the same reason as `capacity_of`.
+    reset: fn(&mut B),
 
     attributes: [KeyValue; 2],
     counter: UpDownCounter<i64>,
@@ -307,6 +376,7 @@ impl<B> BufferStorage<B> {
             capacity,
             tag,
             capacity_of: B::capacity,
+            reset: B::reset,
             counter,
             attributes,
         }
@@ -387,6 +457,19 @@ mod tests {
         buffer.resize_to(8 * 1024); // Force a reallocation beyond the pool's capacity.
 
         drop(buffer); // Exercises the capacity-deviation check on return to the pool.
+    }
+
+    #[test]
+    fn vec_buf_returns_to_the_pool_empty() {
+        let pool = BufferPool::<VecBuf<String>>::new(4, "test");
+
+        let mut buf = pool.pull();
+        buf.push("hello".to_owned());
+        drop(buf);
+
+        // The dropped buffer's storage is recycled; it must come back empty.
+        let buf = pool.pull();
+        assert!(buf.is_empty());
     }
 
     #[test]
