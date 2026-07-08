@@ -479,7 +479,7 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_log::record_resource(rid);
-        flow_log::record_ingest_token(self.ingest_tokens.get(&rid).map(IngestToken::raw));
+        flow_log::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
         Ok(())
     }

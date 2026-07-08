@@ -27,13 +27,13 @@ use std::{
     fmt::Debug,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
     time::{Duration, Instant},
 };
 
-use base64::Engine as _;
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
+
+use crate::messages::IngestToken;
 use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 
@@ -99,7 +99,7 @@ struct TxPacket<S> {
     tcp_fin: bool,
     tcp_rst: bool,
     payload_len: usize,
-    ingest_token: Option<Arc<str>>,
+    ingest_token: IngestToken,
     domain: Option<DomainName>,
 }
 
@@ -225,6 +225,15 @@ where
                     return;
                 };
 
+                // Every authorization carries an ingest token, so a packet
+                // without one was never matched to an authorization and its
+                // flow is not tracked.
+                let Some(ingest_token) = ingest_token else {
+                    tracing::trace!("Flow carries no ingest token; not tracking it");
+
+                    return;
+                };
+
                 self.record_tx(
                     TxPacket {
                         scope,
@@ -245,6 +254,15 @@ where
             }
             // The responder observes the tx direction arriving over the network.
             (Entry::Network { local, remote }, Role::Responder) => {
+                // Every authorization carries an ingest token, so a packet
+                // without one was never matched to an authorization and its
+                // flow is not tracked.
+                let Some(ingest_token) = ingest_token else {
+                    tracing::trace!("Flow carries no ingest token; not tracking it");
+
+                    return;
+                };
+
                 self.record_tx(
                     TxPacket {
                         scope,
@@ -369,15 +387,6 @@ where
             ingest_token,
             domain,
         } = tx;
-
-        // Every authorization carries an ingest token, so a flow without one
-        // was never recorded against an authorization and is not tracked.
-        // The rx direction only updates flows created here, so it is gated too.
-        if ingest_token.is_none() {
-            tracing::trace!("Flow carries no ingest token; not tracking it");
-
-            return;
-        }
 
         match (src_proto, dst_proto) {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
@@ -667,7 +676,7 @@ struct FlowData {
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<Arc<str>>,
+    ingest_token: Option<IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -745,7 +754,7 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-pub fn record_ingest_token(token: Option<Arc<str>>) {
+pub fn record_ingest_token(token: Option<IngestToken>) {
     update_current_flow(|data| {
         data.ingest_token = token;
     });
@@ -870,7 +879,7 @@ pub struct FlowClose {
 /// for an open record and `Some` once the flow has ended.
 #[derive(Debug)]
 pub struct Record {
-    pub ingest_token: Option<Arc<str>>,
+    pub ingest_token: IngestToken,
     pub protocol: FlowProtocol,
 
     pub inner_src_ip: IpAddr,
@@ -960,7 +969,7 @@ impl Record {
         inner_src_port: u16,
         inner_dst_ip: IpAddr,
         inner_dst_port: u16,
-        ingest_token: Option<Arc<str>>,
+        ingest_token: IngestToken,
         domain: Option<DomainName>,
         context: FlowContext,
         flow_start: DateTime<Utc>,
@@ -997,41 +1006,11 @@ impl FlowClose {
     }
 }
 
-/// The attribution claims carried in an ingest token's JWT payload.
-///
-/// Decoded without signature verification, purely for local observability.
-/// The portal guarantees the non-optional claims on every token it mints; a
-/// token missing any of them fails to decode and attributes nothing.
-#[derive(Debug, serde::Deserialize)]
-pub struct Attribution {
-    pub role: String,
-    pub device_id: String,
-    pub policy_authorization_id: String,
-    pub policy_id: String,
-    pub resource_id: String,
-    pub resource_name: String,
-    pub resource_address: Option<String>,
-    pub actor_id: String,
-    pub actor_email: Option<String>,
-    pub actor_name: String,
-    pub auth_provider_id: Option<String>,
-    pub authorized_at: String,
-    pub authorization_expires_at: String,
-    pub client_version: Option<String>,
-    pub device_os_name: Option<String>,
-    pub device_os_version: Option<String>,
-    pub device_serial: Option<String>,
-    pub device_uuid: Option<String>,
-    pub device_identifier_for_vendor: Option<String>,
-    pub device_firebase_installation_id: Option<String>,
-}
-
 /// Emits a flow log record as a structured tracing event.
 ///
 /// The token's attribution claims are included; the token itself is not.
 pub fn emit(record: &Record) {
-    let attr = record.ingest_token.as_deref().and_then(decode_attribution);
-    let attr = attr.as_ref();
+    let attr = record.ingest_token.claims();
 
     let close = record.close.as_ref();
 
@@ -1041,30 +1020,30 @@ pub fn emit(record: &Record) {
                 target: "flow_logs",
                 protocol = record.protocol.as_str(),
 
-                role = attr.map(|a| a.role.as_str()),
-                device_id = attr.map(|a| a.device_id.as_str()),
-                policy_authorization_id = attr.map(|a| a.policy_authorization_id.as_str()),
-                policy_id = attr.map(|a| a.policy_id.as_str()),
+                role = attr.role.as_str(),
+                device_id = attr.device_id.as_str(),
+                policy_authorization_id = attr.policy_authorization_id.as_str(),
+                policy_id = attr.policy_id.as_str(),
 
-                resource_id = attr.map(|a| a.resource_id.as_str()),
-                resource_name = attr.map(|a| a.resource_name.as_str()),
-                resource_address = attr.and_then(|a| a.resource_address.as_deref()),
+                resource_id = attr.resource_id.as_str(),
+                resource_name = attr.resource_name.as_str(),
+                resource_address = attr.resource_address.as_deref(),
 
-                actor_id = attr.map(|a| a.actor_id.as_str()),
-                actor_email = attr.and_then(|a| a.actor_email.as_deref()),
-                actor_name = attr.map(|a| a.actor_name.as_str()),
-                auth_provider_id = attr.and_then(|a| a.auth_provider_id.as_deref()),
+                actor_id = attr.actor_id.as_str(),
+                actor_email = attr.actor_email.as_deref(),
+                actor_name = attr.actor_name.as_str(),
+                auth_provider_id = attr.auth_provider_id.as_deref(),
 
-                authorized_at = attr.map(|a| a.authorized_at.as_str()),
-                authorization_expires_at = attr.map(|a| a.authorization_expires_at.as_str()),
+                authorized_at = attr.authorized_at.as_str(),
+                authorization_expires_at = attr.authorization_expires_at.as_str(),
 
-                client_version = attr.and_then(|a| a.client_version.as_deref()),
-                device_os_name = attr.and_then(|a| a.device_os_name.as_deref()),
-                device_os_version = attr.and_then(|a| a.device_os_version.as_deref()),
-                device_serial = attr.and_then(|a| a.device_serial.as_deref()),
-                device_uuid = attr.and_then(|a| a.device_uuid.as_deref()),
-                device_identifier_for_vendor = attr.and_then(|a| a.device_identifier_for_vendor.as_deref()),
-                device_firebase_installation_id = attr.and_then(|a| a.device_firebase_installation_id.as_deref()),
+                client_version = attr.client_version.as_deref(),
+                device_os_name = attr.device_os_name.as_deref(),
+                device_os_version = attr.device_os_version.as_deref(),
+                device_serial = attr.device_serial.as_deref(),
+                device_uuid = attr.device_uuid.as_deref(),
+                device_identifier_for_vendor = attr.device_identifier_for_vendor.as_deref(),
+                device_firebase_installation_id = attr.device_firebase_installation_id.as_deref(),
 
                 inner_src_ip = %record.inner_src_ip,
                 inner_src_port = record.inner_src_port,
@@ -1097,16 +1076,6 @@ pub fn emit(record: &Record) {
     }
 }
 
-/// Decodes the attribution claims of an ingest token without verifying its signature.
-pub fn decode_attribution(token: &str) -> Option<Attribution> {
-    let payload = token.split('.').nth(1)?;
-    let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload)
-        .ok()?;
-
-    serde_json::from_slice(&json).ok()
-}
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 struct TcpFlowKey<S> {
     scope: S,
@@ -1135,7 +1104,7 @@ struct TcpFlowValue {
     domain: Option<DomainName>,
 
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<Arc<str>>,
+    ingest_token: IngestToken,
 
     fin_tx: bool,
     fin_rx: bool,
@@ -1151,7 +1120,7 @@ struct UdpFlowValue {
     domain: Option<DomainName>,
 
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<Arc<str>>,
+    ingest_token: IngestToken,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1260,25 +1229,35 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use super::*;
+    use base64::Engine as _;
     use chrono::TimeZone as _;
     use tracing_subscriber::layer::SubscriberExt as _;
 
-    /// Guards the field contract between [`emit`] and `flow-log-writer`'s layer:
-    /// an emitted record must round-trip losslessly into a spooled report.
     /// A JWT payload carrying every claim the portal guarantees on a token.
     fn required_claims(policy_authorization_id: &str, role: &str) -> String {
         format!(
-            r#"{{"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z"}}"#
+            r#"{{"account_id":"c1e296cd-b8ff-4565-8a4c-b6023a4a4b10","iat":1782756000,"exp":1785434400,"uploads_enabled":true,"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z"}}"#
         )
     }
 
+    /// Assembles and parses a well-formed ingest token for `authz_id`.
+    fn test_token(authz_id: &str, role: &str) -> IngestToken {
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+
+        let header = encode(br#"{"alg":"HS256"}"#);
+        let payload = encode(required_claims(authz_id, role).as_bytes());
+        let token = format!("{header}.{payload}.{}", encode(b"signature"));
+
+        serde_json::from_value(serde_json::Value::String(token)).unwrap()
+    }
+
+    /// Guards the field contract between [`emit`] and `flow-log-writer`'s layer:
+    /// an emitted record must round-trip losslessly into a spooled report.
     #[test]
     fn emitted_records_spool_via_flow_log_writer_layer() {
         let authz_id = "11111111-1111-1111-1111-111111111111";
-        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(required_claims(authz_id, "responder"));
         let record = Record {
-            ingest_token: Some(format!("header.{claims}.signature").into()),
+            ingest_token: test_token(authz_id, "responder"),
             protocol: FlowProtocol::Tcp,
             inner_src_ip: "100.64.0.1".parse().unwrap(),
             inner_src_port: 1234,
@@ -1301,7 +1280,7 @@ mod tests {
         };
 
         let dir = tempfile::tempdir().unwrap();
-        flow_log_writer::write_token(dir.path(), record.ingest_token.as_deref().unwrap()).unwrap();
+        flow_log_writer::write_token(dir.path(), record.ingest_token.as_str()).unwrap();
 
         let (layer, guard) = flow_log_writer::layer(dir.path().to_owned());
         let subscriber = tracing_subscriber::registry().with(layer);
@@ -1360,32 +1339,5 @@ mod tests {
             "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
             format!("{diff:?}")
         );
-    }
-
-    #[test]
-    fn decode_attribution_reads_jwt_payload_segment() {
-        // An HS256 JWT is `header.payload.signature`; attribution is the middle
-        // segment, and the (untrusted) signature is never inspected.
-        let claims = required_claims("pa-1", "responder")
-            .replace(r#""actor_name""#, r#""actor_email":"a@b.c","actor_name""#);
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims);
-        let token = format!("ignored-header.{payload}.ignored-signature");
-
-        let attr = decode_attribution(&token).expect("decodes attribution");
-
-        assert_eq!(attr.policy_authorization_id, "pa-1");
-        assert_eq!(attr.actor_email.as_deref(), Some("a@b.c"));
-        assert_eq!(attr.role, "responder");
-        assert!(attr.resource_address.is_none());
-        // The portal omits `client_version` when the user agent is unparsable.
-        assert!(attr.client_version.is_none());
-    }
-
-    #[test]
-    fn rejects_token_missing_a_guaranteed_claim() {
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(r#"{"policy_authorization_id":"pa-1","role":"responder"}"#);
-
-        assert!(decode_attribution(&format!("h.{payload}.s")).is_none());
     }
 }

@@ -230,24 +230,24 @@ impl FlowLogsConfig {
 ///
 /// Deserializing parses and retains the claims; the signature is not
 /// verified because only the portal and the ingest API hold the key.
+/// Internally reference-counted: cloning is a refcount bump, so the token can
+/// be recorded into per-packet flow data without copying it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IngestToken {
-    /// Shared so the token can be recorded per packet without copying it.
-    raw: Arc<str>,
+pub struct IngestToken(Arc<IngestTokenInner>);
+
+#[derive(Debug, PartialEq, Eq)]
+struct IngestTokenInner {
+    raw: String,
     claims: IngestTokenClaims,
 }
 
 impl IngestToken {
     pub fn as_str(&self) -> &str {
-        &self.raw
-    }
-
-    pub fn raw(&self) -> Arc<str> {
-        Arc::clone(&self.raw)
+        &self.0.raw
     }
 
     pub fn claims(&self) -> &IngestTokenClaims {
-        &self.claims
+        &self.0.claims
     }
 }
 
@@ -260,10 +260,7 @@ impl<'de> Deserialize<'de> for IngestToken {
 
         let claims = parse_ingest_token_claims(&raw).map_err(serde::de::Error::custom)?;
 
-        Ok(Self {
-            raw: Arc::from(raw),
-            claims,
-        })
+        Ok(Self(Arc::new(IngestTokenInner { raw, claims })))
     }
 }
 
@@ -347,6 +344,15 @@ pub struct IngestTokenClaims {
 pub enum IngestTokenRole {
     Initiator,
     Responder,
+}
+
+impl IngestTokenRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IngestTokenRole::Initiator => "initiator",
+            IngestTokenRole::Responder => "responder",
+        }
+    }
 }
 
 /// A portal-minted ingest token for tests, signed with a throwaway key.
