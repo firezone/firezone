@@ -1160,8 +1160,6 @@ impl RefClient {
             .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
     }
 
-    /// The most recent instant strictly before `at` at which this client sent a
-    /// packet to `gateway`, or `None` if it never did.
     pub(crate) fn last_packet_sent_to_gateway_before(
         &self,
         gateway: GatewayId,
