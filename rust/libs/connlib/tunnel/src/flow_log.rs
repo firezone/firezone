@@ -17,7 +17,7 @@
 //! Processing a packet begins with [`Tracker::begin_tun_packet`] /
 //! [`Tracker::begin_network_packet`], which stores a [`FlowData`] in a
 //! thread-local that the call sites processing the packet fill in via the
-//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] commits
+//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] inserts
 //! the gathered data on every exit path; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
 
@@ -153,7 +153,7 @@ where
 {
     /// Begins gathering flow data for one packet read from the TUN device.
     ///
-    /// Dropping the returned guard commits the gathered data.
+    /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(FlowData::new(Entry::Tun, Some(InnerFlow::from(packet))));
@@ -164,7 +164,7 @@ where
 
     /// Begins gathering flow data for one packet received on the network interface.
     ///
-    /// Dropping the returned guard commits the gathered data.
+    /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_network_packet(
         &mut self,
         local: SocketAddr,
@@ -178,7 +178,7 @@ where
         CurrentFlowGuard { tracker: self, now }
     }
 
-    fn commit(&mut self, data: FlowData, now: Instant) {
+    fn insert_flow(&mut self, data: FlowData, now: Instant) {
         let FlowData {
             entry,
             inner:
@@ -637,7 +637,7 @@ where
     }
 }
 
-/// Commits the current packet's flow data into the tracker when dropped.
+/// Inserts the current packet's flow data into the tracker when dropped.
 ///
 /// Holding the tracker's `&mut` also guarantees at most one packet is
 /// gathered at a time.
@@ -653,7 +653,7 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
             return;
         };
 
-        self.tracker.commit(data, self.now);
+        self.tracker.insert_flow(data, self.now);
     }
 }
 
@@ -682,7 +682,7 @@ enum Entry {
 /// The facts gathered about one packet while it is being processed.
 ///
 /// Which of these can be filled in depends on the entry point and this device's
-/// role; [`Tracker::commit`] interprets them (see the module docs).
+/// role; [`Tracker::insert_flow`] interprets them (see the module docs).
 struct FlowData {
     entry: Entry,
     /// The inner (application) packet's flow fields.
