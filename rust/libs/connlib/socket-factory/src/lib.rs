@@ -322,25 +322,16 @@ impl PerfUdpSocket {
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
     fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramSegmentIter> {
-        let RecvBatch {
-            mut buffers,
-            mut metas,
-        } = self.recv_buffers.pull_batch();
+        let mut batch = self.recv_buffers.pull_batch();
 
         let len = socket.inner.try_io(Interest::READABLE, || {
             // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
             // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
             #[cfg_attr(not(apple), allow(clippy::never_loop))]
             loop {
-                // `state.recv` requires us to pass `IoSliceMut` but later on, we need the
-                // original buffer again because `DatagramSegmentIter` needs to own them.
-                // That is why we cannot just create an `IoSliceMut` to begin with.
-                let mut io_bufs = buffers
-                    .iter_mut()
-                    .map(|b| IoSliceMut::new(b))
-                    .collect::<SmallVec<[_; quinn_udp::BATCH_SIZE]>>();
+                let (mut io_bufs, metas) = batch.recv_slices();
 
-                match socket.recv(&mut io_bufs, &mut metas) {
+                match socket.recv(&mut io_bufs, metas) {
                     // Connected sockets surface (one-shot) ICMP errors on receive; they are not fatal.
                     #[cfg(apple)]
                     Err(e) if socket.connected && is_icmp_unreachable(&e) => {
@@ -360,7 +351,12 @@ impl PerfUdpSocket {
             ],
         );
 
-        Ok(DatagramSegmentIter::new(buffers, metas, self.port, len))
+        Ok(DatagramSegmentIter::new(
+            batch.buffers,
+            batch.metas,
+            self.port,
+            len,
+        ))
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
@@ -785,6 +781,27 @@ pub(crate) struct RecvBuffers {
 pub(crate) struct RecvBatch {
     buffers: Buffer<VecBuf<Buffer<Vec<u8>>>>,
     metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+}
+
+impl RecvBatch {
+    /// The batch's datagram buffers as scatter slices, paired with the meta array the
+    /// kernel fills in — the two arguments a `recvmmsg`-style read expects. Borrows the
+    /// batch for the duration of the read; afterwards the buffers are handed to a
+    /// [`DatagramSegmentIter`].
+    fn recv_slices(
+        &mut self,
+    ) -> (
+        SmallVec<[IoSliceMut<'_>; quinn_udp::BATCH_SIZE]>,
+        &mut [quinn_udp::RecvMeta],
+    ) {
+        let io_bufs = self
+            .buffers
+            .iter_mut()
+            .map(|b| IoSliceMut::new(b))
+            .collect();
+
+        (io_bufs, &mut self.metas)
+    }
 }
 
 impl RecvBuffers {

@@ -19,7 +19,7 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    io::{self, IoSliceMut},
+    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, Waker},
@@ -30,7 +30,7 @@ use anyhow::Result;
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::{DatagramSegmentIter, RecvBatch, RecvBuffers};
+use crate::{DatagramSegmentIter, RecvBuffers};
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -332,24 +332,23 @@ fn drain(
     let socket = victim.socket.as_socket();
 
     loop {
-        let RecvBatch {
-            mut buffers,
-            mut metas,
-        } = recv_buffers.pull_batch();
+        let mut batch = recv_buffers.pull_batch();
 
         let len = {
-            let mut io_bufs = buffers
-                .iter_mut()
-                .map(|b| IoSliceMut::new(b))
-                .collect::<smallvec::SmallVec<[_; quinn_udp::BATCH_SIZE]>>();
+            let (mut io_bufs, metas) = batch.recv_slices();
 
-            match socket.recv(&mut io_bufs, &mut metas) {
+            match socket.recv(&mut io_bufs, metas) {
                 Ok(len) => len,
                 Err(_) => break, // Typically `WouldBlock`: the socket is dry.
             }
         };
 
-        out.push_back(DatagramSegmentIter::new(buffers, metas, port, len));
+        out.push_back(DatagramSegmentIter::new(
+            batch.buffers,
+            batch.metas,
+            port,
+            len,
+        ));
     }
 }
 
