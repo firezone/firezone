@@ -1,5 +1,6 @@
 //! Message types that are used by both the gateway and client.
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::RelayId;
@@ -231,13 +232,18 @@ impl FlowLogsConfig {
 /// verified because only the portal and the ingest API hold the key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestToken {
-    raw: String,
+    /// Shared so the token can be recorded per packet without copying it.
+    raw: Arc<str>,
     claims: IngestTokenClaims,
 }
 
 impl IngestToken {
     pub fn as_str(&self) -> &str {
         &self.raw
+    }
+
+    pub fn raw(&self) -> Arc<str> {
+        Arc::clone(&self.raw)
     }
 
     pub fn claims(&self) -> &IngestTokenClaims {
@@ -254,7 +260,10 @@ impl<'de> Deserialize<'de> for IngestToken {
 
         let claims = parse_ingest_token_claims(&raw).map_err(serde::de::Error::custom)?;
 
-        Ok(Self { raw, claims })
+        Ok(Self {
+            raw: Arc::from(raw),
+            claims,
+        })
     }
 }
 

@@ -27,6 +27,7 @@ use std::{
     fmt::Debug,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -98,7 +99,7 @@ struct TxPacket<S> {
     tcp_fin: bool,
     tcp_rst: bool,
     payload_len: usize,
-    ingest_token: Option<String>,
+    ingest_token: Option<Arc<str>>,
     domain: Option<DomainName>,
 }
 
@@ -666,7 +667,7 @@ struct FlowData {
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<String>,
+    ingest_token: Option<Arc<str>>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -744,7 +745,7 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-pub fn record_ingest_token(token: Option<String>) {
+pub fn record_ingest_token(token: Option<Arc<str>>) {
     update_current_flow(|data| {
         data.ingest_token = token;
     });
@@ -869,7 +870,7 @@ pub struct FlowClose {
 /// for an open record and `Some` once the flow has ended.
 #[derive(Debug)]
 pub struct Record {
-    pub ingest_token: Option<String>,
+    pub ingest_token: Option<Arc<str>>,
     pub protocol: FlowProtocol,
 
     pub inner_src_ip: IpAddr,
@@ -959,7 +960,7 @@ impl Record {
         inner_src_port: u16,
         inner_dst_ip: IpAddr,
         inner_dst_port: u16,
-        ingest_token: Option<String>,
+        ingest_token: Option<Arc<str>>,
         domain: Option<DomainName>,
         context: FlowContext,
         flow_start: DateTime<Utc>,
@@ -1134,7 +1135,7 @@ struct TcpFlowValue {
     domain: Option<DomainName>,
 
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<String>,
+    ingest_token: Option<Arc<str>>,
 
     fin_tx: bool,
     fin_rx: bool,
@@ -1150,7 +1151,7 @@ struct UdpFlowValue {
     domain: Option<DomainName>,
 
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<String>,
+    ingest_token: Option<Arc<str>>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1277,7 +1278,7 @@ mod tests {
         let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(required_claims(authz_id, "responder"));
         let record = Record {
-            ingest_token: Some(format!("header.{claims}.signature")),
+            ingest_token: Some(format!("header.{claims}.signature").into()),
             protocol: FlowProtocol::Tcp,
             inner_src_ip: "100.64.0.1".parse().unwrap(),
             inner_src_port: 1234,
