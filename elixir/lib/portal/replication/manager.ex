@@ -92,6 +92,9 @@ defmodule Portal.Replication.Manager do
       {:error, reason} ->
         handle_start_error(reason, state)
     end
+  rescue
+    error ->
+      handle_start_error(error, state)
   end
 
   defp link_existing_pid(pid, state) do
@@ -128,6 +131,17 @@ defmodule Portal.Replication.Manager do
     {connection_opts, config} =
       Application.fetch_env!(:portal, connection_module)
       |> Keyword.pop(:connection_opts)
+
+    # A password configured as an MFA (e.g. an Entra access token fetcher) is
+    # resolved fresh for every connection attempt since tokens expire.
+    connection_opts =
+      case Keyword.get(connection_opts, :password) do
+        {module, function, args} ->
+          Keyword.put(connection_opts, :password, apply(module, function, args))
+
+        _ ->
+          connection_opts
+      end
 
     %{
       connection_opts: connection_opts,

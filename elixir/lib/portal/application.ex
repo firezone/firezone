@@ -35,7 +35,9 @@ defmodule Portal.Application do
   end
 
   defp children do
-    base_children = [
+    # Must start before the repos: they fetch Entra access tokens from it
+    # when connecting with DATABASE_ENTRA_AUTH enabled
+    base_children = managed_identity() ++ [
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
@@ -132,6 +134,14 @@ defmodule Portal.Application do
 
     if Keyword.get(config, :enabled, true) do
       [{Portal.Queue, opts}]
+    else
+      []
+    end
+  end
+
+  defp managed_identity do
+    if Portal.Config.env_var_to_config!(:database_entra_auth) do
+      [Portal.Azure.ManagedIdentity]
     else
       []
     end
