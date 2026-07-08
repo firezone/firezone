@@ -41,6 +41,7 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
@@ -595,6 +596,7 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             pool_member_ids={@selected_resource_pool_member_ids}
             pool_clients={@selected_resource_pool_clients}
             clients_expanded_id={@clients_expanded_id}
@@ -1428,6 +1430,12 @@ defmodule PortalWeb.Resources do
     defdelegate client_to_client_enabled?(account), to: Components.Database
     defdelegate get_client(client_id, subject), to: Components.Database
     defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
+
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
 
     def all_sites(subject) do
       from(s in Site, as: :sites)

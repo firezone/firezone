@@ -31,6 +31,7 @@ defmodule PortalWeb.Policies do
       socket
       |> assign(stale: false)
       |> assign(page_title: "Policies")
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
       |> assign(selected_policy: nil, policy_providers: [])
       |> assign(
@@ -204,10 +205,6 @@ defmodule PortalWeb.Policies do
     end
   end
 
-  def flow_logs_feature_enabled? do
-    Database.flow_logs_feature_enabled?()
-  end
-
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
@@ -352,6 +349,7 @@ defmodule PortalWeb.Policies do
         policy={@selected_policy}
         providers={@policy_providers}
         subject={@subject}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
         confirm_state={policy_confirm_state(assigns)}
