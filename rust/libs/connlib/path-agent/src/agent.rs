@@ -48,18 +48,19 @@ pub struct PathAgent {
     /// `true` once a handshake has been accepted from the peer. Probes ride
     /// the session, so they wait for this; it survives a [`Self::rebuild`]
     /// because the session does, too.
-    handshake_exchanged: bool,
+    established: bool,
 
-    /// While set (and in the future), the primary loses its selection guard
-    /// (bucket veto + hysteresis): WireGuard signalled that the path is
-    /// suspect, so the best *fresh* pair wins outright.
+    /// While set (and in the future), WireGuard signalled that the current
+    /// path is suspect: the bucket veto lifts so we can fail over to a worse
+    /// bucket (e.g. direct to relayed). The same-bucket RTT hysteresis still
+    /// protects a primary that is answering probes.
     guard_suspended_until: Option<Instant>,
-    /// Arrival time of the last accepted inbound init, for distress detection.
-    last_inbound_init_at: Option<Instant>,
 
     responder: Responder,
 
     outbound_init: Option<OutboundInit>,
+    /// Arrival time of the last accepted inbound init, for distress detection.
+    last_inbound_init_at: Option<Instant>,
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
@@ -83,10 +84,66 @@ pub(crate) struct PairState {
     /// Probes awaiting their reply. Several can be outstanding on a
     /// high-RTT path because the burst fires faster than one round trip.
     inflight_probes: Vec<InflightProbe>,
-    /// The remaining probe times of the current burst.
-    burst: std::vec::IntoIter<Instant>,
-    next_probe_at: Option<Instant>,
+    probes: Probes,
     next_probe_seq: u16,
+}
+
+/// A pair's probe schedule: a front-loaded burst, optionally followed by the
+/// live cadence once the pair becomes the primary.
+struct Probes {
+    /// Remaining probe times of the current burst, earliest first.
+    burst: std::vec::IntoIter<Instant>,
+    /// Next live-cadence probe. Set only for the primary once its burst is done.
+    live: Option<Instant>,
+}
+
+impl Default for Probes {
+    fn default() -> Self {
+        Self {
+            burst: Vec::new().into_iter(),
+            live: None,
+        }
+    }
+}
+
+impl Probes {
+    /// (Re)starts the front-loaded burst at `at`.
+    fn start(&mut self, at: Instant) {
+        self.burst = iter::once(at)
+            .chain(PROBE_BURST_GAPS.iter().scan(at, |t, gap| {
+                *t += *gap;
+                Some(*t)
+            }))
+            .collect::<Vec<_>>()
+            .into_iter();
+    }
+
+    /// The next scheduled probe, if any.
+    fn due(&self) -> Option<Instant> {
+        self.burst.as_slice().first().copied().or(self.live)
+    }
+
+    /// Records that the due probe fired at `now` and schedules the next one.
+    /// `keep_live` requests the live cadence once the burst is exhausted.
+    fn fire(&mut self, now: Instant, keep_live: bool) {
+        self.burst.next();
+
+        if self.burst.as_slice().is_empty() {
+            self.live = keep_live.then(|| now + PROBE_INTERVAL_LIVE);
+        }
+    }
+
+    fn in_burst(&self) -> bool {
+        !self.burst.as_slice().is_empty()
+    }
+
+    fn arm_live(&mut self, at: Instant) {
+        self.live = Some(at);
+    }
+
+    fn disarm_live(&mut self) {
+        self.live = None;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -193,23 +250,6 @@ impl PairState {
         matches!(self.kinds.0, crate::CandidateKind::Relayed)
             || matches!(self.kinds.1, crate::CandidateKind::Relayed)
     }
-
-    fn start_burst(&mut self, at: Instant) {
-        let mut schedule = iter::once(at)
-            .chain(PROBE_BURST_GAPS.iter().scan(at, |t, gap| {
-                *t += *gap;
-                Some(*t)
-            }))
-            .collect::<Vec<_>>()
-            .into_iter();
-
-        self.next_probe_at = schedule.next();
-        self.burst = schedule;
-    }
-
-    fn is_bursting(&self) -> bool {
-        self.burst.len() > 0
-    }
 }
 
 impl Default for PathAgent {
@@ -225,11 +265,11 @@ impl PathAgent {
             remotes: Vec::new(),
             pairs: BTreeMap::new(),
             primary: None,
-            handshake_exchanged: false,
+            established: false,
             guard_suspended_until: None,
-            last_inbound_init_at: None,
             responder: Responder::default(),
             outbound_init: None,
+            last_inbound_init_at: None,
             forwarded_response: None,
             pending_transmits: VecDeque::new(),
             events: VecDeque::new(),
@@ -296,15 +336,15 @@ impl PathAgent {
             self.add_pair(local, c, now);
         }
 
-        // Candidate arrival hints that the incumbent may be dead: the most
-        // common reason for new candidates mid-session is that the peer
+        // Candidate arrival hints that the current primary may be dead: the
+        // most common reason for new candidates mid-session is that the peer
         // roamed away from the address our primary points at. Re-probe the
-        // primary and let selection run unguarded — if the primary is alive,
-        // its burst reply keeps it winning the scan; if it is dead, a fresh
-        // pair takes over without waiting for WireGuard's escalation.
+        // primary and lift the bucket veto — if the primary is alive, its
+        // reply keeps it winning the scan; if it is dead, a fresh pair takes
+        // over without waiting for WireGuard's escalation.
         if let Some(primary) = self.primary {
             if let Some(state) = self.pairs.get_mut(&primary) {
-                state.start_burst(now);
+                state.probes.start(now);
             }
 
             self.suspend_guard(now);
@@ -326,11 +366,10 @@ impl PathAgent {
             local_family_matched: local.is_family_matched(),
             rtt: None,
             inflight_probes: Vec::new(),
-            burst: Vec::new().into_iter(),
-            next_probe_at: None,
+            probes: Probes::default(),
             next_probe_seq: 0,
         };
-        state.start_burst(burst_at);
+        state.probes.start(burst_at);
 
         self.pairs.insert(pair, state);
     }
@@ -347,7 +386,7 @@ impl PathAgent {
             && local == removed_local
         {
             self.primary = None;
-            self.burst_all_pairs(now);
+            self.probe_all_pairs(now);
         }
 
         true
@@ -366,7 +405,7 @@ impl PathAgent {
             && remote == removed_addr
         {
             self.primary = None;
-            self.burst_all_pairs(now);
+            self.probe_all_pairs(now);
         }
 
         true
@@ -397,12 +436,12 @@ impl PathAgent {
             .filter(|c| !drop_local(c))
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
-        let handshake_exchanged = self.handshake_exchanged;
+        let established = self.established;
         let last_inbound_init_at = self.last_inbound_init_at;
 
         *self = Self::new();
 
-        self.handshake_exchanged = handshake_exchanged;
+        self.established = established;
         self.last_inbound_init_at = last_inbound_init_at;
 
         for local in locals {
@@ -456,9 +495,7 @@ impl PathAgent {
             &mut self.outbound_init,
             self.primary,
         ) {
-            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, _)
-                if !self.handshake_exchanged =>
-            {
+            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, _) if !self.established => {
                 tracing::debug!(bytes = bytes.len(), "Buffered initial HandshakeInit");
 
                 self.forwarded_response = None;
@@ -480,7 +517,7 @@ impl PathAgent {
                     payload: Payload::Ciphertext(bytes),
                 });
                 self.suspend_guard(now);
-                self.burst_all_pairs(now);
+                self.probe_all_pairs(now);
                 self.select_primary(now);
             }
             // A routine re-key rides the primary without restarting probes.
@@ -503,7 +540,7 @@ impl PathAgent {
                 );
 
                 outbound_init.replace(OutboundInit::new(bytes, now));
-                self.burst_all_pairs(now);
+                self.probe_all_pairs(now);
             }
             (Ok(Packet::HandshakeResponse(_)), _, _) => {
                 if let (Some(init_bytes), Some(path)) = (
@@ -554,14 +591,15 @@ impl PathAgent {
         };
 
         match (parsed, self.primary) {
+            // Replays and duplicates short-circuit before touching the session.
+            //
             // A replayed init is served from the cache without touching boringtun.
-            (Packet::HandshakeInit(_), _) if self.cached_response(bytes, now).is_some() => {
+            (Packet::HandshakeInit(_), _)
+                if let Some(response) = self.cached_response(bytes, now) =>
+            {
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-                let response_bytes = self
-                    .cached_response(bytes, now)
-                    .expect("checked in the guard")
-                    .to_vec();
+                let response_bytes = response.to_vec();
                 self.pending_transmits.push_back(Transmit {
                     local: path.0,
                     remote: path.1,
@@ -577,6 +615,14 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
+            (Packet::HandshakeResponse(_), _)
+                if self.forwarded_response.as_deref() == Some(bytes) =>
+            {
+                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
+
+                ControlFlow::Break(())
+            }
+            // Accepts: authenticate, then adopt or re-evaluate.
             (Packet::HandshakeInit(_), primary) => {
                 let Some(outbound) = self.decapsulate_init(tunnel, bytes, path, now) else {
                     return ControlFlow::Break(());
@@ -590,7 +636,7 @@ impl PathAgent {
                 self.responder.last_init_path = Some(path);
 
                 self.register_peer_reflexive(path, now);
-                self.handshake_exchanged = true;
+                self.established = true;
 
                 // Distinct inits minutes apart are routine re-keys; in quick
                 // succession they mean the peer isn't hearing our responses
@@ -604,7 +650,7 @@ impl PathAgent {
                     tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed early; re-evaluating paths");
 
                     self.suspend_guard(now);
-                    self.burst_all_pairs(now);
+                    self.probe_all_pairs(now);
                     self.select_primary(now);
                 }
 
@@ -618,13 +664,6 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            (Packet::HandshakeResponse(_), _)
-                if self.forwarded_response.as_deref() == Some(bytes) =>
-            {
-                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
-
-                ControlFlow::Break(())
-            }
             (Packet::HandshakeResponse(_), primary) => {
                 let Some(outbound) = self.decapsulate_response(tunnel, bytes, path, now) else {
                     return ControlFlow::Break(());
@@ -634,7 +673,7 @@ impl PathAgent {
 
                 self.outbound_init = None;
                 self.forwarded_response = Some(bytes.to_vec());
-                self.handshake_exchanged = true;
+                self.established = true;
 
                 if primary.is_none() {
                     self.set_primary(path, now);
@@ -655,8 +694,15 @@ impl PathAgent {
     fn cached_response(&self, init: &[u8], now: Instant) -> Option<&[u8]> {
         let d = self.responder.dedup.as_ref()?;
 
-        (now.duration_since(d.cached_at) < RESPONDER_DEDUP_TTL && d.init_bytes == init)
-            .then_some(d.response_bytes.as_slice())
+        if now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL {
+            return None;
+        }
+
+        if d.init_bytes != init {
+            return None;
+        }
+
+        Some(d.response_bytes.as_slice())
     }
 
     /// Authenticates an inbound init, returning the packets boringtun wants
@@ -787,7 +833,7 @@ impl PathAgent {
                 if let Some(state) = self.pairs.get_mut(&pair)
                     && !state.rtt.is_some_and(|rtt| rtt.is_fresh(now))
                 {
-                    state.start_burst(now);
+                    state.probes.start(now);
                 }
             }
             crate::icmpv6::Echo::Reply => {
@@ -824,8 +870,8 @@ impl PathAgent {
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
         // Probes wait for the first handshake exchange; see `drive_probes`.
         let next_probe = self
-            .handshake_exchanged
-            .then(|| self.pairs.values().filter_map(|s| s.next_probe_at).min())
+            .established
+            .then(|| self.pairs.values().filter_map(|s| s.probes.due()).min())
             .flatten();
         // Wake immediately if a buffered init is waiting on a relay
         // pair that landed after the initial fanout. With a primary, the
@@ -928,7 +974,7 @@ impl PathAgent {
         // Probes ride the session (they are encapsulated); encapsulating
         // before the first handshake exchange would make boringtun queue
         // them and initiate handshakes on its own.
-        if !self.handshake_exchanged {
+        if !self.established {
             return;
         }
 
@@ -936,7 +982,7 @@ impl PathAgent {
         let pending = &mut self.pending_transmits;
 
         for ((local, remote), state) in self.pairs.iter_mut() {
-            let Some(deadline) = state.next_probe_at else {
+            let Some(deadline) = state.probes.due() else {
                 continue;
             };
 
@@ -954,12 +1000,10 @@ impl PathAgent {
             state
                 .inflight_probes
                 .push(InflightProbe { seq, sent_at: now });
-            // Once the burst is done, the primary keeps its RTT fresh and
-            // its NAT mappings warm, everything else goes dormant until the
-            // next re-evaluation signal.
-            state.next_probe_at = state.burst.next().or_else(|| {
-                (primary == Some((*local, *remote))).then(|| now + PROBE_INTERVAL_LIVE)
-            });
+            // Once the burst is done, the primary keeps its RTT fresh and its
+            // NAT mappings warm; everything else goes dormant until the next
+            // re-evaluation signal.
+            state.probes.fire(now, primary == Some((*local, *remote)));
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 
@@ -971,9 +1015,9 @@ impl PathAgent {
         }
     }
 
-    fn burst_all_pairs(&mut self, now: Instant) {
+    fn probe_all_pairs(&mut self, now: Instant) {
         for state in self.pairs.values_mut() {
-            state.start_burst(now);
+            state.probes.start(now);
         }
     }
 
@@ -993,9 +1037,11 @@ impl PathAgent {
         }
     }
 
-    /// WireGuard signalled that the current path is suspect: selection runs
-    /// unguarded so the best fresh pair wins outright, allowing a fail-over
-    /// to a worse bucket (e.g. direct to relayed).
+    /// WireGuard signalled that the current path is suspect: the bucket veto
+    /// lifts so we can fail over to a worse bucket (e.g. direct to relayed)
+    /// and a stale primary stops being defended, so a fresh pair can take
+    /// over. A primary that is still answering probes keeps its same-bucket
+    /// hysteresis, so two live pairs don't flap.
     fn suspend_guard(&mut self, now: Instant) {
         self.guard_suspended_until = Some(now + GUARD_SUSPENSION);
     }
@@ -1018,24 +1064,31 @@ impl PathAgent {
             return;
         }
 
-        // The incumbent's guard: a worse bucket never displaces it and a
-        // same-bucket challenger must beat it by a clear margin. Only while
-        // WireGuard considers the path healthy — probe results alone must
-        // never demote a working primary (a busy node drops probes while its
-        // data flows just fine).
-        if self.guard_active(now)
-            && let Some(primary) = self.primary
+        // The current primary keeps its place unless a challenger clearly
+        // wins.
+        if let Some(primary) = self.primary
             && let Some(prev) = self.pairs.get(&primary)
         {
             let new_score = pair_score(new, &self.pairs[&new]);
             let prev_score = pair_score(primary, prev);
 
-            if prev_score.bucket < new_score.bucket {
+            // A worse bucket only displaces the primary while WireGuard
+            // signalled distress; otherwise probe results alone must never
+            // demote a working path (a busy node drops probes while its data
+            // flows just fine).
+            if prev_score.bucket < new_score.bucket && self.guard_active(now) {
                 return;
             }
 
+            // Same bucket: keep the primary unless the challenger beats its
+            // RTT by a clear margin — no needless hop for a marginal gain,
+            // distress or not. While the guard holds this protects even a
+            // momentarily-stale primary; under distress we only defend one
+            // that is still answering, so a dead primary yields to a fresh
+            // same-bucket pair.
             if prev_score.bucket == new_score.bucket
                 && let Some(prev_rtt) = prev.rtt
+                && (self.guard_active(now) || prev_rtt.is_fresh(now))
             {
                 let new_rtt = new_score.rtt.unwrap_or_default();
                 let margin = PRIMARY_HYSTERESIS_FLOOR
@@ -1047,17 +1100,7 @@ impl PathAgent {
             }
         }
 
-        let recovered = self.primary.is_none() && self.handshake_exchanged;
-
         self.set_primary(new, now);
-
-        // The remote can't observe us settling on a new path; the re-key is
-        // the authenticated "my situation changed" signal that reaches it on
-        // the recovered path. Silent switches between working paths don't
-        // re-key: sessions are path-agnostic.
-        if recovered {
-            self.queue_event(Event::PathRecovered, now);
-        }
     }
 
     fn set_primary(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
@@ -1070,16 +1113,17 @@ impl PathAgent {
         if let Some(old) = from
             && old != path
             && let Some(state) = self.pairs.get_mut(&old)
-            && !state.is_bursting()
+            && !state.probes.in_burst()
         {
-            state.next_probe_at = None;
+            state.probes.disarm_live();
         }
 
-        // Keep the new primary on the live cadence once its burst is done.
+        // Keep the new primary on the live cadence once it has nothing else
+        // scheduled.
         if let Some(state) = self.pairs.get_mut(&path)
-            && state.next_probe_at.is_none()
+            && state.probes.due().is_none()
         {
-            state.next_probe_at = Some(now + PROBE_INTERVAL_LIVE);
+            state.probes.arm_live(now + PROBE_INTERVAL_LIVE);
         }
 
         tracing::debug!(

@@ -986,7 +986,7 @@ fn retired_primary_stops_live_probing() {
 }
 
 #[test]
-fn recovering_a_path_requests_a_rekey_to_notify_the_remote() {
+fn recovering_a_path_is_a_plain_primary_switch_without_a_rekey() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
@@ -1006,10 +1006,24 @@ fn recovering_a_path_requests_a_rekey_to_notify_the_remote() {
         t1 + ms(50),
     );
 
+    // Our probe already reached the peer (it replied), so the peer registered
+    // our new address as peer-reflexive and is re-evaluating on its own.
+    // Recovery is therefore a plain local primary switch — no re-key, no
+    // handshake traffic.
     let events: Vec<_> = std::iter::from_fn(|| a.poll_event()).collect();
+    assert_eq!(
+        events,
+        vec![Event::PrimaryChanged {
+            local: addr(5),
+            remote: addr(9),
+        }],
+        "recovery must only switch the primary, got {events:?}",
+    );
     assert!(
-        events.contains(&Event::PathRecovered),
-        "the remote can't observe our recovery; a re-key is the signal, got {events:?}",
+        a.transmits()
+            .iter()
+            .all(|t| matches!(t.payload, Payload::Plaintext(_))),
+        "recovery must not emit any handshake traffic",
     );
 }
 

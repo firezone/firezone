@@ -1567,9 +1567,6 @@ where
                         now,
                     );
                 }
-                path_agent::Event::PathRecovered => {
-                    self.initiate_wg_session_for_path(now);
-                }
             }
         }
 
