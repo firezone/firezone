@@ -76,7 +76,7 @@ where
 
 impl<B> BufferPool<B>
 where
-    B: Buf + DerefMut<Target = [u8]>,
+    B: ResizeBuf + DerefMut<Target = [u8]>,
 {
     pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B> {
         let mut buffer = self.pull();
@@ -223,7 +223,6 @@ fn deviating_capacity(expected: usize, actual: usize) -> Option<usize> {
 pub trait Buf: Sized {
     fn with_capacity(capacity: usize) -> Self;
     fn clone(&self, dst: &mut Self);
-    fn resize_to(&mut self, len: usize);
     fn capacity(&self) -> usize;
 
     /// Restores the buffer to a pristine state before it returns to the pool.
@@ -232,6 +231,14 @@ pub trait Buf: Sized {
     /// [`VecBuf`] use it to drop their items so those don't stay alive inside an
     /// idle pool.
     fn reset(&mut self) {}
+}
+
+/// A [`Buf`] whose length can be set directly, e.g. to fit incoming data.
+///
+/// Only byte buffers implement this; containers like [`VecBuf`] deliberately
+/// don't: their length only ever changes by pushing or truncating actual items.
+pub trait ResizeBuf: Buf {
+    fn resize_to(&mut self, len: usize);
 }
 
 /// A pooled `Vec` of arbitrary items.
@@ -270,13 +277,6 @@ where
         dst.0.extend(self.0.iter().cloned());
     }
 
-    fn resize_to(&mut self, len: usize) {
-        // Items cannot be created out of thin air; only shrinking is meaningful.
-        debug_assert!(len <= self.0.len(), "`VecBuf`s cannot grow by resizing");
-
-        self.0.truncate(len);
-    }
-
     fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -296,12 +296,14 @@ impl Buf for Vec<u8> {
         dst.copy_from_slice(self);
     }
 
-    fn resize_to(&mut self, len: usize) {
-        self.resize(len, 0);
-    }
-
     fn capacity(&self) -> usize {
         Vec::capacity(self)
+    }
+}
+
+impl ResizeBuf for Vec<u8> {
+    fn resize_to(&mut self, len: usize) {
+        self.resize(len, 0);
     }
 }
 
@@ -315,12 +317,14 @@ impl Buf for BytesMut {
         dst.copy_from_slice(self);
     }
 
-    fn resize_to(&mut self, len: usize) {
-        self.resize(len, 0);
-    }
-
     fn capacity(&self) -> usize {
         BytesMut::capacity(self)
+    }
+}
+
+impl ResizeBuf for BytesMut {
+    fn resize_to(&mut self, len: usize) {
+        self.resize(len, 0);
     }
 }
 
