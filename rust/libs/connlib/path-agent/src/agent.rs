@@ -1,10 +1,3 @@
-//! Implementation of the path-selection model; see the crate-level docs for
-//! how the pieces fit together.
-//!
-//! Handshakes are path-dumb: the response is sent on the path the init arrived
-//! on, and a handshake only ever *nominates* a path when we don't have one.
-//! Everything else is probes.
-
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::SocketAddr;
