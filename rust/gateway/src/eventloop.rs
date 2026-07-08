@@ -308,9 +308,6 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
-                // The token is only persisted when its `uploads_enabled` claim
-                // says so; its on-disk presence gates spooling the
-                // authorization's reports.
                 let token = &msg.flow_logs_ingest_token;
 
                 if token.claims().uploads_enabled
