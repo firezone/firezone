@@ -9,8 +9,6 @@ use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::os::fd::RawFd;
 use std::time::{Duration, Instant};
 
-use ip_packet::IpPacket;
-
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
 
@@ -28,7 +26,7 @@ fn recv_reads_packets_routed_through_the_interface() {
     raise_max_pending_packets(fd, 64);
     configure(&name);
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<IpPacket>(1024);
+    let (tx, mut rx) = crate::inbound_channel();
     std::thread::Builder::new()
         .name("test TUN recv".to_owned())
         .spawn(move || {
@@ -52,10 +50,11 @@ fn recv_reads_packets_routed_through_the_interface() {
     let deadline = Instant::now() + Duration::from_secs(5);
     while matched < COUNT && Instant::now() < deadline {
         match rx.try_recv() {
-            Ok(packet) => {
-                if packet.destination() == IpAddr::V4(PEER) && packet.as_udp().is_some() {
-                    matched += 1;
-                }
+            Ok(batch) => {
+                matched += batch
+                    .iter()
+                    .filter(|p| p.destination() == IpAddr::V4(PEER) && p.as_udp().is_some())
+                    .count();
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
                 std::thread::sleep(Duration::from_millis(10));

@@ -160,6 +160,11 @@ async fn ipc_listen(
         tracing::warn!("Failed to apply stored log filter: {e:#}");
     }
 
+    // The uploader runs for the lifetime of the process, signed in or not.
+    if let Some(dir) = known_dirs::flow_logs() {
+        flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+    }
+
     let mut server = ipc::Server::new(socket_id)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
@@ -755,6 +760,7 @@ impl<'a> Handler<'a> {
             portal,
             is_internet_resource_active,
             dns,
+            known_dirs::flow_logs(),
             tokio::runtime::Handle::current(),
         );
 
@@ -808,7 +814,7 @@ impl<'a> Handler<'a> {
 ///
 /// Mostly used for debugging, but also handy for running a release build
 /// interactively, hence it remains available in release builds.
-pub fn run_interactive(dns_control: DnsControlMethod) -> Result<()> {
+pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bool) -> Result<()> {
     let log_filter_reloader = logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
@@ -816,12 +822,19 @@ pub fn run_interactive(dns_control: DnsControlMethod) -> Result<()> {
         system_uptime_seconds = bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
 
-    // Run interactively (e.g. as the local Administrator) the process has
-    // neither the `LocalSystem` nor the MSIX package identity, so the
-    // production pipe-ownership check would reject the connection. Skip it in
-    // debug builds so local GUI dev works; release builds keep the check.
+    // Running interactively (e.g. as the local Administrator), the process has
+    // neither the `LocalSystem` nor the MSIX package identity, and on Linux the
+    // GUI binary usually isn't installed at the canonical path, so the
+    // production peer check would reject the connection. `--skip-peer-verification`
+    // opts out of that check to pair the interactive tunnel service with a
+    // non-installed GUI build. The check still runs by default so it stays
+    // testable in debug builds; release builds always keep it.
     #[cfg(debug_assertions)]
-    ipc::skip_tunnel_pipe_owner_check();
+    if skip_peer_verification {
+        ipc::skip_peer_verification();
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = skip_peer_verification;
 
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
@@ -861,7 +874,7 @@ pub fn run_smoke_test() -> Result<()> {
     // for the happy path and launches one from elsewhere to assert the tunnel
     // rejects unrecognised binaries.
     #[cfg(target_os = "windows")]
-    ipc::skip_tunnel_pipe_owner_check();
+    ipc::skip_peer_verification();
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {

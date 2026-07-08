@@ -1,13 +1,13 @@
 mod device;
 mod doh;
-mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
 mod timeout;
 mod udp_dns;
+mod udp_gso_queue;
 
 pub use device::{Device, TunChannelClosed};
-pub(crate) use gso_queue::GsoQueue;
+pub(crate) use udp_gso_queue::UdpGsoQueue;
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -30,28 +30,13 @@ use std::{
 use tracing::Level;
 use tun::Tun;
 
-/// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
-///
-/// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
-/// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
-///
-/// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
-/// Thus, we limit the batch-size there to 25.
-const MAX_INBOUND_PACKET_BATCH: usize = {
-    if cfg!(any(target_os = "ios", target_os = "android")) {
-        25
-    } else {
-        100
-    }
-};
-
 const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    gso_queue: GsoQueue,
+    gso_queue: UdpGsoQueue,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -83,18 +68,6 @@ struct DnsQueryMetaData {
     remote: SocketAddr,
     transport: dns::Transport,
     started_at: Instant,
-}
-
-pub(crate) struct Buffers {
-    ip: Vec<IpPacket>,
-}
-
-impl Default for Buffers {
-    fn default() -> Self {
-        Self {
-            ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-        }
-    }
 }
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
@@ -189,7 +162,7 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
-            gso_queue: GsoQueue::new(),
+            gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -256,15 +229,11 @@ impl Io {
         self.nameservers.fastest()
     }
 
-    pub fn poll<'b>(
+    pub fn poll(
         &mut self,
         cx: &mut Context<'_>,
-        buffers: &'b mut Buffers,
     ) -> Poll<
-        Input<
-            impl Iterator<Item = IpPacket> + use<'b>,
-            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-        >,
+        Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>>,
     > {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
@@ -298,33 +267,27 @@ impl Io {
             error.push(e);
         }
 
-        let device = self
-            .tun
-            .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
-            .map_ok(|num_packets| {
-                let num_ipv4 = buffers.ip[..num_packets]
-                    .iter()
-                    .filter(|p| p.ipv4_header().is_some())
-                    .count();
-                let num_ipv6 = num_packets - num_ipv4;
+        let device = self.tun.poll_read(cx).map_ok(|batch| {
+            let num_ipv4 = batch.iter().filter(|p| p.ipv4_header().is_some()).count();
+            let num_ipv6 = batch.len() - num_ipv4;
 
-                self.packet_counter.add(
-                    num_ipv4 as u64,
-                    &[
-                        otel::attr::network_type_ipv4(),
-                        otel::attr::network_io_direction_receive(),
-                    ],
-                );
-                self.packet_counter.add(
-                    num_ipv6 as u64,
-                    &[
-                        otel::attr::network_type_ipv6(),
-                        otel::attr::network_io_direction_receive(),
-                    ],
-                );
+            self.packet_counter.add(
+                num_ipv4 as u64,
+                &[
+                    otel::attr::network_type_ipv4(),
+                    otel::attr::network_io_direction_receive(),
+                ],
+            );
+            self.packet_counter.add(
+                num_ipv6 as u64,
+                &[
+                    otel::attr::network_type_ipv6(),
+                    otel::attr::network_io_direction_receive(),
+                ],
+            );
 
-                buffers.ip.drain(..num_packets)
-            });
+            batch
+        });
 
         let udp_dns_queries = self
             .udp_dns_server
@@ -463,7 +426,7 @@ impl Io {
         self.tun.set_tun(tun);
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) {
+    pub fn queue_tun(&mut self, packet: IpPacket) {
         self.packet_counter.add(
             1,
             &[
@@ -472,7 +435,12 @@ impl Io {
             ],
         );
 
-        self.tun.send(packet);
+        self.tun.queue(packet);
+    }
+
+    /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
+    pub fn flush_tun_batch(&mut self) {
+        self.tun.flush_batch();
     }
 
     pub fn reset(&mut self) {
@@ -507,7 +475,7 @@ impl Io {
     }
 
     /// The GSO queue used as the destination buffer when encapsulating packets in place.
-    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
+    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
         &mut self.gso_queue
     }
 
@@ -639,7 +607,7 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 #[cfg(test)]
 mod tests {
     use futures::task::noop_waker_ref;
-    use std::{future::poll_fn, net::Ipv4Addr, ptr::addr_of_mut};
+    use std::{future::poll_fn, net::Ipv4Addr};
 
     use super::*;
 
@@ -795,8 +763,6 @@ mod tests {
         }
     }
 
-    static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
-
     /// Helper functions to make the test more concise.
     impl Io {
         fn for_test() -> Io {
@@ -812,54 +778,48 @@ mod tests {
 
         async fn next(
             &mut self,
-        ) -> Input<
-            impl Iterator<Item = IpPacket> + use<>,
-            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
-        > {
-            poll_fn(|cx| {
-                self.poll(
-                    cx,
-                    // SAFETY: This is a test and we never receive packets here.
-                    unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-                )
-            })
-            .await
+        ) -> Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>>
+        {
+            poll_fn(|cx| self.poll(cx)).await
         }
 
         fn poll_test(
             &mut self,
         ) -> Poll<
             Input<
-                impl Iterator<Item = IpPacket> + use<>,
+                tun::PacketBatch,
                 impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
             >,
         > {
-            self.poll(
-                &mut Context::from_waker(noop_waker_ref()),
-                // SAFETY: This is a test and we never receive packets here.
-                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-            )
+            self.poll(&mut Context::from_waker(noop_waker_ref()))
         }
     }
 
     struct DummyTun {
-        tx: tokio::sync::mpsc::Sender<IpPacket>,
-        rx: tokio::sync::mpsc::Receiver<IpPacket>,
+        tx: tun::OutboundTx,
+        rx: tun::InboundRx,
+        _keep_alive: (tun::OutboundRx, tun::InboundTx),
     }
 
     impl DummyTun {
         fn new() -> Self {
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
-            Self { tx, rx }
+            let (tx, outbound_rx) = tun::outbound_channel();
+            let (inbound_tx, rx) = tun::inbound_channel();
+
+            Self {
+                tx,
+                rx,
+                _keep_alive: (outbound_rx, inbound_tx),
+            }
         }
     }
 
     impl Tun for DummyTun {
-        fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+        fn sender(&self) -> &tun::OutboundTx {
             &self.tx
         }
 
-        fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+        fn receiver(&mut self) -> &mut tun::InboundRx {
             &mut self.rx
         }
 

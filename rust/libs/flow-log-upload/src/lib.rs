@@ -110,7 +110,9 @@ pub fn configure_uploads(
     Ok(())
 }
 
-/// Spawns the long-lived uploader thread. It re-reads the persisted config each
+/// Spawns the long-lived uploader thread.
+///
+/// Prunes stale spool directories on start, re-reads the persisted config each
 /// pass and runs until the process exits.
 pub fn spawn(
     spool_root: PathBuf,
@@ -119,6 +121,8 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("flow-log-uploader".to_owned())
         .spawn(move || {
+            prune(&spool_root);
+
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()

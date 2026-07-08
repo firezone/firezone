@@ -41,6 +41,7 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
@@ -595,6 +596,7 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             pool_member_ids={@selected_resource_pool_member_ids}
             pool_clients={@selected_resource_pool_clients}
             clients_expanded_id={@clients_expanded_id}
@@ -1429,6 +1431,12 @@ defmodule PortalWeb.Resources do
     defdelegate get_client(client_id, subject), to: Components.Database
     defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
 
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
+
     def all_sites(subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.managed_by != :system)
@@ -1774,12 +1782,13 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
+        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()

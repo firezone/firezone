@@ -10,6 +10,7 @@ defmodule PortalAPI.Router do
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
+    plug PortalAPI.Plugs.RequestLog
     plug PortalAPI.Plugs.ValidateUUIDParams
   end
 
@@ -62,8 +63,8 @@ defmodule PortalAPI.Router do
     put "/clients/:id/verify", ClientController, :verify
     put "/clients/:id/unverify", ClientController, :unverify
 
-    get "/change_logs", ChangeLogController, :index
-    get "/change_logs/:event_id", ChangeLogController, :show
+    get "/logs", LogController, :index
+    get "/logs/:event_id", LogController, :show
 
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]

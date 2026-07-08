@@ -39,6 +39,12 @@ pub struct Eventloop {
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
 
+    /// Flow-log spool root.
+    flow_logs_dir: std::path::PathBuf,
+
+    /// Whether the portal enabled uploads; gates persisting ingest tokens.
+    upload_flow_logs: bool,
+
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         ResolveDnsRequest,
@@ -65,6 +71,7 @@ impl Eventloop {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
+        flow_logs_dir: std::path::PathBuf,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -81,6 +88,8 @@ impl Eventloop {
             tunnel: Some(tunnel),
             tun_device_manager,
             resolver,
+            flow_logs_dir,
+            upload_flow_logs: false,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -243,6 +252,12 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            tunnel::GatewayEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -292,6 +307,14 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
+                if self.upload_flow_logs
+                    && let Some(token) = &msg.flow_logs_ingest_token
+                    && let Err(e) =
+                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                {
+                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                }
+
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
                     msg.client,
                     msg.subject,
@@ -360,11 +383,23 @@ impl Eventloop {
                 account_slug,
                 relays,
                 authorizations,
+                flow_logs,
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
+                }
+
+                self.upload_flow_logs = flow_logs.upload_enabled();
+
+                if let Err(e) = flow_log_upload::configure_uploads(
+                    &self.flow_logs_dir,
+                    &flow_logs.api_url,
+                    flow_logs.upload_interval_secs,
+                    flow_logs.upload_batch_size,
+                ) {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
                 }
 
                 tunnel.state_mut().update_relays(

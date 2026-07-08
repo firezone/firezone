@@ -593,6 +593,9 @@ impl GatewayState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
+                snownet::Event::NoRelays => {
+                    self.buffered_events.push_back(GatewayEvent::NoRelays);
+                }
             }
         }
 

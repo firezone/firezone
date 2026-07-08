@@ -670,6 +670,7 @@ impl TunnelTest {
                     event,
                     &mut self.clients,
                     gateway,
+                    &self.relays,
                     &ref_state.global_dns_records,
                     now,
                 );
@@ -1273,6 +1274,13 @@ impl TunnelTest {
 
                 Ok(())
             }
+            ClientEvent::NoRelays => {
+                // Mimic the portal: reply with the current set of relays.
+                let client = self.clients.get_mut(&src).unwrap();
+                client.exec_mut(|c| c.update_relays(iter::empty(), self.relays.iter(), now));
+
+                Ok(())
+            }
             ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
             ClientEvent::DevicePoolDomainQueried {
                 resource_id,
@@ -1418,6 +1426,7 @@ fn on_gateway_event(
     event: GatewayEvent,
     clients: &mut BTreeMap<ClientId, Host<SimClient>>,
     gateway: &mut Host<SimGateway>,
+    relays: &BTreeMap<RelayId, Host<SimRelay>>,
     global_dns_records: &DnsRecords,
     now: Instant,
 ) {
@@ -1458,6 +1467,10 @@ fn on_gateway_event(
                     .handle_domain_resolved(r, Ok(resolved_ips), now)
                     .unwrap()
             })
+        }
+        GatewayEvent::NoRelays => {
+            // Mimic the portal: reply with the current set of relays.
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
         }
         GatewayEvent::Error(_) => unreachable!("GatewayState never emits `TunnelError`"),
     }

@@ -14,16 +14,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
-/// Whether to skip the tunnel pipe owner check.
+/// Whether to skip verifying the peer's binary on the Tunnel socket.
 #[cfg(debug_assertions)]
-static SKIP_TUNNEL_PIPE_OWNER_CHECK: AtomicBool = AtomicBool::new(false);
+static SKIP_PEER_VERIFICATION: AtomicBool = AtomicBool::new(false);
 
-/// Set [`SKIP_TUNNEL_PIPE_OWNER_CHECK`].
+/// Set [`SKIP_PEER_VERIFICATION`].
 ///
 /// Call once at process startup, before any `Server::new(SocketId::Tunnel)` or `connect_to_socket`.
 #[cfg(debug_assertions)]
-pub fn skip_tunnel_pipe_owner_check() {
-    SKIP_TUNNEL_PIPE_OWNER_CHECK.store(true, Ordering::Relaxed);
+pub fn skip_peer_verification() {
+    SKIP_PEER_VERIFICATION.store(true, Ordering::Relaxed);
 }
 
 pub struct Server {
@@ -120,12 +120,12 @@ impl Server {
             let cred = stream.peer_cred()?;
 
             #[cfg(debug_assertions)]
-            if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) {
+            if SKIP_PEER_VERIFICATION.load(Ordering::Relaxed) {
                 tracing::info!(
                     uid = cred.uid(),
                     gid = cred.gid(),
                     pid = cred.pid(),
-                    "Accepted an IPC connection without stream owner check"
+                    "Accepted an IPC connection without peer verification"
                 );
                 let pid = cred.pid().context("No PID")?.try_into()?;
 

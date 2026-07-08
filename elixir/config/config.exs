@@ -131,15 +131,12 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     google_directories
     devices
     sites
-    client_sessions
-    gateway_sessions
     gateway_tokens
     policies
     resources
     static_device_pool_members
     client_tokens
     one_time_passcodes
-    portal_sessions
     api_tokens
     trust_anchors
     trust_anchor_certificates
@@ -310,6 +307,8 @@ config :portal, Portal.ComponentVersions,
     gui: "1.5.11",
     headless: "1.5.7"
   ]
+
+config :portal, Portal.ClockDriftAlarm, enabled: true
 
 config :portal, Portal.Cluster,
   adapter: nil,

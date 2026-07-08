@@ -38,7 +38,6 @@ use std::{
 };
 use std::{net::IpAddr, time::Duration};
 use telemetry::otel;
-use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tun::ioctl;
 
@@ -677,31 +676,29 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
     link_state
 }
 
-const QUEUE_SIZE: usize = 10_000;
-
 pub struct Tun {
-    outbound_tx: mpsc::Sender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
 
         tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
         tokio::spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_receive(),
             ],
         ));
@@ -767,11 +764,11 @@ fn open_tun() -> Result<OwnedFd> {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 

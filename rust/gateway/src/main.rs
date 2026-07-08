@@ -10,7 +10,6 @@ use bin_shared::{
 use clap::Parser;
 
 use hickory_resolver::config::ResolveHosts;
-use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -101,7 +100,9 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli) -> Result<()> {
-    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(PathBuf::from(FLOW_LOGS_DIR));
+    let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
+
+    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
 
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
@@ -205,6 +206,9 @@ async fn try_main(cli: Cli) -> Result<()> {
         nameservers,
         cli.flow_logs,
     );
+
+    flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
+
     let max_partition_time = cli
         .max_partition_time
         .map(|d| d.into())
@@ -250,7 +254,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
+    Eventloop::new(tunnel, portal, tun_device_manager, resolver, flow_logs_dir)?
         .run()
         .await
         .context(EventloopFailed)?;
@@ -411,18 +415,18 @@ impl Cli {
 
 /// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
 struct ValidateChecksumAdapter {
-    outbound_tx: tokio::sync::mpsc::Sender<IpPacket>,
-    inbound_rx: tokio::sync::mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
     name: String,
     _task: AbortOnDropHandle<()>,
 }
 
 impl Tun for ValidateChecksumAdapter {
-    fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 
@@ -436,43 +440,20 @@ impl ValidateChecksumAdapter {
         let name = inner.name().to_string();
 
         // Channel for inbound packets (from TUN device to gateway)
-        let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(1000);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
 
         // Get reference to inner TUN's sender for outbound packets
         let outbound_tx = inner.sender().clone();
 
         // Spawn task to validate and forward inbound packets from TUN device
         let task = tokio::spawn(async move {
-            while let Some(packet) = inner.receiver().recv().await {
-                if let Some(ipv4) = packet.ipv4_header() {
-                    let expected = ipv4.calc_header_checksum();
-                    let actual = ipv4.header_checksum;
-
-                    if expected != actual {
-                        tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
-                    }
+            while let Some(batch) = inner.receiver().recv().await {
+                for packet in batch.iter() {
+                    validate_checksums(packet);
                 }
 
-                if let Some(udp) = packet.as_udp() {
-                    let actual = udp.checksum();
-                    if let Ok(expected) = packet.calculate_udp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
-                    }
-                }
-
-                if let Some(tcp) = packet.as_tcp() {
-                    let actual = tcp.checksum();
-                    if let Ok(expected) = packet.calculate_tcp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
-                    }
-                }
-
-                // Forward the validated packet to our inbound channel
-                if inbound_tx.send(packet).await.is_err() {
+                // Forward the validated batch to our inbound channel
+                if inbound_tx.send(batch).await.is_err() {
                     break;
                 }
             }
@@ -484,6 +465,35 @@ impl ValidateChecksumAdapter {
             name,
             _task: AbortOnDropHandle::new(task),
         })
+    }
+}
+
+fn validate_checksums(packet: &ip_packet::IpPacket) {
+    if let Some(ipv4) = packet.ipv4_header() {
+        let expected = ipv4.calc_header_checksum();
+        let actual = ipv4.header_checksum;
+
+        if expected != actual {
+            tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
+        }
+    }
+
+    if let Some(udp) = packet.as_udp() {
+        let actual = udp.checksum();
+        if let Ok(expected) = packet.calculate_udp_checksum()
+            && expected != actual
+        {
+            tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
+        }
+    }
+
+    if let Some(tcp) = packet.as_tcp() {
+        let actual = tcp.checksum();
+        if let Ok(expected) = packet.calculate_tcp_checksum()
+            && expected != actual
+        {
+            tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
+        }
     }
 }
 

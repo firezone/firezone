@@ -133,6 +133,35 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       assert %{"status" => 401} = json_response(conn, 401)
     end
+
+    test "returns 401 when the token says uploads are disabled", %{conn: conn, account: account} do
+      conn =
+        conn
+        |> authorize(account, %{"uploads_enabled" => false})
+        |> post_logs([build_record()])
+
+      assert %{
+               "status" => 401,
+               "detail" => "Flow log uploads are not enabled for this authorization"
+             } = json_response(conn, 401)
+
+      assert Repo.all(FlowLog) == []
+    end
+
+    test "returns 401 when the token has no uploads_enabled claim", %{
+      conn: conn,
+      account: account
+    } do
+      claims = Map.delete(flow_log_token_claims(), "uploads_enabled")
+      token = FlowLogToken.mint(account, claims, expires_at())
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> token)
+        |> post_logs([build_record()])
+
+      assert %{"status" => 401} = json_response(conn, 401)
+    end
   end
 
   describe "create/2 single policy authorization" do

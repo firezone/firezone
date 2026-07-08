@@ -75,6 +75,28 @@ fn can_answer_stun_request_from_ip4_address(
 }
 
 #[proptest]
+fn ignores_stun_request_from_port_0(
+    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
+    source: Ipv4Addr,
+    public_relay_addr: Ipv4Addr,
+) {
+    let _guard = logging::test("debug");
+    let mut server = TestServer::new(public_relay_addr);
+
+    let request = Message::<Attribute>::new(MessageClass::Request, BINDING, transaction_id);
+    let bytes = MessageEncoder::new().encode_into_bytes(request).unwrap();
+
+    let maybe_forward = server.server.handle_client_input(
+        &bytes,
+        ClientSocket::new(SocketAddrV4::new(source, 0).into()),
+        Instant::now(),
+    );
+
+    assert_eq!(maybe_forward, None);
+    assert!(server.server.next_command().is_none());
+}
+
+#[proptest]
 fn deallocate_once_time_expired(
     #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::allocation_lifetime())] lifetime: Lifetime,
@@ -414,7 +436,7 @@ fn ping_pong_relay(
     #[strategy(firezone_relay::proptest::transaction_id())]
     channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    source: SocketAddrV4,
+    #[strategy(firezone_relay::proptest::source_v4())] source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     peer_to_client_ping: [u8; 32],
@@ -647,7 +669,7 @@ fn ping_pong_ip6_relay(
     channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
-    source: SocketAddrV6,
+    #[strategy(firezone_relay::proptest::source_v6())] source: SocketAddrV6,
     peer: SocketAddrV6,
     public_relay_ip4_addr: Ipv4Addr,
     public_relay_ip6_addr: Ipv6Addr,

@@ -540,6 +540,8 @@ fn connect(
         portal,
         is_internet_resource_active,
         Vec::default(),
+        // Mobile flow-log wiring (spool dir + uploader) comes separately.
+        None,
         runtime.handle().clone(),
     );
 
