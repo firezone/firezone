@@ -478,11 +478,9 @@ defmodule PortalAPI.Client.Channel do
     # same decision without reading the flag again.
     send(ack_to, {:device_access_acked, ref, use_iceless, socket.assigns.client.name})
 
-    cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
-
     socket =
       socket
-      |> assign(cache: cache, authorizations_cache: authorizations_cache)
+      |> assign(authorizations_cache: authorizations_cache)
       |> maybe_arm_authz_durability_timer(policy_authorization)
 
     {:noreply, socket}
@@ -1083,102 +1081,6 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  # !!! TODO: REMOVE BEFORE GA !!!
-  # PoC-only shim kept for a customer until their clients migrate to the
-  # `create_flow` path for static_device_pool resources. The handler enforces
-  # pool membership only — the target IPv4 must be a member of *some* static
-  # device pool the actor has connectable access to (via `cache.device_addresses`,
-  # which is populated only from policy-authorized pools). It does NOT create a
-  # `policy_authorization` row, so revocation/reauth/expiry are not tracked for
-  # flows authorized this way. Remove this handler before GA.
-  def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
-    account_id = socket.assigns.client.account_id
-
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         {:ok, {:ipv4, ipv4_tuple} = target} <-
-           parse_target_address(%{"ipv4" => ipv4_string}),
-         :ok <- legacy_authorize_device_access(socket.assigns.cache, ipv4_tuple),
-         {:ok, target_client_id, target_meta} <-
-           find_online_client_by_address(account_id, target),
-         :ok <- check_peer_compatibility(target_meta, socket) do
-      # PoC shim: bypass the Queue entirely because we don't persist a
-      # `policy_authorization` row here. Deliver to the target first; the
-      # initiator is released only once the target's channel acks (same
-      # ordering guarantee as the `create_flow` pool path).
-      ref = make_ref()
-
-      {receiver_message, initiator_payload} =
-        build_client_device_access_authorized_messages(
-          target_client_id,
-          target_meta,
-          nil,
-          nil,
-          nil,
-          nil,
-          ref,
-          socket
-        )
-
-      case PG.deliver(target_client_id, receiver_message) do
-        :ok ->
-          timer_ref =
-            Process.send_after(self(), {:flow_creation_timeout, ref}, flow_creation_timeout())
-
-          pending =
-            Map.put(socket.assigns.pending_flows, ref, %{
-              timer_ref: timer_ref,
-              initiator_payload: initiator_payload,
-              deny_payload: %{client_id: target_client_id, ipv4: ipv4_string, reason: :offline}
-            })
-
-          {:noreply, assign(socket, :pending_flows, pending)}
-
-        {:error, :not_found} ->
-          push(socket, "client_device_access_denied", %{
-            client_id: target_client_id,
-            ipv4: ipv4_string,
-            reason: :offline
-          })
-
-          {:noreply, socket}
-      end
-    else
-      false ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: ipv4_string,
-          reason: :disabled
-        })
-
-        {:noreply, socket}
-
-      {:error, :version_mismatch} ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: ipv4_string,
-          reason: :version_mismatch
-        })
-
-        {:noreply, socket}
-
-      {:error, :invalid_address} ->
-        Logger.warning("Invalid IPv4 address provided for device access request",
-          client_id: socket.assigns.client.id,
-          account_id: socket.assigns.client.account_id,
-          account_slug: socket.assigns.subject.account.slug,
-          ipv4: ipv4_string
-        )
-
-        {:noreply, socket}
-
-      :offline ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :offline})
-        {:noreply, socket}
-
-      {:error, :forbidden} ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :forbidden})
-        {:noreply, socket}
-    end
-  end
-
   # The client pushes it's ICE candidates list and the list of gateways that need to receive it
   def handle_in(
         "broadcast_ice_candidates",
@@ -1257,18 +1159,6 @@ defmodule PortalAPI.Client.Channel do
     else
       {:error, :version_mismatch}
     end
-  end
-
-  # !!! TODO: REMOVE BEFORE GA — used only by the legacy `request_device_access` !!!
-  # The check is "the IPv4 belongs to *some* device in a connectable pool we have
-  # policy-authorized access to" — `cache.device_addresses` is only populated for
-  # static_device_pool members of pools that passed `recompute_connectable_resources`,
-  # so this is effectively a pool-membership-only authorization. Doesn't create a
-  # `policy_authorization`. Remove alongside the handler before GA.
-  defp legacy_authorize_device_access(cache, {_, _, _, _} = ipv4_tuple) do
-    if Enum.any?(cache.device_addresses, fn {_, {v4, _v6}} -> v4 == ipv4_tuple end),
-      do: :ok,
-      else: {:error, :forbidden}
   end
 
   defp parse_target_address(%{"ipv4" => ipv4, "ipv6" => ipv6})
@@ -1753,30 +1643,21 @@ defmodule PortalAPI.Client.Channel do
     # We render with the initiator's session here — for static_device_pool
     # resources the version-dependent codepaths in the resource view aren't
     # exercised (no site fields), so this is safe across version skew.
-    rendered_resource =
-      if resource, do: Views.Resource.render(resource, socket.assigns.session)
+    rendered_resource = Views.Resource.render(resource, socket.assigns.session)
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
-    # The legacy `request_device_access` shim calls this builder with no
-    # resource/expires_at (it has no policy authorization to anchor a token to),
-    # so there is nothing to mint. Once that shim is removed before GA, both are
-    # always present here and this guard can go.
     {initiator_token, responder_token} =
-      if resource && expires_at do
-        mint_ingest_tokens(
-          socket.assigns.subject,
-          {Ecto.UUID.load!(resource.id), resource.name, resource.address},
-          policy_authorization_id,
-          policy_id,
-          flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
-          client,
-          target_client_id,
-          expires_at
-        )
-      else
-        {nil, nil}
-      end
+      mint_ingest_tokens(
+        socket.assigns.subject,
+        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+        policy_authorization_id,
+        policy_id,
+        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
+        client,
+        target_client_id,
+        expires_at
+      )
 
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
@@ -1813,14 +1694,6 @@ defmodule PortalAPI.Client.Channel do
     {receiver_message, initiator_payload}
   end
 
-  # TODO: Re-enable after verifying compatibility with older clients
-  # defp render_ipv4s(ipv4s) do
-  #   ipv4s
-  #   |> Enum.map(&:inet.ntoa/1)
-  #   |> Enum.map(&to_string/1)
-  #   |> Enum.sort()
-  # end
-
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
 
@@ -1844,8 +1717,6 @@ defmodule PortalAPI.Client.Channel do
       flow_logs: flow_logs_config(),
       resources: Views.Resource.render_many(resources, socket.assigns.session),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
-      # TODO: Re-enable after verifying compatibility with older clients
-      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
         Views.Relay.render_many(
           relays,
@@ -2472,10 +2343,8 @@ defmodule PortalAPI.Client.Channel do
   # Whether flow logs may be uploaded for a flow this policy authorizes: the
   # global flow_logs feature flag must be on and the policy must not have opted
   # out. Stamped into the ingest token so devices know whether to upload and
-  # the ingest endpoint can enforce it. A policy missing from the cache (or the
-  # legacy shim's nil policy_id) fails closed to false.
-  defp flow_log_uploads_enabled?(_cache, nil), do: false
-
+  # the ingest endpoint can enforce it. A policy missing from the cache fails
+  # closed to false.
   defp flow_log_uploads_enabled?(cache, policy_id) do
     case Map.get(cache.policies, Ecto.UUID.dump!(policy_id)) do
       %Cache.Cacheable.Policy{flow_log_uploads_enabled: true} ->
