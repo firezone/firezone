@@ -142,8 +142,7 @@ pub struct FlowCreated {
     #[serde(default)]
     pub use_iceless: bool,
 
-    /// The initiator-side ingest token for this flow's logs; it carries the
-    /// flow's attribution, so every authorization has one.
+    /// The initiator-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
 }
 
@@ -186,8 +185,7 @@ pub struct ClientDeviceAccessAuthorized {
     pub authorization_expires_at: Option<Duration>,
 
     /// This device's ingest token: the initiator token on the initiating side,
-    /// the responder token on the receiving side. It carries the flow's
-    /// attribution, so every authorization has one.
+    /// the responder token on the receiving side.
     pub flow_logs_ingest_token: IngestToken,
 }
 

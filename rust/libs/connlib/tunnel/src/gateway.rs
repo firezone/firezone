@@ -6,7 +6,7 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 use crate::flow_log;
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
-use crate::messages::{IceCredentials, ResolveRequest};
+use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
 use crate::peer_store::PeerStore;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
@@ -316,7 +316,7 @@ impl GatewayState {
         resource: ResourceDescription,
         use_iceless: bool,
         now: Instant,
-        flow_logs_ingest_token: String,
+        flow_logs_ingest_token: IngestToken,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
             client.id,
@@ -355,7 +355,7 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         client_tun: IpConfig,
-        flow_logs_ingest_token: String,
+        flow_logs_ingest_token: IngestToken,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,

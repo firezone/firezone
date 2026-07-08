@@ -14,8 +14,8 @@ use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::flow_log;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
-use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
+use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
@@ -27,11 +27,11 @@ pub struct ClientOnGateway {
     client_tun: IpConfig,
     gateway_tun: IpConfig,
 
-    /// The portal's opaque per-flow ingest token for each authorized resource.
+    /// The portal's per-flow ingest token for each authorized resource.
     ///
     /// Recorded into a flow when it is created so the flow log can be attributed
     /// and ingested. Has the same lifetime as the resource authorization.
-    ingest_tokens: HashMap<ResourceId, String>,
+    ingest_tokens: HashMap<ResourceId, IngestToken>,
 
     resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
@@ -199,7 +199,7 @@ impl ClientOnGateway {
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
-    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: String) {
+    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: IngestToken) {
         self.ingest_tokens.insert(rid, token);
     }
 
@@ -479,7 +479,11 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_log::record_resource(rid);
-        flow_log::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_log::record_ingest_token(
+            self.ingest_tokens
+                .get(&rid)
+                .map(|token| token.as_str().to_owned()),
+        );
 
         Ok(())
     }

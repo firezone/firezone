@@ -328,7 +328,7 @@ impl Eventloop {
                     msg.resource,
                     msg.use_iceless,
                     Instant::now(),
-                    msg.flow_logs_ingest_token.as_str().to_owned(),
+                    msg.flow_logs_ingest_token,
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 

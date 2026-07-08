@@ -1095,7 +1095,7 @@ impl TunnelTest {
                             resource,
                             use_iceless,
                             now,
-                            "proptest-ingest-token".to_owned(),
+                            test_ingest_token(),
                         )
                     })
                     .map_err(|error| ClientEventError::Gateway {
@@ -1377,6 +1377,13 @@ fn address_from_destination(
         }
         Destination::IpAddr(addr) => *addr,
     }
+}
+
+fn test_ingest_token() -> crate::messages::IngestToken {
+    serde_json::from_value(serde_json::Value::String(
+        crate::messages::TEST_INGEST_TOKEN.to_owned(),
+    ))
+    .unwrap()
 }
 
 fn make_preshared_key_and_ice(

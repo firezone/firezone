@@ -158,8 +158,7 @@ pub struct AuthorizeFlow {
     #[serde(default)]
     pub use_iceless: bool,
 
-    /// The responder-side ingest token for this flow's logs; it carries the
-    /// flow's attribution, so every authorization has one.
+    /// The responder-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
 }
 
