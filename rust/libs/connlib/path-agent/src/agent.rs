@@ -1,29 +1,9 @@
-//! Probe-driven path selection.
+//! Implementation of the path-selection model; see the crate-level docs for
+//! how the pieces fit together.
 //!
-//! Each layer has exactly one job:
-//!
-//! - **WireGuard is the liveness authority.** Only its state machine kills a
-//!   connection ([`boringtun`]'s `ConnectionExpired`) and only its signals mark
-//!   a path as suspect: our own re-key going unanswered, or the peer re-keying
-//!   early (it evidently isn't hearing us).
-//! - **Probes discover and rank paths.** They open NAT filters, measure RTTs
-//!   and find better pairs. A probe result can only ever improve things; probe
-//!   loss never demotes or kills anything (a busy node drops probes while its
-//!   data flows just fine).
-//! - **Selection is local.** WireGuard encrypts to a key, not to an address,
-//!   so each side picks where *it* sends independently; paths may be
-//!   asymmetric and there are no roles and no nomination.
-//!
-//! Every pair probes in a short, front-loaded burst when it is created and
-//! whenever a re-evaluation signal fires: remote candidates arrived, an
-//! inbound probe proved the reverse filter is open (we immediately probe back,
-//! cf. "triggered checks" in ICE), or WireGuard signalled distress. The
-//! primary pair additionally probes at a slow live cadence to keep its RTT
-//! comparable and its NAT mappings warm.
-//!
-//! Handshakes are path-dumb: the response is sent on the path the init
-//! arrived on and a handshake only ever *nominates* a path when we don't
-//! have one. Everything else is probes.
+//! Handshakes are path-dumb: the response is sent on the path the init arrived
+//! on, and a handshake only ever *nominates* a path when we don't have one.
+//! Everything else is probes.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
@@ -85,64 +65,93 @@ pub(crate) struct PairState {
     /// high-RTT path because the burst fires faster than one round trip.
     inflight_probes: Vec<InflightProbe>,
     probes: Probes,
+    /// Positive RTT samples collected since the last (re)start. Once this
+    /// reaches [`PROBE_SAMPLES`] the pair has settled and stops probing.
+    samples: u32,
+    /// When the current probing window opened, for the give-up bound.
+    probing_since: Option<Instant>,
     next_probe_seq: u16,
 }
 
-/// A pair's probe schedule: a front-loaded burst, optionally followed by the
-/// live cadence once the pair becomes the primary.
+impl PairState {
+    /// (Re)opens a probing window on this pair: a fresh burst and a fresh
+    /// sample count, so it probes until it settles — or, once we have a path,
+    /// until it gives up ([`PROBE_GIVE_UP`]).
+    fn restart_probes(&mut self, at: Instant) {
+        self.probes.start(at);
+        self.samples = 0;
+        self.probing_since = Some(at);
+    }
+
+    /// Whether this pair has probed past the give-up bound without settling.
+    fn gave_up(&self, now: Instant) -> bool {
+        self.probing_since
+            .is_some_and(|since| now.duration_since(since) >= PROBE_GIVE_UP)
+    }
+
+    /// Records a positive RTT sample and settles the pair (stops probing) once
+    /// [`PROBE_SAMPLES`] have arrived.
+    fn record_sample(&mut self) {
+        self.samples = self.samples.saturating_add(1);
+        if self.samples >= PROBE_SAMPLES {
+            self.probes.stop();
+        }
+    }
+}
+
+/// The gaps between a pair's probes: the front-loaded [`PROBE_BURST_GAPS`]
+/// followed by an endless steady [`PROBE_INTERVAL`].
+type ProbeGaps =
+    iter::Chain<iter::Copied<std::slice::Iter<'static, Duration>>, iter::Repeat<Duration>>;
+
+fn probe_gaps() -> ProbeGaps {
+    PROBE_BURST_GAPS
+        .iter()
+        .copied()
+        .chain(iter::repeat(PROBE_INTERVAL))
+}
+
+/// A pair's probe schedule: front-loaded at first, then a steady cadence that
+/// never runs out. Whether the pair keeps probing is decided by the *settle*
+/// rule (see [`PairState::record_sample`]), not by the schedule — the gaps are
+/// endless so an unanswered pair keeps probing until WireGuard, the liveness
+/// authority, tears the connection down.
 struct Probes {
-    /// Remaining probe times of the current burst, earliest first.
-    burst: std::vec::IntoIter<Instant>,
-    /// Next live-cadence probe. Set only for the primary once its burst is done.
-    live: Option<Instant>,
+    /// Next probe deadline. `None` once the pair has settled or before it starts.
+    next: Option<Instant>,
+    gaps: ProbeGaps,
 }
 
 impl Default for Probes {
     fn default() -> Self {
         Self {
-            burst: Vec::new().into_iter(),
-            live: None,
+            next: None,
+            gaps: probe_gaps(),
         }
     }
 }
 
 impl Probes {
-    /// (Re)starts the front-loaded burst at `at`.
+    /// (Re)starts probing at `at` with a fresh schedule.
     fn start(&mut self, at: Instant) {
-        self.burst = iter::once(at)
-            .chain(PROBE_BURST_GAPS.iter().scan(at, |t, gap| {
-                *t += *gap;
-                Some(*t)
-            }))
-            .collect::<Vec<_>>()
-            .into_iter();
+        self.next = Some(at);
+        self.gaps = probe_gaps();
     }
 
-    /// The next scheduled probe, if any.
+    /// Stops probing (the pair has settled).
+    fn stop(&mut self) {
+        self.next = None;
+    }
+
+    /// The next scheduled probe, if the pair is still probing.
     fn due(&self) -> Option<Instant> {
-        self.burst.as_slice().first().copied().or(self.live)
+        self.next
     }
 
     /// Records that the due probe fired at `now` and schedules the next one.
-    /// `keep_live` requests the live cadence once the burst is exhausted.
-    fn fire(&mut self, now: Instant, keep_live: bool) {
-        self.burst.next();
-
-        if self.burst.as_slice().is_empty() {
-            self.live = keep_live.then(|| now + PROBE_INTERVAL_LIVE);
-        }
-    }
-
-    fn in_burst(&self) -> bool {
-        !self.burst.as_slice().is_empty()
-    }
-
-    fn arm_live(&mut self, at: Instant) {
-        self.live = Some(at);
-    }
-
-    fn disarm_live(&mut self) {
-        self.live = None;
+    fn fire(&mut self, now: Instant) {
+        let gap = self.gaps.next().expect("probe gaps are endless");
+        self.next = Some(now + gap);
     }
 }
 
@@ -188,24 +197,38 @@ struct ResponderDedup {
     cached_at: Instant,
 }
 
-/// Gaps between the probes of one burst: front-loaded so a NAT filter opened
-/// by the peer's burst moments after our first probe is caught by the next
-/// one, then backing off. A burst is `PROBE_BURST_GAPS.len() + 1` probes.
+/// Front-loaded gaps at the start of a pair's probing, before it settles into
+/// the steady [`PROBE_INTERVAL`] cadence: short at first so a NAT filter the
+/// peer opens moments after our first probe is caught quickly.
 pub const PROBE_BURST_GAPS: &[Duration] = &[
     Duration::from_millis(200),
     Duration::from_millis(300),
     Duration::from_millis(500),
-    Duration::from_millis(1000),
 ];
 
 /// Inflight probes older than this are forgotten; a reply that late is not
 /// meaningful anymore.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Cadence at which the primary keeps probing after its burst: RTT freshness
-/// for comparisons against challengers and NAT keepalive, with no liveness
-/// semantics whatsoever.
-pub const PROBE_INTERVAL_LIVE: Duration = Duration::from_secs(25);
+/// Steady cadence a pair falls back to once its front-loaded burst is spent,
+/// while it is still trying to settle (or hunting a path that never answers).
+pub const PROBE_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Positive RTT samples a pair collects before it settles and stops probing.
+///
+/// An answered pair reaches this and goes quiet. A handful of samples is enough
+/// for the smoothed RTT to be a fair basis for selection without spending
+/// probes forever.
+pub const PROBE_SAMPLES: u32 = 5;
+
+/// How long a pair keeps probing without settling once we already have a
+/// primary, before it gives up.
+///
+/// While we have no path we hunt every pair indefinitely (bounded only by
+/// WireGuard retiring the connection). But once a path exists, a pair that
+/// won't settle is a dead end — e.g. a direct pair that can never punch a
+/// symmetric NAT — and probing it forever is pure waste, so we stop.
+pub const PROBE_GIVE_UP: Duration = Duration::from_secs(10);
 
 /// Only RTTs measured within this window are eligible in the selection scan.
 ///
@@ -344,7 +367,7 @@ impl PathAgent {
         // over without waiting for WireGuard's escalation.
         if let Some(primary) = self.primary {
             if let Some(state) = self.pairs.get_mut(&primary) {
-                state.probes.start(now);
+                state.restart_probes(now);
             }
 
             self.suspend_guard(now);
@@ -367,9 +390,11 @@ impl PathAgent {
             rtt: None,
             inflight_probes: Vec::new(),
             probes: Probes::default(),
+            samples: 0,
+            probing_since: None,
             next_probe_seq: 0,
         };
-        state.probes.start(burst_at);
+        state.restart_probes(burst_at);
 
         self.pairs.insert(pair, state);
     }
@@ -827,13 +852,12 @@ impl PathAgent {
                 // Triggered check (cf. RFC 8445, section 7.3.1.4): the
                 // inbound probe proves the reverse NAT filter is open right
                 // now, so probing back completes the hole punch in one round
-                // trip. Only for unvalidated pairs — probing back
-                // unconditionally would ping-pong bursts between the peers
-                // forever, at RTT cadence.
+                // trip. Only for unvalidated pairs — probing back a settled
+                // pair would ping-pong bursts between the peers forever.
                 if let Some(state) = self.pairs.get_mut(&pair)
                     && !state.rtt.is_some_and(|rtt| rtt.is_fresh(now))
                 {
-                    state.probes.start(now);
+                    state.restart_probes(now);
                 }
             }
             crate::icmpv6::Echo::Reply => {
@@ -853,6 +877,7 @@ impl PathAgent {
                         },
                         measured_at: now,
                     });
+                    state.record_sample();
 
                     tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
 
@@ -978,7 +1003,7 @@ impl PathAgent {
             return;
         }
 
-        let primary = self.primary;
+        let has_primary = self.primary.is_some();
         let pending = &mut self.pending_transmits;
 
         for ((local, remote), state) in self.pairs.iter_mut() {
@@ -987,6 +1012,14 @@ impl PathAgent {
             };
 
             if now < deadline {
+                continue;
+            }
+
+            // Once we have a path, stop probing a pair that won't settle
+            // (e.g. a direct pair behind a symmetric NAT); while we have none,
+            // keep hunting until WireGuard retires the connection.
+            if has_primary && state.gave_up(now) {
+                state.probes.stop();
                 continue;
             }
 
@@ -1000,10 +1033,7 @@ impl PathAgent {
             state
                 .inflight_probes
                 .push(InflightProbe { seq, sent_at: now });
-            // Once the burst is done, the primary keeps its RTT fresh and its
-            // NAT mappings warm; everything else goes dormant until the next
-            // re-evaluation signal.
-            state.probes.fire(now, primary == Some((*local, *remote)));
+            state.probes.fire(now);
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 
@@ -1017,7 +1047,7 @@ impl PathAgent {
 
     fn probe_all_pairs(&mut self, now: Instant) {
         for state in self.pairs.values_mut() {
-            state.probes.start(now);
+            state.restart_probes(now);
         }
     }
 
@@ -1108,23 +1138,8 @@ impl PathAgent {
 
         self.primary = Some(path);
 
-        // The old primary's live cadence retires with it; an unfinished
-        // burst keeps running.
-        if let Some(old) = from
-            && old != path
-            && let Some(state) = self.pairs.get_mut(&old)
-            && !state.probes.in_burst()
-        {
-            state.probes.disarm_live();
-        }
-
-        // Keep the new primary on the live cadence once it has nothing else
-        // scheduled.
-        if let Some(state) = self.pairs.get_mut(&path)
-            && state.probes.due().is_none()
-        {
-            state.probes.arm_live(now + PROBE_INTERVAL_LIVE);
-        }
+        // Every pair probes at the steady cadence regardless of which is
+        // primary, so there is no per-pair cadence to arm or retire here.
 
         tracing::debug!(
             ?from,

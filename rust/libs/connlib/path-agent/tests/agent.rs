@@ -14,8 +14,8 @@ use boringtun::noise::{Index, Tunn, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL_LIVE, PROBE_SRC, PathAgent,
-    Payload, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL, PROBE_SAMPLES, PROBE_SRC,
+    PathAgent, Payload, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, Transmit,
 };
 
 // --- bootstrap: handshake fan-out and nomination ---
@@ -246,7 +246,7 @@ fn srflx_local_uses_base_as_send_from_address() {
 // --- probing: bursts, triggered checks, peer-reflexive discovery ---
 
 #[test]
-fn pairs_probe_in_a_front_loaded_burst_then_only_the_primary_stays_on_live_cadence() {
+fn unanswered_pairs_burst_then_hunt_at_the_steady_interval() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
@@ -254,7 +254,8 @@ fn pairs_probe_in_a_front_loaded_burst_then_only_the_primary_stays_on_live_caden
     a.add_remote_candidate(Candidate::host(addr(3)), t0);
     bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
 
-    let burst = a.advance(t0, t0 + secs(5));
+    // Only the burst — stop before the first steady probe (at +2s).
+    let burst = a.advance(t0, t0 + ms(1500));
 
     // Both pairs fire the full front-loaded ladder without waiting for
     // replies — after a roam, the peer's NAT filter may open between two
@@ -263,17 +264,56 @@ fn pairs_probe_in_a_front_loaded_burst_then_only_the_primary_stays_on_live_caden
     assert_eq!(burst.probe_times((addr(1), addr(2))), expected);
     assert_eq!(burst.probe_times((addr(1), addr(3))), expected);
 
-    let after_burst = a.advance(t0 + secs(5), t0 + secs(60));
+    // Neither pair answers, so neither settles: they keep probing at the steady
+    // interval (hunting). This stays under PROBE_GIVE_UP, where — because a
+    // primary exists — an unsettled pair would otherwise stop.
+    let last_burst = *expected.last().unwrap();
+    let hunt = a.advance(last_burst, last_burst + secs(5));
+    let steady: Vec<Instant> = (1..=5).map(|i| last_burst + PROBE_INTERVAL * i).collect();
+    assert_eq!(hunt.probe_times((addr(1), addr(2))), steady);
+    assert_eq!(hunt.probe_times((addr(1), addr(3))), steady);
+}
 
-    // Dormant pairs stay quiet; the primary keeps its RTT fresh and its NAT
-    // mappings warm.
-    assert_eq!(after_burst.probe_times((addr(1), addr(3))), vec![]);
+#[test]
+fn an_answered_pair_settles_and_goes_quiet() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
+    a.drain_events();
+
+    let pair = (addr(1), addr(2));
+
+    // Answer every probe as it goes out; after PROBE_SAMPLES replies the pair
+    // has a stable RTT and stops probing.
+    let mut sent = 0u32;
+    let mut now = t0;
+    for _ in 0..200 {
+        for t in a.tick(now) {
+            if (t.local, t.remote) == pair
+                && let Payload::Plaintext(p) = &t.payload
+                && let Some(probe) = parse_probe(p)
+                && probe.kind == EchoKind::Request
+            {
+                sent += 1;
+                let _ =
+                    a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
+            }
+        }
+        match a.poll_timeout() {
+            Some(next) => now = next.max(now),
+            None => break,
+        }
+    }
+
     assert_eq!(
-        after_burst.probe_times((addr(1), addr(2))),
-        vec![
-            t0 + secs(2) + PROBE_INTERVAL_LIVE,
-            t0 + secs(2) + PROBE_INTERVAL_LIVE * 2
-        ],
+        sent, PROBE_SAMPLES,
+        "a pair must stop probing after {PROBE_SAMPLES} positive samples, sent {sent}",
+    );
+    assert!(
+        a.poll_timeout().is_none(),
+        "a settled connection has no pending probe timeout",
     );
 }
 
@@ -326,17 +366,17 @@ fn probe_seq_advances_per_pair_per_fire() {
 }
 
 #[test]
-fn trickled_candidate_probes_immediately_even_while_dormant() {
+fn trickled_candidate_probes_immediately() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), t0);
     a.add_remote_candidate(Candidate::relayed(addr(4), addr(4)), t0);
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
-
-    // Exhaust every burst; the agent is dormant except for the primary.
     let _ = a.advance(t0, t0 + secs(10));
 
+    // A late candidate seeds new pairs that probe right away — no waiting for
+    // any global window or the existing pairs' cadence.
     let t1 = t0 + secs(10);
     a.add_remote_candidate(Candidate::host(addr(3)), t1);
 
@@ -956,32 +996,26 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
 }
 
 #[test]
-fn retired_primary_stops_live_probing() {
+fn probing_is_independent_of_primary_status() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
     a.add_remote_candidate(Candidate::host(addr(3)), t0);
     a.add_remote_candidate(Candidate::host(addr(4)), t0);
     bootstrap_primary(&mut a, (addr(1), addr(3)), t0);
-
-    let probes = a.tick(t0);
-    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(50));
-    a.ack_probe(&probes, (addr(1), addr(4)), t0 + ms(10));
-    assert_eq!(a.primary(), Some((addr(1), addr(4))));
     a.drain_events();
 
-    // Finish the bursts, then watch the live cadence.
-    let _ = a.advance(t0, t0 + secs(3));
-    let live = a.advance(t0 + secs(3), t0 + secs(60));
+    // Answer both pairs to convergence. One is the primary, the other is not —
+    // yet both settle and go quiet the same way; there is no primary-only
+    // cadence keeping the winner probing.
+    let settled_at = answer_until_settled(&mut a, &[(addr(1), addr(3)), (addr(1), addr(4))], t0);
 
-    assert_eq!(
-        live.probe_times((addr(1), addr(3))),
-        vec![],
-        "the retired primary must not keep probing at the live cadence",
-    );
+    let after = a.advance(settled_at, settled_at + secs(60));
+    assert_eq!(after.probe_times((addr(1), addr(3))), vec![]);
+    assert_eq!(after.probe_times((addr(1), addr(4))), vec![]);
     assert!(
-        !live.probe_times((addr(1), addr(4))).is_empty(),
-        "the new primary keeps probing at the live cadence",
+        a.poll_timeout().is_none(),
+        "both pairs settled, so nothing is scheduled",
     );
 }
 
@@ -1224,6 +1258,41 @@ fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
     let probes = a.tick(now);
     let probe = extract_probe_for(&probes, pair);
     let _ = a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
+}
+
+/// Drives the agent, replying to every probe on `pairs`, until each has been
+/// answered [`PROBE_SAMPLES`] times (i.e. settled). Returns the final instant.
+fn answer_until_settled(a: &mut PathAgent, pairs: &[Pair], start: Instant) -> Instant {
+    let mut replies: std::collections::BTreeMap<Pair, u32> =
+        pairs.iter().map(|p| (*p, 0)).collect();
+    let mut now = start;
+
+    for _ in 0..1000 {
+        for t in a.tick(now) {
+            let pair = (t.local, t.remote);
+            if let Some(count) = replies.get_mut(&pair)
+                && *count < PROBE_SAMPLES
+                && let Payload::Plaintext(p) = &t.payload
+                && let Some(probe) = parse_probe(p)
+                && probe.kind == EchoKind::Request
+            {
+                let _ =
+                    a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
+                *count += 1;
+            }
+        }
+
+        if replies.values().all(|c| *c >= PROBE_SAMPLES) {
+            return now;
+        }
+
+        match a.poll_timeout() {
+            Some(next) => now = next.max(now),
+            None => return now,
+        }
+    }
+
+    panic!("pairs did not settle");
 }
 
 /// Synthetic — only the type byte matters to `handle_outbound`.
