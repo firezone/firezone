@@ -322,7 +322,10 @@ impl PerfUdpSocket {
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
     fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramSegmentIter> {
-        let (mut buffers, mut metas) = self.recv_buffers.pull_batch();
+        let RecvBatch {
+            mut buffers,
+            mut metas,
+        } = self.recv_buffers.pull_batch();
 
         let len = socket.inner.try_io(Interest::READABLE, || {
             // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
@@ -778,10 +781,11 @@ pub(crate) struct RecvBuffers {
     metas: BufferPool<VecBuf<quinn_udp::RecvMeta>>,
 }
 
-/// The pooled datagram buffers of one receive batch.
-type BatchBuffers = Buffer<VecBuf<Buffer<Vec<u8>>>>;
-/// The pooled metadata of one receive batch.
-type BatchMetas = Buffer<VecBuf<quinn_udp::RecvMeta>>;
+/// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
+pub(crate) struct RecvBatch {
+    buffers: Buffer<VecBuf<Buffer<Vec<u8>>>>,
+    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+}
 
 impl RecvBuffers {
     fn new(recv_buf_size: usize, tag: &'static str) -> Self {
@@ -793,14 +797,14 @@ impl RecvBuffers {
     }
 
     /// Pulls the storage for one receive batch, sized and ready for a `recv` call.
-    pub(crate) fn pull_batch(&self) -> (BatchBuffers, BatchMetas) {
+    pub(crate) fn pull_batch(&self) -> RecvBatch {
         let mut buffers = self.buffers.pull();
         let mut metas = self.metas.pull();
 
         buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(quinn_udp::BATCH_SIZE));
         metas.resize(quinn_udp::BATCH_SIZE, quinn_udp::RecvMeta::default());
 
-        (buffers, metas)
+        RecvBatch { buffers, metas }
     }
 }
 
@@ -960,6 +964,16 @@ mod tests {
         fn clone(&self) -> Self {
             Self(self.0.clone())
         }
+    }
+
+    /// The iterator is the item of the channel to the main thread; keeping it small is
+    /// the whole point of storing the batch in pooled `Vec`s rather than inline. tokio
+    /// allocates channel slots in blocks, so a large item would cross musl's mmap
+    /// threshold and thrash the allocator (see the pooling that produced this type).
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn iter_is_a_small_channel_item() {
+        assert_eq!(size_of::<DatagramSegmentIter>(), 104);
     }
 
     #[test]

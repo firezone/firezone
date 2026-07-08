@@ -30,7 +30,7 @@ use anyhow::Result;
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::{DatagramSegmentIter, RecvBuffers};
+use crate::{DatagramSegmentIter, RecvBatch, RecvBuffers};
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -332,7 +332,10 @@ fn drain(
     let socket = victim.socket.as_socket();
 
     loop {
-        let (mut buffers, mut metas) = recv_buffers.pull_batch();
+        let RecvBatch {
+            mut buffers,
+            mut metas,
+        } = recv_buffers.pull_batch();
 
         let len = {
             let mut io_bufs = buffers
