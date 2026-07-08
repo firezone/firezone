@@ -23,12 +23,6 @@ pub struct PathAgent {
     /// because the session does, too.
     established: bool,
 
-    /// While set (and in the future), WireGuard signalled that the current
-    /// path is suspect: the bucket veto lifts so we can fail over to a worse
-    /// bucket (e.g. direct to relayed). The same-bucket RTT hysteresis still
-    /// protects a primary that is answering probes.
-    guard_suspended_until: Option<Instant>,
-
     responder: Responder,
 
     outbound_init: Option<OutboundInit>,
@@ -67,13 +61,31 @@ pub(crate) struct PairState {
 }
 
 impl PairState {
-    /// (Re)opens a probing window on this pair: a fresh burst and a fresh
-    /// sample count, so it probes until it settles — or, once we have a path,
-    /// until it gives up ([`PROBE_GIVE_UP`]).
+    /// (Re)opens a probing window: a fresh burst, a fresh sample count, and a
+    /// cleared RTT — so the pair earns a new measurement rather than carrying a
+    /// stale one. It probes until it settles, or (once we have a path) gives up.
     fn restart_probes(&mut self, at: Instant) {
-        self.probes.start(at);
+        self.probes.hunt(at);
         self.samples = 0;
         self.probing_since = Some(at);
+        self.rtt = None;
+    }
+
+    /// Drops the pair's data and stops probing it. Used when a settled pair
+    /// isn't the primary, or a pair gives up — either way we keep no stale RTT
+    /// around, which is what lets selection skip a freshness check.
+    fn retire(&mut self) {
+        self.probes.stop();
+        self.rtt = None;
+    }
+
+    /// Keeps the pair on the slow keepalive cadence (it's the primary).
+    fn keep_fresh(&mut self, now: Instant) {
+        self.probes.keepalive(now);
+    }
+
+    fn is_settled(&self) -> bool {
+        self.samples >= PROBE_SAMPLES
     }
 
     /// Whether this pair has probed past the give-up bound without settling.
@@ -82,35 +94,29 @@ impl PairState {
             .is_some_and(|since| now.duration_since(since) >= PROBE_GIVE_UP)
     }
 
-    /// Records a positive RTT sample and settles the pair (stops probing) once
-    /// [`PROBE_SAMPLES`] have arrived.
     fn record_sample(&mut self) {
         self.samples = self.samples.saturating_add(1);
-        if self.samples >= PROBE_SAMPLES {
-            self.probes.stop();
-        }
     }
 }
 
-/// The gaps between a pair's probes: the front-loaded [`PROBE_BURST_GAPS`]
-/// followed by an endless steady [`PROBE_INTERVAL`].
+/// The gaps between a pair's probes: a front-loaded burst followed by an
+/// endless steady interval.
 type ProbeGaps =
     iter::Chain<iter::Copied<std::slice::Iter<'static, Duration>>, iter::Repeat<Duration>>;
 
-fn probe_gaps() -> ProbeGaps {
-    PROBE_BURST_GAPS
-        .iter()
-        .copied()
-        .chain(iter::repeat(PROBE_INTERVAL))
+const NO_BURST: &[Duration] = &[];
+
+fn probe_gaps(burst: &'static [Duration], steady: Duration) -> ProbeGaps {
+    burst.iter().copied().chain(iter::repeat(steady))
 }
 
-/// A pair's probe schedule: front-loaded at first, then a steady cadence that
-/// never runs out. Whether the pair keeps probing is decided by the *settle*
-/// rule (see [`PairState::record_sample`]), not by the schedule — the gaps are
-/// endless so an unanswered pair keeps probing until WireGuard, the liveness
-/// authority, tears the connection down.
+/// A pair's probe schedule. In its `hunt` phase it front-loads a burst then
+/// settles to [`PROBE_INTERVAL`]; the primary switches to the slow
+/// [`PROBE_KEEPALIVE`] cadence via `keepalive`. `stop` ends it (settled loser,
+/// or given up). The gaps are endless, so an unanswered pair keeps probing
+/// until WireGuard, the liveness authority, retires the connection.
 struct Probes {
-    /// Next probe deadline. `None` once the pair has settled or before it starts.
+    /// Next probe deadline. `None` when the pair isn't probing.
     next: Option<Instant>,
     gaps: ProbeGaps,
 }
@@ -119,19 +125,25 @@ impl Default for Probes {
     fn default() -> Self {
         Self {
             next: None,
-            gaps: probe_gaps(),
+            gaps: probe_gaps(PROBE_BURST_GAPS, PROBE_INTERVAL),
         }
     }
 }
 
 impl Probes {
-    /// (Re)starts probing at `at` with a fresh schedule.
-    fn start(&mut self, at: Instant) {
+    /// (Re)starts the burst-then-interval hunt at `at`.
+    fn hunt(&mut self, at: Instant) {
         self.next = Some(at);
-        self.gaps = probe_gaps();
+        self.gaps = probe_gaps(PROBE_BURST_GAPS, PROBE_INTERVAL);
     }
 
-    /// Stops probing (the pair has settled).
+    /// Switches to the slow keepalive cadence, next probe one interval out.
+    fn keepalive(&mut self, now: Instant) {
+        self.next = Some(now + PROBE_KEEPALIVE);
+        self.gaps = probe_gaps(NO_BURST, PROBE_KEEPALIVE);
+    }
+
+    /// Stops probing.
     fn stop(&mut self) {
         self.next = None;
     }
@@ -151,13 +163,6 @@ impl Probes {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Rtt {
     pub(crate) smoothed: Duration,
-    measured_at: Instant,
-}
-
-impl Rtt {
-    fn is_fresh(&self, now: Instant) -> bool {
-        now.saturating_duration_since(self.measured_at) < RTT_FRESHNESS
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -223,21 +228,11 @@ pub const PROBE_SAMPLES: u32 = 5;
 /// symmetric NAT — and probing it forever is pure waste, so we stop.
 pub const PROBE_GIVE_UP: Duration = Duration::from_secs(10);
 
-/// Only RTTs measured within this window are eligible in the selection scan.
-///
-/// The bound is wedged between two failure modes: shorter than one full burst
-/// and replies racing in from the same round stop comparing fairly ("last to
-/// answer" would win instead of "best score"); much longer and a ghost pair —
-/// a good bucket toward an address the peer roamed away from — displaces a
-/// freshly-validated primary on a meaningless measurement.
-pub const RTT_FRESHNESS: Duration = Duration::from_secs(10);
-
-/// How long the primary's selection guard stays suspended after a
-/// re-evaluation signal: long enough for the triggered burst's replies to
-/// arrive and be compared, short enough that hysteresis is back before RTT
-/// jitter can flap two live same-bucket pairs. Persistent distress keeps
-/// re-suspending (boringtun retries an unanswered re-key every few seconds).
-pub const GUARD_SUSPENSION: Duration = Duration::from_secs(10);
+/// Slow cadence the primary keeps after it settles, so its RTT stays current
+/// for the next comparison and its NAT mapping warm. This is what lets us drop
+/// a time-based freshness check: the primary is the only long-lived pair, and
+/// it is never stale.
+pub const PROBE_KEEPALIVE: Duration = Duration::from_secs(5);
 
 /// An accepted inbound init this soon after the previous one means the peer
 /// keeps re-keying: it isn't hearing our responses or data.
@@ -282,7 +277,6 @@ impl PathAgent {
             pairs: BTreeMap::new(),
             primary: None,
             established: false,
-            guard_suspended_until: None,
             responder: Responder::default(),
             outbound_init: None,
             last_inbound_init_at: None,
@@ -355,15 +349,13 @@ impl PathAgent {
         // Candidate arrival hints that the current primary may be dead: the
         // most common reason for new candidates mid-session is that the peer
         // roamed away from the address our primary points at. Re-probe the
-        // primary and lift the bucket veto — if the primary is alive, its
-        // reply keeps it winning the scan; if it is dead, a fresh pair takes
-        // over without waiting for WireGuard's escalation.
-        if let Some(primary) = self.primary {
-            if let Some(state) = self.pairs.get_mut(&primary) {
-                state.restart_probes(now);
-            }
-
-            self.suspend_guard(now);
+        // primary and re-measure it: `restart_probes` clears its RTT, so if it
+        // is dead it drops out of selection and a fresh pair takes over; if it
+        // is alive its new measurement keeps it winning on bucket.
+        if let Some(primary) = self.primary
+            && let Some(state) = self.pairs.get_mut(&primary)
+        {
+            state.restart_probes(now);
         }
     }
 
@@ -534,7 +526,12 @@ impl PathAgent {
                     remote,
                     payload: Payload::Ciphertext(bytes),
                 });
-                self.suspend_guard(now);
+                // Drop the primary pointer: an unanswered re-key is WireGuard
+                // telling us the path may be dead, so we re-evaluate from
+                // scratch. With no primary to protect, the bucket veto lifts and
+                // the first pair to answer wins — even a worse bucket, so we can
+                // fail over from direct to relayed if that is all that works.
+                self.primary = None;
                 self.probe_all_pairs(now);
                 self.select_primary(now);
             }
@@ -667,7 +664,10 @@ impl PathAgent {
                 {
                     tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed early; re-evaluating paths");
 
-                    self.suspend_guard(now);
+                    // Same as an unanswered outbound re-key: the peer isn't
+                    // hearing us on the current primary, so drop the pointer and
+                    // let the bucket veto lift for a clean failover.
+                    self.primary = None;
                     self.probe_all_pairs(now);
                     self.select_primary(now);
                 }
@@ -845,36 +845,50 @@ impl PathAgent {
                 // Triggered check (cf. RFC 8445, section 7.3.1.4): the
                 // inbound probe proves the reverse NAT filter is open right
                 // now, so probing back completes the hole punch in one round
-                // trip. Only for unvalidated pairs — probing back a settled
-                // pair would ping-pong bursts between the peers forever.
+                // trip. Only for pairs we haven't measured — probing back one
+                // we already track would ping-pong bursts between the peers.
                 if let Some(state) = self.pairs.get_mut(&pair)
-                    && !state.rtt.is_some_and(|rtt| rtt.is_fresh(now))
+                    && state.rtt.is_none()
                 {
                     state.restart_probes(now);
                 }
             }
             crate::icmpv6::Echo::Reply => {
-                if let Some(state) = self.pairs.get_mut(&pair)
-                    && let Some(i) = state
-                        .inflight_probes
-                        .iter()
-                        .position(|inflight| inflight.seq == probe.seq)
-                {
-                    let inflight = state.inflight_probes.remove(i);
-                    let rtt = now.saturating_duration_since(inflight.sent_at);
+                let Some(state) = self.pairs.get_mut(&pair) else {
+                    return ControlFlow::Break(());
+                };
+                let Some(i) = state
+                    .inflight_probes
+                    .iter()
+                    .position(|inflight| inflight.seq == probe.seq)
+                else {
+                    return ControlFlow::Break(());
+                };
 
-                    state.rtt = Some(Rtt {
-                        smoothed: match state.rtt {
-                            None => rtt,
-                            Some(prev) => (prev.smoothed + rtt) / 2,
-                        },
-                        measured_at: now,
-                    });
-                    state.record_sample();
+                let inflight = state.inflight_probes.remove(i);
+                let rtt = now.saturating_duration_since(inflight.sent_at);
 
-                    tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
+                state.rtt = Some(Rtt {
+                    smoothed: match state.rtt {
+                        None => rtt,
+                        Some(prev) => (prev.smoothed + rtt) / 2,
+                    },
+                });
+                state.record_sample();
 
-                    self.select_primary(now);
+                tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
+
+                self.select_primary(now);
+
+                // A pair that has settled either becomes the long-lived primary
+                // (kept fresh on the keepalive cadence) or is a loser whose data
+                // we drop, so no stale RTT lingers for selection to trip over.
+                if self.pairs.get(&pair).is_some_and(PairState::is_settled) {
+                    if self.primary == Some(pair) {
+                        self.pairs.get_mut(&pair).unwrap().keep_fresh(now);
+                    } else {
+                        self.pairs.get_mut(&pair).unwrap().retire();
+                    }
                 }
             }
         }
@@ -996,7 +1010,7 @@ impl PathAgent {
             return;
         }
 
-        let has_primary = self.primary.is_some();
+        let primary = self.primary;
         let pending = &mut self.pending_transmits;
 
         for ((local, remote), state) in self.pairs.iter_mut() {
@@ -1008,11 +1022,13 @@ impl PathAgent {
                 continue;
             }
 
-            // Once we have a path, stop probing a pair that won't settle
-            // (e.g. a direct pair behind a symmetric NAT); while we have none,
-            // keep hunting until WireGuard retires the connection.
-            if has_primary && state.gave_up(now) {
-                state.probes.stop();
+            // Once we have a path, stop probing a non-primary pair that won't
+            // settle (e.g. a direct pair behind a symmetric NAT). The primary
+            // is exempt — probe loss must never retire it — and while we have
+            // no path at all we hunt every pair until WireGuard gives up.
+            let is_primary = primary == Some((*local, *remote));
+            if primary.is_some() && !is_primary && state.gave_up(now) {
+                state.retire();
                 continue;
             }
 
@@ -1060,24 +1076,19 @@ impl PathAgent {
         }
     }
 
-    /// WireGuard signalled that the current path is suspect: the bucket veto
-    /// lifts so we can fail over to a worse bucket (e.g. direct to relayed)
-    /// and a stale primary stops being defended, so a fresh pair can take
-    /// over. A primary that is still answering probes keeps its same-bucket
-    /// hysteresis, so two live pairs don't flap.
-    fn suspend_guard(&mut self, now: Instant) {
-        self.guard_suspended_until = Some(now + GUARD_SUSPENSION);
-    }
-
-    fn guard_active(&self, now: Instant) -> bool {
-        self.guard_suspended_until.is_none_or(|until| now >= until)
-    }
-
     fn select_primary(&mut self, now: Instant) {
+        // Only pairs with an RTT are candidates. Every RTT we hold is current
+        // by construction — the primary is kept fresh on its keepalive cadence,
+        // an actively-probing pair is measuring right now, and a settled loser
+        // or a re-probed pair has its RTT cleared — so there is no stale
+        // measurement to filter out. Selection is bucket-dominant, so a live
+        // primary naturally wins over any worse-bucket challenger; a *dead*
+        // primary has no RTT (a distress or candidate signal cleared it by
+        // re-probing) and drops out, letting a fresh pair take over.
         let best = self
             .pairs
             .iter()
-            .filter(|(_, s)| s.rtt.is_some_and(|rtt| rtt.is_fresh(now)))
+            .filter(|(_, s)| s.rtt.is_some())
             .min_by_key(|(k, s)| pair_score(**k, s))
             .map(|(k, _)| *k);
 
@@ -1087,31 +1098,27 @@ impl PathAgent {
             return;
         }
 
-        // The current primary keeps its place unless a challenger clearly
-        // wins.
+        // The current primary keeps its place unless a challenger clearly wins.
+        // A worse bucket never displaces it — even a primary without a fresh
+        // RTT holds by candidate kind, so a fresh worse-bucket pair can't steal
+        // it while it is being re-measured. Failing over to a *worse* bucket
+        // happens only after WireGuard distress, which drops the primary
+        // pointer entirely (there is then no primary to protect).
         if let Some(primary) = self.primary
             && let Some(prev) = self.pairs.get(&primary)
         {
             let new_score = pair_score(new, &self.pairs[&new]);
             let prev_score = pair_score(primary, prev);
 
-            // A worse bucket only displaces the primary while WireGuard
-            // signalled distress; otherwise probe results alone must never
-            // demote a working path (a busy node drops probes while its data
-            // flows just fine).
-            if prev_score.bucket < new_score.bucket && self.guard_active(now) {
+            if prev_score.bucket < new_score.bucket {
                 return;
             }
 
-            // Same bucket: keep the primary unless the challenger beats its
-            // RTT by a clear margin — no needless hop for a marginal gain,
-            // distress or not. While the guard holds this protects even a
-            // momentarily-stale primary; under distress we only defend one
-            // that is still answering, so a dead primary yields to a fresh
-            // same-bucket pair.
+            // Same bucket: keep the primary unless the challenger beats its RTT
+            // by a clear margin — no needless hop for a marginal gain, and no
+            // flap between two live same-bucket pairs on jitter.
             if prev_score.bucket == new_score.bucket
                 && let Some(prev_rtt) = prev.rtt
-                && (self.guard_active(now) || prev_rtt.is_fresh(now))
             {
                 let new_rtt = new_score.rtt.unwrap_or_default();
                 let margin = PRIMARY_HYSTERESIS_FLOOR
@@ -1131,8 +1138,22 @@ impl PathAgent {
 
         self.primary = Some(path);
 
-        // Every pair probes at the steady cadence regardless of which is
-        // primary, so there is no per-pair cadence to arm or retire here.
+        // The old primary is now a loser: drop its data so nothing stale
+        // lingers (a later signal re-probes it if it becomes relevant again).
+        if let Some(old) = from
+            && old != path
+            && let Some(state) = self.pairs.get_mut(&old)
+        {
+            state.retire();
+        }
+
+        // A new primary that has already settled moves to the keepalive cadence
+        // to stay fresh; one still hunting keeps bursting until it settles.
+        if let Some(state) = self.pairs.get_mut(&path)
+            && state.is_settled()
+        {
+            state.keep_fresh(now);
+        }
 
         tracing::debug!(
             ?from,

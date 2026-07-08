@@ -2,7 +2,7 @@
 //!
 //! Layout follows the model's life-cycle: bootstrap via handshake fan-out,
 //! probing (bursts, triggered checks, peer-reflexive discovery), selection
-//! (scoring, hysteresis, freshness), and failure handling (roam recovery,
+//! (scoring, hysteresis, settle-and-retire), and failure handling (roam recovery,
 //! WireGuard distress signals). Flow-level coverage lives in the tunnel
 //! proptest.
 
@@ -275,30 +275,35 @@ fn unanswered_pairs_burst_then_hunt_at_the_steady_interval() {
 }
 
 #[test]
-fn an_answered_pair_settles_and_goes_quiet() {
+fn an_answered_non_primary_pair_settles_and_goes_quiet() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
     a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    // A worse-bucket relay pair that answers but can never steal the primary.
+    a.add_remote_candidate(Candidate::relayed(addr(3), addr(3)), t0);
     bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
     a.drain_events();
 
-    let pair = (addr(1), addr(2));
+    let loser = (addr(1), addr(3));
 
-    // Answer every probe as it goes out; after PROBE_SAMPLES replies the pair
-    // has a stable RTT and stops probing.
+    // Answer every probe on the loser as it goes out; after PROBE_SAMPLES
+    // replies it has a stable RTT and — being a non-primary — stops probing.
     let mut sent = 0u32;
     let mut now = t0;
     for _ in 0..200 {
         for t in a.tick(now) {
-            if (t.local, t.remote) == pair
+            if (t.local, t.remote) == loser
                 && let Payload::Plaintext(p) = &t.payload
                 && let Some(probe) = parse_probe(p)
                 && probe.kind == EchoKind::Request
             {
                 sent += 1;
-                let _ =
-                    a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
+                let _ = a.handle_inbound_tun(
+                    build_echo_reply(probe.id, probe.seq),
+                    loser,
+                    now + ms(20),
+                );
             }
         }
         match a.poll_timeout() {
@@ -308,12 +313,13 @@ fn an_answered_pair_settles_and_goes_quiet() {
     }
 
     assert_eq!(
-        sent, PROBE_SAMPLES,
-        "a pair must stop probing after {PROBE_SAMPLES} positive samples, sent {sent}",
+        a.primary(),
+        Some((addr(1), addr(2))),
+        "the worse-bucket loser must not steal the primary",
     );
-    assert!(
-        a.poll_timeout().is_none(),
-        "a settled connection has no pending probe timeout",
+    assert_eq!(
+        sent, PROBE_SAMPLES,
+        "a non-primary pair must stop probing after {PROBE_SAMPLES} positive samples, sent {sent}",
     );
 }
 
@@ -996,7 +1002,7 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
 }
 
 #[test]
-fn probing_is_independent_of_primary_status() {
+fn settled_primary_keepalives_while_loser_goes_quiet() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
@@ -1005,17 +1011,23 @@ fn probing_is_independent_of_primary_status() {
     bootstrap_primary(&mut a, (addr(1), addr(3)), t0);
     a.drain_events();
 
-    // Answer both pairs to convergence. One is the primary, the other is not —
-    // yet both settle and go quiet the same way; there is no primary-only
-    // cadence keeping the winner probing.
+    // Answer both pairs to convergence. (1,3) is the primary, (1,4) a
+    // same-bucket loser that stays behind it under hysteresis.
     let settled_at = answer_until_settled(&mut a, &[(addr(1), addr(3)), (addr(1), addr(4))], t0);
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
 
     let after = a.advance(settled_at, settled_at + secs(60));
-    assert_eq!(after.probe_times((addr(1), addr(3))), vec![]);
-    assert_eq!(after.probe_times((addr(1), addr(4))), vec![]);
+    // The primary keeps the slow keepalive cadence so its RTT stays current
+    // for the next comparison...
     assert!(
-        a.poll_timeout().is_none(),
-        "both pairs settled, so nothing is scheduled",
+        !after.probe_times((addr(1), addr(3))).is_empty(),
+        "the settled primary keepalives",
+    );
+    // ...while the settled loser is dropped and goes silent.
+    assert_eq!(
+        after.probe_times((addr(1), addr(4))),
+        vec![],
+        "a settled loser goes quiet",
     );
 }
 
@@ -1439,12 +1451,14 @@ fn parse_probe(packet: &IpPacket) -> Option<ProbeFields> {
 }
 
 fn extract_probe_for(transmits: &[Transmit], pair: Pair) -> ProbeFields {
+    // A pair can carry both a probe and (mid-failover, while re-keying) a
+    // fanned-out handshake init in the same tick; pick the probe.
     let t = transmits
         .iter()
-        .find(|t| (t.local, t.remote) == pair)
-        .unwrap_or_else(|| panic!("no transmit for {pair:?}"));
+        .find(|t| (t.local, t.remote) == pair && matches!(t.payload, Payload::Plaintext(_)))
+        .unwrap_or_else(|| panic!("no probe transmit for {pair:?}"));
     let Payload::Plaintext(ref packet) = t.payload else {
-        panic!("expected Plaintext probe, got {:?}", t.payload);
+        unreachable!()
     };
     parse_probe(packet).expect("parses as probe")
 }

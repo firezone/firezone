@@ -43,11 +43,14 @@
 //!
 //! ## Selection
 //!
-//! Given the pairs with a fresh RTT, scoring ranks them by candidate kind,
-//! relay placement and address family, with RTT only as a tie-breaker under
-//! hysteresis so a working primary isn't displaced by a marginal gain. A
-//! WireGuard distress signal briefly lifts the bucket veto so we can fail over
-//! to a worse-but-working path (e.g. direct to relayed).
+//! Given the pairs with an RTT, scoring ranks them by candidate kind, relay
+//! placement and address family, with RTT only as a tie-breaker under
+//! hysteresis so a working primary isn't displaced by a marginal gain. A worse
+//! bucket never displaces the primary — it holds by candidate kind even while
+//! being re-measured. Failing over to a worse-but-working path (e.g. direct to
+//! relayed) happens only on a WireGuard distress signal, which drops the
+//! primary pointer entirely so there is no longer a pair to protect and the
+//! best surviving path wins.
 
 mod agent;
 mod candidate;
@@ -57,8 +60,8 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    GUARD_SUSPENSION, PROBE_BURST_GAPS, PROBE_GIVE_UP, PROBE_INTERVAL, PROBE_SAMPLES,
-    PROBE_TIMEOUT, PathAgent, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL, RTT_FRESHNESS,
+    PROBE_BURST_GAPS, PROBE_GIVE_UP, PROBE_INTERVAL, PROBE_KEEPALIVE, PROBE_SAMPLES, PROBE_TIMEOUT,
+    PathAgent, REKEY_DISTRESS_INTERVAL, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};
