@@ -769,10 +769,9 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 ///
 /// Only Linux / Android enable `UDP_GRO` (up to `UDP_GRO_CNT_MAX` = 64); every other platform receives
 /// one datagram per buffer. Runtime `gro_segments()` never exceeds this, so it bounds the worst case.
-pub const MAX_GRO_SEGMENTS: usize = if cfg!(any(target_os = "linux", target_os = "android")) {
-    64
-} else {
-    1
+pub const MAX_GRO_SEGMENTS: usize = cfg_select! {
+    any(target_os = "linux", target_os = "android") => { 64 }
+    _ => { 1 }
 };
 
 /// Worst-case heap that a single received batch ([`DatagramSegmentIter`]) pins.
