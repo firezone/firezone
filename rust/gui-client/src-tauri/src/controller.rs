@@ -53,7 +53,6 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
-    /// Armed when we tell the tunnel service that we are quitting; quits the app if [`service::ServerMsg::DisconnectedGracefully`] doesn't arrive in time.
     quit_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     telemetry_allowed: bool,
     updates_rx: Option<ReceiverStream<Option<updates::Notification>>>,
