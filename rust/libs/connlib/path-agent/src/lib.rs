@@ -1,57 +1,52 @@
-//! Path selection for iceless snownet connections.
+//! Path selection for iceless WireGuard connections.
 //!
-//! A [`PathAgent`] picks which local/remote address pair a connection sends on
-//! (its *primary*) and keeps that choice current as candidates come and go. It
-//! replaces ICE for iceless connections: no roles, no nomination, no consent
-//! checks. The model is a handful of orthogonal, composable pieces.
+//! ICEless is inspired by ICE but optimised for WireGuard. A [`PathAgent`]
+//! only *selects* a path (which local/remote address pair a connection sends
+//! on — its *primary*); WireGuard owns the session and liveness.
 //!
-//! ## WireGuard owns liveness
+//! ## Bootstrap
 //!
-//! Probes never kill a connection. A busy or spotty node drops probes while its
-//! data still flows, and we must not retire it for that. The only authority on
-//! whether a connection is dead is WireGuard's own state machine (an unanswered
-//! re-key hitting its attempt timeout, or the session aging out). Everything
-//! here only ever *informs* selection; it never tears a connection down.
+//! Probes ride the WireGuard session, so a session must exist before any path
+//! can be probed. To get one, the agent fans a boringtun `init` out over every
+//! pair that involves a relay candidate — relays are always reachable, even
+//! behind double symmetric NAT. A session is *established* the moment we see a
+//! handshake (an init or a response), and the establishing handshake seeds a
+//! preliminary primary: the relay pair it arrived on. That is sound because the
+//! fan-out only uses relays (the worst tier), so probing can only promote away
+//! from it, and it gives both ends a working path — and thus a connection that
+//! carries data — the instant the session exists, rather than after the first
+//! probe reply. A mid-session re-key never moves the primary; probing decides.
 //!
-//! ## Probing and the settle rule
+//! Handshakes are always answered on the path they arrived on, never on the
+//! primary — routine re-keys included.
 //!
-//! Probes are ICMP echoes sent *inside* the WireGuard session, so a reply is
-//! proof the tunnel works on that pair. Each pair probes in a front-loaded
-//! burst that settles into a steady cadence (see the [`PROBE_BURST_GAPS`] /
-//! [`PROBE_INTERVAL`] schedule), and one rule decides how long it probes:
+//! ## Probing and selection
 //!
-//! - it collects positive RTT samples until it has [`PROBE_SAMPLES`] of them,
-//!   then **settles** and goes quiet — this is why a converged connection stops
-//!   probing;
-//! - a pair that never gets a reply never settles, so it **keeps probing** —
-//!   until WireGuard retires the connection. Hunting for a path and going quiet
-//!   after converging are the same rule seen from two sides.
+//! Once established, every pair probes with ICMPv6 echo requests (the `id` is
+//! scoped to the pair). A reply is proof the path works both ways and carries
+//! its RTT. Pairs are ranked by tier then RTT, and **probes can only promote
+//! the primary, never demote it**: the best measured pair takes an empty
+//! primary or displaces the incumbent only when it scores strictly better.
 //!
-//! With one exception: once we already have a primary, a pair that won't settle
-//! within [`PROBE_GIVE_UP_ATTEMPTS`] probes is a dead end (e.g. a direct pair
-//! that can never punch a symmetric NAT) and stops. We hunt indefinitely only
-//! while we have no path at all.
+//! A pair goes quiet after [`PROBE_BUDGET`] probes — *unless* it is the primary
+//! (which keeps a slow [`PRIMARY_KEEPALIVE`] cadence so an idle connection's NAT
+//! bindings and tunnel stay alive; iceless runs no WireGuard persistent
+//! keepalive), or there is no primary at all (in which case every pair hunts
+//! forever until one is found). The agent never declares the connection broken;
+//! without a path WireGuard simply can't re-key and the connection is torn down
+//! after ~180s.
 //!
-//! ## Re-evaluation (the scoped eval window)
+//! ## Distress and re-probing
 //!
-//! A settled pair is re-armed only by a signal that something may have changed:
-//! a newly-signalled or peer-reflexive candidate arrives, or WireGuard shows
-//! distress (several of our re-keys going unanswered, or the peer re-keying
-//! repeatedly with no data in between — see [`REKEY_DISTRESS_ATTEMPTS`]). The
-//! old global evaluation window still exists — but now it's implicit and scoped
-//! to just the pairs a signal touches, e.g. the current primary and a freshly
-//! arrived candidate, rather than a timer over all of them.
+//! The primary is dropped only on a signal that it is dead. WireGuard re-keys
+//! when its data goes unanswered; because every WireGuard packet flows through
+//! the agent, a second unanswered re-key (ours) — or a second distinct peer
+//! init with no data in between — is taken as distress ([`REKEY_DISTRESS_ATTEMPTS`]),
+//! clearing the primary and re-probing every pair. A new candidate is the same
+//! kind of signal and does the same. Pairs already probing keep their state.
 //!
-//! ## Selection
-//!
-//! Given the pairs with an RTT, scoring ranks them by candidate kind, relay
-//! placement and address family, with RTT only as a tie-breaker under
-//! hysteresis so a working primary isn't displaced by a marginal gain. A worse
-//! bucket never displaces the primary — it holds by candidate kind even while
-//! being re-measured. Failing over to a worse-but-working path (e.g. direct to
-//! relayed) happens only on a WireGuard distress signal, which drops the
-//! primary pointer entirely so there is no longer a pair to protect and the
-//! best surviving path wins.
+//! NAT bindings along the primary are kept warm by WireGuard's persistent
+//! keepalive, not by probes.
 
 mod agent;
 mod candidate;
@@ -61,8 +56,8 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    PROBE_BURST_GAPS, PROBE_GIVE_UP_ATTEMPTS, PROBE_INTERVAL, PROBE_KEEPALIVE, PROBE_SAMPLES,
-    PROBE_TIMEOUT, PathAgent, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
+    PRIMARY_KEEPALIVE, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_INTERVAL, PathAgent,
+    REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};

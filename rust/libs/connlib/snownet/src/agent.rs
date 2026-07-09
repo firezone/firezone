@@ -246,14 +246,9 @@ impl Agent {
         }
     }
 
-    pub(crate) fn initiate_handshake(
-        &mut self,
-        tunnel: &mut Tunn,
-        force_resend: bool,
-        now: Instant,
-    ) {
+    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
         if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, force_resend, now);
+            path.initiate_handshake(tunnel, now);
         }
     }
 

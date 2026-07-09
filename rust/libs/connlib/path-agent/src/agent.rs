@@ -11,27 +11,31 @@ use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
 
-/// Path-selection state machine for ICE-less snownet connections.
+/// Iceless path selection for a single WireGuard connection.
+#[derive(Default)]
 pub struct PathAgent {
     locals: Vec<Candidate>,
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
 
-    /// `true` once a handshake has been accepted from the peer. Probes ride
-    /// the session, so they wait for this; it survives a [`Self::rebuild`]
-    /// because the session does, too.
-    established: bool,
+    /// `true` once a handshake (init or response) has been seen and a WireGuard
+    /// session therefore exists, so probes can ride it. Survives a
+    /// [`Self::rebuild`] because the session key does.
+    has_session: bool,
+
+    /// Buffered `init` fanned out over relay pairs during bootstrap only. Once
+    /// established, a re-key rides the primary instead.
+    outbound_init: Option<OutboundInit>,
+
+    /// Our own re-keys sent since the last one was answered. The second one
+    /// unanswered is WireGuard distress: the primary path is dead.
+    unanswered_rekeys: u32,
+    /// Distinct peer inits since we last saw peer data. The second with no data
+    /// in between means the peer isn't hearing us: the primary path is dead.
+    peer_rekeys: u32,
 
     responder: Responder,
-
-    outbound_init: Option<OutboundInit>,
-    /// Consecutive re-key retransmits of our own that went unanswered. Reset
-    /// when a response clears `outbound_init` or a fresh fanout starts.
-    unanswered_rekeys: u32,
-    /// Distinct accepted inbound inits since we last saw peer data. Reset by any
-    /// inbound data packet, which proves the peer is hearing us.
-    peer_rekeys: u32,
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
@@ -39,12 +43,12 @@ pub struct PathAgent {
     events_queued_at: Option<Instant>,
 
     peer_reflexive_addrs: BTreeSet<SocketAddr>,
+    next_pair_id: u16,
 }
 
 #[derive(Default)]
 struct Responder {
     last_init: Option<Vec<u8>>,
-    last_init_path: Option<(SocketAddr, SocketAddr)>,
     dedup: Option<ResponderDedup>,
 }
 
@@ -52,81 +56,55 @@ pub(crate) struct PairState {
     pub(crate) kinds: (crate::CandidateKind, crate::CandidateKind),
     pub(crate) local_family_matched: bool,
     pub(crate) rtt: Option<Rtt>,
-    /// Probes awaiting their reply. Several can be outstanding on a
-    /// high-RTT path because the burst fires faster than one round trip.
-    inflight_probes: Vec<InflightProbe>,
+    /// Probes awaiting a reply. Several can be outstanding on a high-RTT path
+    /// because the burst fires faster than one round trip.
+    inflight: Vec<InflightProbe>,
     probes: Probes,
-    /// Positive RTT samples collected since the last (re)start. Once this
-    /// reaches [`PROBE_SAMPLES`] the pair has settled and stops probing.
-    samples: u32,
-    /// Probes fired since the last (re)start, for the give-up bound. Counting
-    /// fires rather than elapsed time makes "we gave it a fair chance"
-    /// independent of when probing actually began (probes only fire once the
-    /// session is established) and of the burst schedule.
+    /// Probes fired since the last (re)start. Past [`PROBE_BUDGET`] the pair
+    /// goes quiet — unless there is no primary, in which case it hunts forever.
     probes_sent: u32,
-    next_probe_seq: u16,
+    /// Identifies this pair in the ICMP `id` field, so a reply to a pair that
+    /// has since been recreated (same addresses, fresh id) is ignored.
+    id: u16,
+    next_seq: u16,
 }
 
 impl PairState {
-    /// (Re)opens a probing window: a fresh burst, a fresh sample count, and a
-    /// cleared RTT — so the pair earns a new measurement rather than carrying a
-    /// stale one. It probes until it settles, or (once we have a path) gives up.
-    fn restart_probes(&mut self, at: Instant) {
+    /// (Re)opens a probing window: a fresh burst, cleared count, cleared RTT and
+    /// no stale inflight probes. The pair re-earns its measurement.
+    fn restart(&mut self, at: Instant) {
         self.probes.hunt(at);
-        self.samples = 0;
         self.probes_sent = 0;
         self.rtt = None;
+        self.inflight.clear();
     }
 
-    /// Drops the pair's data and stops probing it. Used when a settled pair
-    /// isn't the primary, or a pair gives up — either way we keep no stale RTT
-    /// around, which is what lets selection skip a freshness check.
-    fn retire(&mut self) {
-        self.probes.stop();
-        self.rtt = None;
+    fn is_probing(&self) -> bool {
+        self.probes.due().is_some()
     }
 
-    /// Keeps the pair on the slow keepalive cadence (it's the primary).
-    fn keep_fresh(&mut self, now: Instant) {
-        self.probes.keepalive(now);
-    }
-
-    fn is_settled(&self) -> bool {
-        self.samples >= PROBE_SAMPLES
-    }
-
-    /// Whether this pair has fired its whole give-up budget without settling.
-    fn gave_up(&self) -> bool {
-        self.probes_sent >= PROBE_GIVE_UP_ATTEMPTS
-    }
-
-    fn record_sample(&mut self) {
-        self.samples = self.samples.saturating_add(1);
-    }
-
-    fn record_probe_sent(&mut self) {
-        self.probes_sent = self.probes_sent.saturating_add(1);
+    fn involves_relay(&self) -> bool {
+        matches!(self.kinds.0, crate::CandidateKind::Relayed)
+            || matches!(self.kinds.1, crate::CandidateKind::Relayed)
     }
 }
 
-/// The gaps between a pair's probes: a front-loaded burst followed by an
-/// endless steady interval.
+/// The gaps between a pair's probes: a front-loaded burst then an endless
+/// steady interval.
 type ProbeGaps =
     iter::Chain<iter::Copied<std::slice::Iter<'static, Duration>>, iter::Repeat<Duration>>;
 
-const NO_BURST: &[Duration] = &[];
-
-fn probe_gaps(burst: &'static [Duration], steady: Duration) -> ProbeGaps {
-    burst.iter().copied().chain(iter::repeat(steady))
+fn probe_gaps() -> ProbeGaps {
+    PROBE_BURST_GAPS
+        .iter()
+        .copied()
+        .chain(iter::repeat(PROBE_INTERVAL))
 }
 
-/// A pair's probe schedule. In its `hunt` phase it front-loads a burst then
-/// settles to [`PROBE_INTERVAL`]; the primary switches to the slow
-/// [`PROBE_KEEPALIVE`] cadence via `keepalive`. `stop` ends it (settled loser,
-/// or given up). The gaps are endless, so an unanswered pair keeps probing
-/// until WireGuard, the liveness authority, retires the connection.
+/// A pair's probe schedule. `hunt` (re)starts the burst-then-interval cadence;
+/// `stop` ends it (budget spent while a primary exists). The gaps are endless,
+/// so a pathless agent keeps probing until WireGuard retires the connection.
 struct Probes {
-    /// Next probe deadline. `None` when the pair isn't probing.
     next: Option<Instant>,
     gaps: ProbeGaps,
 }
@@ -135,35 +113,31 @@ impl Default for Probes {
     fn default() -> Self {
         Self {
             next: None,
-            gaps: probe_gaps(PROBE_BURST_GAPS, PROBE_INTERVAL),
+            gaps: probe_gaps(),
         }
     }
 }
 
 impl Probes {
-    /// (Re)starts the burst-then-interval hunt at `at`.
     fn hunt(&mut self, at: Instant) {
         self.next = Some(at);
-        self.gaps = probe_gaps(PROBE_BURST_GAPS, PROBE_INTERVAL);
+        self.gaps = probe_gaps();
     }
 
-    /// Switches to the slow keepalive cadence, next probe one interval out.
-    fn keepalive(&mut self, now: Instant) {
-        self.next = Some(now + PROBE_KEEPALIVE);
-        self.gaps = probe_gaps(NO_BURST, PROBE_KEEPALIVE);
-    }
-
-    /// Stops probing.
     fn stop(&mut self) {
         self.next = None;
     }
 
-    /// The next scheduled probe, if the pair is still probing.
+    /// Slow cadence the primary keeps after its discovery budget is spent, so an
+    /// idle connection's NAT bindings and tunnel stay alive.
+    fn keepalive(&mut self, now: Instant) {
+        self.next = Some(now + PRIMARY_KEEPALIVE);
+    }
+
     fn due(&self) -> Option<Instant> {
         self.next
     }
 
-    /// Records that the due probe fired at `now` and schedules the next one.
     fn fire(&mut self, now: Instant) {
         let gap = self.gaps.next().expect("probe gaps are endless");
         self.next = Some(now + gap);
@@ -184,8 +158,8 @@ struct InflightProbe {
 struct OutboundInit {
     bytes: Vec<u8>,
     retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
-    /// Reset when relay pairs arrive late so waiting time doesn't count
-    /// against the retransmit ladder.
+    /// Reset when relay pairs arrive late so waiting time doesn't count against
+    /// the retransmit ladder.
     started_at: Instant,
 }
 
@@ -205,104 +179,50 @@ struct ResponderDedup {
     cached_at: Instant,
 }
 
-/// Front-loaded gaps at the start of a pair's probing, before it settles into
-/// the steady [`PROBE_INTERVAL`] cadence: short at first so a NAT filter the
-/// peer opens moments after our first probe is caught quickly.
+/// Front-loaded gaps before a pair settles into the steady [`PROBE_INTERVAL`]:
+/// short at first so a NAT filter the peer opens moments after our first probe
+/// is caught quickly.
 pub const PROBE_BURST_GAPS: &[Duration] = &[
     Duration::from_millis(200),
     Duration::from_millis(300),
     Duration::from_millis(500),
 ];
 
-/// Inflight probes older than this are forgotten; a reply that late is not
-/// meaningful anymore.
-pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
-
-/// Steady cadence a pair falls back to once its front-loaded burst is spent,
-/// while it is still trying to settle (or hunting a path that never answers).
+/// Steady cadence once the burst is spent.
 pub const PROBE_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Positive RTT samples a pair collects before it settles and stops probing.
-///
-/// An answered pair reaches this and goes quiet. A handful of samples is enough
-/// for the smoothed RTT to be a fair basis for selection without spending
-/// probes forever.
-pub const PROBE_SAMPLES: u32 = 5;
+/// Probes a pair fires before it goes quiet — as long as a primary exists. A
+/// punchable path answers within the first attempt or two, so this many
+/// unanswered probes is firm evidence it is a dead end. Without a primary the
+/// budget does not apply: every pair hunts forever until one is selected.
+pub const PROBE_BUDGET: u32 = 12;
 
-/// How many probes a pair fires without settling, once we already have a
-/// primary, before it gives up.
-///
-/// While we have no path we hunt every pair indefinitely (bounded only by
-/// WireGuard retiring the connection). But once a path exists, a pair that
-/// won't settle is a dead end — e.g. a direct pair that can never punch a
-/// symmetric NAT — and probing it forever is pure waste, so we stop.
-///
-/// Counting fires rather than elapsed time means the budget is a fixed number
-/// of hole-punch attempts regardless of how long the session took to establish
-/// (probes only fire once it is) or how the burst is timed. A punchable NAT
-/// opens within the first attempt or two, so this many unanswered probes is
-/// firm evidence the pair is a dead end.
-pub const PROBE_GIVE_UP_ATTEMPTS: u32 = 12;
+/// Cadence the primary keeps probing at once its discovery budget is spent.
+/// Iceless runs no WireGuard persistent keepalive, so this lone probe is what
+/// keeps an idle primary's NAT bindings and tunnel warm. On a busy connection a
+/// single probe every 25s is negligible.
+pub const PRIMARY_KEEPALIVE: Duration = Duration::from_secs(25);
 
-/// Slow cadence the primary keeps after it settles, so its RTT stays current
-/// for the next comparison and its NAT mapping warm. This is what lets us drop
-/// a time-based freshness check: the primary is the only long-lived pair, and
-/// it is never stale.
-pub const PROBE_KEEPALIVE: Duration = Duration::from_secs(5);
-
-/// Repeated re-keys — our own retransmits going unanswered, or distinct peer
-/// inits with no data in between — that count as WireGuard distress and trigger
-/// a path re-evaluation.
-///
-/// Counting rather than timing decouples the signal from boringtun's now-tunable
-/// `REKEY_TIMEOUT` retry pacing. A single stray re-key is ordinary loss; a
-/// second one with no progress in between is the peer (or us) stuck on a dead
-/// path. Routine re-keys never reach the threshold because data flows between
-/// them, resetting the count.
+/// Repeated re-keys with no progress in between that count as WireGuard
+/// distress and clear the primary: our own retransmit going unanswered, or a
+/// second distinct peer init with no data in between. The first re-key is
+/// ordinary (it may still be answered); the second is the distress signal.
 pub const REKEY_DISTRESS_ATTEMPTS: u32 = 2;
 
 pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
 const MAX_PEER_REFLEXIVE: usize = 4;
 
-/// Per-kind FIFO cap on remote candidates, bounding `pairs` growth
-/// across portal-driven relay rotations.
+/// Per-kind FIFO cap on remote candidates, bounding `pairs` growth across
+/// portal-driven relay rotations.
 const MAX_REMOTE_PER_KIND: usize = 6;
 
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
 
-impl PairState {
-    fn involves_relay(&self) -> bool {
-        matches!(self.kinds.0, crate::CandidateKind::Relayed)
-            || matches!(self.kinds.1, crate::CandidateKind::Relayed)
-    }
-}
-
-impl Default for PathAgent {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl PathAgent {
     pub fn new() -> Self {
-        Self {
-            locals: Vec::new(),
-            remotes: Vec::new(),
-            pairs: BTreeMap::new(),
-            primary: None,
-            established: false,
-            responder: Responder::default(),
-            outbound_init: None,
-            unanswered_rekeys: 0,
-            peer_rekeys: 0,
-            forwarded_response: None,
-            pending_transmits: VecDeque::new(),
-            events: VecDeque::new(),
-            events_queued_at: None,
-            peer_reflexive_addrs: BTreeSet::new(),
-        }
+        Self::default()
     }
 
     /// Returns whether the candidate was newly added (`false` if already known).
@@ -317,22 +237,24 @@ impl PathAgent {
             self.add_pair(c, remote, now);
         }
 
+        // A new candidate may offer a better path than the incumbent; re-probe.
+        self.clear_and_reprobe(now);
+
         true
     }
 
     pub fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
-        // Promote a previously-registered peer-reflexive in place so
-        // the existing `PairState` (RTT, inflight probe, schedule)
-        // survives.
+        // Promote a previously-registered peer-reflexive in place so the
+        // existing `PairState` (RTT, inflight, schedule) survives.
         if self.peer_reflexive_addrs.remove(&c.addr())
-            && let Some(i) = self.remotes.iter().position(|x| x.addr() == c.addr())
+            && let Some(existing) = self.remotes.iter_mut().find(|x| x.addr() == c.addr())
         {
             tracing::debug!(
                 remote = %c.addr(),
                 kind = ?c.kind(),
                 "Promoting peer-reflexive remote to signaled candidate",
             );
-            self.remotes[i] = c;
+            *existing = c;
             for ((_, remote_addr), state) in self.pairs.iter_mut() {
                 if *remote_addr == c.addr() {
                     state.kinds.1 = c.kind();
@@ -363,40 +285,35 @@ impl PathAgent {
             self.add_pair(local, c, now);
         }
 
-        // Candidate arrival hints that the current primary may be dead: the
-        // most common reason for new candidates mid-session is that the peer
-        // roamed away from the address our primary points at. Re-probe the
-        // primary and re-measure it: `restart_probes` clears its RTT, so if it
-        // is dead it drops out of selection and a fresh pair takes over; if it
-        // is alive its new measurement keeps it winning on bucket.
-        if let Some(primary) = self.primary
-            && let Some(state) = self.pairs.get_mut(&primary)
-        {
-            state.restart_probes(now);
-        }
+        self.clear_and_reprobe(now);
     }
 
-    /// Every new pair immediately probes in a burst, regardless of any other
-    /// state: candidates are the only signal about new paths we get.
-    fn add_pair(&mut self, local: Candidate, remote: Candidate, burst_at: Instant) {
+    /// Creates a pair. It probes once there is a session to ride: if one exists
+    /// it starts hunting now, otherwise `on_session_established` starts it when
+    /// the session appears. Cross-family pairs are unusable.
+    fn add_pair(&mut self, local: Candidate, remote: Candidate, now: Instant) {
         let pair = (local.local(), remote.addr());
 
-        // Cross-family pairs are unusable.
         if pair.0.is_ipv4() != pair.1.is_ipv4() {
             return;
         }
+
+        let id = self.next_pair_id;
+        self.next_pair_id = self.next_pair_id.wrapping_add(1);
 
         let mut state = PairState {
             kinds: (local.kind(), remote.kind()),
             local_family_matched: local.is_family_matched(),
             rtt: None,
-            inflight_probes: Vec::new(),
+            inflight: Vec::new(),
             probes: Probes::default(),
-            samples: 0,
             probes_sent: 0,
-            next_probe_seq: 0,
+            id,
+            next_seq: 0,
         };
-        state.restart_probes(burst_at);
+        if self.has_session {
+            state.restart(now);
+        }
 
         self.pairs.insert(pair, state);
     }
@@ -406,14 +323,11 @@ impl PathAgent {
             return false;
         };
 
-        let removed_local = self.locals.remove(i).local();
-        self.pairs.retain(|(local, _), _| *local != removed_local);
+        let removed = self.locals.remove(i).local();
+        self.pairs.retain(|(local, _), _| *local != removed);
 
-        if let Some((local, _)) = self.primary
-            && local == removed_local
-        {
-            self.primary = None;
-            self.probe_all_pairs(now);
+        if self.primary.is_some_and(|(local, _)| local == removed) {
+            self.clear_and_reprobe(now);
         }
 
         true
@@ -424,15 +338,12 @@ impl PathAgent {
             return false;
         };
 
-        let removed_addr = self.remotes.remove(i).addr();
-        self.pairs.retain(|(_, remote), _| *remote != removed_addr);
-        self.peer_reflexive_addrs.remove(&removed_addr);
+        let removed = self.remotes.remove(i).addr();
+        self.pairs.retain(|(_, remote), _| *remote != removed);
+        self.peer_reflexive_addrs.remove(&removed);
 
-        if let Some((_, remote)) = self.primary
-            && remote == removed_addr
-        {
-            self.primary = None;
-            self.probe_all_pairs(now);
+        if self.primary.is_some_and(|(_, remote)| remote == removed) {
+            self.clear_and_reprobe(now);
         }
 
         true
@@ -453,8 +364,8 @@ impl PathAgent {
     /// Drops locals matching `drop_local` and rebuilds from scratch, preserving
     /// every remote. Re-seeds after a roam or relay replacement.
     ///
-    /// The session survives a rebuild (the WireGuard key is kept), so probing
-    /// resumes as soon as pairs exist again — no handshake required.
+    /// The session survives (the WireGuard key is kept), so probing resumes as
+    /// soon as pairs exist again — no handshake required.
     pub fn rebuild(&mut self, mut drop_local: impl FnMut(&Candidate) -> bool, now: Instant) {
         let locals: Vec<Candidate> = self
             .locals
@@ -463,13 +374,11 @@ impl PathAgent {
             .filter(|c| !drop_local(c))
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
-        let established = self.established;
-        let peer_rekeys = self.peer_rekeys;
+        let had_session = self.has_session;
 
         *self = Self::new();
 
-        self.established = established;
-        self.peer_rekeys = peer_rekeys;
+        self.has_session = had_session;
 
         for local in locals {
             self.add_local_candidate(local, now);
@@ -501,13 +410,13 @@ impl PathAgent {
             .any(|c| c.addr() == addr && c.is_relayed())
     }
 
-    pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, force_resend: bool, now: Instant) {
+    pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
         const MAX_SCRATCH_SPACE: usize = 148;
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
         let TunnResult::WriteToNetwork(bytes) =
-            tunnel.format_handshake_initiation_at(&mut buf, force_resend, now)
+            tunnel.format_handshake_initiation_at(&mut buf, false, now)
         else {
             tracing::debug!("boringtun declined to emit a HandshakeInit");
             return;
@@ -517,118 +426,56 @@ impl PathAgent {
     }
 
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        match (
-            Tunn::parse_incoming_packet(&bytes),
-            &mut self.outbound_init,
-            self.primary,
-        ) {
-            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, _) if !self.established => {
-                tracing::debug!(bytes = bytes.len(), "Buffered initial HandshakeInit");
-
+        match Tunn::parse_incoming_packet(&bytes) {
+            // Before a session exists we cannot probe: fan the init out over the
+            // relay pairs to bootstrap one. This is the *only* use of the fan-out.
+            Ok(Packet::HandshakeInit(_)) if !self.has_session => {
+                tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
                 self.forwarded_response = None;
-                outbound_init.replace(OutboundInit::new(bytes, now));
+                self.outbound_init = Some(OutboundInit::new(bytes, now));
             }
-            // A still-stored init means the previous one went unanswered:
-            // WireGuard-level failure evidence. Always retry on the incumbent;
-            // only re-evaluate once enough retransmits have piled up unanswered.
-            (Ok(Packet::HandshakeInit(_)), outbound_init @ Some(_), Some((local, remote))) => {
-                let bytes_len = bytes.len();
-
-                outbound_init.replace(OutboundInit::new(bytes.clone(), now));
-                self.pending_transmits.push_back(Transmit {
-                    local,
-                    remote,
-                    payload: Payload::Ciphertext(bytes),
-                });
-
+            // Established: the re-key rides the primary and counts toward distress.
+            Ok(Packet::HandshakeInit(_)) => {
                 self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
 
-                // A lone unanswered retransmit can be ordinary loss. Only once
-                // the peer has ignored `REKEY_DISTRESS_ATTEMPTS` of them do we
-                // treat the path as dead and drop the primary pointer: with no
-                // primary to protect the bucket veto lifts and the first pair to
-                // answer wins — even a worse bucket, so we fail over from a
-                // direct path to a relayed one if that is all that works.
-                //
-                // Fire exactly on the crossing, not on every retransmit past it:
-                // once we have dropped the primary, probing recovers the path
-                // and the re-key rides it. Re-dropping the primary on the next
-                // retransmit would just flap the data path.
-                if self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
-                    tracing::debug!(bytes = bytes_len, "Unanswered re-keys; re-evaluating paths");
-
-                    self.primary = None;
-                    self.probe_all_pairs(now);
-                    self.select_primary(now);
-                } else {
-                    tracing::debug!(
-                        bytes = bytes_len,
-                        "Unanswered re-key; retrying on incumbent"
-                    );
-                }
-            }
-            // A routine re-key rides the primary without restarting probes.
-            (Ok(Packet::HandshakeInit(_)), outbound_init @ None, Some((local, remote))) => {
-                tracing::debug!(bytes = bytes.len(), "Re-key HandshakeInit");
-
-                outbound_init.replace(OutboundInit::new(bytes.clone(), now));
-                self.pending_transmits.push_back(Transmit {
-                    local,
-                    remote,
-                    payload: Payload::Ciphertext(bytes),
-                });
-            }
-            // Re-key arriving with no primary. At bootstrap (no session yet) the
-            // buffered init fans out over relay pairs; mid-session (a transient
-            // primary loss) the session is still valid, so we only re-probe and
-            // let the init ride the primary once probing recovers it.
-            (Ok(Packet::HandshakeInit(_)), outbound_init, None) => {
-                tracing::debug!(
-                    bytes = bytes.len(),
-                    "Re-key HandshakeInit without a primary; re-probing"
-                );
-
-                outbound_init.replace(OutboundInit::new(bytes, now));
-                self.unanswered_rekeys = 0;
-                self.probe_all_pairs(now);
-            }
-            (Ok(Packet::HandshakeResponse(_)), _, _) => {
-                if let (Some(init_bytes), Some(path)) = (
-                    self.responder.last_init.take(),
-                    self.responder.last_init_path.take(),
-                ) {
-                    tracing::debug!(
-                        local = %path.0,
-                        remote = %path.1,
-                        "Sending HandshakeResponse on init's recv path",
-                    );
-
+                if let Some((local, remote)) = self.primary {
                     self.pending_transmits.push_back(Transmit {
-                        local: path.0,
-                        remote: path.1,
-                        payload: Payload::Ciphertext(bytes.clone()),
+                        local,
+                        remote,
+                        payload: Payload::Ciphertext(bytes),
                     });
-                    self.responder.dedup = Some(ResponderDedup {
-                        init_bytes,
-                        response_bytes: bytes,
-                        cached_at: now,
+                }
+
+                // The second unanswered re-key is WireGuard telling us the path
+                // is dead: drop the primary and re-probe. Fire once on the
+                // crossing — once the primary is cleared, probing recovers it
+                // and the re-key rides the new path; re-firing would flap. The
+                // count resets when a response finally lands (see
+                // `handle_inbound_network`).
+                if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
+                    tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
+                    self.clear_and_reprobe(now);
+                }
+            }
+            // Handshake responses are sent inline where their init is handled
+            // (`handle_inbound_network`), on the init's arrival path, so they
+            // never reach here. Data and everything else ride the primary;
+            // without one there is nothing to send (WireGuard buffers it and
+            // re-sends once a path exists).
+            _ => {
+                if let Some((local, remote)) = self.primary {
+                    self.pending_transmits.push_back(Transmit {
+                        local,
+                        remote,
+                        payload: Payload::Ciphertext(bytes),
                     });
                 }
             }
-            // Probes and data ride the primary; nothing to send without one.
-            (_, _, Some((local, remote))) => {
-                self.pending_transmits.push_back(Transmit {
-                    local,
-                    remote,
-                    payload: Payload::Ciphertext(bytes),
-                });
-            }
-            (_, _, None) => {}
         }
     }
 
-    /// Handshake bytes run through `tunnel` to authenticate before
-    /// any state mutation; dedup hits short-circuit before the call.
+    /// Handshake bytes run through `tunnel` to authenticate before any state
+    /// mutation; dedup hits short-circuit before the call.
     pub fn handle_inbound_network<'b>(
         &mut self,
         tunnel: &mut Tunn,
@@ -640,13 +487,9 @@ impl PathAgent {
             return ControlFlow::Continue(bytes);
         };
 
-        match (parsed, self.primary) {
-            // Replays and duplicates short-circuit before touching the session.
-            //
+        match parsed {
             // A replayed init is served from the cache without touching boringtun.
-            (Packet::HandshakeInit(_), _)
-                if let Some(response) = self.cached_response(bytes, now) =>
-            {
+            Packet::HandshakeInit(_) if let Some(response) = self.cached_response(bytes, now) => {
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
                 let response_bytes = response.to_vec();
@@ -658,79 +501,94 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            // Drop dups arriving on multiple pairs in one tick so
-            // boringtun doesn't reject as WrongTai64nTimestamp.
-            (Packet::HandshakeInit(_), _) if self.responder.last_init.as_deref() == Some(bytes) => {
+            // Drop dups arriving on multiple pairs in one tick so boringtun
+            // doesn't reject them as WrongTai64nTimestamp.
+            Packet::HandshakeInit(_) if self.responder.last_init.as_deref() == Some(bytes) => {
                 tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
 
                 ControlFlow::Break(())
             }
-            (Packet::HandshakeResponse(_), _)
-                if self.forwarded_response.as_deref() == Some(bytes) =>
-            {
+            Packet::HandshakeResponse(_) if self.forwarded_response.as_deref() == Some(bytes) => {
                 tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
 
                 ControlFlow::Break(())
             }
-            // Accepts: authenticate, then adopt or re-evaluate.
-            (Packet::HandshakeInit(_), primary) => {
-                let Some(outbound) = self.decapsulate_init(tunnel, bytes, path, now) else {
+            Packet::HandshakeInit(_) => {
+                let Some(response) = self.decapsulate_init(tunnel, bytes, path, now) else {
                     return ControlFlow::Break(());
                 };
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
-                // `handle_outbound` for the response below pairs
-                // against `last_init`/`last_init_path`.
+                let had_session = self.has_session;
+
+                // Remembered so fanned-out duplicates arriving on other pairs in
+                // this tick are dropped (see the duplicate-init arm above).
                 self.responder.last_init = Some(bytes.to_vec());
-                self.responder.last_init_path = Some(path);
 
                 self.register_peer_reflexive(path, now);
-                self.established = true;
+                self.on_session_established(now);
 
-                // A re-key with peer data flowing in between is routine (the
-                // count was reset by that data). Several distinct inits with no
-                // data between them mean the peer isn't hearing our responses or
-                // data — its passive-keepalive escalation formats a new init
-                // every few seconds. Duplicates of the same init were dropped
-                // above, so every increment here is a genuinely new attempt.
-                self.peer_rekeys = self.peer_rekeys.saturating_add(1);
-                if self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; re-evaluating paths");
-
-                    // Same as an unanswered outbound re-key: the peer isn't
-                    // hearing us on the current primary, so drop the pointer and
-                    // let the bucket veto lift for a clean failover.
-                    self.primary = None;
-                    self.probe_all_pairs(now);
-                    self.select_primary(now);
-                }
-
-                if primary.is_none() {
+                // The init that *establishes* the session hands us a working
+                // path for free: it arrived over the relay fan-out (the worst
+                // tier), so adopting it as the preliminary primary is sound —
+                // probing can only promote away from a relay, never get trapped.
+                // Without this the responder stays pathless until its first
+                // probe reply and its connection drops inbound data until then.
+                //
+                // A *mid-session* init (a re-key) is different: it rides the
+                // peer's primary, which may be a better tier we haven't validated
+                // for our own sending, so it must not move our primary — probing
+                // decides. Hence we only adopt on the establishing init.
+                if !had_session && self.primary.is_none() && self.pairs.contains_key(&path) {
                     self.set_primary(path, now);
                 }
 
-                for b in outbound {
-                    self.handle_outbound(b, now);
+                // Distinct inits with no data in between mean the peer isn't
+                // hearing us: WireGuard distress.
+                self.peer_rekeys = self.peer_rekeys.saturating_add(1);
+                if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
+                    self.clear_and_reprobe(now);
+                }
+
+                // boringtun's response MUST go back on the path the init arrived
+                // on, never the primary — otherwise bootstrap (and re-keys)
+                // can't complete. Cache it so a retransmitted init is answered
+                // from memory without re-decapsulating.
+                if let Some(response) = response {
+                    tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
+
+                    self.responder.dedup = Some(ResponderDedup {
+                        init_bytes: bytes.to_vec(),
+                        response_bytes: response.clone(),
+                        cached_at: now,
+                    });
+                    self.pending_transmits.push_back(Transmit {
+                        local: path.0,
+                        remote: path.1,
+                        payload: Payload::Ciphertext(response),
+                    });
                 }
 
                 ControlFlow::Break(())
             }
-            (Packet::HandshakeResponse(_), primary) => {
+            Packet::HandshakeResponse(_) => {
                 let Some(outbound) = self.decapsulate_response(tunnel, bytes, path, now) else {
                     return ControlFlow::Break(());
                 };
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
 
+                // Our re-key was answered: the path works both ways.
                 self.outbound_init = None;
                 self.unanswered_rekeys = 0;
                 self.forwarded_response = Some(bytes.to_vec());
-                self.established = true;
+                self.on_session_established(now);
 
-                if primary.is_none() {
-                    self.set_primary(path, now);
-                }
+                // A response is bidirectionally validated, so it is safe to
+                // adopt as a (tier-ranked) preliminary primary before probing.
+                self.promote_from_handshake(path, now);
 
                 for b in outbound {
                     self.handle_outbound(b, now);
@@ -738,14 +596,12 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            // Peer data proves the peer is hearing us, so the connection isn't
-            // in distress: clear the re-key counter that would otherwise build
-            // toward a false failover.
-            (Packet::PacketData(_), _) => {
+            // Peer data proves the peer is hearing us: not in distress.
+            Packet::PacketData(_) => {
                 self.peer_rekeys = 0;
                 ControlFlow::Continue(bytes)
             }
-            (Packet::PacketCookieReply(_), _) => ControlFlow::Continue(bytes),
+            Packet::PacketCookieReply(_) => ControlFlow::Continue(bytes),
         }
     }
 
@@ -763,21 +619,23 @@ impl PathAgent {
         Some(d.response_bytes.as_slice())
     }
 
-    /// Authenticates an inbound init, returning the packets boringtun wants
-    /// to send in response. `None` means the packet was fully handled
-    /// (rejected, or answered with a cookie under load).
+    /// Authenticates an inbound init. An init yields at most one packet in
+    /// return, so this is `Some(Some(response))` when boringtun wants a
+    /// handshake response sent back, or `Some(None)` when it accepts the init
+    /// silently. The outer `None` means the packet was fully handled here
+    /// (rejected, or answered with a cookie under load) and the caller does
+    /// nothing further.
     fn decapsulate_init(
         &mut self,
         tunnel: &mut Tunn,
         bytes: &[u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> Option<Vec<Vec<u8>>> {
-        // Source IP must be set so boringtun can emit cookie replies under load.
+    ) -> Option<Option<Vec<u8>>> {
         let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-        let outbound = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
-            TunnResult::Done => Vec::new(),
-            TunnResult::WriteToNetwork(response) => vec![response.to_vec()],
+        let response = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
+            TunnResult::Done => None,
+            TunnResult::WriteToNetwork(response) => Some(response.to_vec()),
             TunnResult::Err(e) => {
                 tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
                 return None;
@@ -788,8 +646,8 @@ impl PathAgent {
             }
         };
 
-        // Cookie replies don't establish a session; return them without touching state.
-        if let Some(reply) = outbound.first()
+        // Cookie replies don't establish a session; send them without touching state.
+        if let Some(reply) = &response
             && matches!(
                 Tunn::parse_incoming_packet(reply),
                 Ok(Packet::PacketCookieReply(_))
@@ -806,12 +664,11 @@ impl PathAgent {
             return None;
         }
 
-        Some(outbound)
+        Some(response)
     }
 
-    /// Authenticates an inbound response, returning the packets boringtun
-    /// wants to send afterwards (e.g. queued data). `None` means the packet
-    /// was rejected.
+    /// Authenticates an inbound response, returning the packets boringtun wants
+    /// to send afterwards (e.g. queued data). `None` means it was rejected.
     fn decapsulate_response(
         &mut self,
         tunnel: &mut Tunn,
@@ -882,30 +739,31 @@ impl PathAgent {
 
                 self.register_peer_reflexive(pair, now);
 
-                // Triggered check (cf. RFC 8445, section 7.3.1.4): the
-                // inbound probe proves the reverse NAT filter is open right
-                // now, so probing back completes the hole punch in one round
-                // trip. Only for pairs we haven't measured — probing back one
-                // we already track would ping-pong bursts between the peers.
+                // Triggered check (cf. RFC 8445 §7.3.1.4): the inbound probe
+                // proves the reverse filter is open now, so probing back
+                // completes the punch. Only for a pair we've gone quiet on
+                // without measuring — one we're already probing would ping-pong.
                 if let Some(state) = self.pairs.get_mut(&pair)
+                    && !state.is_probing()
                     && state.rtt.is_none()
                 {
-                    state.restart_probes(now);
+                    state.restart(now);
                 }
             }
             crate::icmpv6::Echo::Reply => {
                 let Some(state) = self.pairs.get_mut(&pair) else {
                     return ControlFlow::Break(());
                 };
-                let Some(i) = state
-                    .inflight_probes
-                    .iter()
-                    .position(|inflight| inflight.seq == probe.seq)
-                else {
+                // The id is scoped to the pair: a reply carrying a stale id
+                // (a pair recreated at the same address) is not ours.
+                if probe.id != state.id {
+                    return ControlFlow::Break(());
+                }
+                let Some(i) = state.inflight.iter().position(|p| p.seq == probe.seq) else {
                     return ControlFlow::Break(());
                 };
 
-                let inflight = state.inflight_probes.remove(i);
+                let inflight = state.inflight.remove(i);
                 let rtt = now.saturating_duration_since(inflight.sent_at);
 
                 state.rtt = Some(Rtt {
@@ -914,22 +772,11 @@ impl PathAgent {
                         Some(prev) => (prev.smoothed + rtt) / 2,
                     },
                 });
-                state.record_sample();
 
                 tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
 
+                // A probe reply is bidirectionally validated: it may promote.
                 self.select_primary(now);
-
-                // A pair that has settled either becomes the long-lived primary
-                // (kept fresh on the keepalive cadence) or is a loser whose data
-                // we drop, so no stale RTT lingers for selection to trip over.
-                if self.pairs.get(&pair).is_some_and(PairState::is_settled) {
-                    if self.primary == Some(pair) {
-                        self.pairs.get_mut(&pair).unwrap().keep_fresh(now);
-                    } else {
-                        self.pairs.get_mut(&pair).unwrap().retire();
-                    }
-                }
             }
         }
         ControlFlow::Break(())
@@ -939,20 +786,19 @@ impl PathAgent {
         let next_retransmit = self
             .outbound_init
             .as_ref()
+            .filter(|_| !self.has_session)
             .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
         // Probes wait for the first handshake exchange; see `drive_probes`.
         let next_probe = self
-            .established
+            .has_session
             .then(|| self.pairs.values().filter_map(|s| s.probes.due()).min())
             .flatten();
         // Wake immediately if a buffered bootstrap init is waiting on a relay
-        // pair that landed after the initial fanout. The fanout is bootstrap
-        // only (see `drive_handshake_retransmits`), so once established there is
-        // nothing to fan out — a re-key rides the primary.
+        // pair that landed after the initial fanout.
         let pending_fanout = self
             .outbound_init
             .as_ref()
-            .filter(|_| self.primary.is_none() && !self.established)
+            .filter(|_| !self.has_session)
             .and_then(|i| {
                 self.pairs
                     .iter()
@@ -977,7 +823,7 @@ impl PathAgent {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.drive_handshake_retransmits(now);
+        self.drive_bootstrap_fanout(now);
         self.drive_probes(now);
         self.expire_dedup(now);
     }
@@ -990,15 +836,11 @@ impl PathAgent {
         }
     }
 
-    fn drive_handshake_retransmits(&mut self, now: Instant) {
-        // The relay fan-out is purely the bootstrap mechanism: it lands the very
-        // first handshake when no session exists yet and we therefore cannot
-        // probe. Once established, a re-key rides the primary, and if a distress
-        // signal has dropped the primary, probing (not a fan-out) recovers the
-        // path over the still-valid session — a handshake could not do more,
-        // since a peer that has truly lost the session no longer has our key
-        // and needs a full re-setup via the signalling layer.
-        if self.established || self.primary.is_some() {
+    /// Fans the buffered init out over relay pairs — bootstrap only. Once
+    /// established the re-key rides the primary, and a distress-cleared primary
+    /// is recovered by probing over the still-valid session, not a fan-out.
+    fn drive_bootstrap_fanout(&mut self, now: Instant) {
+        if self.has_session {
             return;
         }
 
@@ -1049,10 +891,9 @@ impl PathAgent {
     }
 
     fn drive_probes(&mut self, now: Instant) {
-        // Probes ride the session (they are encapsulated); encapsulating
-        // before the first handshake exchange would make boringtun queue
-        // them and initiate handshakes on its own.
-        if !self.established {
+        // Probes ride the session; encapsulating before the first handshake
+        // would make boringtun queue them and initiate handshakes on its own.
+        if !self.has_session {
             return;
         }
 
@@ -1063,53 +904,61 @@ impl PathAgent {
             let Some(deadline) = state.probes.due() else {
                 continue;
             };
-
             if now < deadline {
                 continue;
             }
 
-            // Once we have a path, stop probing a non-primary pair that won't
-            // settle (e.g. a direct pair behind a symmetric NAT). The primary
-            // is exempt — probe loss must never retire it — and while we have
-            // no path at all we hunt every pair until WireGuard gives up.
-            let is_primary = primary == Some((*local, *remote));
-            if primary.is_some() && !is_primary && state.gave_up() {
-                state.retire();
-                continue;
-            }
-
-            // A reply past this age wouldn't be fresh enough to matter.
-            state
-                .inflight_probes
-                .retain(|p| now.saturating_duration_since(p.sent_at) < PROBE_TIMEOUT);
-
-            let seq = state.next_probe_seq;
-            state.next_probe_seq = state.next_probe_seq.wrapping_add(1);
-            state
-                .inflight_probes
-                .push(InflightProbe { seq, sent_at: now });
-            state.probes.fire(now);
-            state.record_probe_sent();
+            let seq = state.next_seq;
+            state.next_seq = state.next_seq.wrapping_add(1);
+            state.inflight.push(InflightProbe { seq, sent_at: now });
+            state.probes_sent = state.probes_sent.saturating_add(1);
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 
             pending.push_back(Transmit {
                 local: *local,
                 remote: *remote,
-                payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(0, seq))),
+                payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(
+                    state.id, seq,
+                ))),
             });
+
+            // Within the discovery budget — or while we have no path at all —
+            // keep the fast burst-then-interval cadence.
+            if primary.is_none() || state.probes_sent < PROBE_BUDGET {
+                state.probes.fire(now);
+            } else if primary == Some((*local, *remote)) {
+                // The primary keepalives; every other pair goes quiet.
+                state.probes.keepalive(now);
+            } else {
+                state.probes.stop();
+            }
         }
     }
 
-    fn probe_all_pairs(&mut self, now: Instant) {
-        for state in self.pairs.values_mut() {
-            state.restart_probes(now);
+    /// Clears the primary and re-probes: WireGuard distress or a new candidate.
+    /// A pair mid-discovery-burst keeps its state so the burst isn't disturbed;
+    /// everything else restarts (fresh burst, cleared RTT). The former primary
+    /// always restarts — it is the suspect path and must re-earn its place, so a
+    /// still-valid one re-confirms within a round trip and a dead one drops out.
+    fn clear_and_reprobe(&mut self, now: Instant) {
+        let former = self.primary.take();
+        // Before a session exists there is nothing to probe;
+        // `on_session_established` starts every pair once one appears.
+        if !self.has_session {
+            return;
+        }
+        for (pair, state) in self.pairs.iter_mut() {
+            let discovering = state.probes.due().is_some() && state.probes_sent < PROBE_BUDGET;
+            if Some(*pair) == former || !discovering {
+                state.restart(now);
+            }
         }
     }
 
     fn register_peer_reflexive(&mut self, pair: (SocketAddr, SocketAddr), now: Instant) {
-        // The peer reached us from a mapping they didn't advertise
-        // (symmetric NAT).
+        // The peer reached us from a mapping they didn't advertise (symmetric
+        // NAT). Registering it is a new candidate, which re-probes.
         if self.peer_reflexive_addrs.len() < MAX_PEER_REFLEXIVE
             && !self.remotes.iter().any(|c| c.addr() == pair.1)
         {
@@ -1123,91 +972,98 @@ impl PathAgent {
         }
     }
 
+    /// A session now exists (a handshake was accepted). This is the single place
+    /// probing begins — probes ride the session, so they can't run before it. It
+    /// runs on every accepted handshake, but the transition (and the probe
+    /// kick-off) only fires the first time, when the session first appears.
+    fn on_session_established(&mut self, now: Instant) {
+        if self.has_session {
+            return;
+        }
+        self.has_session = true;
+        // Bootstrap is over; a re-key now rides the primary, not the fan-out.
+        self.outbound_init = None;
+        // Every pair was created without a schedule (probing waits for a
+        // session); now that we have one, start them all hunting.
+        for state in self.pairs.values_mut() {
+            state.restart(now);
+        }
+    }
+
+    /// A handshake proves its path works both ways but carries no RTT, so it can
+    /// only seed or improve the primary *by tier* — never displace a
+    /// better-tier incumbent.
+    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
+        if !self.pairs.contains_key(&path) {
+            return;
+        }
+        match self.primary {
+            None => self.set_primary(path, now),
+            Some(primary) if primary != path => {
+                let new = pair_score(path, &self.pairs[&path]);
+                let cur = pair_score(primary, &self.pairs[&primary]);
+                if new.bucket < cur.bucket {
+                    self.set_primary(path, now);
+                }
+            }
+            Some(_) => {}
+        }
+    }
+
+    /// Runs on every probe reply. Probes can only *promote*: the best measured
+    /// pair takes over an empty primary, or displaces the incumbent only when it
+    /// scores strictly better (a better tier, or the same tier by a clear RTT
+    /// margin). A worse pair never demotes a working primary.
     fn select_primary(&mut self, now: Instant) {
-        // Only pairs with an RTT are candidates. Every RTT we hold is current
-        // by construction — the primary is kept fresh on its keepalive cadence,
-        // an actively-probing pair is measuring right now, and a settled loser
-        // or a re-probed pair has its RTT cleared — so there is no stale
-        // measurement to filter out. Selection is bucket-dominant, so a live
-        // primary naturally wins over any worse-bucket challenger; a *dead*
-        // primary has no RTT (a distress or candidate signal cleared it by
-        // re-probing) and drops out, letting a fresh pair take over.
-        let best = self
+        let Some(best) = self
             .pairs
             .iter()
             .filter(|(_, s)| s.rtt.is_some())
             .min_by_key(|(k, s)| pair_score(**k, s))
-            .map(|(k, _)| *k);
+            .map(|(k, _)| *k)
+        else {
+            return;
+        };
 
-        let Some(new) = best else { return };
+        let Some(primary) = self.primary else {
+            self.set_primary(best, now);
+            return;
+        };
 
-        if self.primary == Some(new) {
+        if best == primary {
             return;
         }
 
-        // The current primary keeps its place unless a challenger clearly wins.
-        // A worse bucket never displaces it — even a primary without a fresh
-        // RTT holds by candidate kind, so a fresh worse-bucket pair can't steal
-        // it while it is being re-measured. Failing over to a *worse* bucket
-        // happens only after WireGuard distress, which drops the primary
-        // pointer entirely (there is then no primary to protect).
-        if let Some(primary) = self.primary
-            && let Some(prev) = self.pairs.get(&primary)
-        {
-            let new_score = pair_score(new, &self.pairs[&new]);
-            let prev_score = pair_score(primary, prev);
+        let new = pair_score(best, &self.pairs[&best]);
+        let cur = pair_score(primary, &self.pairs[&primary]);
 
-            if prev_score.bucket < new_score.bucket {
-                return;
-            }
-
-            // Same bucket: keep the primary unless the challenger beats its RTT
-            // by a clear margin — no needless hop for a marginal gain, and no
-            // flap between two live same-bucket pairs on jitter.
-            if prev_score.bucket == new_score.bucket
-                && let Some(prev_rtt) = prev.rtt
-            {
-                let new_rtt = new_score.rtt.unwrap_or_default();
-                let margin = PRIMARY_HYSTERESIS_FLOOR
-                    .max(prev_rtt.smoothed.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
-
-                if new_rtt + margin >= prev_rtt.smoothed {
-                    return;
-                }
-            }
+        if new.bucket < cur.bucket {
+            self.set_primary(best, now);
+            return;
         }
 
-        self.set_primary(new, now);
+        // Same bucket: only switch on a clear RTT win, so jitter between two
+        // live same-tier pairs doesn't flap the primary.
+        if new.bucket == cur.bucket
+            && let Some(cur_rtt) = self.pairs[&primary].rtt
+        {
+            let new_rtt = self.pairs[&best]
+                .rtt
+                .map(|r| r.smoothed)
+                .unwrap_or_default();
+            let margin =
+                PRIMARY_HYSTERESIS_FLOOR.max(cur_rtt.smoothed.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
+            if new_rtt + margin < cur_rtt.smoothed {
+                self.set_primary(best, now);
+            }
+        }
     }
 
     fn set_primary(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
         let from = self.primary;
-
         self.primary = Some(path);
 
-        // The old primary is now a loser: drop its data so nothing stale
-        // lingers (a later signal re-probes it if it becomes relevant again).
-        if let Some(old) = from
-            && old != path
-            && let Some(state) = self.pairs.get_mut(&old)
-        {
-            state.retire();
-        }
-
-        // A new primary that has already settled moves to the keepalive cadence
-        // to stay fresh; one still hunting keeps bursting until it settles.
-        if let Some(state) = self.pairs.get_mut(&path)
-            && state.is_settled()
-        {
-            state.keep_fresh(now);
-        }
-
-        tracing::debug!(
-            ?from,
-            local = %path.0,
-            remote = %path.1,
-            "Iceless primary changed",
-        );
+        tracing::debug!(?from, local = %path.0, remote = %path.1, "Iceless primary changed");
 
         self.queue_event(
             Event::PrimaryChanged {

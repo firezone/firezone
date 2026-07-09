@@ -827,7 +827,8 @@ where
         // retire a connection (WireGuard is the sole liveness authority). We
         // therefore keep boringtun's 90s default so a transient outage (a relay
         // partition, a roam) doesn't discard session state before the path can
-        // be probed back to life.
+        // be probed back to life. The primary's NAT bindings are kept warm by
+        // the path-agent's own passive keepalive, not WireGuard's.
         if !agent.is_iceless() {
             tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
         }
@@ -1981,7 +1982,7 @@ where
     where
         RId: Ord + fmt::Display + Copy,
     {
-        self.agent.initiate_handshake(&mut self.tunnel, false, now);
+        self.agent.initiate_handshake(&mut self.tunnel, now);
     }
 
     /// Iceless-only soft roam: drop all locals. Connection state
