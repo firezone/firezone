@@ -1404,6 +1404,23 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, iperf_resource} =
+      create_resource(
+        %{
+          type: :dns,
+          name: "iperf3.test",
+          address: "iperf3.test",
+          address_description: "iperf3 server for performance tests",
+          site_id: site.id,
+          filters: [
+            %{ports: ["5201"], protocol: :tcp},
+            %{ports: ["5201"], protocol: :udp},
+            %{protocol: :icmp}
+          ]
+        },
+        admin_subject
+      )
+
     {:ok, pool_resource} =
       create_resource(
         %{
@@ -1436,6 +1453,7 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{ipv6_resource.address} - CIDR - gateways: #{gateway_name}")
     IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{iperf_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
 
     # Helper function to create policy directly without context module
@@ -1579,6 +1597,26 @@ defmodule Portal.Repo.Seeds do
           description: "Synced Group Access To **.httpbin.search.test",
           group_id: synced_group.id,
           resource_id: search_domain_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "All Access To iperf3.test",
+          group_id: everyone_group.id,
+          resource_id: iperf_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "Synced Group Access To iperf3.test",
+          group_id: synced_group.id,
+          resource_id: iperf_resource.id
         },
         admin_subject
       )
