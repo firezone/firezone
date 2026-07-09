@@ -12,6 +12,14 @@ use socket_factory::DatagramOut;
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
+/// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with.
+///
+/// Each buffer holds a whole GSO batch of up to [`tun::MAX_BATCH_SIZE`] maximum-size segments, so it
+/// occupies this much memory regardless of how many segments it actually carries. Every in-flight
+/// [`DatagramOut`] pins one such buffer, which is why the depth of the outbound socket queue directly
+/// bounds the send path's memory footprint.
+pub(crate) const GSO_BUFFER_SIZE: usize = MAX_SEGMENT_SIZE * tun::MAX_BATCH_SIZE;
+
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
@@ -25,7 +33,7 @@ impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
             inner: Default::default(),
-            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * tun::MAX_BATCH_SIZE, "gso-queue"),
+            buffer_pool: BufferPool::new(GSO_BUFFER_SIZE, "gso-queue"),
         }
     }
 
