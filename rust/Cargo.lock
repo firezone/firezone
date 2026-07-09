@@ -2085,6 +2085,7 @@ dependencies = [
  "aya-log-ebpf",
  "ebpf-shared",
  "hex-literal",
+ "incremental-inet-checksum",
  "ip-packet",
  "network-types",
  "which",
@@ -3736,6 +3737,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "incremental-inet-checksum"
+version = "0.1.0"
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3796,6 +3801,7 @@ dependencies = [
  "bufferpool",
  "etherparse",
  "etherparse-ext",
+ "incremental-inet-checksum",
  "proptest",
  "test-strategy",
  "thiserror 2.0.18",
