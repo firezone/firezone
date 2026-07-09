@@ -1,10 +1,10 @@
-defmodule Portal.ChangeLogs.ReplicationConnectionTest do
+defmodule Portal.ChangeLogs.ConsumerTest do
   use Portal.DataCase, async: true
 
   import Ecto.Query
   import Portal.AccountFixtures
-  alias Portal.ChangeLogs.ReplicationConnection
-  alias Portal.ChangeLogs.ReplicationConnection.Database
+  alias Portal.ChangeLogs.Consumer
+  alias Portal.ChangeLogs.Consumer.Database
   alias Portal.ChangeLog
   alias Portal.Types.EventId
 
@@ -13,7 +13,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
   setup do
     tables =
-      Application.fetch_env!(:portal, Portal.ChangeLogs.ReplicationConnection)
+      Application.fetch_env!(:portal, Portal.ChangeLogs.Consumer)
       |> Keyword.fetch!(:table_subscriptions)
 
     account = account_fixture()
@@ -52,7 +52,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       state = %{flush_buffer: %{}}
 
       result_state =
-        ReplicationConnection.on_begin(state, %{commit_timestamp: commit_timestamp})
+        Consumer.on_begin(state, %{commit_timestamp: commit_timestamp})
 
       assert result_state.commit_timestamp == commit_timestamp
     end
@@ -61,7 +61,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       state = %{flush_buffer: %{}, current_subject: "stale"}
 
       result_state =
-        ReplicationConnection.on_begin(state, %{
+        Consumer.on_begin(state, %{
           commit_timestamp: ~U[2026-05-26 12:00:00Z]
         })
 
@@ -75,7 +75,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       }
 
       result_state =
-        ReplicationConnection.on_begin(state, %{
+        Consumer.on_begin(state, %{
           commit_timestamp: ~U[2026-05-26 12:00:00Z]
         })
 
@@ -87,7 +87,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       state = %{flush_buffer: %{}}
 
       result_state =
-        ReplicationConnection.on_begin(state, %{
+        Consumer.on_begin(state, %{
           commit_timestamp: ~U[2026-05-26 12:00:00Z]
         })
 
@@ -100,7 +100,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       state = %{flush_buffer: %{}, seq_start: @seq_start, tenant_offsets: %{"x" => 7}}
 
       result_state =
-        ReplicationConnection.on_begin(state, %{
+        Consumer.on_begin(state, %{
           commit_timestamp: ~U[2026-05-26 12:00:00Z]
         })
 
@@ -112,7 +112,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   describe "on_write/6 for inserts" do
     test "handles account inserts", %{account: account, initial_state: initial_state} do
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           12345,
           :insert,
@@ -152,7 +152,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       lsn = 12345
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           lsn,
           :insert,
@@ -196,7 +196,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       new_lsn = 101
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           new_lsn,
           :insert,
@@ -212,7 +212,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
     test "ignores relay token inserts", %{initial_state: initial_state} do
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           12345,
           :insert,
@@ -236,7 +236,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       lsn = 200
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           lsn,
           :insert,
@@ -261,7 +261,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       lsn = 12346
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           lsn,
           :update,
@@ -291,7 +291,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       lsn = 12346
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           lsn,
           :update,
@@ -330,7 +330,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       lsn = 12347
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           lsn,
           :update,
@@ -352,7 +352,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
   describe "on_write/6 for deletes" do
     test "handles account deletes", %{account: account, initial_state: initial_state} do
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           12345,
           :delete,
@@ -391,7 +391,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       lsn = 12347
 
       result_state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           lsn,
           :delete,
@@ -419,7 +419,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       initial_state: initial_state
     } do
       state1 =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           initial_state,
           100,
           :insert,
@@ -433,7 +433,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       resource_id = Ecto.UUID.generate()
 
       state2 =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           state1,
           101,
           :update,
@@ -445,7 +445,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert map_size(state2.flush_buffer) == 2
 
       state3 =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           state2,
           102,
           :delete,
@@ -469,15 +469,15 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       state =
         %{flush_buffer: %{}, seq_start: @seq_start, tenant_offsets: %{}}
-        |> ReplicationConnection.on_begin(%{commit_timestamp: commit_timestamp})
-        |> ReplicationConnection.on_write(
+        |> Consumer.on_begin(%{commit_timestamp: commit_timestamp})
+        |> Consumer.on_write(
           200,
           :insert,
           "resources",
           nil,
           %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
         )
-        |> ReplicationConnection.on_write(
+        |> Consumer.on_write(
           201,
           :insert,
           "resources",
@@ -497,9 +497,9 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       state =
         initial_state
-        |> ReplicationConnection.on_write(300, :insert, "resources", nil, data.())
-        |> ReplicationConnection.on_write(301, :insert, "resources", nil, data.())
-        |> ReplicationConnection.on_write(302, :insert, "resources", nil, data.())
+        |> Consumer.on_write(300, :insert, "resources", nil, data.())
+        |> Consumer.on_write(301, :insert, "resources", nil, data.())
+        |> Consumer.on_write(302, :insert, "resources", nil, data.())
 
       assert state.tenant_offsets[account.id] == 3
       assert state.flush_buffer[300].event_id == EventId.build_change_log(@seq_start, 0)
@@ -528,7 +528,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       state =
         Enum.reduce(writes, initial_state, fn {lsn, account}, acc ->
-          ReplicationConnection.on_write(
+          Consumer.on_write(
             acc,
             lsn,
             :insert,
@@ -575,8 +575,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
           seq_start: old_seq_start,
           tenant_offsets: %{account.id => 5}
         }
-        |> ReplicationConnection.on_begin(%{commit_timestamp: @commit_timestamp})
-        |> ReplicationConnection.on_write(
+        |> Consumer.on_begin(%{commit_timestamp: @commit_timestamp})
+        |> Consumer.on_write(
           500,
           :insert,
           "resources",
@@ -595,8 +595,8 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       post_restart =
         %{flush_buffer: %{}}
-        |> ReplicationConnection.on_begin(%{commit_timestamp: @commit_timestamp})
-        |> ReplicationConnection.on_write(
+        |> Consumer.on_begin(%{commit_timestamp: @commit_timestamp})
+        |> Consumer.on_write(
           600,
           :insert,
           "resources",
@@ -630,7 +630,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       # The next write at the cap is still valid (offset 2^40 - 1).
       state =
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           saturated_state,
           700,
           :insert,
@@ -643,7 +643,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       # The write after that overflows the EventId.build_change_log guard.
       assert_raise FunctionClauseError, fn ->
-        ReplicationConnection.on_write(
+        Consumer.on_write(
           state,
           701,
           :insert,
@@ -654,7 +654,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       end
     end
 
-    test "persists event_id and timestamp end-to-end through on_flush", %{
+    test "persists event_id and timestamp end-to-end through flush", %{
       account: account
     } do
       commit_timestamp = ~U[2026-05-26 12:00:00.999000Z]
@@ -662,19 +662,18 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       state =
         %{
           flush_buffer: %{},
-          last_flushed_lsn: 0,
           seq_start: @seq_start,
           tenant_offsets: %{}
         }
-        |> ReplicationConnection.on_begin(%{commit_timestamp: commit_timestamp})
-        |> ReplicationConnection.on_write(
+        |> Consumer.on_begin(%{commit_timestamp: commit_timestamp})
+        |> Consumer.on_write(
           500,
           :insert,
           "resources",
           nil,
           %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
         )
-        |> ReplicationConnection.on_flush()
+        |> Consumer.flush()
 
       assert state.flush_buffer == %{}
 
@@ -684,10 +683,10 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
     end
   end
 
-  describe "on_flush/1" do
+  describe "flush/1" do
     test "handles empty flush buffer" do
       state = %{flush_buffer: %{}}
-      result_state = ReplicationConnection.on_flush(state)
+      result_state = Consumer.flush(state)
       assert result_state == state
     end
 
@@ -722,13 +721,15 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       state = %{
         flush_buffer: %{100 => attrs1, 101 => attrs2},
-        last_flushed_lsn: 99
+        seq_start: @seq_start,
+        tenant_offsets: %{account.id => 2}
       }
 
-      result_state = ReplicationConnection.on_flush(state)
+      result_state = Consumer.flush(state)
 
       assert result_state.flush_buffer == %{}
-      assert result_state.last_flushed_lsn == 101
+      refute Map.has_key?(result_state, :seq_start)
+      refute Map.has_key?(result_state, :tenant_offsets)
 
       change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in [100, 101], order_by: cl.lsn)
       assert length(change_logs) == 2
@@ -742,7 +743,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       assert log2.timestamp == committed_at
     end
 
-    test "calculates last_flushed_lsn correctly as max LSN", %{account: account} do
+    test "flushes entries regardless of buffer key order", %{account: account} do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       attrs_map = %{
@@ -784,11 +785,13 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         }
       }
 
-      state = %{flush_buffer: attrs_map, last_flushed_lsn: 399}
-      result_state = ReplicationConnection.on_flush(state)
+      state = %{flush_buffer: attrs_map}
+      result_state = Consumer.flush(state)
 
-      assert result_state.last_flushed_lsn == 402
       assert result_state.flush_buffer == %{}
+
+      assert [%ChangeLog{lsn: 400}, %ChangeLog{lsn: 401}, %ChangeLog{lsn: 402}] =
+               Repo.all(from cl in ChangeLog, where: cl.lsn in [400, 401, 402], order_by: cl.lsn)
     end
 
     test "drops entries for a deleted account but persists valid entries in the batch", %{
@@ -823,18 +826,11 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
         subject: nil
       }
 
-      state = %{
-        flush_buffer: %{500 => valid_entry, 501 => dead_entry},
-        last_flushed_lsn: 499
-      }
+      state = %{flush_buffer: %{500 => valid_entry, 501 => dead_entry}}
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          result_state = ReplicationConnection.on_flush(state)
-
-          # LSN advances past the whole batch so we don't replay the dead entry
-          # forever, and the buffer is cleared.
-          assert result_state.last_flushed_lsn == 501
+          result_state = Consumer.flush(state)
           assert result_state.flush_buffer == %{}
         end)
 
@@ -845,7 +841,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
                Repo.all(from cl in ChangeLog, where: cl.lsn in [500, 501])
     end
 
-    test "reraises constraint violations that are not a missing account_id", %{account: account} do
+    test "raises constraint violations that are not a missing account_id", %{account: account} do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       # Omitting the NOT NULL vsn column triggers a different Postgrex error. It
@@ -865,6 +861,45 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
 
       assert_raise Postgrex.Error, fn -> Database.bulk_insert([entry]) end
     end
+
+    test "drops the batch seed so the next batch reseeds event_id ordering", %{account: account} do
+      state =
+        %{flush_buffer: %{}, seq_start: @seq_start, tenant_offsets: %{account.id => 5}}
+        |> Consumer.flush()
+
+      refute Map.has_key?(state, :seq_start)
+      refute Map.has_key?(state, :tenant_offsets)
+
+      # The next batch's first Begin reseeds from the shared Postgres clock,
+      # so its event_ids sort after every previous batch's regardless of
+      # which node produced them
+      state = Consumer.on_begin(state, %{commit_timestamp: @commit_timestamp})
+      assert state.seq_start > @seq_start
+      assert state.tenant_offsets == %{}
+    end
+
+    test "skips replayed entries that already committed", %{account: account} do
+      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+
+      entry = %{
+        event_id: EventId.build_change_log(@seq_start, 0),
+        timestamp: committed_at,
+        lsn: 700,
+        object: "resources",
+        operation: :insert,
+        account_id: account.id,
+        after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+        before: nil,
+        vsn: 0,
+        subject: nil
+      }
+
+      assert Database.bulk_insert([entry]) == 1
+      # A crash before the slot advances replays the same WAL rows
+      assert Database.bulk_insert([entry]) == 0
+
+      assert [%ChangeLog{lsn: 700}] = Repo.all(from cl in ChangeLog, where: cl.lsn == 700)
+    end
   end
 
   describe "edge cases" do
@@ -874,7 +909,7 @@ defmodule Portal.ChangeLogs.ReplicationConnectionTest do
       log =
         capture_log(fn ->
           result =
-            ReplicationConnection.on_write(
+            Consumer.on_write(
               initial_state,
               500,
               :insert,

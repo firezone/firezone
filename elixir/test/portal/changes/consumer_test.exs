@@ -1,12 +1,12 @@
-defmodule Portal.Changes.ReplicationConnectionTest do
+defmodule Portal.Changes.ConsumerTest do
   use Portal.DataCase, async: true
 
   import ExUnit.CaptureLog
-  alias Portal.Changes.ReplicationConnection
+  alias Portal.Changes.Consumer
 
   setup do
     tables =
-      Application.fetch_env!(:portal, Portal.Changes.ReplicationConnection)
+      Application.fetch_env!(:portal, Portal.Changes.Consumer)
       |> Keyword.fetch!(:table_subscriptions)
 
     %{tables: tables}
@@ -24,7 +24,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          result = ReplicationConnection.on_write(%{}, 0, :insert, table, nil, data)
+          result = Consumer.on_write(%{}, 0, :insert, table, nil, data)
           assert result == %{}
         end)
 
@@ -43,7 +43,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
         # The actual hook call might fail if the hook modules aren't available,
         # but we can test that our routing logic works
         try do
-          result = ReplicationConnection.on_write(%{}, 0, :insert, table, nil, data)
+          result = Consumer.on_write(%{}, 0, :insert, table, nil, data)
           assert result == %{}
         rescue
           # Depending on the shape of the data we might get a function clause error. This is ok,
@@ -59,7 +59,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
         log_output =
           capture_log(fn ->
             try do
-              ReplicationConnection.on_write(%{}, 0, :insert, table, nil, %{
+              Consumer.on_write(%{}, 0, :insert, table, nil, %{
                 "account_id" => Ecto.UUID.generate(),
                 "id" => Ecto.UUID.generate()
               })
@@ -89,7 +89,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          result = ReplicationConnection.on_write(%{}, 0, :update, table, old_data, data)
+          result = Consumer.on_write(%{}, 0, :update, table, old_data, data)
           assert result == %{}
         end)
 
@@ -108,7 +108,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
 
       for table <- tables do
         try do
-          result = ReplicationConnection.on_write(%{}, 0, :update, table, old_data, data)
+          result = Consumer.on_write(%{}, 0, :update, table, old_data, data)
           assert result == %{}
         rescue
           FunctionClauseError ->
@@ -131,7 +131,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          result = ReplicationConnection.on_write(%{}, 0, :delete, table, old_data, nil)
+          result = Consumer.on_write(%{}, 0, :delete, table, old_data, nil)
           assert result == %{}
         end)
 
@@ -151,7 +151,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
 
       for table <- tables do
         try do
-          result = ReplicationConnection.on_write(%{}, 0, :delete, table, old_data, nil)
+          result = Consumer.on_write(%{}, 0, :delete, table, old_data, nil)
           assert result == %{}
         rescue
           # Shape of the data might not match the expected one, which is fine
@@ -173,7 +173,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       # Insert
       try do
         result =
-          ReplicationConnection.on_write(state, 1, :insert, table, nil, %{
+          Consumer.on_write(state, 1, :insert, table, nil, %{
             "id" => "00000000-0000-0000-0000-000000000001"
           })
 
@@ -185,7 +185,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       # Update
       try do
         result =
-          ReplicationConnection.on_write(
+          Consumer.on_write(
             state,
             2,
             :update,
@@ -205,7 +205,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       # Delete
       try do
         result =
-          ReplicationConnection.on_write(
+          Consumer.on_write(
             state,
             3,
             :delete,
@@ -226,7 +226,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       # Test insert
       log_output =
         capture_log(fn ->
-          ReplicationConnection.on_write(%{}, 0, :insert, "test_table_insert", nil, %{})
+          Consumer.on_write(%{}, 0, :insert, "test_table_insert", nil, %{})
         end)
 
       assert log_output =~ "No hook defined for insert on table test_table_insert"
@@ -235,7 +235,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       # Test update
       log_output =
         capture_log(fn ->
-          ReplicationConnection.on_write(%{}, 0, :update, "test_table_update", %{}, %{})
+          Consumer.on_write(%{}, 0, :update, "test_table_update", %{}, %{})
         end)
 
       assert log_output =~ "No hook defined for update on table test_table_update"
@@ -244,7 +244,7 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       # Test delete
       log_output =
         capture_log(fn ->
-          ReplicationConnection.on_write(%{}, 0, :delete, "test_table_delete", %{}, nil)
+          Consumer.on_write(%{}, 0, :delete, "test_table_delete", %{}, nil)
         end)
 
       assert log_output =~ "No hook defined for delete on table test_table_delete"
@@ -257,12 +257,12 @@ defmodule Portal.Changes.ReplicationConnectionTest do
       initial_state = %{some: "data", counter: 42}
 
       # Unknown table - should log warning and return state unchanged
-      result1 = ReplicationConnection.on_write(initial_state, 1, :insert, "unknown", nil, %{})
+      result1 = Consumer.on_write(initial_state, 1, :insert, "unknown", nil, %{})
       assert result1 == initial_state
 
       # Known table (might error in hook, but should still preserve state)
       try do
-        result2 = ReplicationConnection.on_write(initial_state, 2, :insert, "accounts", nil, %{})
+        result2 = Consumer.on_write(initial_state, 2, :insert, "accounts", nil, %{})
         assert result2 == initial_state
       rescue
         FunctionClauseError -> :ok

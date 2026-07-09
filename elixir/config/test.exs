@@ -67,21 +67,15 @@ config :portal, Oban,
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
 config :portal, Portal.Billing,
   enabled: true,

@@ -1,5 +1,17 @@
-defmodule Portal.Changes.ReplicationConnection do
-  use Portal.Replication.Connection
+defmodule Portal.Changes.Consumer do
+  @moduledoc """
+  Dispatches decoded changes from the changes publication to their
+  `Portal.Changes.Hooks` modules.
+
+  Hooks are side effects (broadcasts, cache updates) that cannot commit
+  atomically with any progress marker, so delivery is at-least-once: a crash
+  before the slot advances replays the batch and duplicates the hook calls.
+  Hook implementations must tolerate duplicates.
+  """
+  @behaviour Portal.Replication.SlotPoller
+
+  require Logger
+
   alias Portal.Changes.Hooks
 
   @tables_to_hooks %{
@@ -29,6 +41,16 @@ defmodule Portal.Changes.ReplicationConnection do
     "relay_tokens" => Hooks.RelayTokens
   }
 
+  @impl true
+  def init_state(_config), do: %{}
+
+  @impl true
+  def on_begin(state, _msg), do: state
+
+  @impl true
+  def on_logical_message(state, _msg), do: state
+
+  @impl true
   def on_write(state, lsn, op, table, old_data, data) do
     hook = Map.get(@tables_to_hooks, table)
 
@@ -44,6 +66,9 @@ defmodule Portal.Changes.ReplicationConnection do
 
     state
   end
+
+  @impl true
+  def flush(state), do: state
 
   defp log_warning(op, table) do
     Logger.warning(

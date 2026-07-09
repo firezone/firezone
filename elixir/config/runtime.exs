@@ -28,21 +28,6 @@ if config_env() == :prod do
         []
     end
 
-  # Postgrex.ReplicationConnection has no :configure hook, so it takes the
-  # password as an MFA that Portal.Replication.Manager resolves right before
-  # each connection attempt.
-  replication_password_opts =
-    cond do
-      env_var_to_config!(:database_entra_auth) ->
-        [{:password, {Portal.Azure.ManagedIdentity, :database_access_token!, []}}]
-
-      env_var_to_config(:database_password) ->
-        [{:password, env_var_to_config!(:database_password)}]
-
-      true ->
-        []
-    end
-
   config :portal,
          Portal.Repo,
          [
@@ -155,50 +140,16 @@ if config_env() == :prod do
            ] ++ replica_pool_base_opts
   end
 
-  config :portal, Portal.ChangeLogs.ReplicationConnection,
+  config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
-    publication_name: env_var_to_config!(:database_change_logs_publication_name),
-    connection_opts:
-      [
-        port: env_var_to_config!(:database_port),
-        ssl: env_var_to_config!(:database_ssl),
-        parameters: env_var_to_config!(:database_parameters),
-        username: env_var_to_config!(:database_user),
-        database: env_var_to_config!(:database_name)
-      ] ++
-        if(env_var_to_config!(:database_socket_options) != [],
-          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
-          else: []
-        ) ++
-        replication_password_opts ++
-        if(env_var_to_config(:database_socket_dir),
-          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
-        )
+    publication_name: env_var_to_config!(:database_change_logs_publication_name)
 
-  config :portal, Portal.Changes.ReplicationConnection,
+  config :portal, Portal.Changes.Consumer,
     enabled: env_var_to_config!(:changes_replication_enabled),
     region: env_var_to_config!(:region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
-    publication_name: env_var_to_config!(:database_changes_publication_name),
-    connection_opts:
-      [
-        port: env_var_to_config!(:database_port),
-        ssl: env_var_to_config!(:database_ssl),
-        parameters: env_var_to_config!(:database_parameters),
-        username: env_var_to_config!(:database_user),
-        database: env_var_to_config!(:database_name)
-      ] ++
-        if(env_var_to_config!(:database_socket_options) != [],
-          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
-          else: []
-        ) ++
-        replication_password_opts ++
-        if(env_var_to_config(:database_socket_dir),
-          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
-        )
+    publication_name: env_var_to_config!(:database_changes_publication_name)
 
   config :portal, Portal.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),

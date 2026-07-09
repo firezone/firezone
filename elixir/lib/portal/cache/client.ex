@@ -3,7 +3,7 @@ defmodule Portal.Cache.Client do
 
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
-    The cache is updated via WAL messages streamed from the Portal.Changes.ReplicationConnection module.
+    The cache is updated via WAL messages streamed from the Portal.Changes.Consumer module.
 
     We use basic data structures and binary representations instead of full Ecto schema structs
     to minimize memory usage. The rough structure of the cache data structure and some napkin math

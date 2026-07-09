@@ -32,15 +32,13 @@ config :portal, Portal.Repo.Api, db_opts
 config :portal, Portal.Repo.Replica.Web, db_opts
 config :portal, Portal.Repo.Replica.Api, db_opts
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: db_opts[:database] <> "_clog_slot",
-  publication_name: db_opts[:database] <> "_clog_pub",
-  connection_opts: db_opts
+  publication_name: db_opts[:database] <> "_clog_pub"
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
-  publication_name: db_opts[:database] <> "_changes_pub",
-  connection_opts: db_opts
+  publication_name: db_opts[:database] <> "_changes_pub"
 
 config :portal, outbound_email_adapter_configured?: true
 
