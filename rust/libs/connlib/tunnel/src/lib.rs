@@ -84,9 +84,7 @@ pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use io::TunChannelClosed;
-pub use sockets::{
-    MAX_UDP_INBOUND_QUEUE_MEMORY, MAX_UDP_OUTBOUND_QUEUE_MEMORY, UdpSocketThreadStopped,
-};
+pub use sockets::UdpSocketThreadStopped;
 pub use unroutable_packet::UnroutablePacket;
 pub use utils::turn;
 

@@ -21,7 +21,6 @@ members = [
     "libs/connlib/l3-udp-dns-client",
     "libs/connlib/l4-tcp-dns-server",
     "libs/connlib/l4-udp-dns-server",
-    "libs/connlib/memory-budget",
     "libs/connlib/model",
     "libs/connlib/otel-instruments",
     "libs/connlib/path-agent",

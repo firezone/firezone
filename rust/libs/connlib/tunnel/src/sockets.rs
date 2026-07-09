@@ -242,19 +242,31 @@ const INBOUND_QUEUE_SIZE: usize = {
 /// [`QUEUE_SIZE`] datagrams (hence the `2 *`). Every [`DatagramOut`] owns a GSO buffer from the
 /// [`UdpGsoQueue`](crate::io::UdpGsoQueue)'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`]
 /// regardless of how full it is. That pool never shrinks, so a send backlog that ever fills these
-/// queues pins this much memory for the rest of the session. Asserted against the platform budget in
-/// the `memory-budget` crate.
-pub const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
+/// queues pins this much memory for the rest of the session.
+const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
     2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
 
 /// Worst-case memory pinned by the inbound UDP datagram queues.
 ///
 /// Each queued [`DatagramSegmentIter`] owns a batch of receive buffers whose no-GRO worst case is
 /// [`socket_factory::MAX_RECV_BATCH_MEMORY_WITHOUT_GRO`]. We bound the no-GRO case (the Apple client
-/// this guards has no GRO); on GRO-capable platforms the buffers scale with `gro_segments`. Asserted
-/// against the platform budget in the `memory-budget` crate.
-pub const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
+/// this guards has no GRO); on GRO-capable platforms the buffers scale with `gro_segments`.
+const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
     2 * INBOUND_QUEUE_SIZE * socket_factory::MAX_RECV_BATCH_MEMORY_WITHOUT_GRO;
+
+// iOS Network Extensions are capped at 50 MB; these queues must only ever use a small fraction of
+// that. As production code, the bounds are checked wherever connlib is compiled: the mobile budgets
+// when built for iOS / Android (the Client FFI), the desktop budgets otherwise.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+const _: () = {
+    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 2 * 1024 * 1024);
+    assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 4 * 1024 * 1024);
+};
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+const _: () = {
+    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 20 * 1024 * 1024);
+    assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 16 * 1024 * 1024);
+};
 
 struct ThreadedUdpSocket {
     thread_name: String,
