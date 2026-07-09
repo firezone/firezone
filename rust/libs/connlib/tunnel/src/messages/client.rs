@@ -143,8 +143,7 @@ pub struct FlowCreated {
     pub use_iceless: bool,
 
     /// The initiator-side ingest token for this flow's logs.
-    #[serde(default)]
-    pub flow_logs_ingest_token: Option<IngestToken>,
+    pub flow_logs_ingest_token: IngestToken,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -187,8 +186,7 @@ pub struct ClientDeviceAccessAuthorized {
 
     /// This device's ingest token: the initiator token on the initiating side,
     /// the responder token on the receiving side.
-    #[serde(default)]
-    pub flow_logs_ingest_token: Option<IngestToken>,
+    pub flow_logs_ingest_token: IngestToken,
 }
 
 /// The portal's minimal `{id, filters}` resource view embedded in
@@ -517,9 +515,12 @@ mod tests {
 
     #[test]
     fn can_deserialize_flow_created() {
-        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd"}}"#;
+        let token = crate::messages::TEST_INGEST_TOKEN;
+        let json = format!(
+            r#"{{"event":"flow_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","flow_logs_ingest_token":"{token}"}}}}"#
+        );
 
-        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
 
         let IngressMessages::FlowCreated(flow) = message else {
             panic!("expected FlowCreated");
@@ -530,15 +531,24 @@ mod tests {
 
     #[test]
     fn flow_created_picks_up_use_iceless() {
-        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true}}"#;
+        let token = crate::messages::TEST_INGEST_TOKEN;
+        let json = format!(
+            r#"{{"event":"flow_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"flow_logs_ingest_token":"{token}"}}}}"#
+        );
 
-        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
 
         let IngressMessages::FlowCreated(flow) = message else {
             panic!("expected FlowCreated");
         };
         assert!(flow.use_iceless);
-        assert!(flow.flow_logs_ingest_token.is_none());
+    }
+
+    #[test]
+    fn flow_created_requires_ingest_token() {
+        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd"}}"#;
+
+        serde_json::from_str::<IngressMessages>(json).unwrap_err();
     }
 
     #[test]
@@ -553,7 +563,7 @@ mod tests {
         let IngressMessages::FlowCreated(flow) = message else {
             panic!("expected FlowCreated");
         };
-        assert_eq!(flow.flow_logs_ingest_token.unwrap().as_str(), token);
+        assert_eq!(flow.flow_logs_ingest_token.as_str(), token);
     }
 
     #[test]
@@ -568,7 +578,7 @@ mod tests {
         let IngressMessages::ClientDeviceAccessAuthorized(authorized) = message else {
             panic!("expected ClientDeviceAccessAuthorized");
         };
-        assert_eq!(authorized.flow_logs_ingest_token.unwrap().as_str(), token);
+        assert_eq!(authorized.flow_logs_ingest_token.as_str(), token);
     }
 
     #[test]

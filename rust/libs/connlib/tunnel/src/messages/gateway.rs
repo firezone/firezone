@@ -139,32 +139,6 @@ pub struct Client {
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
-    #[serde(default)]
-    pub version: Option<String>,
-    #[serde(default)]
-    pub device_os_name: Option<String>,
-    #[serde(default)]
-    pub device_os_version: Option<String>,
-    #[serde(default)]
-    pub device_serial: Option<String>,
-    #[serde(default)]
-    pub device_uuid: Option<String>,
-    #[serde(default)]
-    pub identifier_for_vendor: Option<String>,
-    #[serde(default)]
-    pub firebase_installation_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct Subject {
-    #[serde(default)]
-    pub auth_provider_id: Option<String>,
-    #[serde(default)]
-    pub actor_name: Option<String>,
-    #[serde(default)]
-    pub actor_id: Option<String>,
-    #[serde(default)]
-    pub actor_email: Option<String>,
 }
 
 #[serde_as]
@@ -176,8 +150,6 @@ pub struct AuthorizeFlow {
     pub resource: ResourceDescription,
     pub gateway_ice_credentials: IceCredentials,
     pub client: Client,
-    #[serde(default)]
-    pub subject: Subject,
     pub client_ice_credentials: IceCredentials,
 
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
@@ -186,8 +158,8 @@ pub struct AuthorizeFlow {
     #[serde(default)]
     pub use_iceless: bool,
 
-    #[serde(default)]
-    pub flow_logs_ingest_token: Option<IngestToken>,
+    /// The responder-side ingest token for this flow's logs.
+    pub flow_logs_ingest_token: IngestToken,
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
@@ -403,17 +375,6 @@ mod tests {
 
     #[test]
     fn can_deserialize_authorize_flow() {
-        let message = serde_json::from_str::<IngressMessages>(AUTHORIZE_FLOW).unwrap();
-
-        let IngressMessages::AuthorizeFlow(flow) = message else {
-            panic!("expected AuthorizeFlow");
-        };
-        assert!(!flow.use_iceless);
-        assert!(flow.flow_logs_ingest_token.is_none());
-    }
-
-    #[test]
-    fn authorize_flow_carries_ingest_token() {
         let token = crate::messages::TEST_INGEST_TOKEN;
         let json = AUTHORIZE_FLOW.replace(
             r#""flow_id""#,
@@ -425,7 +386,13 @@ mod tests {
         let IngressMessages::AuthorizeFlow(flow) = message else {
             panic!("expected AuthorizeFlow");
         };
-        assert_eq!(flow.flow_logs_ingest_token.unwrap().as_str(), token);
+        assert!(!flow.use_iceless);
+        assert_eq!(flow.flow_logs_ingest_token.as_str(), token);
+    }
+
+    #[test]
+    fn authorize_flow_requires_ingest_token() {
+        serde_json::from_str::<IngressMessages>(AUTHORIZE_FLOW).unwrap_err();
     }
 
     #[test]

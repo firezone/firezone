@@ -56,9 +56,6 @@ pub struct Eventloop {
     /// entrypoint's `flow_log_writer` layer.
     flow_logs_dir: Option<std::path::PathBuf>,
 
-    /// Whether the portal enabled uploads; gates persisting ingest tokens.
-    upload_flow_logs: bool,
-
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -153,7 +150,6 @@ impl Eventloop {
             tunnel: Some(tunnel),
             resolver_bypass,
             flow_logs_dir,
-            upload_flow_logs: false,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -468,10 +464,8 @@ impl Eventloop {
                 relays,
                 flow_logs,
             }) => {
-                self.upload_flow_logs = flow_logs.upload_enabled();
-
                 tracing::info!(
-                    upload_enabled = self.upload_flow_logs,
+                    upload_enabled = flow_logs.upload_enabled(),
                     spool_dir = ?self.flow_logs_dir,
                     config = ?flow_logs,
                     "Flow-log config received from portal init"
@@ -541,12 +535,7 @@ impl Eventloop {
                 use_iceless,
                 flow_logs_ingest_token,
             }) => {
-                if self.upload_flow_logs {
-                    persist_ingest_token(
-                        self.flow_logs_dir.as_deref(),
-                        flow_logs_ingest_token.as_ref(),
-                    );
-                }
+                persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
 
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
@@ -625,12 +614,7 @@ impl Eventloop {
                 authorization_expires_at,
                 flow_logs_ingest_token,
             }) => {
-                if self.upload_flow_logs {
-                    persist_ingest_token(
-                        self.flow_logs_dir.as_deref(),
-                        flow_logs_ingest_token.as_ref(),
-                    );
-                }
+                persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
 
                 // The portal only sends a resource to the target device; the
                 // initiating side receives `None` and relies on conntrack to
@@ -767,10 +751,14 @@ impl Eventloop {
 
 /// Tokens deliberately travel here rather than through the flow-log tracing
 /// events, so they can never leak into log output.
-fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: Option<&IngestToken>) {
-    let (Some(spool_root), Some(token)) = (spool_root, token) else {
+fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToken) {
+    let Some(spool_root) = spool_root else {
         return;
     };
+
+    if !token.claims().uploads_enabled {
+        return;
+    }
 
     if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
         tracing::warn!("Failed to persist flow-log ingest token: {e:#}");

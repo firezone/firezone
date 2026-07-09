@@ -102,6 +102,7 @@ fn has_necessary_permissions() -> bool {
 async fn try_main(cli: Cli) -> Result<()> {
     let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
 
+    // Hold the guard until exit so the writer thread drains on shutdown.
     let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
 
     logging::setup_global_subscriber(
@@ -204,7 +205,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
-        cli.flow_logs,
     );
 
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
@@ -254,10 +254,17 @@ async fn try_main(cli: Cli) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver, flow_logs_dir)?
-        .run()
-        .await
-        .context(EventloopFailed)?;
+    Eventloop::new(
+        tunnel,
+        portal,
+        tun_device_manager,
+        resolver,
+        flow_logs_dir,
+        cli.flow_logs,
+    )?
+    .run()
+    .await
+    .context(EventloopFailed)?;
 
     Ok(())
 }
@@ -342,7 +349,11 @@ struct Cli {
     #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
     log_format: LogFormat,
 
-    /// Enable logging of tunneled UDP and TCP flows.
+    /// Track flow logs even when the portal has them disabled, and emit them
+    /// to the log output by adding the `flow_logs=trace` log directive.
+    ///
+    /// Flows tracked only because of this flag stay on the log output;
+    /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 

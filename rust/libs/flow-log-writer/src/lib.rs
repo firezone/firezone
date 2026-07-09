@@ -369,7 +369,12 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
 
 fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
     let dir = root.join(&report.role).join(&report.authz_id);
-    create_dir_secure(&dir)?;
+
+    if !dir.join("token").exists() {
+        tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
+
+        return Ok(());
+    }
 
     let contents = serialize(&serde_json::Value::Object(report.payload.clone()))?;
 
@@ -488,6 +493,7 @@ mod tests {
     #[test]
     fn spools_start_and_end_reports_sharing_a_stem() {
         let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
 
         let (layer, guard) = layer(dir.path().to_owned());
         let subscriber = tracing_subscriber::registry().with(layer);
@@ -501,6 +507,7 @@ mod tests {
         let stems = std::fs::read_dir(&authz_dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "token")
             .collect::<Vec<_>>();
 
         // Both reports share one `<flow_start>-<flow_identity>` stem.
@@ -521,6 +528,20 @@ mod tests {
         assert!(start.get("actor_id").is_none()); // attribution rides the token only
         assert_eq!(end["rx_bytes"], 1024); // the `.end` is a self-describing report
         assert_eq!(end["inner_dst_port"], "443");
+    }
+
+    #[test]
+    fn spools_nothing_without_ingest_token() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let (layer, guard) = layer(dir.path().to_owned());
+        let subscriber = tracing_subscriber::registry().with(layer);
+        tracing::subscriber::with_default(subscriber, || {
+            emit_event(true);
+        });
+        drop(guard);
+
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
     #[test]
