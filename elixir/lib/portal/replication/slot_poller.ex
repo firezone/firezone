@@ -81,6 +81,10 @@ defmodule Portal.Replication.SlotPoller do
     consumer = Keyword.fetch!(opts, :consumer)
     config = load_config(consumer)
 
+    # Trap exits so shutdown waits for an in-flight poll cycle instead of
+    # killing it mid-checkout, which would disconnect the pooled connection
+    Process.flag(:trap_exit, true)
+
     send(self(), :setup)
 
     {:ok,
