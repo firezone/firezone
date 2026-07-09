@@ -59,9 +59,11 @@ defmodule Portal.ChangeLogs.Consumer do
 
   def on_logical_message(state, _message), do: state
 
-  # Handle Begin to reset transaction state. On the first Begin of this
-  # consumer's lifetime, seed seq_start from the Postgres clock so every
-  # event_id this process emits shares a single authoritative timestamp.
+  # Handle Begin to reset transaction state. On the first Begin of each poll
+  # batch, seed seq_start from the Postgres clock so every event_id in the
+  # batch shares a single authoritative timestamp. flush/1 drops the seed, so
+  # each batch reseeds: batches are serialized by the poller's advisory lock,
+  # which keeps event_ids monotonic even when nodes alternate polling.
   @impl true
   def on_begin(state, %{commit_timestamp: commit_timestamp}) do
     state
@@ -109,7 +111,9 @@ defmodule Portal.ChangeLogs.Consumer do
   end
 
   @impl true
-  def flush(%{flush_buffer: flush_buffer} = state) when map_size(flush_buffer) == 0, do: state
+  def flush(%{flush_buffer: flush_buffer} = state) when map_size(flush_buffer) == 0 do
+    drop_batch_seed(state)
+  end
 
   def flush(state) do
     attempted_count = map_size(state.flush_buffer)
@@ -123,7 +127,7 @@ defmodule Portal.ChangeLogs.Consumer do
 
     Logger.info("Flushed #{inserted_count}/#{attempted_count} change logs")
 
-    %{state | flush_buffer: %{}}
+    drop_batch_seed(%{state | flush_buffer: %{}})
   end
 
   defp buffer(
@@ -173,6 +177,13 @@ defmodule Portal.ChangeLogs.Consumer do
       | flush_buffer: Map.put(flush_buffer, lsn, entry),
         tenant_offsets: Map.put(tenant_offsets, account_id, offset + 1)
     }
+  end
+
+  # event_ids are <<type::4, seq_start::52, tenant_offset::40>>, so a stale
+  # seq_start from an earlier batch would sort later entries before earlier
+  # ones when another node's fresher seed produced the batch in between.
+  defp drop_batch_seed(state) do
+    Map.drop(state, [:seq_start, :tenant_offsets])
   end
 
   defp decode_subject(%{current_subject: nil}), do: nil

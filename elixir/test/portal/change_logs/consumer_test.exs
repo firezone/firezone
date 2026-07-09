@@ -719,11 +719,17 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         subject: nil
       }
 
-      state = %{flush_buffer: %{100 => attrs1, 101 => attrs2}}
+      state = %{
+        flush_buffer: %{100 => attrs1, 101 => attrs2},
+        seq_start: @seq_start,
+        tenant_offsets: %{account.id => 2}
+      }
 
       result_state = Consumer.flush(state)
 
       assert result_state.flush_buffer == %{}
+      refute Map.has_key?(result_state, :seq_start)
+      refute Map.has_key?(result_state, :tenant_offsets)
 
       change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in [100, 101], order_by: cl.lsn)
       assert length(change_logs) == 2
@@ -854,6 +860,22 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       }
 
       assert_raise Postgrex.Error, fn -> Database.bulk_insert([entry]) end
+    end
+
+    test "drops the batch seed so the next batch reseeds event_id ordering", %{account: account} do
+      state =
+        %{flush_buffer: %{}, seq_start: @seq_start, tenant_offsets: %{account.id => 5}}
+        |> Consumer.flush()
+
+      refute Map.has_key?(state, :seq_start)
+      refute Map.has_key?(state, :tenant_offsets)
+
+      # The next batch's first Begin reseeds from the shared Postgres clock,
+      # so its event_ids sort after every previous batch's regardless of
+      # which node produced them
+      state = Consumer.on_begin(state, %{commit_timestamp: @commit_timestamp})
+      assert state.seq_start > @seq_start
+      assert state.tenant_offsets == %{}
     end
 
     test "skips replayed entries that already committed", %{account: account} do
