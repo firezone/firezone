@@ -48,6 +48,10 @@ services:
       resources:
         ipv4_address: 172.20.0.110
         ipv6_address: 172:20:0::110
+      dns_resources:
+        ipv4_address: 172.21.0.110
+        aliases:
+          - iperf3.test
 
   secnetperf:
     image: ghcr.io/firezone/secnetperf:latest
