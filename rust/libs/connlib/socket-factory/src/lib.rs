@@ -764,16 +764,26 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
-/// Worst-case heap that a single received batch ([`DatagramSegmentIter`]) pins, *excluding* generic
-/// receive offload (GRO).
+/// A compile-time upper bound on the runtime `gro_segments()`: the largest number of datagrams the
+/// kernel will coalesce into a single receive buffer via generic receive offload (GRO).
 ///
-/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata. Without
-/// GRO - as on Apple and any other platform where `gro_segments() == 1` - each buffer holds a single
-/// datagram of at most [`ip_packet::MAX_FZ_PAYLOAD`] bytes. On GRO-capable platforms the kernel
-/// coalesces up to `gro_segments` datagrams into each buffer, scaling the payload term accordingly.
-pub const MAX_RECV_BATCH_MEMORY_WITHOUT_GRO: usize = size_of::<DatagramSegmentIter>()
+/// Only Linux / Android enable `UDP_GRO` (up to `UDP_GRO_CNT_MAX` = 64); every other platform receives
+/// one datagram per buffer. Runtime `gro_segments()` never exceeds this, so it bounds the worst case.
+pub const MAX_GRO_SEGMENTS: usize = if cfg!(any(target_os = "linux", target_os = "android")) {
+    64
+} else {
+    1
+};
+
+/// Worst-case heap that a single received batch ([`DatagramSegmentIter`]) pins.
+///
+/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata. Each buffer
+/// is sized to hold a full GRO batch - up to [`MAX_GRO_SEGMENTS`] coalesced datagrams of at most
+/// [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android a single buffer is 64x the size of the
+/// datagram it might actually carry. That factor dominates this figure on GRO-capable platforms.
+pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramSegmentIter>()
     + quinn_udp::BATCH_SIZE
-        * (ip_packet::MAX_FZ_PAYLOAD
+        * (ip_packet::MAX_FZ_PAYLOAD * MAX_GRO_SEGMENTS
             + size_of::<Buffer<Vec<u8>>>()
             + size_of::<quinn_udp::RecvMeta>());
 
