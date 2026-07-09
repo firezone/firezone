@@ -70,7 +70,7 @@ defmodule Portal.Application do
 
     # Child order is chosen to make reverse-order shutdown graceful:
     # 1) Portal.Cluster sends goodbye while DB/PubSub are healthy.
-    # 2) Replication managers disconnect while BEAM is still fully alive.
+    # 2) Replication slot pollers stop while BEAM is still fully alive.
     # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
     # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
@@ -169,26 +169,14 @@ defmodule Portal.Application do
   end
 
   defp replication do
-    connection_modules = [
-      Portal.Changes.ReplicationConnection,
-      Portal.ChangeLogs.ReplicationConnection
+    consumers = [
+      Portal.Changes.Consumer,
+      Portal.ChangeLogs.Consumer
     ]
 
-    # Filter out disabled replication connections
-    Enum.reduce(connection_modules, [], fn module, enabled ->
-      config = Application.fetch_env!(:portal, module)
-
-      if config[:enabled] do
-        spec = %{
-          id: module,
-          start: {Portal.Replication.Manager, :start_link, [module, []]}
-        }
-
-        [spec | enabled]
-      else
-        enabled
-      end
-    end)
+    for consumer <- consumers, Application.fetch_env!(:portal, consumer)[:enabled] do
+      Supervisor.child_spec({Portal.Replication.SlotPoller, consumer: consumer}, id: consumer)
+    end
   end
 
   defp rate_limit do

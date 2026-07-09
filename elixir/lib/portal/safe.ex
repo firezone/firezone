@@ -376,6 +376,21 @@ defmodule Portal.Safe do
   end
 
   @doc """
+  Runs a function inside a database transaction without subject scoping.
+
+  The function must return `{:ok, value}` or `{:error, reason}`; an error
+  return rolls the transaction back.
+
+  ## Examples
+      Safe.unscoped() |> Safe.transaction(fn -> {:ok, ...} end)
+  """
+  @spec transaction(Unscoped.t(), (-> {:ok, term()} | {:error, term()})) ::
+          {:ok, term()} | {:error, term()}
+  def transaction(%Unscoped{}, fun) when is_function(fun, 0) do
+    Repo.transact(fun)
+  end
+
+  @doc """
   Inserts multiple entries for the given schema.
   The queryable field in Scoped/Unscoped is ignored for this operation.
 

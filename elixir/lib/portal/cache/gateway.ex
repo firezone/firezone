@@ -2,7 +2,7 @@ defmodule Portal.Cache.Gateway do
   @moduledoc """
     This cache is used in the gateway channel processes to maintain a materialized view of the
     policy_authorizations this gateway has been told about. The cache is seeded on join and
-    updated via WAL messages streamed from the Portal.Changes.ReplicationConnection module.
+    updated via WAL messages streamed from the Portal.Changes.Consumer module.
 
     It mirrors the data plane, which keeps a single authorization per `(client, resource)` pair
     (last-one-wins): a fresh `authorize_flow` for a pair supersedes the previous one. We track the
