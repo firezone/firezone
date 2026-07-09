@@ -23,9 +23,6 @@
 //! The Bearer token deliberately does NOT ride the tracing events (a broad `trace`
 //! directive would copy it into log files); the eventloops receive it in the
 //! portal's authorization messages and persist it via [`write_token`] instead.
-//! The token file is also the per-authorization spool gate: a report is only
-//! written if its authorization's token is on disk, so an authorization granted
-//! while the portal had uploads disabled never accumulates unuploadable reports.
 //! A report's payload is the event's record fields as emitted (see
 //! [`RECORD_FIELDS`]); attribution deliberately rides only the token, and the
 //! portal validates the payload on ingest, so the writer only interprets what
@@ -120,10 +117,6 @@ where
 }
 
 /// Persists an authorization's ingest token where the uploader expects it.
-///
-/// The token file doubles as the per-authorization spool gate: reports are
-/// only spooled for authorizations whose token is on disk, so callers persist
-/// tokens only while the portal has uploads enabled.
 ///
 /// The spool path derives from the token's (unverified) `role` and
 /// `policy_authorization_id` claims, which are validated first.
@@ -377,9 +370,6 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
 fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
     let dir = root.join(&report.role).join(&report.authz_id);
 
-    // The token file is the per-authorization spool gate: it is only persisted
-    // while the portal has uploads enabled, and without it the uploader could
-    // never submit these reports.
     if !dir.join("token").exists() {
         tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
 

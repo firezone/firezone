@@ -73,10 +73,10 @@ impl GatewayState {
     pub(crate) fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
-            flow_tracker: flow_log::Tracker::new(now, unix_ts),
             node: Node::new(seed, now, unix_ts),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
+            flow_tracker: flow_log::Tracker::new(now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,

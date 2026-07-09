@@ -126,11 +126,6 @@ impl ClientTunnel {
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
     ) -> Self {
-        let now = Instant::now();
-        let unix_ts = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Should be able to compute UNIX timestamp");
-
         Self {
             io: Io::new(
                 tcp_socket_factory,
@@ -141,8 +136,10 @@ impl ClientTunnel {
                 rand::random(),
                 records,
                 is_internet_resource_active,
-                now,
-                unix_ts,
+                Instant::now(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
         }
@@ -334,14 +331,15 @@ impl GatewayTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let now = Instant::now();
-        let unix_ts = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Should be able to compute UNIX timestamp");
-
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
-            role_state: GatewayState::new(rand::random(), now, unix_ts),
+            role_state: GatewayState::new(
+                rand::random(),
+                Instant::now(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Should be able to compute UNIX timestamp"),
+            ),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -352,10 +350,8 @@ impl GatewayTunnel {
 
     /// Shut down the Gateway tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
-        let now = Instant::now();
-
         // Initiate shutdown.
-        self.role_state.shut_down(now);
+        self.role_state.shut_down(Instant::now());
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {

@@ -1380,10 +1380,7 @@ fn address_from_destination(
 }
 
 fn test_ingest_token() -> crate::messages::IngestToken {
-    serde_json::from_value(serde_json::Value::String(
-        crate::messages::TEST_INGEST_TOKEN.to_owned(),
-    ))
-    .unwrap()
+    serde_json::from_str(&format!("\"{}\"", crate::messages::TEST_INGEST_TOKEN)).unwrap()
 }
 
 fn make_preshared_key_and_ice(
