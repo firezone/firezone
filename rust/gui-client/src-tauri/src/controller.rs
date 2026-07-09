@@ -363,14 +363,14 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn tick(&mut self) -> EventloopTick {
         std::future::poll_fn(|cx| {
-            if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
-                return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
-            }
-
             if let Some(quit_timeout) = self.quit_timeout.as_mut()
                 && quit_timeout.poll_unpin(cx).is_ready()
             {
                 return Poll::Ready(EventloopTick::QuitTimeoutElapsed);
+            }
+
+            if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
+                return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
             if let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx) {
