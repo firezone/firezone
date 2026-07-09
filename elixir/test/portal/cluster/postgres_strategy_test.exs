@@ -481,6 +481,21 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       end)
     end
 
+    test "forwards :configure from the repo config to both connections" do
+      channel_name = "test_#{System.unique_integer([:positive])}"
+
+      Portal.Config.put_env_override(
+        __MODULE__.ConfigureRepo,
+        {__MODULE__, :mock_configure, [self()]}
+      )
+
+      start_strategy(channel_name: channel_name, repo: __MODULE__.ConfigureRepo)
+
+      # One connect per connection: notify_conn and the listener
+      assert_receive :configure_called, 5000
+      assert_receive :configure_called, 5000
+    end
+
     test "logs error when initial connection fails" do
       log =
         capture_log(fn ->
@@ -545,7 +560,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       list_nodes: {__MODULE__, :mock_list_nodes, []},
       config:
         [
-          repo: Portal.Repo,
+          repo: Keyword.get(opts, :repo, Portal.Repo),
           channel_name: Keyword.get(opts, :channel_name, "test_cluster"),
           heartbeat_interval: Keyword.get(opts, :heartbeat_interval, 60_000),
           missed_heartbeats: Keyword.get(opts, :missed_heartbeats, 3),
@@ -608,10 +623,24 @@ defmodule Portal.Cluster.PostgresStrategyTest do
   def mock_list_nodes, do: []
   def mock_connect_failing(_node), do: false
 
+  def mock_configure(opts, test_pid) do
+    send(test_pid, :configure_called)
+    opts
+  end
+
   # Mock repo module that returns invalid config
   defmodule InvalidRepo do
     def config do
       [hostname: "invalid.host.that.does.not.exist", port: 9999, connect_timeout: 100]
+    end
+  end
+
+  # Mock repo whose config carries a :configure hook, like production does when
+  # DATABASE_ENTRA_AUTH is enabled. The hook MFA (with the test pid in its args)
+  # arrives via Portal.Config.put_env_override from the calling test.
+  defmodule ConfigureRepo do
+    def config do
+      Keyword.put(Portal.Repo.config(), :configure, Portal.Config.get_env(:portal, __MODULE__))
     end
   end
 end
