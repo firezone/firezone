@@ -27,6 +27,12 @@ defmodule Portal.Replication.SlotPollerTest do
 
     @impl true
     def on_write(state, lsn, op, table, old_data, data) do
+      # Simulates a hook whose inner transaction rolls back as part of normal
+      # operation; the poll cycle must tolerate it
+      if data && data["val"] == "rollback" do
+        {:error, :poison} = Portal.Repo.transaction(fn -> Portal.Repo.rollback(:poison) end)
+      end
+
       send(state.test_pid, {:write, lsn, op, table, old_data, data})
       state
     end
@@ -178,6 +184,30 @@ defmodule Portal.Replication.SlotPollerTest do
 
     assert_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 5000
     refute_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 500
+  end
+
+  test "consumer-internal transaction rollbacks do not abort the cycle", %{
+    aux: aux,
+    slot: slot,
+    table: table
+  } do
+    start_poller!()
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (5, 'rollback')", [])
+
+    assert_receive {:write, lsn, :insert, ^table, nil, %{"id" => "5"}}, 5000
+
+    # The batch still flushes and the slot advances past it
+    wait_for(fn ->
+      %{rows: [[confirmed]]} =
+        Postgrex.query!(
+          aux,
+          "SELECT (confirmed_flush_lsn - '0/0'::pg_lsn)::bigint FROM pg_replication_slots WHERE slot_name = $1",
+          [slot]
+        )
+
+      assert confirmed > lsn
+    end)
   end
 
   test "resumes from retained WAL after a restart", %{

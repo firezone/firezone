@@ -391,6 +391,19 @@ defmodule Portal.Safe do
   end
 
   @doc """
+  Runs a function with a single checked-out primary connection, without
+  wrapping it in a transaction. All primary queries inside `fun` use that
+  connection, which session-scoped state (such as advisory locks) requires.
+
+  ## Examples
+      Safe.unscoped() |> Safe.checkout(fn -> ... end)
+  """
+  @spec checkout(Unscoped.t(), (-> term())) :: term()
+  def checkout(%Unscoped{}, fun) when is_function(fun, 0) do
+    Repo.checkout(fun)
+  end
+
+  @doc """
   Inserts multiple entries for the given schema.
   The queryable field in Scoped/Unscoped is ignored for this operation.
 
