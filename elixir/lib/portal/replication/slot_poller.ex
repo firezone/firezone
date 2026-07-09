@@ -9,24 +9,25 @@ defmodule Portal.Replication.SlotPoller do
   when `replication=database` is requested), so polling is the only way to
   consume logical replication when DATABASE_ENTRA_AUTH is enabled.
 
-  Every poll cycle runs inside a transaction on the primary that holds a
-  `pg_try_advisory_xact_lock` keyed by slot and region, so exactly one process
-  in the cluster consumes each slot with the database as the authority — no
-  process-group coordination. Advisory locks are unavailable on standbys, so
-  the lock always lives on the primary even when the slot being polled is on
-  a replica. Within the cycle the poller:
+  Every poll cycle runs while holding a session advisory lock on the primary
+  keyed by slot and region, so exactly one process in the cluster consumes
+  each slot with the database as the authority — no process-group
+  coordination. Advisory locks are unavailable on standbys, so the lock
+  always lives on the primary even when the slot being polled is on a
+  replica. The cycle deliberately runs outside any wrapping transaction:
+  consumer callbacks run arbitrary side effects whose inner transactions may
+  legitimately roll back, which would poison an enclosing transaction. Within
+  the cycle the poller:
 
     1. Captures the polled server's current WAL position, then peeks a batch
        of pgoutput messages with `pg_logical_slot_peek_binary_changes`.
     2. Decodes each message and dispatches it to the consumer callbacks.
     3. Calls `c:flush/1`, which persists or broadcasts the batch's effects.
-       For consumers writing to the primary this commits atomically with the
-       leadership transaction.
-    4. After the transaction commits, advances the slot to the last peeked
-       LSN, or, for an empty batch, to the WAL position captured in step 1 so
-       an idle publication does not retain WAL. Capturing before the peek
-       makes the idle advance safe: a change committed after the capture is
-       unaffected, and one committed before it would have appeared in the peek.
+    4. Advances the slot to the last peeked LSN, or, for an empty batch, to
+       the WAL position captured in step 1 so an idle publication does not
+       retain WAL. Capturing before the peek makes the idle advance safe: a
+       change committed after the capture is unaffected, and one committed
+       before it would have appeared in the peek.
 
   Advancing the slot is WAL garbage collection, not the acknowledgement: the
   slot never moves before the batch's effects are committed, so a crash
@@ -145,8 +146,8 @@ defmodule Portal.Replication.SlotPoller do
 
   # A cycle failure keeps the pre-cycle consumer state and leaves the slot
   # unadvanced, so the next cycle replays the same batch. The slot is advanced
-  # only after the leadership transaction (and any effects it carries) has
-  # committed; the WHERE guard in advance/2 makes racing advances harmless.
+  # only after the batch's effects are flushed; the WHERE guard in advance/2
+  # makes racing advances harmless.
   defp poll(state) do
     {state, drained?, ack_lsn} =
       Database.with_leadership(lock_key(state.config), fn -> run_cycle(state) end) ||
@@ -399,27 +400,36 @@ defmodule Portal.Replication.SlotPoller do
     alias Portal.Safe
 
     @doc """
-    Runs `fun` inside a primary transaction holding the advisory lock for
-    `key`, or returns nil without calling it when another session holds the
-    lock. The lock releases when the transaction ends, so effects `fun`
-    writes to the primary commit atomically with the leadership claim.
+    Runs `fun` while holding the session advisory lock for `key` on a
+    checked-out primary connection, or returns nil without calling it when
+    another session holds the lock.
+
+    Deliberately not a transaction: `fun` runs consumer side effects (hooks,
+    inserts) whose own inner transactions may roll back, which would poison
+    any enclosing transaction and abort the cycle. The session lock is
+    released in `after` on the same pinned connection; if the process dies
+    mid-cycle the pool disconnects the connection and the server releases the
+    lock with it.
     """
     def with_leadership(key, fun) do
-      {:ok, result} =
-        Safe.unscoped()
-        |> Safe.transaction(fn ->
-          {:ok, %{rows: [[locked?]]}} =
-            Safe.unscoped()
-            |> Safe.query("SELECT pg_try_advisory_xact_lock(hashtext($1))", [key])
+      Safe.unscoped()
+      |> Safe.checkout(fn ->
+        {:ok, %{rows: [[locked?]]}} =
+          Safe.unscoped()
+          |> Safe.query("SELECT pg_try_advisory_lock(hashtext($1))", [key])
 
-          if locked? do
-            {:ok, fun.()}
-          else
-            {:ok, nil}
+        if locked? do
+          try do
+            fun.()
+          after
+            {:ok, %{rows: [[true]]}} =
+              Safe.unscoped()
+              |> Safe.query("SELECT pg_advisory_unlock(hashtext($1))", [key])
           end
-        end)
-
-      result
+        else
+          nil
+        end
+      end)
     end
 
     # Publications are DDL, which a read replica cannot execute, so they are
