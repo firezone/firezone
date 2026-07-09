@@ -9,28 +9,31 @@ defmodule Portal.Replication.SlotPoller do
   when `replication=database` is requested), so polling is the only way to
   consume logical replication when DATABASE_ENTRA_AUTH is enabled.
 
-  Every poll cycle:
+  Every poll cycle runs inside a transaction on the primary that holds a
+  `pg_try_advisory_xact_lock` keyed by slot and region, so exactly one process
+  in the cluster consumes each slot with the database as the authority — no
+  process-group coordination. Advisory locks are unavailable on standbys, so
+  the lock always lives on the primary even when the slot being polled is on
+  a replica. Within the cycle the poller:
 
-    1. Skips unless this process is the :pg leader for `{consumer, region}` —
-       any node may lead, and consumers must stay correct under the brief
-       double-polling that :pg view convergence allows.
-    2. Captures the server's current WAL position, then peeks a batch of
-       pgoutput messages from the slot with `pg_logical_slot_peek_binary_changes`.
-    3. Decodes each message and dispatches it to the consumer callbacks.
-    4. Calls `c:flush/1`, which persists or broadcasts the batch's effects.
-    5. Advances the slot to the last peeked LSN, or, for an empty batch, to
-       the WAL position captured in step 2 so an idle publication does not
-       retain WAL. Capturing before the peek makes the idle advance safe: a
-       change committed after the capture is unaffected, and one committed
-       before it would have appeared in the peek.
+    1. Captures the polled server's current WAL position, then peeks a batch
+       of pgoutput messages with `pg_logical_slot_peek_binary_changes`.
+    2. Decodes each message and dispatches it to the consumer callbacks.
+    3. Calls `c:flush/1`, which persists or broadcasts the batch's effects.
+       For consumers writing to the primary this commits atomically with the
+       leadership transaction.
+    4. After the transaction commits, advances the slot to the last peeked
+       LSN, or, for an empty batch, to the WAL position captured in step 1 so
+       an idle publication does not retain WAL. Capturing before the peek
+       makes the idle advance safe: a change committed after the capture is
+       unaffected, and one committed before it would have appeared in the peek.
 
   Advancing the slot is WAL garbage collection, not the acknowledgement: the
-  slot never moves before `c:flush/1` returns, so a crash replays the batch.
-  Slot replay always redelivers whole transactions, therefore consumers whose
-  effects must be exactly-once commit their own cursor together with their
-  effects and filter replayed effect rows by LSN, while still processing the
-  state-carrying messages (Begin, Relation, logical messages) that replays
-  redeliver (see `Portal.ChangeLogs.Consumer`).
+  slot never moves before the batch's effects are committed, so a crash
+  replays the batch and delivery is at-least-once. Consumers make replay
+  harmless with naturally-keyed effects (`Portal.ChangeLogs.Consumer` inserts
+  are keyed by LSN with `on_conflict: :nothing`) or idempotent side effects
+  (`Portal.Changes.Consumer` broadcasts).
   """
 
   use GenServer
@@ -77,8 +80,6 @@ defmodule Portal.Replication.SlotPoller do
     consumer = Keyword.fetch!(opts, :consumer)
     config = load_config(consumer)
 
-    :ok = :pg.join({consumer, config.region}, self())
-
     send(self(), :setup)
 
     {:ok,
@@ -116,12 +117,7 @@ defmodule Portal.Replication.SlotPoller do
   end
 
   def handle_info(:poll, state) do
-    {state, drained?} =
-      if leader?(state) do
-        poll(state)
-      else
-        {state, true}
-      end
+    {state, drained?} = poll(state)
 
     delay =
       if drained? do
@@ -148,22 +144,19 @@ defmodule Portal.Replication.SlotPoller do
   end
 
   # A cycle failure keeps the pre-cycle consumer state and leaves the slot
-  # unadvanced, so the next cycle replays the same batch.
+  # unadvanced, so the next cycle replays the same batch. The slot is advanced
+  # only after the leadership transaction (and any effects it carries) has
+  # committed; the WHERE guard in advance/2 makes racing advances harmless.
   defp poll(state) do
-    now_lsn = current_wal_lsn(state.config)
-    rows = peek(state.config)
+    {state, drained?, ack_lsn} =
+      Database.with_leadership(lock_key(state.config), fn -> run_cycle(state) end) ||
+        {state, true, nil}
 
-    case rows do
-      [] ->
-        advance(state.config, now_lsn)
-        {state, true}
-
-      rows ->
-        state = process_batch(state, rows)
-        [last_lsn, _data] = List.last(rows)
-        advance(state.config, last_lsn)
-        {state, length(rows) < state.config.batch_size}
+    if ack_lsn do
+      advance(state.config, ack_lsn)
     end
+
+    {state, drained?}
   rescue
     error ->
       Logger.error("#{inspect(state.consumer)}: replication poll cycle failed",
@@ -172,6 +165,21 @@ defmodule Portal.Replication.SlotPoller do
       )
 
       {state, true}
+  end
+
+  defp run_cycle(state) do
+    now_lsn = current_wal_lsn(state.config)
+    rows = peek(state.config)
+
+    case rows do
+      [] ->
+        {state, true, now_lsn}
+
+      rows ->
+        state = process_batch(state, rows)
+        [last_lsn, _data] = List.last(rows)
+        {state, length(rows) < state.config.batch_size, last_lsn}
+    end
   end
 
   defp process_batch(state, rows) do
@@ -363,11 +371,8 @@ defmodule Portal.Replication.SlotPoller do
     :ok
   end
 
-  defp leader?(state) do
-    {state.consumer, state.config.region}
-    |> :pg.get_members()
-    |> Enum.min()
-    |> Kernel.==(self())
+  defp lock_key(config) do
+    "#{config.slot_name}/#{config.region}"
   end
 
   defp load_config(consumer) do
@@ -392,6 +397,30 @@ defmodule Portal.Replication.SlotPoller do
     require Logger
 
     alias Portal.Safe
+
+    @doc """
+    Runs `fun` inside a primary transaction holding the advisory lock for
+    `key`, or returns nil without calling it when another session holds the
+    lock. The lock releases when the transaction ends, so effects `fun`
+    writes to the primary commit atomically with the leadership claim.
+    """
+    def with_leadership(key, fun) do
+      {:ok, result} =
+        Safe.unscoped()
+        |> Safe.transaction(fn ->
+          {:ok, %{rows: [[locked?]]}} =
+            Safe.unscoped()
+            |> Safe.query("SELECT pg_try_advisory_xact_lock(hashtext($1))", [key])
+
+          if locked? do
+            {:ok, fun.()}
+          else
+            {:ok, nil}
+          end
+        end)
+
+      result
+    end
 
     # Publications are DDL, which a read replica cannot execute, so they are
     # always managed on the primary; physical replication carries them to the

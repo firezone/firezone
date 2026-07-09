@@ -44,6 +44,7 @@ defmodule Portal.Replication.SlotPollerTest do
     publication = "test_poller_pub_#{uid}"
     table = "test_poller_tbl_#{uid}"
     prefix = "test_prefix_#{uid}"
+    region = "test_region_#{uid}"
 
     # Non-sandboxed connection: its DDL and writes commit for real so they
     # reach the WAL, unlike sandboxed writes which never commit. The slot and
@@ -75,9 +76,7 @@ defmodule Portal.Replication.SlotPollerTest do
       replication_slot_name: slot,
       publication_name: publication,
       table_subscriptions: [table],
-      # Scope the :pg leadership group per test so concurrent tests do not
-      # elect a single leader across unrelated pollers.
-      region: "test_#{uid}",
+      region: region,
       poll_interval: 25,
       # The first setup attempt can race the sandbox allowance in
       # start_poller!/1, so retry quickly instead of production's 5s
@@ -87,7 +86,14 @@ defmodule Portal.Replication.SlotPollerTest do
       error_threshold: :timer.minutes(10)
     )
 
-    %{aux: aux, slot: slot, publication: publication, table: table, prefix: prefix}
+    %{
+      aux: aux,
+      slot: slot,
+      publication: publication,
+      table: table,
+      prefix: prefix,
+      region: region
+    }
   end
 
   test "polls the slot and dispatches decoded changes", %{
@@ -135,14 +141,40 @@ defmodule Portal.Replication.SlotPollerTest do
     assert old_data["id"] == "2"
   end
 
-  test "only the :pg leader polls, so each change is dispatched once", %{
+  test "does not poll while another session holds the leadership lock", %{
     aux: aux,
-    table: table
+    slot: slot,
+    table: table,
+    region: region
   } do
-    start_poller!(:poller_1)
-    start_poller!(:poller_2)
+    test_pid = self()
 
+    # Hold the poller's advisory lock from a separate database session
+    holder =
+      Task.async(fn ->
+        Postgrex.transaction(aux, fn conn ->
+          %{rows: [[true]]} =
+            Postgrex.query!(conn, "SELECT pg_try_advisory_xact_lock(hashtext($1))", [
+              "#{slot}/#{region}"
+            ])
+
+          send(test_pid, :locked)
+
+          receive do
+            :release -> :ok
+          end
+        end)
+      end)
+
+    assert_receive :locked, 5000
+
+    start_poller!()
     Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (3, 'once')", [])
+
+    refute_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 500
+
+    send(holder.pid, :release)
+    Task.await(holder)
 
     assert_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 5000
     refute_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 500
@@ -181,9 +213,11 @@ defmodule Portal.Replication.SlotPollerTest do
     pid
   end
 
+  # pool_size 2: the leadership-lock test holds one connection inside a
+  # transaction while other queries keep flowing on the second
   defp aux_config do
     Portal.Repo.config()
     |> Keyword.drop([:pool])
-    |> Keyword.put(:pool_size, 1)
+    |> Keyword.put(:pool_size, 2)
   end
 end

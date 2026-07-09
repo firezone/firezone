@@ -18,22 +18,17 @@ defmodule Portal.ChangeLogs.ConsumerTest do
 
     account = account_fixture()
 
-    slot_name = "test_slot_#{System.unique_integer([:positive])}"
-    0 = Database.ensure_cursor(slot_name)
-
     # In production every Write is preceded by a Begin that populates
     # commit_timestamp, seq_start, and tenant_offsets, so seed them here
     # for on_write/6 tests.
     initial_state = %{
-      slot_name: slot_name,
-      cursor: 0,
       flush_buffer: %{},
       commit_timestamp: @commit_timestamp,
       seq_start: @seq_start,
       tenant_offsets: %{}
     }
 
-    %{account: account, tables: tables, initial_state: initial_state, slot_name: slot_name}
+    %{account: account, tables: tables, initial_state: initial_state}
   end
 
   describe "configured tables" do
@@ -660,15 +655,12 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "persists event_id and timestamp end-to-end through flush", %{
-      account: account,
-      slot_name: slot_name
+      account: account
     } do
       commit_timestamp = ~U[2026-05-26 12:00:00.999000Z]
 
       state =
         %{
-          slot_name: slot_name,
-          cursor: 0,
           flush_buffer: %{},
           seq_start: @seq_start,
           tenant_offsets: %{}
@@ -698,7 +690,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert result_state == state
     end
 
-    test "successfully flushes buffer and clears it", %{account: account, slot_name: slot_name} do
+    test "successfully flushes buffer and clears it", %{account: account} do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       attrs1 = %{
@@ -727,16 +719,11 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         subject: nil
       }
 
-      state = %{
-        slot_name: slot_name,
-        cursor: 99,
-        flush_buffer: %{100 => attrs1, 101 => attrs2}
-      }
+      state = %{flush_buffer: %{100 => attrs1, 101 => attrs2}}
 
       result_state = Consumer.flush(state)
 
       assert result_state.flush_buffer == %{}
-      assert result_state.cursor == 101
 
       change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in [100, 101], order_by: cl.lsn)
       assert length(change_logs) == 2
@@ -750,7 +737,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert log2.timestamp == committed_at
     end
 
-    test "advances the cursor to the max LSN", %{account: account, slot_name: slot_name} do
+    test "flushes entries regardless of buffer key order", %{account: account} do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       attrs_map = %{
@@ -792,16 +779,17 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         }
       }
 
-      state = %{slot_name: slot_name, cursor: 399, flush_buffer: attrs_map}
+      state = %{flush_buffer: attrs_map}
       result_state = Consumer.flush(state)
 
-      assert result_state.cursor == 402
       assert result_state.flush_buffer == %{}
+
+      assert [%ChangeLog{lsn: 400}, %ChangeLog{lsn: 401}, %ChangeLog{lsn: 402}] =
+               Repo.all(from cl in ChangeLog, where: cl.lsn in [400, 401, 402], order_by: cl.lsn)
     end
 
     test "drops entries for a deleted account but persists valid entries in the batch", %{
-      account: account,
-      slot_name: slot_name
+      account: account
     } do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
       missing_account_id = Ecto.UUID.generate()
@@ -832,19 +820,11 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         subject: nil
       }
 
-      state = %{
-        slot_name: slot_name,
-        cursor: 499,
-        flush_buffer: %{500 => valid_entry, 501 => dead_entry}
-      }
+      state = %{flush_buffer: %{500 => valid_entry, 501 => dead_entry}}
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
           result_state = Consumer.flush(state)
-
-          # The cursor advances past the whole batch so we don't replay the
-          # dead entry forever, and the buffer is cleared.
-          assert result_state.cursor == 501
           assert result_state.flush_buffer == %{}
         end)
 
@@ -855,10 +835,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
                Repo.all(from cl in ChangeLog, where: cl.lsn in [500, 501])
     end
 
-    test "raises constraint violations that are not a missing account_id", %{
-      account: account,
-      slot_name: slot_name
-    } do
+    test "raises constraint violations that are not a missing account_id", %{account: account} do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       # Omitting the NOT NULL vsn column triggers a different Postgrex error. It
@@ -876,56 +853,16 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         subject: nil
       }
 
-      assert_raise Postgrex.Error, fn -> Database.commit_chunk([entry], slot_name) end
+      assert_raise Postgrex.Error, fn -> Database.bulk_insert([entry]) end
     end
 
-    test "skips entries at or below the cursor from replayed transactions", %{
-      account: account,
-      slot_name: slot_name
-    } do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
-
-      entry = fn lsn, offset ->
-        %{
-          event_id: EventId.build_change_log(@seq_start, offset),
-          timestamp: committed_at,
-          lsn: lsn,
-          object: "resources",
-          operation: :insert,
-          account_id: account.id,
-          after: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          before: nil,
-          vsn: 0,
-          subject: nil
-        }
-      end
-
-      # 700 replays an already-committed row; only 701 is new
-      state = %{
-        slot_name: slot_name,
-        cursor: 700,
-        flush_buffer: %{700 => entry.(700, 0), 701 => entry.(701, 1)}
-      }
-
-      result_state = Consumer.flush(state)
-
-      assert result_state.cursor == 701
-      assert result_state.flush_buffer == %{}
-
-      assert [%ChangeLog{lsn: 701}] =
-               Repo.all(from cl in ChangeLog, where: cl.lsn in [700, 701])
-    end
-
-    test "commits entries and the cursor atomically", %{
-      account: account,
-      slot_name: slot_name
-    } do
+    test "skips replayed entries that already committed", %{account: account} do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       entry = %{
         event_id: EventId.build_change_log(@seq_start, 0),
         timestamp: committed_at,
-        lsn: 800,
+        lsn: 700,
         object: "resources",
         operation: :insert,
         account_id: account.id,
@@ -935,23 +872,11 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         subject: nil
       }
 
-      assert Database.commit_chunk([entry], slot_name) == 800
+      assert Database.bulk_insert([entry]) == 1
+      # A crash before the slot advances replays the same WAL rows
+      assert Database.bulk_insert([entry]) == 0
 
-      # A fresh consumer loads the committed cursor and would filter a replay
-      state = Consumer.init_state(%{slot_name: slot_name})
-      assert state.cursor == 800
-    end
-  end
-
-  describe "init_state/1" do
-    test "creates the cursor row on first start" do
-      slot_name = "test_slot_#{System.unique_integer([:positive])}"
-
-      state = Consumer.init_state(%{slot_name: slot_name})
-
-      assert state.cursor == 0
-      assert state.flush_buffer == %{}
-      assert state.slot_name == slot_name
+      assert [%ChangeLog{lsn: 700}] = Repo.all(from cl in ChangeLog, where: cl.lsn == 700)
     end
   end
 

@@ -1,9 +1,8 @@
 defmodule Portal.ChangeLogs.Consumer do
   @moduledoc """
   Builds audit-log entries from the change_logs publication and inserts them
-  with exactly-once semantics: each chunk of entries commits atomically with
-  the `replication_cursors` row for this slot, so a crash anywhere replays the
-  batch and the cursor filter drops the rows that already committed.
+  keyed by LSN with `on_conflict: :nothing`, so the batch replays that slot
+  polling delivers after a crash are idempotent.
   """
   @behaviour Portal.Replication.SlotPoller
 
@@ -47,12 +46,9 @@ defmodule Portal.ChangeLogs.Consumer do
     "userpass_auth_providers" => Portal.Userpass.AuthProvider
   }
 
-  @insert_chunk_size 500
-
   @impl true
-  def init_state(config) do
-    cursor = Database.ensure_cursor(config.slot_name)
-    %{slot_name: config.slot_name, cursor: cursor, flush_buffer: %{}, tenant_offsets: %{}}
+  def init_state(_config) do
+    %{flush_buffer: %{}, tenant_offsets: %{}}
   end
 
   # Handle LogicalMessage to track subject info
@@ -118,25 +114,16 @@ defmodule Portal.ChangeLogs.Consumer do
   def flush(state) do
     attempted_count = map_size(state.flush_buffer)
 
-    # Slot replays redeliver whole transactions, so entries at or below the
-    # cursor already committed in a previous cycle. The Begin/subject messages
-    # of those transactions were still processed to rebuild entry state.
     entries =
       state.flush_buffer
       |> Map.values()
-      |> Enum.filter(&(&1.lsn > state.cursor))
       |> Enum.sort_by(& &1.lsn)
 
-    cursor =
-      entries
-      |> Enum.chunk_every(@insert_chunk_size)
-      |> Enum.reduce(state.cursor, fn chunk, _cursor ->
-        Database.commit_chunk(chunk, state.slot_name)
-      end)
+    inserted_count = Database.bulk_insert(entries)
 
-    Logger.info("Flushed #{length(entries)}/#{attempted_count} change logs")
+    Logger.info("Flushed #{inserted_count}/#{attempted_count} change logs")
 
-    %{state | flush_buffer: %{}, cursor: cursor}
+    %{state | flush_buffer: %{}}
   end
 
   defp buffer(
@@ -232,68 +219,30 @@ defmodule Portal.ChangeLogs.Consumer do
     require Logger
     alias Portal.{Safe, ChangeLog}
 
-    def ensure_cursor(slot_name) do
-      {:ok, _} =
-        Safe.unscoped()
-        |> Safe.query(
-          """
-          INSERT INTO replication_cursors (slot_name, last_lsn, inserted_at, updated_at)
-          VALUES ($1, 0, now(), now())
-          ON CONFLICT (slot_name) DO NOTHING
-          """,
-          [slot_name]
-        )
-
-      {:ok, %{rows: [[cursor]]}} =
-        Safe.unscoped()
-        |> Safe.query("SELECT last_lsn FROM replication_cursors WHERE slot_name = $1", [
-          slot_name
-        ])
-
-      cursor
-    end
+    # Chunked to stay under the bind-parameter limit; each chunk is one
+    # atomic statement, and a crash between chunks replays into lsn conflicts.
+    @insert_chunk_size 500
 
     @doc """
-    Inserts a chunk of entries and advances the cursor in one transaction, so
-    the entries and the acknowledgement are atomic. Returns the new cursor.
-
-    `on_conflict: :nothing` on lsn is defense-in-depth only; the cursor filter
-    upstream is what prevents replayed inserts.
+    Inserts entries keyed by LSN. With a durable replication slot it's normal
+    for WAL records to be replayed after a crash, so `on_conflict: :nothing`
+    silently skips rows that already committed. Returns the inserted count.
     """
-    def commit_chunk([], _slot_name), do: raise(ArgumentError, "empty chunk")
+    def bulk_insert(entries) do
+      entries = drop_missing_accounts(entries)
 
-    def commit_chunk(entries, slot_name) do
-      last_lsn = List.last(entries).lsn
+      entries
+      |> Enum.chunk_every(@insert_chunk_size)
+      |> Enum.reduce(0, fn chunk, inserted ->
+        {count, _} =
+          Safe.unscoped()
+          |> Safe.insert_all(ChangeLog, chunk,
+            on_conflict: :nothing,
+            conflict_target: [:lsn]
+          )
 
-      {:ok, inserted} =
-        Safe.unscoped()
-        |> Safe.transaction(fn ->
-          entries = drop_missing_accounts(entries)
-
-          {inserted, _} =
-            Safe.unscoped()
-            |> Safe.insert_all(ChangeLog, entries,
-              on_conflict: :nothing,
-              conflict_target: [:lsn]
-            )
-
-          {:ok, _} =
-            Safe.unscoped()
-            |> Safe.query(
-              """
-              UPDATE replication_cursors
-              SET last_lsn = GREATEST(last_lsn, $2), updated_at = now()
-              WHERE slot_name = $1
-              """,
-              [slot_name, last_lsn]
-            )
-
-          {:ok, inserted}
-        end)
-
-      Logger.debug("Committed #{inserted} change logs up to lsn #{last_lsn}")
-
-      last_lsn
+        inserted + count
+      end)
     end
 
     # Entries for accounts that were hard-deleted since the WAL record was
