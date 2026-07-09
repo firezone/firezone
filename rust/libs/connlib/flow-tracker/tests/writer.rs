@@ -161,10 +161,10 @@ fn syn_retransmit_updates_flow_instead_of_splitting() {
     let t0 = Instant::now();
 
     spool.observe(|| {
-        drive_tx(&mut tracker, &tcp_packet(true, &[]), authz_id, t0);
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
         drive_tx(
             &mut tracker,
-            &tcp_packet(true, &[]),
+            &tcp_packet(syn(), &[]),
             authz_id,
             t0 + Duration::from_secs(1),
         );
@@ -187,7 +187,7 @@ fn syn_after_return_traffic_splits_flow() {
     let t0 = Instant::now();
 
     spool.observe(|| {
-        drive_tx(&mut tracker, &tcp_packet(true, &[]), authz_id, t0);
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
         drive_rx(
             &mut tracker,
             &tcp_return_packet(&[0; 100]),
@@ -195,7 +195,7 @@ fn syn_after_return_traffic_splits_flow() {
         );
         drive_tx(
             &mut tracker,
-            &tcp_packet(true, &[]),
+            &tcp_packet(syn(), &[]),
             authz_id,
             t0 + Duration::from_secs(2),
         );
@@ -208,6 +208,36 @@ fn syn_after_return_traffic_splits_flow() {
         vec![(1, 0), (1, 1)],
         "a new SYN closes the old flow and starts a fresh one"
     );
+}
+
+#[test]
+fn bare_ack_does_not_create_flow() {
+    let authz_id = "55555555-5555-5555-5555-555555555555";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(ack(), &[]), authz_id, t0);
+        tracker.close_all(t0 + Duration::from_secs(1));
+    });
+
+    assert_eq!(packet_counts(&spool.completed_flows()), vec![]);
+}
+
+#[test]
+fn data_packet_creates_flow_without_syn() {
+    let authz_id = "66666666-6666-6666-6666-666666666666";
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker();
+    let t0 = Instant::now();
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(ack(), &[0; 100]), authz_id, t0);
+        tracker.close_all(t0 + Duration::from_secs(1));
+    });
+
+    assert_eq!(packet_counts(&spool.completed_flows()), vec![(1, 0)]);
 }
 
 fn enabled_tracker() -> Tracker<ClientOrGatewayId> {
@@ -246,16 +276,27 @@ fn drive_rx(tracker: &mut Tracker<ClientOrGatewayId>, packet: &IpPacket, now: In
     );
 }
 
-fn tcp_packet(syn: bool, payload: &[u8]) -> IpPacket {
+fn syn() -> ip_packet::make::TcpFlags {
+    ip_packet::make::TcpFlags {
+        syn: true,
+        ..Default::default()
+    }
+}
+
+fn ack() -> ip_packet::make::TcpFlags {
+    ip_packet::make::TcpFlags {
+        ack: true,
+        ..Default::default()
+    }
+}
+
+fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
         "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
         1234,
         443,
-        ip_packet::make::TcpFlags {
-            syn,
-            ..Default::default()
-        },
+        flags,
         payload,
     )
     .unwrap()
