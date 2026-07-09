@@ -11,7 +11,7 @@ use crate::{
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
 use futures::{
-    SinkExt, StreamExt,
+    FutureExt, SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
 use logging::FilterReloadHandle;
@@ -19,6 +19,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use std::{
     ops::ControlFlow,
     path::{Path, PathBuf},
+    pin::Pin,
     task::Poll,
     time::Duration,
 };
@@ -27,6 +28,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 mod ran_before;
+
+/// How long to wait for the tunnel service to confirm a graceful disconnect when quitting before we quit anyway.
+const QUIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
@@ -49,6 +53,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     ctrl_rx: ReceiverStream<ControllerRequest>,
     status: Status,
+    quit_timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     telemetry_allowed: bool,
     updates_rx: Option<ReceiverStream<Option<updates::Notification>>>,
     uptime: uptime::Tracker,
@@ -172,6 +177,7 @@ enum EventloopTick {
             )>,
         >,
     ),
+    QuitTimeoutElapsed,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -241,6 +247,7 @@ impl<I: GuiIntegration> Controller<I> {
             release: None,
             ctrl_rx: ReceiverStream::new(ctrl_rx),
             status: Default::default(),
+            quit_timeout: None,
             telemetry_allowed,
             updates_rx,
             uptime: Default::default(),
@@ -312,6 +319,14 @@ impl<I: GuiIntegration> Controller<I> {
                         tracing::debug!("Failed to ack IPC message from new GUI instance: {e:#}")
                     }
                 }
+                EventloopTick::QuitTimeoutElapsed => {
+                    tracing::warn!(
+                        timeout = ?QUIT_TIMEOUT,
+                        "Timed out waiting for `DisconnectedGracefully` from tunnel service; quitting anyway"
+                    );
+
+                    break;
+                }
             }
         }
 
@@ -348,6 +363,12 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn tick(&mut self) -> EventloopTick {
         std::future::poll_fn(|cx| {
+            if let Some(quit_timeout) = self.quit_timeout.as_mut()
+                && quit_timeout.poll_unpin(cx).is_ready()
+            {
+                return Poll::Ready(EventloopTick::QuitTimeoutElapsed);
+            }
+
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
@@ -601,6 +622,7 @@ impl<I: GuiIntegration> Controller<I> {
             SystemTrayMenu(system_tray::Event::Quit) => {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
+                self.quit_timeout = Some(Box::pin(tokio::time::sleep(QUIT_TIMEOUT)));
                 self.send_ipc(&service::ClientMsg::Disconnect).await?;
                 self.refresh_ui_state();
             }
