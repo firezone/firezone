@@ -32,13 +32,16 @@ config :portal, Portal.Repo.Api, db_opts
 config :portal, Portal.Repo.Replica.Web, db_opts
 config :portal, Portal.Repo.Replica.Api, db_opts
 
+# Poll fast locally so live updates and change logs appear without a wait
 config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: db_opts[:database] <> "_clog_slot",
-  publication_name: db_opts[:database] <> "_clog_pub"
+  publication_name: db_opts[:database] <> "_clog_pub",
+  poll_interval: :timer.seconds(1)
 
 config :portal, Portal.Changes.Consumer,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
-  publication_name: db_opts[:database] <> "_changes_pub"
+  publication_name: db_opts[:database] <> "_changes_pub",
+  poll_interval: 250
 
 config :portal, outbound_email_adapter_configured?: true
 

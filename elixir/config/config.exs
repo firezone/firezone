@@ -141,7 +141,7 @@ config :portal, Portal.ChangeLogs.Consumer,
   error_threshold: :timer.hours(30 * 24),
 
   # The audit trail tolerates more latency in exchange for fewer poll queries
-  poll_interval: :timer.seconds(1),
+  poll_interval: :timer.seconds(30),
   batch_size: 500
 
 config :portal, Portal.Changes.Consumer,
@@ -188,8 +188,8 @@ config :portal, Portal.Changes.Consumer,
   # Allow up to 30 minutes of lag before bypassing hooks
   error_threshold: :timer.minutes(30),
 
-  # Changes power cache invalidation, so poll aggressively
-  poll_interval: 250,
+  # Changes power cache invalidation; balance broadcast latency against poll query volume
+  poll_interval: :timer.seconds(5),
   batch_size: 500
 
 config :portal, Portal.Tokens,
