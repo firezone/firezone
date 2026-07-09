@@ -14,8 +14,9 @@ use boringtun::noise::{Index, Tunn, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_INTERVAL, PROBE_SAMPLES, PROBE_SRC,
-    PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, Event, PROBE_BURST_GAPS, PROBE_DST, PROBE_GIVE_UP_ATTEMPTS, PROBE_INTERVAL,
+    PROBE_SAMPLES, PROBE_SRC, PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
+    Transmit,
 };
 
 // --- bootstrap: handshake fan-out and nomination ---
@@ -265,13 +266,42 @@ fn unanswered_pairs_burst_then_hunt_at_the_steady_interval() {
     assert_eq!(burst.probe_times((addr(1), addr(3))), expected);
 
     // Neither pair answers, so neither settles: they keep probing at the steady
-    // interval (hunting). This stays under PROBE_GIVE_UP, where — because a
-    // primary exists — an unsettled pair would otherwise stop.
+    // interval (hunting). This stays under PROBE_GIVE_UP_ATTEMPTS, where —
+    // because a primary exists — an unsettled pair would otherwise stop.
     let last_burst = *expected.last().unwrap();
     let hunt = a.advance(last_burst, last_burst + secs(5));
     let steady: Vec<Instant> = (1..=5).map(|i| last_burst + PROBE_INTERVAL * i).collect();
     assert_eq!(hunt.probe_times((addr(1), addr(2))), steady);
     assert_eq!(hunt.probe_times((addr(1), addr(3))), steady);
+}
+
+#[test]
+fn a_non_primary_pair_that_never_answers_gives_up() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+    a.add_remote_candidate(Candidate::host(addr(2)), t0);
+    a.add_remote_candidate(Candidate::host(addr(3)), t0);
+    bootstrap_primary(&mut a, (addr(1), addr(2)), t0);
+    a.drain_events();
+
+    // (1,3) never answers. Because we already hold a primary (1,2) as a
+    // fallback, the dead pair hole-punches for a bounded budget of attempts and
+    // then stops — it does not probe a symmetric NAT forever.
+    let dead = (addr(1), addr(3));
+    let activity = a.advance(t0, t0 + secs(60));
+    assert_eq!(
+        activity.probes_for(dead).len() as u32,
+        PROBE_GIVE_UP_ATTEMPTS,
+        "a non-primary pair fires exactly its give-up budget, then stops",
+    );
+
+    // The primary is exempt: it keeps hunting (it never settled here) and is
+    // never reaped by the give-up rule.
+    assert!(
+        activity.probes_for((addr(1), addr(2))).len() as u32 > PROBE_GIVE_UP_ATTEMPTS,
+        "the primary is exempt from give-up",
+    );
 }
 
 #[test]
@@ -1094,10 +1124,11 @@ fn recovering_a_path_is_a_plain_primary_switch_without_a_rekey() {
 }
 
 #[test]
-fn rekey_without_a_primary_buffers_for_relay_fanout() {
-    // If probes can't find any path (e.g. no relays yet after a roam and
-    // direct is filtered), the buffered re-key fans out on relay pairs as
-    // soon as they exist — the bootstrap mechanism doubles as the fallback.
+fn mid_session_rekey_recovers_via_probing_not_fanout() {
+    // Losing the primary mid-session must NOT re-handshake: the session is
+    // still valid, so a fan-out would be pointless (a peer that truly lost the
+    // session needs a full re-setup via signalling, not a handshake). Recovery
+    // is by probing, and the buffered re-key then rides the recovered primary.
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), now);
@@ -1105,21 +1136,39 @@ fn rekey_without_a_primary_buffers_for_relay_fanout() {
 
     assert!(a.remove_local_candidate(&Candidate::relayed(addr(2), addr(2)), now + secs(10)));
     assert_eq!(a.primary(), None, "removing primary's local must clear it");
+    let _ = a.transmits();
 
+    // A re-key with no primary must not fan out over relays while established —
+    // only probes go out.
     let rekey_at = now + secs(120);
     a.handle_outbound(handshake_init_bytes(), rekey_at);
+    a.handle_timeout(rekey_at);
     assert!(
-        a.poll_transmit().is_none(),
-        "buffered re-key must not transmit before the timer fires"
+        a.transmits()
+            .iter()
+            .all(|t| matches!(t.payload, Payload::Plaintext(_))),
+        "no handshake fan-out mid-session; recovery is by probing",
     );
 
-    a.handle_timeout(rekey_at);
-    let outbound = a.transmits();
-    assert!(
-        outbound
-            .iter()
-            .any(|t| t.remote == addr(4) && matches!(t.payload, Payload::Ciphertext(_))),
-        "buffered re-key must fan out on a relay-involving pair: {outbound:?}"
+    // Probing brings the surviving relay pair back; it becomes the primary...
+    prove_pair_alive(&mut a, (addr(1), addr(4)), rekey_at);
+    assert_eq!(a.primary(), Some((addr(1), addr(4))));
+
+    // ...and the next re-key attempt rides it as a single transmit, not a burst.
+    a.handle_outbound(handshake_init_bytes(), rekey_at + secs(5));
+    let rekey = a.transmits();
+    let ciphertext: Vec<_> = rekey
+        .iter()
+        .filter(|t| matches!(t.payload, Payload::Ciphertext(_)))
+        .collect();
+    assert_eq!(
+        ciphertext.len(),
+        1,
+        "re-key rides the recovered primary: {rekey:?}"
+    );
+    assert_eq!(
+        (ciphertext[0].local, ciphertext[0].remote),
+        (addr(1), addr(4))
     );
 }
 

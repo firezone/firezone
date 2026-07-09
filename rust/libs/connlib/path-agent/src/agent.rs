@@ -59,8 +59,11 @@ pub(crate) struct PairState {
     /// Positive RTT samples collected since the last (re)start. Once this
     /// reaches [`PROBE_SAMPLES`] the pair has settled and stops probing.
     samples: u32,
-    /// When the current probing window opened, for the give-up bound.
-    probing_since: Option<Instant>,
+    /// Probes fired since the last (re)start, for the give-up bound. Counting
+    /// fires rather than elapsed time makes "we gave it a fair chance"
+    /// independent of when probing actually began (probes only fire once the
+    /// session is established) and of the burst schedule.
+    probes_sent: u32,
     next_probe_seq: u16,
 }
 
@@ -71,7 +74,7 @@ impl PairState {
     fn restart_probes(&mut self, at: Instant) {
         self.probes.hunt(at);
         self.samples = 0;
-        self.probing_since = Some(at);
+        self.probes_sent = 0;
         self.rtt = None;
     }
 
@@ -92,14 +95,17 @@ impl PairState {
         self.samples >= PROBE_SAMPLES
     }
 
-    /// Whether this pair has probed past the give-up bound without settling.
-    fn gave_up(&self, now: Instant) -> bool {
-        self.probing_since
-            .is_some_and(|since| now.duration_since(since) >= PROBE_GIVE_UP)
+    /// Whether this pair has fired its whole give-up budget without settling.
+    fn gave_up(&self) -> bool {
+        self.probes_sent >= PROBE_GIVE_UP_ATTEMPTS
     }
 
     fn record_sample(&mut self) {
         self.samples = self.samples.saturating_add(1);
+    }
+
+    fn record_probe_sent(&mut self) {
+        self.probes_sent = self.probes_sent.saturating_add(1);
     }
 }
 
@@ -223,14 +229,20 @@ pub const PROBE_INTERVAL: Duration = Duration::from_secs(1);
 /// probes forever.
 pub const PROBE_SAMPLES: u32 = 5;
 
-/// How long a pair keeps probing without settling once we already have a
+/// How many probes a pair fires without settling, once we already have a
 /// primary, before it gives up.
 ///
 /// While we have no path we hunt every pair indefinitely (bounded only by
 /// WireGuard retiring the connection). But once a path exists, a pair that
 /// won't settle is a dead end — e.g. a direct pair that can never punch a
 /// symmetric NAT — and probing it forever is pure waste, so we stop.
-pub const PROBE_GIVE_UP: Duration = Duration::from_secs(10);
+///
+/// Counting fires rather than elapsed time means the budget is a fixed number
+/// of hole-punch attempts regardless of how long the session took to establish
+/// (probes only fire once it is) or how the burst is timed. A punchable NAT
+/// opens within the first attempt or two, so this many unanswered probes is
+/// firm evidence the pair is a dead end.
+pub const PROBE_GIVE_UP_ATTEMPTS: u32 = 12;
 
 /// Slow cadence the primary keeps after it settles, so its RTT stays current
 /// for the next comparison and its NAT mapping warm. This is what lets us drop
@@ -381,7 +393,7 @@ impl PathAgent {
             inflight_probes: Vec::new(),
             probes: Probes::default(),
             samples: 0,
-            probing_since: None,
+            probes_sent: 0,
             next_probe_seq: 0,
         };
         state.restart_probes(burst_at);
@@ -537,7 +549,12 @@ impl PathAgent {
                 // primary to protect the bucket veto lifts and the first pair to
                 // answer wins — even a worse bucket, so we fail over from a
                 // direct path to a relayed one if that is all that works.
-                if self.unanswered_rekeys >= REKEY_DISTRESS_ATTEMPTS {
+                //
+                // Fire exactly on the crossing, not on every retransmit past it:
+                // once we have dropped the primary, probing recovers the path
+                // and the re-key rides it. Re-dropping the primary on the next
+                // retransmit would just flap the data path.
+                if self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
                     tracing::debug!(bytes = bytes_len, "Unanswered re-keys; re-evaluating paths");
 
                     self.primary = None;
@@ -561,12 +578,14 @@ impl PathAgent {
                     payload: Payload::Ciphertext(bytes),
                 });
             }
-            // Lost the primary mid-session (roam, candidate retraction):
-            // fan out like the initial bootstrap, with probes racing it.
+            // Re-key arriving with no primary. At bootstrap (no session yet) the
+            // buffered init fans out over relay pairs; mid-session (a transient
+            // primary loss) the session is still valid, so we only re-probe and
+            // let the init ride the primary once probing recovers it.
             (Ok(Packet::HandshakeInit(_)), outbound_init, None) => {
                 tracing::debug!(
                     bytes = bytes.len(),
-                    "Re-key HandshakeInit without a primary; fanning out"
+                    "Re-key HandshakeInit without a primary; re-probing"
                 );
 
                 outbound_init.replace(OutboundInit::new(bytes, now));
@@ -676,7 +695,7 @@ impl PathAgent {
                 // every few seconds. Duplicates of the same init were dropped
                 // above, so every increment here is a genuinely new attempt.
                 self.peer_rekeys = self.peer_rekeys.saturating_add(1);
-                if self.peer_rekeys >= REKEY_DISTRESS_ATTEMPTS {
+                if self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
                     tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; re-evaluating paths");
 
                     // Same as an unanswered outbound re-key: the peer isn't
@@ -926,13 +945,14 @@ impl PathAgent {
             .established
             .then(|| self.pairs.values().filter_map(|s| s.probes.due()).min())
             .flatten();
-        // Wake immediately if a buffered init is waiting on a relay
-        // pair that landed after the initial fanout. With a primary, the
-        // init rode it directly and there is nothing to fan out.
+        // Wake immediately if a buffered bootstrap init is waiting on a relay
+        // pair that landed after the initial fanout. The fanout is bootstrap
+        // only (see `drive_handshake_retransmits`), so once established there is
+        // nothing to fan out — a re-key rides the primary.
         let pending_fanout = self
             .outbound_init
             .as_ref()
-            .filter(|_| self.primary.is_none())
+            .filter(|_| self.primary.is_none() && !self.established)
             .and_then(|i| {
                 self.pairs
                     .iter()
@@ -971,9 +991,14 @@ impl PathAgent {
     }
 
     fn drive_handshake_retransmits(&mut self, now: Instant) {
-        // With a primary, the init rode it directly; boringtun's re-key
-        // timer is the retry mechanism, not the fanout ladder.
-        if self.primary.is_some() {
+        // The relay fan-out is purely the bootstrap mechanism: it lands the very
+        // first handshake when no session exists yet and we therefore cannot
+        // probe. Once established, a re-key rides the primary, and if a distress
+        // signal has dropped the primary, probing (not a fan-out) recovers the
+        // path over the still-valid session — a handshake could not do more,
+        // since a peer that has truly lost the session no longer has our key
+        // and needs a full re-setup via the signalling layer.
+        if self.established || self.primary.is_some() {
             return;
         }
 
@@ -1048,7 +1073,7 @@ impl PathAgent {
             // is exempt — probe loss must never retire it — and while we have
             // no path at all we hunt every pair until WireGuard gives up.
             let is_primary = primary == Some((*local, *remote));
-            if primary.is_some() && !is_primary && state.gave_up(now) {
+            if primary.is_some() && !is_primary && state.gave_up() {
                 state.retire();
                 continue;
             }
@@ -1064,6 +1089,7 @@ impl PathAgent {
                 .inflight_probes
                 .push(InflightProbe { seq, sent_at: now });
             state.probes.fire(now);
+            state.record_probe_sent();
 
             tracing::trace!(%local, %remote, seq, "Probe send");
 

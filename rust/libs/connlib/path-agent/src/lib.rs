@@ -28,9 +28,9 @@
 //!   after converging are the same rule seen from two sides.
 //!
 //! With one exception: once we already have a primary, a pair that won't settle
-//! within [`PROBE_GIVE_UP`] is a dead end (e.g. a direct pair that can never
-//! punch a symmetric NAT) and stops. We hunt indefinitely only while we have no
-//! path at all.
+//! within [`PROBE_GIVE_UP_ATTEMPTS`] probes is a dead end (e.g. a direct pair
+//! that can never punch a symmetric NAT) and stops. We hunt indefinitely only
+//! while we have no path at all.
 //!
 //! ## Re-evaluation (the scoped eval window)
 //!
@@ -61,8 +61,8 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    PROBE_BURST_GAPS, PROBE_GIVE_UP, PROBE_INTERVAL, PROBE_KEEPALIVE, PROBE_SAMPLES, PROBE_TIMEOUT,
-    PathAgent, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
+    PROBE_BURST_GAPS, PROBE_GIVE_UP_ATTEMPTS, PROBE_INTERVAL, PROBE_KEEPALIVE, PROBE_SAMPLES,
+    PROBE_TIMEOUT, PathAgent, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};
