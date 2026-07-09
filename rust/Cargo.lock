@@ -2628,6 +2628,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-tracker"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "connlib-model",
+ "dns-types",
+ "flow-log-spool",
+ "flow-log-writer",
+ "ip-packet",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8324,8 +8342,7 @@ dependencies = [
  "dns-types",
  "eventloop-budget",
  "firezone-relay",
- "flow-log-spool",
- "flow-log-writer",
+ "flow-tracker",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
@@ -8359,7 +8376,6 @@ dependencies = [
  "snownet",
  "socket-factory",
  "telemetry",
- "tempfile",
  "test-case",
  "test-strategy",
  "thiserror 2.0.18",

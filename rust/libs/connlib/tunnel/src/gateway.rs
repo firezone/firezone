@@ -3,7 +3,6 @@ mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
-use crate::flow_log;
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
@@ -36,7 +35,7 @@ pub struct GatewayState {
     peers: PeerStore<ClientId, ClientOnGateway>,
 
     /// Tracks the flows tunneled through this Gateway.
-    flow_tracker: flow_log::Tracker<(ClientId, ResourceId)>,
+    flow_tracker: flow_tracker::Tracker<(ClientId, ResourceId)>,
 
     tun_ip_config: Option<IpConfig>,
 
@@ -76,7 +75,7 @@ impl GatewayState {
             node: Node::new(seed, now, unix_ts),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
-            flow_tracker: flow_log::Tracker::new(now, unix_ts),
+            flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
@@ -126,7 +125,7 @@ impl GatewayState {
             .peer_by_ip_mut(dst)
             .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
 
-        flow_log::record_peer(cid, flow_log::Role::Responder);
+        flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
         let packet = peer
             .translate_inbound(packet, now)
@@ -136,7 +135,7 @@ impl GatewayState {
             return Ok(());
         };
 
-        flow_log::record_transmit(info.src, info.dst);
+        flow_tracker::record_transmit(info.src, info.dst);
 
         Ok(())
     }
@@ -168,14 +167,14 @@ impl GatewayState {
             return Ok(None);
         }
 
-        flow_log::record_decrypted_packet(&packet);
+        flow_tracker::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
             .peer_by_id_mut(&cid)
             .with_context(|| format!("No peer for connection {cid}"))?;
 
-        flow_log::record_peer(cid, flow_log::Role::Responder);
+        flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let immediate_response = match fz_p2p_control.event_type() {
@@ -215,13 +214,13 @@ impl GatewayState {
             .context("Failed to translate outbound packet")?
         {
             TranslateOutboundResult::Send(packet) => {
-                flow_log::record_translated_packet(&packet);
+                flow_tracker::record_translated_packet(&packet);
 
                 Ok(Some(packet))
             }
             TranslateOutboundResult::DestinationUnreachable(reply)
             | TranslateOutboundResult::Filtered(reply) => {
-                flow_log::record_icmp_error(&reply);
+                flow_tracker::record_icmp_error(&reply);
 
                 encrypt_packet(
                     reply,

@@ -16,6 +16,7 @@ members = [
     "libs/connlib/dns-types",
     "libs/connlib/etc-hosts-dns-client",
     "libs/connlib/etherparse-ext",
+    "libs/connlib/flow-tracker",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
     "libs/connlib/l3-udp-dns-client",
@@ -106,6 +107,7 @@ firezone-relay = { path = "relay/server", default-features = false }
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
+flow-tracker = { path = "libs/connlib/flow-tracker" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 gat-lending-iterator = "0.1.8"

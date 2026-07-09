@@ -21,6 +21,8 @@
 //! the gathered data on every exit path; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use std::{
     cell::RefCell,
     collections::{HashMap, hash_map},
@@ -32,10 +34,12 @@ use std::{
 
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
-
-use crate::messages::IngestToken;
 use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
+
+mod token;
+
+pub use token::{IngestToken, IngestTokenClaims, IngestTokenRole, TEST_INGEST_TOKEN};
 
 /// A flow is closed if no packet is seen for this long.
 const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
@@ -661,7 +665,6 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     /// We initiated the flow, i.e. we requested access to the peer / resource.
-    #[expect(dead_code, reason = "constructed once the Client tracks flows")]
     Initiator,
     /// The remote peer initiated the flow towards us.
     Responder,
@@ -1247,94 +1250,6 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use super::*;
-    use base64::Engine as _;
-    use chrono::TimeZone as _;
-    use tracing_subscriber::layer::SubscriberExt as _;
-
-    /// A JWT payload carrying every claim the portal guarantees on a token.
-    fn required_claims(policy_authorization_id: &str, role: &str) -> String {
-        format!(
-            r#"{{"account_id":"c1e296cd-b8ff-4565-8a4c-b6023a4a4b10","iat":1782756000,"exp":1785434400,"uploads_enabled":true,"role":"{role}","device_id":"d-1","policy_authorization_id":"{policy_authorization_id}","policy_id":"p-1","resource_id":"r-1","resource_name":"web","actor_id":"a-1","actor_name":"Alice","authorized_at":"2026-07-01T00:00:00Z","authorization_expires_at":"2026-07-02T00:00:00Z"}}"#
-        )
-    }
-
-    /// Assembles and parses a well-formed ingest token for `authz_id`.
-    fn test_token(authz_id: &str, role: &str) -> IngestToken {
-        let encode = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
-
-        let header = encode(br#"{"alg":"HS256"}"#);
-        let payload = encode(required_claims(authz_id, role).as_bytes());
-        let token = format!("{header}.{payload}.{}", encode(b"signature"));
-
-        serde_json::from_value(serde_json::Value::String(token)).unwrap()
-    }
-
-    /// Guards the field contract between [`emit`] and `flow-log-writer`'s layer:
-    /// an emitted record must round-trip losslessly into a spooled report.
-    #[test]
-    fn emitted_records_spool_via_flow_log_writer_layer() {
-        let authz_id = "11111111-1111-1111-1111-111111111111";
-        let record = Record {
-            ingest_token: test_token(authz_id, "responder"),
-            protocol: FlowProtocol::Tcp,
-            inner_src_ip: "100.64.0.1".parse().unwrap(),
-            inner_src_port: 1234,
-            inner_dst_ip: "10.0.0.5".parse().unwrap(),
-            inner_dst_port: 443,
-            domain: Some("download.httpbin".parse().unwrap()),
-            outer_src_ip: "198.51.100.1".parse().unwrap(),
-            outer_src_port: 51820,
-            outer_dst_ip: "203.0.113.7".parse().unwrap(),
-            outer_dst_port: 51820,
-            flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
-            close: Some(FlowClose {
-                flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
-                last_packet: chrono::Utc.timestamp_opt(1_700_000_059, 0).unwrap(),
-                rx_packets: 10,
-                tx_packets: 12,
-                rx_bytes: 1024,
-                tx_bytes: 2048,
-            }),
-        };
-
-        let dir = tempfile::tempdir().unwrap();
-        flow_log_writer::write_token(dir.path(), record.ingest_token.as_str()).unwrap();
-
-        let (layer, guard) = flow_log_writer::layer(dir.path().to_owned());
-        let subscriber = tracing_subscriber::registry().with(layer);
-        tracing::subscriber::with_default(subscriber, || emit(&record));
-        drop(guard); // joins the writer thread, so the report is on disk
-
-        let authz_dir = dir.path().join("responder").join(authz_id);
-        let report = std::fs::read_dir(&authz_dir)
-            .expect("spooled report dir exists")
-            .map(|entry| entry.unwrap().path())
-            .find(|path| path.to_string_lossy().ends_with(".end.json"))
-            .expect("completed report exists");
-        let payload = flow_log_spool::deserialize(&std::fs::read(report).unwrap()).unwrap();
-
-        assert_eq!(payload["protocol"], "tcp");
-        assert_eq!(payload["inner_src_ip"], record.inner_src_ip.to_string());
-        assert_eq!(payload["inner_src_port"], record.inner_src_port);
-        assert_eq!(payload["inner_dst_ip"], record.inner_dst_ip.to_string());
-        assert_eq!(payload["inner_dst_port"], record.inner_dst_port);
-        assert_eq!(payload["domain"], "download.httpbin");
-        assert_eq!(payload["outer_src_ip"], record.outer_src_ip.to_string());
-        assert_eq!(payload["outer_src_port"], record.outer_src_port);
-        assert_eq!(payload["outer_dst_ip"], record.outer_dst_ip.to_string());
-        assert_eq!(payload["outer_dst_port"], record.outer_dst_port);
-        assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
-        // Attribution rides the token, not the spooled record.
-        assert!(payload.get("actor_id").is_none());
-
-        let close = record.close.as_ref().unwrap();
-        assert_eq!(payload["flow_end"], format!("{:?}", close.flow_end));
-        assert_eq!(payload["last_packet"], format!("{:?}", close.last_packet));
-        assert_eq!(payload["rx_packets"], close.rx_packets);
-        assert_eq!(payload["tx_packets"], close.tx_packets);
-        assert_eq!(payload["rx_bytes"], close.rx_bytes);
-        assert_eq!(payload["tx_bytes"], close.tx_bytes);
-    }
 
     #[test]
     fn flow_context_diff_rendering() {
