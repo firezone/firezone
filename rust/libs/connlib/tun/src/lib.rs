@@ -43,6 +43,14 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
 static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> =
     LazyLock::new(|| BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch"));
 
+/// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
+/// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
+///
+/// Asserted against the platform memory budget in the `memory-budget` crate.
+pub const MAX_CHANNEL_MEMORY: usize = 2
+    * CHANNEL_CAPACITY
+    * (size_of::<PacketBatch>() + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
+
 /// A batch of packets, exchanged over the TUN channels as a single item.
 ///
 /// A batch holds at most [`MAX_BATCH_SIZE`] packets in a pooled buffer:
@@ -219,28 +227,6 @@ impl InboundRx {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Worst-case memory usage of the two TUN channels: every slot filled with a
-    /// full batch of packets, each of which owns a pooled buffer of
-    /// [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
-    const MAX_CHANNEL_MEMORY: usize = 2
-        * CHANNEL_CAPACITY
-        * (size_of::<PacketBatch>()
-            + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
-
-    /// iOS network extensions are limited to 50 MB of memory; the channels must only
-    /// ever use a small fraction of that.
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    #[test]
-    fn channel_memory_fits_mobile_budget() {
-        const { assert!(MAX_CHANNEL_MEMORY <= 4 * 1024 * 1024) }
-    }
-
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    #[test]
-    fn channel_memory_fits_desktop_budget() {
-        const { assert!(MAX_CHANNEL_MEMORY <= 32 * 1024 * 1024) }
-    }
 
     #[test]
     fn batches_return_to_the_pool_empty() {

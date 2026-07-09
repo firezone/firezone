@@ -215,8 +215,8 @@ impl LendingIterator for ChainedDatagrams {
 /// the session once a backlog has ever built up. We therefore keep this to a small multiple of
 /// [`UDP_SEND_BATCH_LIMIT`] (how many batches the send task drains per wakeup): deep enough to keep
 /// the send task fed, shallow enough that a transient send backlog cannot balloon memory. See
-/// `MAX_OUTBOUND_QUEUE_MEMORY` in the tests for the resulting bound. On mobile platforms we are even
-/// more memory-constrained and keep it smaller still.
+/// [`MAX_UDP_OUTBOUND_QUEUE_MEMORY`] for the resulting bound. On mobile platforms we are even more
+/// memory-constrained and keep it smaller still.
 const QUEUE_SIZE: usize = {
     if cfg!(any(target_os = "ios", target_os = "android")) {
         10
@@ -235,6 +235,26 @@ const INBOUND_QUEUE_SIZE: usize = {
         100
     }
 };
+
+/// Worst-case memory pinned by the outbound UDP datagram queues.
+///
+/// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
+/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). Every [`DatagramOut`] owns a GSO buffer from the
+/// [`UdpGsoQueue`](crate::io::UdpGsoQueue)'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`]
+/// regardless of how full it is. That pool never shrinks, so a send backlog that ever fills these
+/// queues pins this much memory for the rest of the session. Asserted against the platform budget in
+/// the `memory-budget` crate.
+pub const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
+    2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
+
+/// Worst-case memory pinned by the inbound UDP datagram queues.
+///
+/// Each queued [`DatagramSegmentIter`] owns a batch of receive buffers whose no-GRO worst case is
+/// [`socket_factory::MAX_RECV_BATCH_MEMORY_WITHOUT_GRO`]. We bound the no-GRO case (the Apple client
+/// this guards has no GRO); on GRO-capable platforms the buffers scale with `gro_segments`. Asserted
+/// against the platform budget in the `memory-budget` crate.
+pub const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
+    2 * INBOUND_QUEUE_SIZE * socket_factory::MAX_RECV_BATCH_MEMORY_WITHOUT_GRO;
 
 struct ThreadedUdpSocket {
     thread_name: String,
@@ -544,44 +564,3 @@ fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
 #[derive(thiserror::Error, Debug)]
 #[error("UDP socket thread stopped")]
 pub struct UdpSocketThreadStopped;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Worst-case memory pinned by the outbound UDP datagram queues.
-    ///
-    /// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue
-    /// of [`QUEUE_SIZE`] datagrams (hence the `2 *`). Every [`DatagramOut`] owns a GSO buffer from the
-    /// `UdpGsoQueue`'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`] regardless of how full it is.
-    /// That pool never shrinks, so a send backlog that ever fills these queues pins this much memory
-    /// for the rest of the session.
-    const MAX_OUTBOUND_QUEUE_MEMORY: usize =
-        2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
-
-    /// Worst-case memory pinned by the inbound UDP datagram queues.
-    ///
-    /// Each queued [`DatagramSegmentIter`] owns a batch of receive buffers whose no-GRO worst case is
-    /// [`socket_factory::MAX_RECV_BATCH_MEMORY_WITHOUT_GRO`]. We compute that case here (the Apple
-    /// client this guards has no GRO); on GRO-capable platforms the buffers scale with `gro_segments`.
-    const MAX_INBOUND_QUEUE_MEMORY: usize =
-        2 * INBOUND_QUEUE_SIZE * socket_factory::MAX_RECV_BATCH_MEMORY_WITHOUT_GRO;
-
-    /// iOS network extensions are limited to 50 MB of memory; the UDP queues must only ever use a
-    /// small fraction of that.
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    #[test]
-    fn udp_queue_memory_fits_mobile_budget() {
-        const { assert!(MAX_OUTBOUND_QUEUE_MEMORY <= 2 * 1024 * 1024) }
-        const { assert!(MAX_INBOUND_QUEUE_MEMORY <= 4 * 1024 * 1024) }
-    }
-
-    /// Desktop platforms are less constrained, but a speedtest must not be able to ratchet the send
-    /// path into hundreds of MB - which `QUEUE_SIZE = 1000` previously allowed (~250 MB outbound).
-    #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    #[test]
-    fn udp_queue_memory_fits_desktop_budget() {
-        const { assert!(MAX_OUTBOUND_QUEUE_MEMORY <= 20 * 1024 * 1024) }
-        const { assert!(MAX_INBOUND_QUEUE_MEMORY <= 16 * 1024 * 1024) }
-    }
-}

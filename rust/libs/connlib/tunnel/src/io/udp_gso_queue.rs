@@ -14,10 +14,12 @@ const MAX_SEGMENT_SIZE: usize =
 
 /// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with.
 ///
-/// Each buffer holds a whole GSO batch of up to [`tun::MAX_BATCH_SIZE`] maximum-size segments, so it
-/// occupies this much memory regardless of how many segments it actually carries. Every in-flight
-/// [`DatagramOut`] pins one such buffer, which is why the depth of the outbound socket queue directly
-/// bounds the send path's memory footprint.
+/// A buffer holds a single GSO batch: the segments coalesced for one `(src, dst, ecn)` and flushed in
+/// one syscall. It is sized for a whole TUN batch of [`tun::MAX_BATCH_SIZE`] maximum-size segments
+/// because all packets of a single TUN batch may be destined for the same peer, and thus end up in
+/// the same GSO batch. The buffer therefore occupies this much memory regardless of how many segments
+/// it actually carries; every in-flight [`DatagramOut`] pins one, which is why the outbound socket
+/// queue's depth directly bounds the send path's memory footprint.
 pub(crate) const GSO_BUFFER_SIZE: usize = MAX_SEGMENT_SIZE * tun::MAX_BATCH_SIZE;
 
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.

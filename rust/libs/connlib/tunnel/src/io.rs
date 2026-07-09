@@ -7,9 +7,7 @@ mod udp_dns;
 mod udp_gso_queue;
 
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::UdpGsoQueue;
-#[cfg(test)]
-pub(crate) use udp_gso_queue::GSO_BUFFER_SIZE;
+pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
