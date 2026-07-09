@@ -1135,7 +1135,12 @@ defmodule PortalAPI.Client.Channel do
 
   # Catch-all for unknown messages
   def handle_in(message, payload, socket) do
-    Logger.error("Unknown client message", message: message, payload: payload)
+    Logger.error("Unknown client message",
+      message: message,
+      payload: payload,
+      subject: Map.get(socket.assigns, :subject),
+      client: Map.get(socket.assigns, :client)
+    )
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
