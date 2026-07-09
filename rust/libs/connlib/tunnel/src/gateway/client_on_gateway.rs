@@ -410,7 +410,6 @@ impl ClientOnGateway {
         packet
             .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
-        packet.update_checksum();
 
         Ok(TranslateOutboundResult::Send(packet))
     }
@@ -444,7 +443,6 @@ impl ClientOnGateway {
         packet
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
-        packet.update_checksum();
 
         Ok(packet)
     }
