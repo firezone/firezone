@@ -7,10 +7,10 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col h-full">
+    <div class="relative flex flex-col h-full overflow-hidden">
       <.logs_nav account={@account} current_path={@current_path} />
 
-      <div class="flex-1 overflow-y-auto p-6">
+      <div class="flex-1 min-h-0 overflow-y-auto p-6">
         <div class="max-w-2xl mx-auto">
           <div class="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
             <div class="px-6 py-8 flex flex-col items-center text-center gap-4">
