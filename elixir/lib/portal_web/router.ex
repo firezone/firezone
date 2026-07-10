@@ -255,6 +255,17 @@ defmodule PortalWeb.Router do
       live "/policies/:id/edit", Policies, :edit
       live "/policies/:id", Policies, :show
 
+      # Audit
+      scope "/logs", Logs do
+        live "/change_logs", ChangeLogs
+        live "/change_logs/:event_id", ChangeLogs, :show
+        live "/session_logs", SessionLogs
+        live "/session_logs/:event_id", SessionLogs, :show
+        live "/flow_logs", FlowLogs
+        live "/api_request_logs", APIRequestLogs
+        live "/api_request_logs/:event_id", APIRequestLogs, :show
+      end
+
       scope "/settings", Settings do
         live "/profile", Profile
         live "/account", Account

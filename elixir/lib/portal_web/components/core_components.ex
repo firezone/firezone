@@ -1117,6 +1117,26 @@ defmodule PortalWeb.CoreComponents do
     |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
   end
 
+  defp assign_last_seen_fields(%{schema: %Portal.SessionLog{subject: subject}} = assigns) do
+    subject = subject || %{}
+
+    assigns
+    |> assign(:display_remote_ip, subject["ip"])
+    |> assign(:display_remote_ip_location_city, subject["ip_city"])
+    |> assign(:display_remote_ip_location_region, subject["ip_region"])
+    |> assign(:display_remote_ip_location_lat, subject["ip_lat"])
+    |> assign(:display_remote_ip_location_lon, subject["ip_lon"])
+  end
+
+  defp assign_last_seen_fields(%{schema: %Portal.APIRequestLog{} = s} = assigns) do
+    assigns
+    |> assign(:display_remote_ip, s.ip)
+    |> assign(:display_remote_ip_location_city, s.ip_city)
+    |> assign(:display_remote_ip_location_region, s.ip_region)
+    |> assign(:display_remote_ip_location_lat, s.ip_lat)
+    |> assign(:display_remote_ip_location_lon, s.ip_lon)
+  end
+
   defp assign_last_seen_fields(%{schema: s} = assigns) do
     assigns
     |> assign(:display_remote_ip, s.last_seen_remote_ip)

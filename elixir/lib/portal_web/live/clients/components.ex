@@ -871,9 +871,9 @@ defmodule PortalWeb.Clients.Components do
 
   # This is more complex than it needs to be, but
   # connlib can send "Mac OS" (with a space) violating the User-Agent spec
-  defp get_client_os_name_and_version(nil), do: ""
+  def get_client_os_name_and_version(nil), do: ""
 
-  defp get_client_os_name_and_version(user_agent) do
+  def get_client_os_name_and_version(user_agent) do
     String.split(user_agent, " ")
     |> Enum.reduce_while("", fn component, acc ->
       if String.contains?(component, "/") do
