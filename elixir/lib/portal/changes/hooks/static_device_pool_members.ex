@@ -26,11 +26,6 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembers do
     member = struct_from_params(Portal.StaticDevicePoolMember, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: member}
 
-    # The removed device is no longer a responder in this pool, so revoke the
-    # authorizations that let peers reach it through the pool resource. Deleting
-    # these rows makes the removed device receive `reject_access` and stops it
-    # re-hydrating the stale authorizations from its `init` on reconnect. The
-    # initiating side is handled separately via the member-delete broadcast.
     Database.delete_responder_authorizations_for_member(member)
 
     PubSub.Changes.broadcast(member.account_id, :static_device_pool_members, change)

@@ -2,6 +2,7 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembersTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.StaticDevicePoolMembers
   import Portal.AccountFixtures
+  import Portal.DeviceFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
@@ -37,13 +38,13 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembersTest do
     test "broadcasts deleted member and revokes the member's responder authorizations" do
       account = account_fixture()
       resource = resource_fixture(account: account)
+      responder = client_fixture(account: account)
       :ok = PubSub.Changes.subscribe(account.id, :static_device_pool_members)
 
-      # The removed member is the receiving (responder) device for this pool.
       authorization =
-        policy_authorization_fixture(account: account, resource: resource)
+        policy_authorization_fixture(account: account, resource: resource, gateway: responder)
 
-      data = member_data(account, resource, authorization.receiving_device_id)
+      data = member_data(account, resource, responder.id)
 
       assert :ok == on_delete(0, data)
 
@@ -56,23 +57,27 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembersTest do
       account = account_fixture()
       resource = resource_fixture(account: account)
       other_resource = resource_fixture(account: account)
+      responder = client_fixture(account: account)
+      other_responder = client_fixture(account: account)
 
       authorization =
-        policy_authorization_fixture(account: account, resource: resource)
+        policy_authorization_fixture(account: account, resource: resource, gateway: responder)
 
-      # Same device, different pool resource: must survive.
       other_pool_authorization =
         policy_authorization_fixture(
           account: account,
           resource: other_resource,
-          gateway: Repo.get_by(Portal.Device, id: authorization.receiving_device_id)
+          gateway: responder
         )
 
-      # Same pool resource, different responder device: must survive.
       other_device_authorization =
-        policy_authorization_fixture(account: account, resource: resource)
+        policy_authorization_fixture(
+          account: account,
+          resource: resource,
+          gateway: other_responder
+        )
 
-      data = member_data(account, resource, authorization.receiving_device_id)
+      data = member_data(account, resource, responder.id)
 
       assert :ok == on_delete(0, data)
 
