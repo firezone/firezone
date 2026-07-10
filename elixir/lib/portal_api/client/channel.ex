@@ -1133,6 +1133,13 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  # Some clients send these sporadically by accident since any packet with a destination in
+  # 100.64.0.0/10 will trigger it in certain older clients. Message was introduced for the PoC
+  # of client-to-client, but was replaced with the standard "create_flow" message. We no-op it.
+  def handle_in("request_device_access", _payload, socket) do
+    {:noreply, socket}
+  end
+
   # Catch-all for unknown messages
   def handle_in(message, payload, socket) do
     Logger.error("Unknown client message",
