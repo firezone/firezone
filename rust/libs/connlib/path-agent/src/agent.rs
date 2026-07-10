@@ -556,20 +556,18 @@ impl PathAgent {
                 // on, never the primary — otherwise bootstrap (and re-keys)
                 // can't complete. Cache it so a retransmitted init is answered
                 // from memory without re-decapsulating.
-                if let Some(response) = response {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
+                tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
 
-                    self.responder.dedup = Some(ResponderDedup {
-                        init_bytes: bytes.to_vec(),
-                        response_bytes: response.clone(),
-                        cached_at: now,
-                    });
-                    self.pending_transmits.push_back(Transmit {
-                        local: path.0,
-                        remote: path.1,
-                        payload: Payload::Ciphertext(response),
-                    });
-                }
+                self.responder.dedup = Some(ResponderDedup {
+                    init_bytes: bytes.to_vec(),
+                    response_bytes: response.clone(),
+                    cached_at: now,
+                });
+                self.pending_transmits.push_back(Transmit {
+                    local: path.0,
+                    remote: path.1,
+                    payload: Payload::Ciphertext(response),
+                });
 
                 ControlFlow::Break(())
             }
@@ -631,11 +629,11 @@ impl PathAgent {
         bytes: &[u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> Option<Option<Vec<u8>>> {
+    ) -> Option<Vec<u8>> {
         let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-        let response = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
-            TunnResult::Done => None,
-            TunnResult::WriteToNetwork(response) => Some(response.to_vec()),
+        let reply = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
+            TunnResult::Done => return None,
+            TunnResult::WriteToNetwork(response) => response,
             TunnResult::Err(e) => {
                 tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
                 return None;
@@ -647,24 +645,22 @@ impl PathAgent {
         };
 
         // Cookie replies don't establish a session; send them without touching state.
-        if let Some(reply) = &response
-            && matches!(
-                Tunn::parse_incoming_packet(reply),
-                Ok(Packet::PacketCookieReply(_))
-            )
-        {
+        if matches!(
+            Tunn::parse_incoming_packet(reply),
+            Ok(Packet::PacketCookieReply(_))
+        ) {
             tracing::debug!(local = %path.0, remote = %path.1, "Replying with cookie under load");
 
             self.pending_transmits.push_back(Transmit {
                 local: path.0,
                 remote: path.1,
-                payload: Payload::Ciphertext(reply.clone()),
+                payload: Payload::Ciphertext(reply.to_vec()),
             });
 
             return None;
         }
 
-        Some(response)
+        Some(reply.to_vec())
     }
 
     /// Authenticates an inbound response, returning the packets boringtun wants
