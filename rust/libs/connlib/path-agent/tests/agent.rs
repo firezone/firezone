@@ -436,6 +436,45 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
     );
 }
 
+#[test]
+fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
+    // A peer behind symmetric NAT reaches us from an unadvertised mapping; we
+    // register it peer-reflexive and measure it. When the portal later signals
+    // the peer's real candidate for that same address, it must promote the
+    // existing pair in place — keeping its primary/RTT/schedule — not treat it
+    // as new, which would overwrite the pair's `PairState` and re-probe.
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+
+    // An inbound init from an unadvertised address registers it peer-reflexive
+    // and, as the establishing init, adopts the pair as the primary.
+    let mut hs = Handshake::new(t0);
+    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(1), addr(9)), t0);
+    assert_eq!(a.primary(), Some((addr(1), addr(9))));
+
+    // Measure the pair so it carries an RTT worth preserving.
+    prove_pair_alive(&mut a, (addr(1), addr(9)), t0 + secs(1));
+    a.drain_events();
+    let _ = a.transmits();
+
+    // The portal signals the peer's real srflx candidate for the same address
+    // (same public addr, a distinct base), so it differs from the stored
+    // peer-reflexive candidate and would otherwise be treated as brand-new.
+    a.add_remote_candidate(Candidate::server_reflexive(addr(9), addr(99)), t0 + secs(2));
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(1), addr(9))),
+        "the signaled candidate promotes the peer-reflexive pair in place, \
+         keeping the primary rather than clearing and re-probing",
+    );
+    assert!(
+        a.poll_event().is_none(),
+        "promotion in place changes no primary and emits no event",
+    );
+}
+
 // --- test harness ---
 
 type Pair = (SocketAddr, SocketAddr);

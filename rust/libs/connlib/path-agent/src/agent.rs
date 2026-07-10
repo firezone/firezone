@@ -57,7 +57,9 @@ pub(crate) struct PairState {
     pub(crate) local_family_matched: bool,
     pub(crate) rtt: Option<Rtt>,
     /// Probes awaiting a reply. Several can be outstanding on a high-RTT path
-    /// because the burst fires faster than one round trip.
+    /// because the burst fires faster than one round trip. Bounded to
+    /// [`PROBE_BUDGET`] (oldest dropped first) so a pathless pair probing forever
+    /// without replies can't grow it without bound.
     inflight: Vec<InflightProbe>,
     probes: Probes,
     /// Probes fired since the last (re)start. Past [`PROBE_BUDGET`] the pair
@@ -245,8 +247,11 @@ impl PathAgent {
 
     pub fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         // Promote a previously-registered peer-reflexive in place so the
-        // existing `PairState` (RTT, inflight, schedule) survives.
-        if self.peer_reflexive_addrs.remove(&c.addr())
+        // existing `PairState` (RTT, inflight, schedule) survives. Only consume
+        // the marker once we actually promote: at registration time the srflx
+        // candidate is not in `remotes` yet, so `find` is `None` and we must
+        // leave the marker for the later signaled candidate.
+        if self.peer_reflexive_addrs.contains(&c.addr())
             && let Some(existing) = self.remotes.iter_mut().find(|x| x.addr() == c.addr())
         {
             tracing::debug!(
@@ -254,6 +259,7 @@ impl PathAgent {
                 kind = ?c.kind(),
                 "Promoting peer-reflexive remote to signaled candidate",
             );
+            self.peer_reflexive_addrs.remove(&c.addr());
             *existing = c;
             for ((_, remote_addr), state) in self.pairs.iter_mut() {
                 if *remote_addr == c.addr() {
@@ -907,6 +913,12 @@ impl PathAgent {
             let seq = state.next_seq;
             state.next_seq = state.next_seq.wrapping_add(1);
             state.inflight.push(InflightProbe { seq, sent_at: now });
+            // A pathless pair hunts forever; without a reply to drain them, cap
+            // the outstanding set at one budget's worth by forgetting the oldest.
+            // A reply that late no longer matters for path selection.
+            if state.inflight.len() > PROBE_BUDGET as usize {
+                state.inflight.remove(0);
+            }
             state.probes_sent = state.probes_sent.saturating_add(1);
 
             tracing::trace!(%local, %remote, seq, "Probe send");
@@ -1069,5 +1081,57 @@ impl PathAgent {
     fn queue_event(&mut self, event: Event, now: Instant) {
         self.events.push_back(event);
         self.events_queued_at = self.events_queued_at.or(Some(now));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CandidateKind;
+
+    #[test]
+    fn inflight_probes_stay_capped_while_hunting_forever() {
+        let mut a = PathAgent {
+            has_session: true,
+            ..Default::default()
+        };
+
+        let pair: (SocketAddr, SocketAddr) = (
+            "127.0.0.1:1".parse().unwrap(),
+            "127.0.0.1:2".parse().unwrap(),
+        );
+        let t0 = Instant::now();
+        let mut state = PairState {
+            kinds: (CandidateKind::Host, CandidateKind::Host),
+            local_family_matched: true,
+            rtt: None,
+            inflight: Vec::new(),
+            probes: Probes::default(),
+            probes_sent: 0,
+            id: 0,
+            next_seq: 0,
+        };
+        state.restart(t0);
+        a.pairs.insert(pair, state);
+
+        // No primary, so the pair hunts forever. Drive many probe rounds without
+        // ever replying, which would otherwise let `inflight` grow unbounded.
+        let mut now = t0;
+        for _ in 0..100 {
+            a.handle_timeout(now);
+            a.pending_transmits.clear();
+            now += PROBE_INTERVAL;
+        }
+
+        assert!(a.primary.is_none());
+        assert!(
+            a.pairs[&pair].probes_sent > PROBE_BUDGET * 2,
+            "the pair kept probing past its budget while pathless",
+        );
+        assert!(
+            a.pairs[&pair].inflight.len() <= PROBE_BUDGET as usize,
+            "inflight probes must stay bounded when hunting forever, got {}",
+            a.pairs[&pair].inflight.len(),
+        );
     }
 }
