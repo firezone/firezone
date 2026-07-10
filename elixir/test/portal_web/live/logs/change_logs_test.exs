@@ -38,7 +38,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> live(~p"/#{account}/logs/change_logs")
 
       assert html =~ "Change Logs"
-      assert html =~ "immutable audit trail of every configuration change"
+      assert html =~ "Structured, immutable records"
     end
 
     test "fresh account shows the unfiltered empty slot, not the filtered one", %{

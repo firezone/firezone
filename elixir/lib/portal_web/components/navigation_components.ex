@@ -298,34 +298,10 @@ defmodule PortalWeb.NavigationComponents do
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/logs/change_logs"}
-              icon="ri-history-line"
+              icon="ri-file-list-3-line"
               badge="NEW"
             >
-              Change Logs
-            </.sidebar_item>
-            <.sidebar_item
-              current_path={@current_path}
-              navigate={~p"/#{@account}/logs/session_logs"}
-              icon="ri-login-circle-line"
-              badge="NEW"
-            >
-              Session Logs
-            </.sidebar_item>
-            <.sidebar_item
-              current_path={@current_path}
-              navigate={~p"/#{@account}/logs/flow_logs"}
-              icon="ri-exchange-line"
-              badge="NEW"
-            >
-              Flow Logs
-            </.sidebar_item>
-            <.sidebar_item
-              current_path={@current_path}
-              navigate={~p"/#{@account}/logs/api_request_logs"}
-              icon="ri-terminal-box-line"
-              badge="NEW"
-            >
-              API Request Logs
+              Logs
             </.sidebar_item>
           </ul>
         </div>
@@ -576,6 +552,101 @@ defmodule PortalWeb.NavigationComponents do
   defp settings_tab_active?(current_path, tab_path) do
     [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
     String.starts_with?(current_subpath, tab_path)
+  end
+
+  @doc """
+  Renders the Logs page header and tab strip.
+  Shared across the four log LiveViews so they read as one destination.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+
+  def logs_nav(assigns) do
+    ~H"""
+    <div class="flex flex-col bg-surface shrink-0">
+      <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
+        <div class="flex items-start gap-5">
+          <div class="hidden md:block shrink-0 mt-0.5">
+            <.icon name="ri-file-list-3-line" class="w-16 h-16 text-brand" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div class="min-w-0">
+                <h1 class="text-base font-semibold text-heading">Logs</h1>
+                <p class="hidden md:block mt-0.5 text-sm text-body">
+                  Structured, immutable records of every configuration change, session, connection, and API call in your account.
+                </p>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <.docs_action path="/administer/logs" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex overflow-x-auto overflow-y-hidden border-b border-border px-6 shrink-0 bg-surface">
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/change_logs"}
+          tab_path="logs/change_logs"
+          icon="ri-history-line"
+        >
+          Change Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/session_logs"}
+          tab_path="logs/session_logs"
+          icon="ri-login-circle-line"
+        >
+          Session Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/flow_logs"}
+          tab_path="logs/flow_logs"
+          icon="ri-exchange-line"
+        >
+          Flow Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/api_request_logs"}
+          tab_path="logs/api_request_logs"
+          icon="ri-terminal-box-line"
+        >
+          API Request Logs
+        </.logs_tab>
+      </div>
+    </div>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
+  attr :tab_path, :string, required: true
+  attr :icon, :string, required: true
+  slot :inner_block, required: true
+
+  defp logs_tab(assigns) do
+    active? = settings_tab_active?(assigns.current_path, assigns.tab_path)
+    assigns = assign(assigns, :active?, active?)
+
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+        @active? && "border-brand text-brand",
+        not @active? &&
+          "border-transparent text-body hover:text-heading hover:border-border-strong"
+      ]}
+    >
+      <.icon name={@icon} class="w-4 h-4 shrink-0" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
   end
 
   defp format_member_since(nil), do: "—"

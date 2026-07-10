@@ -8,18 +8,7 @@ defmodule PortalWeb.Logs.FlowLogs do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.page_header>
-        <:icon>
-          <.icon name="ri-exchange-line" class="w-16 h-16 text-[var(--brand)]" />
-        </:icon>
-        <:title>Flow Logs</:title>
-        <:description>
-          Detailed access logs for all Firezone traffic as reported by Clients and Gateways.
-        </:description>
-        <:action>
-          <.docs_action path="/administer/logs" />
-        </:action>
-      </.page_header>
+      <.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 overflow-y-auto p-6">
         <div class="max-w-2xl mx-auto">

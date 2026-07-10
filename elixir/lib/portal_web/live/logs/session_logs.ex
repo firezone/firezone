@@ -97,18 +97,7 @@ defmodule PortalWeb.Logs.SessionLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
-        <:icon>
-          <.icon name="ri-login-circle-line" class="w-16 h-16 text-[var(--brand)]" />
-        </:icon>
-        <:title>Session Logs</:title>
-        <:description>
-          Each time a Client or Gateway connects to the portal, or an admin signs in.
-        </:description>
-        <:action>
-          <.docs_action path="/administer/logs" />
-        </:action>
-      </.page_header>
+      <.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <.live_table
