@@ -203,22 +203,22 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.59.2")
+    implementation("com.google.dagger:hilt-android:2.60")
     implementation("androidx.browser:browser:1.10.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
     ksp("androidx.hilt:hilt-compiler:1.3.0")
-    ksp("com.google.dagger:hilt-android-compiler:2.59.2")
+    ksp("com.google.dagger:hilt-android-compiler:2.60")
     // Instrumented Tests
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.59.2")
-    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.59.2")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.60")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     // Unit Tests
-    testImplementation("com.google.dagger:hilt-android-testing:2.59.2")
+    testImplementation("com.google.dagger:hilt-android-testing:2.60")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
