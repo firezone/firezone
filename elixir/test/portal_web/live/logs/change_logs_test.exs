@@ -67,7 +67,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       mine = change_log_fixture(account: account, object: "actors", subject: actor_subject)
       other_account = account_fixture()
 
-      _other =
+      other =
         change_log_fixture(account: other_account, object: "actors", subject: actor_subject)
 
       {:ok, _lv, html} =
@@ -77,6 +77,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
 
       assert html =~ mine.event_id
       assert html =~ "actors"
+      refute html =~ other.event_id
     end
 
     test "shows `system` badge when subject is nil", %{
