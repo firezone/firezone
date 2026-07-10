@@ -664,7 +664,7 @@ defmodule PortalAPI.LogControllerTest do
       assert log_id == change_log.log_id
     end
 
-    test "returns 404 for an log_id with an unknown log type nibble", %{
+    test "returns 404 for a log_id with an unknown log type nibble", %{
       conn: conn,
       actor: actor
     } do
