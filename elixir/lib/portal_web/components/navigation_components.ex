@@ -290,9 +290,12 @@ defmodule PortalWeb.NavigationComponents do
         <div>
           <p
             data-sidebar-group-label
-            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] flex items-center gap-1.5"
           >
             Audit
+            <span class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand">
+              NEW
+            </span>
           </p>
           <ul class="space-y-0.5">
             <.sidebar_item
