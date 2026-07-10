@@ -2,9 +2,8 @@
 
 use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use api_url::ApiUrl;
-use parking_lot::RwLock;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
@@ -23,6 +22,9 @@ mod noop_push_metrics_exporter;
 mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
+mod state;
+
+use state::SharedState;
 
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
@@ -170,32 +172,8 @@ impl fmt::Display for Env {
     }
 }
 
-/// The process-global telemetry state: the active session's environment, user
-/// identity and the Sentry guard keeping the client alive.
-///
-/// Sentry is one client per process, and the rest of this crate (the Hub, the
-/// ingest socket factory, `RUNTIME`) is already global, so the state is too.
-/// Every binary drives telemetry through the free functions below rather than
-/// holding an instance.
-static STATE: RwLock<State> = RwLock::new(State::new());
-
-struct State {
-    env: Option<Env>,
-    firezone_id: Option<String>,
-    account_slug: Option<String>,
-    sentry_guard: Option<sentry::ClientInitGuard>,
-}
-
-impl State {
-    const fn new() -> Self {
-        Self {
-            env: None,
-            firezone_id: None,
-            account_slug: None,
-            sentry_guard: None,
-        }
-    }
-}
+/// The process-global telemetry state.
+static STATE: SharedState = SharedState::new();
 
 /// Configures the tunnel-bypassing socket factory for telemetry's ingest
 /// connections so they never loop through connlib. Call once at process start
@@ -206,37 +184,67 @@ pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
 
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.
 pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
+    if let Err(e) = try_start(env_or_api_url, release, dsn) {
+        tracing::error!("Failed to start telemetry: {e:#}");
+    }
+}
+
+fn try_start(env_or_api_url: &str, release: &str, dsn: Dsn) -> Result<()> {
     let environment = Env::parse(env_or_api_url);
-    let mut state = STATE.write();
 
-    if state.sentry_guard.is_some() && state.env == Some(environment) {
-        tracing::debug!(%environment, "Telemetry already initialised");
-
-        return;
+    /// What [`start`] should do, decided while briefly holding the lock.
+    enum Plan {
+        NoOp,
+        Unofficial,
+        Start,
     }
 
-    // Stop any previous telemetry session.
-    if let Some(previous) = state.sentry_guard.take() {
+    // Phase 1 — under the lock: decide the transition and hand back the previous
+    // guard. Only plain state is touched here; no logging, no SDK calls.
+    let (plan, previous) = STATE
+        .try_write(|state| {
+            if state.is_active() && state.env() == Some(environment) {
+                return (Plan::NoOp, None);
+            }
+
+            let previous = state.take_guard();
+            if previous.is_some() {
+                state.clear_identity();
+            }
+
+            if matches!(
+                environment,
+                Env::OnPrem | Env::Localhost | Env::DockerCompose
+            ) {
+                state.set_env(None);
+
+                return (Plan::Unofficial, previous);
+            }
+
+            (Plan::Start, previous)
+        })
+        .context("Failed to plan telemetry start")?;
+
+    // Phase 2 — the lock is released, so logging (which re-enters the lock via
+    // the Sentry hooks) and dropping the previous guard (which flushes) is safe.
+    if previous.is_some() {
         tracing::debug!("Stopping previous telemetry session");
 
         drop(previous);
-
-        state.firezone_id = None;
-        state.account_slug = None;
         set_current_user(None);
     }
 
-    if matches!(
-        environment,
-        Env::OnPrem | Env::Localhost | Env::DockerCompose
-    ) {
-        state.env = None;
-
-        tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
-        return;
+    match plan {
+        Plan::NoOp => {
+            tracing::debug!(%environment, "Telemetry already initialised");
+            return Ok(());
+        }
+        Plan::Unofficial => {
+            tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
+            return Ok(());
+        }
+        Plan::Start => {}
     }
-
-    tracing::info!(%environment, "Starting telemetry");
 
     let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
     // Configure scope on the main hub so that all threads will get the tags.
@@ -255,16 +263,25 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
         }
     });
 
-    state.env = Some(environment);
-    state.sentry_guard = Some(inner);
+    // Phase 3 — publish the live client. Plain state mutation only, no logging.
+    STATE
+        .try_write(move |state| {
+            state.set_env(Some(environment));
+            state.set_guard(inner);
+        })
+        .context("Failed to activate telemetry")?;
 
     sentry::warmup_connection();
     posthog::warmup_connection();
+
+    tracing::info!(%environment, "Started telemetry");
+
+    Ok(())
 }
 
 /// Flushes events to sentry.io and drops the guard. A no-op if not started.
 pub fn stop() {
-    let Some(inner) = STATE.write().sentry_guard.take() else {
+    let Ok(Some(inner)) = STATE.try_write(|state| state.take_guard()) else {
         return;
     };
 
@@ -275,11 +292,11 @@ pub fn stop() {
 }
 
 pub fn is_active() -> bool {
-    STATE.read().sentry_guard.is_some()
+    STATE.try_read(|state| state.is_active()).unwrap_or(false)
 }
 
 pub fn set_account_slug(slug: String) {
-    STATE.write().account_slug = Some(slug.clone());
+    let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
 
     update_user(|user| {
         user.other.insert("account_slug".to_owned(), slug.into());
@@ -290,7 +307,7 @@ pub fn set_account_slug(slug: String) {
 pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
 
-    STATE.write().firezone_id = new_user.id.clone();
+    let _ = STATE.try_write(|state| state.set_firezone_id(new_user.id.clone()));
 
     update_user(|user| {
         user.id = new_user.id;
@@ -304,28 +321,24 @@ pub fn set_firezone_id(firezone_id: String) {
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_env() -> Option<Env> {
-    STATE.read().env
+    STATE.try_read(|state| state.env()).ok().flatten()
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_user() -> Option<String> {
-    STATE.read().firezone_id.clone()
+    STATE.try_read(|state| state.firezone_id()).ok().flatten()
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
-    STATE.read().account_slug.clone()
+    STATE.try_read(|state| state.account_slug()).ok().flatten()
 }
 
 /// The identity feature flags are evaluated for: the current user and environment.
 ///
 /// `None` unless telemetry is active and both are known.
 pub(crate) fn current_identity() -> Option<(String, Env)> {
-    let state = STATE.read();
-
-    state.sentry_guard.as_ref()?;
-
-    Some((state.firezone_id.clone()?, state.env?))
+    STATE.try_read(|state| state.identity()).ok().flatten()
 }
 
 /// Computes the [`User`] scope based on the contents of `firezone_id`.
