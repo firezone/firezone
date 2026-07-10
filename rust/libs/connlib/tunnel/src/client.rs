@@ -309,6 +309,11 @@ impl ClientState {
     }
 
     fn resource_status(&self, resource: &Resource) -> ResourceStatus {
+        // `all()` over an empty site set is vacuously true.
+        if resource.sites().is_empty() {
+            return ResourceStatus::Unknown;
+        }
+
         if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
@@ -394,6 +399,36 @@ impl ClientState {
             p2p_control::goodbye(),
             now,
         );
+    }
+
+    /// Abandon a pending connection whose ICE candidates the portal could not deliver.
+    pub fn handle_client_ice_candidate_error(&mut self, cid: ClientId, now: Instant) {
+        let member_networks = self
+            .static_device_pools()
+            .flat_map(|pool| {
+                let pool_id = pool.id;
+                pool.devices
+                    .iter()
+                    .filter(|d| d.id == cid)
+                    .map(move |d| (pool_id, d.ipv4, d.ipv6))
+            })
+            .collect::<Vec<_>>();
+
+        self.pending_authorizations
+            .extract_device_authorizations(|pool, addr| {
+                member_networks.iter().any(|(pool_id, v4, v6)| {
+                    *pool_id == pool
+                        && match addr {
+                            IpAddr::V4(a) => v4.contains(a),
+                            IpAddr::V6(a) => v6.contains(a),
+                        }
+                })
+            });
+
+        if self.clients.remove(&cid).is_some() {
+            self.node
+                .close_connection(ClientOrGatewayId::Client(cid), p2p_control::goodbye(), now);
+        }
     }
 
     pub fn handle_device_pool_domain_resolved(
@@ -642,13 +677,19 @@ impl ClientState {
 
         match pid {
             ClientOrGatewayId::Client(cid) => {
+                let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {
+                    tracing::debug!("Dropping inbound peer packet: no TUN configuration");
+
+                    return Ok(None);
+                };
+
                 let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
 
                     return Ok(None);
                 };
 
-                let packet = match peer.ensure_allowed_inbound(packet, now)? {
+                let packet = match peer.ensure_allowed_inbound(packet, local_tun, now)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered(reply) => {
                         encapsulate_and_queue(
@@ -1254,11 +1295,14 @@ impl ClientState {
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_authorizations.remove(resource);
-        let Some(AccessPath::Gateway(disconnected_gateway)) =
-            self.authorized_resources.remove(&resource)
-        else {
-            return;
+
+        // A pool's `Direct` authorizations must survive a single member's failure.
+        let disconnected_gateway = match self.authorized_resources.get(&resource) {
+            Some(AccessPath::Gateway(gid)) => *gid,
+            Some(AccessPath::Direct(_)) | None => return,
         };
+
+        self.authorized_resources.remove(&resource);
         self.cleanup_connected_gateway(&disconnected_gateway, now);
     }
 
@@ -2494,6 +2538,14 @@ impl ClientState {
             return;
         };
 
+        let pool_members: Vec<ClientId> = match resource {
+            Resource::StaticDevicePool(p) => p.devices.iter().map(|d| d.id).collect(),
+            Resource::Dns(_)
+            | Resource::Cidr(_)
+            | Resource::Internet(_)
+            | Resource::DynamicDevicePool(_) => Vec::new(),
+        };
+
         match resource {
             Resource::Dns(_) => self.resource_stub_resolver.remove_resource(id),
             Resource::Cidr(_) => {}
@@ -2509,6 +2561,23 @@ impl ClientState {
         tracing::info!(%name, address, sites, "Deactivating resource");
 
         self.pending_authorizations.remove(id);
+
+        self.pending_authorizations
+            .extract_device_authorizations(|pool, _| pool == id);
+
+        for cid in pool_members {
+            if self.is_client_in_other_static_device_pool(cid, id) {
+                continue;
+            }
+
+            if self.clients.remove(&cid).is_some() {
+                self.node.close_connection(
+                    ClientOrGatewayId::Client(cid),
+                    p2p_control::goodbye(),
+                    now,
+                );
+            }
+        }
 
         let Some((_, peer)) =
             gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)

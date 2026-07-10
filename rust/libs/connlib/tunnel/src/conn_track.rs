@@ -99,6 +99,25 @@ impl ConnTrack {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
+    /// Whether a flow with our endpoint `local_ip`/`local` and the peer's
+    /// `peer_ip`/`peer` is known in either direction.
+    pub(crate) fn is_known_flow_parts(
+        &self,
+        local_ip: IpAddr,
+        local: Protocol,
+        peer_ip: IpAddr,
+        peer: Protocol,
+    ) -> bool {
+        let key = Key {
+            local,
+            peer,
+            local_ip,
+            peer_ip,
+        };
+
+        self.initiated.contains_key(&key) || self.received.contains_key(&key)
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         for map in [&mut self.initiated, &mut self.received] {
             for _ in map.extract_if(.., |key, last_seen| {

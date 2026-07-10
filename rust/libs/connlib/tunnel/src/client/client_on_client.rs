@@ -221,12 +221,27 @@ impl ClientOnClient {
     pub(crate) fn ensure_allowed_inbound(
         &mut self,
         packet: IpPacket,
+        local_tun: IpConfig,
         now: Instant,
     ) -> Result<InboundResult> {
-        // ICMP errors are always allowed through so unreachable / TTL-exceeded
-        // notifications can reach the application even if the inbound filter
-        // would otherwise drop them.
-        if packet.icmp_error().is_ok_and(|e| e.is_some()) {
+        let src = packet.source();
+        let dst = packet.destination();
+        anyhow::ensure!(
+            self.remote_tun.is_ip(src) && local_tun.is_ip(dst),
+            "Dropping spoofed inbound packet from peer (src {src}, dst {dst})"
+        );
+
+        if let Ok(Some((failed, _))) = packet.icmp_error() {
+            anyhow::ensure!(
+                self.conn_track.is_known_flow_parts(
+                    failed.src(),
+                    failed.src_proto(),
+                    failed.dst(),
+                    failed.dst_proto(),
+                ),
+                "Dropping ICMP error from peer referencing an unknown flow"
+            );
+
             return Ok(InboundResult::Send(packet));
         }
 
@@ -258,6 +273,71 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn spoofed_source_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+        peer.add_resource(ResourceId::from_u128(1), vec![], None, now);
+
+        let spoofed = make::udp_packet(
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
+            our_v4(),
+            40000,
+            80,
+            &[],
+        )
+        .unwrap();
+        assert!(
+            peer.ensure_allowed_inbound(spoofed, local_tun(), now)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn spoofed_destination_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+        peer.add_resource(ResourceId::from_u128(1), vec![], None, now);
+
+        let spoofed = make::udp_packet(
+            peer_v4(),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
+            40000,
+            80,
+            &[],
+        )
+        .unwrap();
+        assert!(
+            peer.ensure_allowed_inbound(spoofed, local_tun(), now)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn icmp_error_for_known_flow_is_forwarded() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        peer.record_outbound(&outbound, now);
+        let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
+
+        assert!(is_send(
+            peer.ensure_allowed_inbound(icmp, local_tun(), now).unwrap()
+        ));
+    }
+
+    #[test]
+    fn icmp_error_for_unknown_flow_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        let icmp = make::icmp_dest_unreachable_prohibited(&stray).unwrap();
+
+        assert!(peer.ensure_allowed_inbound(icmp, local_tun(), now).is_err());
+    }
+
+    #[test]
     fn peer_opened_flow_is_re_filtered_after_revocation() {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
@@ -265,13 +345,15 @@ mod tests {
         peer.add_resource(rid, udp_port(80), None, now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
+                .unwrap()
         ));
 
         peer.remove_resource(&rid);
 
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
+                .unwrap()
         ));
     }
 
@@ -284,7 +366,10 @@ mod tests {
         peer.handle_outbound(&outbound, now);
 
         let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
-        assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));
+        assert!(is_send(
+            peer.ensure_allowed_inbound(reply, local_tun(), now)
+                .unwrap()
+        ));
     }
 
     #[test]
@@ -295,7 +380,8 @@ mod tests {
         peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(60)), now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
+                .unwrap()
         ));
         assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
 
@@ -304,7 +390,8 @@ mod tests {
 
         assert_eq!(peer.poll_timeout(), None);
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), later).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), later)
+                .unwrap()
         ));
     }
 
@@ -318,19 +405,23 @@ mod tests {
         peer.add_resource(drop, udp_port(90), None, now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
+                .unwrap()
         ));
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(90), local_tun(), now)
+                .unwrap()
         ));
 
         peer.retain_authorizations(&BTreeSet::from([keep]));
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
+                .unwrap()
         ));
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(90), local_tun(), now)
+                .unwrap()
         ));
     }
 
@@ -345,7 +436,8 @@ mod tests {
         peer.handle_timeout(now);
 
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
+                .unwrap()
         ));
     }
 
@@ -357,6 +449,13 @@ mod tests {
         IpConfig {
             v4: Ipv4Addr::new(100, 64, 0, 2),
             v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2),
+        }
+    }
+
+    fn local_tun() -> IpConfig {
+        IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 1),
+            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 1),
         }
     }
 
