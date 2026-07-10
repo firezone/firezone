@@ -140,10 +140,10 @@ defmodule PortalWeb.Logs.SessionLogs do
               display_tz={@display_tz}
             />
           </:col>
-          <:col :let={row} label="Device" class="w-56">
+          <:col :let={row} label="Context" class="w-40">
             <div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
               <.session_context_icon context={row.context} user_agent={ua(row)} />
-              <span class="truncate">{device_label(row)}</span>
+              <span class="truncate">{context_label(row.context)}</span>
             </div>
           </:col>
           <:col :let={row} label="Actor" class="w-72">
@@ -302,6 +302,10 @@ defmodule PortalWeb.Logs.SessionLogs do
     </div>
     """
   end
+
+  defp context_label(:gateway), do: "Gateway"
+  defp context_label(:portal), do: "Portal"
+  defp context_label(:client), do: "Client"
 
   defp device_label(%{context: :gateway}), do: "Gateway"
   defp device_label(%{context: :portal}), do: "Portal"
