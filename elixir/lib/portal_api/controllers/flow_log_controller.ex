@@ -263,9 +263,12 @@ defmodule PortalAPI.FlowLogController do
     # The attribution snapshot, both tunnel tuples, and domain are stable for the
     # life of a flow and are only ever set on insert.
     defp on_conflict_query do
+      # The close takes a fresh seq so cursor-based consumers that already
+      # delivered the open row see it again and deliver the close.
       from(f in FlowLog,
         update: [
           set: [
+            seq: fragment("nextval('flow_logs_seq_seq')"),
             flow_end: fragment("EXCLUDED.flow_end"),
             last_packet: fragment("EXCLUDED.last_packet"),
             rx_packets: fragment("EXCLUDED.rx_packets"),

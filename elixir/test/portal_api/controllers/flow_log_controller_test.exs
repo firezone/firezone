@@ -412,6 +412,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       [log] = Repo.all(FlowLog)
       assert is_nil(log.flow_end)
       assert log.tx_bytes == 100
+      open_seq = log.seq
 
       close = build_record(%{"flow_end" => "2026-03-20T10:05:00.000000Z", "tx_bytes" => 999})
 
@@ -421,6 +422,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       [log] = Repo.all(FlowLog)
       assert log.flow_end == ~U[2026-03-20 10:05:00.000000Z]
       assert log.tx_bytes == 999
+      assert log.seq > open_seq
     end
 
     test "replaying a closed record is idempotent", %{conn: _conn, account: account} do
@@ -430,9 +432,11 @@ defmodule PortalAPI.FlowLogControllerTest do
       record = build_record()
 
       assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
+      [%{seq: seq}] = Repo.all(FlowLog)
+
       assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
 
-      assert length(Repo.all(FlowLog)) == 1
+      assert [%{seq: ^seq}] = Repo.all(FlowLog)
     end
 
     test "a late open does not wipe an existing close", %{conn: _conn, account: account} do

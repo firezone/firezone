@@ -8,6 +8,7 @@ defmodule Portal.SessionLog do
   schema "session_logs" do
     belongs_to :account, Portal.Account, primary_key: true
     field :log_id, Portal.Types.LogId, primary_key: true
+    field :seq, :integer, read_after_writes: true
     field :timestamp, :utc_datetime_usec
     field :context, Ecto.Enum, values: [:client, :gateway, :portal]
 
