@@ -298,6 +298,7 @@ defmodule PortalWeb.NavigationComponents do
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/logs/change_logs"}
+              match="/#{@account.slug}/logs"
               icon="ri-file-list-3-line"
               badge="NEW"
             >
@@ -365,9 +366,10 @@ defmodule PortalWeb.NavigationComponents do
   slot :inner_block, required: true
   attr :current_path, :string, required: true
   attr :badge, :string, default: nil
+  attr :match, :string, default: nil, doc: "Prefix used for the active-state check; defaults to navigate. Set to a shared parent when one sidebar item covers multiple sibling routes."
 
   def sidebar_item(assigns) do
-    active? = sidebar_item_active?(assigns.current_path, assigns.navigate)
+    active? = sidebar_item_active?(assigns.current_path, assigns.match || assigns.navigate)
     assigns = assign(assigns, :active?, active?)
 
     ~H"""
