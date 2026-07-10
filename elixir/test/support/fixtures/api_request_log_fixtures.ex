@@ -7,11 +7,11 @@ defmodule Portal.APIRequestLogFixtures do
   import Portal.AccountFixtures
 
   alias Portal.APIRequestLog
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   def valid_api_request_log_attrs do
     %{
-      event_id: EventId.build_api_request_log(),
+      log_id: LogId.build_api_request_log(),
       actor_id: Ecto.UUID.generate(),
       api_token_id: Ecto.UUID.generate(),
       method: "GET",

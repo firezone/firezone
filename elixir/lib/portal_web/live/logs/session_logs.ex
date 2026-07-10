@@ -19,7 +19,7 @@ defmodule PortalWeb.Logs.SessionLogs do
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> assign_live_table(@table_id,
         query_module: Database,
-        sortable_fields: [{:session_logs, :timestamp}, {:session_logs, :event_id}],
+        sortable_fields: [{:session_logs, :timestamp}, {:session_logs, :log_id}],
         callback: &handle_logs_update!/2
       )
 
@@ -27,7 +27,7 @@ defmodule PortalWeb.Logs.SessionLogs do
   end
 
   def handle_params(
-        %{"event_id" => event_id} = params,
+        %{"log_id" => log_id} = params,
         uri,
         %{assigns: %{live_action: :show}} = socket
       ) do
@@ -36,7 +36,7 @@ defmodule PortalWeb.Logs.SessionLogs do
       |> assign_tz(params, @filter_key)
       |> handle_live_tables_params(params, uri)
 
-    case Database.fetch_log(event_id, socket.assigns.subject) do
+    case Database.fetch_log(log_id, socket.assigns.subject) do
       {:ok, log} ->
         {:noreply, assign(socket, selected_log: log)}
 
@@ -114,15 +114,15 @@ defmodule PortalWeb.Logs.SessionLogs do
         <.live_table
           id="session_logs"
           rows={@session_logs}
-          row_id={&"session-log-#{&1.event_id}"}
+          row_id={&"session-log-#{&1.log_id}"}
           row_click={
             fn row ->
-              ~p"/#{@account}/logs/session_logs/#{row.event_id}?#{@query_params}"
+              ~p"/#{@account}/logs/session_logs/#{row.log_id}?#{@query_params}"
             end
           }
           row_selected={
             fn row ->
-              not is_nil(@selected_log) and row.event_id == @selected_log.event_id
+              not is_nil(@selected_log) and row.log_id == @selected_log.log_id
             end
           }
           filters={@filters_by_table_id["session_logs"]}
@@ -134,7 +134,7 @@ defmodule PortalWeb.Logs.SessionLogs do
         >
           <:col :let={row} field={{:session_logs, :timestamp}} label="Timestamp" class="w-44">
             <.timestamp_cell
-              event_id={row.event_id}
+              log_id={row.log_id}
               timestamp={row.timestamp}
               tz_mode={@tz_mode}
               display_tz={@display_tz}
@@ -245,7 +245,7 @@ defmodule PortalWeb.Logs.SessionLogs do
               <.detail_row label="Timestamp">
                 <.timestamp_cell
                   id_prefix="panel-timestamp"
-                  event_id={@selected_log.event_id}
+                  log_id={@selected_log.log_id}
                   timestamp={@selected_log.timestamp}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
@@ -253,7 +253,7 @@ defmodule PortalWeb.Logs.SessionLogs do
               </.detail_row>
               <.detail_row label="Event ID">
                 <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
-                  {@selected_log.event_id}
+                  {@selected_log.log_id}
                 </span>
               </.detail_row>
             </dl>
@@ -349,7 +349,7 @@ defmodule PortalWeb.Logs.SessionLogs do
 
     alias Portal.SessionLog
     alias Portal.Safe
-    alias Portal.Types.EventId
+    alias Portal.Types.LogId
 
     def list_session_logs(subject, opts \\ []) do
       from(sl in SessionLog, as: :session_logs)
@@ -357,11 +357,11 @@ defmodule PortalWeb.Logs.SessionLogs do
       |> Safe.list_offset(__MODULE__, opts)
     end
 
-    def fetch_log(event_id, subject) do
-      with {:ok, event_id} <- EventId.parse(event_id) do
+    def fetch_log(log_id, subject) do
+      with {:ok, log_id} <- LogId.parse(log_id) do
         result =
           from(sl in SessionLog, as: :session_logs)
-          |> where([session_logs: sl], sl.event_id == ^event_id)
+          |> where([session_logs: sl], sl.log_id == ^log_id)
           |> Safe.scoped(subject, :replica)
           |> Safe.one(fallback_to_primary: true)
 
@@ -376,7 +376,7 @@ defmodule PortalWeb.Logs.SessionLogs do
     end
 
     def cursor_fields,
-      do: [{:session_logs, :desc, :timestamp}, {:session_logs, :desc, :event_id}]
+      do: [{:session_logs, :desc, :timestamp}, {:session_logs, :desc, :log_id}]
 
     @context_values [
       {"Client", "client"},
@@ -429,7 +429,7 @@ defmodule PortalWeb.Logs.SessionLogs do
          [session_logs: sl],
          fragment("?->>'actor_id' ILIKE ?", sl.subject, ^pattern) or
            fragment("?->>'actor_email' ILIKE ?", sl.subject, ^pattern) or
-           fragment("encode(?, 'hex') ILIKE ?", sl.event_id, ^pattern)
+           fragment("encode(?, 'hex') ILIKE ?", sl.log_id, ^pattern)
        )}
     end
 

@@ -9,7 +9,7 @@ defmodule Portal.FlowLog do
 
   @type t :: %__MODULE__{
           account_id: Ecto.UUID.t(),
-          event_id: Portal.Types.EventId.t(),
+          log_id: Portal.Types.LogId.t(),
           device_id: Ecto.UUID.t(),
           role: :initiator | :responder,
           policy_authorization_id: Ecto.UUID.t(),
@@ -56,12 +56,12 @@ defmodule Portal.FlowLog do
   # The primary key is the natural flow identity, tagged primary_key: true
   # field-by-field below: the reporting side (account_id, device_id, role), the
   # inner tunnel 6-tuple (protocol, inner src/dst ip+port), the resource, and
-  # flow_start. event_id is a random public handle, not part of the key.
+  # flow_start. log_id is a random public handle, not part of the key.
   # flow_start is included partly because Postgres requires the
   # partition key in every key on a partitioned table. See the partition migration.
   schema "flow_logs" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :event_id, Portal.Types.EventId
+    field :log_id, Portal.Types.LogId
 
     field :device_id, :binary_id, primary_key: true
     field :role, Ecto.Enum, values: @roles, primary_key: true
@@ -133,7 +133,7 @@ defmodule Portal.FlowLog do
     changeset
     |> validate_required([
       :account_id,
-      :event_id,
+      :log_id,
       :device_id,
       :role,
       :policy_authorization_id,

@@ -1,8 +1,8 @@
-defmodule Portal.Types.EventId do
+defmodule Portal.Types.LogId do
   @moduledoc """
-  96-bit public event identifier for the audit log streams.
+  96-bit public log identifier for the audit log streams.
 
-  The high nibble namespaces the event streams, so the stream a given event_id
+  The high nibble namespaces the log streams, so the stream a given log_id
   belongs to can be read off its first hex character:
 
   - `0xC` change_log
@@ -10,17 +10,17 @@ defmodule Portal.Types.EventId do
   - `0xA` api_request_log
   - `0xF` flow_log
 
-  change_log event_ids encode ordering:
+  change_log log_ids encode ordering:
 
       [ 4 bits log_type ][ 52 bits seq_start ][ 40 bits tenant_offset ]
 
   - `seq_start` is the consumer's boot timestamp in Unix microseconds, sourced from
     Postgres `clock_timestamp()` so all consumers share a single authoritative clock.
     Constant for the lifetime of one consumer process; advances on every restart,
-    giving prior events a strictly-lower prefix than anything generated post-restart.
+    giving prior entries a strictly-lower prefix than anything generated post-restart.
   - `tenant_offset` is a per-tenant counter starting at 0 each consumer run.
 
-  session_log, api_request_log, and flow_log event_ids carry no ordering
+  session_log, api_request_log, and flow_log log_ids carry no ordering
   semantics: the 92 bits after the log_type nibble are random, and those
   streams are ordered by their timestamp column instead.
 
@@ -77,7 +77,7 @@ defmodule Portal.Types.EventId do
   def valid?(value), do: match?({:ok, _}, parse(value))
 
   @doc """
-  Build a change_log event_id from seq_start (52 bits) and tenant_offset (40 bits).
+  Build a change_log log_id from seq_start (52 bits) and tenant_offset (40 bits).
 
   Returns the canonical 24-char lowercase hex string. Raises FunctionClauseError
   if either value is out of range; binary construction would silently truncate,
@@ -92,7 +92,7 @@ defmodule Portal.Types.EventId do
   end
 
   @doc """
-  Build a session_log event_id: the `0x5` log_type nibble followed by 92
+  Build a session_log log_id: the `0x5` log_type nibble followed by 92
   random bits. Returns the canonical 24-char lowercase hex string.
   """
   def build_session_log do
@@ -100,7 +100,7 @@ defmodule Portal.Types.EventId do
   end
 
   @doc """
-  Build an api_request_log event_id: the `0xA` log_type nibble followed by 92
+  Build an api_request_log log_id: the `0xA` log_type nibble followed by 92
   random bits. Returns the canonical 24-char lowercase hex string.
   """
   def build_api_request_log do
@@ -108,7 +108,7 @@ defmodule Portal.Types.EventId do
   end
 
   @doc """
-  Build a flow_log event_id: the `0xF` log_type nibble followed by 92 random
+  Build a flow_log log_id: the `0xF` log_type nibble followed by 92 random
   bits. Returns the canonical 24-char lowercase hex string.
   """
   def build_flow_log do

@@ -4,7 +4,7 @@ defmodule PortalAPI.LogController do
   alias PortalAPI.Pagination
   alias PortalAPI.Error
   alias PortalAPI.Schemas.ProblemDetails
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
   alias __MODULE__.Database
 
   # Default window when `begin` is omitted from a list request.
@@ -17,7 +17,7 @@ defmodule PortalAPI.LogController do
     "api_request" => :api_request
   }
 
-  # The event_id high nibble (its first hex character) identifies the stream
+  # The log_id high nibble (its first hex character) identifies the stream
   # an entry belongs to, so show requests dispatch on it.
   @nibbles_to_types %{
     "c" => :change,
@@ -153,12 +153,12 @@ defmodule PortalAPI.LogController do
   operation(:show,
     summary: "Show Log",
     description: """
-    Fetches a single Log entry by its `event_id`. The entry's type is
-    determined from the `event_id` itself: its first character identifies
+    Fetches a single Log entry by its `log_id`. The entry's type is
+    determined from the `log_id` itself: its first character identifies
     the log stream (`c` change, `5` session, `f` flow, `a` api_request).
     """,
     parameters: [
-      event_id: [
+      log_id: [
         in: :path,
         description:
           "Identifier of the Log entry. A 24-character lowercase hexadecimal string.",
@@ -174,10 +174,10 @@ defmodule PortalAPI.LogController do
   # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def show(conn, %{"event_id" => event_id}) do
-    with {:ok, event_id} <- parse_event_id(event_id),
-         {:ok, type} <- type_from_event_id(event_id),
-         {:ok, log} <- Database.fetch_log(type, event_id, conn.assigns.subject) do
+  def show(conn, %{"log_id" => log_id}) do
+    with {:ok, log_id} <- parse_log_id(log_id),
+         {:ok, type} <- type_from_log_id(log_id),
+         {:ok, log} <- Database.fetch_log(type, log_id, conn.assigns.subject) do
       render(conn, :show, log: log)
     else
       error -> Error.handle(conn, error)
@@ -198,14 +198,14 @@ defmodule PortalAPI.LogController do
      reason: "`type` is required and must be one of: change, session, flow, api_request"}
   end
 
-  defp type_from_event_id(<<nibble::binary-size(1), _rest::binary>>)
+  defp type_from_log_id(<<nibble::binary-size(1), _rest::binary>>)
        when is_map_key(@nibbles_to_types, nibble) do
     {:ok, Map.fetch!(@nibbles_to_types, nibble)}
   end
 
-  # A well-formed event_id whose high nibble is not a known log stream cannot
+  # A well-formed log_id whose high nibble is not a known log stream cannot
   # reference anything.
-  defp type_from_event_id(_event_id), do: {:error, :not_found}
+  defp type_from_log_id(_log_id), do: {:error, :not_found}
 
   defp coerce_filters(type, params) do
     now = DateTime.utc_now()
@@ -274,10 +274,10 @@ defmodule PortalAPI.LogController do
     {:error, :bad_request, reason: "`#{name}` must be a string"}
   end
 
-  defp parse_event_id(value) do
-    case EventId.parse(value) do
-      {:ok, event_id} -> {:ok, event_id}
-      :error -> {:error, :bad_request, reason: "`event_id` must be a 24-char hex string"}
+  defp parse_log_id(value) do
+    case LogId.parse(value) do
+      {:ok, log_id} -> {:ok, log_id}
+      :error -> {:error, :bad_request, reason: "`log_id` must be a 24-char hex string"}
     end
   end
 
@@ -324,10 +324,10 @@ defmodule PortalAPI.LogController do
       |> Safe.list(__MODULE__.APIRequest, opts)
     end
 
-    def fetch_log(type, event_id, subject) do
+    def fetch_log(type, log_id, subject) do
       result =
         type
-        |> by_event_id_query(event_id)
+        |> by_log_id_query(log_id)
         |> Safe.scoped(subject, :replica)
         |> Safe.one()
 
@@ -338,28 +338,28 @@ defmodule PortalAPI.LogController do
       end
     end
 
-    defp by_event_id_query(:change, event_id) do
-      from(cl in ChangeLog, as: :logs, where: cl.event_id == ^event_id)
+    defp by_log_id_query(:change, log_id) do
+      from(cl in ChangeLog, as: :logs, where: cl.log_id == ^log_id)
     end
 
-    defp by_event_id_query(:session, event_id) do
-      from(sl in SessionLog, as: :logs, where: sl.event_id == ^event_id)
+    defp by_log_id_query(:session, log_id) do
+      from(sl in SessionLog, as: :logs, where: sl.log_id == ^log_id)
     end
 
-    defp by_event_id_query(:flow, event_id) do
-      from(fl in FlowLog, as: :logs, where: fl.event_id == ^event_id)
+    defp by_log_id_query(:flow, log_id) do
+      from(fl in FlowLog, as: :logs, where: fl.log_id == ^log_id)
     end
 
-    defp by_event_id_query(:api_request, event_id) do
-      from(arl in APIRequestLog, as: :logs, where: arl.event_id == ^event_id)
+    defp by_log_id_query(:api_request, log_id) do
+      from(arl in APIRequestLog, as: :logs, where: arl.log_id == ^log_id)
     end
 
     defmodule Change do
       import Ecto.Query
 
-      # change_log event_ids encode commit order, so they are the cursor.
+      # change_log log_ids encode commit order, so they are the cursor.
       def cursor_fields do
-        [{:logs, :desc, :event_id}]
+        [{:logs, :desc, :log_id}]
       end
 
       def filters do
@@ -400,10 +400,10 @@ defmodule PortalAPI.LogController do
     defmodule Session do
       import Ecto.Query
 
-      # session_log event_ids are random, so order by timestamp with the
-      # event_id as a unique tie-breaker.
+      # session_log log_ids are random, so order by timestamp with the
+      # log_id as a unique tie-breaker.
       def cursor_fields do
-        [{:logs, :desc, :timestamp}, {:logs, :desc, :event_id}]
+        [{:logs, :desc, :timestamp}, {:logs, :desc, :log_id}]
       end
 
       def filters do
@@ -446,10 +446,10 @@ defmodule PortalAPI.LogController do
     defmodule Flow do
       import Ecto.Query
 
-      # flow_log event_ids are random, so order by when the flow started,
-      # with the event_id as a unique tie-breaker.
+      # flow_log log_ids are random, so order by when the flow started,
+      # with the log_id as a unique tie-breaker.
       def cursor_fields do
-        [{:logs, :desc, :flow_start}, {:logs, :desc, :event_id}]
+        [{:logs, :desc, :flow_start}, {:logs, :desc, :log_id}]
       end
 
       def filters do
@@ -516,10 +516,10 @@ defmodule PortalAPI.LogController do
     defmodule APIRequest do
       import Ecto.Query
 
-      # api_request_log event_ids are random, so order by insertion time with
-      # the event_id as a unique tie-breaker.
+      # api_request_log log_ids are random, so order by insertion time with
+      # the log_id as a unique tie-breaker.
       def cursor_fields do
-        [{:logs, :desc, :inserted_at}, {:logs, :desc, :event_id}]
+        [{:logs, :desc, :inserted_at}, {:logs, :desc, :log_id}]
       end
 
       def filters do

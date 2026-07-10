@@ -12,11 +12,11 @@ defmodule PortalWeb.Logs.Components do
   alias PortalWeb.CoreComponents
 
   @doc """
-  Single timestamp table cell. `event_id` keeps the wrapper's id unique so LV's
+  Single timestamp table cell. `log_id` keeps the wrapper's id unique so LV's
   diff can patch it independently. `tz_mode`/`display_tz` flow as explicit
   props so column re-rendering picks up timezone toggles.
   """
-  attr :event_id, :string, required: true
+  attr :log_id, :string, required: true
   attr :timestamp, DateTime, required: true
   attr :tz_mode, :string, required: true
   attr :display_tz, :string, required: true
@@ -25,7 +25,7 @@ defmodule PortalWeb.Logs.Components do
   def timestamp_cell(assigns) do
     ~H"""
     <span
-      id={"#{@id_prefix}-#{@event_id}"}
+      id={"#{@id_prefix}-#{@log_id}"}
       data-tz-mode={@tz_mode}
       title={"#{DateTime.to_iso8601(@timestamp)} (#{@display_tz})"}
       class="text-xs text-[var(--text-primary)] tabular-nums"

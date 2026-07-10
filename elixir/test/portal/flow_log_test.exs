@@ -8,7 +8,7 @@ defmodule Portal.FlowLogTest do
     Map.merge(
       %{
         account_id: Ecto.UUID.generate(),
-        event_id: Portal.Types.EventId.build_flow_log(),
+        log_id: Portal.Types.LogId.build_flow_log(),
         device_id: Ecto.UUID.generate(),
         role: :initiator,
         policy_authorization_id: Ecto.UUID.generate(),

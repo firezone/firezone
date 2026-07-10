@@ -60,8 +60,8 @@ defmodule PortalAPI.LogControllerTest do
       assert length(data) == 3
       assert Enum.all?(data, &(&1["type"] == "change"))
 
-      expected = logs |> Enum.map(& &1.event_id) |> Enum.sort(:desc)
-      assert Enum.map(data, & &1["event_id"]) == expected
+      expected = logs |> Enum.map(& &1.log_id) |> Enum.sort(:desc)
+      assert Enum.map(data, & &1["log_id"]) == expected
     end
 
     test "renders change log fields", %{conn: conn, account: account, actor: actor} do
@@ -81,7 +81,7 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=change")
 
       assert %{"data" => [data]} = json_response(conn, 200)
-      assert data["event_id"] == change_log.event_id
+      assert data["log_id"] == change_log.log_id
       assert data["object"] == "actors"
       assert data["operation"] == "update"
       assert data["before"] == %{"name" => "Jane Doe"}
@@ -123,16 +123,16 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=change&actor_id=#{actor_id}")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn1, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn1, 200)
+      assert log_id == matching.log_id
 
       conn2 =
         build_conn()
         |> authorize_conn(actor)
         |> get(~p"/logs?type=change&actor_email=admin@example.com")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn2, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn2, 200)
+      assert log_id == matching.log_id
     end
 
     test "bounds the window with begin and end", %{conn: conn, account: account, actor: actor} do
@@ -144,8 +144,8 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=change&begin=2025-12-01T00:00:00Z&end=2026-02-01T00:00:00Z")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
-      assert event_id == old.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
+      assert log_id == old.log_id
     end
 
     test "paginates with limit and page_cursor", %{conn: conn, account: account, actor: actor} do
@@ -170,8 +170,8 @@ defmodule PortalAPI.LogControllerTest do
       assert %{"data" => page2} = json_response(conn2, 200)
       assert length(page2) == 1
       assert MapSet.disjoint?(
-               MapSet.new(page1, & &1["event_id"]),
-               MapSet.new(page2, & &1["event_id"])
+               MapSet.new(page1, & &1["log_id"]),
+               MapSet.new(page2, & &1["log_id"])
              )
     end
 
@@ -198,8 +198,8 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"data" => data} = json_response(conn, 200)
 
-      assert Enum.map(data, & &1["event_id"]) ==
-               [newest.event_id, middle.event_id, oldest.event_id]
+      assert Enum.map(data, & &1["log_id"]) ==
+               [newest.log_id, middle.log_id, oldest.log_id]
 
       assert Enum.all?(data, &(&1["type"] == "session"))
     end
@@ -218,7 +218,7 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=session")
 
       assert %{"data" => [data]} = json_response(conn, 200)
-      assert data["event_id"] == session_log.event_id
+      assert data["log_id"] == session_log.log_id
       assert data["context"] == "portal"
 
       assert data["subject"] == session_log.subject
@@ -243,8 +243,8 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=session&actor_id=#{actor_id}")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
+      assert log_id == matching.log_id
     end
 
     test "filters by actor_email recorded on the session", %{
@@ -266,8 +266,8 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=session&actor_email=target@example.com")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
+      assert log_id == matching.log_id
     end
 
     test "does not return another account's session logs", %{conn: conn, actor: actor} do
@@ -308,7 +308,7 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=flow")
 
       assert %{"data" => data} = json_response(conn, 200)
-      assert Enum.map(data, & &1["event_id"]) == [newer.event_id, older.event_id]
+      assert Enum.map(data, & &1["log_id"]) == [newer.log_id, older.log_id]
       assert Enum.all?(data, &(&1["type"] == "flow"))
     end
 
@@ -355,7 +355,7 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"data" => data} = json_response(conn, 200)
 
-      assert Enum.map(data, & &1["event_id"]) == [late_report.event_id, long_lived.event_id]
+      assert Enum.map(data, & &1["log_id"]) == [late_report.log_id, long_lived.log_id]
     end
 
     test "renders flow log fields", %{conn: conn, account: account, actor: actor} do
@@ -367,7 +367,7 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=flow")
 
       assert %{"data" => [data]} = json_response(conn, 200)
-      assert data["event_id"] == flow_log.event_id
+      assert data["log_id"] == flow_log.log_id
       assert data["device_id"] == flow_log.device_id
       assert data["role"] == "responder"
       assert data["protocol"] == "tcp"
@@ -398,8 +398,8 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=flow&actor_id=#{actor_id}")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
+      assert log_id == matching.log_id
     end
 
     test "filters by actor_email via the email recorded on the flow", %{
@@ -415,8 +415,8 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=flow&actor_email=target@example.com")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
+      assert log_id == matching.log_id
     end
   end
 
@@ -441,9 +441,9 @@ defmodule PortalAPI.LogControllerTest do
       assert length(data) == 3
       assert Enum.all?(data, &(&1["type"] == "api_request"))
 
-      event_ids = MapSet.new(data, & &1["event_id"])
-      assert MapSet.member?(event_ids, log1.event_id)
-      assert MapSet.member?(event_ids, log2.event_id)
+      log_ids = MapSet.new(data, & &1["log_id"])
+      assert MapSet.member?(log_ids, log1.log_id)
+      assert MapSet.member?(log_ids, log2.log_id)
     end
 
     test "filters by actor_id", %{conn: conn, account: account, actor: actor} do
@@ -456,8 +456,8 @@ defmodule PortalAPI.LogControllerTest do
         |> authorize_conn(actor)
         |> get(~p"/logs?type=api_request&actor_id=#{actor_id}")
 
-      assert %{"data" => [%{"event_id" => event_id}]} = json_response(conn, 200)
-      assert event_id == matching.event_id
+      assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
+      assert log_id == matching.log_id
     end
 
     test "returns 400 when actor_email is combined with type=api_request", %{
@@ -489,7 +489,7 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=api_request&actor_id=#{log.actor_id}")
 
       assert %{"data" => [data]} = json_response(conn, 200)
-      assert data["event_id"] == log.event_id
+      assert data["log_id"] == log.log_id
       assert data["actor_id"] == log.actor_id
       assert data["api_token_id"] == log.api_token_id
       assert data["method"] == "POST"
@@ -579,92 +579,92 @@ defmodule PortalAPI.LogControllerTest do
       assert json_response(conn, 401)
     end
 
-    test "fetches a change log by its c-prefixed event_id", %{
+    test "fetches a change log by its c-prefixed log_id", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       change_log = change_log_fixture(account: account)
-      assert String.starts_with?(change_log.event_id, "c")
+      assert String.starts_with?(change_log.log_id, "c")
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs/#{change_log.event_id}")
+        |> get(~p"/logs/#{change_log.log_id}")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["type"] == "change"
-      assert data["event_id"] == change_log.event_id
+      assert data["log_id"] == change_log.log_id
     end
 
-    test "fetches a session log by its 5-prefixed event_id", %{
+    test "fetches a session log by its 5-prefixed log_id", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       session_log = session_log_fixture(account: account)
-      assert String.starts_with?(session_log.event_id, "5")
+      assert String.starts_with?(session_log.log_id, "5")
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs/#{session_log.event_id}")
+        |> get(~p"/logs/#{session_log.log_id}")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["type"] == "session"
-      assert data["event_id"] == session_log.event_id
+      assert data["log_id"] == session_log.log_id
       assert data["context"] == "client"
     end
 
-    test "fetches a flow log by its f-prefixed event_id", %{
+    test "fetches a flow log by its f-prefixed log_id", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       flow_log = flow_log_fixture(account: account)
-      assert String.starts_with?(flow_log.event_id, "f")
+      assert String.starts_with?(flow_log.log_id, "f")
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs/#{flow_log.event_id}")
+        |> get(~p"/logs/#{flow_log.log_id}")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["type"] == "flow"
-      assert data["event_id"] == flow_log.event_id
+      assert data["log_id"] == flow_log.log_id
     end
 
-    test "fetches an api request log by its a-prefixed event_id", %{
+    test "fetches an api request log by its a-prefixed log_id", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       log = api_request_log_fixture(account: account)
-      assert String.starts_with?(log.event_id, "a")
+      assert String.starts_with?(log.log_id, "a")
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs/#{log.event_id}")
+        |> get(~p"/logs/#{log.log_id}")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data["type"] == "api_request"
-      assert data["event_id"] == log.event_id
+      assert data["log_id"] == log.log_id
     end
 
-    test "normalizes uppercase event_ids", %{conn: conn, account: account, actor: actor} do
+    test "normalizes uppercase log_ids", %{conn: conn, account: account, actor: actor} do
       change_log = change_log_fixture(account: account)
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs/#{String.upcase(change_log.event_id)}")
+        |> get(~p"/logs/#{String.upcase(change_log.log_id)}")
 
-      assert %{"data" => %{"event_id" => event_id}} = json_response(conn, 200)
-      assert event_id == change_log.event_id
+      assert %{"data" => %{"log_id" => log_id}} = json_response(conn, 200)
+      assert log_id == change_log.log_id
     end
 
-    test "returns 404 for an event_id with an unknown log type nibble", %{
+    test "returns 404 for an log_id with an unknown log type nibble", %{
       conn: conn,
       actor: actor
     } do
@@ -676,7 +676,7 @@ defmodule PortalAPI.LogControllerTest do
       assert json_response(conn, 404)
     end
 
-    test "returns 404 for a valid event_id that does not exist", %{conn: conn, actor: actor} do
+    test "returns 404 for a valid log_id that does not exist", %{conn: conn, actor: actor} do
       conn =
         conn
         |> authorize_conn(actor)
@@ -691,12 +691,12 @@ defmodule PortalAPI.LogControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs/#{other.event_id}")
+        |> get(~p"/logs/#{other.log_id}")
 
       assert json_response(conn, 404)
     end
 
-    test "returns 400 for a malformed event_id", %{conn: conn, actor: actor} do
+    test "returns 400 for a malformed log_id", %{conn: conn, actor: actor} do
       # ValidateUUIDParams rejects malformed identifiers before the controller.
       conn =
         conn
@@ -707,15 +707,15 @@ defmodule PortalAPI.LogControllerTest do
       assert detail =~ "not valid identifiers"
     end
 
-    test "returns 400 for a UUID-shaped event_id", %{conn: conn, actor: actor} do
-      # A UUID passes ValidateUUIDParams but is not a valid event_id.
+    test "returns 400 for a UUID-shaped log_id", %{conn: conn, actor: actor} do
+      # A UUID passes ValidateUUIDParams but is not a valid log_id.
       conn =
         conn
         |> authorize_conn(actor)
         |> get(~p"/logs/#{Ecto.UUID.generate()}")
 
       assert %{"detail" => detail} = json_response(conn, 400)
-      assert detail =~ "`event_id` must be a 24-char hex string"
+      assert detail =~ "`log_id` must be a 24-char hex string"
     end
   end
 

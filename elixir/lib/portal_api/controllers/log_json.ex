@@ -19,7 +19,7 @@ defmodule PortalAPI.LogJSON do
   defp data(%ChangeLog{} = log) do
     %{
       type: "change",
-      event_id: log.event_id,
+      log_id: log.log_id,
       timestamp: log.timestamp,
       object: log.object,
       operation: log.operation,
@@ -32,7 +32,7 @@ defmodule PortalAPI.LogJSON do
   defp data(%SessionLog{} = log) do
     %{
       type: "session",
-      event_id: log.event_id,
+      log_id: log.log_id,
       timestamp: log.timestamp,
       context: log.context,
       subject: log.subject
@@ -42,7 +42,7 @@ defmodule PortalAPI.LogJSON do
   defp data(%FlowLog{} = log) do
     %{
       type: "flow",
-      event_id: log.event_id,
+      log_id: log.log_id,
       timestamp: log.inserted_at,
       device_id: log.device_id,
       role: log.role,
@@ -76,7 +76,7 @@ defmodule PortalAPI.LogJSON do
   defp data(%APIRequestLog{} = log) do
     %{
       type: "api_request",
-      event_id: log.event_id,
+      log_id: log.log_id,
       timestamp: log.inserted_at,
       actor_id: log.actor_id,
       api_token_id: log.api_token_id,

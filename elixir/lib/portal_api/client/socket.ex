@@ -2,7 +2,7 @@ defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
   alias Portal.{Authentication, ClientSession, Device, PG, SessionLog, Version}
   alias Portal.Repo.Batch
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -175,7 +175,7 @@ defmodule PortalAPI.Client.Socket do
   defp session_log_attrs(attrs, %{subject: subject, timestamp: timestamp}) do
     %{
       account_id: attrs.account_id,
-      event_id: EventId.build_session_log(),
+      log_id: LogId.build_session_log(),
       timestamp: timestamp,
       context: :client,
       subject:

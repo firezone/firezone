@@ -3,7 +3,7 @@ defmodule PortalAPI.Gateway.Socket do
   alias Portal.Authentication
   alias Portal.{Device, GatewaySession, PG, SessionLog, Version}
   alias Portal.Repo.Batch
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -205,7 +205,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp session_log_attrs(attrs, %{timestamp: timestamp}) do
     %{
       account_id: attrs.account_id,
-      event_id: EventId.build_session_log(),
+      log_id: LogId.build_session_log(),
       timestamp: timestamp,
       context: :gateway,
       subject: %{

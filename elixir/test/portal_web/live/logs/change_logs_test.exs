@@ -75,9 +75,9 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs")
 
-      assert html =~ mine.event_id
+      assert html =~ mine.log_id
       assert html =~ "actors"
-      refute html =~ other.event_id
+      refute html =~ other.log_id
     end
 
     test "shows `system` badge when subject is nil", %{
@@ -155,7 +155,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, _lv, index_html} =
         live(conn, ~p"/#{account}/logs/change_logs?change_logs_filter[show_system]=true")
 
-      assert index_html =~ cl.event_id
+      assert index_html =~ cl.log_id
       assert index_html =~ "system"
 
       # Side panel: subject_section with subject={"ip"=>...} renders the IP row
@@ -163,7 +163,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, _lv, show_html} =
         live(
           conn,
-          ~p"/#{account}/logs/change_logs/#{cl.event_id}?change_logs_filter[show_system]=true"
+          ~p"/#{account}/logs/change_logs/#{cl.log_id}?change_logs_filter[show_system]=true"
         )
 
       assert show_html =~ "203.0.113.7"
@@ -184,7 +184,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         conn
         |> authorize_conn(actor)
         |> live(
-          ~p"/#{account}/logs/change_logs/#{cl.event_id}?change_logs_filter[show_system]=true"
+          ~p"/#{account}/logs/change_logs/#{cl.log_id}?change_logs_filter[show_system]=true"
         )
 
       assert html =~ "Deleted actor"
@@ -234,10 +234,10 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         {:ok, _lv, html} =
           live(conn, ~p"/#{account}/logs/change_logs?change_logs_filter[operation]=#{value}")
 
-        assert html =~ want.event_id, "operation=#{value} should show #{want.event_id}"
+        assert html =~ want.log_id, "operation=#{value} should show #{want.log_id}"
 
         for d <- deny do
-          refute html =~ d.event_id, "operation=#{value} should hide #{d.event_id}"
+          refute html =~ d.log_id, "operation=#{value} should hide #{d.log_id}"
         end
       end
     end
@@ -283,9 +283,9 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[operation]=update&change_logs_filter[object][]=actors"
         )
 
-      assert html =~ hit.event_id
-      refute html =~ wrong_op.event_id
-      refute html =~ wrong_obj.event_id
+      assert html =~ hit.log_id
+      refute html =~ wrong_op.log_id
+      refute html =~ wrong_obj.log_id
     end
 
     test "filters by object via the object multi-select", %{
@@ -305,9 +305,9 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[object][]=actors&change_logs_filter[object][]=policies"
         )
 
-      assert html =~ actor_cl.event_id
-      assert html =~ policy_cl.event_id
-      refute html =~ site_cl.event_id
+      assert html =~ actor_cl.log_id
+      assert html =~ policy_cl.log_id
+      refute html =~ site_cl.log_id
     end
 
     test "reset button clears all filters", %{
@@ -324,16 +324,16 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs?change_logs_filter[object][]=actors")
 
-      assert render(lv) =~ cl_a.event_id
-      refute render(lv) =~ cl_b.event_id
+      assert render(lv) =~ cl_a.log_id
+      refute render(lv) =~ cl_b.log_id
 
       lv
       |> element("button[phx-click='filter'][title='Clear all filters']")
       |> render_click()
 
       html = render(lv)
-      assert html =~ cl_a.event_id
-      assert html =~ cl_b.event_id
+      assert html =~ cl_a.log_id
+      assert html =~ cl_b.log_id
     end
 
     test "hides system updates by default", %{
@@ -350,8 +350,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs")
 
-      assert html =~ actor_cl.event_id
-      refute html =~ system_cl.event_id
+      assert html =~ actor_cl.log_id
+      refute html =~ system_cl.log_id
     end
 
     test "datetime mode without bounds is treated as no-op", %{
@@ -369,7 +369,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][mode]=local&change_logs_filter[show_system]=true"
         )
 
-      assert html =~ cl.event_id
+      assert html =~ cl.log_id
       refute html =~ "invalid pagination filter"
     end
 
@@ -387,7 +387,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       # UTC by default
       {:ok, lv, _html} = live(conn, ~p"/#{account}/logs/change_logs")
       assert has_element?(lv, "#change_logs-timestamp-mode-utc[checked]")
-      assert has_element?(lv, "#timestamp-#{cl.event_id}[data-tz-mode='utc']")
+      assert has_element?(lv, "#timestamp-#{cl.log_id}[data-tz-mode='utc']")
 
       # mode=local in URL flips both the radio and the cell's data-tz-mode
       {:ok, lv, _html} =
@@ -395,7 +395,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
 
       assert has_element?(lv, "#change_logs-timestamp-mode-local[checked]")
       refute has_element?(lv, "#change_logs-timestamp-mode-utc[checked]")
-      assert has_element?(lv, "#timestamp-#{cl.event_id}[data-tz-mode='local']")
+      assert has_element?(lv, "#timestamp-#{cl.log_id}[data-tz-mode='local']")
     end
 
     test "toggling mode via form change re-renders the cell text in the browser's TZ", %{
@@ -418,7 +418,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> Phoenix.LiveViewTest.put_connect_params(%{"timezone" => "America/New_York"})
         |> live(~p"/#{account}/logs/change_logs")
 
-      initial = lv |> element("#timestamp-#{cl.event_id}") |> render()
+      initial = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert initial =~ "12:00 PM"
       refute initial =~ "8:00 AM"
 
@@ -426,7 +426,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       |> form("form[phx-change='filter']", change_logs: %{timestamp: %{mode: "local"}})
       |> render_change()
 
-      shifted = lv |> element("#timestamp-#{cl.event_id}") |> render()
+      shifted = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert shifted =~ "8:00 AM"
       refute shifted =~ "12:00 PM"
     end
@@ -445,11 +445,11 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/change_logs?change_logs_filter[show_system]=true")
 
-      assert html =~ actor_cl.event_id
-      assert html =~ system_cl.event_id
+      assert html =~ actor_cl.log_id
+      assert html =~ system_cl.log_id
     end
 
-    test "actor search matches actor_email, actor_name, actor_id, and event_id hex", %{
+    test "actor search matches actor_email, actor_name, actor_id, and log_id hex", %{
       conn: conn,
       account: account,
       actor: actor
@@ -479,10 +479,10 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
 
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/logs/change_logs")
 
-      # Fixture event_ids share their leading bytes (the boot-timestamp prefix is
+      # Fixture log_ids share their leading bytes (the boot-timestamp prefix is
       # the same for fixtures created microseconds apart), so probe the unique
-      # tail of the event_id rather than the head.
-      alice_tail = String.slice(alice.event_id, 16, 8)
+      # tail of the log_id rather than the head.
+      alice_tail = String.slice(alice.log_id, 16, 8)
 
       for query <- ["alice@", "Alice Admin", alice_id, alice_tail] do
         html =
@@ -490,12 +490,12 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           |> form("form[phx-change='filter']", change_logs: %{actor: query})
           |> render_change()
 
-        assert html =~ alice.event_id, "expected alice match for query=#{inspect(query)}"
-        refute html =~ bob.event_id, "expected bob NOT to match for query=#{inspect(query)}"
+        assert html =~ alice.log_id, "expected alice match for query=#{inspect(query)}"
+        refute html =~ bob.log_id, "expected bob NOT to match for query=#{inspect(query)}"
       end
     end
 
-    test "sorts by event_id and timestamp via the sortable column headers", %{
+    test "sorts by log_id and timestamp via the sortable column headers", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -519,13 +519,13 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       base = ~p"/#{account}/logs/change_logs"
 
       # Format: "{assoc}:{dir}:{field}" per LiveTable.parse_order_by.
-      for column <- ["timestamp", "event_id"], dir <- ["desc", "asc"] do
+      for column <- ["timestamp", "log_id"], dir <- ["desc", "asc"] do
         path = "#{base}?change_logs_order_by=change_logs:#{dir}:#{column}"
 
         {:ok, _lv, html} = live(conn, path)
 
-        newer_pos = :binary.match(html, newer.event_id) |> elem(0)
-        older_pos = :binary.match(html, older.event_id) |> elem(0)
+        newer_pos = :binary.match(html, newer.log_id) |> elem(0)
+        older_pos = :binary.match(html, older.log_id) |> elem(0)
 
         case dir do
           "desc" ->
@@ -569,9 +569,9 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][from]=#{from}&change_logs_filter[timestamp][mode]=utc"
         )
 
-      assert html =~ mid_cl.event_id
-      assert html =~ new_cl.event_id
-      refute html =~ old_cl.event_id
+      assert html =~ mid_cl.log_id
+      assert html =~ new_cl.log_id
+      refute html =~ old_cl.log_id
 
       # to-bound only: includes yesterday + today, excludes tomorrow
       to = "2026-06-02T00:00:00"
@@ -582,9 +582,9 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][to]=#{to}&change_logs_filter[timestamp][mode]=utc"
         )
 
-      assert html =~ old_cl.event_id
-      assert html =~ mid_cl.event_id
-      refute html =~ new_cl.event_id
+      assert html =~ old_cl.log_id
+      assert html =~ mid_cl.log_id
+      refute html =~ new_cl.log_id
 
       # both bounds: includes only today
       {:ok, _lv, html} =
@@ -593,9 +593,9 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][from]=#{from}&change_logs_filter[timestamp][to]=#{to}&change_logs_filter[timestamp][mode]=utc"
         )
 
-      assert html =~ mid_cl.event_id
-      refute html =~ old_cl.event_id
-      refute html =~ new_cl.event_id
+      assert html =~ mid_cl.log_id
+      refute html =~ old_cl.log_id
+      refute html =~ new_cl.log_id
     end
   end
 
@@ -617,13 +617,13 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
       assert has_element?(lv, "#change-log-panel.translate-x-0")
-      # Panel title renders the operation badge + object instead of raw event_id.
+      # Panel title renders the operation badge + object instead of raw log_id.
       assert has_element?(lv, "#change-log-panel", "Update")
       assert has_element?(lv, "#change-log-panel", "actors")
-      assert html =~ cl.event_id
+      assert html =~ cl.log_id
       # Details sidebar
       assert html =~ "Timestamp"
       # Diff is rendered server-side as a tree of <li> elements with the
@@ -649,7 +649,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/logs/change_logs")
@@ -667,7 +667,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
       lv
       |> element("#change-log-panel")
@@ -692,7 +692,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
       # The keydown handler's catch-all returns :noreply without patching.
       render_hook(lv, "handle_keydown", %{"key" => "ArrowDown"})
@@ -706,7 +706,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       account: account,
       actor: actor
     } do
-      missing = Portal.Types.EventId.build_change_log(0, 0)
+      missing = Portal.Types.LogId.build_change_log(0, 0)
 
       assert {:error, {:live_redirect, %{to: to}}} =
                conn
@@ -716,7 +716,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       assert to == ~p"/#{account}/logs/change_logs"
     end
 
-    test "redirects when path event_id is the right length but not hex", %{
+    test "redirects when path log_id is the right length but not hex", %{
       conn: conn,
       account: account,
       actor: actor
@@ -748,7 +748,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
       assert html =~ ~r/bg-success-light[^>]*>\s*Insert/
     end
@@ -771,12 +771,12 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
-      assert has_element?(lv, "#panel-timestamp-#{cl.event_id}[data-tz-mode='utc']")
+      assert has_element?(lv, "#panel-timestamp-#{cl.log_id}[data-tz-mode='utc']")
 
       # Server-rendered text is the absolute short_datetime form, not "X ago".
-      panel_html = lv |> element("#panel-timestamp-#{cl.event_id}") |> render()
+      panel_html = lv |> element("#panel-timestamp-#{cl.log_id}") |> render()
       refute panel_html =~ "ago"
       assert panel_html =~ "5/30/26"
     end
@@ -798,7 +798,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/logs/change_logs/#{cl.event_id}")
+        |> live(~p"/#{account}/logs/change_logs/#{cl.log_id}")
 
       assert html =~ ~r/bg-danger-light[^>]*>\s*Delete/
     end

@@ -19,7 +19,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> assign_live_table(@table_id,
         query_module: Database,
-        sortable_fields: [{:change_logs, :timestamp}, {:change_logs, :event_id}],
+        sortable_fields: [{:change_logs, :timestamp}, {:change_logs, :log_id}],
         callback: &handle_change_logs_update!/2
       )
 
@@ -27,7 +27,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
   end
 
   def handle_params(
-        %{"event_id" => event_id} = params,
+        %{"log_id" => log_id} = params,
         uri,
         %{assigns: %{live_action: :show}} = socket
       ) do
@@ -36,7 +36,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       |> assign_tz(params, @filter_key)
       |> handle_live_tables_params(params, uri)
 
-    case Database.fetch_change_log(event_id, socket.assigns.subject) do
+    case Database.fetch_change_log(log_id, socket.assigns.subject) do
       {:ok, change_log} ->
         {:noreply, assign(socket, selected_change_log: change_log)}
 
@@ -128,16 +128,16 @@ defmodule PortalWeb.Logs.ChangeLogs do
         <.live_table
           id="change_logs"
           rows={@change_logs}
-          row_id={&"change_log-#{&1.change_log.event_id}"}
+          row_id={&"change_log-#{&1.change_log.log_id}"}
           row_click={
             fn row ->
-              ~p"/#{@account}/logs/change_logs/#{row.change_log.event_id}?#{@query_params}"
+              ~p"/#{@account}/logs/change_logs/#{row.change_log.log_id}?#{@query_params}"
             end
           }
           row_selected={
             fn row ->
               not is_nil(@selected_change_log) and
-                row.change_log.event_id == @selected_change_log.event_id
+                row.change_log.log_id == @selected_change_log.log_id
             end
           }
           filters={@filters_by_table_id["change_logs"]}
@@ -149,15 +149,15 @@ defmodule PortalWeb.Logs.ChangeLogs do
         >
           <:col :let={row} field={{:change_logs, :timestamp}} label="Timestamp" class="w-44">
             <.timestamp_cell
-              event_id={row.change_log.event_id}
+              log_id={row.change_log.log_id}
               timestamp={row.change_log.timestamp}
               tz_mode={@tz_mode}
               display_tz={@display_tz}
             />
           </:col>
-          <:col :let={row} field={{:change_logs, :event_id}} label="Event ID" class="w-52">
+          <:col :let={row} field={{:change_logs, :log_id}} label="Event ID" class="w-52">
             <span class="font-mono text-[10px] text-[var(--text-tertiary)] break-all">
-              {row.change_log.event_id}
+              {row.change_log.log_id}
             </span>
           </:col>
           <:col :let={row} label="Object" class="w-44">
@@ -275,7 +275,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
               <.detail_row label="Timestamp">
                 <.timestamp_cell
                   id_prefix="panel-timestamp"
-                  event_id={@selected_change_log.event_id}
+                  log_id={@selected_change_log.log_id}
                   timestamp={@selected_change_log.timestamp}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
@@ -283,7 +283,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
               </.detail_row>
               <.detail_row label="Event ID">
                 <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
-                  {@selected_change_log.event_id}
+                  {@selected_change_log.log_id}
                 </span>
               </.detail_row>
             </dl>
@@ -388,7 +388,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
     alias Portal.ChangeLog
     alias Portal.Safe
-    alias Portal.Types.EventId
+    alias Portal.Types.LogId
 
     def list_change_logs(subject, opts \\ []) do
       from(cl in ChangeLog, as: :change_logs)
@@ -396,14 +396,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
       |> Safe.list_offset(__MODULE__, opts)
     end
 
-    def fetch_change_log(event_id, subject) do
-      # `EventId.parse/1` is the strict 24-char-hex validator; `cast/1` only
+    def fetch_change_log(log_id, subject) do
+      # `LogId.parse/1` is the strict 24-char-hex validator; `cast/1` only
       # checks length and would let a malformed value reach `dump/1`, which
       # then errors on base16 decode and crashes the LiveView.
-      with {:ok, event_id} <- EventId.parse(event_id) do
+      with {:ok, log_id} <- LogId.parse(log_id) do
         result =
           from(cl in ChangeLog, as: :change_logs)
-          |> where([change_logs: cl], cl.event_id == ^event_id)
+          |> where([change_logs: cl], cl.log_id == ^log_id)
           |> Safe.scoped(subject, :replica)
           |> Safe.one(fallback_to_primary: true)
 
@@ -417,7 +417,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       end
     end
 
-    def cursor_fields, do: [{:change_logs, :desc, :event_id}]
+    def cursor_fields, do: [{:change_logs, :desc, :log_id}]
 
     @object_values [
       {"Accounts", "accounts"},
@@ -507,9 +507,9 @@ defmodule PortalWeb.Logs.ChangeLogs do
       do: dynamic([change_logs: cl], cl.timestamp <= ^to)
 
     # Combined search box matches against actor identity (id, name, email) and
-    # the event_id of the entry itself. event_id is stored as a 12-byte bytea
+    # the log_id of the entry itself. log_id is stored as a 12-byte bytea
     # whose canonical public form is its 24-char lowercase hex encoding, so we
-    # `encode(event_id, 'hex') ILIKE ...` to support prefix searches.
+    # `encode(log_id, 'hex') ILIKE ...` to support prefix searches.
     defp filter_by_actor(queryable, value) do
       pattern = "%" <> value <> "%"
 
@@ -519,7 +519,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
          fragment("?->>'actor_id' ILIKE ?", cl.subject, ^pattern) or
            fragment("?->>'actor_name' ILIKE ?", cl.subject, ^pattern) or
            fragment("?->>'actor_email' ILIKE ?", cl.subject, ^pattern) or
-           fragment("encode(?, 'hex') ILIKE ?", cl.event_id, ^pattern)
+           fragment("encode(?, 'hex') ILIKE ?", cl.log_id, ^pattern)
        )}
     end
 

@@ -6,7 +6,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
   alias Portal.ChangeLogs.Consumer
   alias Portal.ChangeLogs.Consumer.Database
   alias Portal.ChangeLog
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   @commit_timestamp ~U[2026-05-26 12:00:00.123000Z]
   @seq_start 1_700_000_000_000_000
@@ -134,7 +134,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert attrs.subject == nil
       assert attrs.vsn == 0
       assert attrs.timestamp == @commit_timestamp
-      assert attrs.event_id == EventId.build_change_log(@seq_start, 0)
+      assert attrs.log_id == LogId.build_change_log(@seq_start, 0)
     end
 
     test "adds insert operation to flush buffer for non-account tables", %{
@@ -179,7 +179,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       existing_lsn = 100
 
       existing_item = %{
-        event_id: EventId.build_change_log(@seq_start, 99),
+        log_id: LogId.build_change_log(@seq_start, 99),
         timestamp: @commit_timestamp,
         lsn: existing_lsn,
         object: "other_table",
@@ -461,7 +461,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
   end
 
-  describe "event_id allocation" do
+  describe "log_id allocation" do
     test "every row in a transaction shares the same commit_timestamp", %{
       account: account
     } do
@@ -502,9 +502,9 @@ defmodule Portal.ChangeLogs.ConsumerTest do
         |> Consumer.on_write(302, :insert, "resources", nil, data.())
 
       assert state.tenant_offsets[account.id] == 3
-      assert state.flush_buffer[300].event_id == EventId.build_change_log(@seq_start, 0)
-      assert state.flush_buffer[301].event_id == EventId.build_change_log(@seq_start, 1)
-      assert state.flush_buffer[302].event_id == EventId.build_change_log(@seq_start, 2)
+      assert state.flush_buffer[300].log_id == LogId.build_change_log(@seq_start, 0)
+      assert state.flush_buffer[301].log_id == LogId.build_change_log(@seq_start, 1)
+      assert state.flush_buffer[302].log_id == LogId.build_change_log(@seq_start, 2)
     end
 
     test "interleaved writes for three tenants each get their own dense offset progression",
@@ -543,7 +543,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert state.tenant_offsets[b.id] == 3
       assert state.tenant_offsets[c.id] == 3
 
-      # ...and the per-lsn event_ids encode the tenant's own offset progression,
+      # ...and the per-lsn log_ids encode the tenant's own offset progression,
       # not the global write order.
       expected = %{
         1000 => {a, 0},
@@ -559,8 +559,8 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       }
 
       for {lsn, {_account, offset}} <- expected do
-        assert state.flush_buffer[lsn].event_id ==
-                 EventId.build_change_log(@seq_start, offset)
+        assert state.flush_buffer[lsn].log_id ==
+                 LogId.build_change_log(@seq_start, offset)
       end
     end
 
@@ -586,8 +586,8 @@ defmodule Portal.ChangeLogs.ConsumerTest do
 
       assert pre_restart.seq_start == old_seq_start
 
-      assert pre_restart.flush_buffer[500].event_id ==
-               EventId.build_change_log(old_seq_start, 5)
+      assert pre_restart.flush_buffer[500].log_id ==
+               LogId.build_change_log(old_seq_start, 5)
 
       # Post-restart: fresh empty state. on_begin seeds a brand-new seq_start
       # from the Postgres clock, and per-tenant offsets start over at 0.
@@ -608,12 +608,12 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert post_restart.seq_start > old_seq_start
       assert post_restart.tenant_offsets[account.id] == 1
 
-      assert post_restart.flush_buffer[600].event_id ==
-               EventId.build_change_log(post_restart.seq_start, 0)
+      assert post_restart.flush_buffer[600].log_id ==
+               LogId.build_change_log(post_restart.seq_start, 0)
 
-      # Crucially, the new event_id sorts strictly after the old one.
-      assert pre_restart.flush_buffer[500].event_id <
-               post_restart.flush_buffer[600].event_id
+      # Crucially, the new log_id sorts strictly after the old one.
+      assert pre_restart.flush_buffer[500].log_id <
+               post_restart.flush_buffer[600].log_id
     end
 
     test "raises FunctionClauseError when a tenant_offset would reach 2^40", %{
@@ -641,7 +641,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
 
       assert state.tenant_offsets[account.id] == max_offset
 
-      # The write after that overflows the EventId.build_change_log guard.
+      # The write after that overflows the LogId.build_change_log guard.
       assert_raise FunctionClauseError, fn ->
         Consumer.on_write(
           state,
@@ -654,7 +654,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       end
     end
 
-    test "persists event_id and timestamp end-to-end through flush", %{
+    test "persists log_id and timestamp end-to-end through flush", %{
       account: account
     } do
       commit_timestamp = ~U[2026-05-26 12:00:00.999000Z]
@@ -679,7 +679,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
 
       change_log = Repo.one(from cl in ChangeLog, where: cl.lsn == 500)
       assert change_log.timestamp == commit_timestamp
-      assert change_log.event_id == EventId.build_change_log(@seq_start, 0)
+      assert change_log.log_id == LogId.build_change_log(@seq_start, 0)
     end
   end
 
@@ -694,7 +694,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       attrs1 = %{
-        event_id: EventId.build_change_log(@seq_start, 0),
+        log_id: LogId.build_change_log(@seq_start, 0),
         timestamp: committed_at,
         lsn: 100,
         object: "resources",
@@ -707,7 +707,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       }
 
       attrs2 = %{
-        event_id: EventId.build_change_log(@seq_start, 1),
+        log_id: LogId.build_change_log(@seq_start, 1),
         timestamp: committed_at,
         lsn: 101,
         object: "resources",
@@ -748,7 +748,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
 
       attrs_map = %{
         400 => %{
-          event_id: EventId.build_change_log(@seq_start, 0),
+          log_id: LogId.build_change_log(@seq_start, 0),
           timestamp: committed_at,
           lsn: 400,
           object: "resources",
@@ -760,7 +760,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
           subject: nil
         },
         402 => %{
-          event_id: EventId.build_change_log(@seq_start, 1),
+          log_id: LogId.build_change_log(@seq_start, 1),
           timestamp: committed_at,
           lsn: 402,
           object: "resources",
@@ -772,7 +772,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
           subject: nil
         },
         401 => %{
-          event_id: EventId.build_change_log(@seq_start, 2),
+          log_id: LogId.build_change_log(@seq_start, 2),
           timestamp: committed_at,
           lsn: 401,
           object: "resources",
@@ -801,7 +801,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       missing_account_id = Ecto.UUID.generate()
 
       valid_entry = %{
-        event_id: EventId.build_change_log(@seq_start, 0),
+        log_id: LogId.build_change_log(@seq_start, 0),
         timestamp: committed_at,
         lsn: 500,
         object: "resources",
@@ -814,7 +814,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       }
 
       dead_entry = %{
-        event_id: EventId.build_change_log(@seq_start, 1),
+        log_id: LogId.build_change_log(@seq_start, 1),
         timestamp: committed_at,
         lsn: 501,
         object: "resources",
@@ -848,7 +848,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       # must surface as a crash rather than being silently dropped like the
       # missing-account case.
       entry = %{
-        event_id: EventId.build_change_log(@seq_start, 0),
+        log_id: LogId.build_change_log(@seq_start, 0),
         timestamp: committed_at,
         lsn: 600,
         object: "resources",
@@ -862,7 +862,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert_raise Postgrex.Error, fn -> Database.bulk_insert([entry]) end
     end
 
-    test "drops the batch seed so the next batch reseeds event_id ordering", %{account: account} do
+    test "drops the batch seed so the next batch reseeds log_id ordering", %{account: account} do
       state =
         %{flush_buffer: %{}, seq_start: @seq_start, tenant_offsets: %{account.id => 5}}
         |> Consumer.flush()
@@ -871,7 +871,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       refute Map.has_key?(state, :tenant_offsets)
 
       # The next batch's first Begin reseeds from the shared Postgres clock,
-      # so its event_ids sort after every previous batch's regardless of
+      # so its log_ids sort after every previous batch's regardless of
       # which node produced them
       state = Consumer.on_begin(state, %{commit_timestamp: @commit_timestamp})
       assert state.seq_start > @seq_start
@@ -882,7 +882,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       committed_at = ~U[2026-05-26 12:00:00.000000Z]
 
       entry = %{
-        event_id: EventId.build_change_log(@seq_start, 0),
+        log_id: LogId.build_change_log(@seq_start, 0),
         timestamp: committed_at,
         lsn: 700,
         object: "resources",

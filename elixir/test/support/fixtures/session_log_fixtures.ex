@@ -7,7 +7,7 @@ defmodule Portal.SessionLogFixtures do
 
   alias Portal.Repo
   alias Portal.SessionLog
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   @subject_keys [:actor_id, :actor_email, :device_id, :token_id]
 
@@ -28,7 +28,7 @@ defmodule Portal.SessionLogFixtures do
     row =
       attrs
       |> Map.drop([:account, :subject])
-      |> Map.put_new(:event_id, EventId.build_session_log())
+      |> Map.put_new(:log_id, LogId.build_session_log())
       |> Map.put_new(:account_id, account.id)
       |> Map.put_new(:timestamp, DateTime.utc_now())
       |> Map.put_new(:context, :client)

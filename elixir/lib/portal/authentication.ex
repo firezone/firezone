@@ -6,7 +6,7 @@ defmodule Portal.Authentication do
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
   alias Portal.SessionLog
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
   alias Portal.Authentication.Context
   alias Portal.Authentication.Credential
   alias Portal.Authentication.Subject
@@ -198,7 +198,7 @@ defmodule Portal.Authentication do
   defp portal_session_log_attrs(session, actor, auth_provider_id, timestamp) do
     %{
       account_id: session.account_id,
-      event_id: EventId.build_session_log(),
+      log_id: LogId.build_session_log(),
       timestamp: timestamp,
       context: :portal,
       subject: %{

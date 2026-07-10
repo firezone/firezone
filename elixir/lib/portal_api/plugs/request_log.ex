@@ -6,7 +6,7 @@ defmodule PortalAPI.Plugs.RequestLog do
   operation to proceed unlogged.
   """
   alias __MODULE__.Database
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   # Bandit caps the request line well below this; the slice is a guard against
   # the column growing unbounded if that ever changes.
@@ -29,7 +29,7 @@ defmodule PortalAPI.Plugs.RequestLog do
 
     %{
       account_id: subject.account.id,
-      event_id: EventId.build_api_request_log(),
+      log_id: LogId.build_api_request_log(),
       actor_id: subject.actor.id,
       api_token_id: subject.credential.id,
       method: conn.method,
@@ -73,7 +73,7 @@ defmodule PortalAPI.Plugs.RequestLog do
 
     @cast_fields ~w[
       account_id
-      event_id
+      log_id
       actor_id
       api_token_id
       method

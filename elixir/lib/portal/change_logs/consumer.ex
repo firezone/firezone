@@ -9,7 +9,7 @@ defmodule Portal.ChangeLogs.Consumer do
   require Logger
 
   alias __MODULE__.Database
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
@@ -60,10 +60,10 @@ defmodule Portal.ChangeLogs.Consumer do
   def on_logical_message(state, _message), do: state
 
   # Handle Begin to reset transaction state. On the first Begin of each poll
-  # batch, seed seq_start from the Postgres clock so every event_id in the
+  # batch, seed seq_start from the Postgres clock so every log_id in the
   # batch shares a single authoritative timestamp. flush/1 drops the seed, so
   # each batch reseeds: batches are serialized by the poller's advisory lock,
-  # which keeps event_ids monotonic even when nodes alternate polling.
+  # which keeps log_ids monotonic even when nodes alternate polling.
   @impl true
   def on_begin(state, %{commit_timestamp: commit_timestamp}) do
     state
@@ -160,7 +160,7 @@ defmodule Portal.ChangeLogs.Consumer do
     offset = Map.get(tenant_offsets, account_id, 0)
 
     entry = %{
-      event_id: EventId.build_change_log(seq_start, offset),
+      log_id: LogId.build_change_log(seq_start, offset),
       timestamp: commit_timestamp,
       lsn: lsn,
       operation: op,
@@ -179,7 +179,7 @@ defmodule Portal.ChangeLogs.Consumer do
     }
   end
 
-  # event_ids are <<type::4, seq_start::52, tenant_offset::40>>, so a stale
+  # log_ids are <<type::4, seq_start::52, tenant_offset::40>>, so a stale
   # seq_start from an earlier batch would sort later entries before earlier
   # ones when another node's fresher seed produced the batch in between.
   defp drop_batch_seed(state) do

@@ -64,7 +64,7 @@ defmodule PortalAPI.Router do
     put "/clients/:id/unverify", ClientController, :unverify
 
     get "/logs", LogController, :index
-    get "/logs/:event_id", LogController, :show
+    get "/logs/:log_id", LogController, :show
 
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]

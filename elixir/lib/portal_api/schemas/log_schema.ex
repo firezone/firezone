@@ -15,7 +15,7 @@ defmodule PortalAPI.Schemas.Log do
       type: :object,
       properties: %{
         type: %Schema{type: :string, enum: ["change"]},
-        event_id: %Schema{
+        log_id: %Schema{
           type: :string,
           description: """
           Opaque identifier for the audit log entry. A 24-character lowercase
@@ -61,10 +61,10 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:type, :event_id, :timestamp, :object, :operation],
+      required: [:type, :log_id, :timestamp, :object, :operation],
       example: %{
         "type" => "change",
-        "event_id" => "c00060db0c2c8eb400000000",
+        "log_id" => "c00060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
         "object" => "actors",
         "operation" => "update",
@@ -90,7 +90,7 @@ defmodule PortalAPI.Schemas.Log do
       type: :object,
       properties: %{
         type: %Schema{type: :string, enum: ["session"]},
-        event_id: %Schema{
+        log_id: %Schema{
           type: :string,
           description: """
           Opaque identifier for the Session Log entry. A 24-character
@@ -110,10 +110,10 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:type, :event_id, :timestamp, :context, :subject],
+      required: [:type, :log_id, :timestamp, :context, :subject],
       example: %{
         "type" => "session",
-        "event_id" => "500060db0c2c8eb400000000",
+        "log_id" => "500060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
         "context" => "client",
         "subject" => %{
@@ -145,7 +145,7 @@ defmodule PortalAPI.Schemas.Log do
       type: :object,
       properties: %{
         type: %Schema{type: :string, enum: ["flow"]},
-        event_id: %Schema{
+        log_id: %Schema{
           type: :string,
           description: """
           Opaque identifier for the Flow Log entry. A 24-character lowercase
@@ -237,7 +237,7 @@ defmodule PortalAPI.Schemas.Log do
       },
       required: [
         :type,
-        :event_id,
+        :log_id,
         :timestamp,
         :device_id,
         :role,
@@ -263,7 +263,7 @@ defmodule PortalAPI.Schemas.Log do
       ],
       example: %{
         "type" => "flow",
-        "event_id" => "f00060db0c2c8eb400000000",
+        "log_id" => "f00060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
         "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "role" => "responder",
@@ -304,7 +304,7 @@ defmodule PortalAPI.Schemas.Log do
       type: :object,
       properties: %{
         type: %Schema{type: :string, enum: ["api_request"]},
-        event_id: %Schema{
+        log_id: %Schema{
           type: :string,
           description: """
           Opaque identifier for the API Request Log entry. A 24-character
@@ -339,7 +339,7 @@ defmodule PortalAPI.Schemas.Log do
       },
       required: [
         :type,
-        :event_id,
+        :log_id,
         :timestamp,
         :actor_id,
         :api_token_id,
@@ -350,7 +350,7 @@ defmodule PortalAPI.Schemas.Log do
       ],
       example: %{
         "type" => "api_request",
-        "event_id" => "a00060db0c2c8eb400000000",
+        "log_id" => "a00060db0c2c8eb400000000",
         "timestamp" => "2026-05-26T12:34:56.789Z",
         "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "api_token_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -377,7 +377,7 @@ defmodule PortalAPI.Schemas.Log do
       description: """
       A single Log entry. The `type` field identifies the log stream the
       entry belongs to, which is also encoded in the first character of its
-      `event_id` (`c` change, `5` session, `f` flow, `a` api_request).
+      `log_id` (`c` change, `5` session, `f` flow, `a` api_request).
       """,
       oneOf: [Log.Change, Log.Session, Log.Flow, Log.APIRequest]
     })
@@ -424,7 +424,7 @@ defmodule PortalAPI.Schemas.Log do
         "data" => [
           %{
             "type" => "change",
-            "event_id" => "c00060db0c2c8eb400000000",
+            "log_id" => "c00060db0c2c8eb400000000",
             "timestamp" => "2026-05-26T12:34:56.789Z",
             "object" => "actors",
             "operation" => "update",
