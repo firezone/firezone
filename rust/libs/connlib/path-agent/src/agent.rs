@@ -923,20 +923,19 @@ impl PathAgent {
             // keep the fast burst-then-interval cadence.
             if primary.is_none() || state.probes_sent < PROBE_BUDGET {
                 state.probes.fire(now);
-            } else if primary == Some((*local, *remote)) {
-                // The primary keepalives; every other pair goes quiet.
-                state.probes.keepalive(now);
-            } else {
-                state.probes.stop();
+                continue;
             }
+
+            // The primary keepalives; every other pair goes quiet.
+            if primary == Some((*local, *remote)) {
+                state.probes.keepalive(now);
+                continue;
+            }
+
+            state.probes.stop();
         }
     }
 
-    /// Clears the primary and re-probes: WireGuard distress or a new candidate.
-    /// A pair mid-discovery-burst keeps its state so the burst isn't disturbed;
-    /// everything else restarts (fresh burst, cleared RTT). The former primary
-    /// always restarts — it is the suspect path and must re-earn its place, so a
-    /// still-valid one re-confirms within a round trip and a dead one drops out.
     fn clear_and_reprobe(&mut self, now: Instant) {
         let former = self.primary.take();
         // Before a session exists there is nothing to probe;
@@ -944,6 +943,7 @@ impl PathAgent {
         if !self.has_session {
             return;
         }
+
         for (pair, state) in self.pairs.iter_mut() {
             let discovering = state.probes.due().is_some() && state.probes_sent < PROBE_BUDGET;
             if Some(*pair) == former || !discovering {
@@ -968,10 +968,6 @@ impl PathAgent {
         }
     }
 
-    /// A session now exists (a handshake was accepted). This is the single place
-    /// probing begins — probes ride the session, so they can't run before it. It
-    /// runs on every accepted handshake, but the transition (and the probe
-    /// kick-off) only fires the first time, when the session first appears.
     fn on_session_established(&mut self, now: Instant) {
         if self.has_session {
             return;

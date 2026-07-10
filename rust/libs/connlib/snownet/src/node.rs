@@ -825,12 +825,19 @@ where
         // Iceless has no such gap — probes ride the session, so a stuck
         // handshake means the path is genuinely down, and probe loss must not
         // retire a connection (WireGuard is the sole liveness authority). We
-        // therefore keep boringtun's 90s default so a transient outage (a relay
-        // partition, a roam) doesn't discard session state before the path can
-        // be probed back to life. The primary's NAT bindings are kept warm by
-        // the path-agent's own passive keepalive, not WireGuard's.
+        // keep boringtun's 90s rekey-attempt default so a transient outage (a
+        // relay partition, a roam) doesn't discard session state before the path
+        // can be probed back to life. We do tighten two timers: a 5s
+        // keepalive-timeout, so WireGuard sends a passive keepalive when 5s pass
+        // after it receives data without sending anything back (keeping the
+        // reverse path warm during one-way traffic), and a 2s rekey-timeout, so
+        // an unanswered handshake init is retried every 2s and distress surfaces
+        // within a couple of round trips.
         if !agent.is_iceless() {
             tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
+        } else {
+            tunnel.set_keepalive_timeout(Duration::from_secs(5));
+            tunnel.set_rekey_timeout(Duration::from_secs(2));
         }
 
         Connection {
@@ -1985,9 +1992,6 @@ where
         self.agent.initiate_handshake(&mut self.tunnel, now);
     }
 
-    /// Iceless-only soft roam: drop all locals. Connection state
-    /// (peer_socket, WG session keys) stays put; new candidates probe the
-    /// kept session back to life, so no handshake is needed.
     fn reset_for_roam(&mut self, now: Instant)
     where
         RId: Ord + fmt::Display + Copy,
