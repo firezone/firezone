@@ -39,7 +39,7 @@ defmodule PortalAPI.Plugs.RequestLogTest do
       api_token = Repo.one(from t in Portal.APIToken, where: t.actor_id == ^actor.id)
       assert log.api_token_id == api_token.id
 
-      assert String.starts_with?(log.event_id, "a")
+      assert String.starts_with?(log.log_id, "a")
       assert log.method == "GET"
       assert log.path == "/account"
       assert log.content_length == nil

@@ -7,7 +7,7 @@ defmodule Portal.ChangeLog do
 
   schema "change_logs" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :event_id, Portal.Types.EventId, primary_key: true
+    field :log_id, Portal.Types.LogId, primary_key: true
     field :timestamp, :utc_datetime_usec
     field :lsn, :integer
     field :object, :string

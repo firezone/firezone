@@ -15,7 +15,7 @@ defmodule Portal.Workers.DeleteOldAPIRequestLogsTest do
 
       assert :ok = perform_job(DeleteOldAPIRequestLogs, %{})
 
-      refute Repo.one(from arl in APIRequestLog, where: arl.event_id == ^old.event_id)
+      refute Repo.one(from arl in APIRequestLog, where: arl.log_id == ^old.log_id)
     end
 
     test "does not delete api_request_logs newer than 90 days" do
@@ -24,7 +24,7 @@ defmodule Portal.Workers.DeleteOldAPIRequestLogsTest do
 
       assert :ok = perform_job(DeleteOldAPIRequestLogs, %{})
 
-      assert Repo.one(from arl in APIRequestLog, where: arl.event_id == ^recent.event_id)
+      assert Repo.one(from arl in APIRequestLog, where: arl.log_id == ^recent.log_id)
     end
 
     test "deletes old api_request_logs across accounts" do
@@ -38,9 +38,9 @@ defmodule Portal.Workers.DeleteOldAPIRequestLogsTest do
 
       assert :ok = perform_job(DeleteOldAPIRequestLogs, %{})
 
-      refute Repo.one(from arl in APIRequestLog, where: arl.event_id == ^old1.event_id)
-      refute Repo.one(from arl in APIRequestLog, where: arl.event_id == ^old2.event_id)
-      assert Repo.one(from arl in APIRequestLog, where: arl.event_id == ^recent.event_id)
+      refute Repo.one(from arl in APIRequestLog, where: arl.log_id == ^old1.log_id)
+      refute Repo.one(from arl in APIRequestLog, where: arl.log_id == ^old2.log_id)
+      assert Repo.one(from arl in APIRequestLog, where: arl.log_id == ^recent.log_id)
     end
   end
 end

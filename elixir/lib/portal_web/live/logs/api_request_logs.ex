@@ -18,7 +18,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> assign_live_table(@table_id,
         query_module: Database,
-        sortable_fields: [{:api_request_logs, :inserted_at}, {:api_request_logs, :event_id}],
+        sortable_fields: [{:api_request_logs, :inserted_at}, {:api_request_logs, :log_id}],
         callback: &handle_logs_update!/2
       )
 
@@ -26,7 +26,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
   end
 
   def handle_params(
-        %{"event_id" => event_id} = params,
+        %{"log_id" => log_id} = params,
         uri,
         %{assigns: %{live_action: :show}} = socket
       ) do
@@ -35,7 +35,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       |> assign_tz(params, @filter_key)
       |> handle_live_tables_params(params, uri)
 
-    case Database.fetch_log(event_id, socket.assigns.subject) do
+    case Database.fetch_log(log_id, socket.assigns.subject) do
       {:ok, row} ->
         {:noreply, assign(socket, selected_log: row)}
 
@@ -113,15 +113,15 @@ defmodule PortalWeb.Logs.APIRequestLogs do
         <.live_table
           id="api_request_logs"
           rows={@api_request_logs}
-          row_id={&"api-request-log-#{&1.log.event_id}"}
+          row_id={&"api-request-log-#{&1.log.log_id}"}
           row_click={
             fn row ->
-              ~p"/#{@account}/logs/api_request_logs/#{row.log.event_id}?#{@query_params}"
+              ~p"/#{@account}/logs/api_request_logs/#{row.log.log_id}?#{@query_params}"
             end
           }
           row_selected={
             fn row ->
-              not is_nil(@selected_log) and row.log.event_id == @selected_log.log.event_id
+              not is_nil(@selected_log) and row.log.log_id == @selected_log.log.log_id
             end
           }
           filters={@filters_by_table_id["api_request_logs"]}
@@ -138,7 +138,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             class="w-44"
           >
             <.timestamp_cell
-              event_id={row.log.event_id}
+              log_id={row.log.log_id}
               timestamp={row.log.inserted_at}
               tz_mode={@tz_mode}
               display_tz={@display_tz}
@@ -274,7 +274,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
               <.detail_row label="Timestamp">
                 <.timestamp_cell
                   id_prefix="panel-timestamp"
-                  event_id={@selected_log.log.event_id}
+                  log_id={@selected_log.log.log_id}
                   timestamp={@selected_log.log.inserted_at}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
@@ -282,7 +282,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
               </.detail_row>
               <.detail_row label="Event ID">
                 <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
-                  {@selected_log.log.event_id}
+                  {@selected_log.log.log_id}
                 </span>
               </.detail_row>
             </dl>
@@ -469,7 +469,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     alias Portal.APIRequestLog
     alias Portal.Actor
     alias Portal.Safe
-    alias Portal.Types.EventId
+    alias Portal.Types.LogId
 
     def list_api_request_logs(subject, opts \\ []) do
       result =
@@ -483,11 +483,11 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       end
     end
 
-    def fetch_log(event_id, subject) do
-      with {:ok, event_id} <- EventId.parse(event_id) do
+    def fetch_log(log_id, subject) do
+      with {:ok, log_id} <- LogId.parse(log_id) do
         result =
           from(arl in APIRequestLog, as: :api_request_logs)
-          |> where([api_request_logs: arl], arl.event_id == ^event_id)
+          |> where([api_request_logs: arl], arl.log_id == ^log_id)
           |> Safe.scoped(subject, :replica)
           |> Safe.one(fallback_to_primary: true)
 
@@ -508,7 +508,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     end
 
     def cursor_fields,
-      do: [{:api_request_logs, :desc, :inserted_at}, {:api_request_logs, :desc, :event_id}]
+      do: [{:api_request_logs, :desc, :inserted_at}, {:api_request_logs, :desc, :log_id}]
 
     @method_values [
       {"GET", "GET"},
@@ -594,7 +594,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
          [api_request_logs: arl],
          fragment("? ILIKE ?", arl.path, ^pattern) or
            fragment("?::text ILIKE ?", arl.actor_id, ^pattern) or
-           fragment("encode(?, 'hex') ILIKE ?", arl.event_id, ^pattern) or
+           fragment("encode(?, 'hex') ILIKE ?", arl.log_id, ^pattern) or
            fragment("? ILIKE ?", arl.request_id, ^pattern)
        )}
     end

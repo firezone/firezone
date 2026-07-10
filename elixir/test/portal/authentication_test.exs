@@ -845,18 +845,18 @@ defmodule Portal.AuthenticationTest do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       auth_provider = auth_provider_fixture(account: account)
-      event_id = Portal.Types.EventId.build_session_log()
+      log_id = Portal.Types.LogId.build_session_log()
 
       log_attrs = %{
         account_id: account.id,
-        event_id: event_id,
+        log_id: log_id,
         timestamp: DateTime.utc_now(),
         context: :portal,
         subject: %{}
       }
 
       # Pre-seed the log row so the transaction's log insert collides on the
-      # (account_id, event_id) primary key and fails.
+      # (account_id, log_id) primary key and fails.
       Portal.Repo.insert_all(Portal.SessionLog, [log_attrs])
 
       session = %Portal.PortalSession{
@@ -874,7 +874,7 @@ defmodule Portal.AuthenticationTest do
 
       # Fail closed: the session must not persist without its audit record.
       assert Portal.Repo.all(Portal.PortalSession) == []
-      assert [%Portal.SessionLog{event_id: ^event_id}] = Portal.Repo.all(Portal.SessionLog)
+      assert [%Portal.SessionLog{log_id: ^log_id}] = Portal.Repo.all(Portal.SessionLog)
     end
 
     test "creates a portal session for disabled account" do

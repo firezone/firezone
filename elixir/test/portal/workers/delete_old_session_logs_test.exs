@@ -15,7 +15,7 @@ defmodule Portal.Workers.DeleteOldSessionLogsTest do
 
       assert :ok = perform_job(DeleteOldSessionLogs, %{})
 
-      refute Repo.one(from sl in SessionLog, where: sl.event_id == ^old.event_id)
+      refute Repo.one(from sl in SessionLog, where: sl.log_id == ^old.log_id)
     end
 
     test "does not delete session_logs newer than 90 days" do
@@ -23,7 +23,7 @@ defmodule Portal.Workers.DeleteOldSessionLogsTest do
 
       assert :ok = perform_job(DeleteOldSessionLogs, %{})
 
-      assert Repo.one(from sl in SessionLog, where: sl.event_id == ^recent.event_id)
+      assert Repo.one(from sl in SessionLog, where: sl.log_id == ^recent.log_id)
     end
 
     test "deletes old session_logs across accounts" do
@@ -37,9 +37,9 @@ defmodule Portal.Workers.DeleteOldSessionLogsTest do
 
       assert :ok = perform_job(DeleteOldSessionLogs, %{})
 
-      refute Repo.one(from sl in SessionLog, where: sl.event_id == ^old1.event_id)
-      refute Repo.one(from sl in SessionLog, where: sl.event_id == ^old2.event_id)
-      assert Repo.one(from sl in SessionLog, where: sl.event_id == ^recent.event_id)
+      refute Repo.one(from sl in SessionLog, where: sl.log_id == ^old1.log_id)
+      refute Repo.one(from sl in SessionLog, where: sl.log_id == ^old2.log_id)
+      assert Repo.one(from sl in SessionLog, where: sl.log_id == ^recent.log_id)
     end
   end
 end

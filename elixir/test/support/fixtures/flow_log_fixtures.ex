@@ -7,7 +7,7 @@ defmodule Portal.FlowLogFixtures do
 
   alias Portal.FlowLog
   alias Portal.Repo
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   @doc """
   Insert a flow_log row directly, with sensible defaults for every NOT NULL
@@ -24,7 +24,7 @@ defmodule Portal.FlowLogFixtures do
       attrs
       |> Map.drop([:account])
       |> Map.put_new(:account_id, account.id)
-      |> Map.put_new(:event_id, EventId.build_flow_log())
+      |> Map.put_new(:log_id, LogId.build_flow_log())
       |> Map.put_new(:device_id, Ecto.UUID.generate())
       |> Map.put_new(:role, :responder)
       |> Map.put_new(:protocol, :tcp)

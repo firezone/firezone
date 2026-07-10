@@ -1,5 +1,5 @@
 defmodule PortalAPI.Plugs.ValidateUUIDParams do
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   def init(opts), do: opts
 
@@ -23,7 +23,7 @@ defmodule PortalAPI.Plugs.ValidateUUIDParams do
   defp valid_id?(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
       {:ok, _} -> true
-      :error -> EventId.valid?(value)
+      :error -> LogId.valid?(value)
     end
   end
 

@@ -19,15 +19,15 @@ defmodule PortalAPI.FlowLogController do
   import Ecto.Changeset
   alias Portal.FlowLog
   alias Portal.FlowLogToken
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
   alias __MODULE__.Database
 
-  # Schema fields we cast/persist. `event_id` is server-assigned per record (a
-  # fresh flow_log event_id is minted here, not trusted from the body); on a
-  # slot conflict the existing row keeps its own event_id. Attribution fields
+  # Schema fields we cast/persist. `log_id` is server-assigned per record (a
+  # fresh flow_log log_id is minted here, not trusted from the body); on a
+  # slot conflict the existing row keeps its own log_id. Attribution fields
   # come from the token; the rest are reported in the body.
-  @cast_fields ~w[account_id event_id device_id role policy_authorization_id policy_id
+  @cast_fields ~w[account_id log_id device_id role policy_authorization_id policy_id
                   auth_provider_id resource_id
                   resource_name resource_address actor_id actor_email actor_name authorized_at
                   authorization_expires_at
@@ -186,7 +186,7 @@ defmodule PortalAPI.FlowLogController do
   end
 
   # The only fields a reporter may supply: the network tuples, flow window, and
-  # counters. Everything else (attribution, event_id, inserted_at) is set from
+  # counters. Everything else (attribution, log_id, inserted_at) is set from
   # the verified token or the server below.
   @body_fields ~w[protocol inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
                   outer_src_ip outer_dst_ip outer_src_port outer_dst_port
@@ -196,13 +196,13 @@ defmodule PortalAPI.FlowLogController do
   # fields, flow window, and counters come from the body. Taking the body fields
   # as an explicit whitelist means a record can never supply its own attribution
   # (account, device, role, policy, resource, actor) or the server-assigned
-  # event_id, regardless of what keys it sends.
+  # log_id, regardless of what keys it sends.
   defp to_attrs(record, claims, now) do
     record
     |> Map.take(@body_fields)
     |> Map.merge(%{
       "account_id" => claims["account_id"],
-      "event_id" => EventId.build_flow_log(),
+      "log_id" => LogId.build_flow_log(),
       "device_id" => claims["device_id"],
       "role" => claims["role"],
       "policy_authorization_id" => claims["policy_authorization_id"],

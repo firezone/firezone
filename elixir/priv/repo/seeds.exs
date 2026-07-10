@@ -35,7 +35,7 @@ defmodule Portal.Repo.Seeds do
     Userpass
   }
 
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   # User agent strings for seeded clients and gateways.
   # Update these when bumping the connlib version used in dev/test.
@@ -344,7 +344,7 @@ defmodule Portal.Repo.Seeds do
         lsn = :atomics.add_get(seq, 1, 1)
 
         %{
-          event_id: EventId.build_change_log(System.os_time(:microsecond), lsn),
+          log_id: LogId.build_change_log(System.os_time(:microsecond), lsn),
           account_id: account.id,
           timestamp: timestamp,
           lsn: lsn,
@@ -388,7 +388,7 @@ defmodule Portal.Repo.Seeds do
         timestamp = DateTime.add(now, -mins_ago * 60, :second)
 
         %{
-          event_id: EventId.build_session_log(),
+          log_id: LogId.build_session_log(),
           account_id: account.id,
           timestamp: timestamp,
           context: context,
@@ -455,7 +455,7 @@ defmodule Portal.Repo.Seeds do
         secs_ago = trunc(:math.pow(i + 1, 1.7) * 60)
 
         %{
-          event_id: EventId.build_api_request_log(),
+          log_id: LogId.build_api_request_log(),
           account_id: account.id,
           actor_id: api_actor.id,
           api_token_id: api_token_id,

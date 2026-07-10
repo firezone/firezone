@@ -4,7 +4,7 @@ defmodule Portal.APIRequestLog do
 
   @type t :: %__MODULE__{
           account_id: Ecto.UUID.t(),
-          event_id: String.t(),
+          log_id: String.t(),
           actor_id: Ecto.UUID.t(),
           api_token_id: Ecto.UUID.t(),
           method: String.t(),
@@ -25,7 +25,7 @@ defmodule Portal.APIRequestLog do
 
   schema "api_request_logs" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :event_id, Portal.Types.EventId, primary_key: true
+    field :log_id, Portal.Types.LogId, primary_key: true
 
     field :actor_id, :binary_id
     field :api_token_id, :binary_id
@@ -49,7 +49,7 @@ defmodule Portal.APIRequestLog do
     changeset
     |> validate_required([
       :account_id,
-      :event_id,
+      :log_id,
       :actor_id,
       :api_token_id,
       :method,

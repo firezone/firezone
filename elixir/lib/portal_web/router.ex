@@ -258,12 +258,12 @@ defmodule PortalWeb.Router do
       # Audit
       scope "/logs", Logs do
         live "/change_logs", ChangeLogs
-        live "/change_logs/:event_id", ChangeLogs, :show
+        live "/change_logs/:log_id", ChangeLogs, :show
         live "/session_logs", SessionLogs
-        live "/session_logs/:event_id", SessionLogs, :show
+        live "/session_logs/:log_id", SessionLogs, :show
         live "/flow_logs", FlowLogs
         live "/api_request_logs", APIRequestLogs
-        live "/api_request_logs/:event_id", APIRequestLogs, :show
+        live "/api_request_logs/:log_id", APIRequestLogs, :show
       end
 
       scope "/settings", Settings do
