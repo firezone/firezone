@@ -674,12 +674,12 @@ impl PathAgent {
     ) -> Option<Vec<Vec<u8>>> {
         let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
         let mut outbound = Vec::<Vec<u8>>::new();
-        match tunnel.decapsulate_at(None, bytes, &mut buf, now) {
+        match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
             TunnResult::Done => {}
             TunnResult::WriteToNetwork(first) => {
                 outbound.push(first.to_vec());
                 while let TunnResult::WriteToNetwork(more) =
-                    tunnel.decapsulate_at(None, &[], &mut buf, now)
+                    tunnel.decapsulate_at(Some(path.1.ip()), &[], &mut buf, now)
                 {
                     outbound.push(more.to_vec());
                 }
