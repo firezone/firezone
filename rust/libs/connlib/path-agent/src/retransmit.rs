@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 pub(crate) struct PairRetransmit {
-    pub(crate) next_fire_at: Instant,
+    /// `None` once the ladder is spent: it runs once and stops, leaving further
+    /// retransmission to boringtun's own re-init cadence.
+    pub(crate) next_fire_at: Option<Instant>,
     pub(crate) step: usize,
 }
 
@@ -12,13 +14,15 @@ impl PairRetransmit {
 
     pub(crate) fn new(now: Instant) -> Self {
         Self {
-            next_fire_at: now + Duration::from_millis(Self::LADDER_MS[0]),
+            next_fire_at: Some(now + Duration::from_millis(Self::LADDER_MS[0])),
             step: 0,
         }
     }
 
     pub(crate) fn advance(&mut self, now: Instant) {
-        self.step = (self.step + 1).min(Self::LADDER_MS.len() - 1);
-        self.next_fire_at = now + Duration::from_millis(Self::LADDER_MS[self.step]);
+        self.step += 1;
+        self.next_fire_at = Self::LADDER_MS
+            .get(self.step)
+            .map(|ms| now + Duration::from_millis(*ms));
     }
 }

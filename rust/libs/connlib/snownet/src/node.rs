@@ -312,7 +312,7 @@ where
 
             // Re-seed connection with all candidates.
             let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
+                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations, now);
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -362,7 +362,7 @@ where
             self.allocations
                 .candidates_for_relay(&selected_relay)
                 .filter_map(|candidate| {
-                    let candidate = agent.add_local_candidate(candidate)?;
+                    let candidate = agent.add_local_candidate(candidate, now)?;
                     let event = new_ice_candidate_event(cid, candidate, use_iceless);
 
                     Some(event)
@@ -824,17 +824,27 @@ where
             self.unix_now,
             self.unix_ts,
         );
-        // By default, boringtun has a rekey attempt time of 90(!) seconds.
-        // In case of a state de-sync or other issues, this means we try for
-        // 90s to make a handshake, all whilst our ICE layer thinks the connection
-        // is working perfectly fine.
-        // This results in a bad UX as the user has to essentially wait for 90s
-        // before Firezone can fix the state and make a new connection.
+        // With classic ICE, a 90s rekey-attempt time is bad UX: ICE can think
+        // the pair is fine while WireGuard is desynced and stuck, so we shorten
+        // it to roughly our ICE timeout to fail fast and re-establish.
         //
-        // By aligning the rekey-attempt-time roughly with our ICE timeout, we ensure
-        // that even if the hole-punch was successful, it will take at most 20s
-        // until we have a WireGuard tunnel to send packets into.
-        tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
+        // Iceless has no such gap — probes ride the session, so a stuck
+        // handshake means the path is genuinely down, and probe loss must not
+        // retire a connection (WireGuard is the sole liveness authority). We
+        // keep boringtun's 90s rekey-attempt default so a transient outage (a
+        // relay partition, a roam) doesn't discard session state before the path
+        // can be probed back to life. We do tighten two timers: a 5s
+        // keepalive-timeout, so WireGuard sends a passive keepalive when 5s pass
+        // after it receives data without sending anything back (keeping the
+        // reverse path warm during one-way traffic), and a 2s rekey-timeout, so
+        // an unanswered handshake init is retried every 2s and distress surfaces
+        // within a couple of round trips.
+        if !agent.is_iceless() {
+            tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
+        } else {
+            tunnel.set_keepalive_timeout(Duration::from_secs(5));
+            tunnel.set_rekey_timeout(Duration::from_secs(2));
+        }
 
         Connection {
             agent,
@@ -1123,13 +1133,14 @@ fn seed_agent_with_local_candidates<'a, RId>(
     selected_relay: RId,
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
+    now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
     RId: Ord + fmt::Display + Copy,
 {
     allocations
         .candidates_for_relay(&selected_relay)
-        .filter_map(move |c| agent.add_local_candidate(c))
+        .filter_map(move |c| agent.add_local_candidate(c, now))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1989,17 +2000,14 @@ where
     where
         RId: Ord + fmt::Display + Copy,
     {
-        self.agent.initiate_handshake(&mut self.tunnel, false, now);
+        self.agent.initiate_handshake(&mut self.tunnel, now);
     }
 
-    /// Iceless-only soft roam: drop all locals, force-resend the init.
-    /// Connection state (peer_socket, WG session keys) stays put.
     fn reset_for_roam(&mut self, now: Instant)
     where
         RId: Ord + fmt::Display + Copy,
     {
         self.agent.rebuild_path(|_| true, now);
-        self.agent.initiate_handshake(&mut self.tunnel, true, now);
     }
 
     /// Iceless-only. Receiver rediscovers the connection by the
@@ -2024,8 +2032,6 @@ where
             .map(|c| crate::candidate::to_path_agent(&c))
             .collect::<SmallVec<[_; 2]>>();
         self.agent.rebuild_path(|c| dropped.contains(c), now);
-
-        self.agent.initiate_handshake(&mut self.tunnel, true, now);
 
         tracing::info!(%cid, "Reset iceless path-agent after relay invalidation");
     }
@@ -2095,7 +2101,7 @@ where
     ) where
         TId: fmt::Display + Copy,
     {
-        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone()) {
+        if let Some(candidate) = self.agent.add_local_candidate(candidate.clone(), now) {
             let iceless = self.agent.is_iceless();
             pending_events.push_back(new_ice_candidate_event(cid, candidate, iceless));
         }

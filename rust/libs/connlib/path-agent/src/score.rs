@@ -39,7 +39,10 @@ pub(crate) struct Bucket {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct PairScore {
     pub(crate) bucket: Bucket,
-    pub(crate) rtt: Option<Duration>,
+    /// An unmeasured pair sorts *last* within its bucket (`Duration::MAX`), not
+    /// first: a tier-based preliminary primary must be refinable by the first
+    /// real measurement, never treated as the best just because it has no RTT.
+    pub(crate) rtt: Duration,
 }
 
 pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
@@ -66,6 +69,6 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
                 LocalFamily::V4
             },
         },
-        rtt: state.smoothed_rtt,
+        rtt: state.rtt.map(|rtt| rtt.smoothed).unwrap_or(Duration::MAX),
     }
 }
