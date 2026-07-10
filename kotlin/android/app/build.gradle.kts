@@ -45,7 +45,7 @@ android {
     }
 
     namespace = "dev.firezone.android"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "28.2.13676358" // Must be a version preinstalled on the CI runner (see setup-android)
 
     defaultConfig {
