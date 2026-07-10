@@ -50,9 +50,6 @@ const MAX_CHANNEL_MEMORY: usize = 2
     * (size_of::<PacketBatch>()
         + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
 
-// iOS Network Extensions are capped at 50 MB; these channels must only ever use a small fraction of
-// that. As production code, the bound is checked wherever connlib is compiled: the mobile budget when
-// built for iOS / Android (the Client FFI), the desktop budget otherwise.
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const _: () = assert!(MAX_CHANNEL_MEMORY <= 4 * 1024 * 1024);
 #[cfg(not(any(target_os = "ios", target_os = "android")))]

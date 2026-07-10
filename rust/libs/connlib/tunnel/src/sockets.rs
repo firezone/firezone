@@ -268,10 +268,6 @@ const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
 const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
     2 * (INBOUND_QUEUE_SIZE + UDP_RECV_BATCH_LIMIT + 1) * socket_factory::MAX_RECV_BATCH_MEMORY;
 
-// iOS Network Extensions are capped at 50 MB; these queues must only ever use a small fraction of
-// that. As production code, the bounds are checked wherever connlib is compiled: the mobile budgets
-// when built for iOS / Android (the Client FFI), the desktop budgets otherwise. The inbound budgets
-// are large because a GRO batch is ~2.5 MB; the depths above keep the total bounded.
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const _: () = {
     assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 1024 * 1024);
