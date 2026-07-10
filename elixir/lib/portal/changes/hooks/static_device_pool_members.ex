@@ -26,7 +26,9 @@ defmodule Portal.Changes.Hooks.StaticDevicePoolMembers do
     member = struct_from_params(Portal.StaticDevicePoolMember, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: member}
 
-    Database.delete_responder_authorizations_for_member(member)
+    if member.device_id && member.resource_id do
+      Database.delete_responder_authorizations_for_member(member)
+    end
 
     PubSub.Changes.broadcast(member.account_id, :static_device_pool_members, change)
   end
