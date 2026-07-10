@@ -1,0 +1,24 @@
+[package]
+name = "flow-tracker"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+base64 = { workspace = true, features = ["std"] }
+chrono = { workspace = true }
+connlib-model = { workspace = true }
+dns-types = { workspace = true }
+ip-packet = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+flow-log-spool = { workspace = true }
+flow-log-writer = { workspace = true }
+tempfile = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

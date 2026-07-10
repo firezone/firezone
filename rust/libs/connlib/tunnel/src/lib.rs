@@ -35,7 +35,6 @@ mod conn_track;
 mod dns;
 mod expiring_map;
 mod filter_engine;
-mod flow_log;
 mod gateway;
 mod io;
 #[cfg(test)]

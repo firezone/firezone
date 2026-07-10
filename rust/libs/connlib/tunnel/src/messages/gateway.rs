@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_authorize_flow() {
-        let token = crate::messages::TEST_INGEST_TOKEN;
+        let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = AUTHORIZE_FLOW.replace(
             r#""flow_id""#,
             &format!(r#""flow_logs_ingest_token":"{token}","flow_id""#),

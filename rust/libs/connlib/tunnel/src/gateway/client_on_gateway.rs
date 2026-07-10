@@ -12,7 +12,6 @@ use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
-use crate::flow_log;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
@@ -364,7 +363,7 @@ impl ClientOnGateway {
             .classify_resource(packet.source(), packet.source_protocol())
             .with_context(|| UnroutablePacket::not_allowed(&packet))?;
 
-        flow_log::record_resource(rid);
+        flow_tracker::record_resource(rid);
 
         Ok(packet)
     }
@@ -412,7 +411,7 @@ impl ClientOnGateway {
             ));
         }
 
-        flow_log::record_domain(state.domain.clone());
+        flow_tracker::record_domain(state.domain.clone());
 
         let (source_protocol, real_ip) =
             self.nat_table
@@ -478,8 +477,8 @@ impl ClientOnGateway {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
             return Ok(());
         }
-        flow_log::record_resource(rid);
-        flow_log::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_tracker::record_resource(rid);
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
         Ok(())
     }

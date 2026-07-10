@@ -23,6 +23,7 @@ divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
+flow-tracker = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
@@ -60,15 +61,12 @@ tun = { workspace = true }
 
 [dev-dependencies]
 firezone-relay = { workspace = true, features = ["proptest"] }
-flow-log-spool = { workspace = true }
-flow-log-writer = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 l3-tcp = { workspace = true }
 proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
 sha2 = { workspace = true }
-tempfile = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "test-util"] }
