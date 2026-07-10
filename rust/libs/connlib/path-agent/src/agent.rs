@@ -1086,6 +1086,13 @@ impl PathAgent {
         let from = self.primary;
         self.primary = Some(path);
 
+        // Distress is measured per primary: a fresh one starts with a clean
+        // slate so a count that climbed on a previous (or no) primary — e.g.
+        // while pathless — can't leak in and trip `== REKEY_DISTRESS_ATTEMPTS`
+        // on the wrong path.
+        self.unanswered_rekeys = 0;
+        self.peer_rekeys = 0;
+
         tracing::debug!(?from, local = %path.0, remote = %path.1, "Iceless primary changed");
 
         self.queue_event(

@@ -382,6 +382,34 @@ fn an_answered_rekey_resets_the_distress_count() {
 }
 
 #[test]
+fn a_primary_change_resets_the_distress_count() {
+    // Distress is scoped to the current primary: a count that climbed on the
+    // previous primary must not carry over and trip distress early on the next.
+    let mut a = agent_with_relay_pairs();
+    let t0 = Instant::now();
+    bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
+    assert_eq!(a.primary(), Some((addr(2), addr(4))));
+
+    // One unanswered re-key on the relay primary: the count is now 1.
+    a.handle_outbound(handshake_init_bytes(), t0);
+    let _ = a.transmits();
+
+    // A host probe reply promotes the primary, which resets the count.
+    let probes = a.tick(t0);
+    a.ack_probe(&probes, (addr(1), addr(3)), t0 + ms(30));
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+
+    // The first unanswered re-key on the new primary is only the first again;
+    // without the reset the carried-over count would clear it here.
+    a.handle_outbound(handshake_init_bytes(), t0 + secs(1));
+    assert_eq!(
+        a.primary(),
+        Some((addr(1), addr(3))),
+        "the distress count restarts with the new primary",
+    );
+}
+
+#[test]
 fn a_second_peer_rekey_without_data_clears_the_primary() {
     let (mut a, t0) = direct_primary_with_relay_fallback();
 
