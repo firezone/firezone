@@ -409,15 +409,16 @@ defmodule PortalWeb.NavigationComponents do
         <.icon name={@icon} class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
-          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex items-center gap-1.5"
+          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
         >
           {render_slot(@inner_block)}
-          <span
-            :if={@badge}
-            class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
-          >
-            {@badge}
-          </span>
+        </span>
+        <span
+          :if={@badge}
+          data-sidebar-badge
+          class="ml-auto px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+        >
+          {@badge}
         </span>
       </.link>
     </li>
