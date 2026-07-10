@@ -290,18 +290,16 @@ defmodule PortalWeb.NavigationComponents do
         <div>
           <p
             data-sidebar-group-label
-            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] flex items-center gap-1.5"
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
           >
             Audit
-            <span class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand">
-              NEW
-            </span>
           </p>
           <ul class="space-y-0.5">
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/logs/change_logs"}
               icon="ri-history-line"
+              badge="NEW"
             >
               Change Logs
             </.sidebar_item>
@@ -309,6 +307,7 @@ defmodule PortalWeb.NavigationComponents do
               current_path={@current_path}
               navigate={~p"/#{@account}/logs/session_logs"}
               icon="ri-login-circle-line"
+              badge="NEW"
             >
               Session Logs
             </.sidebar_item>
@@ -316,6 +315,7 @@ defmodule PortalWeb.NavigationComponents do
               current_path={@current_path}
               navigate={~p"/#{@account}/logs/flow_logs"}
               icon="ri-exchange-line"
+              badge="NEW"
             >
               Flow Logs
             </.sidebar_item>
@@ -323,6 +323,7 @@ defmodule PortalWeb.NavigationComponents do
               current_path={@current_path}
               navigate={~p"/#{@account}/logs/api_request_logs"}
               icon="ri-terminal-box-line"
+              badge="NEW"
             >
               API Request Logs
             </.sidebar_item>
@@ -387,6 +388,7 @@ defmodule PortalWeb.NavigationComponents do
   attr :navigate, :string, required: true
   slot :inner_block, required: true
   attr :current_path, :string, required: true
+  attr :badge, :string, default: nil
 
   def sidebar_item(assigns) do
     active? = sidebar_item_active?(assigns.current_path, assigns.navigate)
@@ -407,9 +409,15 @@ defmodule PortalWeb.NavigationComponents do
         <.icon name={@icon} class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
-          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex items-center gap-1.5"
         >
           {render_slot(@inner_block)}
+          <span
+            :if={@badge}
+            class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+          >
+            {@badge}
+          </span>
         </span>
       </.link>
     </li>
