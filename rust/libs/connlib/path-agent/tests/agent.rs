@@ -45,7 +45,7 @@ fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
 }
 
 #[test]
-fn retransmit_ladder_bursts_then_doubles_to_cap() {
+fn retransmit_ladder_runs_once_then_stops() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
@@ -53,15 +53,68 @@ fn retransmit_ladder_bursts_then_doubles_to_cap() {
     a.handle_timeout(now);
     let _ = a.transmits();
 
+    // Gaps after the first 50ms fire. The ladder ends at 1600ms and stops —
+    // boringtun's own re-init drives retransmission after that, so it does not
+    // repeat the tail.
     let mut t = now + ms(50);
-    let expected_step_ms: [u64; 8] = [50, 50, 100, 200, 400, 800, 1600, 1600];
-    for &expected_ms in &expected_step_ms {
+    let gaps: [u64; 7] = [50, 50, 100, 200, 400, 800, 1600];
+    for &gap in &gaps {
         a.handle_timeout(t);
         let _ = a.transmits();
         let next = a.poll_timeout().expect("deadline");
-        assert_eq!(next, t + ms(expected_ms));
+        assert_eq!(next, t + ms(gap));
         t = next;
     }
+
+    // The final step fires; the one-time ladder is now spent.
+    a.handle_timeout(t);
+    let _ = a.transmits();
+    assert_eq!(
+        a.poll_timeout(),
+        None,
+        "the ladder does not repeat its tail"
+    );
+}
+
+#[test]
+fn a_boringtun_reinit_refans_once_without_re_arming_the_ladder() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+
+    // First init arms the one-time fast ladder on each relay pair.
+    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_timeout(now);
+    let _ = a.transmits();
+
+    // Drain the fast head to exhaustion.
+    let mut t = now + ms(50);
+    while let Some(next) = a.poll_timeout() {
+        t = next;
+        a.handle_timeout(t);
+        let _ = a.transmits();
+    }
+
+    // A boringtun re-init (fresh bytes, still no session) re-fans to every relay
+    // pair once but does not restart the fast ladder.
+    let mut reinit = handshake_init_bytes();
+    reinit[4] = 7;
+    a.handle_outbound(reinit.clone(), t + secs(2));
+    a.handle_timeout(t + secs(2));
+
+    let transmits = a.transmits();
+    assert_eq!(
+        transmits.len(),
+        3,
+        "the re-init fans out once per relay pair"
+    );
+    for tr in &transmits {
+        assert_eq!(tr.payload, Payload::Ciphertext(reinit.clone()));
+    }
+    assert_eq!(
+        a.poll_timeout(),
+        None,
+        "the re-init does not re-arm the fast ladder",
+    );
 }
 
 #[test]

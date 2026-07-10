@@ -159,9 +159,15 @@ struct InflightProbe {
 
 struct OutboundInit {
     bytes: Vec<u8>,
-    retransmits: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
-    /// Reset when relay pairs arrive late so waiting time doesn't count against
-    /// the retransmit ladder.
+    /// Relay pairs the current `bytes` have been fanned out to. Cleared when a
+    /// boringtun re-init replaces `bytes`, so the fresh init reaches every pair.
+    fanned: BTreeSet<(SocketAddr, SocketAddr)>,
+    /// One-time fast-retransmit ladder, armed per relay pair on its first
+    /// fan-out to win the channel-bind race. Not re-armed on a re-init;
+    /// boringtun's own cadence drives retransmission after the head.
+    ladder: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
+    /// When bootstrap began; wakes `poll_timeout` to fan a relay pair that
+    /// arrives after the initial fan-out.
     started_at: Instant,
 }
 
@@ -169,7 +175,8 @@ impl OutboundInit {
     fn new(bytes: Vec<u8>, started_at: Instant) -> Self {
         Self {
             bytes,
-            retransmits: BTreeMap::new(),
+            fanned: BTreeSet::new(),
+            ladder: BTreeMap::new(),
             started_at,
         }
     }
@@ -438,7 +445,16 @@ impl PathAgent {
             Ok(Packet::HandshakeInit(_)) if !self.has_session => {
                 tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
                 self.forwarded_response = None;
-                self.outbound_init = Some(OutboundInit::new(bytes, now));
+                match &mut self.outbound_init {
+                    // A boringtun re-init: carry the fresh bytes and re-fan them
+                    // once to every relay pair. The fast ladder is a one-time
+                    // head armed on the first init, so it is not restarted here.
+                    Some(init) => {
+                        init.bytes = bytes;
+                        init.fanned.clear();
+                    }
+                    None => self.outbound_init = Some(OutboundInit::new(bytes, now)),
+                }
             }
             // Established: the re-key rides the primary and counts toward distress.
             Ok(Packet::HandshakeInit(_)) => {
@@ -789,7 +805,7 @@ impl PathAgent {
             .outbound_init
             .as_ref()
             .filter(|_| !self.has_session)
-            .and_then(|i| i.retransmits.values().map(|r| r.next_fire_at).min());
+            .and_then(|i| i.ladder.values().filter_map(|r| r.next_fire_at).min());
         // Probes wait for the first handshake exchange; see `drive_probes`.
         let next_probe = self
             .has_session
@@ -804,9 +820,7 @@ impl PathAgent {
             .and_then(|i| {
                 self.pairs
                     .iter()
-                    .any(|(addrs, state)| {
-                        state.involves_relay() && !i.retransmits.contains_key(addrs)
-                    })
+                    .any(|(addrs, state)| state.involves_relay() && !i.fanned.contains(addrs))
                     .then_some(i.started_at)
             });
         let dedup_expiry = self
@@ -851,20 +865,17 @@ impl PathAgent {
             return;
         };
 
-        let new_relay_pairs: Vec<_> = self
+        // Relay pairs the current init hasn't reached yet: every pair on the
+        // first init, every pair again on a re-init (`fanned` was cleared), plus
+        // any relay pair that arrives mid-bootstrap.
+        let unfanned: Vec<_> = self
             .pairs
             .iter()
-            .filter(|(addrs, state)| {
-                state.involves_relay() && !outbound.retransmits.contains_key(*addrs)
-            })
+            .filter(|(addrs, state)| state.involves_relay() && !outbound.fanned.contains(*addrs))
             .map(|(addrs, _)| *addrs)
             .collect();
 
-        if !new_relay_pairs.is_empty() && outbound.retransmits.is_empty() {
-            outbound.started_at = now;
-        }
-
-        for (local, remote) in new_relay_pairs {
+        for (local, remote) in unfanned {
             tracing::debug!(%local, %remote, "Fanning out HandshakeInit on relay pair");
 
             pending.push_back(Transmit {
@@ -872,13 +883,21 @@ impl PathAgent {
                 remote,
                 payload: Payload::Ciphertext(outbound.bytes.clone()),
             });
+            outbound.fanned.insert((local, remote));
+            // Arm the one-time fast head the first time we send to this pair; a
+            // pair already laddered keeps its (spent) entry, so a re-init does
+            // not restart it.
             outbound
-                .retransmits
-                .insert((local, remote), PairRetransmit::new(now));
+                .ladder
+                .entry((local, remote))
+                .or_insert_with(|| PairRetransmit::new(now));
         }
 
-        for ((local, remote), state) in outbound.retransmits.iter_mut() {
-            if now >= state.next_fire_at {
+        for ((local, remote), state) in outbound.ladder.iter_mut() {
+            let Some(fire_at) = state.next_fire_at else {
+                continue;
+            };
+            if now >= fire_at {
                 tracing::trace!(%local, %remote, step = state.step, "WG init retransmit");
 
                 pending.push_back(Transmit {
