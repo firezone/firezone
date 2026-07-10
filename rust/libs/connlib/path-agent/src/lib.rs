@@ -44,9 +44,6 @@
 //! init with no data in between — is taken as distress ([`REKEY_DISTRESS_ATTEMPTS`]),
 //! clearing the primary and re-probing every pair. A new candidate is the same
 //! kind of signal and does the same. Pairs already probing keep their state.
-//!
-//! NAT bindings along the primary are kept warm by WireGuard's persistent
-//! keepalive, not by probes.
 
 mod agent;
 mod candidate;
