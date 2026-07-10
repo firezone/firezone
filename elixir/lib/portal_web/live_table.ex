@@ -165,6 +165,7 @@ defmodule PortalWeb.LiveTable do
         min={@min}
         step="1"
         autocomplete="off"
+        phx-update="ignore"
         class={[
           "bg-input border text-heading text-xs font-medium rounded h-8",
           "px-2 py-1.5 w-56",

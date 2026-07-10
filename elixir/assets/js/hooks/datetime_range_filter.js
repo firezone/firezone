@@ -35,6 +35,10 @@ export const DatetimeRangeFilter = {
     const mode = this.mode();
     for (const { canonical, display } of this.bounds) {
       if (!canonical || !display) continue;
+      // Don't clobber an input the user is actively editing — the hook
+      // still holds the last-committed canonical value and will re-render
+      // when the user is done.
+      if (display === document.activeElement) continue;
       const canonicalValue = canonical.value || "";
       display.value =
         mode === "local"
@@ -47,6 +51,18 @@ export const DatetimeRangeFilter = {
     for (const { canonical, display } of this.bounds) {
       if (!canonical || !display) continue;
       display.addEventListener("change", () => {
+        // Chrome reports an incomplete datetime as empty and fires `change`
+        // on blur. Treat that as "the user isn't done yet" rather than
+        // wiping the last committed value — restore the display from
+        // canonical and stop.
+        if (display.validity.badInput || (!display.value && canonical.value)) {
+          const mode = this.mode();
+          display.value =
+            mode === "local"
+              ? utcNaiveToLocalNaive(canonical.value)
+              : canonical.value || "";
+          return;
+        }
         const next =
           this.mode() === "local"
             ? localNaiveToUtcNaive(display.value)

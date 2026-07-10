@@ -111,18 +111,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
-        <:icon>
-          <.icon name="ri-history-line" class="w-16 h-16 text-[var(--brand)]" />
-        </:icon>
-        <:title>Change Logs</:title>
-        <:description>
-          An immutable audit trail of every configuration change in your account.
-        </:description>
-        <:action>
-          <.docs_action path="/administer/logs" />
-        </:action>
-      </.page_header>
+      <.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <.live_table
