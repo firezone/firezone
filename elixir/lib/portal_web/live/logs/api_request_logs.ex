@@ -153,12 +153,10 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             <.client_display user_agent={row.log.user_agent} />
           </:col>
           <:col :let={row} label="IP" class="w-32">
-            <span class="font-mono text-xs text-[var(--text-secondary)]">
-              {format_ip(row.log.ip)}
-            </span>
+            <.ip_cell ip={row.log.ip} />
           </:col>
           <:col :let={row} label="Location" class="w-48">
-            <span class="text-xs text-[var(--text-secondary)] truncate">
+            <span class="block truncate text-xs text-[var(--text-secondary)]">
               {row_location(row.log)}
             </span>
           </:col>
@@ -399,11 +397,6 @@ defmodule PortalWeb.Logs.APIRequestLogs do
 
   defp format_size(n) when is_integer(n),
     do: :erlang.float_to_binary(n / 1_048_576, decimals: 1) <> " MB"
-
-  defp format_ip(%Postgrex.INET{address: address}) when tuple_size(address) in [4, 8],
-    do: to_string(:inet.ntoa(address))
-
-  defp format_ip(other), do: to_string(other)
 
   defp format_coord(n) when is_number(n), do: :erlang.float_to_binary(n * 1.0, decimals: 3)
 

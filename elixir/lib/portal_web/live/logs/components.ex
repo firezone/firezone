@@ -80,6 +80,31 @@ defmodule PortalWeb.Logs.Components do
   end
 
   @doc """
+  Single IP address table cell. Full IPv6 addresses are wider than the IP
+  column, so the value truncates with an ellipsis.
+  """
+  attr :ip, :any, required: true
+
+  def ip_cell(assigns) do
+    assigns = assign(assigns, :ip, format_ip(assigns.ip))
+
+    ~H"""
+    <span class="block truncate font-mono text-xs text-[var(--text-secondary)]">
+      {@ip || "-"}
+    </span>
+    """
+  end
+
+  def format_ip(nil), do: nil
+
+  def format_ip(%Postgrex.INET{address: address}) when tuple_size(address) in [4, 8],
+    do: to_string(:inet.ntoa(address))
+
+  def format_ip(ip) when is_binary(ip), do: ip
+
+  def format_ip(other), do: to_string(other)
+
+  @doc """
   Renders a colored rectangular badge for an insert/update/delete operation.
   """
   attr :op, :atom, required: true

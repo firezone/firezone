@@ -139,12 +139,10 @@ defmodule PortalWeb.Logs.SessionLogs do
             <.actor_cell subject={row.subject} />
           </:col>
           <:col :let={row} label="IP" class="w-32">
-            <span class="font-mono text-xs text-[var(--text-secondary)]">
-              {subject_field(row, "ip") || "-"}
-            </span>
+            <.ip_cell ip={subject_field(row, "ip")} />
           </:col>
           <:col :let={row} label="Location" class="w-48">
-            <span class="text-xs text-[var(--text-secondary)] truncate">
+            <span class="block truncate text-xs text-[var(--text-secondary)]">
               {row_location(row)}
             </span>
           </:col>
