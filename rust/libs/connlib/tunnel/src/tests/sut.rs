@@ -747,7 +747,7 @@ impl TunnelTest {
                 continue;
             }
 
-            for (_, relay) in self.relays.iter_mut() {
+            for relay in self.relays.values_mut() {
                 let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
                     continue;
                 };
@@ -832,13 +832,13 @@ impl TunnelTest {
     }
 
     fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
-        for (_, gateway) in self.gateways.iter_mut() {
+        for gateway in self.gateways.values_mut() {
             while let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
                 buffered_transmits.push_from(transmit, gateway, now);
             }
         }
 
-        for (_, client) in self.clients.iter_mut() {
+        for client in self.clients.values_mut() {
             while let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) {
                 buffered_transmits.push_from(transmit, client, now);
             }
@@ -895,7 +895,7 @@ impl TunnelTest {
         }
 
         // Handle all gateway `Transmit`s and timeouts.
-        for (_, gateway) in self.gateways.iter_mut() {
+        for gateway in self.gateways.values_mut() {
             for transmit in gateway.exec_mut(|g| g.advance_resources(global_dns_records, now)) {
                 buffered_transmits.push_from(transmit, gateway, now);
             }
@@ -913,7 +913,7 @@ impl TunnelTest {
         }
 
         // Handle all relay `Transmit`s and timeouts.
-        for (_, relay) in self.relays.iter_mut() {
+        for relay in self.relays.values_mut() {
             while let Some(transmit) = relay.poll_inbox(now) {
                 let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
                     continue;

@@ -182,10 +182,9 @@ impl Candidate {
 
         let candidate = if let Some(tcp) = packet.as_tcp() {
             Self::try_from_tcp(packet, &tcp, ip_hdr_len)?
-        } else if let Some(udp) = packet.as_udp() {
-            Self::from_udp(packet, &udp, ip_hdr_len)
         } else {
-            return None;
+            let udp = packet.as_udp()?;
+            Self::from_udp(packet, &udp, ip_hdr_len)
         };
 
         if candidate.payload_len == 0 {
