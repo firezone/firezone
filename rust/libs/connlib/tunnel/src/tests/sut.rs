@@ -47,9 +47,6 @@ pub(crate) struct TunnelTest {
     buffer_pool: BufferPool<Vec<u8>>,
 
     drop_direct_client_traffic: bool,
-    /// While set and `now` is before the deadline, all packets to and from this
-    /// client are dropped, simulating dead sockets right after a roam.
-    client_sockets_dead_until: Option<(ClientId, Instant)>,
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
@@ -144,7 +141,6 @@ impl TunnelTest {
             flux_capacitor,
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
-            client_sockets_dead_until: None,
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -427,44 +423,42 @@ impl TunnelTest {
                 dead_window,
                 portal_window,
             } => {
-                // Swap the client's sockets as today, but do NOT reconnect to the
-                // portal yet. The roam has two consecutive outage windows that we
-                // model by advancing simulated time while drops are active.
+                // A roam happens in three phases that we simulate one after
+                // another.
+
+                // 1. Dead-socket window: the old link is gone but the new one is
+                //    not up yet. Unregister the client from the network so all
+                //    traffic to it is dropped (as `HostId::Stale`) and advance
+                //    simulated time.
                 let client = state.clients.get_mut(&client_id).unwrap();
                 state.network.remove_host(client);
+
+                let dead_until = now + dead_window;
+                state.advance_to(ref_state, &mut buffered_transmits, dead_until);
+                state.flux_capacitor.skip_to(dead_until);
+
+                // 2. The new link comes up: assign the new IPs, re-register the
+                //    client and reset the path-agent so it re-gathers candidates.
+                //    The sockets now pass traffic, but the client has not
+                //    reconnected to the portal yet, so any portal-bound message is
+                //    dropped until the portal window elapses.
+                let now = state.flux_capacitor.now::<Instant>();
+                let client = state.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
                 let added = state.network.add_host(client_id, client);
                 debug_assert!(added);
-
                 client.exec_mut(|c| {
                     c.sut.reset(now, "roam");
                 });
 
-                // 1. Dead-socket window: the new sockets drop all packets to and
-                //    from the client until this window elapses.
-                let dead_until = now + dead_window;
-                state.client_sockets_dead_until = Some((client_id, dead_until));
-                state.advance_to(ref_state, &mut buffered_transmits, dead_until);
-                if state.flux_capacitor.now::<Instant>() < dead_until {
-                    state.flux_capacitor.advance_until(dead_until);
-                }
-                state.client_sockets_dead_until = None;
-
-                // 2. Portal-offline window: the sockets work again, but the client
-                //    is not yet reconnected to the portal, so any message it tries
-                //    to send to the portal is dropped and the portal->client
-                //    reconnect is withheld until this window elapses.
-                let now = state.flux_capacitor.now::<Instant>();
                 let portal_until = now + portal_window;
                 state.client_portal_offline_until = Some((client_id, portal_until));
                 state.advance_to(ref_state, &mut buffered_transmits, portal_until);
-                if state.flux_capacitor.now::<Instant>() < portal_until {
-                    state.flux_capacitor.advance_until(portal_until);
-                }
+                state.flux_capacitor.skip_to(portal_until);
                 state.client_portal_offline_until = None;
 
-                // 3. Complete the portal reconnect: in prod, we reconnect to the
-                //    portal and receive a new `init` message.
+                // 3. Reconnect to the portal: in prod, we reconnect and receive a
+                //    new `init` message.
                 let now = state.flux_capacitor.now::<Instant>();
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
                 let client = state.clients.get_mut(&client_id).unwrap();
@@ -1001,18 +995,6 @@ impl TunnelTest {
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
 
-        // Simulate dead sockets right after a roam: drop all packets to and from
-        // the roaming client until the dead window elapses.
-        if let Some((cid, until)) = self.client_sockets_dead_until
-            && at < until
-            && (self.network.host_by_ip(src.ip()) == Some(HostId::Client(cid))
-                || self.network.host_by_ip(dst.ip()) == Some(HostId::Client(cid)))
-        {
-            tracing::trace!(%src, %dst, "Dropping packet because client sockets are dead after roam");
-
-            return;
-        }
-
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");
             return;
@@ -1069,12 +1051,22 @@ impl TunnelTest {
         let now = self.flux_capacitor.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
-        // roam: drop any message it tries to send to the portal.
-        if let Some((cid, until)) = self.client_portal_offline_until
-            && src == cid
-            && now < until
-        {
-            tracing::trace!(%src, ?event, "Dropping client event because it is not reconnected to the portal after roam");
+        // roam: drop the portal-bound messages it emits. Local events (resource,
+        // DNS and TUN interface updates) still flow so the harness state stays in
+        // sync.
+        let portal_unreachable = self
+            .client_portal_offline_until
+            .is_some_and(|(cid, until)| cid == src && now < until);
+        let is_portal_bound = matches!(
+            event,
+            ClientEvent::AddedIceCandidates { .. }
+                | ClientEvent::RemovedIceCandidates { .. }
+                | ClientEvent::ResourceConnectionIntent { .. }
+                | ClientEvent::DevicePoolDomainQueried { .. }
+                | ClientEvent::NoRelays
+        );
+        if portal_unreachable && is_portal_bound {
+            tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return Ok(());
         }
