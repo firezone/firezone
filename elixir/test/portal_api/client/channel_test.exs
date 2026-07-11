@@ -3427,7 +3427,10 @@ defmodule PortalAPI.Client.ChannelTest do
                gateway_ipv4: ^gateway_ipv4,
                gateway_ipv6: ^gateway_ipv6,
                resource_id: ^resource_id,
-               client_ice_credentials: %{username: client_ice_username, password: client_ice_password},
+               client_ice_credentials: %{
+                 username: client_ice_username,
+                 password: client_ice_password
+               },
                gateway_group_id: ^gateway_group_id,
                gateway_id: ^gateway_id,
                gateway_ice_credentials: %{
@@ -5482,11 +5485,12 @@ defmodule PortalAPI.Client.ChannelTest do
         "ipv4" => target_ip
       })
 
-      assert_push "client_device_access_authorized", %{
-        client_id: ^target_client_id,
-        client_name: ^target_client_name,
-        ice_role: :controlling
-      } = source_payload
+      assert_push "client_device_access_authorized",
+                  %{
+                    client_id: ^target_client_id,
+                    client_name: ^target_client_name,
+                    ice_role: :controlling
+                  } = source_payload
 
       # The initiator already knows which resource they're flowing to; they sent
       # the create_flow with that resource_id. They also don't need expires_at
@@ -5497,12 +5501,13 @@ defmodule PortalAPI.Client.ChannelTest do
       refute Map.has_key?(source_payload, :expires_at)
       refute Map.has_key?(source_payload, :client_fqdns)
 
-      assert_push "client_device_access_authorized", %{
-        client_id: ^initiating_client_id,
-        client_name: ^initiating_client_name,
-        ice_role: :controlled,
-        expires_at: target_expires_at
-      } = target_payload
+      assert_push "client_device_access_authorized",
+                  %{
+                    client_id: ^initiating_client_id,
+                    client_name: ^initiating_client_name,
+                    ice_role: :controlled,
+                    expires_at: target_expires_at
+                  } = target_payload
 
       # The target gets the full resource view (id/type/name/filters/...) and
       # the initiator's subject (actor) view — mirroring what we send the gateway
@@ -5768,7 +5773,12 @@ defmodule PortalAPI.Client.ChannelTest do
     end
 
     test "sends denied with :offline when target ipv6 is in pool but not online",
-         %{client: client, subject: subject, target_client: target_client, pool_resource: pool_resource} do
+         %{
+           client: client,
+           subject: subject,
+           target_client: target_client,
+           pool_resource: pool_resource
+         } do
       socket = join_channel(client, subject)
       assert_push "init", _
 
@@ -6117,9 +6127,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # orphaned entry — if the channel ever bypasses Queue.enqueue for this
       # call site, the row would not be buffered and no reject would arrive.
       policy =
-        Portal.Repo.one!(
-          from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id)
-        )
+        Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
 
       Portal.Repo.delete!(policy)
       Portal.Queue.flush(:policy_authorization_queue)
@@ -6467,6 +6475,23 @@ defmodule PortalAPI.Client.ChannelTest do
                     disconnected_ids: [],
                     connected: []
                   }
+    end
+  end
+
+  describe "handle_in/3 for request_device_access" do
+    test "it does not log an error and no-ops", %{client: client, subject: subject} do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+
+      log =
+        capture_log(fn ->
+          ref = push(socket, "request_device_access", %{})
+          :sys.get_state(socket.channel_pid)
+          refute_reply ref, :error, _, 0
+        end)
+
+      refute log =~ "Unknown client message"
+      assert Process.alive?(socket.channel_pid)
     end
   end
 
@@ -7086,6 +7111,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute Map.has_key?(payload, :authorization_expires_at)
 
       state = :sys.get_state(socket.channel_pid)
+
       assert Portal.Cache.Client.Authorizations.has_resource?(
                state.assigns.authorizations_cache,
                pool_resource.id
@@ -7279,9 +7305,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       # Wipe the policy so the reauth attempt has nothing to fall back to.
-      Portal.Repo.delete_all(
-        from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id)
-      )
+      Portal.Repo.delete_all(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
@@ -7292,10 +7316,11 @@ defmodule PortalAPI.Client.ChannelTest do
       initiating_client_id = initiating_client.id
       pool_resource_id = pool_resource.id
 
-      assert_push "reject_access", %{
-        client_id: ^initiating_client_id,
-        resource_id: ^pool_resource_id
-      } = revoke_payload
+      assert_push "reject_access",
+                  %{
+                    client_id: ^initiating_client_id,
+                    resource_id: ^pool_resource_id
+                  } = revoke_payload
 
       # Receiver-side revocation doesn't carry a reason — it just identifies the
       # connection to drop, mirroring the gateway's reject_access shape.
