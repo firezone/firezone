@@ -63,10 +63,11 @@ config :portal, Portal.Repo.Replica,
   queue_interval: 1000,
   parameters: [application_name: "replica"]
 
-# Isolated primary connection pools (web/api)
+# Isolated primary connection pools (web/api/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Web, "web"},
-      {Portal.Repo.Api, "api"}
+      {Portal.Repo.Api, "api"},
+      {Portal.Repo.Poller, "poller"}
     ] do
   config :portal, repo,
     hostname: "localhost",
@@ -80,10 +81,11 @@ for {repo, app_name} <- [
     parameters: [application_name: app_name]
 end
 
-# Isolated replica connection pools (web/api)
+# Isolated replica connection pools (web/api/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Replica.Web, "replica-web"},
-      {Portal.Repo.Replica.Api, "replica-api"}
+      {Portal.Repo.Replica.Api, "replica-api"},
+      {Portal.Repo.Replica.Poller, "replica-poller"}
     ] do
   config :portal, repo,
     hostname: "localhost",
@@ -98,7 +100,7 @@ for {repo, app_name} <- [
 end
 
 config :portal, Portal.ChangeLogs.Consumer,
-  repo: Portal.Repo,
+  repo: Portal.Repo.Poller,
   replication_slot_name: "change_logs_slot",
   publication_name: "change_logs_publication",
   region: "",
@@ -147,7 +149,7 @@ config :portal, Portal.ChangeLogs.Consumer,
 config :portal, Portal.Changes.Consumer,
   # Changes only broadcasts, so it reads from the regional replica to keep
   # decoding load off the primary
-  repo: Portal.Repo.Replica,
+  repo: Portal.Repo.Replica.Poller,
   replication_slot_name: "changes_slot",
   publication_name: "changes_publication",
   region: "",

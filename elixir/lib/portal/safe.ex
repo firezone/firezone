@@ -360,16 +360,17 @@ defmodule Portal.Safe do
 
   ## Examples
       Safe.unscoped() |> Safe.query("SELECT * FROM actors WHERE id = $1", [actor_id])
+      Safe.unscoped(Repo.Poller) |> Safe.query("SELECT pg_try_advisory_lock($1)", [key])
   """
   @spec query(Unscoped.t(), String.t(), list()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   # sobelow_skip ["SQL.Query"]
-  def query(%Unscoped{}, sql, params) when is_binary(sql) and is_list(params) do
-    Repo.query(sql, params)
+  def query(%Unscoped{repo: repo}, sql, params) when is_binary(sql) and is_list(params) do
+    repo.query(sql, params)
   end
 
   @spec query(Portal.Repo, String.t(), list()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   # sobelow_skip ["SQL.Query"]
   def query(repo, sql, params) when repo == Repo and is_binary(sql) and is_list(params) do
     Repo.query(sql, params)
@@ -391,16 +392,18 @@ defmodule Portal.Safe do
   end
 
   @doc """
-  Runs a function with a single checked-out primary connection, without
-  wrapping it in a transaction. All primary queries inside `fun` use that
-  connection, which session-scoped state (such as advisory locks) requires.
+  Runs a function with a single connection checked out from the context's
+  repo, without wrapping it in a transaction. All of that repo's queries
+  inside `fun` use that connection, which session-scoped state (such as
+  advisory locks) requires.
 
   ## Examples
       Safe.unscoped() |> Safe.checkout(fn -> ... end)
+      Safe.unscoped(Repo.Poller) |> Safe.checkout(fn -> ... end, timeout: :timer.hours(24))
   """
-  @spec checkout(Unscoped.t(), (-> term())) :: term()
-  def checkout(%Unscoped{}, fun) when is_function(fun, 0) do
-    Repo.checkout(fun)
+  @spec checkout(Unscoped.t(), (-> term()), keyword()) :: term()
+  def checkout(%Unscoped{repo: repo}, fun, opts \\ []) when is_function(fun, 0) do
+    repo.checkout(fun, opts)
   end
 
   @doc """
