@@ -557,11 +557,25 @@ defmodule Portal.Replication.SlotPoller do
       :ok
     end
 
+    # Runs in `after`: raising here would mask the error that failed the
+    # cycle, so unexpected outcomes are logged instead. A dead connection
+    # already released the lock server-side.
     defp release_leadership(key) do
       case Safe.unscoped(Portal.Repo.Poller)
            |> Safe.query("SELECT pg_advisory_unlock(hashtext($1))", [key]) do
-        {:ok, %{rows: [[true]]}} -> :ok
-        {:error, %DBConnection.ConnectionError{}} -> :ok
+        {:ok, %{rows: [[true]]}} ->
+          :ok
+
+        {:error, %DBConnection.ConnectionError{}} ->
+          :ok
+
+        other ->
+          Logger.error("Unexpected result releasing replication leadership lock",
+            key: key,
+            result: inspect(other)
+          )
+
+          :ok
       end
     end
   end
