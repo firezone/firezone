@@ -144,7 +144,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
               display_tz={@display_tz}
             />
           </:col>
-          <:col :let={row} field={{:change_logs, :log_id}} label="Event ID" class="w-52">
+          <:col :let={row} field={{:change_logs, :log_id}} label="Log ID" class="w-52">
             <span class="font-mono text-[10px] text-[var(--text-tertiary)] break-all">
               {row.change_log.log_id}
             </span>
@@ -270,7 +270,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
                   display_tz={@display_tz}
                 />
               </.detail_row>
-              <.detail_row label="Event ID">
+              <.detail_row label="Log ID">
                 <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
                   {@selected_change_log.log_id}
                 </span>
@@ -445,7 +445,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       [
         %Portal.Repo.Filter{
           name: :actor,
-          title: "Actor or event ID",
+          title: "Actor or log ID",
           type: {:string, :websearch},
           fun: &filter_by_actor/2
         },

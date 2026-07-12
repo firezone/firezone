@@ -238,7 +238,7 @@ defmodule PortalWeb.Logs.SessionLogs do
                   display_tz={@display_tz}
                 />
               </.detail_row>
-              <.detail_row label="Event ID">
+              <.detail_row label="Log ID">
                 <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
                   {@selected_log.log_id}
                 </span>
@@ -375,7 +375,7 @@ defmodule PortalWeb.Logs.SessionLogs do
       [
         %Portal.Repo.Filter{
           name: :search,
-          title: "Actor, email, or event ID",
+          title: "Actor, email, or log ID",
           type: {:string, :websearch},
           fun: &filter_by_search/2
         },
