@@ -10,7 +10,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "8.7.0"
+    id("com.diffplug.spotless") version "8.8.0"
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
     id("com.google.devtools.ksp")
