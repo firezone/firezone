@@ -53,23 +53,23 @@ defmodule Portal.FlowLog do
   @roles [:initiator, :responder]
   @protocols [:tcp, :udp]
 
-  # The primary key is the natural flow identity, tagged primary_key: true
-  # field-by-field below: the reporting side (account_id, device_id, role), the
-  # inner tunnel 6-tuple (protocol, inner src/dst ip+port), the resource, and
-  # flow_start. log_id is a random public handle, not part of the key.
-  # flow_start is included partly because Postgres requires the
-  # partition key in every key on a partitioned table. See the partition migration.
+  # Keyed by (account_id, log_id) like the other log tables; flow_start rides
+  # along in the primary key only because Postgres requires the partition key
+  # in every key on a partitioned table. The natural flow identity (the
+  # reporting side, the inner tunnel 6-tuple, the resource, and flow_start) is
+  # a unique constraint and the open/close upsert conflict target. See the
+  # move_flow_logs_pkey_to_log_id migration.
   schema "flow_logs" do
     belongs_to :account, Portal.Account, primary_key: true
-    field :log_id, Portal.Types.LogId
+    field :log_id, Portal.Types.LogId, primary_key: true
 
-    field :device_id, :binary_id, primary_key: true
-    field :role, Ecto.Enum, values: @roles, primary_key: true
+    field :device_id, :binary_id
+    field :role, Ecto.Enum, values: @roles
 
     field :policy_authorization_id, :binary_id
     field :policy_id, :binary_id
     field :auth_provider_id, :binary_id
-    field :resource_id, :binary_id, primary_key: true
+    field :resource_id, :binary_id
     field :resource_name, :string
     field :resource_address, :string
     field :actor_id, :binary_id
@@ -86,12 +86,12 @@ defmodule Portal.FlowLog do
     field :device_identifier_for_vendor, :string
     field :device_firebase_installation_id, :string
 
-    field :protocol, Ecto.Enum, values: @protocols, primary_key: true
+    field :protocol, Ecto.Enum, values: @protocols
 
-    field :inner_src_ip, Portal.Types.IP, primary_key: true
-    field :inner_dst_ip, Portal.Types.IP, primary_key: true
-    field :inner_src_port, :integer, primary_key: true
-    field :inner_dst_port, :integer, primary_key: true
+    field :inner_src_ip, Portal.Types.IP
+    field :inner_dst_ip, Portal.Types.IP
+    field :inner_src_port, :integer
+    field :inner_dst_port, :integer
     field :domain, :string
 
     field :outer_src_ip, Portal.Types.IP
