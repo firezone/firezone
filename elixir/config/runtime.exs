@@ -140,6 +140,23 @@ if config_env() == :prod do
            ] ++ replica_pool_base_opts
   end
 
+  # Isolated poller connection pools, sized for the two slot pollers: poll
+  # cycles hold a connection for as long as a cycle runs, which must not
+  # starve the shared pools
+  config :portal,
+         Portal.Repo.Poller,
+         [
+           {:pool_size, 2},
+           {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
+         ] ++ primary_pool_base_opts
+
+  config :portal,
+         Portal.Repo.Replica.Poller,
+         [
+           {:pool_size, 2},
+           {:parameters, Keyword.merge(database_parameters, application_name: "replica-poller")}
+         ] ++ replica_pool_base_opts
+
   config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),

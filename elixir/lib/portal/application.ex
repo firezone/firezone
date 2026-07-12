@@ -41,11 +41,13 @@ defmodule Portal.Application do
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
-      # Isolated connection pools (web/api)
+      # Isolated connection pools (web/api/poller)
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Replica.Web,
       Portal.Repo.Replica.Api,
+      Portal.Repo.Poller,
+      Portal.Repo.Replica.Poller,
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
       # Named pg scope for Portal.PG, isolated so a crash here does not affect replication

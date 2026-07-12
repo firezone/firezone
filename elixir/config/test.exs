@@ -33,7 +33,9 @@ for repo <- [
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api
+      Portal.Repo.Replica.Api,
+      Portal.Repo.Poller,
+      Portal.Repo.Replica.Poller
     ] do
   config :portal, repo,
     database: "firezone_test#{partition_suffix}",

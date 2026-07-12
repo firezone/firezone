@@ -31,6 +31,8 @@ config :portal, Portal.Repo.Web, db_opts
 config :portal, Portal.Repo.Api, db_opts
 config :portal, Portal.Repo.Replica.Web, db_opts
 config :portal, Portal.Repo.Replica.Api, db_opts
+config :portal, Portal.Repo.Poller, db_opts
+config :portal, Portal.Repo.Replica.Poller, db_opts
 
 # Poll fast locally so live updates and change logs appear without a wait
 config :portal, Portal.ChangeLogs.Consumer,

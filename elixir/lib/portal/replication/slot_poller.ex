@@ -53,6 +53,13 @@ defmodule Portal.Replication.SlotPoller do
   @default_poll_interval 500
   @default_batch_size 500
 
+  # Bounds a poll cycle and its decoding queries: peek and advance re-decode
+  # WAL from the slot's restart_lsn, so a backlogged slot needs far longer
+  # than the default 15s query timeout; timing out means the slot never
+  # advances and the backlog only grows. Long by design, it only guards
+  # against a permanently hung connection.
+  @default_processing_timeout :timer.hours(24)
+
   @doc """
   Builds the consumer's initial state during poller setup. May query the
   database; a raise is retried together with the rest of setup.
@@ -165,7 +172,9 @@ defmodule Portal.Replication.SlotPoller do
   # makes racing advances harmless.
   defp poll(state) do
     {state, drained?, ack_lsn} =
-      Database.with_leadership(lock_key(state.config), fn -> run_cycle(state) end) ||
+      Database.with_leadership(lock_key(state.config), state.config.processing_timeout, fn ->
+        run_cycle(state)
+      end) ||
         {state, true, nil}
 
     if ack_lsn do
@@ -380,7 +389,8 @@ defmodule Portal.Replication.SlotPoller do
           'proto_version', '1', 'publication_names', $3, 'messages', 'true'
         )
         """,
-        [config.slot_name, config.batch_size, config.publication_name]
+        [config.slot_name, config.batch_size, config.publication_name],
+        timeout: config.processing_timeout
       )
 
     rows
@@ -407,7 +417,8 @@ defmodule Portal.Replication.SlotPoller do
       FROM pg_replication_slots
       WHERE slot_name = $1 AND confirmed_flush_lsn < '0/0'::pg_lsn + $2
       """,
-      [config.slot_name, lsn]
+      [config.slot_name, lsn],
+      timeout: config.processing_timeout
     )
 
     :ok
@@ -428,6 +439,7 @@ defmodule Portal.Replication.SlotPoller do
       region: Keyword.get(config, :region, ""),
       poll_interval: Keyword.get(config, :poll_interval, @default_poll_interval),
       batch_size: Keyword.get(config, :batch_size, @default_batch_size),
+      processing_timeout: Keyword.get(config, :processing_timeout, @default_processing_timeout),
       warning_threshold: Keyword.fetch!(config, :warning_threshold),
       error_threshold: Keyword.fetch!(config, :error_threshold),
       status_log_interval: Keyword.get(config, :status_log_interval, :timer.minutes(1)),
@@ -442,8 +454,11 @@ defmodule Portal.Replication.SlotPoller do
 
     @doc """
     Runs `fun` while holding the session advisory lock for `key` on a
-    checked-out primary connection, or returns nil without calling it when
-    another session holds the lock.
+    connection checked out from the dedicated `Portal.Repo.Poller` primary
+    pool, or returns nil without calling it when another session holds the
+    lock. Advisory locks are unavailable on standbys, so the lock lives on
+    the primary even when the slot being polled is on a replica; the
+    dedicated pool keeps the cycle-long checkout from starving shared pools.
 
     Deliberately not a transaction: `fun` runs consumer side effects (hooks,
     inserts) whose own inner transactions may roll back, which would poison
@@ -451,26 +466,35 @@ defmodule Portal.Replication.SlotPoller do
     released in `after` on the same pinned connection; if the process dies
     mid-cycle the pool disconnects the connection and the server releases the
     lock with it.
-    """
-    def with_leadership(key, fun) do
-      Safe.unscoped()
-      |> Safe.checkout(fn ->
-        {:ok, %{rows: [[locked?]]}} =
-          Safe.unscoped()
-          |> Safe.query("SELECT pg_try_advisory_lock(hashtext($1))", [key])
 
-        if locked? do
-          try do
-            fun.()
-          after
-            {:ok, %{rows: [[true]]}} =
-              Safe.unscoped()
-              |> Safe.query("SELECT pg_advisory_unlock(hashtext($1))", [key])
+    The checkout deadline is `timeout`, the poller's processing timeout,
+    rather than DBConnection's default 15s: leadership must last exactly as
+    long as the cycle, and a shorter deadline would reclaim the pinned
+    connection mid-cycle, silently releasing the lock and failing every
+    later query on it. When the connection dies anyway, the server has
+    already released the lock with it, so a failed unlock is tolerated
+    instead of masking the error that killed the cycle.
+    """
+    def with_leadership(key, timeout, fun) do
+      Safe.unscoped(Portal.Repo.Poller)
+      |> Safe.checkout(
+        fn ->
+          {:ok, %{rows: [[locked?]]}} =
+            Safe.unscoped(Portal.Repo.Poller)
+            |> Safe.query("SELECT pg_try_advisory_lock(hashtext($1))", [key])
+
+          if locked? do
+            try do
+              fun.()
+            after
+              release_leadership(key)
+            end
+          else
+            nil
           end
-        else
-          nil
-        end
-      end)
+        end,
+        timeout: timeout
+      )
     end
 
     # Publications are DDL, which a read replica cannot execute, so they are
@@ -531,6 +555,14 @@ defmodule Portal.Replication.SlotPoller do
       end
 
       :ok
+    end
+
+    defp release_leadership(key) do
+      case Safe.unscoped(Portal.Repo.Poller)
+           |> Safe.query("SELECT pg_advisory_unlock(hashtext($1))", [key]) do
+        {:ok, %{rows: [[true]]}} -> :ok
+        {:error, %DBConnection.ConnectionError{}} -> :ok
+      end
     end
   end
 end
