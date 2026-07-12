@@ -5,6 +5,7 @@ defmodule Portal.APIRequestLog do
   @type t :: %__MODULE__{
           account_id: Ecto.UUID.t(),
           log_id: String.t(),
+          seq: pos_integer(),
           actor_id: Ecto.UUID.t(),
           api_token_id: Ecto.UUID.t(),
           method: String.t(),
@@ -26,6 +27,7 @@ defmodule Portal.APIRequestLog do
   schema "api_request_logs" do
     belongs_to :account, Portal.Account, primary_key: true
     field :log_id, Portal.Types.LogId, primary_key: true
+    field :seq, :integer, read_after_writes: true
 
     field :actor_id, :binary_id
     field :api_token_id, :binary_id

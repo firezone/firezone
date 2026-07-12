@@ -10,6 +10,7 @@ defmodule Portal.FlowLog do
   @type t :: %__MODULE__{
           account_id: Ecto.UUID.t(),
           log_id: Portal.Types.LogId.t(),
+          seq: pos_integer(),
           device_id: Ecto.UUID.t(),
           role: :initiator | :responder,
           policy_authorization_id: Ecto.UUID.t(),
@@ -62,6 +63,7 @@ defmodule Portal.FlowLog do
   schema "flow_logs" do
     belongs_to :account, Portal.Account, primary_key: true
     field :log_id, Portal.Types.LogId
+    field :seq, :integer, read_after_writes: true
 
     field :device_id, :binary_id, primary_key: true
     field :role, Ecto.Enum, values: @roles, primary_key: true
