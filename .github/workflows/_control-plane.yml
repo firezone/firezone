@@ -61,6 +61,7 @@ jobs:
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
+          no-cache-filters: runtime
           context: elixir
           cache-from: |
             type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
@@ -80,6 +81,7 @@ jobs:
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
+          no-cache-filters: runtime
           context: elixir
           cache-from: |
             type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
