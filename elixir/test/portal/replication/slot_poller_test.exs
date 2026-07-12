@@ -13,7 +13,9 @@ defmodule Portal.Replication.SlotPollerTest do
 
     @impl true
     def init_state(_config) do
-      %{test_pid: Portal.Config.get_env(:portal, :slot_poller_test_pid)}
+      test_pid = Portal.Config.get_env(:portal, :slot_poller_test_pid)
+      send(test_pid, :init_state)
+      %{test_pid: test_pid}
     end
 
     @impl true
@@ -34,6 +36,13 @@ defmodule Portal.Replication.SlotPollerTest do
       end
 
       send(state.test_pid, {:write, lsn, op, table, old_data, data})
+
+      # Simulates a consumer raising undefined_object (42704) for something
+      # that is not the slot or the publication
+      if data && data["val"] == "undefined-object" do
+        Portal.Repo.query!("SELECT NULL::nonexistent_type", [])
+      end
+
       state
     end
 
@@ -208,6 +217,63 @@ defmodule Portal.Replication.SlotPollerTest do
 
       assert confirmed > lsn
     end)
+  end
+
+  test "recreates the slot when it is dropped at runtime", %{
+    aux: aux,
+    slot: slot,
+    table: table
+  } do
+    start_poller!()
+    assert_receive :init_state, 5000
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (6, 'before-drop')", [])
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "6"}}, 5000
+
+    # The drop can race an in-flight peek that holds the slot active; retry
+    wait_for(fn ->
+      assert {:ok, _} = Postgrex.query(aux, "SELECT pg_drop_replication_slot($1)", [slot])
+    end)
+
+    # The recreated slot is visible before creation finds its consistent
+    # point, which can take a while under concurrent test transactions; only
+    # rows written after confirmed_flush_lsn is set are decodable
+    wait_for(
+      fn ->
+        %{rows: rows} =
+          Postgrex.query!(
+            aux,
+            "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1 AND confirmed_flush_lsn IS NOT NULL",
+            [slot]
+          )
+
+        assert rows == [[1]]
+      end,
+      30
+    )
+
+    # Recreation went through setup, which re-initialized the consumer
+    assert_receive :init_state, 5000
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (7, 'after-recreate')", [])
+
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "7", "val" => "after-recreate"}},
+                   5000
+  end
+
+  test "unrelated undefined_object errors replay instead of re-running setup", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+    assert_receive :init_state, 5000
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (8, 'undefined-object')", [])
+
+    # The failed cycle replays through the ordinary error path
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "8"}}, 5000
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "8"}}, 5000
+    refute_receive :init_state, 500
   end
 
   test "resumes from retained WAL after a restart", %{

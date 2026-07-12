@@ -35,6 +35,12 @@ defmodule Portal.Replication.SlotPoller do
   harmless with naturally-keyed effects (`Portal.ChangeLogs.Consumer` inserts
   are keyed by LSN with `on_conflict: :nothing`) or idempotent side effects
   (`Portal.Changes.Consumer` broadcasts).
+
+  Setup creates the publication and slot when missing and syncs the
+  publication's tables. It re-runs whenever a poll cycle fails because the
+  slot or publication no longer exists (Azure Postgres upgrades drop
+  replication slots), recreating them without a restart; WAL written between
+  the drop and the recreation is lost.
   """
 
   use GenServer
@@ -86,6 +92,7 @@ defmodule Portal.Replication.SlotPoller do
     Process.flag(:trap_exit, true)
 
     send(self(), :setup)
+    Process.send_after(self(), :status_log, config.status_log_interval)
 
     {:ok,
      %{
@@ -107,7 +114,6 @@ defmodule Portal.Replication.SlotPoller do
           publication: state.config.publication_name
         )
 
-        Process.send_after(self(), :status_log, state.config.status_log_interval)
         send(self(), :poll)
         {:noreply, %{state | consumer_state: consumer_state}}
 
@@ -122,17 +128,22 @@ defmodule Portal.Replication.SlotPoller do
   end
 
   def handle_info(:poll, state) do
-    {state, drained?} = poll(state)
+    case poll(state) do
+      {state, :resetup} ->
+        send(self(), :setup)
+        {:noreply, state}
 
-    delay =
-      if drained? do
-        state.config.poll_interval
-      else
-        0
-      end
+      {state, drained?} ->
+        delay =
+          if drained? do
+            state.config.poll_interval
+          else
+            0
+          end
 
-    Process.send_after(self(), :poll, delay)
-    {:noreply, state}
+        Process.send_after(self(), :poll, delay)
+        {:noreply, state}
+    end
   end
 
   def handle_info(:status_log, state) do
@@ -163,14 +174,40 @@ defmodule Portal.Replication.SlotPoller do
 
     {state, drained?}
   rescue
-    error ->
+    error -> handle_poll_error(state, error, __STACKTRACE__)
+  end
+
+  defp handle_poll_error(state, error, stacktrace) do
+    if missing_replication_object?(state.config, error) do
+      Logger.warning(
+        "#{inspect(state.consumer)}: replication slot or publication is missing, re-running setup",
+        reason: inspect(error)
+      )
+
+      {state, :resetup}
+    else
       Logger.error("#{inspect(state.consumer)}: replication poll cycle failed",
         reason: inspect(error),
-        stacktrace: Exception.format_stacktrace(__STACKTRACE__)
+        stacktrace: Exception.format_stacktrace(stacktrace)
       )
 
       {state, true}
+    end
   end
+
+  # A 42704 naming our slot or publication means it was dropped out from
+  # under us (Azure Postgres upgrades drop replication slots); re-run setup
+  # to recreate it instead of peeking a missing slot forever. Consumer
+  # callbacks can raise undefined_object for unrelated database objects,
+  # which must keep the ordinary replay path.
+  defp missing_replication_object?(config, %Postgrex.Error{
+         postgres: %{code: :undefined_object, message: message}
+       }) do
+    String.contains?(message, ~s("#{config.slot_name}")) or
+      String.contains?(message, ~s("#{config.publication_name}"))
+  end
+
+  defp missing_replication_object?(_config, _error), do: false
 
   defp run_cycle(state) do
     now_lsn = current_wal_lsn(state.config)
