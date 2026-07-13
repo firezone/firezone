@@ -95,17 +95,25 @@ impl BufferProvider for UdpGsoQueue {
 
         // A datagram may only extend the most recent batch of its connection;
         // extending anything older would reorder the flow.
-        let index = self
+        let existing = self
             .batches
-            .iter()
-            .rposition(|b| b.connection == connection)
-            .filter(|i| self.batches[*i].can_append(len));
+            .iter_mut()
+            .enumerate()
+            .rev()
+            .find(|(_, batch)| batch.connection == connection)
+            .filter(|(_, batch)| batch.can_append(len));
 
-        let index = match index {
-            Some(index) => index,
+        let index = match existing {
+            Some((index, batch)) => {
+                let new_len = batch.buffer.len() + len;
+                batch.buffer.resize(new_len, 0);
+
+                index
+            }
             None => {
                 let mut buffer = self.buffer_pool.pull();
                 buffer.clear();
+                buffer.resize(len, 0);
 
                 self.batches.push_back(Batch {
                     connection,
@@ -117,10 +125,6 @@ impl BufferProvider for UdpGsoQueue {
                 self.batches.len() - 1
             }
         };
-
-        let batch = &mut self.batches[index];
-        let new_len = batch.buffer.len() + len;
-        batch.buffer.resize(new_len, 0);
 
         GsoReservation {
             queue: self,
