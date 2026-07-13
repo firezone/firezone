@@ -55,21 +55,6 @@ impl UdpGsoQueue {
         reservation.commit();
     }
 
-    /// Undo the reservation of `len` bytes at the tail of the batch at `index`.
-    fn rollback(&mut self, index: usize, len: usize) {
-        let Some(batch) = self.batches.get_mut(index) else {
-            return;
-        };
-
-        let new_len = batch.buffer.len().saturating_sub(len);
-        batch.buffer.truncate(new_len);
-
-        // Drop a batch that became empty as a result.
-        if batch.buffer.is_empty() {
-            self.batches.remove(index);
-        }
-    }
-
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
         DrainDatagramsIter { queue: self }
     }
@@ -105,6 +90,12 @@ impl BufferProvider for UdpGsoQueue {
 
         let index = match existing {
             Some((index, batch)) => {
+                // A rolled-back reservation may have left the batch empty; it starts over with our segment size.
+                if batch.buffer.is_empty() {
+                    batch.segment_size = len;
+                    batch.max_len = max_gso_send_len(dst, len);
+                }
+
                 let new_len = batch.buffer.len() + len;
                 batch.buffer.resize(new_len, 0);
 
@@ -127,8 +118,7 @@ impl BufferProvider for UdpGsoQueue {
         };
 
         GsoReservation {
-            queue: self,
-            index,
+            batch: &mut self.batches[index],
             len,
             committed: false,
         }
@@ -189,23 +179,16 @@ fn max_gso_send_len(dst: SocketAddr, segment_size: usize) -> usize {
 
 /// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of one of its batches.
 pub struct GsoReservation<'a> {
-    queue: &'a mut UdpGsoQueue,
-    index: usize,
+    batch: &'a mut Batch,
     len: usize,
     committed: bool,
 }
 
 impl Reservation for GsoReservation<'_> {
     fn buffer(&mut self) -> &mut [u8] {
-        let batch = self
-            .queue
-            .batches
-            .get_mut(self.index)
-            .expect("reserved batch to exist");
+        let offset = self.batch.buffer.len() - self.len;
 
-        let offset = batch.buffer.len() - self.len;
-
-        &mut batch.buffer[offset..]
+        &mut self.batch.buffer[offset..]
     }
 
     fn commit(mut self) {
@@ -216,7 +199,8 @@ impl Reservation for GsoReservation<'_> {
 impl Drop for GsoReservation<'_> {
     fn drop(&mut self) {
         if !self.committed {
-            self.queue.rollback(self.index, self.len);
+            let new_len = self.batch.buffer.len().saturating_sub(self.len);
+            self.batch.buffer.truncate(new_len);
         }
     }
 }
@@ -237,20 +221,27 @@ impl Iterator for DrainDatagramsIter<'_> {
     type Item = DatagramOut;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Batch {
-            connection,
-            segment_size,
-            buffer,
-            ..
-        } = self.queue.batches.pop_front()?;
+        loop {
+            let Batch {
+                connection,
+                segment_size,
+                buffer,
+                ..
+            } = self.queue.batches.pop_front()?;
 
-        Some(DatagramOut {
-            src: connection.src,
-            dst: connection.dst,
-            packet: buffer,
-            segment_size,
-            ecn: connection.ecn,
-        })
+            // A rolled-back reservation may leave an empty batch behind; there is nothing to send for it.
+            if buffer.is_empty() {
+                continue;
+            }
+
+            return Some(DatagramOut {
+                src: connection.src,
+                dst: connection.dst,
+                packet: buffer,
+                segment_size,
+                ecn: connection.ecn,
+            });
+        }
     }
 }
 
@@ -482,6 +473,24 @@ mod tests {
 
         // Rolling back the last segment drops the empty batch.
         assert_eq!(send_queue.datagrams().count(), 0);
+    }
+
+    #[test]
+    fn rolled_back_batch_restarts_with_new_segment_size() {
+        let mut send_queue = UdpGsoQueue::new();
+
+        {
+            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
+            reservation.buffer().copy_from_slice(b"barbaz");
+        }
+
+        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(&datagrams[0].packet[..], b"foo");
+        assert_eq!(datagrams[0].segment_size, 3);
     }
 
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
