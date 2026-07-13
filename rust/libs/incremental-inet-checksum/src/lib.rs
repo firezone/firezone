@@ -79,17 +79,34 @@ impl ChecksumUpdate {
         }
     }
 
+    /// Finalizes the update into an IP-style checksum (also used by TCP and ICMP).
+    ///
+    /// A zero checksum is always emitted as `0xFFFF`, never as `0x0000`: one's
+    /// complement has two representations of zero and the running sum can land on
+    /// either one for the same underlying value, e.g. removing a zero-valued field adds
+    /// `!0 = 0xFFFF` and turns +0 into -0. Whether a checksum of `0x0000` verifies
+    /// depends on which zero the covered data actually sums to: for data summing to -0
+    /// it does, for all-zero data (which sums to +0) receivers compute an
+    /// end-around-carry sum of `0x0000` instead of the required `0xFFFF` and drop the
+    /// packet. A checksum of `0xFFFF` verifies in both cases, so it is the only safe
+    /// way to emit "zero". Consequently, a from-scratch computation may arrive at
+    /// `0x0000` where this function returns `0xFFFF`; validators comparing the two must
+    /// treat them as equivalent rather than compare for strict equality.
     pub fn into_ip_checksum(self) -> u16 {
-        !self.inner
+        non_zero_complement(self.inner)
     }
 
     pub fn into_udp_checksum(self) -> u16 {
         // RFC 768, Section 3.1 states that we must invert the final computed checksum if it came
         // out to be zero.
-        let check = !self.inner;
-
-        if check == 0 { 0xFFFF } else { check }
+        non_zero_complement(self.inner)
     }
+}
+
+fn non_zero_complement(inner: u16) -> u16 {
+    let checksum = !inner;
+
+    if checksum == 0 { 0xFFFF } else { checksum }
 }
 
 #[inline(always)]
@@ -121,12 +138,27 @@ mod tests {
     #[test]
     fn updates_word_like_rfc1624() {
         // Example from RFC 1624, section 4: checksum 0xdd2f, word 0x5555 becomes 0x3285.
+        // The RFC arrives at 0x0000; we emit the equivalent -0 representation because
+        // 0x0000 does not verify for all-zero data (see `into_ip_checksum`).
         let updated = ChecksumUpdate::new(0xdd2f)
             .remove_u16(0x5555)
             .add_u16(0x3285)
             .into_ip_checksum();
 
-        assert_eq!(updated, 0x0000);
+        assert_eq!(updated, 0xFFFF);
+    }
+
+    #[test]
+    fn removing_zero_from_all_zero_data_keeps_checksum_valid() {
+        // An all-zero ICMP echo message has checksum 0xFFFF (its words sum to +0).
+        // Removing and re-adding a zero-valued field must not flip it to 0x0000,
+        // which would not verify.
+        let updated = ChecksumUpdate::new(0xFFFF)
+            .remove_u16(0x0000)
+            .add_u16(0x0000)
+            .into_ip_checksum();
+
+        assert_eq!(updated, 0xFFFF);
     }
 
     #[test]
