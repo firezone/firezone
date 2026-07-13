@@ -56,6 +56,7 @@ defmodule Portal.LogSinkFixtures do
         :retroactive,
         :errored_at,
         :error_message,
+        :error_email_count,
         :is_disabled,
         :disabled_reason
       ])

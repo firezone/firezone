@@ -24,7 +24,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @fields %{
     Splunk.LogSink =>
-      ~w[name is_disabled disabled_reason error_message errored_at
+      ~w[name is_disabled disabled_reason error_message errored_at error_email_count
          collector_url hec_token index enabled_streams retroactive]a
   }
 
@@ -881,6 +881,7 @@ defmodule PortalWeb.Settings.LogSinks do
       |> put_change(:disabled_reason, nil)
       |> put_change(:error_message, nil)
       |> put_change(:errored_at, nil)
+      |> put_change(:error_email_count, 0)
     else
       changeset
     end
@@ -898,7 +899,8 @@ defmodule PortalWeb.Settings.LogSinks do
       "is_disabled" => false,
       "disabled_reason" => nil,
       "error_message" => nil,
-      "errored_at" => nil
+      "errored_at" => nil,
+      "error_email_count" => 0
     })
   end
 

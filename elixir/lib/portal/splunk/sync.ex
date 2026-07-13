@@ -217,7 +217,8 @@ defmodule Portal.Splunk.Sync do
   defp handle_success(sink) do
     Database.update_sink(sink, %{
       "error_message" => nil,
-      "errored_at" => nil
+      "errored_at" => nil,
+      "error_email_count" => 0
     })
   end
 
@@ -539,6 +540,7 @@ defmodule Portal.Splunk.Sync do
         Ecto.Changeset.cast(sink, attrs, [
           :error_message,
           :errored_at,
+          :error_email_count,
           :is_disabled,
           :disabled_reason
         ])

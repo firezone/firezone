@@ -17,6 +17,7 @@ defmodule Portal.Splunk.LogSink do
           retroactive: boolean(),
           errored_at: DateTime.t() | nil,
           error_message: String.t() | nil,
+          error_email_count: non_neg_integer(),
           is_disabled: boolean(),
           disabled_reason: String.t() | nil,
           inserted_at: DateTime.t(),
@@ -46,6 +47,7 @@ defmodule Portal.Splunk.LogSink do
 
     field :errored_at, :utc_datetime_usec
     field :error_message, :string
+    field :error_email_count, :integer, default: 0, read_after_writes: true
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
 
@@ -66,6 +68,7 @@ defmodule Portal.Splunk.LogSink do
     |> validate_length(:hec_token, min: 1, max: 255)
     |> validate_length(:index, max: 255)
     |> validate_length(:enabled_streams, min: 1)
+    |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> validate_collector_url()
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)
