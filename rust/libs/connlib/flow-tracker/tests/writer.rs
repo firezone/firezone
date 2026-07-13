@@ -5,7 +5,6 @@
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
-    path::Path,
     time::{Duration, Instant},
 };
 
@@ -44,16 +43,10 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
         }),
     };
 
-    let dir = tempfile::tempdir().unwrap();
-    flow_log_writer::write_token(dir.path(), record.ingest_token.as_str()).unwrap();
+    let spool = SpoolObserver::new(authz_id);
+    spool.observe(|| flow_tracker::emit(&record));
 
-    let (layer, guard) = flow_log_writer::layer(dir.path().to_owned());
-    let subscriber = tracing_subscriber::registry().with(layer);
-    tracing::subscriber::with_default(subscriber, || flow_tracker::emit(&record));
-    drop(guard); // joins the writer thread, so the report is on disk
-
-    let authz_dir = dir.path().join("responder").join(authz_id);
-    let payload = read_report(&authz_dir, ".end.json");
+    let payload = spool.report(".end.json");
 
     assert_eq!(payload["protocol"], "tcp");
     assert_eq!(payload["inner_src_ip"], record.inner_src_ip.to_string());
@@ -85,16 +78,9 @@ fn tracked_packets_spool_open_and_completed_reports() {
     let authz_id = "22222222-2222-2222-2222-222222222222";
     let token = test_token(authz_id, "responder");
 
-    let dir = tempfile::tempdir().unwrap();
-    flow_log_writer::write_token(dir.path(), token.as_str()).unwrap();
-
-    let (layer, guard) = flow_log_writer::layer(dir.path().to_owned());
-    let subscriber = tracing_subscriber::registry().with(layer);
-
+    let spool = SpoolObserver::new(authz_id);
+    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>();
     let now = Instant::now();
-    let mut tracker =
-        Tracker::<(ClientId, ResourceId)>::new(now, Duration::from_secs(1_700_000_000));
-    tracker.set_enabled(true);
 
     let client = ClientId::from_u128(1);
     let resource = ResourceId::from_u128(2);
@@ -109,7 +95,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
         ip_packet::make::udp_packet(client_ip, resource_ip, 1234, 5201, b"hello").unwrap();
     let reply = ip_packet::make::udp_packet(resource_ip, client_ip, 5201, 1234, b"world!").unwrap();
 
-    tracing::subscriber::with_default(subscriber, || {
+    spool.observe(|| {
         {
             let flow = tracker.begin_network_packet(local, remote, now);
             flow_tracker::record_decrypted_packet(&request);
@@ -129,11 +115,8 @@ fn tracked_packets_spool_open_and_completed_reports() {
 
         tracker.close_all(now);
     });
-    drop(guard); // joins the writer thread, so the reports are on disk
 
-    let authz_dir = dir.path().join("responder").join(authz_id);
-
-    let open = read_report(&authz_dir, ".start.json");
+    let open = spool.report(".start.json");
     assert_eq!(open["protocol"], "udp");
     assert_eq!(open["inner_src_ip"], "100.64.0.1");
     assert_eq!(open["inner_src_port"], 1234);
@@ -145,7 +128,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(open["outer_dst_port"], 51820);
     assert!(open.get("flow_end").is_none());
 
-    let completed = read_report(&authz_dir, ".end.json");
+    let completed = spool.report(".end.json");
     assert_eq!(completed["inner_src_ip"], "100.64.0.1");
     assert_eq!(completed["tx_packets"], 1);
     assert_eq!(completed["tx_bytes"], 5);
@@ -240,7 +223,7 @@ fn data_packet_creates_flow_without_syn() {
     assert_eq!(packet_counts(&spool.completed_flows()), vec![(1, 0)]);
 }
 
-fn enabled_tracker() -> Tracker<ClientOrGatewayId> {
+fn enabled_tracker<S>() -> Tracker<S> {
     let mut tracker = Tracker::new(Instant::now(), Duration::from_secs(1_700_000_000));
     tracker.set_enabled(true);
 
@@ -353,6 +336,19 @@ impl SpoolObserver {
             .map(|path| flow_log_spool::deserialize(&std::fs::read(path).unwrap()).unwrap())
             .collect()
     }
+
+    /// Reads the payload of the only report whose name ends in `suffix`.
+    fn report(&self, suffix: &str) -> serde_json::Value {
+        let authz_dir = self.dir.path().join("responder").join(&self.authz_id);
+
+        let report = std::fs::read_dir(&authz_dir)
+            .expect("spooled report dir exists")
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.to_string_lossy().ends_with(suffix))
+            .expect("report exists");
+
+        flow_log_spool::deserialize(&std::fs::read(report).unwrap()).unwrap()
+    }
 }
 
 /// The `(tx_packets, rx_packets)` of each completed flow, in stable order.
@@ -387,15 +383,4 @@ fn test_token(authz_id: &str, role: &str) -> IngestToken {
     let token = format!("{header}.{payload}.{}", encode(b"signature"));
 
     serde_json::from_value(serde_json::Value::String(token)).unwrap()
-}
-
-/// Reads the payload of the only report in `authz_dir` whose name ends in `suffix`.
-fn read_report(authz_dir: &Path, suffix: &str) -> serde_json::Value {
-    let report = std::fs::read_dir(authz_dir)
-        .expect("spooled report dir exists")
-        .map(|entry| entry.unwrap().path())
-        .find(|path| path.to_string_lossy().ends_with(suffix))
-        .expect("report exists");
-
-    flow_log_spool::deserialize(&std::fs::read(report).unwrap()).unwrap()
 }
