@@ -368,6 +368,7 @@ fn connect(
 
     if dst.is_ipv6() {
         socket.set_only_v6(true)?;
+        crate::prefer_stable_ipv6_source(&socket);
     }
 
     // Share the local port with the (unconnected) catch-all socket.

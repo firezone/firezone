@@ -85,6 +85,7 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
     if addr.is_ipv6() {
         socket.set_only_v6(true)?;
+        prefer_stable_ipv6_source(&socket);
     }
 
     socket.set_nonblocking(true)?;
@@ -107,6 +108,59 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     let socket = UdpSocket::new(socket)?;
 
     Ok(socket)
+}
+
+/// The socket option to prefer a stable IPv6 source address, with the value that selects it.
+///
+/// On Apple, `IPV6_PREFER_TEMPADDR` (from xnu's `netinet6/in6.h`, not exposed by `libc`)
+/// overrides the system-wide `prefer_tempaddr` sysctl per socket; `0` selects the stable
+/// address. Linux and Android implement RFC 5014 instead.
+#[cfg(apple)]
+const STABLE_IPV6_SOURCE_OPTION: (libc::c_int, libc::c_int) = (63, 0);
+#[cfg(any(target_os = "linux", target_os = "android"))]
+const STABLE_IPV6_SOURCE_OPTION: (libc::c_int, libc::c_int) =
+    (libc::IPV6_ADDR_PREFERENCES, libc::IPV6_PREFER_SRC_PUBLIC);
+
+/// Prefers a stable IPv6 source address over a temporary (RFC 8981) one for this socket.
+///
+/// The kernel selects the source address for every socket that does not pin one: per
+/// `connect` for connected sockets and per datagram for unconnected ones, and it prefers
+/// temporary addresses by default. Temporary addresses rotate periodically, which
+/// silently changes the selected source: connected sockets keep their now-deprecated
+/// address until it is removed and sends fail with `EADDRNOTAVAIL`, and every rotation
+/// changes the host candidate our peers learn, costing us relay allocations and
+/// connectivity re-checks. The stable address lives as long as the network attachment
+/// itself, which is exactly the lifetime of our sockets.
+///
+/// Failure is logged and otherwise ignored: without the preference the socket still
+/// works, it merely keeps following the rotating addresses.
+fn prefer_stable_ipv6_source(socket: &socket2::Socket) {
+    #[cfg(any(apple, target_os = "linux", target_os = "android"))]
+    {
+        use std::os::fd::AsRawFd as _;
+
+        let (option, value) = STABLE_IPV6_SOURCE_OPTION;
+
+        // SAFETY: `value` outlives the call and the option length matches its type.
+        let ret = unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::IPPROTO_IPV6,
+                option,
+                &value as *const libc::c_int as *const libc::c_void,
+                std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            )
+        };
+
+        if ret != 0 {
+            let error = io::Error::last_os_error();
+
+            tracing::warn!(%error, "Failed to prefer stable IPv6 source address");
+        }
+    }
+
+    #[cfg(not(any(apple, target_os = "linux", target_os = "android")))]
+    let _ = socket;
 }
 
 pub struct TcpSocket {
@@ -973,6 +1027,38 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV6};
 
     use super::*;
+
+    #[cfg(any(apple, target_os = "linux"))]
+    #[test]
+    fn stable_ipv6_source_preference_sticks() {
+        use std::os::fd::AsRawFd as _;
+
+        let Ok(socket) = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None)
+        else {
+            eprintln!("skipping; environment has no IPv6 support");
+            return;
+        };
+
+        prefer_stable_ipv6_source(&socket);
+
+        let (option, expected) = STABLE_IPV6_SOURCE_OPTION;
+        let mut value: libc::c_int = -1;
+        let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+
+        // SAFETY: `value` and `len` outlive the call and match the option's type.
+        let ret = unsafe {
+            libc::getsockopt(
+                socket.as_raw_fd(),
+                libc::IPPROTO_IPV6,
+                option,
+                &mut value as *mut libc::c_int as *mut libc::c_void,
+                &mut len,
+            )
+        };
+
+        assert_eq!(ret, 0);
+        assert_eq!(value, expected);
+    }
 
     #[derive(derive_more::Deref)]
     struct DummyBuffer(Vec<u8>);
