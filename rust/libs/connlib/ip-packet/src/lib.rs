@@ -2,32 +2,43 @@
 
 pub mod make;
 
+mod checksum;
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
+mod icmp;
 mod icmp_error;
+mod slices;
 
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
 pub mod proptest;
 
-use bufferpool::{Buffer, BufferPool};
-use etherparse::err::ValueTooBigError;
-pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
+pub use icmp::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
 pub use icmp_error::{FailedPacket, IcmpError};
+pub use ingot::ip::IpProtocol;
+// TODO: Temporary alias to keep the `IpNumber` name in downstream crates and
+// minimise churn; remove once call-sites are renamed to `IpProtocol`.
+pub use ingot::ip::IpProtocol as IpNumber;
+pub use slices::{
+    Icmpv4Slice, Icmpv4SliceMut, Icmpv6Slice, Icmpv6SliceMut, Ipv4HeaderSlice, Ipv6HeaderSlice,
+    TcpSlice, TcpSliceMut, UdpSlice, UdpSliceMut,
+};
 
 use anyhow::{Context as _, Result, bail};
+use bufferpool::{Buffer, BufferPool};
 use incremental_inet_checksum::ChecksumUpdate;
+use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
+use ingot::ip::{
+    IpV6ExtFragmentRef, Ipv4Flags, Ipv4Mut, Ipv4Ref, Ipv6Mut, Ipv6Ref, ValidIpv4, ValidIpv6,
+    ValidLowRentV6Eh,
+};
+use ingot::tcp::{TcpRef, ValidTcp};
+use ingot::types::{HeaderLen as _, HeaderParse as _, NextLayer as _};
+use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
 use std::sync::LazyLock;
-
-use etherparse_ext::Icmpv4HeaderSliceMut;
-use etherparse_ext::Icmpv6EchoHeaderSliceMut;
-use etherparse_ext::Ipv4HeaderSliceMut;
-use etherparse_ext::Ipv6HeaderSliceMut;
-use etherparse_ext::TcpHeaderSliceMut;
-use etherparse_ext::UdpHeaderSliceMut;
 
 static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
     LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
@@ -38,9 +49,9 @@ pub const MAX_IP_SIZE: usize = 1280;
 ///
 /// IPv6 headers are always a fixed size whereas IPv4 headers can vary.
 /// The max length of an IPv4 header is > the fixed length of an IPv6 header.
-pub const MAX_IP_PAYLOAD: u16 = (MAX_IP_SIZE - etherparse::Ipv4Header::MAX_LEN) as u16;
+pub const MAX_IP_PAYLOAD: u16 = (MAX_IP_SIZE - Ipv4HeaderSlice::MAX_LEN) as u16;
 /// The maximum payload a UDP packet can have.
-pub const MAX_UDP_PAYLOAD: u16 = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN as u16;
+pub const MAX_UDP_PAYLOAD: u16 = MAX_IP_PAYLOAD - UdpSlice::HEADER_LEN as u16;
 
 /// The maximum size of the payload that Firezone will send between nodes.
 ///
@@ -54,6 +65,25 @@ pub const MAX_FZ_PAYLOAD: usize = MAX_IP_SIZE + WG_OVERHEAD + DATA_CHANNEL_OVERH
 pub const WG_OVERHEAD: usize = 32;
 /// TURN's data channels have a 4 byte overhead.
 pub const DATA_CHANNEL_OVERHEAD: usize = 4;
+
+/// A human-readable name of well-known IP protocols, for logging.
+pub fn ip_protocol_name(protocol: IpProtocol) -> Option<&'static str> {
+    let name = match protocol {
+        IpProtocol::ICMP => "ICMP",
+        IpProtocol::IGMP => "IGMP",
+        IpProtocol::TCP => "TCP",
+        IpProtocol::UDP => "UDP",
+        IpProtocol::ICMP_V6 => "IPv6-ICMP",
+        IpProtocol(41) => "IPv6",
+        IpProtocol(47) => "GRE",
+        IpProtocol(50) => "ESP",
+        IpProtocol(51) => "AH",
+        IpProtocol(132) => "SCTP",
+        _ => return None,
+    };
+
+    Some(name)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -126,10 +156,28 @@ impl IpPacketBuf {
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
     buf: Buffer<Vec<u8>>,
-    ip_header_length: usize,
     len: usize,
 
+    /// Offset of the transport-layer header within the buffer.
+    ///
+    /// For IPv6, this includes any extension headers.
+    ip_header_length: usize,
+    transport: Transport,
     version: IpVersion,
+}
+
+/// The transport protocol of an [`IpPacket`], determined and validated on creation.
+///
+/// For the first four variants, the transport header (and its length field, where
+/// the protocol has one) is known to be consistent with the packet length, so
+/// views over the transport layer can be created without further checks.
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Transport {
+    Udp,
+    Tcp,
+    Icmpv4,
+    Icmpv6,
+    Other(IpProtocol),
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -146,7 +194,7 @@ impl std::fmt::Debug for IpPacket {
             .field("dst", &self.destination())
             .field(
                 "protocol",
-                &self.next_header().keyword_str().unwrap_or("unknown"),
+                &ip_protocol_name(self.next_header()).unwrap_or("unknown"),
             );
 
         if let Some(icmp) = self.as_icmpv4() {
@@ -200,76 +248,105 @@ impl std::fmt::Debug for IpPacket {
 }
 
 impl IpPacket {
+    /// Parses and validates the first `len` bytes of `buf` as an IP packet.
+    ///
+    /// All layout invariants are checked here, once: header lengths and length
+    /// fields must be consistent with `len` all the way through the transport
+    /// layer. Accessors on the returned packet rely on these invariants and
+    /// don't re-validate.
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
         anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
 
-        let ip = IpSlice::from_slice(&buf.inner[..len]).context("Failed to parse IP packet")?;
+        let packet = &buf.inner[..len];
 
-        anyhow::ensure!(!ip.is_fragmenting_payload(), Fragmented);
+        let (version, ip_header_length, protocol) = match packet.first().map(|b| b >> 4) {
+            Some(4) => {
+                let (header, _, _) =
+                    ValidIpv4::parse(packet).context("Failed to parse IPv4 header")?;
 
-        let src_ip = ip.source_addr();
-        let dst_ip = ip.destination_addr();
-
-        // Validate the packet contents
-        match ip.payload_ip_number() {
-            IpNumber::UDP => {
-                let udp_header = UdpHeaderSlice::from_slice(ip.payload().payload)
-                    .context("Failed to parse UDP header")?
-                    .to_header();
-
-                UdpSlice::from_slice(ip.payload().payload).with_context(|| {
-                    format!("Failed to parse UDP packet; src IP = {src_ip}, dst IP = {dst_ip}, {udp_header:?}")
-                })?;
-            }
-            IpNumber::TCP => {
-                let tcp_header = TcpHeaderSlice::from_slice(ip.payload().payload)
-                    .context("Failed to parse TCP header")?
-                    .to_header();
-
-                TcpSlice::from_slice(ip.payload().payload).with_context(|| {
-                    format!("Failed to parse TCP packet; src IP = {src_ip}, dst IP = {dst_ip}, {tcp_header:?}")
-                })?;
-            }
-            IpNumber::ICMP => {
+                anyhow::ensure!(header.ihl() >= 5, "IPv4 IHL must be at least 5");
                 anyhow::ensure!(
-                    matches!(ip, IpSlice::Ipv4(_)),
-                    "ICMPv4 is only allowed in IPv4 packets"
+                    header.total_len() as usize == len,
+                    "IPv4 total length ({}) does not match packet length ({len})",
+                    header.total_len()
+                );
+                anyhow::ensure!(
+                    !header.flags().contains(Ipv4Flags::MORE_FRAGMENTS)
+                        && header.fragment_offset() == 0,
+                    Fragmented
                 );
 
-                Icmpv4Slice::from_slice(ip.payload().payload).with_context(|| {
-                    format!("Failed to parse ICMPv4 packet; src IP = {src_ip}, dst IP = {dst_ip}")
-                })?;
+                (IpVersion::V4, 4 * header.ihl() as usize, header.protocol())
             }
-            IpNumber::IPV6_ICMP => {
+            Some(6) => {
+                let (header, _, _) =
+                    ValidIpv6::parse(packet).context("Failed to parse IPv6 header")?;
+
                 anyhow::ensure!(
-                    matches!(ip, IpSlice::Ipv6(_)),
-                    "ICMPv6 is only allowed in IPv6 packets"
+                    header.payload_len() as usize + Ipv6HeaderSlice::LEN == len,
+                    "IPv6 payload length ({}) does not match packet length ({len})",
+                    header.payload_len()
+                );
+                anyhow::ensure!(!ipv6_is_fragmenting(&header), Fragmented);
+
+                let protocol = header
+                    .next_layer()
+                    .context("Failed to determine transport protocol of IPv6 packet")?;
+
+                (IpVersion::V6, header.packet_length(), protocol)
+            }
+            Some(version) => bail!("Unsupported IP version: {version}"),
+            None => bail!("Empty packet"),
+        };
+
+        let l4 = &packet[ip_header_length..];
+
+        let transport = match (version, protocol) {
+            (_, IpProtocol::UDP) => {
+                let (udp, _, _) = ValidUdp::parse(l4).context("Failed to parse UDP header")?;
+
+                anyhow::ensure!(
+                    udp.length() as usize == l4.len(),
+                    "UDP length ({}) does not match length of IP payload ({})",
+                    udp.length(),
+                    l4.len()
                 );
 
-                Icmpv6Slice::from_slice(ip.payload().payload).with_context(|| {
-                    format!("Failed to parse ICMPv6 packet; src IP = {src_ip}, dst IP = {dst_ip}")
-                })?;
+                Transport::Udp
             }
-            _ => {}
-        };
-        let version = match ip {
-            IpSlice::Ipv4(_) => IpVersion::V4,
-            IpSlice::Ipv6(_) => IpVersion::V6,
-        };
-        let ip_header_length = match ip {
-            IpSlice::Ipv4(ipv4) => {
-                ipv4.header().ihl() as usize * 4
-                    + ipv4.extensions().auth.map_or(0, |ext| ext.slice().len())
+            (_, IpProtocol::TCP) => {
+                let (tcp, _, _) = ValidTcp::parse(l4).context("Failed to parse TCP header")?;
+
+                anyhow::ensure!(tcp.data_offset() >= 5, "TCP data offset must be at least 5");
+
+                Transport::Tcp
             }
-            IpSlice::Ipv6(ipv6) => ipv6.header().header_len() + ipv6.extensions().slice().len(),
+            (IpVersion::V4, IpProtocol::ICMP) => {
+                ValidIcmpV4::parse(l4).context("Failed to parse ICMPv4 header")?;
+
+                Transport::Icmpv4
+            }
+            (IpVersion::V6, IpProtocol::ICMP_V6) => {
+                ValidIcmpV6::parse(l4).context("Failed to parse ICMPv6 header")?;
+
+                Transport::Icmpv6
+            }
+            (IpVersion::V6, IpProtocol::ICMP) => {
+                bail!("ICMPv4 is only allowed in IPv4 packets")
+            }
+            (IpVersion::V4, IpProtocol::ICMP_V6) => {
+                bail!("ICMPv6 is only allowed in IPv6 packets")
+            }
+            (_, other) => Transport::Other(other),
         };
 
         Ok(Self {
             buf: buf.inner,
             len,
-            version,
             ip_header_length,
+            transport,
+            version,
         })
     }
 
@@ -279,15 +356,23 @@ impl IpPacket {
 
     pub fn source(&self) -> IpAddr {
         match self.version {
-            IpVersion::V4 => self.as_ipv4_unchecked().header().source_addr().into(),
-            IpVersion::V6 => self.as_ipv6_unchecked().header().source_addr().into(),
+            IpVersion::V4 => IpAddr::V4(std::net::Ipv4Addr::from(
+                self.ipv4_header_unchecked().source(),
+            )),
+            IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
+                self.ipv6_header_unchecked().source(),
+            )),
         }
     }
 
     pub fn destination(&self) -> IpAddr {
         match self.version {
-            IpVersion::V4 => self.as_ipv4_unchecked().header().destination_addr().into(),
-            IpVersion::V6 => self.as_ipv6_unchecked().header().destination_addr().into(),
+            IpVersion::V4 => IpAddr::V4(std::net::Ipv4Addr::from(
+                self.ipv4_header_unchecked().destination(),
+            )),
+            IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
+                self.ipv6_header_unchecked().destination(),
+            )),
         }
     }
 
@@ -356,23 +441,12 @@ impl IpPacket {
     }
 
     pub fn layer4_payload_len(&self) -> usize {
-        if let Some(tcp) = self.as_tcp() {
-            return tcp.payload().len();
+        match self.transport {
+            Transport::Udp => self.payload().len() - UdpSlice::HEADER_LEN,
+            Transport::Tcp => self.as_tcp_unchecked().payload().len(),
+            Transport::Icmpv4 | Transport::Icmpv6 => self.payload().len() - Icmpv4Slice::HEADER_LEN,
+            Transport::Other(_) => self.payload().len(),
         }
-
-        if let Some(udp) = self.as_udp() {
-            return udp.payload().len();
-        }
-
-        if let Some(icmpv4) = self.as_icmpv4() {
-            return icmpv4.payload().len();
-        }
-
-        if let Some(icmpv6) = self.as_icmpv6() {
-            return icmpv6.payload().len();
-        }
-
-        self.payload().len()
     }
 
     pub fn set_source_protocol(&mut self, v: u16) {
@@ -488,66 +562,76 @@ impl IpPacket {
         }
     }
 
-    fn as_ipv4(&self) -> Option<Ipv4Slice<'_>> {
-        Ipv4Slice::from_slice(&self.buf[..self.len]).ok()
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Packet layout was validated on creation."
+    )]
+    fn ipv4_header_unchecked(&self) -> ValidIpv4<&[u8]> {
+        debug_assert!(matches!(self.version, IpVersion::V4));
+
+        let (header, _, _) = ValidIpv4::parse(self.packet()).unwrap();
+
+        header
     }
 
-    fn as_ipv4_header_mut(&mut self) -> Option<Ipv4HeaderSliceMut<'_>> {
-        Ipv4HeaderSliceMut::from_slice(&mut self.buf[..self.len]).ok()
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Packet layout was validated on creation."
+    )]
+    fn ipv4_header_mut_unchecked(&mut self) -> ValidIpv4<&mut [u8]> {
+        debug_assert!(matches!(self.version, IpVersion::V4));
+
+        let (header, _, _) = ValidIpv4::parse(&mut self.buf[..self.len]).unwrap();
+
+        header
     }
 
-    #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv4_unchecked(&self) -> Ipv4Slice<'_> {
-        self.as_ipv4().unwrap()
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Packet layout was validated on creation."
+    )]
+    fn ipv6_header_unchecked(&self) -> ValidIpv6<&[u8]> {
+        debug_assert!(matches!(self.version, IpVersion::V6));
+
+        let (header, _, _) = ValidIpv6::parse(self.packet()).unwrap();
+
+        header
     }
 
-    #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv4_header_mut_unchecked(&mut self) -> Ipv4HeaderSliceMut<'_> {
-        self.as_ipv4_header_mut().unwrap()
-    }
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Packet layout was validated on creation."
+    )]
+    fn ipv6_header_mut_unchecked(&mut self) -> ValidIpv6<&mut [u8]> {
+        debug_assert!(matches!(self.version, IpVersion::V6));
 
-    fn as_ipv6(&self) -> Option<Ipv6Slice<'_>> {
-        Ipv6Slice::from_slice(&self.buf[..self.len]).ok()
-    }
+        let (header, _, _) = ValidIpv6::parse(&mut self.buf[..self.len]).unwrap();
 
-    fn as_ipv6_header_mut(&mut self) -> Option<Ipv6HeaderSliceMut<'_>> {
-        Ipv6HeaderSliceMut::from_slice(&mut self.buf[..self.len]).ok()
-    }
-
-    #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv6_unchecked(&self) -> Ipv6Slice<'_> {
-        self.as_ipv6().unwrap()
-    }
-
-    #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv6_header_mut_unchecked(&mut self) -> Ipv6HeaderSliceMut<'_> {
-        self.as_ipv6_header_mut().unwrap()
+        header
     }
 
     fn set_ipv4_checksum(&mut self) {
-        let Some(p) = self.as_ipv4() else {
+        if !matches!(self.version, IpVersion::V4) {
             return;
-        };
+        }
 
-        let checksum = p.header().to_header().calc_header_checksum();
-        self.as_ipv4_header_mut_unchecked().set_checksum(checksum);
+        let checksum = checksum::ipv4_header_checksum(&self.packet()[..self.ip_header_length]);
+
+        self.ipv4_header_mut_unchecked().set_checksum(checksum);
     }
 
     pub fn calculate_udp_checksum(&self) -> Result<u16, ChecksummingFailed> {
-        let udp = self
-            .as_udp()
-            .ok_or(ChecksummingFailed::UnexpectedProtocol { protocol: "udp" })?;
+        if !self.is_udp() {
+            return Err(ChecksummingFailed::UnexpectedProtocol { protocol: "udp" });
+        }
 
-        let checksum = match self.version {
-            IpVersion::V4 => udp.to_header().calc_checksum_ipv4(
-                &self.as_ipv4_unchecked().header().to_header(),
-                udp.payload(),
-            ),
-            IpVersion::V6 => udp.to_header().calc_checksum_ipv6(
-                &self.as_ipv6_unchecked().header().to_header(),
-                udp.payload(),
-            ),
-        }?;
+        let checksum =
+            checksum::l4_checksum(self.pseudo_header_sum(IpProtocol::UDP), self.payload(), 6);
+
+        // RFC 768: a computed checksum of zero is transmitted as all-ones.
+        if checksum == 0 {
+            return Ok(0xFFFF);
+        }
 
         Ok(checksum)
     }
@@ -563,20 +647,12 @@ impl IpPacket {
     }
 
     pub fn calculate_tcp_checksum(&self) -> Result<u16, ChecksummingFailed> {
-        let tcp = self
-            .as_tcp()
-            .ok_or(ChecksummingFailed::UnexpectedProtocol { protocol: "tcp" })?;
+        if !self.is_tcp() {
+            return Err(ChecksummingFailed::UnexpectedProtocol { protocol: "tcp" });
+        }
 
-        let checksum = match self.version {
-            IpVersion::V4 => tcp.to_header().calc_checksum_ipv4(
-                &self.as_ipv4_unchecked().header().to_header(),
-                tcp.payload(),
-            ),
-            IpVersion::V6 => tcp.to_header().calc_checksum_ipv6(
-                &self.as_ipv6_unchecked().header().to_header(),
-                tcp.payload(),
-            ),
-        }?;
+        let checksum =
+            checksum::l4_checksum(self.pseudo_header_sum(IpProtocol::TCP), self.payload(), 16);
 
         Ok(checksum)
     }
@@ -591,20 +667,79 @@ impl IpPacket {
             .set_checksum(checksum);
     }
 
+    pub fn calculate_icmpv4_checksum(&self) -> Result<u16, ChecksummingFailed> {
+        if !self.is_icmp() {
+            return Err(ChecksummingFailed::UnexpectedProtocol { protocol: "icmpv4" });
+        }
+
+        // The ICMPv4 checksum does not cover a pseudo-header.
+        Ok(checksum::l4_checksum(0, self.payload(), 2))
+    }
+
+    pub fn calculate_icmpv6_checksum(&self) -> Result<u16, ChecksummingFailed> {
+        if !self.is_icmpv6() {
+            return Err(ChecksummingFailed::UnexpectedProtocol { protocol: "icmpv6" });
+        }
+
+        let checksum = checksum::l4_checksum(
+            self.pseudo_header_sum(IpProtocol::ICMP_V6),
+            self.payload(),
+            2,
+        );
+
+        Ok(checksum)
+    }
+
+    /// Recomputes the IPv4 header checksum of this packet.
+    pub fn calculate_ipv4_header_checksum(&self) -> Result<u16, ChecksummingFailed> {
+        if !matches!(self.version, IpVersion::V4) {
+            return Err(ChecksummingFailed::UnexpectedProtocol { protocol: "ipv4" });
+        }
+
+        Ok(checksum::ipv4_header_checksum(
+            &self.packet()[..self.ip_header_length],
+        ))
+    }
+
+    fn pseudo_header_sum(&self, protocol: IpProtocol) -> u32 {
+        match self.version {
+            IpVersion::V4 => {
+                let header = self.ipv4_header_unchecked();
+
+                checksum::pseudo_header_v4(
+                    header.source().into(),
+                    header.destination().into(),
+                    protocol,
+                    self.payload().len(),
+                )
+            }
+            IpVersion::V6 => {
+                let header = self.ipv6_header_unchecked();
+
+                checksum::pseudo_header_v6(
+                    header.source().into(),
+                    header.destination().into(),
+                    protocol,
+                    self.payload().len(),
+                )
+            }
+        }
+    }
+
     pub fn as_udp(&self) -> Option<UdpSlice<'_>> {
         if !self.is_udp() {
             return None;
         }
 
-        UdpSlice::from_slice(self.payload()).ok()
+        Some(UdpSlice::from_l4(self.payload()))
     }
 
-    pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut<'_>> {
+    pub fn as_udp_mut(&mut self) -> Option<UdpSliceMut<'_>> {
         if !self.is_udp() {
             return None;
         }
 
-        UdpHeaderSliceMut::from_slice(self.payload_mut()).ok()
+        Some(UdpSliceMut::from_l4(self.payload_mut()))
     }
 
     pub fn as_tcp(&self) -> Option<TcpSlice<'_>> {
@@ -612,32 +747,25 @@ impl IpPacket {
             return None;
         }
 
-        TcpSlice::from_slice(self.payload()).ok()
+        Some(self.as_tcp_unchecked())
     }
 
-    pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut<'_>> {
+    fn as_tcp_unchecked(&self) -> TcpSlice<'_> {
+        TcpSlice::from_l4(self.payload())
+    }
+
+    pub fn as_tcp_mut(&mut self) -> Option<TcpSliceMut<'_>> {
         if !self.is_tcp() {
             return None;
         }
 
-        TcpHeaderSliceMut::from_slice(self.payload_mut()).ok()
+        Some(TcpSliceMut::from_l4(self.payload_mut()))
     }
 
     fn set_icmpv6_checksum(&mut self) {
-        let Some(i) = self.as_icmpv6() else {
+        let Ok(checksum) = self.calculate_icmpv6_checksum() else {
             return;
         };
-
-        let ipv6 = self.as_ipv6_unchecked();
-
-        let checksum = i
-            .icmp_type()
-            .calc_checksum(
-                ipv6.header().source_addr().octets(),
-                ipv6.header().destination_addr().octets(),
-                i.payload(),
-            )
-            .expect("Payload came from the original packet");
 
         let Some(mut i) = self.as_icmpv6_mut() else {
             return;
@@ -647,11 +775,9 @@ impl IpPacket {
     }
 
     fn set_icmpv4_checksum(&mut self) {
-        let Some(i) = self.as_icmpv4() else {
+        let Ok(checksum) = self.calculate_icmpv4_checksum() else {
             return;
         };
-
-        let checksum = i.icmp_type().calc_checksum(i.payload());
 
         let Some(mut i) = self.as_icmpv4_mut() else {
             return;
@@ -665,107 +791,20 @@ impl IpPacket {
             return None;
         }
 
-        Icmpv4Slice::from_slice(self.payload())
-            .inspect_err(|e| tracing::debug!("Invalid ICMPv4 packet: {e}"))
-            .ok()
+        Some(Icmpv4Slice::from_l4(self.payload()))
     }
 
-    pub fn as_icmpv4_mut(&mut self) -> Option<Icmpv4HeaderSliceMut<'_>> {
+    pub fn as_icmpv4_mut(&mut self) -> Option<Icmpv4SliceMut<'_>> {
         if !self.is_icmp() {
             return None;
         }
 
-        Icmpv4HeaderSliceMut::from_slice(self.payload_mut())
-            .inspect_err(|e| tracing::debug!("Invalid ICMPv4 packet: {e}"))
-            .ok()
+        Some(Icmpv4SliceMut::from_l4(self.payload_mut()))
     }
 
     /// In case the packet is an ICMP error with a failed packet, parses the failed packet from the ICMP payload.
     pub fn icmp_error(&self) -> Result<Option<(FailedPacket, IcmpError)>> {
-        if let Some(icmpv4) = self.as_icmpv4() {
-            let icmp_type = icmpv4.icmp_type();
-
-            // Handle success case early to avoid erroring below.
-            if matches!(
-                icmp_type,
-                Icmpv4Type::EchoReply(_) | Icmpv4Type::EchoRequest(_)
-            ) {
-                return Ok(None);
-            }
-
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "We only want to match on these variants"
-            )]
-            let icmp_error = match icmp_type {
-                Icmpv4Type::DestinationUnreachable(error) => IcmpError::V4Unreachable(error),
-                Icmpv4Type::TimeExceeded(code) => IcmpError::V4TimeExceeded(code),
-                other => bail!("ICMP message {other:?} is not supported"),
-            };
-
-            let (ipv4, _) = LaxIpv4Slice::from_slice(icmpv4.payload())
-                .context("Failed to parse payload of ICMPv4 error message as IPv4 packet")?;
-            let header = ipv4.header();
-
-            let src = IpAddr::V4(header.source_addr());
-            let failed_dst = IpAddr::V4(header.destination_addr());
-            let l4_proto = extract_l4_proto(ipv4.payload().payload, header.protocol())
-                .context("Failed to extract protocol")?;
-
-            return Ok(Some((
-                FailedPacket {
-                    src,
-                    failed_dst,
-                    l4_proto,
-                    raw: icmpv4.payload().to_vec(),
-                },
-                icmp_error,
-            )));
-        }
-
-        if let Some(icmpv6) = self.as_icmpv6() {
-            let icmp_type = icmpv6.icmp_type();
-
-            // Handle success case early to avoid erroring below.
-            if matches!(
-                icmp_type,
-                Icmpv6Type::EchoReply(_) | Icmpv6Type::EchoRequest(_)
-            ) {
-                return Ok(None);
-            }
-
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "We only want to match on these variants"
-            )]
-            let icmp_error = match icmp_type {
-                Icmpv6Type::DestinationUnreachable(error) => IcmpError::V6Unreachable(error),
-                Icmpv6Type::PacketTooBig { mtu } => IcmpError::V6PacketTooBig { mtu },
-                Icmpv6Type::TimeExceeded(code) => IcmpError::V6TimeExceeded(code),
-                other => bail!("ICMPv6 message {other:?} is not supported"),
-            };
-
-            let (ipv6, _) = LaxIpv6Slice::from_slice(icmpv6.payload())
-                .context("Failed to parse payload of ICMPv6 error message as IPv6 packet")?;
-            let header = ipv6.header();
-
-            let src = IpAddr::V6(header.source_addr());
-            let failed_dst = IpAddr::V6(header.destination_addr());
-            let l4_proto = extract_l4_proto(ipv6.payload().payload, header.next_header())
-                .context("Failed to extract protocol")?;
-
-            return Ok(Some((
-                FailedPacket {
-                    src,
-                    failed_dst,
-                    l4_proto,
-                    raw: icmpv6.payload().to_vec(),
-                },
-                icmp_error,
-            )));
-        }
-
-        Ok(None)
+        icmp_error::parse_icmp_error(self)
     }
 
     pub fn as_icmpv6(&self) -> Option<Icmpv6Slice<'_>> {
@@ -773,15 +812,15 @@ impl IpPacket {
             return None;
         }
 
-        Icmpv6Slice::from_slice(self.payload()).ok()
+        Some(Icmpv6Slice::from_l4(self.payload()))
     }
 
-    pub fn as_icmpv6_mut(&mut self) -> Option<Icmpv6EchoHeaderSliceMut<'_>> {
+    pub fn as_icmpv6_mut(&mut self) -> Option<Icmpv6SliceMut<'_>> {
         if !self.is_icmpv6() {
             return None;
         }
 
-        Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut()).ok()
+        Some(Icmpv6SliceMut::from_l4(self.payload_mut()))
     }
 
     pub fn as_fz_p2p_control(&self) -> Option<FzP2pControlSlice<'_>> {
@@ -836,15 +875,17 @@ impl IpPacket {
     pub fn set_dst(&mut self, dst: IpAddr) -> Result<()> {
         match dst {
             IpAddr::V4(addr) => {
-                let (old, new) = {
-                    let mut hdr = self.as_ipv4_header_mut().context("Not an IPv4 packet")?;
+                anyhow::ensure!(matches!(self.version, IpVersion::V4), "Not an IPv4 packet");
 
-                    let old = u32::from_be_bytes(hdr.get_destination());
+                let (old, new) = {
+                    let mut hdr = self.ipv4_header_mut_unchecked();
+
+                    let old = std::net::Ipv4Addr::from(hdr.destination()).to_bits();
                     let new = addr.to_bits();
 
-                    hdr.set_destination(addr.octets());
+                    hdr.set_destination(addr.into());
 
-                    let checksum = ChecksumUpdate::new(hdr.get_checksum())
+                    let checksum = ChecksumUpdate::new(hdr.checksum())
                         .remove_u32(old)
                         .add_u32(new)
                         .into_ip_checksum();
@@ -856,13 +897,15 @@ impl IpPacket {
                 self.patch_pseudo_header_checksums(|u| u.remove_u32(old).add_u32(new));
             }
             IpAddr::V6(addr) => {
-                let (old, new) = {
-                    let mut hdr = self.as_ipv6_header_mut().context("Not an IPv6 packet")?;
+                anyhow::ensure!(matches!(self.version, IpVersion::V6), "Not an IPv6 packet");
 
-                    let old = u128::from_be_bytes(hdr.get_destination());
+                let (old, new) = {
+                    let mut hdr = self.ipv6_header_mut_unchecked();
+
+                    let old = std::net::Ipv6Addr::from(hdr.destination()).to_bits();
                     let new = addr.to_bits();
 
-                    hdr.set_destination(addr.octets());
+                    hdr.set_destination(addr.into());
 
                     (old, new)
                 };
@@ -878,15 +921,17 @@ impl IpPacket {
     pub fn set_src(&mut self, src: IpAddr) -> Result<()> {
         match src {
             IpAddr::V4(addr) => {
-                let (old, new) = {
-                    let mut hdr = self.as_ipv4_header_mut().context("Not an IPv4 packet")?;
+                anyhow::ensure!(matches!(self.version, IpVersion::V4), "Not an IPv4 packet");
 
-                    let old = u32::from_be_bytes(hdr.get_source());
+                let (old, new) = {
+                    let mut hdr = self.ipv4_header_mut_unchecked();
+
+                    let old = std::net::Ipv4Addr::from(hdr.source()).to_bits();
                     let new = addr.to_bits();
 
-                    hdr.set_source(addr.octets());
+                    hdr.set_source(addr.into());
 
-                    let checksum = ChecksumUpdate::new(hdr.get_checksum())
+                    let checksum = ChecksumUpdate::new(hdr.checksum())
                         .remove_u32(old)
                         .add_u32(new)
                         .into_ip_checksum();
@@ -898,13 +943,15 @@ impl IpPacket {
                 self.patch_pseudo_header_checksums(|u| u.remove_u32(old).add_u32(new));
             }
             IpAddr::V6(addr) => {
-                let (old, new) = {
-                    let mut hdr = self.as_ipv6_header_mut().context("Not an IPv6 packet")?;
+                anyhow::ensure!(matches!(self.version, IpVersion::V6), "Not an IPv6 packet");
 
-                    let old = u128::from_be_bytes(hdr.get_source());
+                let (old, new) = {
+                    let mut hdr = self.ipv6_header_mut_unchecked();
+
+                    let old = std::net::Ipv6Addr::from(hdr.source()).to_bits();
                     let new = addr.to_bits();
 
-                    hdr.set_source(addr.octets());
+                    hdr.set_source(addr.into());
 
                     (old, new)
                 };
@@ -955,17 +1002,17 @@ impl IpPacket {
     ///
     /// This is most likely not what you want unless you know what you're doing or you are writing a test.
     fn with_ecn(mut self, ecn: Ecn) -> Self {
-        match &mut self.version {
+        match self.version {
             IpVersion::V4 => {
                 // The ECN bits are part of the checksummed word formed by the first two
                 // header bytes; the L4 checksums don't cover them.
                 let old = u16::from_be_bytes([self.buf[0], self.buf[1]]);
                 let new = (old & !0b11) | ecn as u16;
 
-                let mut hdr = self.as_ipv4_header_mut_unchecked();
-                hdr.set_ecn(ecn as u8);
+                self.buf[1] = new.to_be_bytes()[1];
 
-                let checksum = ChecksumUpdate::new(hdr.get_checksum())
+                let mut hdr = self.ipv4_header_mut_unchecked();
+                let checksum = ChecksumUpdate::new(hdr.checksum())
                     .remove_u16(old)
                     .add_u16(new)
                     .into_ip_checksum();
@@ -973,52 +1020,72 @@ impl IpPacket {
             }
             // IPv6 has no header checksum and the traffic class is not part of the
             // pseudo-header, so no checksum needs updating.
-            IpVersion::V6 => self.as_ipv6_header_mut_unchecked().set_ecn(ecn as u8),
+            //
+            // The ECN bits are the low two bits of the traffic class,
+            // which spans the low nibble of the first byte and the high nibble of the second.
+            IpVersion::V6 => {
+                self.buf[1] = (self.buf[1] & !0b0011_0000) | ((ecn as u8) << 4);
+            }
         }
 
         self
     }
 
     pub fn ecn(&self) -> Ecn {
-        let byte = match self.version {
-            IpVersion::V4 => self.as_ipv4_unchecked().header().ecn().value(),
-            IpVersion::V6 => self.as_ipv6_unchecked().header().traffic_class(),
+        let bits = match self.version {
+            IpVersion::V4 => self.buf[1] & 0b11,
+            IpVersion::V6 => (self.buf[1] >> 4) & 0b11,
         };
 
-        match byte & 0b00000011 {
-            0b00000000 => Ecn::NonEct,
-            0b00000001 => Ecn::Ect1,
-            0b00000010 => Ecn::Ect0,
-            0b00000011 => Ecn::Ce,
+        match bits {
+            0b00 => Ecn::NonEct,
+            0b01 => Ecn::Ect1,
+            0b10 => Ecn::Ect0,
+            0b11 => Ecn::Ce,
             _ => unreachable!(),
         }
     }
 
-    pub fn ipv4_header(&self) -> Option<Ipv4Header> {
-        Some(self.as_ipv4()?.header().to_header())
+    pub fn ipv4_header(&self) -> Option<Ipv4HeaderSlice<'_>> {
+        if !matches!(self.version, IpVersion::V4) {
+            return None;
+        }
+
+        Some(Ipv4HeaderSlice::from_packet(self.packet()))
     }
 
-    pub fn ipv6_header(&self) -> Option<Ipv6Header> {
-        Some(self.as_ipv6()?.header().to_header())
+    pub fn ipv6_header(&self) -> Option<Ipv6HeaderSlice<'_>> {
+        if !matches!(self.version, IpVersion::V6) {
+            return None;
+        }
+
+        Some(Ipv6HeaderSlice::from_packet(
+            self.packet(),
+            self.next_header(),
+        ))
     }
 
-    pub fn next_header(&self) -> IpNumber {
-        match self.version {
-            IpVersion::V4 => self.as_ipv4_unchecked().payload_ip_number(),
-            IpVersion::V6 => self.as_ipv6_unchecked().payload().ip_number,
+    /// The protocol of the transport layer, after any IPv6 extension headers.
+    pub fn next_header(&self) -> IpProtocol {
+        match self.transport {
+            Transport::Udp => IpProtocol::UDP,
+            Transport::Tcp => IpProtocol::TCP,
+            Transport::Icmpv4 => IpProtocol::ICMP,
+            Transport::Icmpv6 => IpProtocol::ICMP_V6,
+            Transport::Other(protocol) => protocol,
         }
     }
 
     pub fn is_udp(&self) -> bool {
-        self.next_header() == IpNumber::UDP
+        matches!(self.transport, Transport::Udp)
     }
 
     pub fn is_tcp(&self) -> bool {
-        self.next_header() == IpNumber::TCP
+        matches!(self.transport, Transport::Tcp)
     }
 
     pub fn is_icmp(&self) -> bool {
-        self.next_header() == IpNumber::ICMP
+        matches!(self.transport, Transport::Icmpv4)
     }
 
     /// Whether the packet is a Firezone p2p control protocol packet.
@@ -1029,7 +1096,7 @@ impl IpPacket {
     }
 
     pub fn is_icmpv6(&self) -> bool {
-        self.next_header() == IpNumber::IPV6_ICMP
+        matches!(self.transport, Transport::Icmpv6)
     }
 
     pub fn packet(&self) -> &[u8] {
@@ -1045,6 +1112,28 @@ impl IpPacket {
     }
 }
 
+/// Whether the packet's extension headers mark it as a fragment of a larger packet.
+///
+/// A fragment header with offset 0 and the "more fragments" flag unset
+/// (an "atomic" fragment) does not fragment the payload.
+fn ipv6_is_fragmenting(header: &ValidIpv6<&[u8]>) -> bool {
+    use ingot::types::Header;
+
+    let first_protocol = header.next_header();
+
+    let Header::Raw(extensions) = &header.1 else {
+        return false;
+    };
+
+    extensions.iter(Some(first_protocol)).any(|extension| {
+        let Ok(ValidLowRentV6Eh::IpV6ExtFragment(fragment)) = extension else {
+            return false;
+        };
+
+        fragment.fragment_offset() != 0 || fragment.more_frags() == 1
+    })
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("Fragmented IP packets are unsupported")]
 pub struct Fragmented;
@@ -1052,7 +1141,7 @@ pub struct Fragmented;
 /// Writes `checksum` to the packet unless its current checksum is zero.
 ///
 /// A zero UDP checksum means "not computed" (IPv4); translation must preserve that.
-fn set_udp_checksum_if_computed(p: &mut UdpHeaderSliceMut<'_>, checksum: u16) {
+fn set_udp_checksum_if_computed(p: &mut UdpSliceMut<'_>, checksum: u16) {
     if p.get_checksum() == 0 {
         return;
     }
@@ -1060,67 +1149,10 @@ fn set_udp_checksum_if_computed(p: &mut UdpHeaderSliceMut<'_>, checksum: u16) {
     p.set_checksum(checksum);
 }
 
-fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol> {
-    // ICMP messages SHOULD always contain at least 8 bytes of the original L4 payload.
-    let (src_port, remaining) = payload
-        .split_first_chunk::<2>()
-        .context("Payload is not long enough for src port")?;
-    let (dst_port, _) = remaining
-        .split_first_chunk::<2>()
-        .context("Payload is not long enough for dst port")?;
-
-    let proto = match protocol {
-        IpNumber::UDP => Layer4Protocol::Udp {
-            src: u16::from_be_bytes(*src_port),
-            dst: u16::from_be_bytes(*dst_port),
-        },
-        IpNumber::TCP => Layer4Protocol::Tcp {
-            src: u16::from_be_bytes(*src_port),
-            dst: u16::from_be_bytes(*dst_port),
-        },
-        IpNumber::ICMP => {
-            let icmp_type = Icmpv4Slice::from_slice(payload)
-                .context("Failed to parse payload as ICMPv4")?
-                .header()
-                .icmp_type;
-
-            let Icmpv4Type::EchoRequest(echo_header) = icmp_type else {
-                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
-            };
-
-            Layer4Protocol::Icmp {
-                seq: echo_header.seq,
-                id: echo_header.id,
-            }
-        }
-        IpNumber::IPV6_ICMP => {
-            let icmp_type = Icmpv6Slice::from_slice(payload)
-                .context("Failed to parse payload as ICMPv6")?
-                .header()
-                .icmp_type;
-
-            let Icmpv6Type::EchoRequest(echo_header) = icmp_type else {
-                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
-            };
-
-            Layer4Protocol::Icmp {
-                seq: echo_header.seq,
-                id: echo_header.id,
-            }
-        }
-        other => {
-            bail!("Unsupported protocol: {:?}", other.keyword_str())
-        }
-    };
-    Ok(proto)
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ChecksummingFailed {
     #[error("Not a {protocol} packet")]
     UnexpectedProtocol { protocol: &'static str },
-    #[error(transparent)]
-    ValueTooBig(#[from] ValueTooBigError<usize>),
 }
 
 /// Models the possible ECN states.
@@ -1138,7 +1170,7 @@ pub enum Ecn {
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum UnsupportedProtocol {
     #[error("Unsupported IP protocol: {0:?}")]
-    UnsupportedIpPayload(IpNumber),
+    UnsupportedIpPayload(IpProtocol),
     #[error("Unsupported ICMPv4 type: {0:?}")]
     UnsupportedIcmpv4Type(Icmpv4Type),
     #[error("Unsupported ICMPv6 type: {0:?}")]
@@ -1158,7 +1190,7 @@ mod tests {
                 .unwrap();
 
         let ip_payload = udp_packet.payload();
-        let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
+        let udp_payload = &ip_payload[UdpSlice::HEADER_LEN..];
 
         assert_eq!(udp_payload, b"foobar");
     }
@@ -1191,11 +1223,10 @@ mod tests {
             crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
 
         let p_with_ecn = p.with_ecn(Ecn::Ect0);
-        let ip4_header = p_with_ecn.ipv4_header().unwrap();
 
         assert_eq!(
-            ip4_header.header_checksum,
-            ip4_header.calc_header_checksum()
+            p_with_ecn.ipv4_header().unwrap().checksum(),
+            p_with_ecn.calculate_ipv4_header_checksum().unwrap()
         );
     }
 

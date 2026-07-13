@@ -18,5 +18,8 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 tracing = { workspace = true }
 
+[dev-dependencies]
+ingot = { workspace = true }
+
 [lints]
 workspace = true

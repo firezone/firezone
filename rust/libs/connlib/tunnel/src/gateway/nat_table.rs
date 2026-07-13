@@ -1,7 +1,7 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
 use bimap::BiMap;
-use ip_packet::{FailedPacket, IcmpError, IpPacket, PacketBuilder, Protocol};
+use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
 use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
@@ -302,17 +302,13 @@ impl IcmpErrorPrototype {
         match self.inside_dst {
             IpAddr::V4(inside_dst) => {
                 let icmp_type = self.icmp_error.into_icmp_v4_type()?;
-                let icmpv4 =
-                    PacketBuilder::ipv4(inside_dst.octets(), dst_v4.octets(), 20).icmpv4(icmp_type);
 
-                ip_packet::build!(icmpv4, original_packet)
+                ip_packet::make::icmpv4_packet(inside_dst, dst_v4, 20, icmp_type, &original_packet)
             }
             IpAddr::V6(inside_dst) => {
                 let icmp_type = self.icmp_error.into_icmp_v6_type()?;
-                let icmpv6 =
-                    PacketBuilder::ipv6(inside_dst.octets(), dst_v6.octets(), 20).icmpv6(icmp_type);
 
-                ip_packet::build!(icmpv6, original_packet)
+                ip_packet::make::icmpv6_packet(inside_dst, dst_v6, 20, icmp_type, &original_packet)
             }
         }
     }

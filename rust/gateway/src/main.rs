@@ -488,10 +488,10 @@ impl ValidateChecksumAdapter {
 
 fn validate_checksums(packet: &ip_packet::IpPacket) {
     if let Some(ipv4) = packet.ipv4_header() {
-        let expected = ipv4.calc_header_checksum();
-        let actual = ipv4.header_checksum;
-
-        if expected != actual {
+        let actual = ipv4.checksum();
+        if let Ok(expected) = packet.calculate_ipv4_header_checksum()
+            && expected != actual
+        {
             tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
         }
     }

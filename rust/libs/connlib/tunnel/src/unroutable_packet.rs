@@ -89,7 +89,7 @@ impl UnroutablePacket {
     }
 
     pub fn proto(&self) -> impl Display {
-        self.five_tuple.proto.keyword_str().unwrap_or("unknown")
+        ip_packet::ip_protocol_name(self.five_tuple.proto).unwrap_or("unknown")
     }
 }
 

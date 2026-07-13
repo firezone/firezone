@@ -153,7 +153,11 @@ mod tests {
         });
 
         let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
-            Icmpv4Type::TimestampRequest(icmpv4::TimestampMessage::from_bytes([0u8; 16])),
+            Icmpv4Type::Unknown {
+                ty: 13, // Timestamp request
+                code: 0,
+                rest_of_header: [0u8; 4],
+            },
         )));
 
         assert!(result.is_err())

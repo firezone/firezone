@@ -1,6 +1,6 @@
 use std::net::Ipv6Addr;
 
-use etherparse::IpNumber;
+use ingot::ip::IpProtocol;
 
 /// The src and dst of a FZ p2p control protocol packet.
 ///
@@ -11,7 +11,7 @@ pub const ADDR: Ipv6Addr = Ipv6Addr::UNSPECIFIED;
 /// The IP protocol of FZ p2p control protocol packets.
 ///
 /// `0xFF` is reserved and should thus never appear as real-world traffic.
-pub const IP_NUMBER: IpNumber = IpNumber(0xFF);
+pub const IP_NUMBER: IpProtocol = IpProtocol(0xFF);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct EventType(u8);

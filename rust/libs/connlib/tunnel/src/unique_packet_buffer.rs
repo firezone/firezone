@@ -102,7 +102,7 @@ fn is_tcp_syn_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use ip_packet::TcpOptionElement;
+    use std::net::Ipv4Addr;
 
     use super::*;
 
@@ -117,24 +117,38 @@ mod tests {
 
         assert_eq!(packets.len(), 1);
         assert_eq!(
-            packets[0]
-                .as_tcp()
-                .unwrap()
-                .options_iterator()
-                .next()
-                .unwrap()
-                .unwrap(),
-            TcpOptionElement::Timestamp(1025, 0)
+            packets[0].as_tcp().unwrap().options(),
+            timestamp_option(1025, 0)
         );
     }
 
     fn tcp_syn_packet(seq: u32, ts_val: u32, ts_echo: u32) -> Result<IpPacket> {
-        let packet = ip_packet::PacketBuilder::ipv4([0u8; 4], [0u8; 4], 1)
-            .tcp(0, 0, seq, 256)
-            .syn()
-            .options(&[TcpOptionElement::Timestamp(ts_val, ts_echo)])?;
-        let payload = vec![];
+        ip_packet::make::tcp_packet_with_options(
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::UNSPECIFIED,
+            0,
+            0,
+            seq,
+            ip_packet::make::TcpFlags {
+                syn: true,
+                ..Default::default()
+            },
+            &timestamp_option(ts_val, ts_echo),
+            &[],
+        )
+    }
 
-        ip_packet::build!(packet, payload)
+    /// A TCP timestamp option (kind 8, length 10), padded to a multiple of 4 with NOPs.
+    fn timestamp_option(ts_val: u32, ts_echo: u32) -> [u8; 12] {
+        let mut option = [0u8; 12];
+
+        option[0] = 8;
+        option[1] = 10;
+        option[2..6].copy_from_slice(&ts_val.to_be_bytes());
+        option[6..10].copy_from_slice(&ts_echo.to_be_bytes());
+        option[10] = 1;
+        option[11] = 1;
+
+        option
     }
 }
