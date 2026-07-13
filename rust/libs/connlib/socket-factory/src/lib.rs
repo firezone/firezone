@@ -392,9 +392,10 @@ impl PerfUdpSocket {
             datagram.ecn,
         )?;
 
-        let pooled = self
-            .pool
-            .get_send_socket(transmit.src_ip, datagram.dst, &self.recv_buffers);
+        let datagrams = transmit.contents.len().div_ceil(datagram.segment_size);
+        let pooled =
+            self.pool
+                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, &self.recv_buffers);
 
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
