@@ -21,11 +21,10 @@
 //! [`PROMOTE_BATCHES`] multi-segment transmits within [`PROMOTE_WINDOW`] before we
 //! connect one. Batching is what `sendmsg_x` accelerates, and a batch only forms when
 //! the event loop coalesces several same-destination datagrams in one cycle — i.e.
-//! exactly when traffic is dense enough to benefit. Single-datagram senders — path-agent
-//! probes fanning out over the candidate mesh (paced too far apart to ever coalesce),
-//! WireGuard keepalives, interactive traffic — are served correctly by the catch-all
-//! socket and would otherwise thrash the bounded cache. Relay traffic (sent without a
-//! pinned source) connects right away.
+//! exactly when traffic is dense enough to benefit. Single-datagram senders —
+//! keepalives, sparse control traffic, interactive traffic — are served correctly by
+//! the catch-all socket and would otherwise thrash the bounded cache. Relay traffic
+//! (sent without a pinned source) connects right away.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -56,9 +55,7 @@ const MAX_FLOW_SOCKETS: usize = 16;
 ///
 /// Requiring a second batch keeps a one-off coalescence — e.g. a TLS flight of two
 /// packets during a page load — from connecting a socket for an otherwise quiet pair,
-/// while anything genuinely batching hits it within moments. Probing pairs can never
-/// qualify: probes are paced hundreds of milliseconds apart, so the event loop cannot
-/// coalesce them into a batch in the first place.
+/// while anything genuinely batching hits it within moments.
 const PROMOTE_BATCHES: usize = 2;
 
 /// Window within which [`PROMOTE_BATCHES`] must accumulate.
