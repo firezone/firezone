@@ -368,9 +368,10 @@ impl PerfUdpSocket {
             datagram.ecn,
         )?;
 
-        let pooled = self
-            .pool
-            .get_send_socket(transmit.src_ip, datagram.dst, &self.recv_buffers);
+        let is_batch = transmit.contents.len() > datagram.segment_size;
+        let pooled =
+            self.pool
+                .get_send_socket(transmit.src_ip, datagram.dst, is_batch, &self.recv_buffers);
 
         self.send_transmit(pooled.as_socket(), &transmit).await
     }

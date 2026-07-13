@@ -11,11 +11,21 @@
 //!   Unconnected sockets suffer silent head-drops in the AQM instead.
 //! - The route (and thus `so_pktheadroom`) is cached at connect time.
 //!
-//! We therefore connect a socket per `(source, destination)` pair on first send, all bound
-//! to the same local port as the unconnected catch-all socket. The kernel delivers inbound
-//! datagrams with an exact 4-tuple match to the connected socket in preference to the
-//! wildcard one. The catch-all remains as the wildcard receiver (ICE peer-reflexive
-//! traffic, NAT rebinds) and as the fallback when connecting fails.
+//! We therefore connect a socket per `(source, destination)` pair, all bound to the same
+//! local port as the unconnected catch-all socket. The kernel delivers inbound datagrams
+//! with an exact 4-tuple match to the connected socket in preference to the wildcard one.
+//! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
+//! rebinds) and as the fallback when connecting fails.
+//!
+//! Only pairs that send batches get a flow socket: a pair must send
+//! [`PROMOTE_BATCHES`] multi-segment transmits within [`PROMOTE_WINDOW`] before we
+//! connect one. Batching is what `sendmsg_x` accelerates, and a batch only forms when
+//! the event loop coalesces several same-destination datagrams in one cycle — i.e.
+//! exactly when traffic is dense enough to benefit. Single-datagram senders — path-agent
+//! probes fanning out over the candidate mesh (paced too far apart to ever coalesce),
+//! WireGuard keepalives, interactive traffic — are served correctly by the catch-all
+//! socket and would otherwise thrash the bounded cache. Relay traffic (sent without a
+//! pinned source) connects right away.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -23,7 +33,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, Waker},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
@@ -38,9 +48,24 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// so this is effectively the per-family cap.
 ///
 /// Apple devices only ever run Clients, so the steady-state working set is tiny:
-/// the connected gateway(s) and possibly a relay. The cap mainly bounds the burst
-/// of short-lived sockets during ICE connectivity checks.
-const MAX_FLOW_SOCKETS: usize = if cfg!(target_os = "ios") { 8 } else { 16 };
+/// the data-bearing gateway path(s) and the relays.
+const MAX_FLOW_SOCKETS: usize = 16;
+
+/// Multi-segment transmits a `(source, destination)` pair must send within
+/// [`PROMOTE_WINDOW`] to prove it is worth a flow socket.
+///
+/// Requiring a second batch keeps a one-off coalescence — e.g. a TLS flight of two
+/// packets during a page load — from connecting a socket for an otherwise quiet pair,
+/// while anything genuinely batching hits it within moments. Probing pairs can never
+/// qualify: probes are paced hundreds of milliseconds apart, so the event loop cannot
+/// coalesce them into a batch in the first place.
+const PROMOTE_BATCHES: usize = 2;
+
+/// Window within which [`PROMOTE_BATCHES`] must accumulate.
+const PROMOTE_WINDOW: Duration = Duration::from_secs(10);
+
+/// Bound on the pairs tracked for promotion at any one time.
+const MAX_TRACKED_PAIRS: usize = 64;
 
 type Key = (Option<IpAddr>, SocketAddr);
 
@@ -66,6 +91,8 @@ struct Inner {
     /// sockets already connected keep working. Re-binding the sockets on a network change builds a
     /// fresh [`SocketPool`], giving connecting another chance.
     flow_sockets_supported: bool,
+    /// Send accounting for pairs that have not (yet) proven data-bearing.
+    promote: PromoteTracker,
     buffer_sizes: Option<(usize, usize)>,
     /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
     drained: VecDeque<DatagramSegmentIter>,
@@ -100,6 +127,7 @@ impl SocketPool {
             inner: Mutex::new(Inner {
                 flows: BTreeMap::new(),
                 flow_sockets_supported: true,
+                promote: PromoteTracker::default(),
                 buffer_sizes: None,
                 drained: VecDeque::new(),
                 recv_waker: None,
@@ -108,16 +136,19 @@ impl SocketPool {
         }
     }
 
-    /// Picks the socket to send a datagram for `(src, dst)` on.
+    /// Picks the socket to send a transmit for `(src, dst)` on; `is_batch` says whether
+    /// it carries multiple datagrams.
     ///
-    /// Connects (or reuses) a flow socket; on failure it falls back to the catch-all socket.
+    /// Reuses (or connects) a flow socket; non-batching pairs and connect failures fall
+    /// back to the catch-all socket.
     pub(crate) fn get_send_socket(
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
+        is_batch: bool,
         recv_buffers: &RecvBuffers,
     ) -> Arc<OwnedSocket> {
-        self.get_or_connect(src, dst, recv_buffers)
+        self.get_or_connect(src, dst, is_batch, recv_buffers)
             .unwrap_or_else(|| self.wildcard.clone())
     }
 
@@ -181,13 +212,16 @@ impl SocketPool {
         }
     }
 
-    /// Returns the flow socket for the given `(src, dst)` pair, connecting a new one if needed.
+    /// Returns the flow socket for the given `(src, dst)` pair, connecting a new one once
+    /// the pair proves it sends batches.
     ///
-    /// Returns `None` if connecting fails (or has failed before); see `Inner::flow_sockets_supported`.
+    /// Returns `None` for pairs below the promotion threshold and when connecting fails
+    /// (or has failed before); see `Inner::flow_sockets_supported`.
     fn get_or_connect(
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
+        is_batch: bool,
         recv_buffers: &RecvBuffers,
     ) -> Option<Arc<OwnedSocket>> {
         let key = (src, dst);
@@ -199,6 +233,17 @@ impl SocketPool {
 
         if !inner.flow_sockets_supported {
             return None;
+        }
+
+        // Relay traffic is sent without a pinned source and connects right away;
+        // everything else must earn its flow socket by sending batches.
+        if src.is_some() {
+            if !is_batch {
+                return None;
+            }
+            if !inner.promote.record_batch(key, Instant::now()) {
+                return None;
+            }
         }
 
         if inner.flows.len() >= MAX_FLOW_SOCKETS {
@@ -272,6 +317,72 @@ impl Inner {
 impl Flow {
     fn record_received(&self, now: Instant) {
         *self.last_received.lock() = Some(now);
+    }
+}
+
+/// Tracks batched sends per pair to decide when a pair deserves a flow socket.
+#[derive(Default)]
+struct PromoteTracker {
+    windows: BTreeMap<Key, RateWindow>,
+}
+
+struct RateWindow {
+    started_at: Instant,
+    batches: usize,
+}
+
+impl PromoteTracker {
+    /// Records a batched (multi-segment) transmit to `key`.
+    ///
+    /// Returns `true` once the key has sent [`PROMOTE_BATCHES`] batches within
+    /// [`PROMOTE_WINDOW`], i.e. proven it benefits from the batching fast path.
+    fn record_batch(&mut self, key: Key, now: Instant) -> bool {
+        if !self.windows.contains_key(&key) && self.windows.len() >= MAX_TRACKED_PAIRS {
+            self.evict(now);
+        }
+
+        let window = self.windows.entry(key).or_insert(RateWindow {
+            started_at: now,
+            batches: 0,
+        });
+
+        if now.duration_since(window.started_at) >= PROMOTE_WINDOW {
+            *window = RateWindow {
+                started_at: now,
+                batches: 0,
+            };
+        }
+
+        window.batches += 1;
+
+        if window.batches < PROMOTE_BATCHES {
+            return false;
+        }
+
+        self.windows.remove(&key);
+
+        true
+    }
+
+    /// Drops all expired windows and - if that freed nothing - the stalest one.
+    fn evict(&mut self, now: Instant) {
+        self.windows
+            .retain(|_, w| now.duration_since(w.started_at) < PROMOTE_WINDOW);
+
+        if self.windows.len() < MAX_TRACKED_PAIRS {
+            return;
+        }
+
+        let Some(stalest) = self
+            .windows
+            .iter()
+            .min_by_key(|(_, w)| w.started_at)
+            .map(|(key, _)| *key)
+        else {
+            return;
+        };
+
+        self.windows.remove(&stalest);
     }
 }
 
@@ -424,5 +535,49 @@ mod tests {
         let later = earlier + Duration::from_secs(60);
 
         assert!(eviction_rank(Some(earlier), earlier) < eviction_rank(Some(later), earlier));
+    }
+
+    fn key(port: u16) -> Key {
+        (
+            Some("10.0.0.1".parse().unwrap()),
+            SocketAddr::new("10.0.0.2".parse().unwrap(), port),
+        )
+    }
+
+    /// Traffic dense enough to batch: consecutive event-loop cycles each coalescing
+    /// several datagrams. The second batch promotes.
+    #[test]
+    fn consecutive_batches_promote() {
+        let mut tracker = PromoteTracker::default();
+        let start = Instant::now();
+
+        assert!(!tracker.record_batch(key(1), start));
+        assert!(tracker.record_batch(key(1), start + Duration::from_millis(1)));
+    }
+
+    /// A one-off coalescence - e.g. a TLS flight of two packets during a page load -
+    /// does not promote an otherwise quiet pair.
+    #[test]
+    fn single_batch_per_window_never_promotes() {
+        let mut tracker = PromoteTracker::default();
+        let start = Instant::now();
+
+        let promoted = (0..10)
+            .map(|i| start + (PROMOTE_WINDOW + Duration::from_millis(100)) * i)
+            .any(|now| tracker.record_batch(key(1), now));
+
+        assert!(!promoted);
+    }
+
+    #[test]
+    fn tracked_pairs_are_bounded() {
+        let mut tracker = PromoteTracker::default();
+        let now = Instant::now();
+
+        for port in 0..(MAX_TRACKED_PAIRS as u16 * 2) {
+            tracker.record_batch(key(port), now);
+        }
+
+        assert!(tracker.windows.len() <= MAX_TRACKED_PAIRS);
     }
 }
