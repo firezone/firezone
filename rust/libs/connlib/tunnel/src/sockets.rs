@@ -31,17 +31,18 @@ const UDP_SEND_BATCH_LIMIT: usize = cfg_select! {
 
 /// How many incoming UDP batches the main thread drains from a socket's channel per poll.
 ///
-/// A batch is one `recv_from`: `quinn-udp` reads up to `BATCH_SIZE` (32 on unix) datagrams in a single
-/// syscall, and where GRO is available the kernel additionally coalesces up to 64 datagrams into each.
-/// So both the memory a batch pins ([`socket_factory::MAX_RECV_BATCH_MEMORY`]) and the datagrams it
-/// carries swing with GRO: `1316 * 32 * 64` ~ 2.5 MB on Android (GRO), `1316 * 32` ~ 45 KB on Apple.
-/// Apple - iOS and macOS alike - has no GRO (`recvmsg_x` only batches individual datagrams), so it
-/// drains many of these small batches per poll to sustain throughput, which is cheap. Android's GRO
-/// batches are large, so it drains a single one per poll to hold the inbound budget down. Other desktop
-/// platforms aren't memory-capped, so a moderate limit already saturates them.
+/// A batch is one `recv_from`: `quinn-udp` reads up to `BATCH_SIZE` (256 on Apple, 32 on other unix)
+/// datagrams in a single syscall, and where GRO is available the kernel additionally coalesces up to
+/// 64 datagrams into each. So both the memory a batch pins ([`socket_factory::MAX_RECV_BATCH_MEMORY`])
+/// and the datagrams it carries swing with the platform: `1316 * 32 * 64` ~ 2.5 MB on Android (GRO),
+/// `1316 * 256` ~ 340 KB on Apple. Apple - iOS and macOS alike - has no GRO (`recvmsg_x` only batches
+/// individual datagrams), but its batches already carry 256 datagrams each, so a few per poll sustain
+/// throughput within the inbound budget. Android's GRO batches are large, so it drains a single one
+/// per poll to hold the inbound budget down. Other desktop platforms aren't memory-capped, so a
+/// moderate limit already saturates them.
 const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
-    target_os = "ios" => { 32 }
-    target_os = "macos" => { 32 }
+    target_os = "ios" => { 4 }
+    target_os = "macos" => { 4 }
     target_os = "android" => { 1 }
     _ => { 8 }
 };
