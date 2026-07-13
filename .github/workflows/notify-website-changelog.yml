@@ -1,20 +1,5 @@
 name: Notify website of merged PR
 
-# Notifies firezone/website whenever a PR merges here so it can evaluate
-# whether the change warrants a changelog entry. The changelog lives in that
-# repo (src/components/Changelog), which is why the evaluation runs there.
-# Mirrors the publish-release.yml -> repository_dispatch -> website pattern.
-#
-# Uses pull_request_target (not pull_request) so the dispatch also fires for
-# PRs opened from forks, which otherwise run with a read-only token and no
-# access to secrets. This job never checks out or executes PR code — it only
-# reads the PR number from the event and sends a repository_dispatch — so
-# pull_request_target is safe here.
-#
-# Required secret (owned by the firezone-bot account):
-#   RELEASE_PR_BOT_GITHUB_TOKEN — needs Contents: write on firezone/website to
-#     send it a repository_dispatch. Same secret used by publish-release.yml.
-
 on:
   pull_request_target:
     types:
