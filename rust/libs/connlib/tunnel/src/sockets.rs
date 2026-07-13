@@ -18,8 +18,33 @@ use tokio_util::sync::PollSender;
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
-const UDP_SEND_BATCH_LIMIT: usize = 32;
-const UDP_RECV_BATCH_LIMIT: usize = 32;
+/// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
+///
+/// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued
+/// batch pins a GSO buffer, so a smaller limit means less retained send memory. Mobile clients talk to
+/// only a handful of peers at once, so they drain - and therefore queue - fewer batches at a time.
+const UDP_SEND_BATCH_LIMIT: usize = cfg_select! {
+    target_os = "ios" => { 3 }
+    target_os = "android" => { 3 }
+    _ => { 32 }
+};
+
+/// How many incoming UDP batches the main thread drains from a socket's channel per poll.
+///
+/// A batch is one `recv_from`: `quinn-udp` reads up to `BATCH_SIZE` (32 on unix) datagrams in a single
+/// syscall, and where GRO is available the kernel additionally coalesces up to 64 datagrams into each.
+/// So both the memory a batch pins ([`socket_factory::MAX_RECV_BATCH_MEMORY`]) and the datagrams it
+/// carries swing with GRO: `1316 * 32 * 64` ~ 2.5 MB on Android (GRO), `1316 * 32` ~ 45 KB on Apple.
+/// Apple - iOS and macOS alike - has no GRO (`recvmsg_x` only batches individual datagrams), so it
+/// drains many of these small batches per poll to sustain throughput, which is cheap. Android's GRO
+/// batches are large, so it drains a single one per poll to hold the inbound budget down. Other desktop
+/// platforms aren't memory-capped, so a moderate limit already saturates them.
+const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
+    target_os = "ios" => { 32 }
+    target_os = "macos" => { 32 }
+    target_os = "android" => { 1 }
+    _ => { 8 }
+};
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -210,24 +235,51 @@ impl LendingIterator for ChainedDatagrams {
 
 /// How big the queue for outgoing UDP batches and socket errors is at most.
 ///
-/// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
-const QUEUE_SIZE: usize = {
-    if cfg!(any(target_os = "ios", target_os = "android")) {
-        10
-    } else {
-        1000
-    }
-};
+/// Every queued [`DatagramOut`] owns a GSO buffer of [`crate::io::GSO_BUFFER_SIZE`] bytes that it
+/// pins until the send task drains it - and, because the buffer pool never shrinks, for the rest of
+/// the session once a backlog has ever built up. We therefore size it as two drains' worth of
+/// [`UDP_SEND_BATCH_LIMIT`]: deep enough to keep the send task fed, shallow enough that a transient
+/// send backlog cannot balloon memory. The platform split lives entirely in [`UDP_SEND_BATCH_LIMIT`].
+/// See [`MAX_UDP_OUTBOUND_QUEUE_MEMORY`] for the resulting bound.
+const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
 
-/// How big the queue for incoming UDP batches is at most.
+/// How many incoming UDP batches a socket's channel holds at most.
 ///
-/// Smaller than [`QUEUE_SIZE`] because we drain it in chunks of up to [`UDP_RECV_BATCH_LIMIT`].
-const INBOUND_QUEUE_SIZE: usize = {
-    if cfg!(any(target_os = "ios", target_os = "android")) {
-        10
-    } else {
-        100
-    }
+/// One drain's worth (see [`UDP_RECV_BATCH_LIMIT`]) - unlike the outbound [`QUEUE_SIZE`], which holds
+/// two. On Android each batch pins [`socket_factory::MAX_RECV_BATCH_MEMORY`] (~2.5 MB with GRO), so a
+/// single batch already buffers thousands of datagrams and queueing more than one drain's worth would
+/// blow the mobile budget. See [`MAX_UDP_INBOUND_QUEUE_MEMORY`].
+const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
+
+/// Worst-case memory pinned by the outbound UDP datagram queues.
+///
+/// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
+/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). Every [`DatagramOut`] owns a GSO buffer from the
+/// [`UdpGsoQueue`](crate::io::UdpGsoQueue)'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`]
+/// regardless of how full it is. That pool never shrinks, so a send backlog that ever fills these
+/// queues pins this much memory for the rest of the session.
+const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
+    2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
+
+/// Worst-case memory pinned by the inbound UDP receive path while in flight.
+///
+/// Per address family (hence `2 *`), receive batches can be held in three places at once: up to
+/// [`INBOUND_QUEUE_SIZE`] queued in the channel, up to [`UDP_RECV_BATCH_LIMIT`] drained onto the main
+/// thread, and one being filled by the receive task. Each batch pins
+/// [`socket_factory::MAX_RECV_BATCH_MEMORY`], which on Linux / Android sizes every buffer for a full
+/// 64-datagram GRO batch - the term that dominates here and the reason the depths above are shallow.
+const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
+    2 * (INBOUND_QUEUE_SIZE + UDP_RECV_BATCH_LIMIT + 1) * socket_factory::MAX_RECV_BATCH_MEMORY;
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+const _: () = {
+    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 1024 * 1024);
+    assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 16 * 1024 * 1024);
+};
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+const _: () = {
+    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 20 * 1024 * 1024);
+    assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 128 * 1024 * 1024);
 };
 
 struct ThreadedUdpSocket {
