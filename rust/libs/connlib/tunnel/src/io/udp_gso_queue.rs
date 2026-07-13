@@ -1,29 +1,32 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
 use bufferpool::{Buffer, BufferPool};
-use ip_packet::Ecn;
+use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
 
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
-/// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with, and thus the maximum size of a batch.
+/// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with.
 ///
-/// A buffer holds a single GSO batch: the segments coalesced for one `(src, dst, ecn)`. UDP payloads
-/// cannot exceed 65535 bytes (their length field is 16 bits wide), so a larger batch could never be
-/// flushed in a single GSO send anyway. Sealing batches at the allocated capacity also guarantees
-/// that a buffer never reallocates.
+/// An IP packet - and therefore the payload of one GSO send - can never exceed 65535 bytes.
+/// Batches are capped at one GSO send's worth of segments (see [`max_gso_send_len`]), which is
+/// always below this capacity, so a pooled buffer never grows and never reallocates.
 ///
 /// The buffer occupies this much memory regardless of how many segments it actually carries; every
 /// in-flight [`DatagramOut`] pins one, which is why the outbound socket queue's depth directly bounds
 /// the send path's memory footprint.
 pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
 
+/// The most segments one GSO send may carry (`UDP_MAX_SEGMENTS` in `linux/udp.h`; `quinn-udp` enforces the same).
+const MAX_GSO_SEGMENTS: usize = 64;
+
 /// Holds UDP datagrams that we need to send, grouped into GSO batches per connection.
 ///
-/// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
-/// The buffer is then flushed using GSO in a single syscall.
+/// Calling [`Io::send_network`](super::Io::send_network) copies the provided payload into this queue.
+/// Batches are capped at what a single GSO send can carry, so each one is flushed with one syscall
+/// while GSO is available.
 pub struct UdpGsoQueue {
     /// Queued batches, in write order.
     ///
@@ -107,6 +110,7 @@ impl BufferProvider for UdpGsoQueue {
                 self.batches.push_back(Batch {
                     connection,
                     segment_size: len,
+                    max_len: max_gso_send_len(dst, len),
                     buffer,
                 });
 
@@ -132,6 +136,8 @@ struct Batch {
     connection: Connection,
     /// The GSO segment size: the length of the first datagram in the batch.
     segment_size: usize,
+    /// The batch's size limit: as many whole segments as one GSO send can carry to this destination.
+    max_len: usize,
     buffer: Buffer<Vec<u8>>,
 }
 
@@ -145,11 +151,36 @@ impl Batch {
         // Only equal-size segments plus at most one shorter, final one form a valid GSO batch.
         let fits_segment = len <= self.segment_size;
 
-        // Growing past the allocated capacity would reallocate the pooled buffer.
-        let fits_buffer = self.buffer.len() + len <= GSO_BUFFER_SIZE;
+        // A batch never grows past what one GSO send can carry.
+        let fits_send = self.buffer.len() + len <= self.max_len;
 
-        is_ongoing && fits_segment && fits_buffer
+        is_ongoing && fits_segment && fits_send
     }
+}
+
+/// How many bytes one GSO send can carry to `dst`, in whole segments of `segment_size`.
+///
+/// Mirrors the UDP send path's chunking (see `PerfUdpSocket::calculate_chunk_size`): a send's
+/// payload is bounded by the maximum IP packet size less IP/UDP header overhead, and by the
+/// kernel's segment limit. Capping batches at this size makes one batch equal one syscall;
+/// it also keeps every batch below the pooled buffer's capacity, so buffers never reallocate.
+fn max_gso_send_len(dst: SocketAddr, segment_size: usize) -> usize {
+    let header_overhead = match dst {
+        SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
+        SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
+    };
+
+    let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size.max(1);
+    let max_segments = std::cmp::min(MAX_GSO_SEGMENTS, max_segments_by_size).max(1);
+
+    let max_len = segment_size * max_segments;
+
+    debug_assert!(
+        max_len <= GSO_BUFFER_SIZE,
+        "GSO_BUFFER_SIZE is miscalculated"
+    );
+
+    max_len
 }
 
 /// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of one of its batches.
@@ -206,6 +237,7 @@ impl Iterator for DrainDatagramsIter<'_> {
             connection,
             segment_size,
             buffer,
+            ..
         } = self.queue.batches.pop_front()?;
 
         Some(DatagramOut {
@@ -323,13 +355,18 @@ mod tests {
     }
 
     #[test]
-    fn starts_new_batch_at_buffer_capacity() {
+    fn seals_full_size_batch_at_one_gso_send() {
         let mut send_queue = UdpGsoQueue::new();
         let segment = [0u8; MAX_SEGMENT_SIZE];
 
-        let segments_per_batch = GSO_BUFFER_SIZE / MAX_SEGMENT_SIZE;
+        // Full-size segments are byte-bound: 49 of them fill one GSO send to an IPv4 destination.
+        let segments_per_send = 49;
+        assert_eq!(
+            max_gso_send_len(DST_1, MAX_SEGMENT_SIZE),
+            segments_per_send * MAX_SEGMENT_SIZE
+        );
 
-        for _ in 0..(segments_per_batch + 1) {
+        for _ in 0..(segments_per_send + 1) {
             send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
         }
 
@@ -338,9 +375,26 @@ mod tests {
         assert_eq!(datagrams.len(), 2);
         assert_eq!(
             datagrams[0].packet.len(),
-            segments_per_batch * MAX_SEGMENT_SIZE
+            segments_per_send * MAX_SEGMENT_SIZE
         );
         assert_eq!(datagrams[1].packet.len(), MAX_SEGMENT_SIZE);
+    }
+
+    #[test]
+    fn seals_small_segment_batch_at_segment_limit() {
+        let mut send_queue = UdpGsoQueue::new();
+        let segment = [0u8; 100];
+
+        // Small segments are count-bound: one GSO send carries at most `MAX_GSO_SEGMENTS`.
+        for _ in 0..(MAX_GSO_SEGMENTS + 1) {
+            send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
+        }
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 2);
+        assert_eq!(datagrams[0].packet.len(), MAX_GSO_SEGMENTS * segment.len());
+        assert_eq!(datagrams[1].packet.len(), segment.len());
     }
 
     #[test]
