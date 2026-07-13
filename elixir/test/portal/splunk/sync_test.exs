@@ -154,6 +154,81 @@ defmodule Portal.Splunk.SyncTest do
       assert_in_delta end_event["time"], DateTime.to_unix(flow_end, :millisecond) / 1000, 0.001
     end
 
+    test "splits deliveries that exceed the HEC request size limit", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      blob = String.duplicate("x", 400_000)
+      session_log_fixture(account: account, subject: %{"blob" => blob})
+      session_log_fixture(account: account, subject: %{"blob" => blob})
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [_event_a]}
+      assert_receive {:hec, _conn, [_event_b]}
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 2
+    end
+
+    test "bisects a rejected batch until events deliver individually", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      for _ <- 1..4 do
+        session_log_fixture(account: account)
+      end
+
+      test_pid = self()
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        events = String.split(body, "\n", trim: true)
+
+        if length(events) > 1 do
+          conn
+          |> Plug.Conn.put_status(413)
+          |> Req.Test.json(%{"text" => "Request too large", "code" => 6})
+        else
+          send(test_pid, {:hec_single, hd(events)})
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      for _ <- 1..4 do
+        assert_receive {:hec_single, _event}
+      end
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 4
+      assert cursor.dropped_count == 0
+
+      refute Repo.reload!(sink).is_disabled
+    end
+
+    test "drops an event the server always rejects as too large", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      log = session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(413)
+        |> Req.Test.json(%{"text" => "Request too large", "code" => 6})
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor == log.seq
+      assert cursor.synced_count == 0
+      assert cursor.dropped_count == 1
+
+      refute Repo.reload!(sink).is_disabled
+    end
+
     test "a 4xx response disables the sink immediately", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})

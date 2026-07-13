@@ -2,15 +2,14 @@ defmodule Portal.Splunk.APIClient do
   @moduledoc """
   Minimal Splunk HTTP Event Collector client.
 
-  Events are posted to `/services/collector/event` as concatenated JSON
-  objects (the HEC batch protocol), authenticated with the sink's HEC token.
+  The body is posted to `/services/collector/event` as concatenated
+  JSON-encoded events (the HEC batch protocol), authenticated with the sink's
+  HEC token.
   """
 
   alias Portal.Splunk
 
-  def post_events(%Splunk.LogSink{} = sink, events) when is_list(events) do
-    body = Enum.map_join(events, "\n", &JSON.encode!/1)
-
+  def post_events(%Splunk.LogSink{} = sink, body) when is_binary(body) do
     [base_url: sink.collector_url]
     |> Keyword.merge(req_opts())
     |> Req.new()

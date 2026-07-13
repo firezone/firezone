@@ -62,6 +62,7 @@ defmodule Portal.Splunk.LogSink do
       :hec_token,
       :enabled_streams
     ])
+    |> update_change(:collector_url, &normalize_collector_url/1)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:collector_url, min: 1, max: 2048)
     |> validate_length(:hec_token, min: 1, max: 255)
@@ -74,6 +75,17 @@ defmodule Portal.Splunk.LogSink do
       name: :splunk_log_sinks_account_id_name_index,
       message: "A Splunk log sink with this name already exists."
     )
+  end
+
+  # People paste the full endpoint from the Splunk docs; the client appends
+  # the collector path itself, so strip it down to the base URL.
+  defp normalize_collector_url(url) do
+    url
+    |> String.trim()
+    |> String.trim_trailing("/")
+    |> String.replace_suffix("/services/collector/event", "")
+    |> String.replace_suffix("/services/collector", "")
+    |> String.trim_trailing("/")
   end
 
   defp validate_collector_url(changeset) do

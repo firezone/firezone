@@ -56,6 +56,13 @@ defmodule Portal.Splunk.Sync do
     |> Keyword.get(:visibility_lag_seconds, 30)
   end
 
+  # Splunk Cloud rejects HEC requests larger than ~1 MB with a 413, so chunks
+  # stay well under that.
+  defp max_body_bytes do
+    Application.get_env(:portal, __MODULE__, [])
+    |> Keyword.get(:max_body_bytes, 512_000)
+  end
+
   defp sync(sink) do
     Database.seed_missing_cursors(sink)
 
@@ -87,11 +94,36 @@ defmodule Portal.Splunk.Sync do
   end
 
   defp deliver_batch(sink, cursor, rows, budget) do
-    events = Enum.map(rows, &hec_event(sink, cursor.stream, &1))
+    encoded =
+      Enum.map(rows, fn row ->
+        {row.seq, JSON.encode!(hec_event(sink, cursor.stream, row))}
+      end)
 
-    case Splunk.APIClient.post_events(sink, events) do
+    case deliver_chunks(sink, cursor, chunk_by_bytes(encoded, max_body_bytes())) do
+      {:ok, cursor} -> sync_cursor(sink, cursor, budget - 1)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp deliver_chunks(_sink, cursor, []), do: {:ok, cursor}
+
+  defp deliver_chunks(sink, cursor, [chunk | rest]) do
+    case deliver_chunk(sink, cursor, chunk) do
+      {:ok, cursor} -> deliver_chunks(sink, cursor, rest)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp deliver_chunk(sink, cursor, chunk) do
+    body = Enum.map_join(chunk, "\n", fn {_seq, json} -> json end)
+    max_seq = chunk |> Enum.map(fn {seq, _json} -> seq end) |> Enum.max()
+
+    case Splunk.APIClient.post_events(sink, body) do
       {:ok, %Req.Response{status: 200}} ->
-        advance_and_continue(sink, cursor, rows, budget)
+        advance(cursor, max_seq, length(chunk), 0)
+
+      {:ok, %Req.Response{status: 413}} ->
+        handle_oversized_chunk(sink, cursor, chunk)
 
       {:ok, %Req.Response{} = response} ->
         {:error, {:status, response}}
@@ -101,13 +133,52 @@ defmodule Portal.Splunk.Sync do
     end
   end
 
-  defp advance_and_continue(sink, cursor, rows, budget) do
-    max_seq = rows |> Enum.map(& &1.seq) |> Enum.max()
+  # A single event the server still rejects can never be delivered: count it
+  # as dropped and move the cursor past it. A rejected multi-event chunk is
+  # bisected until the offender is isolated.
+  defp handle_oversized_chunk(_sink, cursor, [{seq, _json}]) do
+    Logger.warning("Dropping oversized log sink event",
+      log_sink_id: cursor.log_sink_id,
+      stream: cursor.stream,
+      seq: seq
+    )
 
-    case Database.advance_cursor(cursor, max_seq, length(rows)) do
-      {:ok, cursor} -> sync_cursor(sink, cursor, budget - 1)
+    advance(cursor, seq, 0, 1)
+  end
+
+  defp handle_oversized_chunk(sink, cursor, chunk) do
+    {left, right} = Enum.split(chunk, div(length(chunk), 2))
+
+    with {:ok, cursor} <- deliver_chunk(sink, cursor, left) do
+      deliver_chunk(sink, cursor, right)
+    end
+  end
+
+  defp advance(cursor, new_seq, delivered, dropped) do
+    case Database.advance_cursor(cursor, new_seq, delivered, dropped) do
+      {:ok, cursor} -> {:ok, cursor}
       :error -> {:error, :cursor_conflict}
     end
+  end
+
+  defp chunk_by_bytes(encoded, max_bytes) do
+    Enum.chunk_while(
+      encoded,
+      {[], 0},
+      fn {_seq, json} = item, {acc, bytes} ->
+        size = byte_size(json) + 1
+
+        cond do
+          acc == [] -> {:cont, {[item], size}}
+          bytes + size > max_bytes -> {:cont, Enum.reverse(acc), {[item], size}}
+          true -> {:cont, {[item | acc], bytes + size}}
+        end
+      end,
+      fn
+        {[], _bytes} -> {:cont, []}
+        {acc, _bytes} -> {:cont, Enum.reverse(acc), []}
+      end
+    )
   end
 
   defp handle_success(sink) do
@@ -160,7 +231,7 @@ defmodule Portal.Splunk.Sync do
   end
 
   defp classify({:status, %Req.Response{status: status}})
-       when status == 429 or status >= 500 do
+       when status in [408, 429] or status >= 500 do
     :transient
   end
 
@@ -376,7 +447,7 @@ defmodule Portal.Splunk.Sync do
       |> Safe.all()
     end
 
-    def advance_cursor(cursor, new_seq, count) do
+    def advance_cursor(cursor, new_seq, delivered, dropped) do
       now = DateTime.utc_now()
 
       {updated, _} =
@@ -390,11 +461,17 @@ defmodule Portal.Splunk.Sync do
         |> Safe.unscoped()
         |> Safe.update_all(
           set: [cursor: new_seq, last_synced_at: now, updated_at: now],
-          inc: [synced_count: count]
+          inc: [synced_count: delivered, dropped_count: dropped]
         )
 
       if updated == 1 do
-        {:ok, %{cursor | cursor: new_seq, synced_count: cursor.synced_count + count}}
+        {:ok,
+         %{
+           cursor
+           | cursor: new_seq,
+             synced_count: cursor.synced_count + delivered,
+             dropped_count: cursor.dropped_count + dropped
+         }}
       else
         :error
       end

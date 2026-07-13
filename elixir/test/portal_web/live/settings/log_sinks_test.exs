@@ -155,7 +155,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
         form(lv, "#log-sink-form",
           log_sink: %{
             name: "SOC Splunk",
-            collector_url: "https://http-inputs-acme.splunkcloud.com",
+            collector_url: "https://http-inputs-acme.splunkcloud.com/services/collector/event",
             hec_token: "test-hec-token",
             enabled_streams: ["", "session", "flow"],
             retroactive: "true"
