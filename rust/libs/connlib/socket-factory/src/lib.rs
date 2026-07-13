@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool, VecBuf};
-use bytes::{Buf as _, BytesMut};
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
@@ -302,7 +301,7 @@ pub struct DatagramIn<'a> {
 pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Buffer<BytesMut>,
+    pub packet: Buffer<Vec<u8>>,
     pub segment_size: usize,
     pub ecn: Ecn,
 }
@@ -363,7 +362,7 @@ impl PerfUdpSocket {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.chunk(),
+            datagram.packet.as_slice(),
             datagram.segment_size,
             datagram.ecn,
         )?;

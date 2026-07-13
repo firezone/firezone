@@ -24,7 +24,6 @@ use crate::{WithSeed, cli};
 use anyhow::{Context as _, ErrorExt as _, Result, anyhow, bail};
 use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use bytes::BytesMut;
 use clap::Parser;
 use gat_lending_iterator::LendingIterator as _;
 use ip_packet::Ecn;
@@ -313,7 +312,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
     let client = bind_socket(bind_addr).context("Failed to bind client socket")?;
 
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
-    let pool = BufferPool::<BytesMut>::new(MAX_BATCH * frame_size, "turn-loadtest");
+    let pool = BufferPool::<Vec<u8>>::new(MAX_BATCH * frame_size, "turn-loadtest");
 
     // Create a single authenticated allocation on the client socket; all flows share it.
     let allocation = allocate(&client, config.server, &config, &pool)
@@ -426,7 +425,7 @@ struct Flow {
 async fn stun_binding(
     socket: &PerfUdpSocket,
     server: SocketAddr,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
 ) -> Result<SocketAddr> {
     let request = Message::new(MessageClass::Request, BINDING, TransactionId::new(random()));
     let response = request_response(socket, server, request, pool, "Binding").await?;
@@ -443,7 +442,7 @@ async fn allocate(
     socket: &PerfUdpSocket,
     server: SocketAddr,
     config: &TestConfig,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
 ) -> Result<Allocation> {
     // The initial, unauthenticated request is expected to be rejected with a 401
     // carrying the realm and nonce we then authenticate with.
@@ -509,7 +508,7 @@ async fn channel_bind(
     credentials: &Credentials,
     channel: u16,
     peer: SocketAddr,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let mut credentials = credentials.clone();
     let build = |credentials: &Credentials| authenticated_channel_bind(credentials, channel, peer);
@@ -525,7 +524,7 @@ async fn delete_allocation(
     socket: &PerfUdpSocket,
     server: SocketAddr,
     credentials: &Credentials,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let mut credentials = credentials.clone();
 
@@ -546,7 +545,7 @@ async fn delete_allocation(
 async fn punch(
     socket: &PerfUdpSocket,
     relayed: SocketAddr,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let probe = [0u8; 8];
 
@@ -583,7 +582,7 @@ struct SendStats {
 /// average matches the target even across timer jitter.
 async fn send(
     socket: &PerfUdpSocket,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
     flows: NonZeroUsize,
     config: &TestConfig,
     data_start: Instant,
@@ -943,7 +942,7 @@ async fn authenticated_request(
     server: SocketAddr,
     credentials: &mut Credentials,
     build: impl Fn(&Credentials) -> Message<Attribute>,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
     label: &str,
 ) -> Result<Message<Attribute>> {
     let mut refreshed_nonce = false;
@@ -1127,7 +1126,7 @@ async fn request_response(
     socket: &PerfUdpSocket,
     server: SocketAddr,
     request: Message<Attribute>,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
     label: &str,
 ) -> Result<Message<Attribute>> {
     let bytes = encode(request);
@@ -1171,7 +1170,7 @@ async fn send_datagram(
     dst: SocketAddr,
     bytes: &[u8],
     segment_size: usize,
-    pool: &BufferPool<BytesMut>,
+    pool: &BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let packet = pool.pull_initialised(bytes);
 

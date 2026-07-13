@@ -1,10 +1,6 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    net::SocketAddr,
-};
+use std::{collections::VecDeque, net::SocketAddr};
 
 use bufferpool::{Buffer, BufferPool};
-use bytes::BytesMut;
 use ip_packet::Ecn;
 use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
@@ -12,29 +8,35 @@ use socket_factory::DatagramOut;
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
-/// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with.
+/// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with, and thus the maximum size of a batch.
 ///
-/// A buffer holds a single GSO batch: the segments coalesced for one `(src, dst, ecn)` and flushed in
-/// one syscall. It is sized for a whole TUN batch of [`tun::MAX_BATCH_SIZE`] maximum-size segments
-/// because all packets of a single TUN batch may be destined for the same peer, and thus end up in
-/// the same GSO batch. The buffer therefore occupies this much memory regardless of how many segments
-/// it actually carries; every in-flight [`DatagramOut`] pins one, which is why the outbound socket
-/// queue's depth directly bounds the send path's memory footprint.
-pub(crate) const GSO_BUFFER_SIZE: usize = MAX_SEGMENT_SIZE * tun::MAX_BATCH_SIZE;
+/// A buffer holds a single GSO batch: the segments coalesced for one `(src, dst, ecn)`. UDP payloads
+/// cannot exceed 65535 bytes (their length field is 16 bits wide), so a larger batch could never be
+/// flushed in a single GSO send anyway. Sealing batches at the allocated capacity also guarantees
+/// that a buffer never reallocates.
+///
+/// The buffer occupies this much memory regardless of how many segments it actually carries; every
+/// in-flight [`DatagramOut`] pins one, which is why the outbound socket queue's depth directly bounds
+/// the send path's memory footprint.
+pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
 
-/// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
+/// Holds UDP datagrams that we need to send, grouped into GSO batches per connection.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct UdpGsoQueue {
-    inner: BTreeMap<Connection, VecDeque<(usize, Buffer<BytesMut>)>>,
-    buffer_pool: BufferPool<BytesMut>,
+    /// Queued batches, in write order.
+    ///
+    /// A datagram may only be appended to the most recent batch of its connection,
+    /// so per-connection ordering is preserved by construction.
+    batches: VecDeque<Batch>,
+    buffer_pool: BufferPool<Vec<u8>>,
 }
 
 impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
-            inner: Default::default(),
+            batches: VecDeque::new(),
             buffer_pool: BufferPool::new(GSO_BUFFER_SIZE, "gso-queue"),
         }
     }
@@ -50,25 +52,18 @@ impl UdpGsoQueue {
         reservation.commit();
     }
 
-    /// Undo the most recent reservation for `connection`.
-    fn rollback(&mut self, connection: Connection, len: usize) {
-        let Some(batches) = self.inner.get_mut(&connection) else {
-            return;
-        };
-        let Some((_, buffer)) = batches.back_mut() else {
+    /// Undo the reservation of `len` bytes at the tail of the batch at `index`.
+    fn rollback(&mut self, index: usize, len: usize) {
+        let Some(batch) = self.batches.get_mut(index) else {
             return;
         };
 
-        let new_len = buffer.len().saturating_sub(len);
-        buffer.truncate(new_len);
+        let new_len = batch.buffer.len().saturating_sub(len);
+        batch.buffer.truncate(new_len);
 
-        // Drop any batch (and connection) that became empty as a result.
-        if buffer.is_empty() {
-            batches.pop_back();
-
-            if batches.is_empty() {
-                self.inner.remove(&connection);
-            }
+        // Drop a batch that became empty as a result.
+        if batch.buffer.is_empty() {
+            self.batches.remove(index);
         }
     }
 
@@ -77,7 +72,7 @@ impl UdpGsoQueue {
     }
 
     pub fn clear(&mut self) {
-        self.inner.clear()
+        self.batches.clear()
     }
 }
 
@@ -94,59 +89,88 @@ impl BufferProvider for UdpGsoQueue {
         debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
 
         let connection = Connection { src, dst, ecn };
-        let batches = self.inner.entry(connection).or_default();
 
-        // Decide whether the datagram can extend the current batch or has to start a new one.
-        let needs_new_batch = match batches.back() {
-            None => true,
-            Some((batch_size, buffer)) => {
-                // A batch is "ongoing" as long as every segment so far has been full-size.
-                let batch_is_ongoing = buffer.len() % batch_size == 0;
+        // A datagram may only extend the most recent batch of its connection;
+        // extending anything older would reorder the flow.
+        let index = self
+            .batches
+            .iter()
+            .rposition(|b| b.connection == connection)
+            .filter(|i| self.batches[*i].can_append(len));
 
-                !(batch_is_ongoing && len <= *batch_size)
+        let index = match index {
+            Some(index) => index,
+            None => {
+                let mut buffer = self.buffer_pool.pull();
+                buffer.clear();
+
+                self.batches.push_back(Batch {
+                    connection,
+                    segment_size: len,
+                    buffer,
+                });
+
+                self.batches.len() - 1
             }
         };
 
-        if needs_new_batch {
-            let mut buffer = self.buffer_pool.pull();
-            buffer.clear();
-            batches.push_back((len, buffer));
-        }
-
-        let (_, buffer) = batches.back_mut().expect("we ensured a batch exists");
-        let new_len = buffer.len() + len;
-        buffer.resize(new_len, 0);
+        let batch = &mut self.batches[index];
+        let new_len = batch.buffer.len() + len;
+        batch.buffer.resize(new_len, 0);
 
         GsoReservation {
             queue: self,
-            connection,
+            index,
             len,
             committed: false,
         }
     }
 }
 
-/// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of the current batch.
+/// One or more equal-size datagrams to a single [`Connection`], laid out back-to-back.
+struct Batch {
+    connection: Connection,
+    /// The GSO segment size: the length of the first datagram in the batch.
+    segment_size: usize,
+    buffer: Buffer<Vec<u8>>,
+}
+
+impl Batch {
+    /// Whether another datagram of `len` bytes may be appended.
+    fn can_append(&self, len: usize) -> bool {
+        // A batch is "ongoing" as long as every segment so far has been full-size;
+        // a shorter, final segment seals it.
+        let is_ongoing = self.buffer.len().is_multiple_of(self.segment_size);
+
+        // Only equal-size segments plus at most one shorter, final one form a valid GSO batch.
+        let fits_segment = len <= self.segment_size;
+
+        // Growing past the allocated capacity would reallocate the pooled buffer.
+        let fits_buffer = self.buffer.len() + len <= GSO_BUFFER_SIZE;
+
+        is_ongoing && fits_segment && fits_buffer
+    }
+}
+
+/// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of one of its batches.
 pub struct GsoReservation<'a> {
     queue: &'a mut UdpGsoQueue,
-    connection: Connection,
+    index: usize,
     len: usize,
     committed: bool,
 }
 
 impl Reservation for GsoReservation<'_> {
     fn buffer(&mut self) -> &mut [u8] {
-        let (_, buffer) = self
+        let batch = self
             .queue
-            .inner
-            .get_mut(&self.connection)
-            .expect("reserved connection to exist")
-            .back_mut()
+            .batches
+            .get_mut(self.index)
             .expect("reserved batch to exist");
 
-        let offset = buffer.len() - self.len;
+        let offset = batch.buffer.len() - self.len;
 
-        &mut buffer[offset..]
+        &mut batch.buffer[offset..]
     }
 
     fn commit(mut self) {
@@ -157,12 +181,12 @@ impl Reservation for GsoReservation<'_> {
 impl Drop for GsoReservation<'_> {
     fn drop(&mut self) {
         if !self.committed {
-            self.queue.rollback(self.connection, self.len);
+            self.queue.rollback(self.index, self.len);
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct Connection {
     src: Option<SocketAddr>,
     dst: SocketAddr,
@@ -178,24 +202,19 @@ impl Iterator for DrainDatagramsIter<'_> {
     type Item = DatagramOut;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let mut entry = self.queue.inner.first_entry()?;
+        let Batch {
+            connection,
+            segment_size,
+            buffer,
+        } = self.queue.batches.pop_front()?;
 
-            let connection = *entry.key();
-
-            let Some((segment_size, buffer)) = entry.get_mut().pop_front() else {
-                entry.remove();
-                continue;
-            };
-
-            return Some(DatagramOut {
-                src: connection.src,
-                dst: connection.dst,
-                packet: buffer,
-                segment_size,
-                ecn: connection.ecn,
-            });
-        }
+        Some(DatagramOut {
+            src: connection.src,
+            dst: connection.dst,
+            packet: buffer,
+            segment_size,
+            ecn: connection.ecn,
+        })
     }
 }
 
@@ -218,7 +237,7 @@ mod tests {
 
         assert_eq!(datagrams.len(), 1);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+        assert_eq!(&datagrams[0].packet[..], b"foobar");
     }
 
     #[test]
@@ -233,7 +252,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazfoobazfoo");
+        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazfoobazfoo");
         assert_eq!(datagrams[0].segment_size, 6);
     }
 
@@ -250,10 +269,10 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbaz");
+        assert_eq!(&datagrams[0].packet[..], b"foobarbarbaz");
         assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(datagrams[1].packet.as_ref(), b"barbarbafoofoo");
+        assert_eq!(&datagrams[1].packet[..], b"barbarbafoofoo");
         assert_eq!(datagrams[1].segment_size, 8);
         assert_eq!(datagrams[1].dst, DST_2);
     }
@@ -274,10 +293,10 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazfoobazbazfoo");
+        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazfoobazbazfoo");
         assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(datagrams[1].packet.as_ref(), b"barbarbafoofoo");
+        assert_eq!(&datagrams[1].packet[..], b"barbarbafoofoo");
         assert_eq!(datagrams[1].segment_size, 8);
         assert_eq!(datagrams[1].dst, DST_2);
     }
@@ -295,12 +314,47 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazbar");
+        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazbar");
         assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(datagrams[1].packet.as_ref(), b"barbaz");
+        assert_eq!(&datagrams[1].packet[..], b"barbaz");
         assert_eq!(datagrams[1].segment_size, 6);
         assert_eq!(datagrams[1].dst, DST_1);
+    }
+
+    #[test]
+    fn starts_new_batch_at_buffer_capacity() {
+        let mut send_queue = UdpGsoQueue::new();
+        let segment = [0u8; MAX_SEGMENT_SIZE];
+
+        let segments_per_batch = GSO_BUFFER_SIZE / MAX_SEGMENT_SIZE;
+
+        for _ in 0..(segments_per_batch + 1) {
+            send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
+        }
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 2);
+        assert_eq!(
+            datagrams[0].packet.len(),
+            segments_per_batch * MAX_SEGMENT_SIZE
+        );
+        assert_eq!(datagrams[1].packet.len(), MAX_SEGMENT_SIZE);
+    }
+
+    #[test]
+    fn batch_buffers_never_reallocate() {
+        let mut send_queue = UdpGsoQueue::new();
+        let segment = [0u8; MAX_SEGMENT_SIZE];
+
+        for _ in 0..100 {
+            send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
+        }
+
+        for datagram in send_queue.datagrams() {
+            assert_eq!(datagram.packet.capacity(), GSO_BUFFER_SIZE);
+        }
     }
 
     #[test]
@@ -316,7 +370,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+        assert_eq!(&datagrams[0].packet[..], b"foobar");
     }
 
     #[test]
@@ -335,7 +389,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+        assert_eq!(&datagrams[0].packet[..], b"foobar");
         assert_eq!(datagrams[0].segment_size, 6);
     }
 
@@ -348,7 +402,7 @@ mod tests {
             reservation.buffer().copy_from_slice(b"barbaz");
         }
 
-        // Rolling back the last segment drops the empty batch and connection.
+        // Rolling back the last segment drops the empty batch.
         assert_eq!(send_queue.datagrams().count(), 0);
     }
 
