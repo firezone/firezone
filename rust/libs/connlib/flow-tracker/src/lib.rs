@@ -100,6 +100,7 @@ struct TxPacket<S> {
     src_proto: Protocol,
     dst_proto: Protocol,
     tcp_syn: bool,
+    tcp_ack: bool,
     tcp_fin: bool,
     tcp_rst: bool,
     payload_len: usize,
@@ -192,6 +193,7 @@ where
                     src_proto: Ok(src_proto),
                     dst_proto: Ok(dst_proto),
                     tcp_syn,
+                    tcp_ack,
                     tcp_fin,
                     tcp_rst,
                     payload_len,
@@ -245,6 +247,7 @@ where
                         src_proto,
                         dst_proto,
                         tcp_syn,
+                        tcp_ack,
                         tcp_fin,
                         tcp_rst,
                         payload_len,
@@ -274,6 +277,7 @@ where
                         src_proto,
                         dst_proto,
                         tcp_syn,
+                        tcp_ack,
                         tcp_fin,
                         tcp_rst,
                         payload_len,
@@ -383,6 +387,7 @@ where
             src_proto,
             dst_proto,
             tcp_syn,
+            tcp_ack,
             tcp_fin,
             tcp_rst,
             payload_len,
@@ -404,6 +409,13 @@ where
                     hash_map::Entry::Vacant(vacant) => {
                         if tcp_fin || tcp_rst {
                             // Don't create new flows for FIN/RST packets.
+                            return;
+                        }
+
+                        // A bare ACK cannot start a connection; it is the tail
+                        // of a flow that was already closed, e.g. the final ACK
+                        // of a FIN handshake arriving after the close sweep.
+                        if tcp_ack && !tcp_syn && payload_len == 0 {
                             return;
                         }
 
@@ -451,7 +463,12 @@ where
 
                         self.active_tcp_flows.insert(key, value);
                     }
-                    hash_map::Entry::Occupied(occupied) if tcp_syn => {
+                    // A SYN only starts a new connection if the existing flow has
+                    // seen return traffic; on a half-open flow it is a
+                    // retransmission and just counts as another packet.
+                    hash_map::Entry::Occupied(occupied)
+                        if tcp_syn && occupied.get().stats.rx_packets > 0 =>
+                    {
                         let (key, value) = occupied.remove_entry();
 
                         tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
@@ -846,6 +863,7 @@ struct InnerFlow {
     dst_proto: Result<Protocol, UnsupportedProtocol>,
 
     tcp_syn: bool,
+    tcp_ack: bool,
     tcp_fin: bool,
     tcp_rst: bool,
 
@@ -860,6 +878,7 @@ impl From<&IpPacket> for InnerFlow {
             src_proto: packet.source_protocol(),
             dst_proto: packet.destination_protocol(),
             tcp_syn: packet.as_tcp().map(|tcp| tcp.syn()).unwrap_or(false),
+            tcp_ack: packet.as_tcp().map(|tcp| tcp.ack()).unwrap_or(false),
             tcp_fin: packet.as_tcp().map(|tcp| tcp.fin()).unwrap_or(false),
             tcp_rst: packet.as_tcp().map(|tcp| tcp.rst()).unwrap_or(false),
             payload_len: packet.layer4_payload_len(),
