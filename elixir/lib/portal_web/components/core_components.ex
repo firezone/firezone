@@ -1339,10 +1339,19 @@ defmodule PortalWeb.CoreComponents do
   attr :rest, :global
 
   def provider_icon(assigns) do
+    icon_spec = provider_icon_spec(assigns.provider)
+
+    icon_class =
+      if icon_spec[:wide] do
+        provider_icon_wide_size(assigns.size)
+      else
+        provider_icon_size(assigns.size)
+      end
+
     assigns =
       assigns
-      |> assign(:icon_spec, provider_icon_spec(assigns.provider))
-      |> assign(:icon_class, provider_icon_size(assigns.size))
+      |> assign(:icon_spec, icon_spec)
+      |> assign(:icon_class, icon_class)
       |> assign(:wrapper_class, provider_icon_variant(assigns.variant, assigns.size))
 
     ~H"""
@@ -1437,7 +1446,8 @@ defmodule PortalWeb.CoreComponents do
       type: :image,
       src: ~p"/images/logo-splunk.svg",
       dark_src: ~p"/images/logo-splunk-dark.svg",
-      alt: "Splunk"
+      alt: "Splunk",
+      wide: true
     }
   end
 
@@ -1453,6 +1463,13 @@ defmodule PortalWeb.CoreComponents do
   defp provider_icon_size("md"), do: "size-5"
   defp provider_icon_size("lg"), do: "size-6"
   defp provider_icon_size("xl"), do: "size-8"
+
+  # Wordmark-shaped logos (e.g. Splunk) letterbox to nothing in a square box.
+  defp provider_icon_wide_size("xs"), do: "h-3 w-6"
+  defp provider_icon_wide_size("sm"), do: "h-4 w-8"
+  defp provider_icon_wide_size("md"), do: "h-5 w-10"
+  defp provider_icon_wide_size("lg"), do: "h-6 w-12"
+  defp provider_icon_wide_size("xl"), do: "h-8 w-16"
 
   defp provider_icon_variant("plain", _size), do: nil
 
