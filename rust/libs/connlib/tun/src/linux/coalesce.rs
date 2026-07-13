@@ -180,12 +180,10 @@ impl Candidate {
     fn from_packet(packet: &IpPacket) -> Option<Self> {
         let ip_hdr_len = ip_layout(packet)?;
 
-        let candidate = if let Some(tcp) = packet.as_tcp() {
-            Self::try_from_tcp(packet, &tcp, ip_hdr_len)?
-        } else if let Some(udp) = packet.as_udp() {
-            Self::from_udp(packet, &udp, ip_hdr_len)
-        } else {
-            return None;
+        let candidate = match (packet.as_tcp(), packet.as_udp()) {
+            (Some(tcp), _) => Self::try_from_tcp(packet, &tcp, ip_hdr_len)?,
+            (_, Some(udp)) => Self::from_udp(packet, &udp, ip_hdr_len),
+            _ => return None,
         };
 
         if candidate.payload_len == 0 {
