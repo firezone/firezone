@@ -6,12 +6,11 @@ use gat_lending_iterator::LendingIterator as _;
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
 
-/// A datagram sent to a fresh peer round-trips: the peer receives it and the reply is
+/// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
 ///
-/// The datagram carries no pinned source, which marks relay traffic, so on Apple it goes
-/// out over a connected per-destination flow socket right away (see the assertion below);
-/// on every other platform it uses the single catch-all socket.
+/// The batched sends promote the pair to a connected flow socket on Apple (see the
+/// assertion below); on every other platform everything uses the single catch-all socket.
 #[tokio::test]
 async fn sends_and_receives_a_datagram() {
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
@@ -24,73 +23,11 @@ async fn sends_and_receives_a_datagram() {
 
     let pool = BufferPool::<BytesMut>::new(2048, "test");
 
-    socket
-        .send(DatagramOut {
-            src: None,
-            dst: peer_addr,
-            packet: pool.pull_initialised(b"hello"),
-            segment_size: 5,
-            ecn: Ecn::NonEct,
-        })
-        .await
-        .unwrap();
-
-    // On Apple, the send must go out over a connected flow socket - not silently fall back to
-    // the catch-all. A count of 0 would mean `connect()` failed (e.g. the catch-all lacked
-    // `SO_REUSEPORT`) and the fast path latched off.
-    #[cfg(apple)]
-    assert_eq!(socket.flow_socket_count(), 1);
-
-    let mut buf = [0u8; 16];
-    let (len, from) = peer.recv_from(&mut buf).await.unwrap();
-    assert_eq!(&buf[..len], b"hello");
-
-    // The reply matches the (connected) socket's 4-tuple exactly and must be delivered via it.
-    peer.send_to(b"world", from).await.unwrap();
-
-    let mut iter = socket.recv_from().await.unwrap();
-    let datagram = iter.next().unwrap();
-
-    assert_eq!(datagram.packet, b"world");
-    assert_eq!(datagram.from, peer_addr);
-}
-
-/// A pair with a pinned source only earns a connected flow socket by sending batches:
-/// single-datagram sends stay on the catch-all socket, the second multi-segment transmit
-/// promotes the pair.
-#[tokio::test]
-async fn batched_sends_promote_to_flow_socket() {
-    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-    let peer_addr = peer.local_addr().unwrap();
-
-    let socket = udp("127.0.0.1:0".parse().unwrap())
-        .unwrap()
-        .into_perf()
-        .unwrap();
-
-    let pool = BufferPool::<BytesMut>::new(2048, "test");
-    let src = Some("127.0.0.1:0".parse().unwrap());
-
-    // A single-datagram send does not connect a flow socket.
-    socket
-        .send(DatagramOut {
-            src,
-            dst: peer_addr,
-            packet: pool.pull_initialised(b"hello"),
-            segment_size: 5,
-            ecn: Ecn::NonEct,
-        })
-        .await
-        .unwrap();
-
-    #[cfg(apple)]
-    assert_eq!(socket.flow_socket_count(), 0);
-
-    // Two multi-segment transmits prove the pair batches and promote it.
+    // Two multi-segment transmits promote the pair to a connected flow socket.
     for _ in 0..2 {
         socket
             .send(DatagramOut {
-                src,
+                src: None,
                 dst: peer_addr,
                 packet: pool.pull_initialised(b"hellohello"),
                 segment_size: 5,
@@ -100,13 +37,26 @@ async fn batched_sends_promote_to_flow_socket() {
             .unwrap();
     }
 
+    // On Apple, the second batch must connect a flow socket - not silently fall back to
+    // the catch-all. A count of 0 would mean `connect()` failed (e.g. the catch-all lacked
+    // `SO_REUSEPORT`) and the fast path latched off.
     #[cfg(apple)]
     assert_eq!(socket.flow_socket_count(), 1);
 
-    // All five datagrams arrive, regardless of which socket carried them.
     let mut buf = [0u8; 16];
-    for _ in 0..5 {
-        let (len, _) = peer.recv_from(&mut buf).await.unwrap();
+    let mut from = peer_addr;
+    for _ in 0..4 {
+        let (len, sender) = peer.recv_from(&mut buf).await.unwrap();
         assert_eq!(&buf[..len], b"hello");
+        from = sender;
     }
+
+    // The reply matches the (connected) socket's 4-tuple exactly and must be delivered via it.
+    peer.send_to(b"world", from).await.unwrap();
+
+    let mut iter = socket.recv_from().await.unwrap();
+    let datagram = iter.next().unwrap();
+
+    assert_eq!(datagram.packet, b"world");
+    assert_eq!(datagram.from, peer_addr);
 }

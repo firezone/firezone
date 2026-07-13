@@ -17,22 +17,22 @@
 //! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
 //! rebinds) and as the fallback when connecting fails.
 //!
-//! Only pairs that send batches get a flow socket: a pair must send
-//! [`PROMOTE_BATCHES`] multi-segment transmits within [`PROMOTE_WINDOW`] before we
-//! connect one. Batching is what `sendmsg_x` accelerates, and a batch only forms when
-//! the event loop coalesces several same-destination datagrams in one cycle — i.e.
-//! exactly when traffic is dense enough to benefit. Single-datagram senders —
-//! keepalives, sparse control traffic, interactive traffic — are served correctly by
-//! the catch-all socket and would otherwise thrash the bounded cache. Relay traffic
-//! (sent without a pinned source) connects right away.
+//! Only pairs that send batches get a flow socket: a pair is connected once it sends
+//! its second multi-segment transmit. Batching is what `sendmsg_x` accelerates, and a
+//! batch only forms when the event loop coalesces several same-destination datagrams in
+//! one cycle — i.e. exactly when traffic is dense enough to benefit; waiting for the
+//! second batch avoids connecting for a pair whose traffic has not settled yet.
+//! Single-datagram senders — keepalives, sparse control traffic, interactive traffic —
+//! are served correctly by the catch-all socket and would otherwise thrash the bounded
+//! cache.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, Waker},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use anyhow::Result;
@@ -49,17 +49,6 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// Apple devices only ever run Clients, so the steady-state working set is tiny:
 /// the data-bearing gateway path(s) and the relays.
 const MAX_FLOW_SOCKETS: usize = 16;
-
-/// Multi-segment transmits a `(source, destination)` pair must send within
-/// [`PROMOTE_WINDOW`] to prove it is worth a flow socket.
-///
-/// Requiring a second batch keeps a one-off coalescence — e.g. a TLS flight of two
-/// packets during a page load — from connecting a socket for an otherwise quiet pair,
-/// while anything genuinely batching hits it within moments.
-const PROMOTE_BATCHES: usize = 2;
-
-/// Window within which [`PROMOTE_BATCHES`] must accumulate.
-const PROMOTE_WINDOW: Duration = Duration::from_secs(10);
 
 /// Bound on the pairs tracked for promotion at any one time.
 const MAX_TRACKED_PAIRS: usize = 64;
@@ -232,15 +221,12 @@ impl SocketPool {
             return None;
         }
 
-        // Relay traffic is sent without a pinned source and connects right away;
-        // everything else must earn its flow socket by sending batches.
-        if src.is_some() {
-            if !is_batch {
-                return None;
-            }
-            if !inner.promote.record_batch(key, Instant::now()) {
-                return None;
-            }
+        if !is_batch {
+            return None;
+        }
+
+        if !inner.promote.record_batch(key) {
+            return None;
         }
 
         if inner.flows.len() >= MAX_FLOW_SOCKETS {
@@ -317,69 +303,30 @@ impl Flow {
     }
 }
 
-/// Tracks batched sends per pair to decide when a pair deserves a flow socket.
+/// Tracks pairs that have sent one batch, pending the second that promotes them.
 #[derive(Default)]
 struct PromoteTracker {
-    windows: BTreeMap<Key, RateWindow>,
-}
-
-struct RateWindow {
-    started_at: Instant,
-    batches: usize,
+    batched_once: BTreeSet<Key>,
 }
 
 impl PromoteTracker {
     /// Records a batched (multi-segment) transmit to `key`.
     ///
-    /// Returns `true` once the key has sent [`PROMOTE_BATCHES`] batches within
-    /// [`PROMOTE_WINDOW`], i.e. proven it benefits from the batching fast path.
-    fn record_batch(&mut self, key: Key, now: Instant) -> bool {
-        if !self.windows.contains_key(&key) && self.windows.len() >= MAX_TRACKED_PAIRS {
-            self.evict(now);
+    /// Returns `true` on the key's second batch, i.e. once the pair has settled as a
+    /// data path. A promoted key starts over: should its flow socket be evicted, it
+    /// earns the next one the same way.
+    fn record_batch(&mut self, key: Key) -> bool {
+        if self.batched_once.remove(&key) {
+            return true;
         }
 
-        let window = self.windows.entry(key).or_insert(RateWindow {
-            started_at: now,
-            batches: 0,
-        });
-
-        if now.duration_since(window.started_at) >= PROMOTE_WINDOW {
-            *window = RateWindow {
-                started_at: now,
-                batches: 0,
-            };
+        if self.batched_once.len() >= MAX_TRACKED_PAIRS {
+            self.batched_once.pop_first();
         }
 
-        window.batches += 1;
+        self.batched_once.insert(key);
 
-        if window.batches < PROMOTE_BATCHES {
-            return false;
-        }
-
-        self.windows.remove(&key);
-
-        true
-    }
-
-    /// Drops all expired windows and - if that freed nothing - the stalest one.
-    fn evict(&mut self, now: Instant) {
-        self.windows
-            .retain(|_, w| now.duration_since(w.started_at) < PROMOTE_WINDOW);
-
-        if self.windows.len() < MAX_TRACKED_PAIRS {
-            return;
-        }
-
-        let Some(stalest) = self
-            .windows
-            .iter()
-            .min_by_key(|(_, w)| w.started_at)
-            .map(|(key, _)| *key)
-        else {
-            return;
-        };
-
-        self.windows.remove(&stalest);
+        false
     }
 }
 
@@ -541,40 +488,35 @@ mod tests {
         )
     }
 
-    /// Traffic dense enough to batch: consecutive event-loop cycles each coalescing
-    /// several datagrams. The second batch promotes.
     #[test]
-    fn consecutive_batches_promote() {
+    fn second_batch_promotes() {
         let mut tracker = PromoteTracker::default();
-        let start = Instant::now();
 
-        assert!(!tracker.record_batch(key(1), start));
-        assert!(tracker.record_batch(key(1), start + Duration::from_millis(1)));
+        assert!(!tracker.record_batch(key(1)));
+        assert!(tracker.record_batch(key(1)));
     }
 
-    /// A one-off coalescence - e.g. a TLS flight of two packets during a page load -
-    /// does not promote an otherwise quiet pair.
+    /// A promoted pair starts over: after eviction of its flow socket it earns the
+    /// next one with two batches again.
     #[test]
-    fn single_batch_per_window_never_promotes() {
+    fn promotion_resets_tracking() {
         let mut tracker = PromoteTracker::default();
-        let start = Instant::now();
 
-        let promoted = (0..10)
-            .map(|i| start + (PROMOTE_WINDOW + Duration::from_millis(100)) * i)
-            .any(|now| tracker.record_batch(key(1), now));
+        assert!(!tracker.record_batch(key(1)));
+        assert!(tracker.record_batch(key(1)));
 
-        assert!(!promoted);
+        assert!(!tracker.record_batch(key(1)));
+        assert!(tracker.record_batch(key(1)));
     }
 
     #[test]
     fn tracked_pairs_are_bounded() {
         let mut tracker = PromoteTracker::default();
-        let now = Instant::now();
 
         for port in 0..(MAX_TRACKED_PAIRS as u16 * 2) {
-            tracker.record_batch(key(port), now);
+            tracker.record_batch(key(port));
         }
 
-        assert!(tracker.windows.len() <= MAX_TRACKED_PAIRS);
+        assert!(tracker.batched_once.len() <= MAX_TRACKED_PAIRS);
     }
 }
