@@ -358,10 +358,15 @@ fn connect(
     dst: SocketAddr,
     buffer_sizes: Option<(usize, usize)>,
 ) -> io::Result<OwnedSocket> {
-    let bind_addr = socket2::SockAddr::from(SocketAddr::new(
-        src.unwrap_or_else(|| local.ip()),
-        local.port(),
-    ));
+    // A pinned source is part of the pair's identity and must bind exactly. Without one,
+    // bind the unspecified address so the kernel runs source selection at `connect` -
+    // that is where the stable-source preference (see `prefer_stable_ipv6_source`)
+    // takes effect.
+    let bind_ip = src.unwrap_or(match dst {
+        SocketAddr::V4(_) => IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+        SocketAddr::V6(_) => IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED),
+    });
+    let bind_addr = socket2::SockAddr::from(SocketAddr::new(bind_ip, local.port()));
     let dst_addr = socket2::SockAddr::from(dst);
 
     let socket = socket2::Socket::new(dst_addr.domain(), socket2::Type::DGRAM, None)?;
