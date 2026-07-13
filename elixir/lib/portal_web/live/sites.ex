@@ -1454,7 +1454,7 @@ defmodule PortalWeb.Sites do
     @spec rename_gateway(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Device.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
     def rename_gateway(gateway, name, subject) do
-      # Device.changeset/1 requires telemetry_id, which deploy-created
+      # Device.changeset/1 requires firezone_id, which deploy-created
       # gateways don't have until first connect — validate only the name
       gateway
       |> Ecto.Changeset.cast(%{name: name}, [:name])

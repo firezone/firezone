@@ -1083,33 +1083,18 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket2 = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      # The younger duplicate disconnects itself after the claim exchange
-      ref = Process.monitor(socket2.channel_pid)
-      assert_receive {:DOWN, ^ref, :process, _pid, :shutdown}
+      # The established channel observes the new join in its gateway id
+      # group and tells the newcomer to disconnect
+      channel2 = socket2.channel_pid
+      assert_receive {:EXIT, ^channel2, :shutdown}
       assert_push "disconnect", %{reason: "token_expired"}
 
       assert Process.alive?(socket1.channel_pid)
     end
   end
 
-  describe "handle_info/2 :gateway_connection_claim" do
-    test "disconnects on a claim from an older connection", %{
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      Process.flag(:trap_exit, true)
-
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
-
-      send(socket.channel_pid, {:gateway_connection_claim, self(), 0})
-
-      assert_push "disconnect", %{reason: "token_expired"}
-      assert_receive {:EXIT, _pid, :shutdown}
-    end
-
-    test "counter-claims and stays connected on a claim from a younger connection", %{
+  describe "handle_info/2 pg group monitoring" do
+    test "boots a newcomer that joins the gateway id group", %{
       gateway: gateway,
       site: site,
       token: token
@@ -1117,13 +1102,28 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      younger = System.system_time(:millisecond) + :timer.hours(1)
-      send(socket.channel_pid, {:gateway_connection_claim, self(), younger})
+      # Simulate a duplicate connection registering from another node
+      :ok = PG.join(gateway.id)
 
-      channel_pid = socket.channel_pid
-      assert_receive {:gateway_connection_claim, ^channel_pid, _connected_at}
+      # The established channel tells the newcomer to disconnect and stays up
+      assert_receive :disconnect
       assert Process.alive?(socket.channel_pid)
       refute_push "disconnect", _payload
+    end
+
+    test "stays connected on leave notifications and self joins", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {make_ref(), :leave, gateway.id, [self()]})
+      send(socket.channel_pid, {make_ref(), :join, gateway.id, [socket.channel_pid]})
+
+      refute_push "disconnect", _payload
+      assert Process.alive?(socket.channel_pid)
     end
   end
 

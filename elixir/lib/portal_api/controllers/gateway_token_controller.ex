@@ -87,10 +87,10 @@ defmodule PortalAPI.GatewayTokenController do
   # coveralls-ignore-stop
 
   @spec create_for_gateway(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def create_for_gateway(conn, %{"gateway_id" => gateway_id}) do
+  def create_for_gateway(conn, %{"site_id" => site_id, "gateway_id" => gateway_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, subject),
+    with {:ok, gateway} <- Database.fetch_gateway(site_id, gateway_id, subject),
          {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
@@ -150,10 +150,10 @@ defmodule PortalAPI.GatewayTokenController do
   # coveralls-ignore-stop
 
   @spec rotate(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def rotate(conn, %{"gateway_id" => gateway_id}) do
+  def rotate(conn, %{"site_id" => site_id, "gateway_id" => gateway_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, subject),
+    with {:ok, gateway} <- Database.fetch_gateway(site_id, gateway_id, subject),
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
@@ -256,12 +256,13 @@ defmodule PortalAPI.GatewayTokenController do
     alias Portal.Site
     alias Portal.GatewayToken
 
-    def fetch_gateway(id, subject) do
+    def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
         |> where([gateways: d], d.id == ^id and d.type == :gateway)
+        |> where([gateways: d], d.site_id == ^site_id)
         |> Safe.scoped(subject, :replica)
-        |> Safe.one()
+        |> Safe.one(fallback_to_primary: true)
 
       case result do
         nil -> {:error, :not_found}

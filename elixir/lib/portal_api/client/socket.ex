@@ -225,7 +225,7 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp insert_changeset(actor, subject, attrs) do
-    required_fields = ~w[telemetry_id name]a
+    required_fields = ~w[firezone_id name]a
 
     hardware_identifiers =
       ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
@@ -289,24 +289,23 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp normalize_device_attrs(attrs) do
-    telemetry_id =
-      attrs["external_id"] || attrs[:external_id] || attrs["firezone_id"] || attrs[:firezone_id] ||
-        attrs["telemetry_id"] || attrs[:telemetry_id]
+    firezone_id =
+      attrs["external_id"] || attrs[:external_id] || attrs["firezone_id"] || attrs[:firezone_id]
 
-    if telemetry_id do
-      Map.put(attrs, "telemetry_id", telemetry_id)
+    if firezone_id do
+      Map.put(attrs, "firezone_id", firezone_id)
     else
       attrs
     end
   end
 
   defp public_socket_changeset(changeset) do
-    %{changeset | errors: rename_telemetry_id_errors(changeset.errors)}
+    %{changeset | errors: rename_firezone_id_errors(changeset.errors)}
   end
 
-  defp rename_telemetry_id_errors(errors) do
+  defp rename_firezone_id_errors(errors) do
     Enum.map(errors, fn
-      {:telemetry_id, details} -> {:external_id, details}
+      {:firezone_id, details} -> {:external_id, details}
       error -> error
     end)
   end
@@ -325,14 +324,14 @@ defmodule PortalAPI.Client.Socket do
     def find_or_create_client(changeset, attrs) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
-      telemetry_id = Ecto.Changeset.get_field(changeset, :telemetry_id)
+      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
       existing =
-        if telemetry_id do
+        if firezone_id do
           from(d in Device,
             where: d.account_id == ^account_id,
             where: d.actor_id == ^actor_id,
-            where: d.telemetry_id == ^telemetry_id,
+            where: d.firezone_id == ^firezone_id,
             where: d.type == :client
           )
           |> Safe.unscoped(:replica)

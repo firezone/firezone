@@ -37,6 +37,8 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokens do
       cutoff = DateTime.add(DateTime.utc_now(), -grace_hours, :hour)
 
       from(t in GatewayToken, as: :gateway_tokens)
+      |> where([gateway_tokens: t], not is_nil(t.device_id))
+      |> where([gateway_tokens: t], not is_nil(t.rotated_at))
       |> where([gateway_tokens: t], t.rotated_at <= ^cutoff)
       |> Safe.unscoped()
       |> Safe.delete_all()

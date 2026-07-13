@@ -46,6 +46,22 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
       assert Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
     end
 
+    test "keeps multi-owner site tokens even with a stale rotated_at" do
+      grace_hours = GatewayToken.rotation_grace_hours()
+      rotated_at = DateTime.add(DateTime.utc_now(), -(grace_hours + 1), :hour)
+
+      # No code path sets rotated_at on site tokens today; the reaper only
+      # ever deletes single-owner tokens regardless
+      token =
+        gateway_token_fixture()
+        |> Ecto.Changeset.change(rotated_at: rotated_at)
+        |> Repo.update!()
+
+      assert :ok = perform_job(DeleteRotatedGatewayTokens, %{})
+
+      assert Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+    end
+
     test "deletes expired rotated tokens across accounts" do
       grace_hours = GatewayToken.rotation_grace_hours()
       rotated_at = DateTime.add(DateTime.utc_now(), -(grace_hours + 1), :hour)

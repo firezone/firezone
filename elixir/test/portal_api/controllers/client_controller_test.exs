@@ -148,7 +148,7 @@ defmodule PortalAPI.ClientControllerTest do
       assert data["ipv4"] == to_string(client.ipv4)
       assert data["ipv6"] == to_string(client.ipv6)
       assert data["actor_id"] == client.actor_id
-      assert data["firezone_id"] == client.telemetry_id
+      assert data["firezone_id"] == client.firezone_id
       assert data["online"] == false
       assert Map.has_key?(data, "hostname")
     end

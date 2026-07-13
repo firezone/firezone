@@ -2185,7 +2185,7 @@ defmodule PortalWeb.Resources.Components do
           ilike(a.name, ^pattern) or
           ilike(coalesce(a.email, ""), ^pattern) or
           ilike(type(c.id, :string), ^pattern) or
-          ilike(coalesce(c.telemetry_id, ""), ^pattern) or
+          ilike(coalesce(c.firezone_id, ""), ^pattern) or
           ilike(coalesce(c.device_serial, ""), ^pattern) or
           ilike(coalesce(c.device_uuid, ""), ^pattern) or
           ilike(coalesce(c.identifier_for_vendor, ""), ^pattern) or

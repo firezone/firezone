@@ -26,15 +26,15 @@ defmodule PortalAPI.Client.SocketTest do
       # firezone_id wire name must keep working.
       attrs =
         valid_client_attrs()
-        |> Map.take([:telemetry_id])
-        |> then(fn attrs -> %{"firezone_id" => attrs.telemetry_id} end)
+        |> Map.take([:firezone_id])
+        |> then(fn attrs -> %{"firezone_id" => attrs.firezone_id} end)
         |> Map.put("public_key", Portal.DeviceFixtures.generate_public_key())
 
       connect_info = build_connect_info(token: encoded_token)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert client = Map.fetch!(socket.assigns, :client)
-      assert client.telemetry_id == attrs["firezone_id"]
+      assert client.firezone_id == attrs["firezone_id"]
     end
 
     test "accepts external_id as the public parameter name" do
@@ -43,10 +43,10 @@ defmodule PortalAPI.Client.SocketTest do
 
       attrs =
         valid_client_attrs()
-        |> Map.take([:telemetry_id])
+        |> Map.take([:firezone_id])
         |> then(fn attrs ->
           %{
-            "external_id" => attrs.telemetry_id,
+            "external_id" => attrs.firezone_id,
             "public_key" => Portal.DeviceFixtures.generate_public_key()
           }
         end)
@@ -55,7 +55,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert client = Map.fetch!(socket.assigns, :client)
-      assert client.telemetry_id == attrs["external_id"]
+      assert client.firezone_id == attrs["external_id"]
     end
 
     test "x-authorization header takes precedence over token param" do
@@ -132,7 +132,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert client = Map.fetch!(socket.assigns, :client)
 
-      assert client.telemetry_id == attrs["external_id"]
+      assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
       session = socket.assigns.session
@@ -169,7 +169,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert client = Map.fetch!(socket.assigns, :client)
 
-      assert client.telemetry_id == attrs["external_id"]
+      assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
       session = socket.assigns.session
@@ -215,7 +215,7 @@ defmodule PortalAPI.Client.SocketTest do
       token = client_token_fixture(account: account, actor: actor)
       encoded_token = encode_token(token)
 
-      attrs = connect_attrs(token: encoded_token, external_id: existing_client.telemetry_id)
+      attrs = connect_attrs(token: encoded_token, external_id: existing_client.firezone_id)
       connect_info = build_connect_info()
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
@@ -249,7 +249,7 @@ defmodule PortalAPI.Client.SocketTest do
       token = client_token_fixture(account: account, actor: actor)
       encoded_token = encode_token(token)
 
-      attrs = connect_attrs(token: encoded_token, external_id: existing_client.telemetry_id)
+      attrs = connect_attrs(token: encoded_token, external_id: existing_client.firezone_id)
       connect_info = build_connect_info()
 
       # Reconnect
@@ -272,7 +272,7 @@ defmodule PortalAPI.Client.SocketTest do
       token = client_token_fixture(account: account, actor: actor)
       encoded_token = encode_token(token)
 
-      attrs = connect_attrs(token: encoded_token, external_id: existing_client.telemetry_id)
+      attrs = connect_attrs(token: encoded_token, external_id: existing_client.firezone_id)
       ip = unique_ip()
       connect_info = build_connect_info(ip: ip, x_headers: [{"x-geo-location-region", "UA"}])
 
@@ -485,7 +485,7 @@ defmodule PortalAPI.Client.SocketTest do
       attrs =
         connect_attrs(
           token: encoded_token,
-          external_id: existing_client.telemetry_id,
+          external_id: existing_client.firezone_id,
           device_serial: "NEW_SERIAL",
           device_uuid: "NEW_UUID"
         )
@@ -514,7 +514,7 @@ defmodule PortalAPI.Client.SocketTest do
 
   defp connect_attrs(attrs) do
     valid_client_attrs()
-    |> then(fn attrs -> %{external_id: attrs.telemetry_id} end)
+    |> then(fn attrs -> %{external_id: attrs.firezone_id} end)
     |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)

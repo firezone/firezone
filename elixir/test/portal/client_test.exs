@@ -6,9 +6,9 @@ defmodule Portal.ClientTest do
   import Portal.DeviceFixtures
 
   describe "changeset/1 basic validations" do
-    test "requires telemetry_id" do
+    test "requires firezone_id" do
       changeset = client_changeset(%{name: "Client"})
-      assert %{telemetry_id: ["can't be blank"]} = errors_on(changeset)
+      assert %{firezone_id: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "inserts name at maximum length" do
@@ -21,9 +21,9 @@ defmodule Portal.ClientTest do
       assert %{name: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
 
-    test "rejects telemetry_id exceeding maximum length" do
-      changeset = client_changeset(%{name: "Client", telemetry_id: String.duplicate("a", 256)})
-      assert %{telemetry_id: ["should be at most 255 character(s)"]} = errors_on(changeset)
+    test "rejects firezone_id exceeding maximum length" do
+      changeset = client_changeset(%{name: "Client", firezone_id: String.duplicate("a", 256)})
+      assert %{firezone_id: ["should be at most 255 character(s)"]} = errors_on(changeset)
     end
 
     test "allows nil hostname" do
@@ -40,7 +40,7 @@ defmodule Portal.ClientTest do
       changeset =
         client_changeset(%{
           name: "Client",
-          telemetry_id: "fid",
+          firezone_id: "fid",
           hostname: String.duplicate("a", 256)
         })
 
@@ -65,7 +65,7 @@ defmodule Portal.ClientTest do
     end
 
     test "rejects hostname shorter than 3 characters" do
-      changeset = client_changeset(%{name: "Client", telemetry_id: "fid", hostname: "ab"})
+      changeset = client_changeset(%{name: "Client", firezone_id: "fid", hostname: "ab"})
 
       assert %{hostname: ["should be at least 3 character(s)"]} = errors_on(changeset)
     end
@@ -90,7 +90,7 @@ defmodule Portal.ClientTest do
       assert {:error, %Ecto.Changeset{} = changeset} =
                insert_client(account, actor, %{
                  name: "Second",
-                 telemetry_id: "fid-second",
+                 firezone_id: "fid-second",
                  hostname: "host.example.com"
                })
 
@@ -107,7 +107,7 @@ defmodule Portal.ClientTest do
       assert {:error, %Ecto.Changeset{} = changeset} =
                insert_client(account, actor, %{
                  name: "Second",
-                 telemetry_id: "fid-second",
+                 firezone_id: "fid-second",
                  hostname: "host.example.COM"
                })
 

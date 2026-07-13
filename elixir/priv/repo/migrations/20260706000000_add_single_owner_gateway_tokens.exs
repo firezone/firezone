@@ -41,6 +41,15 @@ defmodule Portal.Repo.Migrations.AddSingleOwnerGatewayTokens do
       )
     )
 
+    # The grace-period reaper deletes by rotated_at cutoff; the partial index
+    # stays tiny since rotated tokens are few and short-lived
+    create(
+      index(:gateway_tokens, [:rotated_at],
+        where: "rotated_at IS NOT NULL",
+        name: :gateway_tokens_rotated_at_index
+      )
+    )
+
     # Pre-created single-owner gateways leave firezone_id blank until the
     # gateway reports it on first connect
     execute(

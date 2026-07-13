@@ -109,6 +109,24 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"status" => 404} = json_response(conn, 404)
     end
 
+    test "returns not found when the gateway belongs to another site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      other_site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{other_site.id}/gateways/#{gateway.id}/token")
+
+      assert %{"status" => 404} = json_response(conn, 404)
+    end
+
     test "returns not found for a gateway in another account", %{conn: conn, actor: actor} do
       other_gateway = gateway_fixture()
 
@@ -198,6 +216,24 @@ defmodule PortalAPI.GatewayTokenControllerTest do
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> post("/sites/#{Ecto.UUID.generate()}/gateways/#{Ecto.UUID.generate()}/token/rotate")
+
+      assert %{"status" => 404} = json_response(conn, 404)
+    end
+
+    test "returns not found when the gateway belongs to another site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      other_site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site, token: :single_owner)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{other_site.id}/gateways/#{gateway.id}/token/rotate")
 
       assert %{"status" => 404} = json_response(conn, 404)
     end

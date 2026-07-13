@@ -583,7 +583,7 @@ defmodule PortalWeb.Sites.Components do
                 <span class="text-xs font-semibold text-brand">New gateway token</span>
               </div>
               <p class="text-xs text-body">
-                Copy it now — it won't be shown again.
+                Copy it now - it won't be shown again.
                 <span :if={rotation_pending?(@device_tokens, gateway.id)}>
                   The expiring token keeps working until this gateway connects with the
                   replacement, or 4 hours pass.
@@ -592,7 +592,7 @@ defmodule PortalWeb.Sites.Components do
                   The legacy site token keeps working until you revoke it from the Legacy tokens tab.
                 </span>
                 <span :if={@rotated_gateway_token.replaced_unused}>
-                  The previous token was never used and has been replaced — it no longer works.
+                  The previous token was never used and has been replaced - it no longer works.
                 </span>
               </p>
               <code
@@ -664,7 +664,7 @@ defmodule PortalWeb.Sites.Components do
                 <% active_state = active_token_state(@device_tokens, gateway) %>
                 <span :if={active_state == :in_use}>
                   The current token keeps working until the gateway connects with the new token,
-                  or 4 hours pass — whichever comes first.
+                  or 4 hours pass - whichever comes first.
                 </span>
                 <span :if={active_state == :never_used}>
                   This gateway has never connected with its current token,
@@ -856,7 +856,7 @@ defmodule PortalWeb.Sites.Components do
   # Whether the gateway's active single-owner token is actually in use.
   # latest_session is a proxy for the server-side "ever referenced by a
   # session" check that decides between grace-period rotation and outright
-  # replacement — it matches exactly for never-connected gateways.
+  # replacement - it matches exactly for never-connected gateways.
   defp active_token_state(device_tokens, gateway) do
     active =
       device_tokens
@@ -876,7 +876,7 @@ defmodule PortalWeb.Sites.Components do
   end
 
   # A gateway still connected with a legacy token is mid-upgrade even if a
-  # single-owner token was already minted for it — the upgrade only "sticks"
+  # single-owner token was already minted for it - the upgrade only "sticks"
   # once the gateway reconnects with its own token.
   defp token_action(device_tokens, gateway, legacy_token_ids) do
     cond do
@@ -933,10 +933,10 @@ defmodule PortalWeb.Sites.Components do
 
     cond do
       is_nil(session) and active ->
-        "Never connected — Gateway token provisioned"
+        "Never connected - Gateway token provisioned"
 
       is_nil(session) ->
-        "Never connected — No token provisioned"
+        "Never connected - No token provisioned"
 
       active && session.gateway_token_id == active.id ->
         "#{verb} gateway token"
@@ -956,17 +956,17 @@ defmodule PortalWeb.Sites.Components do
   defp live_connection?(token), do: Portal.PG.members(token.id) != []
 
   defp expiring_status(verb, nil) do
-    "#{verb} expiring gateway token — No replacement provisioned"
+    "#{verb} expiring gateway token - No replacement provisioned"
   end
 
   defp expiring_status(verb, _active) do
-    "#{verb} expiring gateway token — Replacement provisioned, but never used"
+    "#{verb} expiring gateway token - Replacement provisioned, but never used"
   end
 
   defp with_unused_token_note(status, nil), do: status
 
   defp with_unused_token_note(status, _active) do
-    status <> " — Gateway token provisioned, but never used"
+    status <> " - Gateway token provisioned, but never used"
   end
 
   attr :site, :any, required: true
@@ -1616,13 +1616,13 @@ defmodule PortalWeb.Sites.Components do
       <p class="mt-1.5 text-xs text-body leading-snug">
         {case "#{@resource_form[:ip_stack].value}" do
           "ipv4_only" ->
-            "Resolves only A records — clients connect over IPv4."
+            "Resolves only A records - clients connect over IPv4."
 
           "ipv6_only" ->
-            "Resolves only AAAA records — clients connect over IPv6."
+            "Resolves only AAAA records - clients connect over IPv6."
 
           _ ->
-            "Resolves A and AAAA records — clients connect over IPv4 or IPv6, whichever is available."
+            "Resolves A and AAAA records - clients connect over IPv4 or IPv6, whichever is available."
         end}
       </p>
     </div>
@@ -1708,7 +1708,7 @@ defmodule PortalWeb.Sites.Components do
   def resource_filters_empty_state(assigns) do
     ~H"""
     <div class="flex items-center justify-center rounded border border-dashed border-border px-4 py-5 text-xs text-subtle">
-      No restrictions — all traffic is permitted
+      No restrictions - all traffic is permitted
     </div>
     """
   end

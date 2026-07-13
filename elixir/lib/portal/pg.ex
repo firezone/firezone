@@ -44,6 +44,17 @@ defmodule Portal.PG do
   end
 
   @doc """
+  Monitors the group under `key`.
+
+  Returns `{ref, members}` with the current members; the caller then receives
+  `{ref, :join | :leave, key, pids}` messages as membership changes. Monitors
+  do not survive a scope crash — re-monitor after re-registering.
+  """
+  def monitor(key) do
+    :pg.monitor(scope(), key)
+  end
+
+  @doc """
   Delivers `message` to all processes registered under `key`.
 
   Returns `:ok` if at least one process is registered, `{:error, :not_found}` otherwise.

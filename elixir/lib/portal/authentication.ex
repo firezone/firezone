@@ -128,8 +128,9 @@ defmodule Portal.Authentication do
       secret_salt: secret_salt,
       secret_hash: secret_hash
     }
+    # Safe.insert applies GatewayToken.changeset/1 to changesets (not bare
+    # structs), which maps the unique violation to a changeset error
     |> Ecto.Changeset.change()
-    |> Portal.GatewayToken.changeset()
     |> Database.insert_gateway_token(subject)
   end
 
@@ -537,78 +538,66 @@ defmodule Portal.Authentication do
       |> Safe.insert()
     end
 
+    # The unique index on (account_id, device_id, rotated_at IS NULL) permits
+    # at most one active token per gateway, so rotation is three set-based
+    # writes with no row lock: concurrent rotations race on the final insert
+    # and the loser surfaces the unique violation as a changeset error.
     def rotate_gateway_token(gateway, new_token, subject) do
       Safe.transact(fn ->
-        from(gt in Portal.GatewayToken,
-          where: gt.account_id == ^gateway.account_id,
-          where: gt.device_id == ^gateway.id,
-          lock: "FOR UPDATE"
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, :unauthorized} ->
-            {:error, :unauthorized}
-
-          tokens when is_list(tokens) ->
-            do_rotate_gateway_token(tokens, new_token, subject)
+        with {:ok, _} <- delete_replaceable_active_token(gateway, subject),
+             {:ok, _} <- stamp_active_token(gateway, subject) do
+          new_token
+          |> Ecto.Changeset.change()
+          |> insert_gateway_token(subject)
         end
       end)
     end
 
-    defp do_rotate_gateway_token(tokens, new_token, subject) do
-      active = Enum.find(tokens, &is_nil(&1.rotated_at))
+    # An active token is replaced outright rather than stamped when nothing
+    # relies on it: either a rotation is already pending (the active token is
+    # the unconfirmed replacement, and the in-use rotated sibling keeps its
+    # original deadline) or no session has ever referenced it.
+    defp delete_replaceable_active_token(gateway, subject) do
+      rotated_sibling =
+        from(s in Portal.GatewayToken,
+          where: s.account_id == parent_as(:gateway_tokens).account_id,
+          where: s.device_id == parent_as(:gateway_tokens).device_id,
+          where: not is_nil(s.rotated_at)
+        )
 
-      result =
-        case {active, length(tokens)} do
-          # Unconfirmed rotation in progress: replace the pending token and
-          # leave the rotated one (still in use) and its deadline untouched
-          {%Portal.GatewayToken{} = active, 2} ->
-            active
-            |> Safe.scoped(subject)
-            |> Safe.delete()
+      used_by_session =
+        from(gs in Portal.GatewaySession,
+          where: gs.account_id == parent_as(:gateway_tokens).account_id,
+          where: gs.gateway_token_id == parent_as(:gateway_tokens).id
+        )
 
-          {%Portal.GatewayToken{} = active, 1} ->
-            stamp_or_replace_active_token(active, subject)
-
-          # No active token (none at all, or only a rotated one): just mint
-          {nil, _} ->
-            {:ok, nil}
-        end
-
-      with {:ok, _} <- result,
-           {:ok, token} <-
-             new_token
-             |> Ecto.Changeset.change()
-             |> Portal.GatewayToken.changeset()
-             |> insert_gateway_token(subject) do
-        {:ok, token}
-      end
-    end
-
-    # A token no session has ever referenced has nothing relying on it, so
-    # replace it outright instead of starting a pointless grace period
-    defp stamp_or_replace_active_token(active, subject) do
-      if gateway_token_used?(active, subject) do
-        active
-        |> Ecto.Changeset.change(rotated_at: DateTime.utc_now())
-        |> Safe.scoped(subject)
-        |> Safe.update()
-      else
-        active
-        |> Safe.scoped(subject)
-        |> Safe.delete()
-      end
-    end
-
-    defp gateway_token_used?(token, subject) do
-      from(s in Portal.GatewaySession,
-        where: s.account_id == ^token.account_id,
-        where: s.gateway_token_id == ^token.id
+      from(t in Portal.GatewayToken, as: :gateway_tokens)
+      |> where([gateway_tokens: t], t.account_id == ^gateway.account_id)
+      |> where([gateway_tokens: t], t.device_id == ^gateway.id)
+      |> where([gateway_tokens: t], is_nil(t.rotated_at))
+      |> where(
+        [gateway_tokens: t],
+        exists(subquery(rotated_sibling)) or not exists(subquery(used_by_session))
       )
       |> Safe.scoped(subject)
-      |> Safe.exists?()
+      |> Safe.delete_all()
+      |> bulk_result()
     end
+
+    # Whatever active token survives the delete is in use with no pending
+    # rotation: stamp it to start the grace period
+    defp stamp_active_token(gateway, subject) do
+      from(t in Portal.GatewayToken)
+      |> where([t], t.account_id == ^gateway.account_id)
+      |> where([t], t.device_id == ^gateway.id)
+      |> where([t], is_nil(t.rotated_at))
+      |> Safe.scoped(subject)
+      |> Safe.update_all(set: [rotated_at: DateTime.utc_now()])
+      |> bulk_result()
+    end
+
+    defp bulk_result({:error, :unauthorized}), do: {:error, :unauthorized}
+    defp bulk_result({count, _}) when is_integer(count), do: {:ok, count}
 
     def insert_api_token(changeset, subject) do
       changeset

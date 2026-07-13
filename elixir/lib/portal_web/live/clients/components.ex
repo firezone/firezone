@@ -689,9 +689,9 @@ defmodule PortalWeb.Clients.Components do
             {@client.id}
           </span>
         </.client_detail_row>
-        <.client_detail_row :if={@client.telemetry_id} label="Firezone ID">
+        <.client_detail_row :if={@client.firezone_id} label="Firezone ID">
           <span class="font-mono text-[11px] text-body break-all">
-            {@client.telemetry_id}
+            {@client.firezone_id}
           </span>
         </.client_detail_row>
         <.client_detail_row label="Verification">

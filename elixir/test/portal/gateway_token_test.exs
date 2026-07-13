@@ -191,7 +191,7 @@ defmodule Portal.GatewayTokenTest do
   end
 
   describe "device pre-creation" do
-    test "a gateway device can be inserted without a telemetry_id" do
+    test "a gateway device can be inserted without a firezone_id" do
       site = site_fixture()
 
       device =
@@ -200,10 +200,10 @@ defmodule Portal.GatewayTokenTest do
           site_id: site.id,
           type: :gateway,
           name: "pre-created",
-          telemetry_id: nil
+          firezone_id: nil
         })
 
-      assert is_nil(device.telemetry_id)
+      assert is_nil(device.firezone_id)
     end
   end
 

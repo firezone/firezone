@@ -767,9 +767,9 @@ defmodule Portal.Dev.AccountPopulation do
       |> cast(
         %{
           name: "Gateway #{site.name}-#{index}",
-          telemetry_id: "#{state.account.slug}-gw-#{site.id}-#{index}"
+          firezone_id: "#{state.account.slug}-gw-#{site.id}-#{index}"
         },
-        [:name, :telemetry_id]
+        [:name, :firezone_id]
       )
       |> put_change(:type, :gateway)
       |> put_change(:account_id, state.account.id)
@@ -838,7 +838,7 @@ defmodule Portal.Dev.AccountPopulation do
       |> cast(
         %{
           name: "Client #{index}",
-          telemetry_id: "#{state.account.slug}-client-#{actor.id}-#{index}",
+          firezone_id: "#{state.account.slug}-client-#{actor.id}-#{index}",
           device_uuid: Ecto.UUID.generate(),
           device_serial: "SN#{index}",
           identifier_for_vendor: "ifv-#{index}",
@@ -846,7 +846,7 @@ defmodule Portal.Dev.AccountPopulation do
         },
         [
           :name,
-          :telemetry_id,
+          :firezone_id,
           :device_uuid,
           :device_serial,
           :identifier_for_vendor,

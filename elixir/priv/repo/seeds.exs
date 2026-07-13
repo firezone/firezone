@@ -136,7 +136,7 @@ defmodule Portal.Repo.Seeds do
     # Get the site to get the account_id
     site_id = attrs["site_id"] || attrs[:site_id]
     site = Repo.get_by!(Site, id: site_id)
-    telemetry_id = attrs["telemetry_id"] || attrs[:telemetry_id]
+    firezone_id = attrs["firezone_id"] || attrs[:firezone_id]
 
     public_key = attrs["public_key"] || attrs[:public_key]
 
@@ -146,11 +146,11 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.cast(
         %{
           name: attrs["name"] || attrs[:name],
-          telemetry_id: telemetry_id,
+          firezone_id: firezone_id,
           ipv4: attrs["ipv4"] || attrs[:ipv4],
           ipv6: attrs["ipv6"] || attrs[:ipv6]
         },
-        [:name, :telemetry_id, :ipv4, :ipv6]
+        [:name, :firezone_id, :ipv4, :ipv6]
       )
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
@@ -203,7 +203,7 @@ defmodule Portal.Repo.Seeds do
     version =
       user_agent |> String.split("/") |> List.last() |> String.split(" ") |> List.first()
 
-    telemetry_id = attrs["telemetry_id"] || attrs[:telemetry_id]
+    firezone_id = attrs["firezone_id"] || attrs[:firezone_id]
 
     # First create the client
     public_key = attrs["public_key"] || attrs[:public_key]
@@ -213,14 +213,14 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.cast(
         %{
           name: attrs["name"] || attrs[:name],
-          telemetry_id: telemetry_id,
+          firezone_id: firezone_id,
           identifier_for_vendor: attrs["identifier_for_vendor"] || attrs[:identifier_for_vendor],
           device_uuid: attrs["device_uuid"] || attrs[:device_uuid],
           device_serial: attrs["device_serial"] || attrs[:device_serial],
           ipv4: attrs["ipv4"] || attrs[:ipv4],
           ipv6: attrs["ipv6"] || attrs[:ipv6]
         },
-        [:name, :telemetry_id, :identifier_for_vendor, :device_uuid, :device_serial, :ipv4, :ipv6]
+        [:name, :firezone_id, :identifier_for_vendor, :device_uuid, :device_serial, :ipv4, :ipv6]
       )
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
@@ -1047,7 +1047,7 @@ defmodule Portal.Repo.Seeds do
         ipv4 = "100.65.#{actor_index}.#{i + 1}"
         ipv6 = "fd00:2021:1111::#{actor_index}:#{i + 1}"
 
-        telemetry_id = Ecto.UUID.generate()
+        firezone_id = Ecto.UUID.generate()
 
         # First create the client
         client =
@@ -1055,12 +1055,12 @@ defmodule Portal.Repo.Seeds do
           |> Ecto.Changeset.cast(
             %{
               name: "My #{client_name} #{i}",
-              telemetry_id: telemetry_id,
+              firezone_id: firezone_id,
               identifier_for_vendor: Ecto.UUID.generate(),
               ipv4: ipv4,
               ipv6: ipv6
             },
-            [:name, :telemetry_id, :identifier_for_vendor, :ipv4, :ipv6]
+            [:name, :firezone_id, :identifier_for_vendor, :ipv4, :ipv6]
           )
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
@@ -1253,7 +1253,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User iPhone",
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}",
           ipv4: "100.64.0.10",
@@ -1268,7 +1268,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User Android",
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}",
           ipv4: "100.64.0.11",
@@ -1283,7 +1283,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User Surface",
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "WIN-#{Ecto.UUID.generate()}",
           ipv4: "100.64.0.12",
@@ -1298,7 +1298,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ User Rendering Station",
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "UB-#{Ecto.UUID.generate()}",
           ipv4: "100.64.0.13",
@@ -1313,7 +1313,7 @@ defmodule Portal.Repo.Seeds do
       create_client(
         %{
           name: "FZ Admin Laptop",
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_serial: "FVFHF246Q72Z",
           device_uuid: "#{Ecto.UUID.generate()}",
@@ -1325,13 +1325,13 @@ defmodule Portal.Repo.Seeds do
         @ua_macos
       )
 
-    pool_member_telemetry_id = System.get_env("POOL_MEMBER_FIREZONE_ID", Ecto.UUID.generate())
+    pool_member_firezone_id = System.get_env("POOL_MEMBER_FIREZONE_ID", Ecto.UUID.generate())
 
     {:ok, pool_member_device} =
       create_client(
         %{
           name: "CI Pool Member",
-          telemetry_id: pool_member_telemetry_id,
+          firezone_id: pool_member_firezone_id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "POOL-#{Ecto.UUID.generate()}",
           # Pinned so the static-device-pool test can target a known tun IP.
@@ -1598,7 +1598,7 @@ defmodule Portal.Repo.Seeds do
       create_gateway(
         %{
           site_id: site.id,
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           ipv4: "100.64.0.20",
@@ -1615,7 +1615,7 @@ defmodule Portal.Repo.Seeds do
       create_gateway(
         %{
           site_id: site.id,
-          telemetry_id: Ecto.UUID.generate(),
+          firezone_id: Ecto.UUID.generate(),
           name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           ipv4: "100.64.0.21",
@@ -1633,7 +1633,7 @@ defmodule Portal.Repo.Seeds do
         create_gateway(
           %{
             site_id: site.id,
-            telemetry_id: Ecto.UUID.generate(),
+            firezone_id: Ecto.UUID.generate(),
             name: "gw-#{Crypto.random_token(5, encoder: :user_friendly)}",
             public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
             ipv4: "100.64.0.#{30 + i}",
@@ -1650,13 +1650,13 @@ defmodule Portal.Repo.Seeds do
     IO.puts("Created gateways:")
     gateway_name = "#{site.name}-#{gateway1.name}"
     IO.puts("  #{gateway_name}:")
-    IO.puts("    Firezone ID: #{gateway1.telemetry_id}")
+    IO.puts("    Firezone ID: #{gateway1.firezone_id}")
     IO.puts("    IPv4: #{gateway1.ipv4} IPv6: #{gateway1.ipv6}")
     IO.puts("")
 
     gateway_name = "#{site.name}-#{gateway2.name}"
     IO.puts("  #{gateway_name}:")
-    IO.puts("    Firezone ID: #{gateway2.telemetry_id}")
+    IO.puts("    Firezone ID: #{gateway2.firezone_id}")
     IO.puts("    IPv4: #{gateway2.ipv4} IPv6: #{gateway2.ipv6}")
     IO.puts("")
 

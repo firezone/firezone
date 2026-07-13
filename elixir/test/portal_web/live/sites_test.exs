@@ -491,7 +491,7 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
 
-      assert is_nil(gateway.telemetry_id)
+      assert is_nil(gateway.firezone_id)
 
       token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(token.site_id)
@@ -550,7 +550,7 @@ defmodule PortalWeb.SitesTest do
              )
 
       assert html =~
-               "Last connected with expiring gateway token — Replacement provisioned, but never used"
+               "Last connected with expiring gateway token - Replacement provisioned, but never used"
       assert html =~ "The expiring token keeps working"
       refute html =~ "The legacy site token keeps working"
 
@@ -804,7 +804,7 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Copy it now"
 
       # Mid-upgrade status: legacy session with an unused gateway token
-      assert html =~ "Last connected with legacy site token — Gateway token provisioned, but never used"
+      assert html =~ "Last connected with legacy site token - Gateway token provisioned, but never used"
 
       # While the new token is revealed, the menu hides the token action
       html = render_click(lv, "toggle_gateway_actions", %{"id" => gateway.id})
@@ -854,7 +854,7 @@ defmodule PortalWeb.SitesTest do
 
       render_click(lv, "show_all_gateways")
       html = render_click(lv, "toggle_gateway_expand", %{"id" => gateway.id})
-      assert html =~ "Never connected — No token provisioned"
+      assert html =~ "Never connected - No token provisioned"
 
       html = render_click(lv, "toggle_gateway_actions", %{"id" => gateway.id})
       assert html =~ "Generate token"
@@ -945,7 +945,7 @@ defmodule PortalWeb.SitesTest do
         |> live(~p"/#{account}/sites/#{site.id}")
 
       html = render_click(lv, "toggle_gateway_expand", %{"id" => gateway.id})
-      assert html =~ "Never connected — Gateway token provisioned"
+      assert html =~ "Never connected - Gateway token provisioned"
 
       html = render_click(lv, "toggle_gateway_actions", %{"id" => gateway.id})
       assert html =~ "Rotate token"
@@ -957,7 +957,7 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "confirm_rotate_gateway_token", %{"id" => gateway.id})
       assert html =~ "never used and has been replaced"
       refute html =~ "The expiring token keeps working"
-      assert html =~ "Never connected — Gateway token provisioned"
+      assert html =~ "Never connected - Gateway token provisioned"
 
       refute Repo.get_by(GatewayToken, account_id: account.id, id: token.id)
     end
