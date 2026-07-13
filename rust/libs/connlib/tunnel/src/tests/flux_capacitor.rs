@@ -60,6 +60,17 @@ impl FluxCapacitor {
         self.tick(Self::LARGE_TICK * ticks);
     }
 
+    /// Jump straight to `target`, landing exactly on it, or do nothing if we are
+    /// already at or past it. Unlike [`Self::advance_until`] this never advances
+    /// when the target has already been reached and does not round to the grid.
+    pub(crate) fn skip_to(&self, target: Instant) {
+        let remaining = target.saturating_duration_since(self.now::<Instant>());
+
+        if !remaining.is_zero() {
+            self.tick(remaining);
+        }
+    }
+
     pub(crate) fn tick(&self, tick: Duration) {
         {
             let mut guard = self.now.lock().unwrap();

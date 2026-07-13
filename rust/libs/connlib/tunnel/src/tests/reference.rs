@@ -903,6 +903,8 @@ impl ReferenceState {
                 client_id,
                 ip4,
                 ip6,
+                dead_window: _,
+                portal_window: _,
             } => {
                 // With ICE-less connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
@@ -1188,6 +1190,8 @@ impl ReferenceState {
                 client_id: _,
                 ip4,
                 ip6,
+                dead_window: _,
+                portal_window: _,
             } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
