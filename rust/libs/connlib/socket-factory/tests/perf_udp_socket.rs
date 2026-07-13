@@ -9,10 +9,13 @@ use socket_factory::{DatagramOut, udp};
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
 ///
-/// The batched sends promote the pair to a connected flow socket on Apple (see the
-/// assertion below); on every other platform everything uses the single catch-all socket.
+/// The batch is big enough to promote the pair to a connected flow socket on Apple (see
+/// the assertion below); on every other platform everything uses the single catch-all
+/// socket.
 #[tokio::test]
 async fn sends_and_receives_a_datagram() {
+    const DATAGRAMS: usize = 16;
+
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let peer_addr = peer.local_addr().unwrap();
 
@@ -23,29 +26,26 @@ async fn sends_and_receives_a_datagram() {
 
     let pool = BufferPool::<BytesMut>::new(2048, "test");
 
-    // Two multi-segment transmits promote the pair to a connected flow socket.
-    for _ in 0..2 {
-        socket
-            .send(DatagramOut {
-                src: None,
-                dst: peer_addr,
-                packet: pool.pull_initialised(b"hellohello"),
-                segment_size: 5,
-                ecn: Ecn::NonEct,
-            })
-            .await
-            .unwrap();
-    }
+    socket
+        .send(DatagramOut {
+            src: None,
+            dst: peer_addr,
+            packet: pool.pull_initialised(&b"hello".repeat(DATAGRAMS)),
+            segment_size: 5,
+            ecn: Ecn::NonEct,
+        })
+        .await
+        .unwrap();
 
-    // On Apple, the second batch must connect a flow socket - not silently fall back to
-    // the catch-all. A count of 0 would mean `connect()` failed (e.g. the catch-all lacked
-    // `SO_REUSEPORT`) and the fast path latched off.
+    // On Apple, a batch of `DATAGRAMS` datagrams must connect a flow socket - not
+    // silently fall back to the catch-all. A count of 0 would mean `connect()` failed
+    // (e.g. the catch-all lacked `SO_REUSEPORT`) and the fast path latched off.
     #[cfg(apple)]
     assert_eq!(socket.flow_socket_count(), 1);
 
     let mut buf = [0u8; 16];
     let mut from = peer_addr;
-    for _ in 0..4 {
+    for _ in 0..DATAGRAMS {
         let (len, sender) = peer.recv_from(&mut buf).await.unwrap();
         assert_eq!(&buf[..len], b"hello");
         from = sender;

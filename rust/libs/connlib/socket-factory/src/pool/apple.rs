@@ -17,17 +17,16 @@
 //! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
 //! rebinds) and as the fallback when connecting fails.
 //!
-//! Only pairs that send batches get a flow socket: a pair is connected once it sends
-//! its second multi-segment transmit. Batching is what `sendmsg_x` accelerates, and a
-//! batch only forms when the event loop coalesces several same-destination datagrams in
-//! one cycle — i.e. exactly when traffic is dense enough to benefit; waiting for the
-//! second batch avoids connecting for a pair whose traffic has not settled yet.
-//! Single-datagram senders — keepalives, sparse control traffic, interactive traffic —
-//! are served correctly by the catch-all socket and would otherwise thrash the bounded
-//! cache.
+//! Only pairs that send big batches get a flow socket: a pair is connected once a
+//! single transmit carries at least [`PROMOTE_BATCH_SIZE`] datagrams. Batching is what
+//! `sendmsg_x` accelerates, and a batch that large only forms when the event loop
+//! coalesces a queue's worth of same-destination datagrams in one cycle — i.e. exactly
+//! when traffic is dense enough to benefit. Everything else — keepalives, sparse
+//! control traffic, interactive traffic and its incidental small batches — is served
+//! correctly by the catch-all socket and would otherwise thrash the bounded cache.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -50,8 +49,13 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// the data-bearing gateway path(s) and the relays.
 const MAX_FLOW_SOCKETS: usize = 16;
 
-/// Bound on the pairs tracked for promotion at any one time.
-const MAX_TRACKED_PAIRS: usize = 64;
+/// Datagrams a single transmit must carry for its pair to earn a flow socket.
+///
+/// Production batch-size percentiles inform this bound: incidental coalescence
+/// (interactive traffic, control chatter) keeps p95 below ~12 datagrams per transmit,
+/// while bulk transfers pin p99 at the send path's batch limit of 32. Half that limit
+/// clears the incidental band and is hit within moments by anything genuinely bulk.
+const PROMOTE_BATCH_SIZE: usize = 16;
 
 type Key = (Option<IpAddr>, SocketAddr);
 
@@ -77,8 +81,6 @@ struct Inner {
     /// sockets already connected keep working. Re-binding the sockets on a network change builds a
     /// fresh [`SocketPool`], giving connecting another chance.
     flow_sockets_supported: bool,
-    /// Send accounting for pairs that have not (yet) proven data-bearing.
-    promote: PromoteTracker,
     buffer_sizes: Option<(usize, usize)>,
     /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
     drained: VecDeque<DatagramSegmentIter>,
@@ -113,7 +115,6 @@ impl SocketPool {
             inner: Mutex::new(Inner {
                 flows: BTreeMap::new(),
                 flow_sockets_supported: true,
-                promote: PromoteTracker::default(),
                 buffer_sizes: None,
                 drained: VecDeque::new(),
                 recv_waker: None,
@@ -122,19 +123,18 @@ impl SocketPool {
         }
     }
 
-    /// Picks the socket to send a transmit for `(src, dst)` on; `is_batch` says whether
-    /// it carries multiple datagrams.
+    /// Picks the socket to send a transmit of `datagrams` datagrams for `(src, dst)` on.
     ///
-    /// Reuses (or connects) a flow socket; non-batching pairs and connect failures fall
-    /// back to the catch-all socket.
+    /// Reuses (or connects) a flow socket; pairs below the promotion threshold and
+    /// connect failures fall back to the catch-all socket.
     pub(crate) fn get_send_socket(
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
-        is_batch: bool,
+        datagrams: usize,
         recv_buffers: &RecvBuffers,
     ) -> Arc<OwnedSocket> {
-        self.get_or_connect(src, dst, is_batch, recv_buffers)
+        self.get_or_connect(src, dst, datagrams, recv_buffers)
             .unwrap_or_else(|| self.wildcard.clone())
     }
 
@@ -199,7 +199,7 @@ impl SocketPool {
     }
 
     /// Returns the flow socket for the given `(src, dst)` pair, connecting a new one once
-    /// the pair proves it sends batches.
+    /// the pair proves it sends big batches.
     ///
     /// Returns `None` for pairs below the promotion threshold and when connecting fails
     /// (or has failed before); see `Inner::flow_sockets_supported`.
@@ -207,7 +207,7 @@ impl SocketPool {
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
-        is_batch: bool,
+        datagrams: usize,
         recv_buffers: &RecvBuffers,
     ) -> Option<Arc<OwnedSocket>> {
         let key = (src, dst);
@@ -221,11 +221,7 @@ impl SocketPool {
             return None;
         }
 
-        if !is_batch {
-            return None;
-        }
-
-        if !inner.promote.record_batch(key) {
+        if datagrams < PROMOTE_BATCH_SIZE {
             return None;
         }
 
@@ -300,33 +296,6 @@ impl Inner {
 impl Flow {
     fn record_received(&self, now: Instant) {
         *self.last_received.lock() = Some(now);
-    }
-}
-
-/// Tracks pairs that have sent one batch, pending the second that promotes them.
-#[derive(Default)]
-struct PromoteTracker {
-    batched_once: BTreeSet<Key>,
-}
-
-impl PromoteTracker {
-    /// Records a batched (multi-segment) transmit to `key`.
-    ///
-    /// Returns `true` on the key's second batch, i.e. once the pair has settled as a
-    /// data path. A promoted key starts over: should its flow socket be evicted, it
-    /// earns the next one the same way.
-    fn record_batch(&mut self, key: Key) -> bool {
-        if self.batched_once.remove(&key) {
-            return true;
-        }
-
-        if self.batched_once.len() >= MAX_TRACKED_PAIRS {
-            self.batched_once.pop_first();
-        }
-
-        self.batched_once.insert(key);
-
-        false
     }
 }
 
@@ -479,44 +448,5 @@ mod tests {
         let later = earlier + Duration::from_secs(60);
 
         assert!(eviction_rank(Some(earlier), earlier) < eviction_rank(Some(later), earlier));
-    }
-
-    fn key(port: u16) -> Key {
-        (
-            Some("10.0.0.1".parse().unwrap()),
-            SocketAddr::new("10.0.0.2".parse().unwrap(), port),
-        )
-    }
-
-    #[test]
-    fn second_batch_promotes() {
-        let mut tracker = PromoteTracker::default();
-
-        assert!(!tracker.record_batch(key(1)));
-        assert!(tracker.record_batch(key(1)));
-    }
-
-    /// A promoted pair starts over: after eviction of its flow socket it earns the
-    /// next one with two batches again.
-    #[test]
-    fn promotion_resets_tracking() {
-        let mut tracker = PromoteTracker::default();
-
-        assert!(!tracker.record_batch(key(1)));
-        assert!(tracker.record_batch(key(1)));
-
-        assert!(!tracker.record_batch(key(1)));
-        assert!(tracker.record_batch(key(1)));
-    }
-
-    #[test]
-    fn tracked_pairs_are_bounded() {
-        let mut tracker = PromoteTracker::default();
-
-        for port in 0..(MAX_TRACKED_PAIRS as u16 * 2) {
-            tracker.record_batch(key(port));
-        }
-
-        assert!(tracker.batched_once.len() <= MAX_TRACKED_PAIRS);
     }
 }
