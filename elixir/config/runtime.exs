@@ -265,6 +265,9 @@ if config_env() == :prod do
     # Schedule Okta directory sync every 2 hours
     {"40 */2 * * *", Portal.Okta.Scheduler},
 
+    # Schedule Splunk log sink deliveries every minute
+    {"* * * * *", Portal.Splunk.Scheduler},
+
     # Directory sync error notifications - daily check for low error count
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "entra", frequency: "daily"}},
@@ -341,6 +344,8 @@ if config_env() == :prod do
       google_sync: 5,
       okta_scheduler: 1,
       okta_sync: 5,
+      splunk_scheduler: 1,
+      splunk_sync: 5,
       sync_error_notifications: 1,
       outbound_emails: 1
     ],

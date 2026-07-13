@@ -259,6 +259,8 @@ config :portal, Portal.Okta.AuthProvider,
 # 15 minutes in milliseconds
 config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
 
+config :portal, Portal.Splunk.APIClient, req_opts: []
+
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
   client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),
@@ -315,7 +317,8 @@ config :portal, :enabled_features,
   sign_up: true,
   policy_conditions: true,
   rest_api: true,
-  internet_resource: true
+  internet_resource: true,
+  log_sinks: true
 
 config :portal, sign_up_whitelisted_domains: []
 
