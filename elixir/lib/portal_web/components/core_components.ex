@@ -1434,8 +1434,10 @@ defmodule PortalWeb.CoreComponents do
 
   defp provider_icon_spec("splunk") do
     %{
-      type: :icon,
-      name: "ri-upload-cloud-2-line"
+      type: :image,
+      src: ~p"/images/logo-splunk.svg",
+      dark_src: ~p"/images/logo-splunk-dark.svg",
+      alt: "Splunk"
     }
   end
 
