@@ -34,9 +34,6 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
       add(:is_disabled, :boolean, default: false, null: false)
       add(:disabled_reason, :string)
 
-      add(:created_by, :string, null: false)
-      add(:created_by_subject, :map)
-
       timestamps()
     end
 

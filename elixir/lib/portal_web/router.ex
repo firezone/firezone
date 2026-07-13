@@ -297,6 +297,14 @@ defmodule PortalWeb.Router do
           live "/:type/:id/edit", DirectorySync, :edit
         end
 
+        # Log Sinks
+        scope "/log_sinks" do
+          live "/", LogSinks
+          live "/new", LogSinks, :select_type
+          live "/:type/new", LogSinks, :new
+          live "/:type/:id/edit", LogSinks, :edit
+        end
+
         scope "/dns" do
           live "/", DNS
           live "/edit", DNS, :edit

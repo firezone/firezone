@@ -16,8 +16,7 @@ defmodule Portal.LogSinkFixtures do
       collector_url: "https://http-inputs-test#{unique_num}.splunkcloud.example",
       hec_token: "hec-token-#{unique_num}",
       enabled_streams: ~w[change session api_request flow]a,
-      retroactive: false,
-      created_by: "system"
+      retroactive: false
     })
   end
 
@@ -59,8 +58,7 @@ defmodule Portal.LogSinkFixtures do
         :errored_at,
         :error_message,
         :is_disabled,
-        :disabled_reason,
-        :created_by
+        :disabled_reason
       ])
       |> Portal.Splunk.LogSink.changeset()
       |> Portal.Repo.insert()

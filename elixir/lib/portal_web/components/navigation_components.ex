@@ -497,6 +497,14 @@ defmodule PortalWeb.NavigationComponents do
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}
+          navigate={~p"/#{@account}/settings/log_sinks"}
+          tab_path="settings/log_sinks"
+          icon="ri-upload-cloud-2-fill"
+        >
+          Log Sinks
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
           navigate={~p"/#{@account}/settings/dns"}
           tab_path="settings/dns"
           icon="ri-global-fill"

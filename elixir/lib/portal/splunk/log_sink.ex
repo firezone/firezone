@@ -20,8 +20,6 @@ defmodule Portal.Splunk.LogSink do
           error_message: String.t() | nil,
           is_disabled: boolean(),
           disabled_reason: String.t() | nil,
-          created_by: String.t(),
-          created_by_subject: map() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -53,9 +51,6 @@ defmodule Portal.Splunk.LogSink do
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
 
-    field :created_by, :string
-    field :created_by_subject, :map
-
     timestamps()
   end
 
@@ -65,8 +60,7 @@ defmodule Portal.Splunk.LogSink do
       :name,
       :collector_url,
       :hec_token,
-      :enabled_streams,
-      :created_by
+      :enabled_streams
     ])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:collector_url, min: 1, max: 2048)

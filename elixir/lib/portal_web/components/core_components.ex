@@ -1432,6 +1432,13 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("splunk") do
+    %{
+      type: :icon,
+      name: "ri-upload-cloud-2-line"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

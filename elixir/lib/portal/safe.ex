@@ -937,6 +937,10 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Okta.Directory, :api_client), do: :ok
 
+  def permit(_action, Portal.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.Splunk.LogSink, :account_admin_user), do: :ok
+  def permit(:read, Portal.LogSinkCursor, :account_admin_user), do: :ok
+
   def permit(_action, Portal.PortalSession, :account_admin_user), do: :ok
 
   # Oban.Job permissions - admin only
