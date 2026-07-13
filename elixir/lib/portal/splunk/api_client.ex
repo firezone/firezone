@@ -15,9 +15,14 @@ defmodule Portal.Splunk.APIClient do
     |> Req.new()
     # A batch is concatenated JSON objects, which is not valid
     # application/json, so no content type is declared. HEC does not need one.
+    #
+    # HEC never redirects; a redirect means the URL points at something else
+    # (e.g. Splunk Web on 443 instead of HEC on 8088), and following it turns
+    # the delivery into garbage. Surface it as the error it is.
     |> Req.merge(
       url: "/services/collector/event",
-      headers: [{"authorization", "Splunk " <> sink.hec_token}]
+      headers: [{"authorization", "Splunk " <> sink.hec_token}],
+      redirect: false
     )
     |> Req.post(body: body)
   end

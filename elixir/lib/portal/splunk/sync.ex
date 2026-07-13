@@ -122,8 +122,8 @@ defmodule Portal.Splunk.Sync do
       {:ok, %Req.Response{status: 200}} ->
         advance(cursor, max_seq, length(chunk), 0)
 
-      {:ok, %Req.Response{status: 413}} ->
-        handle_oversized_chunk(sink, cursor, chunk)
+      {:ok, %Req.Response{status: 413} = response} ->
+        handle_oversized_chunk(sink, cursor, chunk, response)
 
       {:ok, %Req.Response{} = response} ->
         {:error, {:status, response}}
@@ -133,20 +133,27 @@ defmodule Portal.Splunk.Sync do
     end
   end
 
-  # A single event the server still rejects can never be delivered: count it
-  # as dropped and move the cursor past it. A rejected multi-event chunk is
+  # A single event that is genuinely over our own chunk budget can never be
+  # delivered: count it as dropped and move the cursor past it. A 413 for a
+  # small event is not a size problem, it is a server that is not HEC (this
+  # happened: Splunk Web answers 413 to redirected deliveries), so it must
+  # error out rather than silently drop data. A rejected multi-event chunk is
   # bisected until the offender is isolated.
-  defp handle_oversized_chunk(_sink, cursor, [{seq, _json}]) do
-    Logger.warning("Dropping oversized log sink event",
-      log_sink_id: cursor.log_sink_id,
-      stream: cursor.stream,
-      seq: seq
-    )
+  defp handle_oversized_chunk(_sink, cursor, [{seq, json}] = _chunk, response) do
+    if byte_size(json) > max_body_bytes() do
+      Logger.warning("Dropping oversized log sink event",
+        log_sink_id: cursor.log_sink_id,
+        stream: cursor.stream,
+        seq: seq
+      )
 
-    advance(cursor, seq, 0, 1)
+      advance(cursor, seq, 0, 1)
+    else
+      {:error, {:status, response}}
+    end
   end
 
-  defp handle_oversized_chunk(sink, cursor, chunk) do
+  defp handle_oversized_chunk(sink, cursor, chunk, _response) do
     {left, right} = Enum.split(chunk, div(length(chunk), 2))
 
     with {:ok, cursor} <- deliver_chunk(sink, cursor, left) do
@@ -238,6 +245,12 @@ defmodule Portal.Splunk.Sync do
   defp classify({:status, _response}), do: :client_error
   defp classify({:transport, _exception}), do: :transient
   defp classify(:cursor_conflict), do: :transient
+
+  defp format_error({:status, %Req.Response{status: status}})
+       when status in [301, 302, 303, 307, 308] do
+    "Splunk HEC returned an HTTP #{status} redirect. The HEC URL does not point at an " <>
+      "HTTP Event Collector; on Splunk Cloud trials HEC listens on port 8088."
+  end
 
   defp format_error({:status, %Req.Response{status: status, body: body}}) do
     case body do

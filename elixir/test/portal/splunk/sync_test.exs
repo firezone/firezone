@@ -208,10 +208,17 @@ defmodule Portal.Splunk.SyncTest do
       refute Repo.reload!(sink).is_disabled
     end
 
-    test "drops an event the server always rejects as too large", %{account: account} do
+    test "drops an event that exceeds the chunk budget when the server rejects it", %{
+      account: account
+    } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
-      log = session_log_fixture(account: account)
+
+      log =
+        session_log_fixture(
+          account: account,
+          subject: %{"blob" => String.duplicate("x", 600_000)}
+        )
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
         conn
@@ -227,6 +234,54 @@ defmodule Portal.Splunk.SyncTest do
       assert cursor.dropped_count == 1
 
       refute Repo.reload!(sink).is_disabled
+    end
+
+    test "a 413 for a small event disables the sink instead of dropping data", %{
+      account: account
+    } do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(413)
+        |> Req.Test.json(%{"text" => "Unexpected request data received", "code" => 6})
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+      assert cursor.dropped_count == 0
+
+      sink = Repo.reload!(sink)
+      assert sink.is_disabled
+      assert sink.error_message =~ "413"
+    end
+
+    test "a redirect disables the sink with a pointed error", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header(
+          "location",
+          "https://prd-p-test.splunkcloud.com/en-US/services/collector/event"
+        )
+        |> Plug.Conn.send_resp(303, "")
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+
+      sink = Repo.reload!(sink)
+      assert sink.is_disabled
+      assert sink.error_message =~ "port 8088"
     end
 
     test "a 4xx response disables the sink immediately", %{account: account} do
