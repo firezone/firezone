@@ -93,18 +93,20 @@ impl ChecksumUpdate {
     /// `0x0000` where this function returns `0xFFFF`; validators comparing the two must
     /// treat them as equivalent rather than compare for strict equality.
     pub fn into_ip_checksum(self) -> u16 {
-        let checksum = !self.inner;
-
-        if checksum == 0 { 0xFFFF } else { checksum }
+        non_zero_complement(self.inner)
     }
 
     pub fn into_udp_checksum(self) -> u16 {
         // RFC 768, Section 3.1 states that we must invert the final computed checksum if it came
         // out to be zero.
-        let check = !self.inner;
-
-        if check == 0 { 0xFFFF } else { check }
+        non_zero_complement(self.inner)
     }
+}
+
+fn non_zero_complement(inner: u16) -> u16 {
+    let checksum = !inner;
+
+    if checksum == 0 { 0xFFFF } else { checksum }
 }
 
 #[inline(always)]
