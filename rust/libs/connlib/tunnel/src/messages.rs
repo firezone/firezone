@@ -124,8 +124,7 @@ impl From<IceRole> for snownet::IceRole {
 ///
 /// Reported by clients and gateways to the portal on connect. The portal
 /// intersects capabilities across both sides of each connection and re-emits
-/// the negotiated set with each `authorize_flow` / `flow_created` /
-/// `client_device_access_authorized` message.
+/// the negotiated set with each gateway/client authorization message.
 ///
 /// New fields must always be added with a `false`-equivalent default so older
 /// peers that don't send them deserialize as "feature not supported", and

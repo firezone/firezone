@@ -108,7 +108,7 @@ defmodule PortalAPI.Client.Channel do
       |> assign(
         cache: cache,
         authorizations_cache: authorizations_cache,
-        pending_flows: %{},
+        pending_authorizations: %{},
         iceless_capable: false
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
@@ -358,9 +358,9 @@ defmodule PortalAPI.Client.Channel do
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
 
-    case Map.pop(socket.assigns.pending_flows, resource_id) do
+    case Map.pop(socket.assigns.pending_authorizations, resource_id) do
       {nil, _} ->
-        # Flow already timed out — ignore late gateway response
+        # Authorization creation already timed out; ignore the late gateway response.
         {:noreply, socket}
 
       {{_generation, timer_ref, initiator_token}, remaining} ->
@@ -381,28 +381,32 @@ defmodule PortalAPI.Client.Channel do
           }
           |> put_site_id(site_id, socket.assigns.session)
 
-        push(socket, "flow_created", reply_payload)
-        {:noreply, assign(socket, :pending_flows, remaining)}
+        push(socket, authorization_created_event(socket), reply_payload)
+        {:noreply, assign(socket, :pending_authorizations, remaining)}
     end
   end
 
   # `generation` rejects a stale timeout whose entry was already replaced by a
-  # newer create_flow for the same resource_id (its message may already be queued).
-  def handle_info({:flow_creation_timeout, resource_id, generation}, socket) do
-    case Map.get(socket.assigns.pending_flows, resource_id) do
+  # newer request_authorization for the same resource_id (its message may already be queued).
+  def handle_info({:authorization_creation_timeout, resource_id, generation}, socket) do
+    case Map.get(socket.assigns.pending_authorizations, resource_id) do
       {^generation, _timer_ref, _initiator_token} ->
-        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+        push(socket, authorization_creation_failed_event(socket), %{resource_id: resource_id, reason: :offline})
 
         {:noreply,
-         assign(socket, :pending_flows, Map.delete(socket.assigns.pending_flows, resource_id))}
+         assign(
+           socket,
+           :pending_authorizations,
+           Map.delete(socket.assigns.pending_authorizations, resource_id)
+         )}
 
       _ ->
         {:noreply, socket}
     end
   end
 
-  def handle_info({:flow_creation_timeout, ref}, socket) do
-    case Map.pop(socket.assigns.pending_flows, ref) do
+  def handle_info({:authorization_creation_timeout, ref}, socket) do
+    case Map.pop(socket.assigns.pending_authorizations, ref) do
       {nil, _} ->
         {:noreply, socket}
 
@@ -410,7 +414,7 @@ defmodule PortalAPI.Client.Channel do
       # authorization to its data plane (e.g. it disconnected in the window).
       {%{deny_payload: deny_payload}, remaining} ->
         push(socket, "client_device_access_denied", deny_payload)
-        {:noreply, assign(socket, :pending_flows, remaining)}
+        {:noreply, assign(socket, :pending_authorizations, remaining)}
     end
   end
 
@@ -423,7 +427,7 @@ defmodule PortalAPI.Client.Channel do
   # peers' capabilities), so we apply it as-is rather than reading the flag a
   # second time — a second read could race a mid-flow toggle and disagree.
   def handle_info({:device_access_acked, ref, use_iceless, client_name}, socket) do
-    case Map.pop(socket.assigns.pending_flows, ref) do
+    case Map.pop(socket.assigns.pending_authorizations, ref) do
       {nil, _} ->
         {:noreply, socket}
 
@@ -436,7 +440,7 @@ defmodule PortalAPI.Client.Channel do
           |> Map.put(:client_name, client_name)
 
         push(socket, "client_device_access_authorized", initiator_payload)
-        {:noreply, assign(socket, :pending_flows, remaining)}
+        {:noreply, assign(socket, :pending_authorizations, remaining)}
     end
   end
 
@@ -673,18 +677,37 @@ defmodule PortalAPI.Client.Channel do
     Map.put(payload, key, site_id)
   end
 
+  defp authorization_created_event(socket) do
+    if Portal.Version.client_supports_authorization_messages?(socket.assigns.session),
+      do: "authorization_created",
+      else: "flow_created"
+  end
+
+  defp authorization_creation_failed_event(socket) do
+    if Portal.Version.client_supports_authorization_messages?(socket.assigns.session),
+      do: "authorization_creation_failed",
+      else: "flow_creation_failed"
+  end
+
   ####################################
   ##### Client-initiated actions #####
   ####################################
 
-  # This message is sent to the client to request a network flow with a gateway (or, for
-  # static_device_pool resources, a peer client) that can serve the given resource.
+  # This message is sent by the client to request authorization for a resource served by a
+  # gateway or, for static_device_pool resources, a peer client.
   #
   # For gateway-backed resources, `connected_gateway_ids` indicates that the client is already
   # connected to some of the gateways, so the gateway can be reused by multiplexing the connection.
   #
   # For static_device_pool resources, the payload also carries `ipv4` or `ipv6` of the target
   # member device.
+  def handle_in(
+        "request_authorization",
+        %{"resource_id" => _resource_id} = payload,
+        socket
+      ),
+      do: handle_in("create_flow", payload, socket)
+
   def handle_in(
         "create_flow",
         %{"resource_id" => resource_id} = payload,
@@ -700,7 +723,7 @@ defmodule PortalAPI.Client.Channel do
       {:ok, %Cache.Cacheable.Resource{type: type} = resource, membership_id, policy_id,
        expires_at}
       when type in [:static_device_pool, :dynamic_device_pool] ->
-        handle_create_pool_flow(
+        handle_request_pool_authorization(
           resource_id,
           resource,
           membership_id,
@@ -713,7 +736,7 @@ defmodule PortalAPI.Client.Channel do
       {:ok, resource, membership_id, policy_id, expires_at} ->
         connected_gateway_ids = Map.get(payload, "connected_gateway_ids", [])
 
-        handle_create_gateway_flow(
+        handle_request_gateway_authorization(
           resource_id,
           resource,
           membership_id,
@@ -724,7 +747,7 @@ defmodule PortalAPI.Client.Channel do
         )
 
       {:error, :not_found} ->
-        push(socket, "flow_creation_failed", %{
+        push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :not_found
         })
@@ -732,7 +755,7 @@ defmodule PortalAPI.Client.Channel do
         {:noreply, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
-        push(socket, "flow_creation_failed", %{
+        push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :forbidden,
           violated_properties: violated_properties
@@ -1135,7 +1158,7 @@ defmodule PortalAPI.Client.Channel do
 
   # Some clients send these sporadically by accident since any packet with a destination in
   # 100.64.0.0/10 will trigger it in certain older clients. Message was introduced for the PoC
-  # of client-to-client, but was replaced with the standard "create_flow" message. We no-op it.
+  # of client-to-client, but was replaced with the standard create-authorization message. We no-op it.
   def handle_in("request_device_access", _payload, socket) do
     {:noreply, socket}
   end
@@ -1247,7 +1270,7 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  defp handle_create_gateway_flow(
+  defp handle_request_gateway_authorization(
          resource_id,
          resource,
          membership_id,
@@ -1301,7 +1324,7 @@ defmodule PortalAPI.Client.Channel do
           )
 
         message =
-          {:authorize_policy, {self(), socket_ref(socket)},
+          {:create_authorization, {self(), socket_ref(socket)},
            %{
              client:
                PortalAPI.Gateway.Views.Client.render(
@@ -1345,19 +1368,19 @@ defmodule PortalAPI.Client.Channel do
                end
              ) do
           :ok ->
-            {:noreply, arm_gateway_flow_timer(socket, resource_id, initiator_token)}
+            {:noreply, arm_gateway_authorization_timer(socket, resource_id, initiator_token)}
 
           {:error, _reason} ->
-            push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+            push(socket, authorization_creation_failed_event(socket), %{resource_id: resource_id, reason: :offline})
             {:noreply, socket}
         end
 
       {:ok, []} ->
-        push(socket, "flow_creation_failed", %{resource_id: resource_id, reason: :offline})
+        push(socket, authorization_creation_failed_event(socket), %{resource_id: resource_id, reason: :offline})
         {:noreply, socket}
 
       {:error, :version_mismatch} ->
-        push(socket, "flow_creation_failed", %{
+        push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :version_mismatch
         })
@@ -1366,7 +1389,7 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  defp handle_create_pool_flow(
+  defp handle_request_pool_authorization(
          resource_id,
          resource,
          membership_id,
@@ -1423,7 +1446,7 @@ defmodule PortalAPI.Client.Channel do
         {:noreply, socket}
 
       {:error, :ambiguous_address} ->
-        Logger.warning("create_flow for pool included both ipv4 and ipv6",
+        Logger.warning("request_authorization for pool included both ipv4 and ipv6",
           client_id: socket.assigns.client.id,
           resource_id: resource_id
         )
@@ -1580,10 +1603,14 @@ defmodule PortalAPI.Client.Channel do
          ) do
       :ok ->
         timer_ref =
-          Process.send_after(self(), {:flow_creation_timeout, ref}, flow_creation_timeout())
+          Process.send_after(
+            self(),
+            {:authorization_creation_timeout, ref},
+            authorization_creation_timeout()
+          )
 
         pending =
-          Map.put(socket.assigns.pending_flows, ref, %{
+          Map.put(socket.assigns.pending_authorizations, ref, %{
             timer_ref: timer_ref,
             initiator_payload: initiator_payload,
             deny_payload: %{
@@ -1594,7 +1621,7 @@ defmodule PortalAPI.Client.Channel do
             }
           })
 
-        {:noreply, assign(socket, :pending_flows, pending)}
+        {:noreply, assign(socket, :pending_authorizations, pending)}
 
       {:error, _} ->
         push(socket, "client_device_access_denied", %{
@@ -1649,7 +1676,7 @@ defmodule PortalAPI.Client.Channel do
         target_meta.public_key
       )
 
-    # Mirror the gateway's `authorize_flow` payload on the receiver side: the
+    # Mirror the gateway's create-authorization payload on the receiver side: the
     # receiving client gets the full resource view (filters, type, name,
     # devices) plus the subject (actor) view, in addition to peer/ICE fields.
     # We render with the initiator's session here — for static_device_pool
@@ -2458,15 +2485,15 @@ defmodule PortalAPI.Client.Channel do
   #
   # All peer-bound messages carry a `{channel_pid, ref}` reply tuple:
   # `{tag, {channel_pid, ref}, payload}` (used by :allow_access,
-  # :authorize_policy, :request_connection, and :client_device_access_authorized).
+  # :create_authorization, :request_connection, and :client_device_access_authorized).
   defp attach_policy_authorization({tag, ref_tuple, payload}, %Portal.PolicyAuthorization{} = pa)
        when is_tuple(ref_tuple) do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
   end
 
-  defp arm_gateway_flow_timer(socket, resource_id, initiator_token) do
-    # Cancel any timer a prior in-flight create_flow armed under this key.
-    case Map.get(socket.assigns.pending_flows, resource_id) do
+  defp arm_gateway_authorization_timer(socket, resource_id, initiator_token) do
+    # Cancel any timer a prior in-flight request_authorization armed under this key.
+    case Map.get(socket.assigns.pending_authorizations, resource_id) do
       {_old_generation, old_timer_ref, _old_initiator_token} ->
         Process.cancel_timer(old_timer_ref)
 
@@ -2479,19 +2506,23 @@ defmodule PortalAPI.Client.Channel do
     timer_ref =
       Process.send_after(
         self(),
-        {:flow_creation_timeout, resource_id, generation},
-        flow_creation_timeout()
+        {:authorization_creation_timeout, resource_id, generation},
+        authorization_creation_timeout()
       )
 
     assign(
       socket,
-      :pending_flows,
-      Map.put(socket.assigns.pending_flows, resource_id, {generation, timer_ref, initiator_token})
+      :pending_authorizations,
+      Map.put(
+        socket.assigns.pending_authorizations,
+        resource_id,
+        {generation, timer_ref, initiator_token}
+      )
     )
   end
 
-  defp flow_creation_timeout do
-    Portal.Config.get_env(:portal, :flow_creation_timeout_ms, :timer.seconds(15))
+  defp authorization_creation_timeout do
+    Portal.Config.get_env(:portal, :authorization_creation_timeout_ms, :timer.seconds(15))
   end
 
   defp schedule_session_expiry(expires_at) do
@@ -2655,7 +2686,7 @@ defmodule PortalAPI.Client.Channel do
 
     @doc """
       Fetches a client device by its tunnel IPv4 or IPv6 within the subject's account.
-      Used to authorize a `create_flow` against a dynamic device pool: we resolve the
+      Used to create an authorization against a dynamic device pool: we resolve the
       target IP to a device and let the caller verify the device's hostname matches
       the pool's address pattern.
     """

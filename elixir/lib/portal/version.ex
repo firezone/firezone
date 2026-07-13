@@ -2,7 +2,8 @@ defmodule Portal.Version do
   alias Portal.{
     ClientSession,
     ComponentVersions,
-    Device
+    Device,
+    GatewaySession
   }
 
   def fetch_version(user_agent) when is_binary(user_agent) do
@@ -49,6 +50,42 @@ defmodule Portal.Version do
   end
 
   def client_supports_sites_payload?(_), do: false
+
+  @authorization_message_min_versions %{
+    apple: "1.5.19",
+    headless: "1.5.11",
+    android: "1.5.13",
+    gui: "1.5.16"
+  }
+
+  def client_supports_authorization_messages?(%ClientSession{
+        version: version,
+        user_agent: user_agent
+      })
+      when is_binary(version) and is_binary(user_agent) do
+    component = ComponentVersions.get_component_type_from_user_agent(user_agent)
+
+    case Version.parse(version) do
+      {:ok, version} ->
+        Version.compare(version, Map.fetch!(@authorization_message_min_versions, component)) !=
+          :lt
+
+      :error ->
+        false
+    end
+  end
+
+  def client_supports_authorization_messages?(_), do: false
+
+  def gateway_supports_authorization_messages?(%GatewaySession{version: version})
+      when is_binary(version) do
+    case Version.parse(version) do
+      {:ok, version} -> Version.compare(version, "1.5.3") != :lt
+      :error -> false
+    end
+  end
+
+  def gateway_supports_authorization_messages?(_), do: false
 
   # TODO: Remove once all clients are on versions that support resources changing sites.
   # Connlib didn't support resources changing sites until https://github.com/firezone/firezone/pull/10604

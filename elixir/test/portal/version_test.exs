@@ -83,6 +83,41 @@ defmodule Portal.VersionTest do
     end
   end
 
+  describe "client_supports_authorization_messages?/1" do
+    test "uses the current component versions as the cutover" do
+      cases = [
+        {"apple-client", "1.5.18", "1.5.19"},
+        {"headless-client", "1.5.10", "1.5.11"},
+        {"android-client", "1.5.12", "1.5.13"},
+        {"gui-client", "1.5.15", "1.5.16"}
+      ]
+
+      for {component, old_version, cutover_version} <- cases do
+        refute Portal.Version.client_supports_authorization_messages?(%Portal.ClientSession{
+                 version: old_version,
+                 user_agent: "Test/1.0 #{component}/#{old_version}"
+               })
+
+        assert Portal.Version.client_supports_authorization_messages?(%Portal.ClientSession{
+                 version: cutover_version,
+                 user_agent: "Test/1.0 #{component}/#{cutover_version}"
+               })
+      end
+    end
+  end
+
+  describe "gateway_supports_authorization_messages?/1" do
+    test "cuts over at the current gateway version" do
+      refute Portal.Version.gateway_supports_authorization_messages?(%Portal.GatewaySession{
+               version: "1.5.2"
+             })
+
+      assert Portal.Version.gateway_supports_authorization_messages?(%Portal.GatewaySession{
+               version: "1.5.3"
+             })
+    end
+  end
+
   describe "resource_cannot_change_sites_on_client?/1 with ClientSession" do
     test "apple session below version cannot change sites" do
       session = %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}

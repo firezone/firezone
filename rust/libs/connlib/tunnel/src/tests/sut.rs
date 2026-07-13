@@ -1162,7 +1162,7 @@ impl TunnelTest {
 
                 gateway
                     .exec_mut(|g| {
-                        g.sut.authorize_flow(
+                        g.sut.create_authorization(
                             Client {
                                 id: src,
                                 public_key: client_key.into(),

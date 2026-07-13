@@ -53,7 +53,7 @@ defmodule PortalAPI.Gateway.Channel do
   before flushing, the cached authz on the receiver eventually triggers
   a reject so the gateway stops authorizing packets for an authz that
   has no DB row backing it. The client recovers by tripping ICMP
-  prohibited and requesting a fresh flow through the normal portal
+  prohibited and requesting a fresh authorization through the normal portal
   path — closing the loop.
 
   This function is the manual version of that fail-closed signal. If the
@@ -291,7 +291,7 @@ defmodule PortalAPI.Gateway.Channel do
     {:noreply, socket}
   end
 
-  def handle_info({:authorize_policy, {channel_pid, socket_ref}, payload}, socket) do
+  def handle_info({:create_authorization, {channel_pid, socket_ref}, payload}, socket) do
     %{
       client: client,
       subject: subject,
@@ -321,7 +321,12 @@ defmodule PortalAPI.Gateway.Channel do
         use_iceless
       })
 
-    push(socket, "authorize_flow", %{
+    event =
+      if Portal.Version.gateway_supports_authorization_messages?(socket.assigns.session),
+        do: "create_authorization",
+        else: "authorize_flow"
+
+    push(socket, event, %{
       ref: ref,
       resource: resource,
       gateway_ice_credentials: ice_credentials.receiver,
@@ -448,7 +453,7 @@ defmodule PortalAPI.Gateway.Channel do
 
   # Direct revocation from `Portal.Queue`'s on_failed path — a policy
   # authorization that we already announced via `:allow_access` /
-  # `:authorize_policy` failed to persist. We reuse the same eviction path the
+  # `:create_authorization` failed to persist. We reuse the same eviction path the
   # CDC delete handler uses: drop the cached authorization and push
   # `reject_access` so connlib tears down the flow.
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
@@ -591,6 +596,10 @@ defmodule PortalAPI.Gateway.Channel do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
+    handle_in("flow_authorized", %{"ref" => signed_ref}, socket)
+  end
+
   def handle_in("flow_authorized", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
       {:ok, ref_tuple} ->
@@ -929,7 +938,7 @@ defmodule PortalAPI.Gateway.Channel do
   # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
   # We look the authorization up by id and, if it was still active, push
   # `reject_access`; the client recovers by tripping ICMP "destination
-  # prohibited" and requesting a fresh flow. Deletes of already-expired
+  # prohibited" and requesting a fresh authorization. Deletes of already-expired
   # authorizations (the `DeleteExpiredPolicyAuthorizations` reaper) are dropped
   # silently — connlib has already expired them locally.
   defp revoke_policy_authorization(socket, %Portal.PolicyAuthorization{

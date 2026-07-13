@@ -120,7 +120,7 @@ pub enum IngressMessages {
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
-    AuthorizeFlow(AuthorizeFlow),
+    CreateAuthorization(CreateAuthorization),
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
@@ -136,7 +136,7 @@ pub struct Client {
 
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
-pub struct AuthorizeFlow {
+pub struct CreateAuthorization {
     #[serde(rename = "ref")]
     pub reference: String,
 
@@ -192,7 +192,7 @@ pub struct ClientIceCandidates {
 pub enum EgressMessages {
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
-    FlowAuthorized {
+    AuthorizationCreated {
         #[serde(rename = "ref")]
         reference: String,
     },
@@ -364,28 +364,39 @@ mod tests {
         assert!(matches!(message, IngressMessages::RelaysPresence(_)));
     }
 
-    const AUTHORIZE_FLOW: &str = r#"{"event":"authorize_flow","ref":null,"topic":"gateway","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
+    const CREATE_AUTHORIZATION: &str = r#"{"event":"create_authorization","ref":null,"topic":"gateway","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
 
     #[test]
-    fn can_deserialize_authorize_flow() {
+    fn can_deserialize_create_authorization() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
-        let json = AUTHORIZE_FLOW.replace(
+        let json = CREATE_AUTHORIZATION.replace(
             r#""flow_id""#,
             &format!(r#""flow_logs_ingest_token":"{token}","flow_id""#),
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
 
-        let IngressMessages::AuthorizeFlow(flow) = message else {
-            panic!("expected AuthorizeFlow");
+        let IngressMessages::CreateAuthorization(authorization) = message else {
+            panic!("expected CreateAuthorization");
         };
-        assert!(!flow.use_iceless);
-        assert_eq!(flow.flow_logs_ingest_token.as_str(), token);
+        assert!(!authorization.use_iceless);
+        assert_eq!(authorization.flow_logs_ingest_token.as_str(), token);
     }
 
     #[test]
-    fn authorize_flow_requires_ingest_token() {
-        serde_json::from_str::<IngressMessages>(AUTHORIZE_FLOW).unwrap_err();
+    fn create_authorization_requires_ingest_token() {
+        serde_json::from_str::<IngressMessages>(CREATE_AUTHORIZATION).unwrap_err();
+    }
+
+    #[test]
+    fn serialize_authorization_created() {
+        let message = EgressMessages::AuthorizationCreated {
+            reference: "signed-reference".to_owned(),
+        };
+        let expected_json =
+            r#"{"event":"authorization_created","payload":{"ref":"signed-reference"}}"#;
+
+        assert_eq!(serde_json::to_string(&message).unwrap(), expected_json);
     }
 
     #[test]

@@ -307,7 +307,7 @@ impl Eventloop {
         };
 
         match msg {
-            IngressMessages::AuthorizeFlow(msg) => {
+            IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
                 if token.claims().uploads_enabled
@@ -317,7 +317,7 @@ impl Eventloop {
                     tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
                 }
 
-                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
+                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
                     msg.client,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
@@ -327,7 +327,7 @@ impl Eventloop {
                     Instant::now(),
                     msg.flow_logs_ingest_token,
                 ) {
-                    tracing::debug!("Failed to authorise flow: No TURN servers available");
+                    tracing::debug!("Failed to create authorization: No TURN servers available");
 
                     self.portal_cmd_tx
                         .send(PortalCommand::Send(EgressMessages::NoRelays {}))
@@ -338,7 +338,7 @@ impl Eventloop {
                 };
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::FlowAuthorized {
+                    .send(PortalCommand::Send(EgressMessages::AuthorizationCreated {
                         reference: msg.reference,
                     }))
                     .await?;
