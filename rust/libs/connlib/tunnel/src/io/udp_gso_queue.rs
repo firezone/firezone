@@ -359,6 +359,26 @@ mod tests {
     }
 
     #[test]
+    fn does_not_append_to_older_batch_of_same_connection() {
+        let mut send_queue = UdpGsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"aaaa", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"bbbbbb", Ecn::NonEct); // Does not fit the first batch's segment size.
+        send_queue.enqueue(None, DST_1, b"ccc", Ecn::NonEct); // Short tail: seals the second batch.
+
+        // The most recent batch is sealed, so this must open a new one;
+        // appending to the first batch would overtake the second one.
+        send_queue.enqueue(None, DST_1, b"dd", Ecn::NonEct);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 3);
+        assert_eq!(&datagrams[0].packet[..], b"aaaa");
+        assert_eq!(&datagrams[1].packet[..], b"bbbbbbccc");
+        assert_eq!(&datagrams[2].packet[..], b"dd");
+    }
+
+    #[test]
     fn seals_full_size_batch_at_one_gso_send() {
         let mut send_queue = UdpGsoQueue::new();
         let segment = [0u8; MAX_SEGMENT_SIZE];
