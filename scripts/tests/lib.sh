@@ -139,7 +139,7 @@ function get_flow_logs() {
     local protocol="$1"
 
     docker compose logs gateway --since 30s 2>/dev/null |
-        grep "flow_logs::${protocol}.*flow completed" |
+        grep "flow_logs.*${protocol^^} flow completed" |
         grep -v "rx_bytes=0 tx_bytes=0" || true
 }
 

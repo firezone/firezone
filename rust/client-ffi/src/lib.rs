@@ -19,7 +19,7 @@ use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
@@ -29,7 +29,6 @@ uniffi::setup_scaffolding!();
 pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
-    telemetry: Mutex<Telemetry>,
     runtime: Option<tokio::runtime::Runtime>,
 }
 
@@ -121,8 +120,12 @@ pub enum Resource {
 #[derive(uniffi::Record)]
 pub struct ConnectedDevice {
     pub id: String,
+    /// Name assigned to the connected client.
+    pub name: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: String,
+    /// Tunnel IPv6 address the device is reachable on.
+    pub tun_ipv6: String,
     /// Names of the device pools this peer belongs to, sorted (typically one,
     /// but can be multiple).
     pub pools: Vec<String>,
@@ -335,17 +338,6 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 impl Session {
     pub fn disconnect(&self) {
         self.inner.stop();
-
-        let Some(runtime) = self.runtime.as_ref() else {
-            tracing::error!(
-                "No tokio runtime set! This should be impossible because we only clear it on `Drop`"
-            );
-            return;
-        };
-
-        runtime.block_on(async {
-            self.telemetry.lock().await.stop().await;
-        });
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
@@ -469,8 +461,6 @@ impl Drop for Session {
         self.inner.stop(); // Instruct the event-loop to shut down.
 
         runtime.block_on(async {
-            self.telemetry.lock().await.stop().await;
-
             // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
             let drain = async { self.events.lock().await.drain().await };
             let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
@@ -513,12 +503,11 @@ fn connect(
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
 
-    let mut telemetry = Telemetry::new(tcp_socket_factory.clone(), udp_socket_factory.clone());
-    telemetry.start(&api_url, RELEASE, platform::DSN);
-    runtime.block_on(Telemetry::set_firezone_id(device_id.clone()));
-    Telemetry::set_account_slug(account_slug.clone());
+    tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
-    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
+    telemetry::start(&api_url, RELEASE, platform::DSN);
+    telemetry::set_firezone_id(device_id.clone());
+    telemetry::set_account_slug(account_slug.clone());
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
@@ -551,17 +540,46 @@ fn connect(
         portal,
         is_internet_resource_active,
         Vec::default(),
+        // Mobile flow-log wiring (spool dir + uploader) comes separately.
+        None,
         runtime.handle().clone(),
     );
 
-    analytics::new_session(device_id, api_url.to_string());
+    analytics::new_session(device_id, api_url);
 
     Ok(Session {
         inner: session,
         events: Mutex::new(events),
-        telemetry: Mutex::new(telemetry),
         runtime: Some(runtime),
     })
+}
+
+fn start_telemetry_inner(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    install_rustls_crypto_provider();
+
+    telemetry::configure(tcp);
+    telemetry::start("entrypoint", RELEASE, platform::DSN);
+
+    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
+}
+
+#[uniffi::export]
+#[cfg(target_os = "android")]
+pub fn start_telemetry(protect_socket: Arc<dyn ProtectSocket>) {
+    let tcp = Arc::new(protected_tcp_socket_factory(protect_socket));
+
+    start_telemetry_inner(tcp);
+}
+
+#[uniffi::export]
+#[cfg(not(target_os = "android"))]
+pub fn start_telemetry() {
+    start_telemetry_inner(Arc::new(socket_factory::tcp));
+}
+
+#[uniffi::export]
+pub fn stop_telemetry() {
+    telemetry::stop();
 }
 
 static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =
@@ -732,7 +750,9 @@ impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
     fn from(device: connlib_model::ConnectedDeviceView) -> Self {
         ConnectedDevice {
             id: device.id.to_string(),
-            tun_ipv4: device.tunneled_ipv4.to_string(),
+            name: device.name,
+            tun_ipv4: device.tun_ipv4.to_string(),
+            tun_ipv6: device.tun_ipv6.to_string(),
             pools: device.pools,
         }
     }

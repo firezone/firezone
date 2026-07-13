@@ -56,6 +56,8 @@ import uniffi.connlib.enforceLogSizeCap
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
+import uniffi.connlib.startTelemetry
+import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -243,11 +245,15 @@ class TunnelService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         registerReceiver(restrictionsReceiver, restrictionsFilter)
+
+        startTelemetry(protectSocket)
     }
 
     override fun onDestroy() {
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
+
+        stopTelemetry()
         super.onDestroy()
     }
 
@@ -731,7 +737,9 @@ class TunnelService : VpnService() {
     private fun convertConnectedDevice(device: uniffi.connlib.ConnectedDevice): ConnectedDevice =
         ConnectedDevice(
             id = device.id,
+            name = device.name,
             tunIpv4 = device.tunIpv4,
+            tunIpv6 = device.tunIpv6,
             pools = device.pools,
         )
 

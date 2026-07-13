@@ -24,6 +24,7 @@ defmodule PortalAPI.PolicyJSON do
       group_id: policy.group_id,
       resource_id: policy.resource_id,
       description: policy.description,
+      flow_log_uploads_enabled: policy.flow_log_uploads_enabled,
       conditions: Enum.map(policy.conditions, &condition/1)
     }
   end

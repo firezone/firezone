@@ -31,16 +31,19 @@ config :portal, Portal.Repo.Web, db_opts
 config :portal, Portal.Repo.Api, db_opts
 config :portal, Portal.Repo.Replica.Web, db_opts
 config :portal, Portal.Repo.Replica.Api, db_opts
+config :portal, Portal.Repo.Poller, db_opts
+config :portal, Portal.Repo.Replica.Poller, db_opts
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+# Poll fast locally so live updates and change logs appear without a wait
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: db_opts[:database] <> "_clog_slot",
   publication_name: db_opts[:database] <> "_clog_pub",
-  connection_opts: db_opts
+  poll_interval: :timer.seconds(1)
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
   publication_name: db_opts[:database] <> "_changes_pub",
-  connection_opts: db_opts
+  poll_interval: 250
 
 config :portal, outbound_email_adapter_configured?: true
 
@@ -244,3 +247,18 @@ config :portal, Portal.Mailer.Secondary, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev
+
+config :portal, Portal.Telemetry, metrics_debug: false
+
+if otlp_endpoint = System.get_env("OTLP_ENDPOINT") do
+  config :opentelemetry_experimental,
+    readers: [
+      %{
+        module: :otel_metric_reader,
+        config: %{
+          export_interval_ms: 30_000,
+          exporter: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
+        }
+      }
+    ]
+end

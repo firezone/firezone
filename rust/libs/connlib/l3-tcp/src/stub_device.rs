@@ -78,6 +78,9 @@ impl smoltcp::phy::TxToken for SmolTxToken<'_> {
         let mut ip_packet_buf = IpPacketBuf::new();
         let result = f(ip_packet_buf.buf());
 
+        // smoltcp is configured to compute checksums but the TCP checksums of the
+        // packets it emits through this device are empirically wrong, so we have to
+        // compute all of them from scratch before handing the packet on.
         let mut ip_packet = match IpPacket::new(ip_packet_buf, len) {
             Ok(p) => p,
             Err(e) => {
@@ -86,7 +89,8 @@ impl smoltcp::phy::TxToken for SmolTxToken<'_> {
             }
         };
 
-        ip_packet.update_checksum();
+        ip_packet.compute_checksums();
+
         self.outbound_packets.push_back(ip_packet);
 
         result

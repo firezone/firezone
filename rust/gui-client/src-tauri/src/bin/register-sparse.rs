@@ -31,7 +31,6 @@ use anyhow::{Context, ErrorExt, Result};
 use clap::Parser;
 use firezone_gui_client::PACKAGE_FAMILY_NAME;
 use std::{fmt, process::ExitCode};
-use telemetry::Telemetry;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
@@ -39,11 +38,8 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    let mut telemetry = Telemetry::new(
-        std::sync::Arc::new(socket_factory::tcp),
-        std::sync::Arc::new(socket_factory::udp),
-    );
-    telemetry.start(
+    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+    telemetry::start(
         "entrypoint",
         firezone_gui_client::RELEASE,
         telemetry::GUI_DSN,
@@ -51,7 +47,7 @@ async fn main() -> ExitCode {
 
     let exit_code = run();
 
-    telemetry.stop().await;
+    telemetry::stop();
     exit_code
 }
 
@@ -130,8 +126,13 @@ fn init_tracing() -> Result<logging::file::Handle> {
 
     let (file_layer, file_handle) = logging::file::layer(&log_dir, "register-sparse");
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".to_string());
-    logging::setup_global_subscriber(directives, file_layer, false)
-        .context("setup_global_subscriber")?;
+    logging::setup_global_subscriber(
+        directives,
+        file_layer,
+        tracing_subscriber::layer::Identity::default(),
+        false,
+    )
+    .context("setup_global_subscriber")?;
 
     tracing::info!(log_dir = %log_dir.display(), "logging initialized");
 

@@ -1,4 +1,12 @@
 table inet router {
+    # Software flow offload. Established TCP/UDP flows (added in the forward chain)
+    # take a fast forwarding path that skips conntrack re-eval + the ruleset on every
+    # packet.
+    flowtable ft {
+        hook ingress priority filter
+        devices = { "internal", "internet" }
+    }
+
     # Input chain - drop by default, allow established connections
     chain input {
         type filter hook input priority filter; policy drop;
@@ -17,6 +25,9 @@ table inet router {
     # Forward chain - accept by default for router functionality
     chain forward {
         type filter hook forward priority filter; policy accept;
+
+        # Offload established TCP/UDP flows to the flowtable fast path.
+        meta l4proto { tcp, udp } flow add @ft
     }
 
     # Output chain - accept by default

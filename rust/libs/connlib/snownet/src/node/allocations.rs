@@ -175,30 +175,30 @@ where
         }
     }
 
-    /// Sample an allocation for a new connection, biased towards low RTT.
+    /// Sample a relay for a new connection, biased towards low RTT.
     ///
     /// We compute an inclusion threshold from the observed RTT distribution
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
     /// or below it. Allocations without an RTT measurement are skipped: we
     /// don't know whether they are healthy yet.
-    pub(crate) fn sample(&mut self) -> Option<(RId, &Allocation)> {
+    pub(crate) fn sample(&mut self) -> Option<RId> {
         let candidates = self
             .inner
             .iter()
-            .filter_map(|(id, a)| Some((*id, a, a.rtt()?)))
+            .filter_map(|(id, a)| Some((*id, a.rtt()?)))
             .collect::<SmallVec<[_; 8]>>();
 
         let rtts = candidates
             .iter()
-            .map(|(_, _, rtt)| *rtt)
+            .map(|(_, rtt)| *rtt)
             .collect::<SmallVec<[_; 8]>>();
         let threshold = inclusion_threshold(&rtts)?;
 
         candidates
             .iter()
-            .filter(|(_, _, rtt)| *rtt <= threshold)
+            .filter(|(_, rtt)| *rtt <= threshold)
             .choose(&mut self.rng)
-            .map(|(id, a, _)| (*id, *a))
+            .map(|(id, _)| *id)
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -229,11 +229,9 @@ where
     }
 
     /// Performs garbage-collection across all our allocations.
-    ///
-    /// Handling the resulting iterator is zero-cost if we end up not making any changes
-    /// because we will simply end up returning an empty iterator.
-    pub(crate) fn gc(&mut self) -> impl Iterator<Item = RId> + use<RId> {
-        self.inner
+    pub(crate) fn gc(&mut self) -> Gc<RId> {
+        let removed = self
+            .inner
             .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
@@ -246,8 +244,12 @@ where
                 None => false,
             })
             .map(|(rid, _)| rid)
-            .collect::<SmallVec<[_; 2]>>() // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
-            .into_iter()
+            .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+
+        Gc {
+            removed_last: !removed.is_empty() && self.inner.is_empty(),
+            removed,
+        }
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -338,6 +340,14 @@ pub(crate) enum UpsertResult {
     Replaced(Allocation),
 }
 
+/// The outcome of [`Allocations::gc`].
+pub(crate) struct Gc<RId> {
+    /// The removed allocations.
+    pub(crate) removed: SmallVec<[RId; 2]>,
+    /// Whether we removed the last remaining allocation.
+    pub(crate) removed_last: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
@@ -409,6 +419,67 @@ mod tests {
             allocations.get_mut_by_server(SERVER_V4),
             MutAllocationRef::Disconnected
         ));
+    }
+
+    #[test]
+    fn gc_reports_removal_of_last_allocation() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        fail_allocations(&mut allocations, now);
+        let gc = allocations.gc();
+
+        assert_eq!(gc.removed.as_slice(), &[1]);
+        assert!(gc.removed_last);
+    }
+
+    #[test]
+    fn gc_does_not_report_last_removal_if_allocations_remain() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        let now = fail_allocations(&mut allocations, now);
+        allocations.upsert(
+            2,
+            RelaySocket::from(SERVER2_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+        let gc = allocations.gc();
+
+        assert_eq!(gc.removed.as_slice(), &[1]);
+        assert!(!gc.removed_last);
+    }
+
+    /// Advances time without ever answering the relays, failing all current allocations.
+    fn fail_allocations(allocations: &mut Allocations<u64>, mut now: Instant) -> Instant {
+        for _ in 0..60 {
+            now += Duration::from_secs(1);
+            allocations.handle_timeout(now);
+
+            while allocations.poll_transmit().is_some() {}
+            while allocations.poll_event().is_some() {}
+        }
+
+        now
     }
 
     #[test]
@@ -487,7 +558,7 @@ mod tests {
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
         for _ in 0..1000 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             assert_ne!(rid, 5, "outlier relay must not be selected");
         }
     }
@@ -515,7 +586,7 @@ mod tests {
         let mut counts = [0u32; 2];
 
         for _ in 0..10_000 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             counts[(rid - 1) as usize] += 1;
         }
 
@@ -547,7 +618,7 @@ mod tests {
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
         for _ in 0..100 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             assert_eq!(rid, 1);
         }
     }
@@ -569,7 +640,7 @@ mod tests {
             .get_mut_by_id(&1)
             .unwrap()
             .set_rtt(Duration::from_millis(500));
-        let (rid, _) = allocations.sample().unwrap();
+        let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }
 

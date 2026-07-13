@@ -26,7 +26,7 @@ use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
 use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 use tokio::time::Instant;
 use tracing::Instrument as _;
 use tracing_subscriber::EnvFilter;
@@ -160,6 +160,11 @@ async fn ipc_listen(
         tracing::warn!("Failed to apply stored log filter: {e:#}");
     }
 
+    // The uploader runs for the lifetime of the process, signed in or not.
+    if let Some(dir) = known_dirs::flow_logs() {
+        flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+    }
+
     let mut server = ipc::Server::new(socket_id)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
@@ -222,7 +227,7 @@ struct Handler<'a> {
     advanced_settings: AdvancedSettings,
     mdm_settings: MdmSettings,
     session: Session,
-    telemetry: Telemetry,
+    telemetry_release: Option<String>,
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
@@ -332,10 +337,11 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        let telemetry = Telemetry::new(
+        tunnel_bypass_resolver::configure(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
         );
+        telemetry::configure(Arc::new(tcp_socket_factory));
 
         tracing::info!(
             server_pid = std::process::id(),
@@ -395,7 +401,7 @@ impl<'a> Handler<'a> {
             advanced_settings,
             mdm_settings,
             session: Session::None,
-            telemetry,
+            telemetry_release: None,
             tun_device,
             dns_notifier,
             network_notifier,
@@ -495,7 +501,7 @@ impl<'a> Handler<'a> {
             }
         };
 
-        self.telemetry.stop().await; // Stop the telemetry session once the client disconnects or we are shutting down.
+        telemetry::stop(); // Flush telemetry as the service shuts down.
 
         ret
     }
@@ -539,11 +545,19 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
+    /// Re-points telemetry to the neutral environment so events emitted while
+    /// disconnected aren't attributed to the ended session.
+    fn reset_telemetry_environment(&mut self) {
+        if let Some(release) = &self.telemetry_release {
+            telemetry::start("entrypoint", release, telemetry::GUI_DSN);
+        }
+    }
+
     async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                self.telemetry.stop().await;
+                self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
@@ -621,7 +635,7 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
-                self.telemetry.stop().await;
+                self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
 
                 // Always send `DisconnectedGracefully` even if we weren't connected,
@@ -670,16 +684,16 @@ impl<'a> Handler<'a> {
                     std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
                 if !no_telemetry {
-                    self.telemetry
-                        .start(&environment, &release, telemetry::GUI_DSN);
-                    Telemetry::set_firezone_id(self.device_id.id.clone()).await;
+                    self.telemetry_release = Some(release.clone());
+                    telemetry::start(&environment, &release, telemetry::GUI_DSN);
+                    telemetry::set_firezone_id(self.device_id.id.clone());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
                     );
 
                     if let Some(account_slug) = account_slug {
-                        Telemetry::set_account_slug(account_slug.clone());
+                        telemetry::set_account_slug(account_slug.clone());
 
                         analytics::identify(release, Some(account_slug));
                     }
@@ -746,6 +760,7 @@ impl<'a> Handler<'a> {
             portal,
             is_internet_resource_active,
             dns,
+            known_dirs::flow_logs(),
             tokio::runtime::Handle::current(),
         );
 
@@ -799,7 +814,7 @@ impl<'a> Handler<'a> {
 ///
 /// Mostly used for debugging, but also handy for running a release build
 /// interactively, hence it remains available in release builds.
-pub fn run_interactive(dns_control: DnsControlMethod) -> Result<()> {
+pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bool) -> Result<()> {
     let log_filter_reloader = logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
@@ -807,12 +822,19 @@ pub fn run_interactive(dns_control: DnsControlMethod) -> Result<()> {
         system_uptime_seconds = bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
 
-    // Run interactively (e.g. as the local Administrator) the process has
-    // neither the `LocalSystem` nor the MSIX package identity, so the
-    // production pipe-ownership check would reject the connection. Skip it in
-    // debug builds so local GUI dev works; release builds keep the check.
+    // Running interactively (e.g. as the local Administrator), the process has
+    // neither the `LocalSystem` nor the MSIX package identity, and on Linux the
+    // GUI binary usually isn't installed at the canonical path, so the
+    // production peer check would reject the connection. `--skip-peer-verification`
+    // opts out of that check to pair the interactive tunnel service with a
+    // non-installed GUI build. The check still runs by default so it stays
+    // testable in debug builds; release builds always keep it.
     #[cfg(debug_assertions)]
-    ipc::skip_tunnel_pipe_owner_check();
+    if skip_peer_verification {
+        ipc::skip_peer_verification();
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = skip_peer_verification;
 
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
@@ -852,7 +874,7 @@ pub fn run_smoke_test() -> Result<()> {
     // for the happy path and launches one from elsewhere to assert the tunnel
     // rejects unrecognised binaries.
     #[cfg(target_os = "windows")]
-    ipc::skip_tunnel_pipe_owner_check();
+    ipc::skip_peer_verification();
 
     let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {

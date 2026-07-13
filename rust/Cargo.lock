@@ -842,7 +842,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=master#4ee1988944a8e6891e7ebd5198ed4502cc1c2766"
+source = "git+https://github.com/firezone/boringtun?branch=master#74acc48217c96653d6d8efdf490d17e14f2a1ace"
 dependencies = [
  "aead",
  "blake2",
@@ -1251,6 +1251,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
+ "tunnel-bypass-resolver",
  "uniffi",
 ]
 
@@ -1263,6 +1264,8 @@ dependencies = [
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
+ "flow-log-upload",
+ "flow-log-writer",
  "futures",
  "logging",
  "opentelemetry",
@@ -1278,6 +1281,7 @@ dependencies = [
  "tracing",
  "tun",
  "tunnel",
+ "tunnel-bypass-resolver",
 ]
 
 [[package]]
@@ -1350,7 +1354,6 @@ dependencies = [
  "boringtun",
  "derive_more",
  "ip_network",
- "is",
  "itertools",
  "serde",
  "uuid",
@@ -1494,9 +1497,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -1839,6 +1842,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dimpl"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7afb6878ee6941d3ee770bd8a391c0c083ee2102a7e8e91a730fb722ef1e46b9"
+dependencies = [
+ "arrayvec",
+ "log",
+ "nom 8.0.0",
+ "once_cell",
+ "rand 0.9.4",
+ "subtle",
+ "time",
+]
+
+[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2072,6 +2090,7 @@ dependencies = [
  "aya-log-ebpf",
  "ebpf-shared",
  "hex-literal",
+ "incremental-inet-checksum",
  "ip-packet",
  "network-types",
  "which",
@@ -2315,6 +2334,8 @@ dependencies = [
  "caps",
  "clap",
  "dns-types",
+ "flow-log-upload",
+ "flow-log-writer",
  "futures",
  "futures-bounded",
  "hickory-resolver",
@@ -2364,6 +2385,8 @@ dependencies = [
  "dirs",
  "embed-resource",
  "fd-lock",
+ "flow-log-upload",
+ "flow-log-writer",
  "futures",
  "hex",
  "humantime",
@@ -2416,6 +2439,7 @@ dependencies = [
  "tracing-journald",
  "tracing-log",
  "tracing-subscriber",
+ "tunnel-bypass-resolver",
  "url",
  "uuid",
  "windows",
@@ -2435,6 +2459,8 @@ dependencies = [
  "bin-shared",
  "clap",
  "client-shared",
+ "flow-log-upload",
+ "flow-log-writer",
  "futures",
  "humantime",
  "ip-packet",
@@ -2455,6 +2481,7 @@ dependencies = [
  "telemetry",
  "tokio",
  "tracing",
+ "tunnel-bypass-resolver",
  "url",
 ]
 
@@ -2552,6 +2579,76 @@ dependencies = [
  "crc32fast",
  "libz-rs-sys",
  "miniz_oxide",
+]
+
+[[package]]
+name = "flow-log-spool"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "flow-log-upload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "backoff",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "filetime",
+ "flow-log-spool",
+ "http",
+ "http-client",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "socket-factory",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
+ "windows-security",
+]
+
+[[package]]
+name = "flow-log-writer"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "atomicwrites",
+ "base64 0.22.1",
+ "chrono",
+ "flow-log-spool",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "windows-security",
+]
+
+[[package]]
+name = "flow-tracker"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "connlib-model",
+ "dns-types",
+ "flow-log-spool",
+ "flow-log-writer",
+ "ip-packet",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3665,6 +3762,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "incremental-inet-checksum"
+version = "0.1.0"
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3725,6 +3826,7 @@ dependencies = [
  "bufferpool",
  "etherparse",
  "etherparse-ext",
+ "incremental-inet-checksum",
  "proptest",
  "test-strategy",
  "thiserror 2.0.18",
@@ -5204,6 +5306,15 @@ name = "pastey"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
+name = "path-agent"
+version = "0.1.0"
+dependencies = [
+ "boringtun",
+ "ip-packet",
+ "tracing",
+]
 
 [[package]]
 name = "pathdiff"
@@ -6743,9 +6854,11 @@ dependencies = [
  "logging",
  "opentelemetry",
  "otel-instruments",
+ "path-agent",
  "rand 0.10.1",
  "ringbuffer",
  "smallvec",
+ "str0m-proto",
  "stun_codec",
  "telemetry",
  "thiserror 2.0.18",
@@ -6895,6 +7008,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02836118cf7384413d7e8beb8b9ab56a4007d1b6514c11df35150a2e7aef8f1a"
 dependencies = [
  "base64ct",
+ "dimpl",
  "fastrand",
  "serde",
  "subtle",
@@ -7173,9 +7287,9 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tauri"
-version = "2.11.1"
+version = "2.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b93bd86d231f0a8138f11a02a584769fe4b703dc36ae133d783228dbc4801405"
+checksum = "766b7bd007abce1210b89d3b9cb36c09d0e4b258f52a77e1ca0874e86efae338"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7215,6 +7329,7 @@ dependencies = [
  "tauri-runtime-wry",
  "tauri-utils",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tray-icon",
  "url",
@@ -7226,9 +7341,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-build"
-version = "2.6.1"
+version = "2.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a318b234cc2dea65f575467bafcfb76286bce228ebc3778e337d61d03213007"
+checksum = "bc9ce40b16101cb6ea63d3e221567affd1c3a9205f95d7bc574941a10636b632"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7247,9 +7362,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-codegen"
-version = "2.6.1"
+version = "2.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bd11644962add2549a60b7e7c6800f17d7020156e02f516021d8103e80cc528"
+checksum = "08279169ff42f8fc45a1dbc9dcae888893ba95288142e5880c59b93a26d2cfc5"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -7274,9 +7389,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-macros"
-version = "2.6.1"
+version = "2.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fed9d3742a37a355d2e47c9af924e9fbc112abb76f9835d35d4780e318419502"
+checksum = "e8b394794f399a421811d06966343e7933fcae92d59f5180b9388d1174497a45"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -7368,9 +7483,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime"
-version = "2.11.1"
+version = "2.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fef478ba1d2ac21c2d528740b24d0cb315e1e8b1111aae53fafac34804371fc"
+checksum = "b0b4bc95aed361b0019067d189a1174a603d460d0f6c72606512d59fc9c12ec8"
 dependencies = [
  "cookie",
  "dpi",
@@ -7393,9 +7508,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "2.11.1"
+version = "2.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3989df2ae1c476404fe0a2e8ffc4cfbde97e51efd613c2bb5355fbc9ab52cf0"
+checksum = "4e6fac707727b7a2f48e4ded90976324267371073edbb415ffb73bb0458d203f"
 dependencies = [
  "gtk",
  "http",
@@ -7447,9 +7562,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "2.9.1"
+version = "2.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d57200389a2f82b4b0a40ae29ca19b6978116e8f4d4e974c3234ce40c0ffbdec"
+checksum = "3e176a18e67764923c4f1ce66f25ae4abe5f688384d5eb1a0fa6c77f3d90f887"
 dependencies = [
  "anyhow",
  "brotli",
@@ -7511,7 +7626,6 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "bootstrap-dns-client",
  "bytes",
  "hex",
  "http",
@@ -7534,6 +7648,7 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "tunnel-bypass-resolver",
  "uuid",
 ]
 
@@ -8162,9 +8277,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.23.1"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15edbb0d80583e85ee8df283410038e17314df5cba30da2087a54a85216c0773"
+checksum = "65ba1e5f6b9ef9fd87e21b9c6f351554dbd717960089168fcfdef854686961dc"
 dependencies = [
  "crossbeam-channel",
  "dirs",
@@ -8193,10 +8308,12 @@ name = "tun"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "bufferpool",
  "ip-packet",
  "libc",
  "opentelemetry",
  "otel-instruments",
+ "smallvec",
  "tokio",
  "tracing",
 ]
@@ -8238,6 +8355,7 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "eventloop-budget",
+ "flow-tracker",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",
@@ -8278,6 +8396,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tunnel-bypass-resolver"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bootstrap-dns-client",
+ "parking_lot",
+ "socket-factory",
+ "tokio",
+]
+
+[[package]]
 name = "tunnel-proptest-harvester"
 version = "0.1.0"
 dependencies = [
@@ -8304,6 +8433,7 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "firezone-relay",
+ "flow-tracker",
  "hex",
  "ip-packet",
  "ip_network",
@@ -8314,6 +8444,7 @@ dependencies = [
  "proptest-state-machine",
  "rand 0.10.1",
  "secrecy",
+ "serde_json",
  "sha2",
  "snownet",
  "test-strategy",

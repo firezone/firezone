@@ -48,11 +48,11 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &tokio::sync::mpsc::Sender<ip_packet::IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         todo!()
     }
 
-    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<ip_packet::IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         todo!()
     }
 

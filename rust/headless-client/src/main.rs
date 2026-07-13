@@ -24,7 +24,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use telemetry::{SentryMeterProvider, Telemetry, analytics, otel};
+use telemetry::{SentryMeterProvider, analytics, otel};
 use tokio::time::Instant;
 
 #[cfg(target_os = "linux")]
@@ -257,9 +257,14 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
+    let flow_logs_dir = known_dirs::flow_logs();
+    let (flow_log_layer, _flow_log_guard) =
+        flow_logs_dir.clone().map(flow_log_writer::layer).unzip();
+
     logging::setup_global_subscriber(
         std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
         layer,
+        flow_log_layer,
         false,
     )
     .context("Failed to set up logging")?;
@@ -323,21 +328,19 @@ fn try_main() -> Result<()> {
         None => device_id::get_or_create_client().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
-    let mut telemetry = if cli.is_telemetry_allowed() {
-        let mut telemetry = Telemetry::new(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
-        );
+    tunnel_bypass_resolver::configure(
+        Arc::new(tcp_socket_factory),
+        Arc::new(UdpSocketFactory::default()),
+    );
 
-        telemetry.start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
-        rt.block_on(Telemetry::set_firezone_id(firezone_id.clone()));
+    if cli.is_telemetry_allowed() {
+        telemetry::configure(Arc::new(tcp_socket_factory));
+
+        telemetry::start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
+        telemetry::set_firezone_id(firezone_id.clone());
 
         analytics::identify(RELEASE.to_owned(), None);
-
-        telemetry
-    } else {
-        Telemetry::disabled()
-    };
+    }
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
@@ -421,12 +424,17 @@ fn try_main() -> Result<()> {
             },
             Arc::new(tcp_socket_factory),
         );
+        if let Some(dir) = flow_logs_dir.clone() {
+            flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+        }
+
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
+            flow_logs_dir.clone(),
             rt.handle().clone(),
         );
 
@@ -506,12 +514,12 @@ fn try_main() -> Result<()> {
             }
         };
 
-        telemetry.stop().await; // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
-
         drop(session);
 
         // Drain the event-stream to allow the event-loop to gracefully shutdown.
         let _ = tokio::time::timeout(Duration::from_secs(1), event_stream.drain()).await;
+
+        telemetry::stop();
 
         result
     })?;

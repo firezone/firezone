@@ -23,6 +23,7 @@ use std::time::Instant;
 /// isn't the return traffic of packets that we have sent.
 pub(crate) struct ClientOnClient {
     remote_tun: IpConfig,
+    remote_name: String,
     /// Inbound resources authorising the remote peer to send packets to us.
     ///
     /// When this map is empty, no inbound traffic from this peer is admitted
@@ -50,9 +51,10 @@ pub(crate) enum InboundResult {
 }
 
 impl ClientOnClient {
-    pub(crate) fn new(remote_tun: IpConfig) -> ClientOnClient {
+    pub(crate) fn new(remote_tun: IpConfig, remote_name: String) -> ClientOnClient {
         ClientOnClient {
             remote_tun,
+            remote_name,
             resources: ExpiringMap::default(),
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
@@ -62,6 +64,14 @@ impl ClientOnClient {
 
     pub(crate) fn remote_tun(&self) -> IpConfig {
         self.remote_tun
+    }
+
+    pub(crate) fn remote_name(&self) -> &str {
+        &self.remote_name
+    }
+
+    pub(crate) fn set_remote_name(&mut self, name: String) {
+        self.remote_name = name;
     }
 
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.

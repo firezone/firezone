@@ -29,6 +29,8 @@ backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
 dns-types = { workspace = true }
+flow-log-upload = { workspace = true }
+flow-log-writer = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }

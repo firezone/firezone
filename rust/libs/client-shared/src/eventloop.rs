@@ -18,13 +18,13 @@ use std::{
 use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
-use tunnel::messages::RelaysPresence;
 use tunnel::messages::client::{
     ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
     ClientRejectAccess, DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages,
     FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
     ResourceAuthorization, ResourceFiltersUpdated,
 };
+use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -49,6 +49,12 @@ static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::n
 
 pub struct Eventloop {
     tunnel: Option<ClientTunnel>,
+
+    resolver_bypass: tunnel_bypass_resolver::Bypass,
+
+    /// Flow-log spool root; the reports themselves are spooled by the
+    /// entrypoint's `flow_log_writer` layer.
+    flow_logs_dir: Option<std::path::PathBuf>,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
@@ -111,6 +117,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<std::path::PathBuf>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<ResourceList>,
@@ -127,7 +134,7 @@ impl Eventloop {
             is_internet_resource_active,
         );
         tunnel.update_system_resolvers(dns_servers.clone());
-        telemetry::update_system_resolvers(dns_servers.clone());
+        let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
@@ -141,6 +148,8 @@ impl Eventloop {
 
         Self {
             tunnel: Some(tunnel),
+            resolver_bypass,
+            flow_logs_dir,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -217,7 +226,7 @@ impl Eventloop {
                 };
 
                 let dns = tunnel.update_system_resolvers(dns);
-                telemetry::update_system_resolvers(dns.clone());
+                self.resolver_bypass.update_servers(dns.clone());
 
                 self.portal_cmd_tx
                     .send(PortalCommand::UpdateDnsServers(dns))
@@ -246,6 +255,7 @@ impl Eventloop {
                 };
 
                 tunnel.reset(&reason);
+                tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(
@@ -373,6 +383,12 @@ impl Eventloop {
             ClientEvent::DnsRecordsChanged { records } => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
+            ClientEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             ClientEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -446,7 +462,26 @@ impl Eventloop {
                 interface,
                 resources,
                 relays,
+                flow_logs,
             }) => {
+                tracing::info!(
+                    upload_enabled = flow_logs.upload_enabled(),
+                    spool_dir = ?self.flow_logs_dir,
+                    config = ?flow_logs,
+                    "Flow-log config received from portal init"
+                );
+
+                if let Some(spool_root) = &self.flow_logs_dir
+                    && let Err(e) = flow_log_upload::configure_uploads(
+                        spool_root,
+                        &flow_logs.api_url,
+                        flow_logs.upload_interval_secs,
+                        flow_logs.upload_batch_size,
+                    )
+                {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                }
+
                 let state = tunnel.state_mut();
 
                 state.update_interface_config(interface);
@@ -497,7 +532,11 @@ impl Eventloop {
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
+                use_iceless,
+                flow_logs_ingest_token,
             }) => {
+                persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
+
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
                     gateway_id,
@@ -510,6 +549,7 @@ impl Eventloop {
                     preshared_key,
                     client_ice_credentials,
                     gateway_ice_credentials,
+                    use_iceless,
                     Instant::now(),
                 ) {
                     Ok(Ok(())) => {}
@@ -561,6 +601,7 @@ impl Eventloop {
             }
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
                 client_id,
+                client_name,
                 client_public_key,
                 client_ipv4,
                 client_ipv6,
@@ -568,9 +609,13 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
+                use_iceless,
                 resource,
                 authorization_expires_at,
+                flow_logs_ingest_token,
             }) => {
+                persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
+
                 // The portal only sends a resource to the target device; the
                 // initiating side receives `None` and relies on conntrack to
                 // admit return traffic.
@@ -591,6 +636,8 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
+                    use_iceless,
+                    client_name,
                     authorization,
                     Instant::now(),
                 ) {
@@ -702,6 +749,22 @@ impl Eventloop {
     }
 }
 
+/// Tokens deliberately travel here rather than through the flow-log tracing
+/// events, so they can never leak into log output.
+fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToken) {
+    let Some(spool_root) = spool_root else {
+        return;
+    };
+
+    if !token.claims().uploads_enabled {
+        return;
+    }
+
+    if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
+        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+    }
+}
+
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
     mut public_key: PublicKeyParam,
@@ -785,7 +848,14 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
+                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                ) {
+                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
+                }
+            }
             Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

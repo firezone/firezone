@@ -3,7 +3,7 @@ defmodule Portal.Cache.Client do
 
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
-    The cache is updated via WAL messages streamed from the Portal.Changes.ReplicationConnection module.
+    The cache is updated via WAL messages streamed from the Portal.Changes.Consumer module.
 
     We use basic data structures and binary representations instead of full Ecto schema structs
     to minimize memory usage. The rough structure of the cache data structure and some napkin math
@@ -48,18 +48,15 @@ defmodule Portal.Cache.Client do
           # Cached IPs for each device that appears in any connectable pool. Used both
           # to render `addresses` on the pool resource and to authorize client_device_access
           # requests by ipv4 or ipv6.
-          device_addresses: %{device_id:uuidv4:16 => {ipv4_tuple_or_nil, ipv6_tuple_or_nil}},
-
-          # IPv4 addresses of clients previously authorized to connect to this client.
-          authorized_device_ipv4s: MapSet<ipv4_tuple>
+          device_addresses: %{device_id:uuidv4:16 => {ipv4_tuple_or_nil, ipv6_tuple_or_nil}}
         }
 
 
-      For 1,000 policies, 500 resources, 100 memberships, 100 policy_authorizations (per connected client):
+      For 1,000 policies, 500 resources, 100 memberships (per connected client):
 
-        513,400 bytes, 280,700 bytes, 24,640 bytes, 24,640 bytes
+        513,400 bytes, 280,700 bytes, 24,640 bytes
 
-      = 843,380 bytes
+      = 818,740 bytes
       = ~ 1 MB (per client)
 
   """
@@ -91,10 +88,7 @@ defmodule Portal.Cache.Client do
 
     # Map of device_id => {ipv4_tuple_or_nil, ipv6_tuple_or_nil} for every device appearing
     # in any connectable pool.
-    :device_addresses,
-
-    # IPv4 addresses of clients previously authorized to connect to this client.
-    :authorized_device_ipv4s
+    :device_addresses
   ]
 
   @type ipv4_tuple :: {byte(), byte(), byte(), byte()}
@@ -117,8 +111,7 @@ defmodule Portal.Cache.Client do
           },
           device_addresses: %{
             Cache.Cacheable.uuid_binary() => {ipv4_tuple(), ipv6_tuple()}
-          },
-          authorized_device_ipv4s: MapSet.t(ipv4_tuple())
+          }
         }
 
   @doc """
@@ -216,11 +209,6 @@ defmodule Portal.Cache.Client do
       nil -> {:error, :forbidden}
       device_id -> {:ok, device_id}
     end
-  end
-
-  @spec track_authorized_device_ipv4(t(), Postgrex.INET.t()) :: t()
-  def track_authorized_device_ipv4(cache, %Postgrex.INET{address: ipv4_tuple}) do
-    %{cache | authorized_device_ipv4s: MapSet.put(cache.authorized_device_ipv4s, ipv4_tuple)}
   end
 
   @doc """
@@ -750,7 +738,6 @@ defmodule Portal.Cache.Client do
       |> Map.put(:connectable_resources, [])
       |> Map.put(:pool_members, %{})
       |> Map.put(:device_addresses, %{})
-      |> Map.put(:authorized_device_ipv4s, Database.authorized_ipv4s(client.id, subject))
     end
   end
 
@@ -1128,23 +1115,5 @@ defmodule Portal.Cache.Client do
       end
     end
 
-    def authorized_ipv4s(client_id, subject) do
-      now = DateTime.utc_now()
-
-      from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
-      |> where([policy_authorizations: pa], pa.receiving_device_id == ^client_id)
-      |> where([policy_authorizations: pa], pa.expires_at > ^now)
-      |> join(:inner, [policy_authorizations: pa], c in Portal.Device,
-        on: c.id == pa.initiating_device_id and c.type == :client,
-        as: :clients
-      )
-      |> select([clients: c], c.ipv4)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.all()
-      |> case do
-        {:error, :unauthorized} -> MapSet.new()
-        rows -> MapSet.new(rows, & &1.address)
-      end
-    end
   end
 end

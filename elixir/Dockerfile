@@ -1,5 +1,5 @@
 ARG ELIXIR_VERSION="1.20.2"
-ARG ERLANG_VERSION="29.0.2"
+ARG ERLANG_VERSION="29.0.3"
 ARG ALPINE_VERSION="3.23.5"
 
 FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS compiler
@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Pull alpine package patches that landed after the hexpm/elixir base image
 # was published, then install build deps:
-#   - git: required for git-sourced mix deps (openid_connect, opentelemetry_*_experimental)
+#   - git: required for git-sourced mix deps (opentelemetry_*_experimental)
 #   - build-base: required for argon2_elixir's C NIF (provides gcc + make)
 #   - nodejs/npm: required to install pnpm, which installs assets/package.json deps
 RUN apk --no-cache update \

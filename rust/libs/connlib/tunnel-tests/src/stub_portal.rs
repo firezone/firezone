@@ -49,6 +49,11 @@ pub(crate) struct StubPortal {
 
     #[debug(skip)]
     gateway_selector: Selector,
+
+    /// Whether the portal hands out ICE-less flows. Sampled once per test case
+    /// and applied to every connection, modelling a portal-wide rollout toggle
+    /// rather than a per-peer capability.
+    iceless: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -175,7 +180,19 @@ impl StubPortal {
             search_domain,
             upstream_do53,
             upstream_doh,
+            iceless: false,
         }
+    }
+
+    /// Toggles whether the portal hands out ICE-less flows.
+    pub(crate) fn with_iceless(mut self, iceless: bool) -> Self {
+        self.iceless = iceless;
+        self
+    }
+
+    /// Whether the portal hands out ICE-less flows for every connection.
+    pub(crate) fn iceless(&self) -> bool {
+        self.iceless
     }
 
     /// All device labels the portal knows about, in client order.

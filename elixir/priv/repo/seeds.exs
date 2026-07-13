@@ -7,10 +7,12 @@ defmodule Portal.Repo.Seeds do
 
   alias Portal.{
     Repo,
+    APIRequestLog,
     Authentication,
     AuthProvider,
     Account,
     Actor,
+    ChangeLog,
     ClientSession,
     Crypto,
     EmailOTP,
@@ -27,10 +29,13 @@ defmodule Portal.Repo.Seeds do
     Policy,
     Resource,
     Safe,
+    SessionLog,
     Site,
     ClientToken,
     Userpass
   }
+
+  alias Portal.Types.LogId
 
   # User agent strings for seeded clients and gateways.
   # Update these when bumping the connlib version used in dev/test.
@@ -251,6 +256,428 @@ defmodule Portal.Repo.Seeds do
     {:ok, client}
   end
 
+  # Seeds a mix of change_logs, session_logs, and api_request_logs so the
+  # Audit UI has realistic entries out of the box: recent admin sign-ins,
+  # a few days of REST API traffic, and configuration change history with
+  # varied operations, objects, and geographic sources.
+  defp seed_audit_logs(account, subjects, api_actor, api_token_id) do
+    seq = :atomics.new(1, [])
+    now = DateTime.utc_now()
+
+    seed_change_logs(account, subjects, now, seq)
+    seed_session_logs(account, subjects, now)
+    seed_api_request_logs(account, api_actor, api_token_id, now)
+  end
+
+  defp seed_change_logs(account, subjects, now, seq) do
+    admin_subj = subjects.admin
+    unpriv_subj = subjects.unpriv
+
+    # Each spec: {mins_ago, subject_or_nil, object, op, before_map, after_map}.
+    # `before` and `after` mirror what the WAL replicator captures: full row
+    # snapshots on both sides of an update, so the diff renders every field
+    # (unchanged ones in muted text) instead of just the changed keys. For
+    # updates we build a full base row once and derive `after` from it so
+    # identity columns (id, account_id, etc.) show as unchanged.
+    policy_a = policy_row(description: "Legacy", name: "Engineering full access")
+    policy_a_updated = Map.put(policy_a, "description", "Engineering full access")
+
+    resource_a = resource_row(name: "Staging DB", address: "10.0.0.99")
+    resource_a_updated = Map.put(resource_a, "address", "10.0.0.100")
+
+    group_a = group_row(name: "engineers")
+    group_a_updated = Map.put(group_a, "name", "Engineering")
+
+    actor_a = actor_row(name: "Sam", email: "sam@example.com", type: "account_user")
+    actor_a_updated = Map.put(actor_a, "type", "account_admin_user")
+
+    provider_a = provider_row(name: "Google")
+    provider_a_updated = Map.put(provider_a, "name", "Google Workspace")
+
+    client_a = client_row(name: "MacBook")
+    client_a_updated = Map.put(client_a, "name", "Alex's MacBook")
+
+    policy_b = policy_row(name: "Contractors: region gate", conditions: [])
+
+    policy_b_updated =
+      Map.put(policy_b, "conditions", [
+        %{"property" => "remote_ip_location_region", "operator" => "is_in"}
+      ])
+
+    actor_b = actor_row(name: "Casey", email: "casey@example.com", disabled_at: nil)
+    actor_b_updated = Map.put(actor_b, "disabled_at", DateTime.utc_now() |> DateTime.to_iso8601())
+
+    specs = [
+      {5, admin_subj, "policies", :update, policy_a, policy_a_updated},
+      {8, admin_subj, "resources", :insert, nil,
+       resource_row(name: "Prod DB", address: "10.0.0.42", type: "cidr")},
+      {17, admin_subj, "groups", :update, group_a, group_a_updated},
+      {28, admin_subj, "resources", :update, resource_a, resource_a_updated},
+      {42, admin_subj, "policies", :insert, nil,
+       policy_row(name: "Contractors read-only")},
+      {55, admin_subj, "actors", :update, actor_a, actor_a_updated},
+      {70, admin_subj, "auth_providers", :update, provider_a, provider_a_updated},
+      {90, admin_subj, "groups", :insert, nil, group_row(name: "Contractors")},
+      {120, admin_subj, "actors", :insert, nil,
+       actor_row(name: "Alex", email: "alex@example.com", type: "account_user")},
+      {180, unpriv_subj, "clients", :update, client_a, client_a_updated},
+      {220, admin_subj, "resources", :delete,
+       resource_row(name: "Old staging DB", address: "10.0.0.55"), nil},
+      {60 * 5, admin_subj, "policies", :update, policy_b, policy_b_updated},
+      {60 * 6, admin_subj, "sites", :insert, nil, site_row(name: "us-east-2")},
+      {60 * 8, admin_subj, "gateway_tokens", :insert, nil,
+       gateway_token_row(name: "us-east-2 provisioning")},
+      {60 * 12, admin_subj, "api_tokens", :insert, nil,
+       api_token_row(name: "terraform-ci")},
+      {60 * 24, admin_subj, "policies", :delete, policy_row(name: "Legacy VPN"), nil},
+      {60 * 26, nil, "workers", :delete,
+       %{"queue" => "default", "attempts" => 3, "count" => 481}, nil},
+      {60 * 30, admin_subj, "actors", :update, actor_b, actor_b_updated},
+      {60 * 48, admin_subj, "resources", :insert, nil,
+       resource_row(name: "GitHub", address: "github.com", type: "dns")},
+      {60 * 72, admin_subj, "auth_providers", :insert, nil, provider_row(name: "Entra")}
+    ]
+
+    rows =
+      Enum.map(specs, fn {mins_ago, subject, object, op, before_map, after_map} ->
+        timestamp = DateTime.add(now, -mins_ago * 60, :second)
+        lsn = :atomics.add_get(seq, 1, 1)
+
+        %{
+          log_id: LogId.build_change_log(System.os_time(:microsecond), lsn),
+          account_id: account.id,
+          timestamp: timestamp,
+          lsn: lsn,
+          object: object,
+          operation: op,
+          before: before_map,
+          after: after_map,
+          subject: subject,
+          vsn: 0
+        }
+      end)
+
+    Repo.insert_all(ChangeLog, rows)
+  end
+
+  defp seed_session_logs(account, subjects, now) do
+    admin_subj = subjects.admin
+    unpriv_subj = subjects.unpriv
+
+    # Each spec: {mins_ago, context, subject}
+    specs = [
+      {2, :portal, admin_subj},
+      {15, :client, unpriv_subj},
+      {35, :client, subject_at(unpriv_subj, "US-NY", "New York", 40.7128, -74.006)},
+      {60, :gateway, gateway_subject(account, "US-CA", "San Francisco", 37.7749, -122.4194)},
+      {90, :portal, subject_at(admin_subj, "GB", "London", 51.5074, -0.1278)},
+      {150, :client, subject_at(unpriv_subj, "DE", "Berlin", 52.52, 13.405)},
+      {180, :gateway, gateway_subject(account, "SG", "Singapore", 1.3521, 103.8198)},
+      {60 * 4, :portal, admin_subj},
+      {60 * 6, :client, subject_at(unpriv_subj, "FR", "Paris", 48.8566, 2.3522)},
+      {60 * 12, :portal, admin_subj},
+      {60 * 18, :client, subject_at(unpriv_subj, "JP", "Tokyo", 35.6762, 139.6503)},
+      {60 * 24, :gateway, gateway_subject(account, "US-CA", "San Francisco", 37.7749, -122.4194)},
+      {60 * 30, :portal, subject_at(admin_subj, "AU", "Sydney", -33.8688, 151.2093)},
+      {60 * 40, :client, subject_at(unpriv_subj, "NL", "Amsterdam", 52.3676, 4.9041)},
+      {60 * 48, :portal, admin_subj}
+    ]
+
+    rows =
+      Enum.map(specs, fn {mins_ago, context, subject} ->
+        timestamp = DateTime.add(now, -mins_ago * 60, :second)
+
+        %{
+          log_id: LogId.build_session_log(),
+          account_id: account.id,
+          timestamp: timestamp,
+          context: context,
+          subject: subject
+        }
+      end)
+
+    Repo.insert_all(SessionLog, rows)
+  end
+
+  defp seed_api_request_logs(account, api_actor, api_token_id, now) do
+    uas = [
+      "curl/8.7.1",
+      "terraform/1.6.0 (+https://www.terraform.io) terraform-provider-firezone/0.5.0",
+      "python-requests/2.31.0",
+      "Go-http-client/1.1",
+      "gh/2.42.0"
+    ]
+
+    # {method, path, size}
+    endpoints = [
+      {"GET", "/account", nil},
+      {"GET", "/resources", nil},
+      {"GET", "/resources?limit=25", nil},
+      {"POST", "/resources", 412},
+      {"GET", "/policies", nil},
+      {"POST", "/policies", 218},
+      {"PATCH", "/policies/#{Ecto.UUID.generate()}", 96},
+      {"GET", "/actors", nil},
+      {"GET", "/actors?limit=25", nil},
+      {"GET", "/groups", nil},
+      {"POST", "/groups", 84},
+      {"DELETE", "/groups/#{Ecto.UUID.generate()}", nil},
+      {"GET", "/sites", nil},
+      {"GET", "/clients", nil},
+      {"GET", "/logs?type=change", nil},
+      {"GET", "/logs?type=session", nil},
+      {"GET", "/logs?type=api_request", nil},
+      {"GET", "/email_otp_auth_providers", nil},
+      {"GET", "/oidc_auth_providers", nil},
+      {"GET", "/entra_directories", nil}
+    ]
+
+    locations = [
+      %Postgrex.INET{address: {8, 8, 8, 8}},
+      %Postgrex.INET{address: {185, 199, 108, 153}},
+      %Postgrex.INET{address: {203, 13, 32, 10}}
+    ]
+
+    location_meta = [
+      {"US-CA", "Mountain View", 37.4056, -122.0775},
+      {"NL", "Amsterdam", 52.3676, 4.9041},
+      {"AU", "Sydney", -33.8688, 151.2093}
+    ]
+
+    rows =
+      for i <- 0..49 do
+        {method, path, size} = Enum.at(endpoints, rem(i, length(endpoints)))
+        ua = Enum.at(uas, rem(i, length(uas)))
+        idx = rem(i, length(locations))
+        ip = Enum.at(locations, idx)
+        {region, city, lat, lon} = Enum.at(location_meta, idx)
+        # Spread across ~4 days, tighter density in the last hour.
+        secs_ago = trunc(:math.pow(i + 1, 1.7) * 60)
+
+        %{
+          log_id: LogId.build_api_request_log(),
+          account_id: account.id,
+          actor_id: api_actor.id,
+          api_token_id: api_token_id,
+          method: method,
+          path: path,
+          content_length: size,
+          request_id: "seed-" <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower),
+          user_agent: ua,
+          ip: ip,
+          ip_region: region,
+          ip_city: city,
+          ip_lat: lat,
+          ip_lon: lon,
+          inserted_at: DateTime.add(now, -secs_ago, :second)
+        }
+      end
+
+    Repo.insert_all(APIRequestLog, rows)
+  end
+
+  # Rewrites subject IP/geo to a new location so successive session logs from
+  # the same actor look plausibly geo-distributed.
+  defp subject_at(base_subject, region, city, lat, lon) do
+    base_subject
+    |> Map.put("ip", ip_from_geo(lat, lon))
+    |> Map.put("ip_region", region)
+    |> Map.put("ip_city", city)
+    |> Map.put("ip_lat", lat)
+    |> Map.put("ip_lon", lon)
+  end
+
+  defp gateway_subject(account, region, city, lat, lon) do
+    %{
+      "actor_id" => nil,
+      "actor_name" => "Gateway",
+      "actor_email" => nil,
+      "actor_type" => nil,
+      "auth_provider_id" => nil,
+      "account_id" => account.id,
+      "ip" => ip_from_geo(lat, lon),
+      "ip_region" => region,
+      "ip_city" => city,
+      "ip_lat" => lat,
+      "ip_lon" => lon,
+      "user_agent" => @ua_gateway
+    }
+  end
+
+  # Row-snapshot helpers. Mirror the shape the WAL replicator captures so
+  # change_log diffs render every column, not just the one that changed.
+  # Callers supply keyword overrides for the fields they care about.
+  defp policy_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Engineering full access",
+        "description" => "Engineering full access",
+        "actor_group_id" => Ecto.UUID.generate(),
+        "resource_id" => Ecto.UUID.generate(),
+        "conditions" => [],
+        "disabled_at" => nil,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp resource_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Prod DB",
+        "address" => "10.0.0.42",
+        "type" => "cidr",
+        "filters" => [],
+        "site_id" => Ecto.UUID.generate(),
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp group_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Engineering",
+        "type" => "manual",
+        "provider_id" => nil,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp actor_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Alex",
+        "email" => "alex@example.com",
+        "type" => "account_user",
+        "disabled_at" => nil,
+        "allow_email_otp_sign_in" => false,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp provider_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Google",
+        "adapter" => "google_workspace",
+        "disabled_at" => nil,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp client_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "MacBook",
+        "actor_id" => Ecto.UUID.generate(),
+        "type" => "client",
+        "ipv4" => "100.64.0.5",
+        "ipv6" => "fd00:2021:1111::5",
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp site_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "us-east-2",
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp gateway_token_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "us-east-2 provisioning",
+        "site_id" => Ecto.UUID.generate(),
+        "created_at" => "2026-07-01T09:00:00Z",
+        "expires_at" => "2027-07-01T09:00:00Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp api_token_row(overrides \\ []) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "actor_id" => Ecto.UUID.generate(),
+        "name" => "terraform-ci",
+        "created_at" => "2026-07-01T09:00:00Z",
+        "expires_at" => "2027-07-01T09:00:00Z",
+        "last_seen_at" => nil
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp stringify(overrides) do
+    Map.new(overrides, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  # Deterministic-but-plausible looking source IP derived from lat/lon so each
+  # geo pin gets its own address without a real MaxMind lookup.
+  defp ip_from_geo(lat, lon) do
+    a = Integer.mod(trunc(lat * 3), 223) + 1
+    b = Integer.mod(trunc(lon * 3), 254) + 1
+    c = Integer.mod(trunc(lat * lon * 7), 254) + 1
+    d = Integer.mod(trunc(lat + lon + 100), 254) + 1
+    "#{a}.#{b}.#{c}.#{d}"
+  end
+
+  defp subject_map_from_authentication(%Authentication.Subject{} = s, region, city, lat, lon) do
+    %{
+      "actor_id" => s.actor.id,
+      "actor_name" => s.actor.name,
+      "actor_email" => s.actor.email,
+      "actor_type" => to_string(s.actor.type),
+      "auth_provider_id" => nil,
+      "ip" => ip_from_geo(lat, lon),
+      "ip_region" => region,
+      "ip_city" => city,
+      "ip_lat" => lat,
+      "ip_lon" => lon,
+      "user_agent" => s.context.user_agent
+    }
+  end
+
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
     # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -261,6 +688,14 @@ defmodule Portal.Repo.Seeds do
 
     Repo.query!(
       "INSERT INTO features (feature, enabled) VALUES ('client_to_client', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+    )
+
+    Repo.query!(
+      "INSERT INTO features (feature, enabled) VALUES ('trust_anchors', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+    )
+
+    Repo.query!(
+      "INSERT INTO features (feature, enabled) VALUES ('flow_logs', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
     )
 
     account =
@@ -286,7 +721,7 @@ defmodule Portal.Repo.Seeds do
         rest_api: true,
         internet_resource: true,
         client_to_client: true,
-        iceless: true
+        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true"
       })
       |> put_change(:metadata, %{
         stripe: %{
@@ -1396,6 +1831,23 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, iperf_resource} =
+      create_resource(
+        %{
+          type: :dns,
+          name: "iperf3.test",
+          address: "iperf3.test",
+          address_description: "iperf3 server for performance tests",
+          site_id: site.id,
+          filters: [
+            %{ports: ["5201"], protocol: :tcp},
+            %{ports: ["5201"], protocol: :udp},
+            %{protocol: :icmp}
+          ]
+        },
+        admin_subject
+      )
+
     {:ok, pool_resource} =
       create_resource(
         %{
@@ -1428,6 +1880,7 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{ipv6_resource.address} - CIDR - gateways: #{gateway_name}")
     IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{iperf_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
 
     # Helper function to create policy directly without context module
@@ -1578,6 +2031,26 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
+          description: "All Access To iperf3.test",
+          group_id: everyone_group.id,
+          resource_id: iperf_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "Synced Group Access To iperf3.test",
+          group_id: synced_group.id,
+          resource_id: iperf_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
           description: "All Access To CI Static Pool",
           # synced_group, not everyone_group: service accounts don't auto-join Everyone.
           group_id: synced_group.id,
@@ -1618,6 +2091,32 @@ defmodule Portal.Repo.Seeds do
         expires_at: unprivileged_subject.expires_at || DateTime.utc_now() |> DateTime.add(3600)
       }
       |> Repo.insert!()
+
+    # Populate the audit log tables so /logs pages have realistic data on
+    # first boot. Uses a spread of recent timestamps across the seeded
+    # actors and a rotation of world locations.
+    api_token_id = Ecto.UUID.generate()
+
+    subjects = %{
+      admin:
+        subject_map_from_authentication(
+          admin_subject,
+          "US-CA",
+          "San Francisco",
+          37.7749,
+          -122.4194
+        ),
+      unpriv:
+        subject_map_from_authentication(
+          unprivileged_subject,
+          "US-NY",
+          "New York",
+          40.7128,
+          -74.006
+        )
+    }
+
+    seed_audit_logs(account, subjects, service_account_actor, api_token_id)
   end
 end
 

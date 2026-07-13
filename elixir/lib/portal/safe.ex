@@ -360,19 +360,50 @@ defmodule Portal.Safe do
 
   ## Examples
       Safe.unscoped() |> Safe.query("SELECT * FROM actors WHERE id = $1", [actor_id])
+      Safe.unscoped(Repo.Poller) |> Safe.query("SELECT pg_try_advisory_lock($1)", [key])
   """
   @spec query(Unscoped.t(), String.t(), list()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   # sobelow_skip ["SQL.Query"]
-  def query(%Unscoped{}, sql, params) when is_binary(sql) and is_list(params) do
-    Repo.query(sql, params)
+  def query(%Unscoped{repo: repo}, sql, params) when is_binary(sql) and is_list(params) do
+    repo.query(sql, params)
   end
 
   @spec query(Portal.Repo, String.t(), list()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   # sobelow_skip ["SQL.Query"]
   def query(repo, sql, params) when repo == Repo and is_binary(sql) and is_list(params) do
     Repo.query(sql, params)
+  end
+
+  @doc """
+  Runs a function inside a database transaction without subject scoping.
+
+  The function must return `{:ok, value}` or `{:error, reason}`; an error
+  return rolls the transaction back.
+
+  ## Examples
+      Safe.unscoped() |> Safe.transaction(fn -> {:ok, ...} end)
+  """
+  @spec transaction(Unscoped.t(), (-> {:ok, term()} | {:error, term()})) ::
+          {:ok, term()} | {:error, term()}
+  def transaction(%Unscoped{}, fun) when is_function(fun, 0) do
+    Repo.transact(fun)
+  end
+
+  @doc """
+  Runs a function with a single connection checked out from the context's
+  repo, without wrapping it in a transaction. All of that repo's queries
+  inside `fun` use that connection, which session-scoped state (such as
+  advisory locks) requires.
+
+  ## Examples
+      Safe.unscoped() |> Safe.checkout(fn -> ... end)
+      Safe.unscoped(Repo.Poller) |> Safe.checkout(fn -> ... end, timeout: :timer.hours(24))
+  """
+  @spec checkout(Unscoped.t(), (-> term()), keyword()) :: term()
+  def checkout(%Unscoped{repo: repo}, fun, opts \\ []) when is_function(fun, 0) do
+    repo.checkout(fun, opts)
   end
 
   @doc """
@@ -969,6 +1000,22 @@ defmodule Portal.Safe do
   # ChangeLog permissions
   def permit(:read, Portal.ChangeLog, :account_admin_user), do: :ok
   def permit(:read, Portal.ChangeLog, :api_client), do: :ok
+
+  # TrustAnchor permissions
+  def permit(_action, Portal.TrustAnchor, :account_admin_user), do: :ok
+  def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
+
+  # SessionLog permissions
+  def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.SessionLog, :api_client), do: :ok
+
+  # FlowLog permissions
+  def permit(:read, Portal.FlowLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.FlowLog, :api_client), do: :ok
+
+  # APIRequestLog permissions
+  def permit(:read, Portal.APIRequestLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.APIRequestLog, :api_client), do: :ok
 
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 

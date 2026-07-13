@@ -23,7 +23,7 @@ defmodule PortalWeb.Sites.Components do
           <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
         </div>
         <div class="flex-1 overflow-y-auto px-5 py-4">
-          <.form for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
+          <.form id="new-site-form" for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
             <div class="space-y-4">
               <.input
                 label="Name"
@@ -63,7 +63,6 @@ defmodule PortalWeb.Sites.Components do
   attr :account, :any, required: true
   attr :resources_counts, :map, required: true
   attr :policies_counts, :map, required: true
-  attr :gateway_counts, :map, required: true
   attr :panel, :map, required: true
   attr :deploy_state, :map, required: true
   attr :resource_form_state, :map, required: true
@@ -97,13 +96,9 @@ defmodule PortalWeb.Sites.Components do
 
     assigns =
       if assigns.site do
-        assigns
-        |> assign(:total_count, Map.get(assigns.gateway_counts, assigns.site.id, 0))
-        |> assign(:status, site_status(assigns.gateways, assigns.site.health_threshold))
+        assign(assigns, :status, site_status(assigns.gateways, assigns.site.health_threshold))
       else
-        assigns
-        |> assign(:total_count, 0)
-        |> assign(:status, :offline)
+        assign(assigns, :status, :offline)
       end
 
     ~H"""
@@ -132,7 +127,6 @@ defmodule PortalWeb.Sites.Components do
           panel={@panel}
           gateways={@gateways}
           resources={@resources}
-          gateway_counts={@gateway_counts}
           resources_counts={@resources_counts}
         />
 
@@ -193,7 +187,6 @@ defmodule PortalWeb.Sites.Components do
   attr :panel, :map, required: true
   attr :gateways, :list, required: true
   attr :resources, :list, required: true
-  attr :gateway_counts, :map, required: true
   attr :resources_counts, :map, required: true
 
   def site_overview_view(assigns) do
@@ -206,16 +199,19 @@ defmodule PortalWeb.Sites.Components do
           site={@site}
           tab={@tab}
           show_all_gateways={@show_all_gateways}
-          total_count={Map.get(@gateway_counts, @site.id, 0)}
+          total_count={@total_gateway_count}
           resource_count={length(@resources)}
+          gateway_tokens={@gateway_tokens}
+          confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
         />
 
         <.site_gateways_tab
           :if={@tab == :gateways}
           site={@site}
           gateways={@gateways}
-          gateway_counts={@gateway_counts}
+          total_gateway_count={@total_gateway_count}
           expanded_gateway_id={@expanded_gateway_id}
+          confirm_delete_gateway_id={@confirm_delete_gateway_id}
         />
 
         <.site_resources_tab
@@ -223,6 +219,14 @@ defmodule PortalWeb.Sites.Components do
           site={@site}
           account={@account}
           resources={@resources}
+        />
+
+        <.site_tokens_tab
+          :if={@tab == :tokens}
+          site={@site}
+          gateway_tokens={@gateway_tokens}
+          confirm_revoke_token_id={@confirm_revoke_token_id}
+          confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
         />
       </div>
 
@@ -236,6 +240,8 @@ defmodule PortalWeb.Sites.Components do
   attr :show_all_gateways, :boolean, required: true
   attr :total_count, :integer, required: true
   attr :resource_count, :integer, required: true
+  attr :gateway_tokens, :list, required: true
+  attr :confirm_revoke_all_tokens, :boolean, required: true
 
   def site_panel_tabs(assigns) do
     ~H"""
@@ -286,6 +292,25 @@ defmodule PortalWeb.Sites.Components do
           {@resource_count}
         </span>
       </button>
+      <button
+        phx-click="switch_panel_tab"
+        phx-value-tab="tokens"
+        class={[
+          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+          if(@tab == :tokens,
+            do: "border-brand text-brand",
+            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
+          )
+        ]}
+      >
+        Tokens
+        <span class={[
+          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
+          if(@tab == :tokens, do: "bg-brand-muted text-brand", else: "bg-raised text-subtle")
+        ]}>
+          {length(@gateway_tokens)}
+        </span>
+      </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
         <.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
           <.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
@@ -311,6 +336,27 @@ defmodule PortalWeb.Sites.Components do
         >
           Online only
         </.button>
+        <.button
+          :if={@tab == :tokens and @gateway_tokens != [] and not @confirm_revoke_all_tokens}
+          type="button"
+          style="danger"
+          size="xs"
+          phx-click="confirm_revoke_all_tokens"
+        >
+          <.icon name="ri-delete-bin-line" class="w-3 h-3" /> Revoke all tokens
+        </.button>
+        <div
+          :if={@tab == :tokens and @confirm_revoke_all_tokens}
+          class="flex items-center gap-2"
+        >
+          <span class="text-xs text-error">Revoke all tokens?</span>
+          <.button type="button" phx-click="cancel_revoke_all_tokens" size="xs">
+            Cancel
+          </.button>
+          <.button type="button" phx-click="revoke_all_gateway_tokens" style="danger" size="xs">
+            Revoke all
+          </.button>
+        </div>
       </div>
     </div>
     """
@@ -318,8 +364,9 @@ defmodule PortalWeb.Sites.Components do
 
   attr :site, :any, required: true
   attr :gateways, :list, required: true
-  attr :gateway_counts, :map, required: true
+  attr :total_gateway_count, :integer, required: true
   attr :expanded_gateway_id, :string, default: nil
+  attr :confirm_delete_gateway_id, :string, default: nil
 
   def site_gateways_tab(assigns) do
     ~H"""
@@ -327,11 +374,25 @@ defmodule PortalWeb.Sites.Components do
       <ul>
         <li
           :for={gateway <- @gateways}
-          phx-click="toggle_gateway_expand"
-          phx-value-id={gateway.id}
-          class="border-b border-border hover:bg-raised cursor-pointer transition-colors group"
+          class={[
+            "border-b border-border transition-colors",
+            if(@confirm_delete_gateway_id == gateway.id,
+              do: "bg-error-light",
+              else: ""
+            )
+          ]}
         >
-          <div class="flex items-center gap-3 px-5 py-3">
+          <%!-- Normal clickable row --%>
+          <div
+            :if={@confirm_delete_gateway_id != gateway.id}
+            phx-click="toggle_gateway_expand"
+            phx-value-id={gateway.id}
+            class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-raised transition-colors group"
+          >
+            <.ping_icon
+              color={if gateway.online?, do: "success", else: "danger"}
+              title={if gateway.online?, do: "Online", else: "Offline"}
+            />
             <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
               <svg
                 class="w-3.5 h-3.5 text-subtle"
@@ -350,25 +411,17 @@ defmodule PortalWeb.Sites.Components do
               <p class="font-mono text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
                 {gateway.name}
               </p>
-              <p
-                :if={gateway.latest_session}
-                class="font-mono text-xs text-subtle mt-0.5"
-              >
+              <p :if={gateway.latest_session} class="font-mono text-xs text-subtle mt-0.5">
                 {gateway.latest_session.remote_ip}
               </p>
             </div>
-            <span :if={gateway.online?} class="inline-flex items-center gap-1.5 shrink-0">
-              <span class="relative flex items-center justify-center w-1.5 h-1.5">
-                <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-success">
-                </span>
-                <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-success">
-                </span>
-              </span>
-            </span>
-            <span :if={not gateway.online?} class="inline-flex items-center gap-1.5 shrink-0">
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-neutral-status">
-              </span>
-            </span>
+            <.icon_button
+              icon="ri-delete-bin-line"
+              title="Delete gateway"
+              phx-click="delete_gateway"
+              phx-value-id={gateway.id}
+              class="text-subtle hover:text-error shrink-0"
+            />
             <.icon
               name={
                 if @expanded_gateway_id == gateway.id,
@@ -378,8 +431,52 @@ defmodule PortalWeb.Sites.Components do
               class="w-4 h-4 text-subtle shrink-0"
             />
           </div>
+          <%!-- Confirm delete row --%>
           <div
-            :if={@expanded_gateway_id == gateway.id}
+            :if={@confirm_delete_gateway_id == gateway.id}
+            class="flex items-center gap-3 px-5 py-3"
+          >
+            <.ping_icon
+              color={if gateway.online?, do: "success", else: "danger"}
+              title={if gateway.online?, do: "Online", else: "Offline"}
+            />
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+              <svg
+                class="w-3.5 h-3.5 text-subtle"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <rect x="1.5" y="4" width="13" height="8" rx="1" />
+                <circle cx="4" cy="8" r="0.75" fill="currentColor" stroke="none" />
+                <circle cx="6.5" cy="8" r="0.75" fill="currentColor" stroke="none" />
+                <path d="M10 8h3.5" />
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-mono text-sm font-medium text-heading truncate">{gateway.name}</p>
+              <p :if={gateway.latest_session} class="font-mono text-xs text-subtle mt-0.5">
+                {gateway.latest_session.remote_ip}
+              </p>
+            </div>
+            <span class="text-xs text-error shrink-0">Delete this gateway?</span>
+            <.button type="button" phx-click="cancel_delete_gateway" size="xs">
+              Cancel
+            </.button>
+            <.button
+              type="button"
+              style="danger"
+              size="xs"
+              phx-click="confirm_delete_gateway"
+              phx-value-id={gateway.id}
+            >
+              Delete
+            </.button>
+          </div>
+          <%!-- Expanded details --%>
+          <div
+            :if={@expanded_gateway_id == gateway.id and @confirm_delete_gateway_id != gateway.id}
             class="px-5 pb-3 pt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5"
           >
             <span class="text-xs text-subtle">Last started</span>
@@ -414,7 +511,7 @@ defmodule PortalWeb.Sites.Components do
         </li>
       </ul>
       <div
-        :if={@gateways == [] and Map.get(@gateway_counts, @site.id, 0) == 0}
+        :if={@gateways == [] and @total_gateway_count == 0}
         class="flex flex-col items-center justify-center gap-3 py-16"
       >
         <p class="text-sm text-subtle">No gateways deployed to this site.</p>
@@ -426,7 +523,7 @@ defmodule PortalWeb.Sites.Components do
         </button>
       </div>
       <div
-        :if={@gateways == [] and Map.get(@gateway_counts, @site.id, 0) > 0}
+        :if={@gateways == [] and @total_gateway_count > 0}
         class="flex items-center justify-center py-16"
       >
         <p class="text-sm text-subtle">
@@ -469,6 +566,65 @@ defmodule PortalWeb.Sites.Components do
         <.button :if={@site.managed_by == :account} phx-click="add_resource" size="xs">
           <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a resource
         </.button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :site, :any, required: true
+  attr :gateway_tokens, :list, required: true
+  attr :confirm_revoke_token_id, :string, default: nil
+  attr :confirm_revoke_all_tokens, :boolean, required: true
+
+  def site_tokens_tab(assigns) do
+    ~H"""
+    <div class="flex-1 overflow-y-auto">
+      <ul>
+        <li
+          :for={token <- @gateway_tokens}
+          class={[
+            "border-b border-border px-5 py-3 transition-colors",
+            if(@confirm_revoke_token_id == token.id, do: "bg-error-light", else: "")
+          ]}
+        >
+          <div class="flex items-center gap-3">
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+              <.icon name="ri-key-line" class="w-3.5 h-3.5 text-subtle" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-mono text-xs text-body truncate">{token.id}</p>
+              <p class="text-[10px] text-subtle mt-0.5">
+                Created <.relative_datetime datetime={token.inserted_at} popover={false} />
+              </p>
+            </div>
+            <.icon_button
+              :if={@confirm_revoke_token_id != token.id}
+              icon="ri-delete-bin-line"
+              title="Revoke token"
+              phx-click="revoke_gateway_token"
+              phx-value-id={token.id}
+              class="text-subtle hover:text-error shrink-0"
+            />
+            <div :if={@confirm_revoke_token_id == token.id} class="flex items-center gap-2 shrink-0">
+              <span class="text-xs text-error">Revoke this token?</span>
+              <.button type="button" phx-click="cancel_revoke_gateway_token" size="xs">
+                Cancel
+              </.button>
+              <.button
+                type="button"
+                style="danger"
+                size="xs"
+                phx-click="confirm_revoke_gateway_token"
+                phx-value-id={token.id}
+              >
+                Revoke
+              </.button>
+            </div>
+          </div>
+        </li>
+      </ul>
+      <div :if={@gateway_tokens == []} class="flex flex-col items-center justify-center gap-3 py-16">
+        <p class="text-sm text-subtle">No tokens for this site.</p>
       </div>
     </div>
     """
@@ -865,6 +1021,7 @@ defmodule PortalWeb.Sites.Components do
       <.site_add_resource_header />
       <.form
         :if={@resource_form}
+        id="site-add-resource-form"
         for={@resource_form}
         phx-submit="resource_submit"
         phx-change="resource_change"
@@ -1280,6 +1437,7 @@ defmodule PortalWeb.Sites.Components do
       </div>
       <.form
         :if={@form}
+        id="site-edit-form"
         for={@form}
         phx-submit="submit_site_edit_form"
         phx-change="change_site_edit_form"

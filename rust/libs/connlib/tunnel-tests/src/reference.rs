@@ -834,6 +834,7 @@ impl ReferenceState {
                             |r| state.portal.gateway_for_resource(r).copied(),
                             |ip| state.portal.gateway_by_ip(ip),
                             |ip| client_ip_to_id.get(&ip).copied(),
+                            now,
                         )
                     });
             }
@@ -859,6 +860,7 @@ impl ReferenceState {
                             |r| state.portal.gateway_for_resource(r).copied(),
                             |ip| state.portal.gateway_by_ip(ip),
                             |ip| client_ip_to_id.get(&ip).copied(),
+                            now,
                         )
                     });
             }
@@ -898,9 +900,15 @@ impl ReferenceState {
                 client_id,
                 ip4,
                 ip6,
+                dead_window: _,
+                portal_window: _,
             } => {
-                let client = state.clients.get_mut(client_id).unwrap();
+                // With ICE-less connections, a roam re-keys in place and keeps
+                // the connection alive, so we only reset when the portal hands
+                // out classic ICE flows.
+                let all_iceless = state.portal.iceless();
 
+                let client = state.clients.get_mut(client_id).unwrap();
                 state.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
@@ -909,8 +917,10 @@ impl ReferenceState {
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
-                    client.reset_connections(now);
-                    client.readd_all_resources()
+                    if !all_iceless {
+                        client.reset_connections(now);
+                    }
+                    client.readd_all_resources();
                 });
             }
             Transition::ReconnectPortal { client_id } => {
@@ -928,7 +938,11 @@ impl ReferenceState {
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic {
+                // With ICE-less connections, losing all relays does not fail
+                // the connection: the WG session idles until the relays return
+                // and probes revive the path. Classic ICE flows disconnect if
+                // direct traffic is dropped.
+                if state.drop_direct_client_traffic && !state.portal.iceless() {
                     for client in state.clients.values_mut() {
                         client.exec_mut(|c| c.reset_connections(now));
                     }
@@ -1173,6 +1187,8 @@ impl ReferenceState {
                 client_id: _,
                 ip4,
                 ip6,
+                dead_window: _,
+                portal_window: _,
             } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 

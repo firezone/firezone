@@ -6,6 +6,7 @@ defmodule PortalWeb.GroupsTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyFixtures
@@ -198,6 +199,33 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "open_grant_resource_form")
       assert html =~ "Grant access"
       assert render_click(lv, "close_grant_resource_form") =~ resource.name
+    end
+
+    test "grants access with flow log reporting disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:flow_logs)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      html = render_click(lv, "open_grant_resource_form")
+      assert html =~ "Flow log reporting"
+
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+
+      lv
+      |> form("#grant-resource-form", policy: %{flow_log_uploads_enabled: false})
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == false
     end
 
     test "grants access to multiple resources at once", %{

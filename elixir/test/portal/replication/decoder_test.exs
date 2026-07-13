@@ -512,6 +512,19 @@ defmodule Portal.Replication.DecoderTest do
       assert Decoder.decode_value({~s({"a":1}), column}) == {"config", %{"a" => 1}}
     end
 
+    test "decodes bool t/f into booleans" do
+      column = %{type: "bool", name: "flow_log_uploads_enabled"}
+
+      assert Decoder.decode_value({"t", column}) == {"flow_log_uploads_enabled", true}
+      assert Decoder.decode_value({"f", column}) == {"flow_log_uploads_enabled", false}
+    end
+
+    test "leaves a null bool untouched" do
+      column = %{type: "bool", name: "flow_log_uploads_enabled"}
+
+      assert Decoder.decode_value({nil, column}) == {"flow_log_uploads_enabled", nil}
+    end
+
     test "passes other types through unchanged" do
       column = %{type: "text", name: "name"}
 

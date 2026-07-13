@@ -64,8 +64,9 @@ where
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
             self.disconnected_ids.insert(id, now);
-            self.disconnected_ufrags
-                .insert(conn.agent.local_credentials().ufrag.to_owned(), now);
+            if let Some(ufrag) = conn.agent.local_ufrag() {
+                self.disconnected_ufrags.insert(ufrag.to_owned(), now);
+            }
         }
 
         self.disconnected_ids
@@ -83,18 +84,37 @@ where
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
-        self.established_by_local_ufrag
-            .remove(&connection.agent.local_credentials().ufrag);
+        if let Some(ufrag) = connection.agent.local_ufrag() {
+            self.established_by_local_ufrag.remove(ufrag);
+        }
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
         self.disconnected_session_indices
             .insert(connection.index.global(), now);
-        self.disconnected_ufrags
-            .insert(connection.agent.local_credentials().ufrag.to_owned(), now);
+        if let Some(ufrag) = connection.agent.local_ufrag() {
+            self.disconnected_ufrags.insert(ufrag.to_owned(), now);
+        }
 
         Some(connection)
+    }
+
+    /// Soft-resets all connections for a roam and queues them for relay migration.
+    ///
+    /// The roam clears all allocations, so every connection's relay is gone until
+    /// [`update_relays`](crate::Node::update_relays) provides new ones.
+    pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
+        let mut num_connections = 0;
+
+        for (cid, conn) in self.established.iter_mut() {
+            conn.reset_for_roam(now);
+            self.connections_with_removed_relays.insert(*cid);
+
+            num_connections += 1;
+        }
+
+        num_connections
     }
 
     pub(crate) fn migrate_relays(
@@ -110,7 +130,7 @@ where
 
         for removed_relay in removed_allocations {
             for (cid, c) in self.iter_mut_by_relay(removed_relay) {
-                let Some((new_relay, new_allocation)) = allocations.sample() else {
+                let Some(new_relay) = allocations.sample() else {
                     let was_inserted = connections_with_removed_relays.insert(cid);
 
                     if was_inserted {
@@ -120,12 +140,15 @@ where
                     continue;
                 };
 
-                c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+                c.migrate_relay(cid, new_relay, allocations, pending_events, now);
+
+                // Already migrated; don't migrate again in the retry loop below.
+                connections_with_removed_relays.remove(&cid);
             }
         }
 
         for cid in connections_with_removed_relays {
-            let Some((new_relay, new_allocation)) = allocations.sample() else {
+            let Some(new_relay) = allocations.sample() else {
                 self.connections_with_removed_relays.insert(cid);
 
                 continue;
@@ -135,7 +158,7 @@ where
                 continue;
             };
 
-            c.migrate_relay(cid, new_relay, new_allocation, pending_events, now);
+            c.migrate_relay(cid, new_relay, allocations, pending_events, now);
         }
     }
 
@@ -149,7 +172,7 @@ where
         index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
-        let local_ufrag = connection.agent.local_credentials().ufrag.to_owned();
+        let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
@@ -157,7 +180,9 @@ where
             .retain(|_, c| c != &id);
         self.established_by_wireguard_session_index
             .insert(index.global(), id);
-        self.established_by_local_ufrag.insert(local_ufrag, id);
+        if let Some(ufrag) = local_ufrag {
+            self.established_by_local_ufrag.insert(ufrag, id);
+        }
 
         existing
     }
@@ -282,6 +307,10 @@ where
 
     pub(crate) fn all_idle(&self) -> bool {
         self.established.values().all(|c| c.is_idle())
+    }
+
+    pub(crate) fn all_iceless(&self) -> bool {
+        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -517,19 +546,7 @@ mod tests {
         // The connection still uses relay 1 because no new relay was available.
         assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 1);
 
-        allocations.upsert(
-            2,
-            RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478)),
-            Username::new("user".to_owned()).unwrap(),
-            "pass".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
-            now,
-        );
-        // Simulate a successful response so the relay is eligible for sampling.
-        allocations
-            .get_mut_by_id(&2)
-            .unwrap()
-            .set_rtt(Duration::from_millis(20));
+        add_sampleable_allocation(&mut allocations, 2, now);
 
         connections.migrate_relays(
             std::iter::empty(),
@@ -540,6 +557,49 @@ mod tests {
 
         // The connection should now be using the new relay (id 2).
         assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
+    }
+
+    #[test]
+    fn roam_reset_queues_connections_for_relay_migration() {
+        // A roam clears all allocations and the portal may hand out relays
+        // under new IDs afterwards; connections must not stay pinned to relays
+        // that no longer exist.
+        let mut connections: Connections<u32, u32> = Connections::default();
+        let mut allocations: Allocations<u32> = Allocations::for_test();
+        let now = Instant::now();
+
+        let mut conn = new_connection(12345, 1, [1u8; 32]);
+        conn.agent = crate::agent::Agent::path();
+        connections.insert_established(1, conn.index, conn);
+
+        connections.reset_for_roam(now);
+        add_sampleable_allocation(&mut allocations, 2, now);
+
+        let mut pending_events = VecDeque::new();
+        connections.migrate_relays(
+            std::iter::empty(),
+            &mut allocations,
+            &mut pending_events,
+            now,
+        );
+
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
+    }
+
+    fn add_sampleable_allocation(allocations: &mut Allocations<u32>, rid: u32, now: Instant) {
+        allocations.upsert(
+            rid,
+            RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478 + rid as u16)),
+            Username::new("user".to_owned()).unwrap(),
+            "pass".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+        // Simulate a successful response so the relay is eligible for sampling.
+        allocations
+            .get_mut_by_id(&rid)
+            .unwrap()
+            .set_rtt(Duration::from_millis(20));
     }
 
     fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
@@ -594,7 +654,7 @@ mod tests {
         let new_local = Index::new_local(idx);
 
         Connection {
-            agent: IceAgent::new(is::IceCreds::new()),
+            agent: crate::agent::Agent::ice(IceAgent::new(is::IceCreds::new())),
             index: new_local,
             tunnel: Tunn::new_at(
                 private,

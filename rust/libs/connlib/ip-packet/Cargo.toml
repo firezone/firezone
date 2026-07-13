@@ -17,6 +17,7 @@ arbitrary = { workspace = true, optional = true, features = ["derive"] }
 bufferpool = { workspace = true }
 etherparse = { workspace = true, features = ["std"] }
 etherparse-ext = { workspace = true }
+incremental-inet-checksum = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

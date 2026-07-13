@@ -17,14 +17,13 @@ pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
 
 static CLIENT: LazyLock<ingest::Client> = LazyLock::new(|| ingest::Client::new(INGEST_HOST));
 
-/// Seeds the Sentry ingest-host addresses via the system resolver.
-pub(crate) fn init_addresses() {
-    CLIENT.init_addresses();
-}
-
 /// Drops the current connection so the next request reconnects.
 pub(crate) fn reset_client() {
     CLIENT.reset();
+}
+
+pub(crate) fn warmup_connection() {
+    ingest::RUNTIME.spawn(CLIENT.connect());
 }
 
 /// Builds the Sentry [`ClientOptions`] with our [`Factory`] transport and starts the SDK.
@@ -33,7 +32,7 @@ pub(crate) fn init_sdk_client(
     environment: &'static str,
     release: &str,
 ) -> ClientInitGuard {
-    init((
+    let guard = init((
         dsn,
         ClientOptions {
             environment: Some(Cow::Borrowed(environment)),
@@ -66,7 +65,16 @@ pub(crate) fn init_sdk_client(
             transport: Some(Arc::new(Factory)),
             ..Default::default()
         },
-    ))
+    ));
+
+    // `init` binds the client to the calling thread's hub, which coincides with
+    // `Hub::main()` only on the first thread that ever used Sentry. This crate
+    // reads and configures `Hub::main()` throughout, so bind the client there
+    // explicitly to keep this function thread-agnostic; mobile clients call it
+    // from arbitrary dispatcher threads.
+    Hub::main().bind_client(Hub::current().client());
+
+    guard
 }
 
 /// Creates [`SentryTransport`]s for the Sentry SDK.

@@ -91,18 +91,27 @@ impl IpStack {
     }
 }
 
+/// A signalling candidate on the wire: an SDP `candidate:` string.
+///
+/// A thin wrapper — the codec (ICE vs ICE-less) lives in `snownet`. `priority`
+/// is extracted once to preserve the `host > srflx > relay` signalling order.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IceCandidate(is::Candidate);
+pub struct IceCandidate {
+    sdp: String,
+    priority: u32,
+}
 
-impl From<is::Candidate> for IceCandidate {
-    fn from(value: is::Candidate) -> Self {
-        Self(value)
+impl From<String> for IceCandidate {
+    fn from(sdp: String) -> Self {
+        let priority = parse_priority(&sdp).unwrap_or(0);
+
+        Self { sdp, priority }
     }
 }
 
-impl From<IceCandidate> for is::Candidate {
-    fn from(value: IceCandidate) -> Self {
-        value.0
+impl From<IceCandidate> for String {
+    fn from(candidate: IceCandidate) -> Self {
+        candidate.sdp
     }
 }
 
@@ -114,7 +123,12 @@ impl PartialOrd for IceCandidate {
 
 impl Ord for IceCandidate {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.prio().cmp(&other.0.prio()).reverse()
+        // Higher priority first; the tie-break keeps distinct candidates that
+        // share a priority (ICE-less priority is per-kind, so same-kind collide).
+        self.priority
+            .cmp(&other.priority)
+            .reverse()
+            .then_with(|| self.sdp.cmp(&other.sdp))
     }
 }
 
@@ -123,7 +137,7 @@ impl Serialize for IceCandidate {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.0.to_sdp_string())
+        serializer.serialize_str(&self.sdp)
     }
 }
 
@@ -134,27 +148,39 @@ impl<'de> Deserialize<'de> for IceCandidate {
     {
         use serde::de::Error as _;
 
-        let string = String::deserialize(deserializer)?;
-        let candidate = is::Candidate::from_sdp_string(&string).map_err(D::Error::custom)?;
+        let sdp = String::deserialize(deserializer)?;
+        let priority =
+            parse_priority(&sdp).ok_or_else(|| D::Error::custom("not an SDP candidate line"))?;
 
-        Ok(IceCandidate(candidate))
+        Ok(Self { sdp, priority })
     }
+}
+
+/// Extracts the `priority` (4th field) from an SDP `candidate:` line.
+fn parse_priority(sdp: &str) -> Option<u32> {
+    if !sdp.starts_with("candidate:") {
+        return None;
+    }
+
+    sdp.split_ascii_whitespace().nth(3)?.parse().ok()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, net::SocketAddr};
+    use std::collections::BTreeSet;
 
     use super::*;
 
     #[test]
     fn ice_candidate_ordering() {
-        let host = IceCandidate::from(is::Candidate::host(sock("1.1.1.1:80"), "udp").unwrap());
+        // Higher priority sorts first: host > srflx > relay.
+        let host =
+            IceCandidate::from("candidate:1 1 udp 2130706431 1.1.1.1 80 typ host".to_owned());
         let srflx = IceCandidate::from(
-            is::Candidate::server_reflexive(sock("1.1.1.1:80"), sock("3.3.3.3:80"), "udp").unwrap(),
+            "candidate:2 1 udp 1694498815 1.1.1.1 80 typ srflx raddr 3.3.3.3 rport 80".to_owned(),
         );
         let relay = IceCandidate::from(
-            is::Candidate::relayed(sock("1.1.1.1:80"), sock("2.2.2.2:80"), "udp").unwrap(),
+            "candidate:3 1 udp 16777215 1.1.1.1 80 typ relay raddr 2.2.2.2 rport 80".to_owned(),
         );
 
         let candidate_set = BTreeSet::from([relay.clone(), host.clone(), srflx.clone()]);
@@ -164,7 +190,16 @@ mod tests {
         assert_eq!(candidate_list, vec![host, srflx, relay]);
     }
 
-    fn sock(s: &str) -> SocketAddr {
-        s.parse().unwrap()
+    #[test]
+    fn parse_priority_extracts_or_rejects() {
+        assert_eq!(
+            parse_priority("candidate:1 1 udp 12345 1.1.1.1 80 typ host"),
+            Some(12345)
+        );
+        assert_eq!(parse_priority("garbage"), None);
+        assert_eq!(
+            parse_priority("candidate:1 1 udp not-a-number 1.1.1.1 80 typ host"),
+            None
+        );
     }
 }

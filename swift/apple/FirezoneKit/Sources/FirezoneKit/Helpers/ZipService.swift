@@ -23,6 +23,14 @@ enum CreateZipError: Swift.Error {
 
 public final class ZipService {
 
+  // NSFileCoordinator's `.forUploading` zip synthesis goes through a system
+  // XPC service that occasionally fails transiently (NSPOSIXErrorDomain code
+  // 0, "Undefined error: 0") under load with no indication anything is
+  // actually wrong with the source directory. Only that specific failure is
+  // retried; see `isTransientCoordinatorError`.
+  private static let maxAttempts = 3
+  private static let retryDelay: TimeInterval = 0.2
+
   public static func createZip(
     source directoryURL: URL,
     to zipFinalURL: URL,
@@ -32,10 +40,24 @@ public final class ZipService {
       throw CreateZipError.urlNotADirectory(directoryURL)
     }
 
-    // Stage a copy of the directory and zip that instead: the source may contain
-    // symlinks (the Rust file appender maintains `*.latest` links), which Apple's
-    // zip-for-upload implementation chokes on when they dangle, and live log files
-    // can be rotated or deleted mid-archive.
+    for _ in 1..<maxAttempts {
+      do {
+        try stageAndZip(source: directoryURL, to: zipFinalURL)
+        return
+      } catch {
+        guard isTransientCoordinatorError(error) else { throw error }
+        Thread.sleep(forTimeInterval: retryDelay)
+      }
+    }
+
+    try stageAndZip(source: directoryURL, to: zipFinalURL)
+  }
+
+  // Stage a copy of the directory and zip that instead: the source may contain
+  // symlinks (the Rust file appender maintains `*.latest` links), which Apple's
+  // zip-for-upload implementation chokes on when they dangle, and live log files
+  // can be rotated or deleted mid-archive.
+  private static func stageAndZip(source directoryURL: URL, to zipFinalURL: URL) throws {
     let fileManager = FileManager.default
     let stagingRootURL = fileManager
       .temporaryDirectory
@@ -128,5 +150,19 @@ public final class ZipService {
     }
 
     return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
+  }
+
+  // Only the generic, no-information coordinator failure is worth retrying;
+  // everything else (permission issues, out-of-space, a failed move) is
+  // deterministic and should surface immediately.
+  private static func isTransientCoordinatorError(_ error: Swift.Error) -> Bool {
+    guard let zipError = error as? CreateZipError,
+      case .failedToCreateZIP(let underlyingError) = zipError
+    else {
+      return false
+    }
+
+    let nsError = underlyingError as NSError
+    return nsError.domain == NSPOSIXErrorDomain && nsError.code == 0
   }
 }

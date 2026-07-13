@@ -117,7 +117,11 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
 /// and flushes the log file.
 pub fn setup_tunnel(
     log_path: Option<PathBuf>,
-) -> Result<(logging::file::Handle, logging::FilterReloadHandle)> {
+) -> Result<(
+    logging::file::Handle,
+    logging::FilterReloadHandle,
+    Option<flow_log_writer::Guard>,
+)> {
     // If `log_dir` is Some, use that. Else call `tunnel_service_logs`
     let log_path = log_path.map_or_else(
         || {
@@ -140,9 +144,13 @@ pub fn setup_tunnel(
         .with_ansi(logging::stdout_supports_ansi())
         .event_format(logging::Format::new().without_timestamp());
 
+    let (flow_log_layer, flow_log_guard) =
+        known_dirs::flow_logs().map(flow_log_writer::layer).unzip();
+
     let subscriber = Registry::default()
         .with(file_layer.with_filter(file_filter))
         .with(stdout_layer.with_filter(stdout_filter))
+        .with(flow_log_layer)
         .with(logging::sentry_layer());
     logging::init(subscriber)?;
 
@@ -156,7 +164,11 @@ pub fn setup_tunnel(
         "`tunnel service` started logging"
     );
 
-    Ok((file_handle, file_reloader.merge(stdout_reloader)))
+    Ok((
+        file_handle,
+        file_reloader.merge(stdout_reloader),
+        flow_log_guard,
+    ))
 }
 
 /// Sets up logging for stdout only, with INFO level by default

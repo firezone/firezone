@@ -33,7 +33,9 @@ for repo <- [
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api
+      Portal.Repo.Replica.Api,
+      Portal.Repo.Poller,
+      Portal.Repo.Replica.Poller
     ] do
   config :portal, repo,
     database: "firezone_test#{partition_suffix}",
@@ -67,21 +69,15 @@ config :portal, Oban,
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
 config :portal, Portal.Billing,
   enabled: true,
@@ -112,6 +108,13 @@ config :portal, Portal.Okta.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Azure.ManagedIdentity,
+  client_id: "test-azure-client-id",
+  req_opts: [
+    plug: {Req.Test, Portal.Azure.ManagedIdentity},
+    retry: false
+  ]
+
 config :portal, Portal.Entra.APIClient,
   client_id: "test_client_id",
   client_secret: "test_client_secret",
@@ -129,6 +132,7 @@ config :portal, Portal.Telemetry, enabled: false
 config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
+config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
@@ -246,6 +250,9 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 ###############################
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
 config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
+
+# Disable HTTP retries so error-path OIDC tests don't back off and retry
+config :portal, OpenIDConnect, retry: false
 
 # Allow asserting on info logs and higher
 config :logger, level: :info

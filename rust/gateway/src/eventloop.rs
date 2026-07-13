@@ -1,7 +1,7 @@
 use anyhow::{Context as _, ErrorExt, Result};
 use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 
 use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
@@ -17,11 +17,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
 use tokio::sync::mpsc;
-use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
     Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
     InitGateway, RejectAccess,
 };
+use tunnel::messages::{RelaysPresence, SnownetCapabilities};
 use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
@@ -38,6 +38,12 @@ pub struct Eventloop {
     tunnel: Option<GatewayTunnel>,
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
+
+    /// Flow-log spool root.
+    flow_logs_dir: std::path::PathBuf,
+
+    /// The `--flow-logs` flag.
+    local_flow_logs: bool,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -65,6 +71,8 @@ impl Eventloop {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
+        flow_logs_dir: std::path::PathBuf,
+        local_flow_logs: bool,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -81,6 +89,8 @@ impl Eventloop {
             tunnel: Some(tunnel),
             tun_device_manager,
             resolver,
+            flow_logs_dir,
+            local_flow_logs,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -243,6 +253,12 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            tunnel::GatewayEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -292,14 +308,24 @@ impl Eventloop {
 
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
+                let token = &msg.flow_logs_ingest_token;
+
+                if token.claims().uploads_enabled
+                    && let Err(e) =
+                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                {
+                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                }
+
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
                     msg.client,
-                    msg.subject,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
+                    msg.use_iceless,
                     Instant::now(),
+                    msg.flow_logs_ingest_token,
                 ) {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
@@ -359,11 +385,25 @@ impl Eventloop {
                 account_slug,
                 relays,
                 authorizations,
+                flow_logs,
             }) => {
                 if let Some(account_slug) = account_slug {
-                    Telemetry::set_account_slug(account_slug.clone());
+                    telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
+                }
+
+                tunnel
+                    .state_mut()
+                    .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
+
+                if let Err(e) = flow_log_upload::configure_uploads(
+                    &self.flow_logs_dir,
+                    &flow_logs.api_url,
+                    flow_logs.upload_interval_secs,
+                    flow_logs.upload_batch_size,
+                ) {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
                 }
 
                 tunnel.state_mut().update_relays(
@@ -553,7 +593,14 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
+                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                ) {
+                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
+                }
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

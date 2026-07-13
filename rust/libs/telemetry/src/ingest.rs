@@ -1,64 +1,43 @@
-use std::{
-    net::{IpAddr, ToSocketAddrs as _},
-    sync::{Arc, LazyLock},
-};
+use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context as _, ErrorExt as _, Result};
-use bootstrap_dns_client::BootstrapDnsClient;
 use bytes::Bytes;
 use http::{Request, Response};
 use http_client::HttpClient;
 use parking_lot::Mutex;
-use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket};
 use tokio::runtime::Runtime;
-
-type SocketFactories = (
-    Arc<dyn SocketFactory<TcpSocket>>,
-    Arc<dyn SocketFactory<UdpSocket>>,
-);
 
 /// Runtime hosting all ingest connections and the feature-flag re-eval timer.
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 
-/// Socket factories and upstream resolvers shared by all ingest hosts.
+/// TCP socket factory shared by all ingest connections.
 ///
-/// connlib processes configure tunnel-bypassing factories so telemetry never
-/// loops back through connlib; the resolvers are the system's upstream DNS
-/// servers (never the system resolver itself, which may be connlib).
-static SOCKETS: LazyLock<Mutex<Option<SocketFactories>>> = LazyLock::new(|| Mutex::new(None));
-static SERVERS: LazyLock<Mutex<Vec<IpAddr>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+/// connlib processes configure a tunnel-bypassing factory so telemetry never
+/// loops back through connlib.
+static SOCKET_FACTORY: LazyLock<Mutex<Option<Arc<dyn SocketFactory<TcpSocket>>>>> =
+    LazyLock::new(|| Mutex::new(None));
 
-/// Configures the socket factories used to reach all ingest hosts.
-pub(crate) fn configure(
-    tcp: Arc<dyn SocketFactory<TcpSocket>>,
-    udp: Arc<dyn SocketFactory<UdpSocket>>,
-) {
-    *SOCKETS.lock() = Some((tcp, udp));
+/// Configures the socket factory used to reach all ingest hosts.
+pub(crate) fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    *SOCKET_FACTORY.lock() = Some(tcp);
 }
 
-/// Updates the upstream resolvers used to look up all ingest hosts.
-pub(crate) fn update_system_resolvers(servers: Vec<IpAddr>) {
-    *SERVERS.lock() = servers;
-}
-
-/// Resets the shared socket factories so the next connection rebinds.
-pub(crate) fn reset_sockets() {
-    let sockets = SOCKETS.lock().clone();
-    if let Some((tcp, udp)) = sockets {
+/// Resets the shared socket factory so the next connection rebinds.
+pub(crate) fn reset_socket_factory() {
+    if let Some(tcp) = SOCKET_FACTORY.lock().clone() {
         tcp.reset();
-        udp.reset();
     }
 }
 
 /// A self-healing HTTP/2 client for a single ingest host.
 ///
-/// The host is resolved via [`BootstrapDnsClient`] against the configured
-/// upstreams and connected through the shared, tunnel-bypassing socket factories,
-/// falling back to addresses seeded from the system resolver at startup. The
-/// connection is re-established on demand when it is closed.
+/// The host is resolved through [`tunnel_bypass_resolver`] and the connection
+/// goes through the configured tunnel-bypassing socket factory, so telemetry
+/// never loops through connlib. The connection is re-established on demand
+/// when it is closed.
 pub(crate) struct Client {
     host: &'static str,
-    seed_addresses: Mutex<Vec<IpAddr>>,
     connection: Mutex<Option<HttpClient>>,
     /// Serialises bootstrapping so concurrent senders share a single connection.
     bootstrap: tokio::sync::Mutex<()>,
@@ -68,34 +47,18 @@ impl Client {
     pub(crate) fn new(host: &'static str) -> Self {
         Self {
             host,
-            seed_addresses: Mutex::new(Vec::new()),
             connection: Mutex::new(None),
             bootstrap: tokio::sync::Mutex::new(()),
         }
     }
 
-    /// Seeds the host addresses using the system resolver.
-    ///
-    /// Must run at startup, before connlib reconfigures the system resolver, so the
-    /// lookup reaches the real upstream and not connlib itself. Used as a fallback
-    /// until the bootstrap resolver has upstreams configured.
-    pub(crate) fn init_addresses(&self) {
-        let addresses = (self.host, 443u16)
-            .to_socket_addrs()
-            .inspect_err(|e| {
-                tracing::debug!(host = %self.host, "Failed to seed ingest host addresses: {e:#}")
-            })
-            .map(|addresses| addresses.map(|addr| addr.ip()).collect::<Vec<_>>())
-            .unwrap_or_default();
-
-        tracing::debug!(host = %self.host, ?addresses, "Seeded ingest host addresses from system resolver");
-
-        *self.seed_addresses.lock() = addresses;
-    }
-
     /// Drops the current connection so the next request reconnects.
     pub(crate) fn reset(&self) {
         *self.connection.lock() = None;
+    }
+
+    pub(crate) async fn connect(&self) {
+        let _ = self.connection().await;
     }
 
     /// Sends an HTTP request over a (re-)established connection to the host.
@@ -146,43 +109,16 @@ impl Client {
 
     async fn bootstrap(&self) -> Result<HttpClient> {
         let host = self.host;
-        let (tcp, udp) = SOCKETS
+        let tcp = SOCKET_FACTORY
             .lock()
             .clone()
-            .context("Ingest client has no socket factories configured")?;
-        let servers = SERVERS.lock().clone();
-        let seed_addresses = self.seed_addresses.lock().clone();
+            .context("Ingest client has no socket factory configured")?;
 
         // Anchor the connection task on our own runtime so it outlives the caller,
         // which may be a short-lived `block_on` on another runtime.
         RUNTIME
             .spawn(async move {
-                // Resolve via the bootstrap resolver, which never uses the system
-                // resolver (i.e. connlib), and add the addresses seeded at startup as
-                // extra fallback candidates. `HttpClient` tries them in order and
-                // connects to the first that works.
-                //
-                // Skip the resolver while we have no upstreams yet (e.g. before
-                // connlib reports the system DNS servers); the seed covers that.
-                let mut addresses = if servers.is_empty() {
-                    Vec::new()
-                } else {
-                    BootstrapDnsClient::new(udp, tcp.clone(), servers)
-                        .resolve(host)
-                        .await
-                        .inspect_err(
-                            |e| tracing::debug!(%host, "Failed to resolve ingest host: {e:#}"),
-                        )
-                        .unwrap_or_default()
-                };
-
-                for address in seed_addresses {
-                    if !addresses.contains(&address) {
-                        addresses.push(address);
-                    }
-                }
-
-                anyhow::ensure!(!addresses.is_empty(), "No addresses for ingest host {host}");
+                let addresses = tunnel_bypass_resolver::resolve(host).await?;
 
                 HttpClient::new(host.to_owned(), addresses, tcp)
                     .await
@@ -203,6 +139,7 @@ fn init_runtime() -> Runtime {
         .expect("to be able to build runtime");
 
     runtime.spawn(crate::feature_flags::reeval_timer());
+    runtime.spawn(crate::feature_flags::reeval_on_resolver_change());
 
     runtime
 }

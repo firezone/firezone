@@ -80,7 +80,7 @@ services:
         8081 172.28.0.100 tcp
         8081 172:28:0::100 tcp
       MASQUERADE_TYPE: ""
-      NETWORK_LATENCY_MS: 50
+      NETWORK_LATENCY_MS: "${PORTAL_ROUTER_LATENCY_MS:-}"
     networks:
       app-internal:
         ipv4_address: 172.28.0.254
@@ -139,11 +139,7 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.30.0.254
         ip -6 route add 203:0:113::/64 via 172:30:0::254
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx off
-
-        ip link set dev eth0 txqueuelen 100000
+        ip link set dev eth0 qlen 100000
 
         exec firezone-headless-client
     depends_on:
@@ -160,7 +156,7 @@ services:
       service: router
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
-      NETWORK_LATENCY_MS: 10
+      NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
       client-1-internal:
         ipv4_address: 172.30.0.254
@@ -168,6 +164,16 @@ services:
         interface_name: internal
       internet:
         interface_name: internet
+
+  # One-shot secnetperf client for QUIC performance tests. Shares the network
+  # namespace of `client-1` so its traffic is routed through the tunnel.
+  # Run with `docker compose run --rm secnetperf-client secnetperf -target:...`.
+  secnetperf-client:
+    image: ghcr.io/firezone/secnetperf:latest
+    network_mode: service:client-1
+    depends_on:
+      client-1:
+        condition: "service_healthy"
 
   client-2:
     extends:
@@ -186,11 +192,7 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.32.0.254
         ip -6 route add 203:0:113::/64 via 172:32:0::254
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx off
-
-        ip link set dev eth0 txqueuelen 100000
+        ip link set dev eth0 qlen 100000
 
         exec firezone-headless-client
     depends_on:
@@ -207,7 +209,7 @@ services:
       service: router
     environment:
       MASQUERADE_TYPE: ${POOL_MEMBER_MASQUERADE:-}
-      NETWORK_LATENCY_MS: 10
+      NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
       client-2-internal:
         ipv4_address: 172.32.0.254
@@ -236,15 +238,9 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.31.0.254
         ip -6 route add 203:0:113::/64 via 172:31:0::254 || true
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool iproute2
-        ethtool -K eth0 tx off
-        ethtool -K eth1 tx off
-        ethtool -K eth2 tx off
-
-        ip link set dev eth0 txqueuelen 100000
-        ip link set dev eth1 txqueuelen 100000
-        ip link set dev eth2 txqueuelen 100000
+        ip link set dev eth0 qlen 100000
+        ip link set dev eth1 qlen 100000
+        ip link set dev eth2 qlen 100000
 
         exec firezone-gateway
     init: true
@@ -286,7 +282,7 @@ services:
       service: router
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
-      NETWORK_LATENCY_MS: 10
+      NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
       gateway-internal:
         ipv4_address: 172.31.0.254
@@ -312,6 +308,8 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.1.254
         ip -6 route add 203:0:113::/64 via 172:29:1::254
 
+        # Our own packets cross the xdp_pass program on the host-side veth peer,
+        # which requires segmented frames with software-computed checksums.
         apk add --no-cache ethtool
         ethtool -K eth0 tx off
 
@@ -334,7 +332,7 @@ services:
         49152-65535 172.29.1.100 udp
         3478 172:29:1::100 udp
         49152-65535 172:29:1::100 udp
-      NETWORK_LATENCY_MS: 30
+      NETWORK_LATENCY_MS: "${RELAY_ROUTER_LATENCY_MS:-}"
     networks:
       relay-1-internal:
         ipv4_address: 172.29.1.254
@@ -362,6 +360,8 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.2.254
         ip -6 route add 203:0:113::/64 via 172:29:2::254
 
+        # Our own packets cross the xdp_pass program on the host-side veth peer,
+        # which requires segmented frames with software-computed checksums.
         apk add --no-cache ethtool
         ethtool -K eth0 tx off
 
@@ -384,7 +384,7 @@ services:
         49152-65535 172.29.2.100 udp
         3478 172:29:2::100 udp
         49152-65535 172:29:2::100 udp
-      NETWORK_LATENCY_MS: 30
+      NETWORK_LATENCY_MS: "${RELAY_ROUTER_LATENCY_MS:-}"
     networks:
       relay-2-internal:
         ipv4_address: 172.29.2.254
@@ -404,8 +404,10 @@ services:
   # that does XDP_PASS to the host side veth interface. The GRO method is not reliable and was shown to
   # only pass packets in large bursts every 15-20 seconds which breaks ICE setup, so we use the XDP method.
   #
-  # For correct behaviour, we also disable any kind of offloading for all veth and bridge devices.
-  # This forces the kernel to calculate all checksums in software.
+  # For correct behaviour, we also disable tx offload (checksumming and, by dependency, TSO/USO)
+  # on the relay-internal veth and bridge devices. This forces the kernel to segment packets and
+  # calculate their checksums in software before they reach the XDP programs. All other devices
+  # keep their default offloads so packets traverse the rest of the compose networks coalesced.
   network-config:
     image: ghcr.io/firezone/xdp-pass
     pid: host
@@ -418,25 +420,27 @@ services:
       - |
         set -e
 
-        VETHS=$$(ip -json link show type veth | jq -r '.[].ifname')
-
-        for dev in $$VETHS; do
-          echo "Attaching XDP to: $$dev"
-          ip link set dev $$dev xdpdrv off # Clear any existing XDP program.
-          ip link set dev $$dev xdpdrv obj /xdp/xdp_pass.o sec xdp
-
-          ethtool -K $$dev tx off # Disable offloading.
+        # The relays do XDP_TX on eth0, so the host-side veth peering each relay must
+        # run an XDP program to receive those frames and pass them up to the bridge.
+        # Those peers are exactly the veths enslaved to the relay-internal bridges
+        # (the only docker networks in 172.29.0.0/16). Scoping xdp_pass to them keeps
+        # it off the client<->gateway path, where attaching to every veth would cost
+        # ~18% of the forwarding softirq (veth_xdp_rcv). This service depends on both
+        # relays being healthy, so their veths already exist on those bridges.
+        #
+        # XDP sees raw frames, so packets crossing these devices must be segmented and
+        # carry software-computed checksums. Disabling tx offload on the relay-internal
+        # bridges and their veths forces both at this last hop into the relay.
+        for br in $$(ip -json link show type bridge | jq -r '.[].ifname'); do
+          ip -json addr show dev $$br | jq -e '.[].addr_info[]? | select((.local // "") | startswith("172.29."))' >/dev/null || continue
+          ethtool -K $$br tx off
+          for dev in $$(ip -json link show master $$br | jq -r '.[].ifname'); do
+            ethtool -K $$dev tx off
+            ip link set dev $$dev xdpdrv off 2>/dev/null || true
+            ip link set dev $$dev xdpdrv obj /xdp/xdp_pass.o sec xdp
+            echo "Disabled tx offload and attached xdp_pass to $$dev (relay-internal bridge $$br)"
+          done
         done
-
-        echo "Done configuring $$(echo "$$VETHS" | wc -w) veth interfaces"
-
-        BRIDGES=$$(ip -json link show type bridge | jq -r '.[].ifname')
-
-        for dev in $$BRIDGES; do
-          ethtool -K $$dev tx off # Disable offloading.
-        done
-
-        echo "Done configuring $$(echo "$$BRIDGES" | wc -w) bridge interfaces"
     depends_on:
       relay-1:
         condition: "service_healthy"
@@ -446,17 +450,12 @@ services:
         condition: "service_healthy"
       relay-2-router:
         condition: "service_healthy"
-      gateway-router:
-        condition: "service_healthy"
-      client-1-router:
-        condition: "service_healthy"
-      gateway:
-        condition: "service_healthy"
-      client-1:
-        condition: "service_healthy"
 
   otel:
     image: otel/opentelemetry-collector:latest
+    ports:
+      - 127.0.0.1:4317:4317 # OTLP gRPC receiver
+      - 127.0.0.1:4318:4318 # OTLP http receiver
     networks:
       app-internal:
 

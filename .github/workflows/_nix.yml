@@ -127,8 +127,14 @@ jobs:
           git checkout -b "$branch"
           git commit -am "fix(nix): bump gui-client pnpm-deps hash"
 
-          # The checkout persists the default GITHUB_TOKEN; push as the bot so
-          # the PR's checks run (a GITHUB_TOKEN push would not trigger them).
+          # The checkout persists the default (read-only) GITHUB_TOKEN as an
+          # http.extraheader, which git sends regardless of the remote URL's
+          # embedded credentials. Clear it so the bot token below is actually
+          # used, letting the PR's checks run (a GITHUB_TOKEN push would not
+          # trigger them). An empty value resets the extra headers to the
+          # empty list (see `git help config`), unlike `--unset-all`, which
+          # would fail if checkout didn't happen to set one.
+          git config --local http.https://github.com/.extraheader ""
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -u origin HEAD --force
 

@@ -42,6 +42,8 @@ pub(crate) const REQUIRED_MARKERS: &[&str] = &[
     "gateway.no_a_aaaa_records",
     "tunnel.graceful_shutdown",
     "snownet.closed_with_goodbye",
+    "snownet.iceless_path_agent",
+    "snownet.ice_agent",
     "client.device_access_authorized",
     "client.malicious_ignore_filter",
     "dns.device_fqdn_resolved",

@@ -88,7 +88,7 @@ pub(crate) fn malicious_behaviour() -> impl Strategy<Value = MaliciousBehaviour>
 /// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
 /// Via this site mapping, these resources are implicitly assigned to a gateway.
 pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
-    collection::btree_set(site(), 2..=4)
+    let portal = collection::btree_set(site(), 2..=4)
         .prop_flat_map(|sites| {
             let clients = collection::btree_set(client_id(), 2);
 
@@ -246,7 +246,11 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                     upstream_doh_servers,
                 )
             },
-        )
+        );
+
+    // ICE-less rollout is a portal-wide toggle: sample it once and apply it to
+    // every connection in this test case.
+    (portal, any::<bool>()).prop_map(|(portal, iceless)| portal.with_iceless(iceless))
 }
 
 /// Generates additional CIDR resources that overlap with the given existing ones.

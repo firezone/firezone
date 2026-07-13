@@ -1,18 +1,15 @@
-use telemetry::{TESTING, Telemetry};
+use telemetry::TESTING;
 
 #[tokio::test]
 async fn set_account_slug_before_set_firezone_id_preserves_both() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let mut telemetry = Telemetry::new(
-        std::sync::Arc::new(socket_factory::tcp),
-        std::sync::Arc::new(socket_factory::udp),
-    );
-    telemetry.start("entrypoint", "1.0.0", TESTING);
+    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+    telemetry::start("entrypoint", "1.0.0", TESTING);
 
-    Telemetry::set_account_slug("acme".to_owned());
-    Telemetry::set_firezone_id("device-xyz".to_owned()).await;
+    telemetry::set_account_slug("acme".to_owned());
+    telemetry::set_firezone_id("device-xyz".to_owned());
 
-    assert_eq!(Telemetry::current_user().as_deref(), Some("device-xyz"));
-    assert_eq!(Telemetry::current_account_slug().as_deref(), Some("acme"));
+    assert_eq!(telemetry::current_user().as_deref(), Some("device-xyz"));
+    assert_eq!(telemetry::current_account_slug().as_deref(), Some("acme"));
 }

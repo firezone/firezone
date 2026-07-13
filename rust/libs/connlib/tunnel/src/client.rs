@@ -260,9 +260,9 @@ impl ClientState {
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers. The tunnel IPv4 is
-    /// taken from the live connection state; static-pool resources are joined in
-    /// only to label which pool(s) each device belongs to.
+    /// Builds the list of currently-connected device peers. The name and tunnel
+    /// IPs are taken from the live connection state; static-pool resources are
+    /// joined in only to label which pool(s) each device belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
@@ -276,25 +276,16 @@ impl ClientState {
                     );
                     return None;
                 };
-                let tunneled_ipv4 = peer.tun_ipv4();
+                let tun_ipv4 = peer.tun_ipv4();
+                let tun_ipv6 = peer.tun_ipv6();
+                let name = peer.remote_name().to_owned();
 
-                let mut pool_names = Vec::new();
-                for pool in &pools {
-                    if let Some(device) = pool.devices.iter().find(|d| d.id == *client_id) {
-                        if device.ipv4.network_address() != tunneled_ipv4 {
-                            tracing::debug!(
-                                %client_id,
-                                pool = %pool.name,
-                                pool_ipv4 = %device.ipv4.network_address(),
-                                %tunneled_ipv4,
-                                "Pool-provided IPv4 disagrees with the connection's tunnel IPv4"
-                            );
-                        }
-                        pool_names.push(pool.name.clone());
-                    }
-                }
-
-                pool_names.sort();
+                let pool_names = pools
+                    .iter()
+                    .filter(|pool| pool.devices.iter().any(|d| d.id == *client_id))
+                    .map(|pool| pool.name.clone())
+                    .sorted()
+                    .collect_vec();
 
                 if pool_names.is_empty() {
                     tracing::debug!(
@@ -305,7 +296,9 @@ impl ClientState {
 
                 Some(ConnectedDeviceView {
                     id: *client_id,
-                    tunneled_ipv4,
+                    name,
+                    tun_ipv4,
+                    tun_ipv6,
                     pools: pool_names,
                 })
             })
@@ -323,15 +316,9 @@ impl ClientState {
     }
 
     fn resource_list_snapshot(&self) -> ResourceList {
-        let connected_devices = if feature_flags::show_connected_devices() {
-            self.connected_devices()
-        } else {
-            Vec::new()
-        };
-
         ResourceList {
             resources: self.resources(),
-            connected_devices,
+            connected_devices: self.connected_devices(),
         }
     }
 
@@ -985,6 +972,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        use_iceless: bool,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -1006,6 +994,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
+            use_iceless,
             now,
         ) {
             Ok(()) => {}
@@ -1087,6 +1076,8 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
+        use_iceless: bool,
+        client_name: String,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -1104,6 +1095,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
+            use_iceless,
             now,
         )?;
 
@@ -1114,7 +1106,14 @@ impl ClientState {
             (auth.resource_id, auth.filters, expires_at)
         });
 
-        let peer = self.clients.upsert(cid, || ClientOnClient::new(client_tun));
+        let peer = self
+            .clients
+            .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
+
+        if peer.remote_name() != client_name {
+            tracing::debug!(%cid, name = %client_name, "Updated client peer name");
+            peer.set_remote_name(client_name);
+        }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
@@ -2052,6 +2051,9 @@ impl ClientState {
                         self.resource_list.update(self.resource_list_snapshot());
                     }
                 }
+                snownet::Event::NoRelays => {
+                    self.buffered_events.push_back(ClientEvent::NoRelays);
+                }
             }
         }
 
@@ -2187,12 +2189,7 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(now); // Clear all network connections.
-        self.gateways.clear(); // Clear all state associated with Gateways.
-        self.clients.clear(); // Clear all state associated with Clients.
-        self.pending_packets.clear(); // Drop packets buffered for pending connections.
-
-        self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
+        self.node.reset(now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

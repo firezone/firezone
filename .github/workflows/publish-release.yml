@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -63,7 +63,7 @@ jobs:
           echo "major_minor_version=$MAJOR_MINOR_VERSION" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Pull and push
         run: |
           set -xe
@@ -362,4 +362,53 @@ jobs:
       contents: read
       id-token: write
     uses: ./.github/workflows/_apt.yml
+    secrets: inherit
+
+  # Only the GUI client ships as an `.rpm`, so unlike the `.deb` promotion this
+  # is not a matrix and the whole job is skipped for other releases (which also
+  # skips the dependent `regenerate-rpm-index`).
+  promote-rpm-packages:
+    if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-azure-cli
+
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
+      - name: Copy preview archive to import-stable
+        run: |
+          set -e
+
+          # Extract version from release name
+          version=${{ inputs.release_name || github.event.release.name }}
+          version=${version#gui-client-}
+
+          # Copy `.rpm`s to `import-stable`
+          az storage blob copy start-batch \
+            --destination-container rpm \
+            --source-container rpm \
+            --pattern "preview/firezone-client-gui-$version-*" \
+            --destination-path import-stable \
+            --auth-mode login \
+            --account-name firezoneartifacts
+
+  regenerate-rpm-index:
+    needs: promote-rpm-packages
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_rpm.yml
     secrets: inherit

@@ -18,10 +18,26 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tracing::{Level, Span, Subscriber};
 use tracing_subscriber::Layer;
+
+/// Minimum idle time on a client→gateway connection before we tolerate a single
+/// dropped packet caused by a WireGuard re-key.
+///
+/// This is a *threshold*, not the width of the dead window. A session is usable
+/// for `REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT` (170s); it then spends the
+/// remaining `KEEPALIVE_TIMEOUT` (10s) in a "dead window" where it is no longer
+/// usable but, while idle, is not re-keyed until it fully expires at
+/// `REJECT_AFTER_TIME` (180s). A packet sent in that ~10s dead window hits
+/// `NoCurrentSession` in the side-effect-free `encapsulate_data_at` path and is
+/// dropped without being re-queued; the connection re-keys ~1 RTT later, so only
+/// the triggering packet is lost. The dead window recurs every
+/// `REJECT_AFTER_TIME` while idle, so any packet sent at least one usable
+/// session lifetime (this threshold) after the previous one on the same
+/// connection may land in it. See #13957.
+const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
 /// Asserts the following properties for all ICMP handshakes:
 /// 1. An ICMP request on the client MUST result in an ICMP response using the same sequence, identifier and flipped src & dst IP.
@@ -232,13 +248,28 @@ fn assert_packets_properties<T, U>(
 
             let ref_client = ref_clients.get(cid).unwrap();
 
-            let Some((_, client_sent_request)) = all_sent_requests.get(&(*cid, (*t, *u))) else {
+            let Some((sent_at, client_sent_request)) = all_sent_requests.get(&(*cid, (*t, *u)))
+            else {
                 tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} request on client");
                 continue;
             };
             let Some(client_received_reply) =
                 all_received_replies_on_client.get(&(*cid, (*t, *u).reply_to()))
             else {
+                // A client→gateway connection that was idle long enough for its
+                // WireGuard session to enter the re-key dead window drops this
+                // one packet without a reply (see `MIN_IDLE_FOR_REKEY_DROP`). Tolerate
+                // it when the previous packet on this connection was sent at
+                // least `MIN_IDLE_FOR_REKEY_DROP` earlier.
+                if ref_client
+                    .last_packet_sent_to_gateway_before(*gateway, *sent_at)
+                    .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
+                {
+                    tracing::debug!(target: "assertions", %cid, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
+                    num_expected_handshakes -= 1;
+                    continue;
+                }
+
                 tracing::error!(target: "assertions", %cid, "❌ Missing {packet_protocol} reply on client");
                 continue;
             };

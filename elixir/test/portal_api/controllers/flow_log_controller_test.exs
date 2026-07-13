@@ -133,6 +133,35 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       assert %{"status" => 401} = json_response(conn, 401)
     end
+
+    test "returns 401 when the token says uploads are disabled", %{conn: conn, account: account} do
+      conn =
+        conn
+        |> authorize(account, %{"uploads_enabled" => false})
+        |> post_logs([build_record()])
+
+      assert %{
+               "status" => 401,
+               "detail" => "Flow log uploads are not enabled for this authorization"
+             } = json_response(conn, 401)
+
+      assert Repo.all(FlowLog) == []
+    end
+
+    test "returns 401 when the token has no uploads_enabled claim", %{
+      conn: conn,
+      account: account
+    } do
+      claims = Map.delete(flow_log_token_claims(), "uploads_enabled")
+      token = FlowLogToken.mint(account, claims, expires_at())
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> token)
+        |> post_logs([build_record()])
+
+      assert %{"status" => 401} = json_response(conn, 401)
+    end
   end
 
   describe "create/2 single policy authorization" do
@@ -168,7 +197,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize(account, %{"policy_authorization_id" => authz_id})
         |> post_logs([build_record(%{"policy_authorization_id" => authz_id})])
 
-      assert %{"data" => %{"status" => "accepted"}} = json_response(conn, 202)
+      assert %{"data" => %{"status" => "ok"}} = json_response(conn, 200)
 
       [log] = Repo.all(FlowLog)
       assert log.policy_authorization_id == authz_id
@@ -185,7 +214,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         |> authorize(account, %{"policy_authorization_id" => authz_id})
         |> post_logs([build_record()])
 
-      assert %{"data" => %{"status" => "accepted"}} = json_response(conn, 202)
+      assert %{"data" => %{"status" => "ok"}} = json_response(conn, 200)
 
       [log] = Repo.all(FlowLog)
       assert log.policy_authorization_id == authz_id
@@ -193,7 +222,7 @@ defmodule PortalAPI.FlowLogControllerTest do
   end
 
   describe "create/2 persistence" do
-    test "returns 202 and persists attribution from the token", %{conn: conn, account: account} do
+    test "returns 200 and persists attribution from the token", %{conn: conn, account: account} do
       device_id = Ecto.UUID.generate()
       resource_id = Ecto.UUID.generate()
       policy_id = Ecto.UUID.generate()
@@ -215,7 +244,7 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       conn = post_logs(conn, [build_record()])
 
-      assert %{"data" => %{"status" => "accepted"}} = json_response(conn, 202)
+      assert %{"data" => %{"status" => "ok"}} = json_response(conn, 200)
 
       [log] = Repo.all(FlowLog)
       assert log.account_id == account.id
@@ -239,8 +268,8 @@ defmodule PortalAPI.FlowLogControllerTest do
     } do
       conn = authorize(conn, account, %{"authorized_at" => "2026-03-20T09:59:00.123456Z"})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               post_logs(conn, [build_record()]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               post_logs(conn, [build_record()]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.authorized_at == ~U[2026-03-20 09:59:00.123456Z]
@@ -377,21 +406,23 @@ defmodule PortalAPI.FlowLogControllerTest do
 
       open = build_record(%{"flow_end" => nil, "tx_bytes" => 100})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               build_conn() |> authorize(account, claims) |> post_logs([open]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               build_conn() |> authorize(account, claims) |> post_logs([open]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert is_nil(log.flow_end)
       assert log.tx_bytes == 100
+      open_seq = log.seq
 
       close = build_record(%{"flow_end" => "2026-03-20T10:05:00.000000Z", "tx_bytes" => 999})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               build_conn() |> authorize(account, claims) |> post_logs([close]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               build_conn() |> authorize(account, claims) |> post_logs([close]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.flow_end == ~U[2026-03-20 10:05:00.000000Z]
       assert log.tx_bytes == 999
+      assert log.seq > open_seq
     end
 
     test "replaying a closed record is idempotent", %{conn: _conn, account: account} do
@@ -400,10 +431,12 @@ defmodule PortalAPI.FlowLogControllerTest do
       claims = %{"device_id" => device_id, "resource_id" => resource_id}
       record = build_record()
 
-      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(202)
-      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(202)
+      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
+      [%{seq: seq}] = Repo.all(FlowLog)
 
-      assert length(Repo.all(FlowLog)) == 1
+      assert build_conn() |> authorize(account, claims) |> post_logs([record]) |> json_response(200)
+
+      assert [%{seq: ^seq}] = Repo.all(FlowLog)
     end
 
     test "a late open does not wipe an existing close", %{conn: _conn, account: account} do
@@ -438,7 +471,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       # parallel flow, not a conflict.
       second = build_record(%{"inner_dst_port" => 8443})
 
-      assert build_conn() |> authorize(account, claims) |> post_logs([second]) |> json_response(202)
+      assert build_conn() |> authorize(account, claims) |> post_logs([second]) |> json_response(200)
 
       ports = Repo.all(FlowLog) |> Enum.map(& &1.inner_dst_port) |> Enum.sort()
       assert ports == [443, 8443]
@@ -453,7 +486,7 @@ defmodule PortalAPI.FlowLogControllerTest do
         build_record(%{"inner_dst_port" => 8443})
       ]
 
-      assert conn |> authorize(account) |> post_logs(records) |> json_response(202)
+      assert conn |> authorize(account) |> post_logs(records) |> json_response(200)
 
       ports = Repo.all(FlowLog) |> Enum.map(& &1.inner_dst_port) |> Enum.sort()
       assert ports == [443, 8443]
@@ -489,8 +522,8 @@ defmodule PortalAPI.FlowLogControllerTest do
           "flow_end" => "2026-03-20T10:00:00.000000Z"
         })
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               conn |> authorize(account) |> post_logs([record]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               conn |> authorize(account) |> post_logs([record]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.flow_start == ~U[2026-03-20 10:05:00.000000Z]
@@ -501,8 +534,8 @@ defmodule PortalAPI.FlowLogControllerTest do
       conn = authorize(conn, account, %{"authorized_at" => "2026-03-20T10:01:00.000000Z"})
       record = build_record(%{"flow_start" => "2026-03-20T10:00:00.000000Z"})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               post_logs(conn, [record]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               post_logs(conn, [record]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert log.flow_start == ~U[2026-03-20 10:00:00.000000Z]
@@ -530,8 +563,8 @@ defmodule PortalAPI.FlowLogControllerTest do
     } do
       conn = authorize(conn, account, %{"resource_address" => nil})
 
-      assert %{"data" => %{"status" => "accepted"}} =
-               post_logs(conn, [build_record()]) |> json_response(202)
+      assert %{"data" => %{"status" => "ok"}} =
+               post_logs(conn, [build_record()]) |> json_response(200)
 
       [log] = Repo.all(FlowLog)
       assert is_nil(log.resource_address)

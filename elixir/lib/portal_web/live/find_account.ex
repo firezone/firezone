@@ -90,7 +90,7 @@ defmodule PortalWeb.FindAccount do
       </div>
     </div>
 
-    <.form for={@form} phx-submit="submit_email" phx-change="validate_email">
+    <.form id="find-account-form" for={@form} phx-submit="submit_email" phx-change="validate_email">
       <label class="block text-xs font-semibold text-body mb-1.5">
         Work email
       </label>

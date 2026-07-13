@@ -422,7 +422,7 @@ defmodule PortalAPI.Client.Channel do
   # The target already resolved `use_iceless` (reading the flag once, with both
   # peers' capabilities), so we apply it as-is rather than reading the flag a
   # second time — a second read could race a mid-flow toggle and disagree.
-  def handle_info({:device_access_acked, ref, use_iceless}, socket) do
+  def handle_info({:device_access_acked, ref, use_iceless, client_name}, socket) do
     case Map.pop(socket.assigns.pending_flows, ref) do
       {nil, _} ->
         {:noreply, socket}
@@ -430,7 +430,10 @@ defmodule PortalAPI.Client.Channel do
       {%{timer_ref: timer_ref, initiator_payload: initiator_payload}, remaining} ->
         Process.cancel_timer(timer_ref)
 
-        initiator_payload = Map.put(initiator_payload, :use_iceless, use_iceless)
+        initiator_payload =
+          initiator_payload
+          |> Map.put(:use_iceless, use_iceless)
+          |> Map.put(:client_name, client_name)
 
         push(socket, "client_device_access_authorized", initiator_payload)
         {:noreply, assign(socket, :pending_flows, remaining)}
@@ -473,13 +476,11 @@ defmodule PortalAPI.Client.Channel do
     # overtake the authorization at the target's data plane. We send the
     # resolved `use_iceless` (not our capability) so the initiator applies the
     # same decision without reading the flag again.
-    send(ack_to, {:device_access_acked, ref, use_iceless})
-
-    cache = Cache.Client.track_authorized_device_ipv4(socket.assigns.cache, payload.client_ipv4)
+    send(ack_to, {:device_access_acked, ref, use_iceless, socket.assigns.client.name})
 
     socket =
       socket
-      |> assign(cache: cache, authorizations_cache: authorizations_cache)
+      |> assign(authorizations_cache: authorizations_cache)
       |> maybe_arm_authz_durability_timer(policy_authorization)
 
     {:noreply, socket}
@@ -1080,102 +1081,6 @@ defmodule PortalAPI.Client.Channel do
     end
   end
 
-  # !!! TODO: REMOVE BEFORE GA !!!
-  # PoC-only shim kept for a customer until their clients migrate to the
-  # `create_flow` path for static_device_pool resources. The handler enforces
-  # pool membership only — the target IPv4 must be a member of *some* static
-  # device pool the actor has connectable access to (via `cache.device_addresses`,
-  # which is populated only from policy-authorized pools). It does NOT create a
-  # `policy_authorization` row, so revocation/reauth/expiry are not tracked for
-  # flows authorized this way. Remove this handler before GA.
-  def handle_in("request_device_access", %{"ipv4" => ipv4_string}, socket) do
-    account_id = socket.assigns.client.account_id
-
-    with true <- client_to_client_enabled?(socket.assigns.subject.account),
-         {:ok, {:ipv4, ipv4_tuple} = target} <-
-           parse_target_address(%{"ipv4" => ipv4_string}),
-         :ok <- legacy_authorize_device_access(socket.assigns.cache, ipv4_tuple),
-         {:ok, target_client_id, target_meta} <-
-           find_online_client_by_address(account_id, target),
-         :ok <- check_peer_compatibility(target_meta, socket) do
-      # PoC shim: bypass the Queue entirely because we don't persist a
-      # `policy_authorization` row here. Deliver to the target first; the
-      # initiator is released only once the target's channel acks (same
-      # ordering guarantee as the `create_flow` pool path).
-      ref = make_ref()
-
-      {receiver_message, initiator_payload} =
-        build_client_device_access_authorized_messages(
-          target_client_id,
-          target_meta,
-          nil,
-          nil,
-          nil,
-          nil,
-          ref,
-          socket
-        )
-
-      case PG.deliver(target_client_id, receiver_message) do
-        :ok ->
-          timer_ref =
-            Process.send_after(self(), {:flow_creation_timeout, ref}, flow_creation_timeout())
-
-          pending =
-            Map.put(socket.assigns.pending_flows, ref, %{
-              timer_ref: timer_ref,
-              initiator_payload: initiator_payload,
-              deny_payload: %{client_id: target_client_id, ipv4: ipv4_string, reason: :offline}
-            })
-
-          {:noreply, assign(socket, :pending_flows, pending)}
-
-        {:error, :not_found} ->
-          push(socket, "client_device_access_denied", %{
-            client_id: target_client_id,
-            ipv4: ipv4_string,
-            reason: :offline
-          })
-
-          {:noreply, socket}
-      end
-    else
-      false ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: ipv4_string,
-          reason: :disabled
-        })
-
-        {:noreply, socket}
-
-      {:error, :version_mismatch} ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: ipv4_string,
-          reason: :version_mismatch
-        })
-
-        {:noreply, socket}
-
-      {:error, :invalid_address} ->
-        Logger.warning("Invalid IPv4 address provided for device access request",
-          client_id: socket.assigns.client.id,
-          account_id: socket.assigns.client.account_id,
-          account_slug: socket.assigns.subject.account.slug,
-          ipv4: ipv4_string
-        )
-
-        {:noreply, socket}
-
-      :offline ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :offline})
-        {:noreply, socket}
-
-      {:error, :forbidden} ->
-        push(socket, "client_device_access_denied", %{ipv4: ipv4_string, reason: :forbidden})
-        {:noreply, socket}
-    end
-  end
-
   # The client pushes it's ICE candidates list and the list of gateways that need to receive it
   def handle_in(
         "broadcast_ice_candidates",
@@ -1228,9 +1133,21 @@ defmodule PortalAPI.Client.Channel do
     {:noreply, socket}
   end
 
+  # Some clients send these sporadically by accident since any packet with a destination in
+  # 100.64.0.0/10 will trigger it in certain older clients. Message was introduced for the PoC
+  # of client-to-client, but was replaced with the standard "create_flow" message. We no-op it.
+  def handle_in("request_device_access", _payload, socket) do
+    {:noreply, socket}
+  end
+
   # Catch-all for unknown messages
   def handle_in(message, payload, socket) do
-    Logger.error("Unknown client message", message: message, payload: payload)
+    Logger.error("Unknown client message",
+      message: message,
+      payload: payload,
+      subject: Map.get(socket.assigns, :subject),
+      client: Map.get(socket.assigns, :client)
+    )
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
@@ -1254,18 +1171,6 @@ defmodule PortalAPI.Client.Channel do
     else
       {:error, :version_mismatch}
     end
-  end
-
-  # !!! TODO: REMOVE BEFORE GA — used only by the legacy `request_device_access` !!!
-  # The check is "the IPv4 belongs to *some* device in a connectable pool we have
-  # policy-authorized access to" — `cache.device_addresses` is only populated for
-  # static_device_pool members of pools that passed `recompute_connectable_resources`,
-  # so this is effectively a pool-membership-only authorization. Doesn't create a
-  # `policy_authorization`. Remove alongside the handler before GA.
-  defp legacy_authorize_device_access(cache, {_, _, _, _} = ipv4_tuple) do
-    if Enum.any?(cache.device_addresses, fn {_, {v4, _v6}} -> v4 == ipv4_tuple end),
-      do: :ok,
-      else: {:error, :forbidden}
   end
 
   defp parse_target_address(%{"ipv4" => ipv4, "ipv6" => ipv6})
@@ -1389,6 +1294,7 @@ defmodule PortalAPI.Client.Channel do
             {Ecto.UUID.load!(resource.id), resource.name, resource.address},
             policy_authorization_id,
             policy_id,
+            flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
             socket.assigns.client,
             gateway.id,
             expires_at
@@ -1644,7 +1550,7 @@ defmodule PortalAPI.Client.Channel do
     # `ref` correlates the target channel's ack back to this request. The
     # initiator is NOT released on `Queue.enqueue/3` returning `:ok` — it is
     # released only once the target's channel acks that it has pushed the
-    # authorization onto the target's websocket (`{:device_access_acked, ref, _}`).
+    # authorization onto the target's websocket (`{:device_access_acked, ref, _, _}`).
     # Until then the initiator must not start ICE, because its candidates
     # travel the same socket as the authorization and would otherwise race
     # ahead of it at the target's data plane.
@@ -1749,34 +1655,27 @@ defmodule PortalAPI.Client.Channel do
     # We render with the initiator's session here — for static_device_pool
     # resources the version-dependent codepaths in the resource view aren't
     # exercised (no site fields), so this is safe across version skew.
-    rendered_resource =
-      if resource, do: Views.Resource.render(resource, socket.assigns.session)
+    rendered_resource = Views.Resource.render(resource, socket.assigns.session)
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
-    # The legacy `request_device_access` shim calls this builder with no
-    # resource/expires_at (it has no policy authorization to anchor a token to),
-    # so there is nothing to mint. Once that shim is removed before GA, both are
-    # always present here and this guard can go.
     {initiator_token, responder_token} =
-      if resource && expires_at do
-        mint_ingest_tokens(
-          socket.assigns.subject,
-          {Ecto.UUID.load!(resource.id), resource.name, resource.address},
-          policy_authorization_id,
-          policy_id,
-          client,
-          target_client_id,
-          expires_at
-        )
-      else
-        {nil, nil}
-      end
+      mint_ingest_tokens(
+        socket.assigns.subject,
+        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+        policy_authorization_id,
+        policy_id,
+        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
+        client,
+        target_client_id,
+        expires_at
+      )
 
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
        %{
          client_id: client.id,
+         client_name: client.name,
          client_public_key: client_public_key,
          client_ipv4: client.ipv4,
          client_ipv6: client.ipv6,
@@ -1807,14 +1706,6 @@ defmodule PortalAPI.Client.Channel do
     {receiver_message, initiator_payload}
   end
 
-  # TODO: Re-enable after verifying compatibility with older clients
-  # defp render_ipv4s(ipv4s) do
-  #   ipv4s
-  #   |> Enum.map(&:inet.ntoa/1)
-  #   |> Enum.map(&to_string/1)
-  #   |> Enum.sort()
-  # end
-
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} = Presence.Relays.all_connected_relays(except_ids)
 
@@ -1835,12 +1726,9 @@ defmodule PortalAPI.Client.Channel do
 
   defp init(socket, resources, relays) do
     push(socket, "init", %{
-      flow_logs_api_url: flow_logs_api_url(),
-      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
+      flow_logs: flow_logs_config(),
       resources: Views.Resource.render_many(resources, socket.assigns.session),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
-      # TODO: Re-enable after verifying compatibility with older clients
-      # authorized_ipv4s: render_ipv4s(cache.authorized_device_ipv4s),
       relays:
         Views.Relay.render_many(
           relays,
@@ -1863,10 +1751,13 @@ defmodule PortalAPI.Client.Channel do
     track_presence(socket)
   end
 
-  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
-
-  defp flow_logs_upload_interval_secs,
-    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
+  defp flow_logs_config do
+    %{
+      api_url: Portal.Config.fetch_env!(:portal, :flow_logs_api_url),
+      upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
+      upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
+    }
+  end
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
     Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
@@ -2461,6 +2352,21 @@ defmodule PortalAPI.Client.Channel do
     }
   end
 
+  # Whether flow logs may be uploaded for a flow this policy authorizes: the
+  # global flow_logs feature flag must be on and the policy must not have opted
+  # out. Stamped into the ingest token so devices know whether to upload and
+  # the ingest endpoint can enforce it. A policy missing from the cache fails
+  # closed to false.
+  defp flow_log_uploads_enabled?(cache, policy_id) do
+    case Map.get(cache.policies, Ecto.UUID.dump!(policy_id)) do
+      %Cache.Cacheable.Policy{flow_log_uploads_enabled: true} ->
+        Database.flow_logs_feature_enabled?()
+
+      _ ->
+        false
+    end
+  end
+
   # Mints the pair of per-flow ingest tokens for an authorization: one for the
   # initiator (the client) and one for the responder (the gateway or receiving
   # client). Each token snapshots the attribution the corresponding device must
@@ -2471,6 +2377,7 @@ defmodule PortalAPI.Client.Channel do
          {resource_id, resource_name, resource_address},
          policy_authorization_id,
          policy_id,
+         flow_log_uploads_enabled,
          %Device{type: :client} = initiator_client,
          responder_device_id,
          expires_at
@@ -2483,6 +2390,12 @@ defmodule PortalAPI.Client.Channel do
       # endpoint rejects a request whose records mix more than one of these.
       "policy_authorization_id" => policy_authorization_id,
       "policy_id" => policy_id,
+      # Whether the authorizing policy allows this flow's logs to be uploaded
+      # (policies.flow_log_uploads_enabled AND the global flow_logs feature).
+      # Devices honor it and the ingest endpoint enforces it, so the token can
+      # always be minted while uploads stay policy-gated. The claim name is the
+      # data-plane contract: connlib parses it as a required field.
+      "uploads_enabled" => flow_log_uploads_enabled,
       "resource_id" => resource_id,
       "resource_name" => resource_name,
       "resource_address" => resource_address,
@@ -2608,7 +2521,13 @@ defmodule PortalAPI.Client.Channel do
         # Only enqueue + arm on the first successful registration; re-registrations
         # after a PG scope crash share the same channel and session row.
         if is_nil(current_pid) do
-          Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session))
+          Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session),
+            metadata: %{
+              subject: Authentication.Subject.to_map(socket.assigns.subject),
+              timestamp: DateTime.utc_now()
+            }
+          )
+
           {:noreply, arm_session_durability_timer(socket)}
         else
           {:noreply, socket}
@@ -2679,6 +2598,12 @@ defmodule PortalAPI.Client.Channel do
       account_feature_enabled? = account.features.client_to_client == true
 
       Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?() and account_feature_enabled?
+    end
+
+    def flow_logs_feature_enabled? do
+      query = from(f in Features, where: f.feature == :flow_logs and f.enabled == true)
+
+      Portal.Safe.unscoped(query, :replica) |> Portal.Safe.exists?()
     end
 
     def all_compatible_gateways_for_client_and_resource(

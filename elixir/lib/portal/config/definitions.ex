@@ -177,6 +177,13 @@ defmodule Portal.Config.Definitions do
   defconfig(:flow_logs_upload_interval_secs, :integer, default: 60)
 
   @doc """
+  Maximum number of flow log records clients and gateways send per upload request.
+
+  Capped at 10,000 (the ingest API's per-request limit) by the data plane.
+  """
+  defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
+
+  @doc """
   The base URL clients and gateways POST flow logs to.
   """
   defconfig(:flow_logs_api_url, :string,
@@ -356,6 +363,21 @@ defmodule Portal.Config.Definitions do
   Password that will be used to access the PostgreSQL database.
   """
   defconfig(:database_password, :string, default: nil, sensitive: true)
+
+  @doc """
+  Authenticate database connections using Microsoft Entra instead of a password.
+
+  When enabled, DATABASE_PASSWORD is ignored and every connection attempt uses
+  a Microsoft Entra access token fetched from the Azure Instance Metadata
+  Service for the managed identity selected by AZURE_CLIENT_ID.
+  """
+  defconfig(:database_entra_auth, :boolean, default: false)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity used to fetch Microsoft
+  Entra access tokens when DATABASE_ENTRA_AUTH is enabled.
+  """
+  defconfig(:azure_client_id, :string, default: nil)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.

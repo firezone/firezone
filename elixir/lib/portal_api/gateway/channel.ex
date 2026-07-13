@@ -732,8 +732,7 @@ defmodule PortalAPI.Gateway.Channel do
 
   defp init(socket, account, relays) do
     push(socket, "init", %{
-      flow_logs_api_url: flow_logs_api_url(),
-      flow_logs_upload_interval_secs: flow_logs_upload_interval_secs(),
+      flow_logs: flow_logs_config(),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -751,10 +750,13 @@ defmodule PortalAPI.Gateway.Channel do
     })
   end
 
-  defp flow_logs_api_url, do: Portal.Config.fetch_env!(:portal, :flow_logs_api_url)
-
-  defp flow_logs_upload_interval_secs,
-    do: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs)
+  defp flow_logs_config do
+    %{
+      api_url: Portal.Config.fetch_env!(:portal, :flow_logs_api_url),
+      upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
+      upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
+    }
+  end
 
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
@@ -1060,7 +1062,10 @@ defmodule PortalAPI.Gateway.Channel do
         # Only enqueue + arm on the first successful registration; re-registrations
         # after a PG scope crash share the same channel and session row.
         if is_nil(current_pid) do
-          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session))
+          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session),
+            metadata: %{timestamp: DateTime.utc_now()}
+          )
+
           {:noreply, arm_session_durability_timer(socket)}
         else
           {:noreply, socket}

@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{Buffer, BufferPool, VecBuf};
 use bytes::{Buf as _, BytesMut};
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
@@ -200,8 +200,8 @@ pub struct PerfUdpSocket {
     /// The socket(s) we send and receive on; see [`SocketPool`].
     pool: SocketPool,
 
-    /// A buffer pool for batches of incoming UDP packets.
-    buffer_pool: BufferPool<Vec<u8>>,
+    /// The pools backing batched receives; see [`RecvBuffers`].
+    recv_buffers: RecvBuffers,
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
@@ -246,7 +246,7 @@ impl UdpSocket {
 
         Ok(PerfUdpSocket {
             pool: SocketPool::new(wildcard),
-            buffer_pool: BufferPool::new(
+            recv_buffers: RecvBuffers::new(
                 recv_buf_size,
                 match socket_addr.ip() {
                     IpAddr::V4(_) => "udp-socket-v4",
@@ -322,21 +322,16 @@ impl PerfUdpSocket {
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
     fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramSegmentIter> {
-        // Stack-allocate arrays for buffers and meta. The size is implied from the const-generic default on `DatagramSegmentIter`.
-        let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull());
-        let mut meta = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
+        let mut batch = self.recv_buffers.pull_batch();
 
         let len = socket.inner.try_io(Interest::READABLE, || {
             // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
             // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
             #[cfg_attr(not(apple), allow(clippy::never_loop))]
             loop {
-                // Fancy std-functions ahead: `each_mut` transforms our array into an array of references to our items and `map` allows us to create an `IoSliceMut` out of each element.
-                // `state.recv` requires us to pass `IoSliceMut` but later on, we need the original buffer again because `DatagramSegmentIter` needs to own them.
-                // That is why we cannot just create an `IoSliceMut` to begin with.
-                let mut io_bufs = bufs.each_mut().map(|b| IoSliceMut::new(b));
+                let (mut io_bufs, metas) = batch.recv_slices();
 
-                match socket.recv(&mut io_bufs, &mut meta) {
+                match socket.recv(&mut io_bufs, metas) {
                     // Connected sockets surface (one-shot) ICMP errors on receive; they are not fatal.
                     #[cfg(apple)]
                     Err(e) if socket.connected && is_icmp_unreachable(&e) => {
@@ -356,7 +351,12 @@ impl PerfUdpSocket {
             ],
         );
 
-        Ok(DatagramSegmentIter::new(bufs, meta, self.port, len))
+        Ok(DatagramSegmentIter::new(
+            batch.buffers,
+            batch.metas,
+            self.port,
+            len,
+        ))
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
@@ -370,7 +370,7 @@ impl PerfUdpSocket {
 
         let pooled = self
             .pool
-            .get_send_socket(transmit.src_ip, datagram.dst, &self.buffer_pool);
+            .get_send_socket(transmit.src_ip, datagram.dst, &self.recv_buffers);
 
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
@@ -764,9 +764,70 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
-/// An iterator that segments an array of buffers into individual datagrams.
+/// The pools backing a batched receive: scratch space for the datagrams themselves
+/// plus containers for the buffers and metas that make up one batch.
 ///
-/// This iterator is generic over its buffer type and the number of buffers to allow easier testing without a buffer pool.
+/// The buffers and metas live in pooled, heap-allocated `Vec`s rather than inline in
+/// [`DatagramSegmentIter`]: the iterator is sent over a channel and inline storage
+/// would make every channel slot (and thus tokio's block allocations) carry the full
+/// batch size.
+pub(crate) struct RecvBuffers {
+    bytes: BufferPool<Vec<u8>>,
+    buffers: BufferPool<VecBuf<Buffer<Vec<u8>>>>,
+    metas: BufferPool<VecBuf<quinn_udp::RecvMeta>>,
+}
+
+/// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
+pub(crate) struct RecvBatch {
+    buffers: Buffer<VecBuf<Buffer<Vec<u8>>>>,
+    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+}
+
+impl RecvBatch {
+    /// The batch's datagram buffers as scatter slices, paired with the meta array the
+    /// kernel fills in — the two arguments a `recvmmsg`-style read expects. Borrows the
+    /// batch for the duration of the read; afterwards the buffers are handed to a
+    /// [`DatagramSegmentIter`].
+    fn recv_slices(
+        &mut self,
+    ) -> (
+        SmallVec<[IoSliceMut<'_>; quinn_udp::BATCH_SIZE]>,
+        &mut [quinn_udp::RecvMeta],
+    ) {
+        let io_bufs = self
+            .buffers
+            .iter_mut()
+            .map(|b| IoSliceMut::new(b))
+            .collect();
+
+        (io_bufs, &mut self.metas)
+    }
+}
+
+impl RecvBuffers {
+    fn new(recv_buf_size: usize, tag: &'static str) -> Self {
+        Self {
+            bytes: BufferPool::new(recv_buf_size, tag),
+            buffers: BufferPool::new(quinn_udp::BATCH_SIZE, "udp-recv-buffers"),
+            metas: BufferPool::new(quinn_udp::BATCH_SIZE, "udp-recv-metas"),
+        }
+    }
+
+    /// Pulls the storage for one receive batch, sized and ready for a `recv` call.
+    pub(crate) fn pull_batch(&self) -> RecvBatch {
+        let mut buffers = self.buffers.pull();
+        let mut metas = self.metas.pull();
+
+        buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(quinn_udp::BATCH_SIZE));
+        metas.resize(quinn_udp::BATCH_SIZE, quinn_udp::RecvMeta::default());
+
+        RecvBatch { buffers, metas }
+    }
+}
+
+/// An iterator that segments a batch of buffers into individual datagrams.
+///
+/// This iterator is generic over its buffer type to allow easier testing without a buffer pool.
 ///
 /// This implementation might look like dark arts but it is actually quite simple.
 /// Its design is driven by two main ideas:
@@ -781,10 +842,11 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 /// When [`quinn_udp`] returns us the buffers, it will have populated the [`quinn_udp::RecvMeta`]s accordingly.
 /// Thus, our main job within this iterator is to loop over the `buffers` and `meta` pair-wise, inspect the `meta` and segment the data within the buffer accordingly.
 #[derive(derive_more::Debug)]
-pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = Buffer<Vec<u8>>> {
+pub struct DatagramSegmentIter<B = Buffer<Vec<u8>>> {
     #[debug(skip)]
-    buffers: SmallVec<[B; N]>,
-    metas: SmallVec<[quinn_udp::RecvMeta; N]>,
+    buffers: Buffer<VecBuf<B>>,
+    #[debug(skip)]
+    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
 
     port: u16,
 
@@ -795,16 +857,13 @@ pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = B
     _num_packets: usize,
 }
 
-impl<B, const N: usize> DatagramSegmentIter<N, B> {
+impl<B> DatagramSegmentIter<B> {
     pub(crate) fn new(
-        buffers: [B; N],
-        metas: [quinn_udp::RecvMeta; N],
+        mut buffers: Buffer<VecBuf<B>>,
+        mut metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
         port: u16,
         len: usize,
     ) -> Self {
-        let mut buffers = SmallVec::from_buf(buffers);
-        let mut metas = SmallVec::from_buf(metas);
-
         // Drop the unused buffers / metas.
         buffers.truncate(len);
         metas.truncate(len);
@@ -833,7 +892,7 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
     }
 }
 
-impl<B, const N: usize> LendingIterator for DatagramSegmentIter<N, B>
+impl<B> LendingIterator for DatagramSegmentIter<B>
 where
     B: Deref<Target = Vec<u8>> + 'static,
 {
@@ -918,32 +977,52 @@ mod tests {
     #[derive(derive_more::Deref)]
     struct DummyBuffer(Vec<u8>);
 
+    impl Clone for DummyBuffer {
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    /// The iterator is the item of the channel to the main thread; keeping it small is
+    /// the whole point of storing the batch in pooled `Vec`s rather than inline. tokio
+    /// allocates channel slots in blocks, so a large item would cross musl's mmap
+    /// threshold and thrash the allocator (see the pooling that produced this type).
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn iter_is_a_small_channel_item() {
+        assert_eq!(size_of::<DatagramSegmentIter>(), 104);
+    }
+
     #[test]
     fn datagram_iter_segments_buffer_correctly() {
-        let mut iter = DatagramSegmentIter::new(
-            [
-                DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
-                DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
-                DummyBuffer(b"".to_vec()),
-            ],
-            [
-                recv_meta(
-                    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    38,
-                    7,
-                ),
-                recv_meta(
-                    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    23,
-                    4,
-                ),
-                quinn_udp::RecvMeta::default(),
-            ],
-            0,
-            3,
-        );
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(3, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(3, "test");
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([
+            DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
+            DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
+            DummyBuffer(b"".to_vec()),
+        ]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                38,
+                7,
+            ),
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                23,
+                4,
+            ),
+            quinn_udp::RecvMeta::default(),
+        ]);
+
+        let mut iter = DatagramSegmentIter::new(buffers, metas, 0, 3);
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
         assert_eq!(iter.next().unwrap().packet, b"foobar2");

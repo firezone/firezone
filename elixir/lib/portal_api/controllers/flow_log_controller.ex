@@ -19,15 +19,15 @@ defmodule PortalAPI.FlowLogController do
   import Ecto.Changeset
   alias Portal.FlowLog
   alias Portal.FlowLogToken
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
   alias __MODULE__.Database
 
-  # Schema fields we cast/persist. `event_id` is server-assigned per record (a
-  # fresh flow_log event_id is minted here, not trusted from the body); on a
-  # slot conflict the existing row keeps its own event_id. Attribution fields
+  # Schema fields we cast/persist. `log_id` is server-assigned per record (a
+  # fresh flow_log log_id is minted here, not trusted from the body); on a
+  # slot conflict the existing row keeps its own log_id. Attribution fields
   # come from the token; the rest are reported in the body.
-  @cast_fields ~w[account_id event_id device_id role policy_authorization_id policy_id
+  @cast_fields ~w[account_id log_id device_id role policy_authorization_id policy_id
                   auth_provider_id resource_id
                   resource_name resource_address actor_id actor_email actor_name authorized_at
                   authorization_expires_at
@@ -47,6 +47,7 @@ defmodule PortalAPI.FlowLogController do
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
     with {:ok, claims} <- authenticate(conn),
+         :ok <- ensure_uploads_enabled(claims),
          :ok <- ensure_single_authorization(records, claims) do
       now = DateTime.utc_now()
 
@@ -63,9 +64,9 @@ defmodule PortalAPI.FlowLogController do
 
       if errors == [] do
         conn
-        |> put_status(202)
+        |> put_status(200)
         |> put_view(json: PortalAPI.FlowLogJSON)
-        |> render(:accepted)
+        |> render(:ok)
       else
         ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
           validation_errors: render_validation_errors(Enum.reverse(errors))
@@ -74,6 +75,13 @@ defmodule PortalAPI.FlowLogController do
     else
       {:error, :unauthenticated} ->
         ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
+
+      {:error, :uploads_disabled} ->
+        ProblemDetails.send(
+          conn,
+          401,
+          "Flow log uploads are not enabled for this authorization"
+        )
 
       {:error, :multiple_authorizations} ->
         ProblemDetails.send(
@@ -99,6 +107,13 @@ defmodule PortalAPI.FlowLogController do
       _ -> {:error, :unauthenticated}
     end
   end
+
+  # Tokens are minted for every authorization so devices always receive their
+  # attribution, but the `uploads_enabled` claim carries the policy's opt-in.
+  # Devices honor it client-side; this is the server-side backstop. A token
+  # without the claim fails closed.
+  defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok
+  defp ensure_uploads_enabled(_claims), do: {:error, :uploads_disabled}
 
   # The token names exactly one policy authorization; a record that declares a
   # different one means the reporter mixed authorizations into one request, which
@@ -171,7 +186,7 @@ defmodule PortalAPI.FlowLogController do
   end
 
   # The only fields a reporter may supply: the network tuples, flow window, and
-  # counters. Everything else (attribution, event_id, inserted_at) is set from
+  # counters. Everything else (attribution, log_id, inserted_at) is set from
   # the verified token or the server below.
   @body_fields ~w[protocol inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
                   outer_src_ip outer_dst_ip outer_src_port outer_dst_port
@@ -181,13 +196,13 @@ defmodule PortalAPI.FlowLogController do
   # fields, flow window, and counters come from the body. Taking the body fields
   # as an explicit whitelist means a record can never supply its own attribution
   # (account, device, role, policy, resource, actor) or the server-assigned
-  # event_id, regardless of what keys it sends.
+  # log_id, regardless of what keys it sends.
   defp to_attrs(record, claims, now) do
     record
     |> Map.take(@body_fields)
     |> Map.merge(%{
       "account_id" => claims["account_id"],
-      "event_id" => EventId.build_flow_log(),
+      "log_id" => LogId.build_flow_log(),
       "device_id" => claims["device_id"],
       "role" => claims["role"],
       "policy_authorization_id" => claims["policy_authorization_id"],
@@ -248,9 +263,12 @@ defmodule PortalAPI.FlowLogController do
     # The attribution snapshot, both tunnel tuples, and domain are stable for the
     # life of a flow and are only ever set on insert.
     defp on_conflict_query do
+      # The close takes a fresh seq so cursor-based consumers that already
+      # delivered the open row see it again and deliver the close.
       from(f in FlowLog,
         update: [
           set: [
+            seq: fragment("nextval('flow_logs_seq_seq')"),
             flow_end: fragment("EXCLUDED.flow_end"),
             last_packet: fragment("EXCLUDED.last_packet"),
             rx_packets: fragment("EXCLUDED.rx_packets"),

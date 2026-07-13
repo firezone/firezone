@@ -16,7 +16,7 @@ use dns_types::DomainName;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
-use io::{Buffers, Io};
+use io::Io;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -110,7 +110,6 @@ pub struct Tunnel<TRoleState> {
     ///
     /// Handles all side-effects.
     io: Io,
-    buffers: Buffers,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
 }
@@ -151,7 +150,6 @@ impl ClientTunnel {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
             ),
-            buffers: Buffers::default(),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -220,9 +218,11 @@ impl ClientTunnel {
 
             // Drain all buffered IP packets.
             while let Some(packet) = self.role_state.poll_packets() {
-                self.io.send_tun(packet);
+                self.io.queue_tun(packet);
                 tick.want_continue();
             }
+
+            self.io.flush_tun_batch();
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -247,7 +247,7 @@ impl ClientTunnel {
                 device,
                 network,
                 mut error,
-            }) = self.io.poll(cx, &mut self.buffers)
+            }) = self.io.poll(cx)
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
@@ -261,8 +261,8 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(packets) = device {
-                    for packet in packets {
+                if let Some(mut packets) = device {
+                    for packet in packets.drain() {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -308,11 +308,13 @@ impl ClientTunnel {
                             }) {
                             Ok(Some(packet)) => self
                                 .io
-                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };
                     }
+
+                    self.io.flush_tun_batch();
 
                     tick.want_continue();
                 }
@@ -337,19 +339,16 @@ impl GatewayTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
-        flow_logs: bool,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(
-                flow_logs,
                 rand::random(),
                 Instant::now(),
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
             ),
-            buffers: Buffers::default(),
             packet_counter: otel_instruments::network_packets(),
         }
     }
@@ -412,7 +411,7 @@ impl GatewayTunnel {
                 device,
                 network,
                 mut error,
-            }) = self.io.poll(cx, &mut self.buffers)
+            }) = self.io.poll(cx)
             {
                 if let Some(response) = dns_response {
                     let message = response.message.unwrap_or_else(|e| {
@@ -450,8 +449,8 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(packets) = device {
-                    for packet in packets {
+                if let Some(mut packets) = device {
+                    for packet in packets.drain() {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -510,11 +509,13 @@ impl GatewayTunnel {
                             }) {
                             Ok(Some(packet)) => self
                                 .io
-                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
                             Ok(None) => self.io.schedule_timeout(now),
                             Err(e) => error.push(e),
                         };
                     }
+
+                    self.io.flush_tun_batch();
 
                     tick.want_continue();
                 }
@@ -616,6 +617,8 @@ pub enum ClientEvent {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
+    /// We ran out of relays and need a new set from the portal.
+    NoRelays,
     Error(TunnelError),
 }
 
@@ -661,6 +664,8 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
+    /// We ran out of relays and need a new set from the portal.
+    NoRelays,
     Error(TunnelError),
 }
 

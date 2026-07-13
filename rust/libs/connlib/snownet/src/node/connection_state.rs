@@ -5,11 +5,10 @@ use std::{
 };
 
 use ip_packet::IpPacket;
-use is::IceAgent;
-use is::IceConnectionState;
 use ringbuffer::AllocRingBuffer;
 
 use crate::IceConfig;
+use crate::agent::Agent;
 
 #[derive(Debug)]
 pub(crate) enum ConnectionState {
@@ -38,8 +37,8 @@ pub(crate) enum ConnectionState {
 }
 
 impl ConnectionState {
-    pub(crate) fn poll_timeout(&self, agent: &IceAgent) -> Option<(Instant, &'static str)> {
-        if agent.state() != IceConnectionState::Connected {
+    pub(crate) fn poll_timeout(&self, agent: &Agent) -> Option<(Instant, &'static str)> {
+        if !agent.is_negotiation_complete() {
             return None;
         }
 
@@ -55,7 +54,7 @@ impl ConnectionState {
 
     pub(crate) fn handle_timeout(
         &mut self,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         idle_ice_config: IceConfig,
         now: Instant,
     ) {
@@ -71,7 +70,7 @@ impl ConnectionState {
             return;
         }
 
-        if agent.state() != IceConnectionState::Connected {
+        if !agent.is_negotiation_complete() {
             return;
         }
 
@@ -83,7 +82,7 @@ impl ConnectionState {
     pub(crate) fn on_upsert<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         now: Instant,
     ) where
@@ -104,7 +103,7 @@ impl ConnectionState {
     pub(crate) fn on_candidate<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         now: Instant,
     ) where
@@ -132,7 +131,7 @@ impl ConnectionState {
     pub(crate) fn on_outgoing<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         packet: &IpPacket,
         now: Instant,
@@ -161,7 +160,7 @@ impl ConnectionState {
     pub(crate) fn on_incoming<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         packet: &IpPacket,
         now: Instant,
@@ -190,19 +189,19 @@ impl ConnectionState {
     fn transition_to_idle(
         &mut self,
         peer_socket: PeerSocket,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         idle_ice_config: IceConfig,
     ) {
         tracing::debug!("Connection is idle");
         *self = Self::Idle { peer_socket };
-        idle_ice_config.apply(agent);
+        agent.apply_ice_config(idle_ice_config);
     }
 
     fn transition_to_connected<TId>(
         &mut self,
         cid: TId,
         peer_socket: PeerSocket,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         trigger: impl tracing::Value,
         now: Instant,
@@ -214,7 +213,7 @@ impl ConnectionState {
             peer_socket,
             last_activity: now,
         };
-        default_ice_config.apply(agent);
+        agent.apply_ice_config(default_ice_config);
     }
 
     pub(crate) fn has_nominated_socket(&self) -> bool {

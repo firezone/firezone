@@ -12,6 +12,7 @@ pub mod client;
 pub mod gateway;
 mod key;
 
+pub use flow_tracker::IngestToken;
 pub use key::{Key, SecretKey};
 
 /// Represents a wireguard peer.
@@ -85,6 +86,28 @@ impl From<IceRole> for snownet::IceRole {
             IceRole::Controlled => snownet::IceRole::Controlled,
         }
     }
+}
+
+/// Capabilities of a snownet implementation.
+///
+/// Reported by clients and gateways to the portal on connect. The portal
+/// intersects capabilities across both sides of each connection and re-emits
+/// the negotiated set with each `authorize_flow` / `flow_created` /
+/// `client_device_access_authorized` message.
+///
+/// New fields must always be added with a `false`-equivalent default so older
+/// peers that don't send them deserialize as "feature not supported", and
+/// existing fields must never be repurposed.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SnownetCapabilities {
+    /// The implementation can negotiate connections without ICE.
+    pub iceless: bool,
+}
+
+impl SnownetCapabilities {
+    /// Capabilities of the local snownet implementation, hard-coded at compile time.
+    pub const LOCAL: Self = Self { iceless: true };
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -180,6 +203,27 @@ pub struct UpstreamDo53 {
     pub ip: IpAddr,
 }
 
+/// Flow-log upload configuration the portal always sends as part of `init`.
+///
+/// [`IngestToken`]s arrive with every authorization regardless; whether an
+/// authorization's flow logs are spooled for upload is decided per token by
+/// its `uploads_enabled` claim.
+#[derive(Debug, Deserialize, Clone)]
+pub struct FlowLogsConfig {
+    /// Base URL flow logs are POSTed to.
+    pub api_url: String,
+    /// How often, in seconds, to upload batched flow logs. `0` disables uploads.
+    pub upload_interval_secs: u64,
+    /// Maximum flow-log records per upload request. `0` uses the default.
+    pub upload_batch_size: u64,
+}
+
+impl FlowLogsConfig {
+    pub fn upload_enabled(&self) -> bool {
+        self.upload_interval_secs > 0
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UpstreamDoH {
     pub url: DoHUrl,
@@ -255,4 +299,42 @@ fn min_port() -> u16 {
 
 fn max_port() -> u16 {
     u16::MAX
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flow_logs_config_ignores_unknown_fields() {
+        let json = r#"{ "api_url": "https://api.firezone.dev", "upload_interval_secs": 60, "upload_batch_size": 1000, "future_field": true }"#;
+        let config: FlowLogsConfig = serde_json::from_str(json).unwrap();
+
+        assert!(config.upload_enabled());
+    }
+
+    #[test]
+    fn snownet_capabilities_default_is_all_false() {
+        assert_eq!(
+            SnownetCapabilities::default(),
+            SnownetCapabilities { iceless: false }
+        );
+    }
+
+    // Compile-time guard so future edits to `LOCAL` don't accidentally turn
+    // off iceless support without us noticing.
+    const _: () = assert!(SnownetCapabilities::LOCAL.iceless);
+
+    #[test]
+    fn snownet_capabilities_deserialize_empty_object_is_default() {
+        let caps: SnownetCapabilities = serde_json::from_str("{}").unwrap();
+        assert_eq!(caps, SnownetCapabilities::default());
+    }
+
+    #[test]
+    fn snownet_capabilities_ignores_unknown_fields() {
+        let json = r#"{ "iceless": true, "future_feature": true }"#;
+        let caps: SnownetCapabilities = serde_json::from_str(json).unwrap();
+        assert!(caps.iceless);
+    }
 }

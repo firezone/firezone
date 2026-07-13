@@ -16,9 +16,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   setup do
-    # Clear the OpenIDConnect document cache to ensure fresh state for each test
-    OpenIDConnect.Document.Cache.clear()
-
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
 
@@ -2279,7 +2276,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
   describe "start_verification error handling" do
     test "handles connection refused error", %{account: account, actor: actor, conn: conn} do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_connection_refused()
 
       {:ok, lv, _html} =
@@ -2307,7 +2303,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
 
     test "handles HTTP 404 error", %{account: account, actor: actor, conn: conn} do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(404, "Not Found")
 
       {:ok, lv, _html} =
@@ -2333,7 +2328,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
 
     test "handles HTTP 500 error", %{account: account, actor: actor, conn: conn} do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(500, "Internal Server Error")
 
       {:ok, lv, _html} =
@@ -2363,7 +2357,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_invalid_json()
 
       {:ok, lv, _html} =
@@ -3457,7 +3450,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(418, JSON.encode!(%{"error" => "teapot"}))
 
       {:ok, lv, _html} =
@@ -3487,7 +3479,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_invalid_json("{")
 
       {:ok, lv, _html} =
@@ -3517,7 +3508,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_connection_refused()
 
       {:ok, lv, _html} =
@@ -3549,7 +3539,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_dns_error()
 
       {:ok, lv, _html} =
@@ -3581,7 +3570,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(418, "I'm a teapot")
 
       {:ok, lv, _html} =
@@ -3773,7 +3761,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_invalid_json("{")
 
       {:ok, lv, _html} =
@@ -3803,7 +3790,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_invalid_json(<<255, 254, 253>>)
 
       {:ok, lv, _html} =
@@ -3833,7 +3819,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_discovery_error(401, "Unauthorized")
 
       {:ok, lv, _html} =
@@ -3863,7 +3848,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      OpenIDConnect.Document.Cache.clear()
       Mocks.OIDC.stub_dns_error()
 
       {:ok, lv, _html} =

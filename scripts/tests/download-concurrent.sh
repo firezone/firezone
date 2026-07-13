@@ -31,7 +31,7 @@ for i in "${!domains[@]}"; do
 
     found=""
     for flow in "${flows[@]}"; do
-        if [ "$(get_flow_field "$flow" "inner_domain")" == "$domain" ]; then
+        if [ "$(get_flow_field "$flow" "domain")" == "$domain" ]; then
             found="$flow"
             break
         fi

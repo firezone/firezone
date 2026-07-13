@@ -330,15 +330,11 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     menu
 }
 
-fn device_label(device: &ConnectedDeviceView) -> String {
-    device.tunneled_ipv4.to_string()
-}
-
 fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
     let mut menu = Menu::default();
     let visible = connected_devices.len().min(MAX_DEVICES_INLINE);
     for device in &connected_devices[..visible] {
-        menu = menu.add_submenu(device_label(device), device_submenu(device));
+        menu = menu.add_submenu(device.name.clone(), device_submenu(device));
     }
 
     let hidden = connected_devices.len() - visible;
@@ -358,11 +354,13 @@ fn device_submenu(device: &ConnectedDeviceView) -> Menu {
 
     menu = menu
         .separator()
-        .disabled("Tunnel IPv4")
-        .copyable(&device.tunneled_ipv4.to_string())
+        .disabled("Tunnel IPs")
+        .copyable(&device.tun_ipv4.to_string())
+        .copyable(&device.tun_ipv6.to_string())
         .separator()
-        .disabled("Client ID")
-        .copyable(&device.id.to_string());
+        .disabled("Client Details")
+        .copyable(&device.id.to_string())
+        .copyable(&device.name);
 
     if !device.pools.is_empty() {
         let label = if device.pools.len() == 1 {
@@ -874,20 +872,26 @@ mod tests {
     #[test]
     fn devices_submenu_lists_connected_devices_with_pool_labels() {
         use connlib_model::ClientId;
-        use std::net::Ipv4Addr;
+        use std::net::{Ipv4Addr, Ipv6Addr};
         let alpha = ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111);
         let beta = ClientId::from_u128(0x2222_2222_2222_2222_2222_2222_2222_2222);
         let alpha_ip = Ipv4Addr::new(100, 64, 0, 1);
+        let alpha_ipv6 = Ipv6Addr::LOCALHOST;
         let beta_ip = Ipv4Addr::new(100, 64, 0, 2);
+        let beta_ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2]);
         let connected_devices = vec![
             ConnectedDeviceView {
                 id: alpha,
-                tunneled_ipv4: alpha_ip,
+                name: "Alpha".into(),
+                tun_ipv4: alpha_ip,
+                tun_ipv6: alpha_ipv6,
                 pools: vec!["Engineering Pool".into()],
             },
             ConnectedDeviceView {
                 id: beta,
-                tunneled_ipv4: beta_ip,
+                name: "Beta".into(),
+                tun_ipv4: beta_ip,
+                tun_ipv6: beta_ipv6,
                 pools: vec!["Engineering Pool".into(), "QA Pool".into()],
             },
         ];
@@ -896,29 +900,33 @@ mod tests {
 
         let expected = Menu::default()
             .add_submenu(
-                alpha_ip.to_string(),
+                "Alpha",
                 Menu::default()
                     .disabled("Device")
                     .separator()
-                    .disabled("Tunnel IPv4")
+                    .disabled("Tunnel IPs")
                     .copyable(&alpha_ip.to_string())
+                    .copyable(&alpha_ipv6.to_string())
                     .separator()
-                    .disabled("Client ID")
+                    .disabled("Client Details")
                     .copyable(&alpha.to_string())
+                    .copyable("Alpha")
                     .separator()
                     .disabled("Pool")
                     .copyable("Engineering Pool"),
             )
             .add_submenu(
-                beta_ip.to_string(),
+                "Beta",
                 Menu::default()
                     .disabled("Device")
                     .separator()
-                    .disabled("Tunnel IPv4")
+                    .disabled("Tunnel IPs")
                     .copyable(&beta_ip.to_string())
+                    .copyable(&beta_ipv6.to_string())
                     .separator()
-                    .disabled("Client ID")
+                    .disabled("Client Details")
                     .copyable(&beta.to_string())
+                    .copyable("Beta")
                     .separator()
                     .disabled("Pools")
                     .copyable("Engineering Pool")
@@ -936,11 +944,13 @@ mod tests {
     #[test]
     fn devices_submenu_truncates_beyond_inline_limit() {
         use connlib_model::ClientId;
-        use std::net::Ipv4Addr;
+        use std::net::{Ipv4Addr, Ipv6Addr};
         let connected_devices: Vec<ConnectedDeviceView> = (0..MAX_DEVICES_INLINE + 3)
             .map(|i| ConnectedDeviceView {
                 id: ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
-                tunneled_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
+                name: format!("Device {i}"),
+                tun_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
+                tun_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16]),
                 pools: vec!["Engineering Pool".into()],
             })
             .collect();
@@ -949,17 +959,20 @@ mod tests {
 
         let mut expected = Menu::default();
         for device in &connected_devices[..MAX_DEVICES_INLINE] {
-            let ip = device.tunneled_ipv4.to_string();
+            let ip = device.tun_ipv4.to_string();
+            let ipv6 = device.tun_ipv6.to_string();
             expected = expected.add_submenu(
-                ip.clone(),
+                device.name.clone(),
                 Menu::default()
                     .disabled("Device")
                     .separator()
-                    .disabled("Tunnel IPv4")
+                    .disabled("Tunnel IPs")
                     .copyable(&ip)
+                    .copyable(&ipv6)
                     .separator()
-                    .disabled("Client ID")
+                    .disabled("Client Details")
                     .copyable(&device.id.to_string())
+                    .copyable(&device.name)
                     .separator()
                     .disabled("Pool")
                     .copyable(&device.pools[0]),
