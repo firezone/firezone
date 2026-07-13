@@ -122,6 +122,16 @@ config :portal, Oban,
 config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
 
+# Splunk Cloud trial stacks serve HEC (port 8088) with a certificate from
+# Splunk's own CA, which no public trust store contains. Skip verification in
+# dev only so trial stacks are testable; prod verifies.
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    connect_options: [
+      transport_opts: [verify: :verify_none]
+    ]
+  ]
+
 ###############################
 ##### PortalWeb Endpoint ######
 ###############################
