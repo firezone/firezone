@@ -54,7 +54,6 @@ defmodule Portal.LogSinkFixtures do
         :index,
         :enabled_streams,
         :retroactive,
-        :is_verified,
         :errored_at,
         :error_message,
         :is_disabled,

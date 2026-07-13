@@ -15,11 +15,12 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
     create(constraint(:log_sinks, :type_must_be_valid, check: "type IN ('splunk')"))
 
     create table(:splunk_log_sinks, primary_key: false) do
-      add(:id, :binary_id, null: false, primary_key: true)
-
       add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
-        null: false
+        null: false,
+        primary_key: true
       )
+
+      add(:id, :binary_id, null: false, primary_key: true)
 
       add(:name, :string, null: false)
       add(:collector_url, :text, null: false)
@@ -28,7 +29,6 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
       add(:enabled_streams, {:array, :string}, null: false)
       add(:retroactive, :boolean, default: false, null: false)
 
-      add(:is_verified, :boolean, default: false, null: false)
       add(:errored_at, :timestamptz)
       add(:error_message, :text)
       add(:is_disabled, :boolean, default: false, null: false)

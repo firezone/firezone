@@ -52,9 +52,6 @@ defmodule Portal.Splunk.SyncTest do
       assert cursor.cursor == log.seq
       assert cursor.synced_count == 1
       assert cursor.last_synced_at
-
-      sink = Repo.reload!(sink)
-      assert sink.is_verified
     end
 
     test "delivers every enabled stream with its own sourcetype", %{account: account} do
@@ -205,7 +202,7 @@ defmodule Portal.Splunk.SyncTest do
       assert cursor.synced_count == 4
       assert cursor.dropped_count == 0
 
-      refute Repo.reload!(sink).is_disabled
+      refute reload_sink(sink).is_disabled
     end
 
     test "drops an event that exceeds the chunk budget when the server rejects it", %{
@@ -233,7 +230,65 @@ defmodule Portal.Splunk.SyncTest do
       assert cursor.synced_count == 0
       assert cursor.dropped_count == 1
 
-      refute Repo.reload!(sink).is_disabled
+      refute reload_sink(sink).is_disabled
+    end
+
+    test "isolates and drops a malformed event without disabling the sink", %{
+      account: account
+    } do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      session_log_fixture(account: account, actor_email: "fine@example.com")
+      poison = session_log_fixture(account: account, actor_email: "poison@example.com")
+      session_log_fixture(account: account, actor_email: "fine@example.com")
+
+      test_pid = self()
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        if body =~ "poison@example.com" do
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"text" => "Invalid data format", "code" => 6})
+        else
+          events = String.split(body, "\n", trim: true)
+          send(test_pid, {:hec_delivered, length(events)})
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 2
+      assert cursor.dropped_count == 1
+      assert cursor.cursor >= poison.seq
+
+      refute reload_sink(sink).is_disabled
+    end
+
+    test "capacity warnings on successful deliveries are still successes", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      log = session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "text" => "HEC queue is approaching its capacity limit",
+          "code" => 24
+        })
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor == log.seq
+      assert cursor.synced_count == 1
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
     end
 
     test "a 413 for a small event disables the sink instead of dropping data", %{
@@ -255,7 +310,7 @@ defmodule Portal.Splunk.SyncTest do
       assert cursor.synced_count == 0
       assert cursor.dropped_count == 0
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       assert sink.is_disabled
       assert sink.error_message =~ "413"
     end
@@ -279,7 +334,7 @@ defmodule Portal.Splunk.SyncTest do
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       assert sink.is_disabled
       assert sink.error_message =~ "port 8088"
     end
@@ -297,12 +352,11 @@ defmodule Portal.Splunk.SyncTest do
 
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       assert sink.is_disabled
       assert sink.disabled_reason == "Sync error"
       assert sink.errored_at
-      assert sink.error_message == "Splunk HEC returned HTTP 403: Invalid token"
-      refute sink.is_verified
+      assert sink.error_message == "Splunk HEC returned HTTP 403: Invalid token (code 4)"
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -321,10 +375,10 @@ defmodule Portal.Splunk.SyncTest do
 
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       refute sink.is_disabled
       assert sink.errored_at
-      assert sink.error_message == "Splunk HEC returned HTTP 503: Server is busy"
+      assert sink.error_message == "Splunk HEC returned HTTP 503: Server is busy (code 9)"
 
       stale_errored_at = DateTime.add(DateTime.utc_now(), -25, :hour)
 
@@ -335,7 +389,7 @@ defmodule Portal.Splunk.SyncTest do
 
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       assert sink.is_disabled
       assert sink.disabled_reason == "Sync error"
     end
@@ -351,7 +405,7 @@ defmodule Portal.Splunk.SyncTest do
 
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       refute sink.is_disabled
       assert sink.errored_at
       assert sink.error_message == "Connection refused."
@@ -368,10 +422,9 @@ defmodule Portal.Splunk.SyncTest do
 
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      sink = Repo.reload!(sink)
+      sink = reload_sink(sink)
       refute sink.errored_at
       refute sink.error_message
-      assert sink.is_verified
     end
 
     test "skips sinks that are disabled or missing", %{account: account} do
@@ -407,5 +460,9 @@ defmodule Portal.Splunk.SyncTest do
       stream: stream,
       phase: phase
     )
+  end
+
+  defp reload_sink(sink) do
+    Repo.get_by!(Splunk.LogSink, account_id: sink.account_id, id: sink.id)
   end
 end

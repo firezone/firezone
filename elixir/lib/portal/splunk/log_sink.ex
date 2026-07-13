@@ -15,7 +15,6 @@ defmodule Portal.Splunk.LogSink do
           index: String.t() | nil,
           enabled_streams: [atom()],
           retroactive: boolean(),
-          is_verified: boolean(),
           errored_at: DateTime.t() | nil,
           error_message: String.t() | nil,
           is_disabled: boolean(),
@@ -25,10 +24,10 @@ defmodule Portal.Splunk.LogSink do
         }
 
   schema "splunk_log_sinks" do
+    belongs_to :account, Portal.Account, primary_key: true
+
     # Shares its id with the log_sinks row; set both when creating.
     field :id, :binary_id, primary_key: true
-
-    belongs_to :account, Portal.Account
 
     belongs_to :log_sink, Portal.LogSink,
       foreign_key: :id,
@@ -45,7 +44,6 @@ defmodule Portal.Splunk.LogSink do
 
     field :retroactive, :boolean, default: false
 
-    field :is_verified, :boolean, default: false, read_after_writes: true
     field :errored_at, :utc_datetime_usec
     field :error_message, :string
     field :is_disabled, :boolean, default: false, read_after_writes: true

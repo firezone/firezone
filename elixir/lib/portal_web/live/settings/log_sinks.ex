@@ -24,13 +24,9 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @fields %{
     Splunk.LogSink =>
-      ~w[name is_disabled disabled_reason error_message errored_at is_verified
+      ~w[name is_disabled disabled_reason error_message errored_at
          collector_url hec_token index enabled_streams retroactive]a
   }
-
-  # Credentials and destination determine whether the last successful delivery
-  # still proves anything; changing them resets verification.
-  @verification_trigger_fields ~w[collector_url hec_token index]a
 
   def mount(_params, _session, socket) do
     socket =
@@ -145,28 +141,34 @@ defmodule PortalWeb.Settings.LogSinks do
     new_disabled_state = not sink.is_disabled
     account = socket.assigns.account
 
-    if new_disabled_state == false && not account.features.log_sinks do
-      {:noreply,
-       put_flash(
-         socket,
-         :error,
-         "Log sinks are available on the Enterprise plan. Please upgrade your plan."
-       )}
-    else
-      changeset = toggle_sink_changeset(sink, new_disabled_state)
-      action = if(new_disabled_state, do: "disabled", else: "enabled")
+    cond do
+      new_disabled_state == false && sink.disabled_reason == "Sync error" ->
+        {:noreply,
+         put_flash(socket, :error, "Edit and save this log sink to re-enable it.")}
 
-      case Database.update_sink(changeset, socket.assigns.subject) do
-        {:ok, _sink} ->
-          {:noreply,
-           socket
-           |> init()
-           |> put_flash(:success, "Log sink #{action} successfully.")}
+      new_disabled_state == false && not account.features.log_sinks ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Log sinks are available on the Enterprise plan. Please upgrade your plan."
+         )}
 
-        {:error, reason} ->
-          Logger.info("Failed to toggle log sink: #{inspect(reason)}")
-          {:noreply, put_flash(socket, :error, "Failed to update log sink.")}
-      end
+      true ->
+        changeset = toggle_sink_changeset(sink, new_disabled_state)
+        action = if(new_disabled_state, do: "disabled", else: "enabled")
+
+        case Database.update_sink(changeset, socket.assigns.subject) do
+          {:ok, _sink} ->
+            {:noreply,
+             socket
+             |> init()
+             |> put_flash(:success, "Log sink #{action} successfully.")}
+
+          {:error, reason} ->
+            Logger.info("Failed to toggle log sink: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to update log sink.")}
+        end
     end
   end
 
@@ -558,6 +560,7 @@ defmodule PortalWeb.Settings.LogSinks do
             </button>
             <div class="my-1 border-t border-border"></div>
             <.button_with_confirmation
+              :if={@sink.disabled_reason != "Sync error"}
               id={"toggle-sink-#{@sink.id}"}
               on_confirm="toggle_sink"
               on_confirm_id={@sink.id}
@@ -624,32 +627,60 @@ defmodule PortalWeb.Settings.LogSinks do
     ~H"""
     <%= cond do %>
       <% @sink.is_disabled and @sink.disabled_reason == "Sync error" -> %>
-        <span
-          class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700"
-          title={@sink.error_message}
-        >
-          Error
-        </span>
+        <.status_popover id={"sink-status-#{@sink.id}"} label="Error" color="red">
+          <p class="text-xs text-body break-words">{@sink.error_message}</p>
+          <p class="mt-2 text-xs text-subtle">
+            Delivery is stopped. Edit and Save this log sink to re-enable it.
+          </p>
+        </.status_popover>
       <% @sink.is_disabled -> %>
         <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
           Disabled
         </span>
       <% @sink.errored_at -> %>
-        <span
-          class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700"
-          title={@sink.error_message}
-        >
-          Warning
-        </span>
-      <% @sink.is_verified -> %>
+        <.status_popover id={"sink-status-#{@sink.id}"} label="Warning" color="yellow">
+          <p class="text-xs text-body break-words">{@sink.error_message}</p>
+          <p class="mt-2 text-xs text-subtle">
+            Delivery is retried automatically. The sink is disabled if failures
+            persist for 24 hours.
+          </p>
+        </.status_popover>
+      <% true -> %>
         <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
           Active
         </span>
-      <% true -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
-          Pending
-        </span>
     <% end %>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :color, :string, required: true
+  slot :inner_block, required: true
+
+  defp status_popover(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"#{@id}-button"}
+      phx-hook="Popover"
+      data-popover-target-id={@id}
+      data-popover-trigger="click"
+      data-popover-placement="bottom"
+      class={[
+        "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer",
+        @color == "red" && "bg-red-100 text-red-700",
+        @color == "yellow" && "bg-yellow-100 text-yellow-700"
+      ]}
+    >
+      {@label} <.icon name="ri-information-line" class="w-3 h-3" />
+    </button>
+    <div
+      id={@id}
+      class="invisible opacity-0 fixed z-50 w-80 p-3 text-left bg-elevated rounded shadow-sm border border-border"
+    >
+      {render_slot(@inner_block)}
+    </div>
     """
   end
 
@@ -711,14 +742,10 @@ defmodule PortalWeb.Settings.LogSinks do
             autocomplete="off"
             phx-debounce="300"
             data-1p-ignore
-            required={@live_action == :new}
+            required
           />
           <p class="mt-1 text-xs text-subtle">
-            <%= if @live_action == :edit do %>
-              Leave blank to keep the current token.
-            <% else %>
-              The HTTP Event Collector token to authenticate with.
-            <% end %>
+            The HTTP Event Collector token to authenticate with.
           </p>
         </div>
 
@@ -800,12 +827,8 @@ defmodule PortalWeb.Settings.LogSinks do
   defp submit_sink(
          %{assigns: %{live_action: :edit, form: %{source: changeset}, sink: sink}} = socket
        ) do
-    changeset =
-      changeset
-      |> maybe_reset_verification()
-      |> maybe_clear_sync_error(sink)
-
     changeset
+    |> maybe_clear_sync_error(sink)
     |> Database.update_sink(socket.assigns.subject)
     |> handle_submit(socket, "updated")
   end
@@ -848,18 +871,9 @@ defmodule PortalWeb.Settings.LogSinks do
     |> put_assoc(:log_sink, log_sink_changeset)
   end
 
-  # Changing where or how we deliver invalidates the proof carried by the last
-  # successful delivery.
-  defp maybe_reset_verification(changeset) do
-    if Enum.any?(@verification_trigger_fields, &get_change(changeset, &1)) do
-      put_change(changeset, :is_verified, false)
-    else
-      changeset
-    end
-  end
-
-  # A sink disabled by a delivery error is presumably being edited to fix the
-  # problem, so re-enable it and let the next delivery attempt re-verify.
+  # Editing is the ONLY way out of an error-disabled state: the sink is
+  # presumably being edited to fix the problem, so re-enable it and let the
+  # next delivery prove the fix.
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
       changeset
@@ -895,19 +909,11 @@ defmodule PortalWeb.Settings.LogSinks do
     |> schema.changeset()
   end
 
-  defp normalize_attrs(attrs, changeset) do
-    attrs
-    |> Map.update("enabled_streams", [], fn streams ->
+  defp normalize_attrs(attrs, _changeset) do
+    Map.update(attrs, "enabled_streams", [], fn streams ->
       streams |> List.wrap() |> Enum.reject(&(&1 == ""))
     end)
-    |> drop_blank_token(changeset)
   end
-
-  # A blank token means "keep the current one" on edit; dropping the key keeps
-  # the changeset anchored to the stored value (and still fails validate_required
-  # on create, where there is no stored value).
-  defp drop_blank_token(%{"hec_token" => ""} = attrs, _changeset), do: Map.delete(attrs, "hec_token")
-  defp drop_blank_token(attrs, _changeset), do: attrs
 
   defp select_type_classes, do: @select_type_classes
 

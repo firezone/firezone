@@ -118,12 +118,20 @@ defmodule Portal.Splunk.Sync do
     body = Enum.map_join(chunk, "\n", fn {_seq, json} -> json end)
     max_seq = chunk |> Enum.map(fn {seq, _json} -> seq end) |> Enum.max()
 
+    # HEC response codes per
+    # https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/9.4/get-data-with-http-event-collector/troubleshoot-http-event-collector
     case Splunk.APIClient.post_events(sink, body) do
-      {:ok, %Req.Response{status: 200}} ->
+      {:ok, %Req.Response{status: 200} = response} ->
+        maybe_log_capacity_warning(sink, response)
         advance(cursor, max_seq, length(chunk), 0)
 
       {:ok, %Req.Response{status: 413} = response} ->
-        handle_oversized_chunk(sink, cursor, chunk, response)
+        handle_rejected_chunk(sink, cursor, chunk, response, :oversized)
+
+      # Code 6 "Invalid data format" rejects the payload, not the config, so a
+      # poison event must be isolated rather than disabling the whole sink.
+      {:ok, %Req.Response{status: 400, body: %{"code" => 6}} = response} ->
+        handle_rejected_chunk(sink, cursor, chunk, response, :malformed)
 
       {:ok, %Req.Response{} = response} ->
         {:error, {:status, response}}
@@ -133,18 +141,34 @@ defmodule Portal.Splunk.Sync do
     end
   end
 
-  # A single event that is genuinely over our own chunk budget can never be
-  # delivered: count it as dropped and move the cursor past it. A 413 for a
-  # small event is not a size problem, it is a server that is not HEC (this
-  # happened: Splunk Web answers 413 to redirected deliveries), so it must
-  # error out rather than silently drop data. A rejected multi-event chunk is
-  # bisected until the offender is isolated.
-  defp handle_oversized_chunk(_sink, cursor, [{seq, json}] = _chunk, response) do
-    if byte_size(json) > max_body_bytes() do
-      Logger.warning("Dropping oversized log sink event",
+  # Codes 24/25 arrive with HTTP 200: events were accepted but HEC's queues
+  # are filling up. Successful delivery, but worth a trace before it becomes
+  # a 429.
+  defp maybe_log_capacity_warning(sink, %Req.Response{body: %{"code" => code, "text" => text}})
+       when code in [24, 25] do
+    Logger.warning("Splunk HEC approaching capacity",
+      splunk_log_sink_id: sink.id,
+      account_id: sink.account_id,
+      text: text
+    )
+  end
+
+  defp maybe_log_capacity_warning(_sink, _response), do: :ok
+
+  # A single event the server cannot accept, ever, is counted as dropped and
+  # the cursor moves past it: malformed events (code 6) never fix themselves,
+  # and oversized ones only count when they genuinely exceed our own chunk
+  # budget. A 413 for a small event is not a size problem, it is a server that
+  # is not HEC (this happened: Splunk Web answers 413 to redirected
+  # deliveries), so it errors out rather than silently dropping data. A
+  # rejected multi-event chunk is bisected until the offender is isolated.
+  defp handle_rejected_chunk(_sink, cursor, [{seq, json}] = _chunk, response, reason) do
+    if reason == :malformed or byte_size(json) > max_body_bytes() do
+      Logger.warning("Dropping undeliverable log sink event",
         log_sink_id: cursor.log_sink_id,
         stream: cursor.stream,
-        seq: seq
+        seq: seq,
+        reason: reason
       )
 
       advance(cursor, seq, 0, 1)
@@ -153,7 +177,7 @@ defmodule Portal.Splunk.Sync do
     end
   end
 
-  defp handle_oversized_chunk(sink, cursor, chunk, _response) do
+  defp handle_rejected_chunk(sink, cursor, chunk, _response, _reason) do
     {left, right} = Enum.split(chunk, div(length(chunk), 2))
 
     with {:ok, cursor} <- deliver_chunk(sink, cursor, left) do
@@ -188,13 +212,12 @@ defmodule Portal.Splunk.Sync do
     )
   end
 
+  # Clears transient error streaks only. A disabled sink never syncs, so
+  # nothing here can re-enable one: that is reserved for an admin editing it.
   defp handle_success(sink) do
     Database.update_sink(sink, %{
-      "is_verified" => true,
       "error_message" => nil,
-      "errored_at" => nil,
-      "is_disabled" => false,
-      "disabled_reason" => nil
+      "errored_at" => nil
     })
   end
 
@@ -214,8 +237,7 @@ defmodule Portal.Splunk.Sync do
           "errored_at" => now,
           "error_message" => message,
           "is_disabled" => true,
-          "disabled_reason" => "Sync error",
-          "is_verified" => false
+          "disabled_reason" => "Sync error"
         })
 
       :transient ->
@@ -226,8 +248,7 @@ defmodule Portal.Splunk.Sync do
           if DateTime.diff(now, errored_at, :hour) >= 24 do
             Map.merge(updates, %{
               "is_disabled" => true,
-              "disabled_reason" => "Sync error",
-              "is_verified" => false
+              "disabled_reason" => "Sync error"
             })
           else
             updates
@@ -254,8 +275,14 @@ defmodule Portal.Splunk.Sync do
 
   defp format_error({:status, %Req.Response{status: status, body: body}}) do
     case body do
-      %{"text" => text} -> "Splunk HEC returned HTTP #{status}: #{text}"
-      _ -> "Splunk HEC returned HTTP #{status}"
+      %{"text" => text, "code" => code} ->
+        "Splunk HEC returned HTTP #{status}: #{text} (code #{code})"
+
+      %{"text" => text} ->
+        "Splunk HEC returned HTTP #{status}: #{text}"
+
+      _ ->
+        "Splunk HEC returned HTTP #{status}"
     end
   end
 
@@ -513,8 +540,7 @@ defmodule Portal.Splunk.Sync do
           :error_message,
           :errored_at,
           :is_disabled,
-          :disabled_reason,
-          :is_verified
+          :disabled_reason
         ])
 
       {:ok, _sink} = changeset |> Safe.unscoped() |> Safe.update()
