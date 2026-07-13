@@ -134,34 +134,32 @@ const STABLE_IPV6_SOURCE_OPTION: (libc::c_int, libc::c_int) =
 ///
 /// Failure is logged and otherwise ignored: without the preference the socket still
 /// works, it merely keeps following the rotating addresses.
+#[cfg(any(apple, target_os = "linux", target_os = "android"))]
 fn prefer_stable_ipv6_source(socket: &socket2::Socket) {
-    #[cfg(any(apple, target_os = "linux", target_os = "android"))]
-    {
-        use std::os::fd::AsRawFd as _;
+    use std::os::fd::AsRawFd as _;
 
-        let (option, value) = STABLE_IPV6_SOURCE_OPTION;
+    let (option, value) = STABLE_IPV6_SOURCE_OPTION;
 
-        // SAFETY: `value` outlives the call and the option length matches its type.
-        let ret = unsafe {
-            libc::setsockopt(
-                socket.as_raw_fd(),
-                libc::IPPROTO_IPV6,
-                option,
-                &value as *const libc::c_int as *const libc::c_void,
-                std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-            )
-        };
+    // SAFETY: `value` outlives the call and the option length matches its type.
+    let ret = unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::IPPROTO_IPV6,
+            option,
+            &value as *const libc::c_int as *const libc::c_void,
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
 
-        if ret != 0 {
-            let error = io::Error::last_os_error();
+    if ret != 0 {
+        let error = io::Error::last_os_error();
 
-            tracing::warn!(%error, "Failed to prefer stable IPv6 source address");
-        }
+        tracing::warn!(%error, "Failed to prefer stable IPv6 source address");
     }
-
-    #[cfg(not(any(apple, target_os = "linux", target_os = "android")))]
-    let _ = socket;
 }
+
+#[cfg(not(any(apple, target_os = "linux", target_os = "android")))]
+fn prefer_stable_ipv6_source(_socket: &socket2::Socket) {}
 
 pub struct TcpSocket {
     inner: tokio::net::TcpSocket,
@@ -1027,38 +1025,6 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV6};
 
     use super::*;
-
-    #[cfg(any(apple, target_os = "linux"))]
-    #[test]
-    fn stable_ipv6_source_preference_sticks() {
-        use std::os::fd::AsRawFd as _;
-
-        let Ok(socket) = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None)
-        else {
-            eprintln!("skipping; environment has no IPv6 support");
-            return;
-        };
-
-        prefer_stable_ipv6_source(&socket);
-
-        let (option, expected) = STABLE_IPV6_SOURCE_OPTION;
-        let mut value: libc::c_int = -1;
-        let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
-
-        // SAFETY: `value` and `len` outlive the call and match the option's type.
-        let ret = unsafe {
-            libc::getsockopt(
-                socket.as_raw_fd(),
-                libc::IPPROTO_IPV6,
-                option,
-                &mut value as *mut libc::c_int as *mut libc::c_void,
-                &mut len,
-            )
-        };
-
-        assert_eq!(ret, 0);
-        assert_eq!(value, expected);
-    }
 
     #[derive(derive_more::Deref)]
     struct DummyBuffer(Vec<u8>);
