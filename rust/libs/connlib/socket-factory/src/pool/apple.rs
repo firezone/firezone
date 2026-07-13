@@ -40,7 +40,10 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// Apple devices only ever run Clients, so the steady-state working set is tiny:
 /// the connected gateway(s) and possibly a relay. The cap mainly bounds the burst
 /// of short-lived sockets during ICE connectivity checks.
-const MAX_FLOW_SOCKETS: usize = if cfg!(target_os = "ios") { 8 } else { 16 };
+const MAX_FLOW_SOCKETS: usize = cfg_select! {
+    target_os = "ios" => { 8 }
+    _ => { 16 }
+};
 
 type Key = (Option<IpAddr>, SocketAddr);
 
