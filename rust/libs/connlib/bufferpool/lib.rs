@@ -264,12 +264,17 @@ impl<B> Drop for Buffer<B> {
 
         let actual = (self.pool.capacity_of)(&buffer);
         if let Some(actual) = deviating_capacity(self.pool.capacity, actual) {
+            // Discard deviating buffers: re-pooling them would re-emit this warning on every reuse.
             tracing::warn!(
                 pool = %self.pool.tag,
                 expected_capacity = %self.pool.capacity,
                 actual_capacity = %actual,
-                "Buffer returned to pool with a different capacity than it was allocated with"
+                "Discarding buffer with a different capacity than it was allocated with"
             );
+
+            self.pool.counter.add(-1, &self.pool.attributes);
+
+            return;
         }
 
         self.pool.queue.push(buffer);
@@ -442,13 +447,30 @@ mod tests {
     }
 
     #[test]
-    fn returning_a_reallocated_buffer_does_not_panic() {
+    fn returning_a_reallocated_buffer_discards_it() {
         let pool = BufferPool::<Vec<u8>>::new(8, "test");
 
         let mut buffer = pool.pull();
         buffer.resize_to(8 * 1024); // Force a reallocation beyond the pool's capacity.
+        drop(buffer);
 
-        drop(buffer); // Exercises the capacity-deviation check on return to the pool.
+        assert_eq!(pool.pull().capacity(), 8);
+    }
+
+    #[tokio::test]
+    async fn discarded_buffer_is_subtracted_from_buffer_count() {
+        let (provider, exporter) = init_meter_provider();
+        let meter = provider.meter("connlib");
+
+        let pool = BufferPool::<Vec<u8>>::with_meter(8, "test", &meter);
+
+        let mut buffer = pool.pull();
+        buffer.resize_to(8 * 1024); // Force a reallocation beyond the pool's capacity.
+        drop(buffer);
+
+        tokio::time::sleep(Duration::from_millis(100)).await; // Wait for metrics to be exported.
+
+        assert_eq!(get_num_buffers(&exporter), 0);
     }
 
     /// The whole point of pooling is passing buffers around cheaply: a handle is
