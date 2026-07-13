@@ -35,6 +35,7 @@ members = [
     "libs/flow-log-upload",
     "libs/flow-log-writer",
     "libs/http-client",
+    "libs/incremental-inet-checksum",
     "libs/known-dirs",
     "libs/logging",
     "libs/telemetry",
@@ -123,6 +124,7 @@ http-client = { path = "libs/http-client" }
 humantime = "2.3.0"
 hyper = "1.9.0"
 hyper-util = "0.1.20"
+incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
