@@ -66,7 +66,7 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
     if let Some(hdr) = packet.ipv4_header() {
         let expected = hdr.calc_header_checksum();
 
-        if hdr.header_checksum != expected {
+        if !checksum_matches(hdr.header_checksum, expected) {
             errors.push(format!(
                 "IPv4 header checksum: stored {:#06x}, expected {expected:#06x}",
                 hdr.header_checksum
@@ -81,7 +81,7 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
         // Over IPv6 the checksum is mandatory, so zero is always a bug there.
         let ipv4_not_computed = matches!(packet.source(), IpAddr::V4(_)) && stored == 0;
 
-        if !ipv4_not_computed && stored != expected {
+        if !ipv4_not_computed && !checksum_matches(stored, expected) {
             errors.push(format!(
                 "UDP checksum: stored {stored:#06x}, expected {expected:#06x}"
             ));
@@ -91,7 +91,7 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
     if let (Some(tcp), Ok(expected)) = (packet.as_tcp(), packet.calculate_tcp_checksum()) {
         let stored = tcp.checksum();
 
-        if stored != expected {
+        if !checksum_matches(stored, expected) {
             errors.push(format!(
                 "TCP checksum: stored {stored:#06x}, expected {expected:#06x}"
             ));
@@ -102,7 +102,7 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
         let stored = icmp.checksum();
         let expected = icmp.icmp_type().calc_checksum(icmp.payload());
 
-        if stored != expected {
+        if !checksum_matches(stored, expected) {
             errors.push(format!(
                 "ICMPv4 checksum: stored {stored:#06x}, expected {expected:#06x}"
             ));
@@ -117,7 +117,7 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
     {
         let stored = icmp.checksum();
 
-        if stored != expected {
+        if !checksum_matches(stored, expected) {
             errors.push(format!(
                 "ICMPv6 checksum: stored {stored:#06x}, expected {expected:#06x}"
             ));
@@ -125,6 +125,13 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
     }
 
     errors
+}
+
+/// The incremental updates emit 0xFFFF where a from-scratch computation arrives at
+/// 0x0000: both encode zero in one's complement and both verify on the wire, but only
+/// 0xFFFF also verifies for all-zero data (see `ChecksumUpdate::into_ip_checksum`).
+fn checksum_matches(stored: u16, expected: u16) -> bool {
+    stored == expected || (expected == 0x0000 && stored == 0xFFFF)
 }
 
 #[derive(Arbitrary, Debug)]
