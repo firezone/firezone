@@ -1,0 +1,46 @@
+name: Notify website of merged PR
+
+# Notifies firezone/website whenever a PR merges here so it can evaluate
+# whether the change warrants a changelog entry. The changelog lives in that
+# repo (src/components/Changelog), which is why the evaluation runs there.
+# Mirrors the publish-release.yml -> repository_dispatch -> website pattern.
+#
+# Uses pull_request_target (not pull_request) so the dispatch also fires for
+# PRs opened from forks, which otherwise run with a read-only token and no
+# access to secrets. This job never checks out or executes PR code — it only
+# reads the PR number from the event and sends a repository_dispatch — so
+# pull_request_target is safe here.
+#
+# Required secret (owned by the firezone-bot account):
+#   RELEASE_PR_BOT_GITHUB_TOKEN — needs Contents: write on firezone/website to
+#     send it a repository_dispatch. Same secret used by publish-release.yml.
+
+on:
+  pull_request_target:
+    types:
+      - closed
+
+permissions:
+  contents: read
+
+jobs:
+  notify-website:
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch changelog evaluation to firezone/website
+        env:
+          # repository_dispatch on firezone/website requires this token to have
+          # Contents: write there.
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/firezone/website/dispatches \
+            --raw-field "event_type=pr-merged" \
+            --field "client_payload[pr_number]=${PR_NUMBER}"
