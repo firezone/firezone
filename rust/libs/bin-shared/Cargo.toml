@@ -81,7 +81,6 @@ features = [
 
 [dev-dependencies]
 bufferpool = { workspace = true }
-bytes = { workspace = true }
 gat-lending-iterator = { workspace = true }
 http = { workspace = true }
 tempfile = { workspace = true }

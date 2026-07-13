@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool, VecBuf};
-use bytes::{Buf as _, BytesMut};
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
@@ -302,9 +301,34 @@ pub struct DatagramIn<'a> {
 pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Buffer<BytesMut>,
+    pub packet: Buffer<Vec<u8>>,
     pub segment_size: usize,
     pub ecn: Ecn,
+}
+
+/// The most segments one GSO send may carry (`UDP_MAX_SEGMENTS` in `linux/udp.h`; `quinn-udp` reports the same on Linux).
+const MAX_GSO_SEGMENTS: usize = 64;
+
+impl DatagramOut {
+    /// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.
+    ///
+    /// One send's payload is bounded by the maximum IP packet size less IP/UDP header overhead,
+    /// and by the kernel's segment limit; the result is a whole number of segments.
+    /// Returns zero if not even a single segment fits.
+    ///
+    /// Actual sends are additionally subject to the socket's runtime GSO support and may get
+    /// chunked below this, but never above it.
+    pub fn max_len(dst: SocketAddr, segment_size: usize) -> usize {
+        let header_overhead = match dst {
+            SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
+            SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
+        };
+
+        let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size.max(1);
+        let max_segments = std::cmp::min(MAX_GSO_SEGMENTS, max_segments_by_size);
+
+        segment_size * max_segments
+    }
 }
 
 impl PerfUdpSocket {
@@ -363,7 +387,7 @@ impl PerfUdpSocket {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.chunk(),
+            datagram.packet.as_slice(),
             datagram.segment_size,
             datagram.ecn,
         )?;
@@ -535,11 +559,9 @@ impl PerfUdpSocket {
 
     /// Calculate the chunk size for a given segment size.
     ///
-    /// At most, an IP packet can 65535 (`u16::MAX`) bytes.
-    /// To know the maximum size we can pass as the UDP payload, we need to subtract the IP and UDP header length as overhead.
-    ///
-    /// In case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set `max_gso_segments` to 1.
-    /// We need to honor both of these constraints when calculating the chunk size.
+    /// A chunk is bounded by [`DatagramOut::max_len`] and by the socket's runtime GSO support:
+    /// in case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set
+    /// `max_gso_segments` to 1.
     ///
     /// Fails if `segment_size` exceeds the maximum UDP payload, in which case not even a single segment fits.
     fn calculate_chunk_size(
@@ -548,22 +570,17 @@ impl PerfUdpSocket {
         segment_size: usize,
         dst: SocketAddr,
     ) -> Result<usize> {
-        let header_overhead = match dst {
-            SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
-            SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
-        };
-
-        let max_segments_by_config = state.max_gso_segments();
-        let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size;
-
-        let max_segments = std::cmp::min(max_segments_by_config, max_segments_by_size);
+        let chunk_size = std::cmp::min(
+            segment_size * state.max_gso_segments(),
+            DatagramOut::max_len(dst, segment_size),
+        );
 
         anyhow::ensure!(
-            max_segments > 0,
+            chunk_size > 0,
             "segment_size {segment_size} exceeds the maximum UDP payload for {dst}"
         );
 
-        Ok(segment_size * max_segments)
+        Ok(chunk_size)
     }
 
     fn prepare_transmit<'a>(
@@ -993,7 +1010,24 @@ where
 mod tests {
     use gat_lending_iterator::LendingIterator as _;
     use quinn_udp::RecvMeta;
-    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV6};
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+
+    #[test]
+    fn datagram_out_max_len_is_whole_segments_of_one_gso_send() {
+        let v4 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0));
+        let v6 = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 0, 0, 0));
+
+        // Full-size segments are byte-bound: (65535 - 68) / 1316 = 49 whole segments over IPv4.
+        assert_eq!(DatagramOut::max_len(v4, 1316), 49 * 1316);
+
+        // The IPv4 budget assumes maximal headers (60 bytes incl. options), leaving
+        // room for one segment less than IPv6's fixed 40-byte header here.
+        assert_eq!(DatagramOut::max_len(v4, 1023), 63 * 1023);
+        assert_eq!(DatagramOut::max_len(v6, 1023), 64 * 1023);
+
+        // Small segments are count-bound at the kernel's segment limit.
+        assert_eq!(DatagramOut::max_len(v4, 100), 64 * 100);
+    }
 
     use super::*;
 

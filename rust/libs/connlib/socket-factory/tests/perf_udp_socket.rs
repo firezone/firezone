@@ -1,7 +1,6 @@
 //! Integration tests for [`socket_factory::PerfUdpSocket`], exercising it through its public API.
 
 use bufferpool::BufferPool;
-use bytes::BytesMut;
 use gat_lending_iterator::LendingIterator as _;
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
@@ -21,7 +20,7 @@ async fn sends_and_receives_a_datagram() {
         .into_perf()
         .unwrap();
 
-    let pool = BufferPool::<BytesMut>::new(2048, "test");
+    let pool = BufferPool::<Vec<u8>>::new(2048, "test");
 
     socket
         .send(DatagramOut {
