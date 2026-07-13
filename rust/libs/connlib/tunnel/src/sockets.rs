@@ -31,14 +31,17 @@ const UDP_SEND_BATCH_LIMIT: usize = cfg_select! {
 
 /// How many incoming UDP batches the main thread drains from a socket's channel per poll.
 ///
-/// Each batch held on the main thread pins up to [`socket_factory::MAX_RECV_BATCH_MEMORY`], which
-/// varies hugely with GRO. Android coalesces up to 64 datagrams into every buffer (~2.5 MB per batch),
-/// so it drains a single batch per poll to keep the inbound budget tight - one batch already carries up
-/// to `BATCH_SIZE * 64` datagrams. iOS has no GRO, so a batch holds only `BATCH_SIZE` datagrams; it
-/// drains many more per poll to reach a comparable throughput, which its tiny (~45 KB) batches make
-/// cheap. Desktop has GRO and no tight memory cap, so a moderate limit already saturates it.
+/// A batch is one `recv_from`: `quinn-udp` reads up to `BATCH_SIZE` (32 on unix) datagrams in a single
+/// syscall, and where GRO is available the kernel additionally coalesces up to 64 datagrams into each.
+/// So both the memory a batch pins ([`socket_factory::MAX_RECV_BATCH_MEMORY`]) and the datagrams it
+/// carries swing with GRO: `1316 * 32 * 64` ~ 2.5 MB on Android (GRO), `1316 * 32` ~ 45 KB on Apple.
+/// Apple - iOS and macOS alike - has no GRO (`recvmsg_x` only batches individual datagrams), so it
+/// drains many of these small batches per poll to sustain throughput, which is cheap. Android's GRO
+/// batches are large, so it drains a single one per poll to hold the inbound budget down. Other desktop
+/// platforms aren't memory-capped, so a moderate limit already saturates them.
 const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
     target_os = "ios" => { 32 }
+    target_os = "macos" => { 32 }
     target_os = "android" => { 1 }
     _ => { 8 }
 };
