@@ -9,8 +9,9 @@ use socket_factory::{DatagramOut, udp};
 /// A datagram sent to a fresh peer round-trips: the peer receives it and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
 ///
-/// On Apple this goes out over a connected per-destination flow socket (see the assertion
-/// below); on every other platform it uses the single catch-all socket.
+/// The datagram carries no pinned source, which marks relay traffic, so on Apple it goes
+/// out over a connected per-destination flow socket right away (see the assertion below);
+/// on every other platform it uses the single catch-all socket.
 #[tokio::test]
 async fn sends_and_receives_a_datagram() {
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
@@ -52,4 +53,60 @@ async fn sends_and_receives_a_datagram() {
 
     assert_eq!(datagram.packet, b"world");
     assert_eq!(datagram.from, peer_addr);
+}
+
+/// A pair with a pinned source only earns a connected flow socket by sending batches:
+/// single-datagram sends stay on the catch-all socket, the second multi-segment transmit
+/// promotes the pair.
+#[tokio::test]
+async fn batched_sends_promote_to_flow_socket() {
+    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+
+    let socket = udp("127.0.0.1:0".parse().unwrap())
+        .unwrap()
+        .into_perf()
+        .unwrap();
+
+    let pool = BufferPool::<BytesMut>::new(2048, "test");
+    let src = Some("127.0.0.1:0".parse().unwrap());
+
+    // A single-datagram send does not connect a flow socket.
+    socket
+        .send(DatagramOut {
+            src,
+            dst: peer_addr,
+            packet: pool.pull_initialised(b"hello"),
+            segment_size: 5,
+            ecn: Ecn::NonEct,
+        })
+        .await
+        .unwrap();
+
+    #[cfg(apple)]
+    assert_eq!(socket.flow_socket_count(), 0);
+
+    // Two multi-segment transmits prove the pair batches and promote it.
+    for _ in 0..2 {
+        socket
+            .send(DatagramOut {
+                src,
+                dst: peer_addr,
+                packet: pool.pull_initialised(b"hellohello"),
+                segment_size: 5,
+                ecn: Ecn::NonEct,
+            })
+            .await
+            .unwrap();
+    }
+
+    #[cfg(apple)]
+    assert_eq!(socket.flow_socket_count(), 1);
+
+    // All five datagrams arrive, regardless of which socket carried them.
+    let mut buf = [0u8; 16];
+    for _ in 0..5 {
+        let (len, _) = peer.recv_from(&mut buf).await.unwrap();
+        assert_eq!(&buf[..len], b"hello");
+    }
 }
