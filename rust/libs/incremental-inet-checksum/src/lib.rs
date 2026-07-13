@@ -79,15 +79,20 @@ impl ChecksumUpdate {
         }
     }
 
+    /// Finalizes the update into an IP-style checksum (also used by TCP and ICMP).
+    ///
+    /// A zero checksum is always emitted as `0xFFFF`, never as `0x0000`: one's
+    /// complement has two representations of zero and the running sum can land on
+    /// either one for the same underlying value, e.g. removing a zero-valued field adds
+    /// `!0 = 0xFFFF` and turns +0 into -0. Whether a checksum of `0x0000` verifies
+    /// depends on which zero the covered data actually sums to: for data summing to -0
+    /// it does, for all-zero data (which sums to +0) receivers compute an
+    /// end-around-carry sum of `0x0000` instead of the required `0xFFFF` and drop the
+    /// packet. A checksum of `0xFFFF` verifies in both cases, so it is the only safe
+    /// way to emit "zero". Consequently, a from-scratch computation may arrive at
+    /// `0x0000` where this function returns `0xFFFF`; validators comparing the two must
+    /// treat them as equivalent rather than compare for strict equality.
     pub fn into_ip_checksum(self) -> u16 {
-        // One's complement has two representations of zero: 0x0000 (+0) and 0xFFFF (-0).
-        // The running sum can land on either one for the same underlying value, e.g.
-        // removing a zero-valued field adds !0 = 0xFFFF and turns +0 into -0. Whether a
-        // checksum of 0x0000 verifies depends on which zero the covered data actually
-        // sums to: for data summing to -0 it does, for all-zero data (which sums to +0)
-        // receivers compute an end-around-carry sum of 0x0000 instead of the required
-        // 0xFFFF and drop the packet. A checksum of 0xFFFF verifies in both cases, so it
-        // is the only safe way to emit "zero".
         let checksum = !self.inner;
 
         if checksum == 0 { 0xFFFF } else { checksum }
