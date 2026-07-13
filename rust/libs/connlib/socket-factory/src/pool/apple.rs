@@ -17,13 +17,15 @@
 //! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
 //! rebinds) and as the fallback when connecting fails.
 //!
-//! Only pairs that send big batches get a flow socket: a pair is connected once a
-//! single transmit carries at least [`PROMOTE_BATCH_SIZE`] datagrams. Batching is what
-//! `sendmsg_x` accelerates, and a batch that large only forms when the event loop
-//! coalesces a queue's worth of same-destination datagrams in one cycle — i.e. exactly
-//! when traffic is dense enough to benefit. Everything else — keepalives, sparse
-//! control traffic, interactive traffic and its incidental small batches — is served
-//! correctly by the catch-all socket and would otherwise thrash the bounded cache.
+//! Only pairs that carry data get a flow socket: a pair is connected once a single
+//! transmit carries at least [`PROMOTE_BATCH_SIZE`] datagrams. A multi-segment
+//! transmit only forms when the event loop coalesces same-destination datagrams in one
+//! cycle, which any genuine data flow does within its first round-trips — even on a
+//! slow link, where engaging the flow advisories quickly matters most, because without
+//! them the AQM drops silently and TCP inside the tunnel cannot ramp. Probes,
+//! keepalives and handshakes are paced too far apart to ever coalesce, so pure
+//! signalling pairs stay on the catch-all socket instead of thrashing the bounded
+//! cache.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -51,11 +53,12 @@ const MAX_FLOW_SOCKETS: usize = 16;
 
 /// Datagrams a single transmit must carry for its pair to earn a flow socket.
 ///
-/// Production batch-size percentiles inform this bound: incidental coalescence
-/// (interactive traffic, control chatter) keeps p95 below ~12 datagrams per transmit,
-/// while bulk transfers pin p99 at the send path's batch limit of 32. Half that limit
-/// clears the incidental band and is hit within moments by anything genuinely bulk.
-const PROMOTE_BATCH_SIZE: usize = 16;
+/// The bound must stay low: flow advisories are a link-capacity signal, and a congested
+/// slow link keeps TCP's window — and thus our batch sizes — small, so a high bound
+/// would lock exactly the pairs that need backpressure out of it. Two is enough to
+/// separate data from signalling: probes, keepalives and handshakes are paced hundreds
+/// of milliseconds apart and never coalesce.
+const PROMOTE_BATCH_SIZE: usize = 2;
 
 type Key = (Option<IpAddr>, SocketAddr);
 
