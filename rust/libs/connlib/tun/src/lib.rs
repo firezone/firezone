@@ -22,24 +22,21 @@ pub mod apple;
 /// rather than once per packet.
 ///
 /// Mobile platforms are memory-constrained and cannot afford to buffer big
-/// batches of packets, so we use a smaller limit there. On macOS we use the
-/// kernel's `kern.ipc.somaxrecvmsgx` clamp (256 by default), the largest batch
-/// a single `recvmsg_x` / `sendmsg_x` call accepts.
+/// batches of packets, so we use a smaller limit there. On macOS we match
+/// `quinn-udp`'s batch size (64), so one TUN batch destined for a single peer
+/// fills exactly one `sendmsg_x` call on the UDP side.
 pub const MAX_BATCH_SIZE: usize = cfg_select! {
     target_os = "ios" => { 25 }
     target_os = "android" => { 25 }
-    target_os = "macos" => { 256 }
+    target_os = "macos" => { 64 }
     _ => { 100 }
 };
 
 /// Capacity (in batches) of the channels connecting the TUN device threads to the main thread.
-///
-/// macOS batches are 2.56x the size of the other desktop platforms', so the channels hold
-/// proportionally fewer of them to keep the same number of packets (and memory) in flight.
 const CHANNEL_CAPACITY: usize = cfg_select! {
     target_os = "linux" => { 100 }
     target_os = "windows" => { 100 }
-    target_os = "macos" => { 40 }
+    target_os = "macos" => { 100 }
     target_os = "ios" => { 40 }
     target_os = "android" => { 40 }
     _ => { 40 }
