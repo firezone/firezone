@@ -850,7 +850,6 @@ where
             agent,
             index,
             tunnel,
-            next_wg_timer_update: now,
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
@@ -1337,8 +1336,6 @@ struct Connection<RId> {
     #[debug(skip)]
     tunnel: Tunn,
     remote_pub_key: PublicKey,
-    /// When to next update the [`Tunn`]'s timers.
-    next_wg_timer_update: Instant,
 
     last_proactive_handshake_sent_at: Option<Instant>,
 
@@ -1386,7 +1383,7 @@ where
                     .poll_timeout()
                     .map(|instant| (instant, "ICE agent")),
             )
-            .chain(Some((self.next_wg_timer_update, "boringtun tunnel")))
+            .chain(self.tunnel.next_timer_update())
             .chain(
                 self.candidate_timeout
                     .map(|instant| (instant, "candidate timeout")),
@@ -1446,18 +1443,6 @@ where
         }
 
         self.handle_tunnel_timeout(now, allocations, transmits);
-
-        // If this was a scheduled update, hop to the next interval.
-        if now >= self.next_wg_timer_update {
-            self.next_wg_timer_update = now + Duration::from_secs(1); // TODO: Remove fixed interval in favor of precise `next_timer_update` function in `boringtun`.
-        }
-
-        // If `boringtun` wants to be called earlier than the scheduled interval, move it forward.
-        if let Some(next_update) = self.tunnel.next_timer_update()
-            && next_update < self.next_wg_timer_update
-        {
-            self.next_wg_timer_update = next_update;
-        }
 
         while let Some(event) = self.agent.poll_ice_event() {
             match event {
