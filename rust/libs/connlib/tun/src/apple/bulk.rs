@@ -105,10 +105,6 @@ pub fn recv(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
 
-            // Long-lived receive slots: a syscall reading `n` packets consumes `n` buffers,
-            // which are re-pulled from the pool in place; the remaining slots are reused
-            // as-is, so the cost of preparing a read scales with the packets it returns
-            // rather than with `MAX_BATCH_SIZE`.
             let mut bufs: Vec<IpPacketBuf> =
                 (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
             let mut lens = [0usize; MAX_BATCH_SIZE];
@@ -140,7 +136,7 @@ pub fn recv(
 
                 for (buf, &len) in bufs.iter_mut().zip(&lens).take(n) {
                     if len == 0 {
-                        continue; // Empty or truncated datagram; the slot's buffer is reused.
+                        continue; // Empty or truncated datagram.
                     }
 
                     // `Default` refills the slot with a fresh buffer from the pool.
