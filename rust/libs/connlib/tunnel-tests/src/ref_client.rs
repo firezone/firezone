@@ -1,10 +1,9 @@
 use super::{
     QueryId,
     dns_records::DnsRecords,
-    reference::{PrivateKey, private_key},
+    reference::PrivateKey,
     sim_client::SimClient,
-    sim_net::{ExecMutScope, Host, any_edge, any_ip_stack, host},
-    strategies::{latency, malicious_behaviour},
+    sim_net::ExecMutScope,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
 use tunnel::{
@@ -25,13 +24,11 @@ use dns_types::{DomainName, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools as _;
-use proptest::prelude::*;
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    num::NonZeroU16,
     time::{Duration, Instant},
 };
 
@@ -1405,82 +1402,6 @@ impl ExecMutScope for RefClient {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
-}
-
-pub(crate) fn ref_client_host(
-    id: ClientId,
-    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
-    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
-    system_dns: impl Strategy<Value = Vec<IpAddr>>,
-) -> impl Strategy<Value = Host<RefClient>> {
-    host(
-        any_ip_stack(),
-        listening_port(),
-        ref_client(id, tunnel_ip4s, tunnel_ip6s, system_dns),
-        latency(250), // TODO: Increase with #6062.
-        any_edge(),   // Clients commonly sit behind NATs and stateful firewalls.
-    )
-}
-
-fn ref_client(
-    id: ClientId,
-    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
-    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
-    system_dns: impl Strategy<Value = Vec<IpAddr>>,
-) -> impl Strategy<Value = RefClient> {
-    (
-        tunnel_ip4s,
-        tunnel_ip6s,
-        system_dns,
-        any::<bool>(),
-        private_key(),
-        malicious_behaviour(),
-    )
-        .prop_map(
-            move |(
-                tunnel_ip4,
-                tunnel_ip6,
-                system_dns_resolvers,
-                internet_resource_active,
-                key,
-                malicious_behaviour,
-            )| {
-                RefClient {
-                    id,
-                    key,
-                    tunnel_ip4,
-                    tunnel_ip6,
-                    system_dns_resolvers,
-                    internet_resource_active,
-                    malicious_behaviour,
-                    dns_records: Default::default(),
-                    connected_cidr_resources: Default::default(),
-                    connected_dns_resources: Default::default(),
-                    connected_internet_resource: Default::default(),
-                    expected_gateway_icmp_handshakes: Default::default(),
-                    expected_client_icmp_handshakes: Default::default(),
-                    expected_gateway_udp_handshakes: Default::default(),
-                    expected_client_udp_handshakes: Default::default(),
-                    expected_tcp_connections: Default::default(),
-                    expected_client_tcp_connections: Default::default(),
-                    expected_udp_dns_handshakes: Default::default(),
-                    expected_tcp_dns_handshakes: Default::default(),
-                    resources: Default::default(),
-                    routes: Default::default(),
-                    site_status: Default::default(),
-                    connection_resets: Default::default(),
-                    gateway_send_times: Default::default(),
-                }
-            },
-        )
-}
-
-fn listening_port() -> impl Strategy<Value = u16> {
-    prop_oneof![
-        Just(52625),
-        Just(3478), // Make sure connlib works even if a NAT is re-mapping our public port to a relay port.
-        any::<NonZeroU16>().prop_map(|p| p.get()),
-    ]
 }
 
 fn default_routes_v4() -> Vec<IpNetwork> {

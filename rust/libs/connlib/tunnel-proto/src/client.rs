@@ -2961,7 +2961,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod proptests {
     use std::collections::HashSet;
 

@@ -1,12 +1,8 @@
-use super::{
-    sim_net::{EdgeConfig, ExecMutScope, Host, dual_ip_stack, host},
-    strategies::latency,
-};
+use super::sim_net::{ExecMutScope, Host};
 use bufferpool::Buffer;
 use connlib_model::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use ip_packet::Ecn;
-use proptest::prelude::*;
 use rand::{SeedableRng as _, rngs::StdRng};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
@@ -208,14 +204,4 @@ impl ExecMutScope for u64 {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
-}
-
-pub(crate) fn ref_relay_host() -> impl Strategy<Value = Host<u64>> {
-    host(
-        dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
-        Just(3478),
-        any::<u64>(),
-        latency(50),            // We assume our relays have a good Internet connection.
-        Just(EdgeConfig::Open), // Relays are the public rendezvous; they must accept from anyone.
-    )
 }

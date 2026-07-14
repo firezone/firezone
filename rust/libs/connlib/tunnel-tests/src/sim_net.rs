@@ -1,15 +1,13 @@
 use crate::buffered_transmits::BufferedTransmits;
-use crate::strategies::documentation_ip6s;
 use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
-use firezone_relay::{AddressFamily, IpStack};
+use firezone_relay::AddressFamily;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
-    fmt, iter,
+    iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -515,119 +513,4 @@ impl From<ClientId> for HostId {
     fn from(v: ClientId) -> Self {
         Self::Client(v)
     }
-}
-
-pub(crate) fn host<T>(
-    socket_ips: impl Strategy<Value = IpStack>,
-    port: impl Strategy<Value = u16>,
-    state: impl Strategy<Value = T>,
-    latency: impl Strategy<Value = Duration>,
-    edge: impl Strategy<Value = EdgeConfig>,
-) -> impl Strategy<Value = Host<T>>
-where
-    T: fmt::Debug,
-{
-    (state, socket_ips, port, latency, edge, nat_ip4s()).prop_map(
-        move |(state, ip_stack, port, latency, edge, nat_ip4)| {
-            let edge = match edge {
-                EdgeConfig::Open => Edge::Open,
-                EdgeConfig::Nat(mapping, filter) => Edge::Nat(Nat::new(mapping, filter, nat_ip4)),
-            };
-
-            let mut host = Host::new(state, latency, port, edge);
-            host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied());
-
-            host
-        },
-    )
-}
-
-/// All [`EdgeConfig`]s that occur in the wild.
-///
-/// The cone NATs (endpoint-independent mapping) span the full filtering
-/// spectrum; a symmetric NAT (endpoint-dependent mapping) always filters by
-/// port.
-pub(crate) fn any_edge() -> impl Strategy<Value = EdgeConfig> {
-    prop_oneof![
-        Just(EdgeConfig::Open),
-        any_filter_mode().prop_map(|filter| EdgeConfig::Nat(Mapping::EndpointIndependent, filter)),
-        Just(EdgeConfig::Nat(
-            Mapping::EndpointDependent,
-            FilterMode::PortRestricted
-        )),
-    ]
-}
-
-/// All [`FilterMode`]s, uniformly.
-fn any_filter_mode() -> impl Strategy<Value = FilterMode> {
-    prop_oneof![
-        Just(FilterMode::Open),
-        Just(FilterMode::AddressRestricted),
-        Just(FilterMode::PortRestricted),
-    ]
-}
-
-/// Whether two hosts behind the given edges can establish a direct path by hole-punching.
-///
-/// Over IPv6 there is no translation, only filtering, and punching through
-/// filters always succeeds because both sides advertise their real sockets.
-/// Over IPv4, punching fails when one side mints an unpredictable source port
-/// per destination (endpoint-dependent mapping) and the other side only
-/// accepts packets from sockets it has contacted: the advertised reflexive
-/// candidate then never matches the source the peer actually sees.
-pub(crate) fn direct_path_possible(a: EdgeConfig, b: EdgeConfig, shared_ip6: bool) -> bool {
-    if shared_ip6 {
-        return true;
-    }
-
-    fn symmetric(e: EdgeConfig) -> bool {
-        matches!(e, EdgeConfig::Nat(Mapping::EndpointDependent, _))
-    }
-
-    fn port_filtered(e: EdgeConfig) -> bool {
-        matches!(e, EdgeConfig::Nat(_, FilterMode::PortRestricted))
-    }
-
-    !(symmetric(a) && port_filtered(b) || symmetric(b) && port_filtered(a))
-}
-
-pub(crate) fn any_ip_stack() -> impl Strategy<Value = IpStack> {
-    prop_oneof![
-        host_ip4s().prop_map(IpStack::Ip4),
-        host_ip6s().prop_map(IpStack::Ip6),
-        dual_ip_stack()
-    ]
-}
-
-pub(crate) fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
-    (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
-}
-
-/// A [`Strategy`] of [`Ipv4Addr`]s used for routing packets between hosts within our test.
-///
-/// This uses the `TEST-NET-3` (`203.0.113.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
-pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
-    const FIRST: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 0);
-    const LAST: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 255);
-
-    (FIRST.to_bits()..=LAST.to_bits()).prop_map(Ipv4Addr::from_bits)
-}
-
-/// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between hosts within our test.
-///
-/// This uses a subnet of the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
-pub(crate) fn host_ip6s() -> impl Strategy<Value = Ipv6Addr> {
-    const HOST_SUBNET: u16 = 0x1010;
-
-    documentation_ip6s(HOST_SUBNET)
-}
-
-/// A [`Strategy`] of [`Ipv4Addr`]s for the public side of NAT devices.
-///
-/// This uses `TEST-NET-2` (`198.51.100.0/24`) so NAT addresses never collide with host addresses.
-pub(crate) fn nat_ip4s() -> impl Strategy<Value = Ipv4Addr> {
-    const FIRST: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 0);
-    const LAST: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 255);
-
-    (FIRST.to_bits()..=LAST.to_bits()).prop_map(Ipv4Addr::from_bits)
 }

@@ -48,7 +48,7 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::{PrivateKey, ReferenceState};
 use crate::sim_net::{Host, RoutingTable};
-use crate::stub_portal::StubPortal;
+use crate::stub_portal::{StaticDevicePoolPlan, StubPortal};
 use crate::sut::TunnelTest;
 use crate::transition::{
     DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq, Transition,
@@ -524,11 +524,11 @@ fn arb_dynamic_device_pool_resource(g: &mut Gen) -> DynamicDevicePoolResource {
     }
 }
 
-fn arb_static_device_pool_plan(g: &mut Gen) -> tunnel::proptest::StaticDevicePoolPlan {
+fn arb_static_device_pool_plan(g: &mut Gen) -> StaticDevicePoolPlan {
     let n_online_members = g.count(0, 2);
     let n_offline = g.count(0, 2);
     let offline_members: Vec<ClientId> = (0..n_offline).map(|_| g.fresh_client_id()).collect();
-    tunnel::proptest::StaticDevicePoolPlan {
+    StaticDevicePoolPlan {
         id: g.fresh_resource_id(),
         name: g.lower_ascii(4, 10),
         filters: arb_filters(g),

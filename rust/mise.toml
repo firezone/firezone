@@ -56,12 +56,11 @@ run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
 description = "Run tests (CI check)"
 run = "cargo test --all-features -- --include-ignored --nocapture"
 
-[tasks.tunnel-proptest]
-description = "Run the tunnel proptest suite with extended case/shrink budgets"
-dir = "libs/connlib/tunnel-tests"
-env = { CARGO_PROFILE_TEST_OPT_LEVEL = "1", PROPTEST_CASES = "10000", PROPTEST_MAX_SHRINK_ITERS = "100" }
+[tasks.tunnel-fuzz]
+description = "Fuzz the tunnel state machine, seeded from the committed corpus"
+env = { CARGO_PROFILE_RELEASE_LTO = "false" }
 raw = true
-run = "cargo test tunnel_test -- --nocapture"
+run = "cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0"
 
 [tasks.tauri-mock]
 description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
