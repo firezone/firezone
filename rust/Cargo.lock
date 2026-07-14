@@ -3816,6 +3816,7 @@ dependencies = [
  "anyhow-ext",
  "arbitrary",
  "bufferpool",
+ "divan",
  "etherparse",
  "etherparse-ext",
  "incremental-inet-checksum",
