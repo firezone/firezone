@@ -1,6 +1,7 @@
 defmodule PortalWeb.Settings.LogSinks do
   use PortalWeb, :live_view
 
+  alias Portal.Datadog
   alias Portal.Splunk
   alias __MODULE__.Database
 
@@ -9,10 +10,21 @@ defmodule PortalWeb.Settings.LogSinks do
   require Logger
 
   @modules %{
-    "splunk" => Splunk.LogSink
+    "splunk" => Splunk.LogSink,
+    "datadog" => Datadog.LogSink
   }
 
   @types Map.keys(@modules)
+
+  @datadog_site_options [
+    {"US1 (datadoghq.com)", "datadoghq.com"},
+    {"US3 (us3.datadoghq.com)", "us3.datadoghq.com"},
+    {"US5 (us5.datadoghq.com)", "us5.datadoghq.com"},
+    {"EU1 (datadoghq.eu)", "datadoghq.eu"},
+    {"AP1 (ap1.datadoghq.com)", "ap1.datadoghq.com"},
+    {"AP2 (ap2.datadoghq.com)", "ap2.datadoghq.com"},
+    {"US1-FED (ddog-gov.com)", "ddog-gov.com"}
+  ]
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
@@ -22,10 +34,12 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @streams ~w[change session api_request flow]
 
+  @common_fields ~w[name is_disabled disabled_reason error_message errored_at error_email_count
+                    enabled_streams retroactive]a
+
   @fields %{
-    Splunk.LogSink =>
-      ~w[name is_disabled disabled_reason error_message errored_at error_email_count
-         collector_url hec_token index enabled_streams retroactive]a
+    Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
+    Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a
   }
 
   def mount(_params, _session, socket) do
@@ -188,7 +202,7 @@ defmodule PortalWeb.Settings.LogSinks do
          )}
 
       true ->
-        case Oban.insert(Splunk.Sync.new(%{"log_sink_id" => sink.id})) do
+        case Oban.insert(sync_module(sink).new(%{"log_sink_id" => sink.id})) do
           {:ok, _job} ->
             {:noreply,
              socket
@@ -331,6 +345,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to a Splunk HTTP Event Collector.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/datadog/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="datadog" size="xl" />
+                      <span class="text-sm font-medium text-heading">Datadog</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Stream logs to Datadog Log Management.
                     </span>
                   </.link>
                 </li>
@@ -536,8 +564,8 @@ defmodule PortalWeb.Settings.LogSinks do
         <.sink_status_badge sink={@sink} />
       </td>
       <td class="px-6 py-3 w-48">
-        <span class="text-sm text-body font-mono truncate block" title={@sink.collector_url}>
-          {collector_host(@sink)}
+        <span class="text-sm text-body font-mono truncate block" title={sink_destination(@sink)}>
+          {sink_destination(@sink)}
         </span>
       </td>
       <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
@@ -734,7 +762,7 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
-        <div>
+        <div :if={@type == "splunk"}>
           <label for={@form[:collector_url].id} class="block text-xs font-medium text-body mb-1.5">
             HEC URL <span class="text-error">*</span>
           </label>
@@ -752,7 +780,7 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
-        <div>
+        <div :if={@type == "splunk"}>
           <label for={@form[:hec_token].id} class="block text-xs font-medium text-body mb-1.5">
             HEC Token <span class="text-error">*</span>
           </label>
@@ -769,7 +797,7 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
-        <div>
+        <div :if={@type == "splunk"}>
           <label for={@form[:index].id} class="block text-xs font-medium text-body mb-1.5">
             Index
           </label>
@@ -783,6 +811,55 @@ defmodule PortalWeb.Settings.LogSinks do
           <p class="mt-1 text-xs text-subtle">
             Optional. The Splunk index to send events to; the token's default index is used
             when left blank.
+          </p>
+        </div>
+
+        <div :if={@type == "datadog"}>
+          <.input
+            field={@form[:site]}
+            type="select"
+            label="Site"
+            options={datadog_site_options()}
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The Datadog site your organization uses; shown under Organization Settings in Datadog.
+          </p>
+        </div>
+
+        <div :if={@type == "datadog"}>
+          <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
+            API Key <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:api_key]}
+            type="password"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            A Datadog API key with log ingestion permission.
+          </p>
+        </div>
+
+        <div :if={@type == "datadog"}>
+          <label for={@form[:tags].id} class="block text-xs font-medium text-body mb-1.5">
+            Tags
+          </label>
+          <.input
+            field={@form[:tags]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Optional. Comma-separated tags added to every event, e.g.
+            <code class="text-xs">env:prod,team:secops</code>. A
+            <code class="text-xs">stream:&lt;stream&gt;</code>
+            tag is always included.
           </p>
         </div>
 
@@ -874,6 +951,7 @@ defmodule PortalWeb.Settings.LogSinks do
     type =
       case schema do
         Splunk.LogSink -> :splunk
+        Datadog.LogSink -> :datadog
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -894,6 +972,9 @@ defmodule PortalWeb.Settings.LogSinks do
   # Editing is the ONLY way out of an error-disabled state: the sink is
   # presumably being edited to fix the problem, so re-enable it and let the
   # next delivery prove the fix.
+  defp sync_module(%Splunk.LogSink{}), do: Splunk.Sync
+  defp sync_module(%Datadog.LogSink{}), do: Datadog.Sync
+
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
       changeset
@@ -940,6 +1021,8 @@ defmodule PortalWeb.Settings.LogSinks do
 
   defp select_type_classes, do: @select_type_classes
 
+  defp datadog_site_options, do: @datadog_site_options
+
   defp streams, do: @streams
 
   defp stream_enabled?(form, stream) do
@@ -958,19 +1041,23 @@ defmodule PortalWeb.Settings.LogSinks do
   defp stream_help("flow"), do: "Network flows through gateways."
 
   defp titleize("splunk"), do: "Splunk"
+  defp titleize("datadog"), do: "Datadog"
 
   defp sink_type(sink) do
     case sink.__struct__ do
       Splunk.LogSink -> "splunk"
+      Datadog.LogSink -> "datadog"
     end
   end
 
-  defp collector_host(sink) do
+  defp sink_destination(%Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) -> host
       _ -> sink.collector_url
     end
   end
+
+  defp sink_destination(%Datadog.LogSink{} = sink), do: sink.site
 
   defp delivered_count(sink) do
     case sink.delivery_stats do
@@ -1018,13 +1105,17 @@ defmodule PortalWeb.Settings.LogSinks do
   defmodule Database do
     import Ecto.Query
 
+    alias Portal.Datadog
     alias Portal.Safe
     alias Portal.Splunk
 
     def list_all_sinks(subject, repo \\ :replica) do
-      Splunk.LogSink
-      |> Safe.scoped(subject, repo)
-      |> Safe.all()
+      [
+        Splunk.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+      ]
+      |> List.flatten()
+      |> Enum.sort_by(& &1.name)
       |> enrich_with_delivery_stats(subject, repo)
     end
 

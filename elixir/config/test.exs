@@ -114,7 +114,13 @@ config :portal, Portal.Splunk.APIClient,
     retry: false
   ]
 
-config :portal, Portal.Splunk.Sync, visibility_lag_seconds: 0
+config :portal, Portal.Datadog.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Datadog.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,
   client_id: "test-azure-client-id",

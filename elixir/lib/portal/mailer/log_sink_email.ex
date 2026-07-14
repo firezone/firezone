@@ -22,6 +22,8 @@ defmodule Portal.Mailer.LogSinkEmail do
       account: sink.account,
       sink: sink,
       settings_url: settings_url,
+      type: type(sink),
+      provider_hint: provider_hint(sink),
       destination: destination(sink),
       streams: streams(sink),
       delivered: stats.delivered,
@@ -34,12 +36,28 @@ defmodule Portal.Mailer.LogSinkEmail do
 
   defp put_recipients(email, recipient), do: to(email, recipient)
 
-  defp destination(sink) do
+  defp type(%Portal.Splunk.LogSink{}), do: "Splunk"
+  defp type(%Portal.Datadog.LogSink{}), do: "Datadog"
+
+  defp provider_hint(%Portal.Splunk.LogSink{}) do
+    "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
+      "at your HTTP Event Collector. On Splunk Cloud that is usually " <>
+      "https://http-inputs-<stack>.splunkcloud.com (trial stacks use port 8088)."
+  end
+
+  defp provider_hint(%Portal.Datadog.LogSink{}) do
+    "Verify the API key is valid and unrevoked in Datadog, and that the site matches " <>
+      "your organization's Datadog site."
+  end
+
+  defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
       _ -> sink.collector_url
     end
   end
+
+  defp destination(%Portal.Datadog.LogSink{} = sink), do: sink.site
 
   defp streams(sink) do
     Enum.map_join(sink.enabled_streams, ", ", fn

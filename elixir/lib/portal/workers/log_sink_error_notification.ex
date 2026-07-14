@@ -22,18 +22,21 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Mailer
-  alias Portal.Splunk
   alias __MODULE__.Database
   require Logger
+
+  @sink_schemas [Portal.Splunk.LogSink, Portal.Datadog.LogSink]
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     now = DateTime.utc_now()
 
-    Splunk.LogSink
-    |> Database.errored_disabled_sinks()
-    |> Enum.filter(&due_for_email?(&1, now))
-    |> Enum.each(&send_notification/1)
+    Enum.each(@sink_schemas, fn schema ->
+      schema
+      |> Database.errored_disabled_sinks()
+      |> Enum.filter(&due_for_email?(&1, now))
+      |> Enum.each(&send_notification/1)
+    end)
 
     :ok
   end
