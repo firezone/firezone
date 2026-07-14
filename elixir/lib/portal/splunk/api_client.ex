@@ -16,7 +16,7 @@ defmodule Portal.Splunk.APIClient do
   @impl true
   def encode_event(sink, stream, {time, event}) do
     envelope = %{
-      "time" => time,
+      "time" => hec_time(time),
       "source" => "firezone",
       "sourcetype" => "firezone:#{stream}",
       "event" => event
@@ -61,8 +61,10 @@ defmodule Portal.Splunk.APIClient do
   #
   # Codes 24/25 arrive with HTTP 200: events were accepted but HEC's queues
   # are filling up. Successful delivery, but worth a trace before it becomes
-  # a 429. Code 6 "Invalid data format" rejects the payload, not the config,
-  # so a poison event must be isolated rather than disabling the whole sink.
+  # a 429. Codes 6 (invalid data format), 12/13 (event field required/blank)
+  # and 15 (error in handling indexed fields) reject event content, not the
+  # config, so a poison event must be isolated rather than disabling the
+  # whole sink.
   @impl true
   def interpret(sink, %Req.Response{status: 200} = response) do
     case response.body do
@@ -81,7 +83,11 @@ defmodule Portal.Splunk.APIClient do
   end
 
   def interpret(_sink, %Req.Response{status: 413}), do: :payload_too_large
-  def interpret(_sink, %Req.Response{status: 400, body: %{"code" => 6}}), do: :malformed_payload
+
+  def interpret(_sink, %Req.Response{status: 400, body: %{"code" => code}})
+      when code in [6, 12, 13, 15],
+      do: :malformed_payload
+
   def interpret(_sink, %Req.Response{}), do: :failed
 
   @impl true
@@ -102,6 +108,13 @@ defmodule Portal.Splunk.APIClient do
       _ ->
         "Splunk HEC returned HTTP #{status}"
     end
+  end
+
+  # JSON encodes floats in shortest-round-trip form, which turns round
+  # timestamps into scientific notation ("time":1.75248e9); HEC rejects that
+  # with 400 code 15, so pin the sec.ms format.
+  defp hec_time(time) do
+    :erlang.float_to_binary(time, decimals: 3)
   end
 
   defp req_opts do
