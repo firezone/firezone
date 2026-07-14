@@ -11,7 +11,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     io,
     net::IpAddr,
     task::{Context, Poll},
@@ -496,14 +496,8 @@ impl Eventloop {
                 state.set_resources(resources, now);
                 state.update_relays(BTreeSet::default(), tunnel::turn(&relays), now);
 
-                state.retain_authorizations(authorizations.iter().fold(
-                    BTreeMap::new(),
-                    |mut acc, authorization| {
-                        acc.entry(authorization.client_id)
-                            .or_default()
-                            .insert(authorization.resource_id);
-                        acc
-                    },
+                state.retain_authorizations(tunnel::messages::group_authorizations_by_client(
+                    &authorizations,
                 ));
                 for Authorization {
                     client_id,

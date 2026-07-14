@@ -127,8 +127,10 @@ impl ClientOnClient {
         new_expiry: Instant,
         now: Instant,
     ) {
-        let ttl = new_expiry.saturating_duration_since(now);
-        if !self.resources.update_expiry(&resource_id, now, ttl) {
+        if !self
+            .resources
+            .update_expiry_at(&resource_id, new_expiry, now)
+        {
             tracing::debug!(%resource_id, "Unknown resource");
         }
     }
