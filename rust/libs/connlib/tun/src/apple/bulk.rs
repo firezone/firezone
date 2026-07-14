@@ -138,7 +138,7 @@ pub fn recv(
 
                 let mut batch = PacketBatch::default();
 
-                for (buf, len) in bufs.iter_mut().zip(lens).take(n) {
+                for (buf, &len) in bufs.iter_mut().zip(&lens).take(n) {
                     if len == 0 {
                         continue; // Empty or truncated datagram; the slot's buffer is reused.
                     }
