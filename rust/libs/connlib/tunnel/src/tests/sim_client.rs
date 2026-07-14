@@ -259,10 +259,12 @@ impl SimClient {
             .or_else(|| self.tcp_client.poll_outbound())
     }
 
-    pub fn handle_timeout(&mut self, now: Instant) {
+    pub fn drive_tcp(&mut self, now: Instant) {
         self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
+    }
 
+    pub fn handle_timeout(&mut self, now: Instant) {
         if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
             self.sut.handle_timeout(now)
         }

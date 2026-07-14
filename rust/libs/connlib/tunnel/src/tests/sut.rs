@@ -697,8 +697,11 @@ impl TunnelTest {
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
             let now = self.flux_capacitor.now();
 
-            // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
-            self.handle_timeout(
+            // Drive the network at the top so state changes from the previous
+            // iteration are turned into packets before we look for more work.
+            // Timeouts are not fired here; that happens once we run out of IO
+            // progress below.
+            self.drive_network(
                 &ref_state.global_dns_records,
                 &ref_state.icmp_error_hosts,
                 buffered_transmits,
@@ -866,9 +869,9 @@ impl TunnelTest {
             }
 
             // The buffer is empty here (see the `is_empty` guard above), so nothing
-            // is in flight; jump straight to the next timeout instead of ticking
-            // there one `LARGE_TICK` at a time.
+            // is in flight; jump to the next deadline and fire whatever is due.
             self.flux_capacitor.advance_until(time_to_next_action);
+            self.handle_timeout(self.flux_capacitor.now());
         }
 
         for (transmit, at) in buffered_transmits.drain() {
@@ -890,7 +893,9 @@ impl TunnelTest {
         }
     }
 
-    fn handle_timeout(
+    /// Drive the simulated network: drain every host's outbound/inbound packets
+    /// and advance the simulated application TCP stacks.
+    fn drive_network(
         &mut self,
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
@@ -936,10 +941,10 @@ impl TunnelTest {
                 buffered_transmits.push_from(transmit, client, now)
             }
 
-            client.exec_mut(|c| c.handle_timeout(now));
+            client.exec_mut(|c| c.drive_tcp(now));
         }
 
-        // Handle all gateway `Transmit`s and timeouts.
+        // Handle all gateway `Transmit`s.
         for gateway in self.gateways.values_mut() {
             for transmit in gateway.exec_mut(|g| g.advance_resources(global_dns_records, now)) {
                 buffered_transmits.push_from(transmit, gateway, now);
@@ -953,11 +958,9 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(reply, gateway, now);
             }
-
-            gateway.exec_mut(|g| g.handle_timeout(now));
         }
 
-        // Handle all relay `Transmit`s and timeouts.
+        // Handle all relay `Transmit`s.
         for relay in self.relays.values_mut() {
             while let Some(transmit) = relay.poll_inbox(now) {
                 let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
@@ -966,7 +969,19 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(reply, relay, now);
             }
+        }
+    }
 
+    fn handle_timeout(&mut self, now: Instant) {
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| c.handle_timeout(now));
+        }
+
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| g.handle_timeout(now));
+        }
+
+        for relay in self.relays.values_mut() {
             relay.exec_mut(|r| {
                 if r.sut.poll_timeout().is_some_and(|t| t <= now) {
                     r.sut.handle_timeout(now)
