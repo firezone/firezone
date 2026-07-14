@@ -1,18 +1,8 @@
 //! Stateful connection tracker for client-to-client flows.
 //!
-//! Records each flow under a normalised "from this peer's perspective" key
-//! (local IP + protocol, peer IP + protocol). The same key is produced for:
-//!
-//! - An outbound we initiated (`record_outbound`) and the inbound reply
-//!   that comes back (`is_return_traffic`).
-//! - An inbound we received from a peer (`record_inbound`) and the outbound
-//!   reply we may produce (`is_known_flow`).
-//!
-//! That symmetry lets a single map serve both directions: a peer initiates
-//! to us → we record on inbound → our reply outbound is admitted as a known
-//! flow without firing a fresh connection intent. The IP pair is part of
-//! the key so a v4 flow and a v6 flow with identical port pairs don't
-//! collide.
+//! Flows are tracked separately by which side opened them: only flows *we*
+//! opened grant a return-traffic exemption from the inbound filter, so
+//! revoking or expiring an authorization cuts off peer-opened flows.
 
 use ip_packet::{IpPacket, Protocol};
 use std::collections::BTreeMap;
@@ -21,11 +11,14 @@ use std::time::{Duration, Instant};
 
 #[derive(Default, Debug)]
 pub(crate) struct ConnTrack {
-    entries: BTreeMap<Key, Instant>,
+    initiated: BTreeMap<Key, Instant>,
+    received: BTreeMap<Key, Instant>,
 }
 
 impl ConnTrack {
-    /// Record an outbound packet we sent to a peer.
+    /// Record an outbound packet as a flow *we* opened, unless it is a reply
+    /// to a flow the peer opened: that must not earn a return-traffic
+    /// exemption, or a peer-opened flow would outlive its authorization.
     pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
         let Ok(local) = packet.source_protocol() else {
             return;
@@ -34,18 +27,21 @@ impl ConnTrack {
             return;
         };
 
-        self.entries.insert(
-            Key {
-                local,
-                peer,
-                local_ip: packet.source(),
-                peer_ip: packet.destination(),
-            },
-            now,
-        );
+        let key = Key {
+            local,
+            peer,
+            local_ip: packet.source(),
+            peer_ip: packet.destination(),
+        };
+
+        if self.received.contains_key(&key) && !self.initiated.contains_key(&key) {
+            return;
+        }
+
+        self.initiated.insert(key, now);
     }
 
-    /// Record an inbound packet we received from a peer.
+    /// Record an inbound packet of a flow the *peer* opened to us.
     pub(crate) fn record_inbound(&mut self, packet: &IpPacket, now: Instant) {
         let Ok(local) = packet.destination_protocol() else {
             return;
@@ -54,7 +50,7 @@ impl ConnTrack {
             return;
         };
 
-        self.entries.insert(
+        self.received.insert(
             Key {
                 local,
                 peer,
@@ -65,9 +61,7 @@ impl ConnTrack {
         );
     }
 
-    /// Returns `true` if the inbound packet matches a recorded flow (either
-    /// an outbound we initiated or an inbound we previously received from
-    /// the peer).
+    /// Returns `true` if the inbound packet is the reply to a flow *we* opened.
     pub(crate) fn is_return_traffic(&self, packet: &IpPacket) -> bool {
         let Ok(peer) = packet.source_protocol() else {
             return false;
@@ -76,7 +70,7 @@ impl ConnTrack {
             return false;
         };
 
-        self.entries.contains_key(&Key {
+        self.initiated.contains_key(&Key {
             local,
             peer,
             local_ip: packet.destination(),
@@ -84,9 +78,8 @@ impl ConnTrack {
         })
     }
 
-    /// Returns `true` if the *outbound* packet is part of an existing flow
-    /// (either initiated by us or in reply to inbound traffic from the
-    /// peer).
+    /// Returns `true` if the *outbound* packet belongs to an existing flow in
+    /// either direction.
     pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
         let Ok(local) = packet.source_protocol() else {
             return false;
@@ -95,18 +88,22 @@ impl ConnTrack {
             return false;
         };
 
-        self.entries.contains_key(&Key {
+        let key = Key {
             local,
             peer,
             local_ip: packet.source(),
             peer_ip: packet.destination(),
-        })
+        };
+
+        self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        for _ in self.entries.extract_if(.., |key, last_seen| {
-            now.saturating_duration_since(*last_seen) >= ttl(key)
-        }) {}
+        for map in [&mut self.initiated, &mut self.received] {
+            for _ in map.extract_if(.., |key, last_seen| {
+                now.saturating_duration_since(*last_seen) >= ttl(key)
+            }) {}
+        }
     }
 }
 
@@ -168,6 +165,60 @@ mod tests {
         let unrelated = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 9999, 53535, &[])
             .expect("valid packet");
         assert!(!ct.is_return_traffic(&unrelated));
+    }
+
+    #[test]
+    fn peer_opened_flow_is_not_return_traffic() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        let next = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
+            .expect("valid packet");
+        assert!(!ct.is_return_traffic(&next));
+
+        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
+            .expect("valid packet");
+        assert!(ct.is_known_flow(&reply));
+    }
+
+    #[test]
+    fn continued_traffic_keeps_initiated_flow_alive() {
+        let mut ct = ConnTrack::default();
+        let start = Instant::now();
+
+        let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+            .expect("valid packet");
+        ct.record_outbound(&outbound, start);
+
+        ct.record_outbound(&outbound, start + UDP_TTL - Duration::from_secs(1));
+
+        ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
+
+        let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
+            .expect("valid packet");
+        assert!(ct.is_return_traffic(&reply));
+    }
+
+    #[test]
+    fn reply_to_peer_opened_flow_does_not_create_exemption() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
+            .expect("valid packet");
+        ct.record_outbound(&reply, now);
+
+        let next = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
+            .expect("valid packet");
+        assert!(!ct.is_return_traffic(&next));
     }
 
     #[test]
