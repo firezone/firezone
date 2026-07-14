@@ -1,0 +1,63 @@
+---
+name: Fuzz corpus (nightly)
+run-name: Triggered from ${{ github.event_name }}
+# Grows and minimizes the committed `tunnel` fuzz corpus, then uploads the
+# result as an artifact. The committed corpus gates per-PR coverage in
+# `_rust.yml`; this job rediscovers coverage the per-PR run does not have time
+# for (and re-anchors it after `arb.rs` changes decode the same bytes into
+# different transitions). A maintainer downloads the artifact and commits it to
+# ratchet the coverage threshold up.
+"on":
+  schedule:
+    - cron: "0 4 * * *" # daily, 04:00 UTC
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: ./rust
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: discover-corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-rust-nightly
+        id: setup-rust
+      - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/free-disk-space
+      - name: Install llvm-tools for coverage
+        run: rustup component add llvm-tools-preview --toolchain ${{ steps.setup-rust.outputs.nightly_version }}
+      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2.81.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: cargo-fuzz
+      - name: Discover new coverage (seeded from the committed corpus)
+        run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
+        env:
+          CARGO_PROFILE_RELEASE_LTO: false
+      - name: Minimize corpus
+        run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
+        env:
+          CARGO_PROFILE_RELEASE_LTO: false
+      - name: Measure coverage (report only)
+        run: |
+          rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
+          python3 tests/fuzz/check_coverage.py 0
+        env:
+          CARGO_PROFILE_RELEASE_LTO: false
+          COVERAGE_TOOLCHAIN: ${{ steps.setup-rust.outputs.nightly_version }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tunnel-fuzz-corpus
+          path: rust/tests/fuzz/corpus/tunnel
+          if-no-files-found: error
