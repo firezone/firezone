@@ -128,9 +128,12 @@ defmodule Portal.Splunk.Sync do
       {:ok, %Req.Response{status: 413} = response} ->
         handle_rejected_chunk(sink, cursor, chunk, response, :oversized)
 
-      # Code 6 "Invalid data format" rejects the payload, not the config, so a
-      # poison event must be isolated rather than disabling the whole sink.
-      {:ok, %Req.Response{status: 400, body: %{"code" => 6}} = response} ->
+      # Codes 6 (invalid data format), 12/13 (event field required/blank) and
+      # 15 (error in handling indexed fields) reject event content, not the
+      # config, so a poison event must be isolated rather than disabling the
+      # whole sink.
+      {:ok, %Req.Response{status: 400, body: %{"code" => code}} = response}
+      when code in [6, 12, 13, 15] ->
         handle_rejected_chunk(sink, cursor, chunk, response, :malformed)
 
       {:ok, %Req.Response{} = response} ->
@@ -297,7 +300,7 @@ defmodule Portal.Splunk.Sync do
     {time, event} = render(stream, row)
 
     envelope = %{
-      "time" => time,
+      "time" => hec_time(time),
       "source" => "firezone",
       "sourcetype" => "firezone:#{stream}",
       "event" => event
@@ -402,6 +405,13 @@ defmodule Portal.Splunk.Sync do
 
   defp epoch(datetime) do
     DateTime.to_unix(datetime, :millisecond) / 1000
+  end
+
+  # JSON encodes floats in shortest-round-trip form, which turns round
+  # timestamps into scientific notation ("time":1.75248e9); HEC rejects that
+  # with 400 code 15, so pin the sec.ms format.
+  defp hec_time(time) do
+    :erlang.float_to_binary(time, decimals: 3)
   end
 
   defmodule Database do

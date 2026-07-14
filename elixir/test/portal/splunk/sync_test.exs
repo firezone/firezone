@@ -57,7 +57,9 @@ defmodule Portal.Splunk.SyncTest do
       assert event["sourcetype"] == "firezone:session"
       assert event["event"]["type"] == "session"
       assert event["event"]["log_id"] == log.log_id
-      assert_in_delta event["time"], DateTime.to_unix(log.timestamp, :millisecond) / 1000, 0.001
+      assert_in_delta String.to_float(event["time"]),
+                      DateTime.to_unix(log.timestamp, :millisecond) / 1000,
+                      0.001
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.cursor == log.seq
@@ -198,7 +200,7 @@ defmodule Portal.Splunk.SyncTest do
       assert_receive {:hec, _conn, [start_event]}
       assert start_event["event"]["phase"] == "start"
       assert start_event["event"]["log_id"] == flow.log_id
-      assert_in_delta start_event["time"],
+      assert_in_delta String.to_float(start_event["time"]),
                       DateTime.to_unix(flow.flow_start, :millisecond) / 1000,
                       0.001
 
@@ -226,7 +228,9 @@ defmodule Portal.Splunk.SyncTest do
       assert end_event["event"]["phase"] == "end"
       assert end_event["event"]["log_id"] == flow.log_id
       assert end_event["event"]["rx_bytes"] == 1024
-      assert_in_delta end_event["time"], DateTime.to_unix(flow_end, :millisecond) / 1000, 0.001
+      assert_in_delta String.to_float(end_event["time"]),
+                      DateTime.to_unix(flow_end, :millisecond) / 1000,
+                      0.001
     end
 
     test "splits deliveries that exceed the HEC request size limit", %{account: account} do
@@ -345,6 +349,55 @@ defmodule Portal.Splunk.SyncTest do
       assert cursor.cursor >= poison.seq
 
       refute reload_sink(sink).is_disabled
+    end
+
+    test "round timestamps render in fixed sec.ms notation", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      # 1752480000.0 JSON-encodes as 1.75248e9, which HEC rejects with
+      # "Error in handling indexed fields (code 15)".
+      session_log_fixture(
+        account: account,
+        timestamp: DateTime.from_unix!(1_752_480_000_000_000, :microsecond)
+      )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [event]}
+      assert event["time"] == "1752480000.000"
+    end
+
+    test "an indexed-fields rejection is isolated, not a sink error", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      poison = session_log_fixture(account: account, actor_email: "poison@example.com")
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        if body =~ "poison@example.com" do
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"text" => "Error in handling indexed fields", "code" => 15})
+        else
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Dropping undeliverable log sink event"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.dropped_count == 1
+      assert cursor.cursor >= poison.seq
+      refute reload_sink(sink).is_disabled
+      refute reload_sink(sink).errored_at
     end
 
     test "capacity warnings on successful deliveries are still successes", %{account: account} do
