@@ -19,11 +19,13 @@ defmodule Portal.LogSinks.Adapter do
   @doc """
   Read a response: `:accepted` advances the cursor, `:payload_too_large`
   bisects and drops only genuinely oversized events, `:malformed_payload`
-  bisects and drops the offending event unconditionally, and `:failed` puts
-  the sink into the error path.
+  bisects and drops the offending event unconditionally, `:retriable` treats
+  the response as a transient failure regardless of its HTTP status (for
+  destinations that report per-item backpressure inside a 200), and `:failed`
+  puts the sink into the error path.
   """
   @callback interpret(sink :: struct(), Req.Response.t()) ::
-              :accepted | :payload_too_large | :malformed_payload | :failed
+              :accepted | :payload_too_large | :malformed_payload | :retriable | :failed
 
   @doc "User-facing message for a `:failed` response."
   @callback format_status_error(Req.Response.t()) :: String.t()

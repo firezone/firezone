@@ -117,6 +117,9 @@ defmodule Portal.LogSinks.Delivery do
           :malformed_payload ->
             handle_rejected_chunk(sink, adapter, cursor, chunk, response, :malformed)
 
+          :retriable ->
+            {:error, {:retriable, response}}
+
           :failed ->
             {:error, {:status, response}}
         end
@@ -244,10 +247,15 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp classify({:status, _response}), do: :client_error
+  defp classify({:retriable, _response}), do: :transient
   defp classify({:transport, _exception}), do: :transient
   defp classify(:cursor_conflict), do: :transient
 
   defp format_error(adapter, {:status, %Req.Response{} = response}) do
+    adapter.format_status_error(response)
+  end
+
+  defp format_error(adapter, {:retriable, %Req.Response{} = response}) do
     adapter.format_status_error(response)
   end
 

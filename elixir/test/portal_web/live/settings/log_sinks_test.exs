@@ -309,6 +309,40 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert base.type == :newrelic
     end
 
+    test "creates an Elastic log sink with its base row", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/elastic/new")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Elastic",
+            endpoint_url: "https://acme.es.us-east-1.aws.elastic-cloud.com/_bulk",
+            api_key: "es-test-key",
+            index: "firezone-logs",
+            enabled_streams: ["", "session"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.Elastic.LogSink, account_id: account.id)
+      assert sink.name == "SOC Elastic"
+      assert sink.endpoint_url == "https://acme.es.us-east-1.aws.elastic-cloud.com"
+      assert sink.api_key == "es-test-key"
+      assert sink.index == "firezone-logs"
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :elastic
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,
