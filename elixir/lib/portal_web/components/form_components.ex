@@ -535,13 +535,13 @@ defmodule PortalWeb.FormComponents do
       ]}
     >
       <form method="dialog" class="flex items-center justify-center min-h-screen p-4">
-        <div class="relative bg-white rounded-md shadow-sm max-w-2xl">
-          <div class="flex items-center justify-between p-4 md:p-5 border-b border-neutral-200 rounded-t">
-            <h3 class="text-xl font-semibold text-neutral-900">
+        <div class="relative bg-elevated border border-border rounded-md shadow-sm max-w-2xl">
+          <div class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t">
+            <h3 class="text-xl font-semibold text-heading">
               {render_slot(@dialog_title)}
             </h3>
             <button
-              class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
+              class="text-subtle bg-transparent hover:text-heading ml-2"
               type="submit"
               value="cancel"
             >
@@ -549,10 +549,10 @@ defmodule PortalWeb.FormComponents do
               <span class="sr-only">Close modal</span>
             </button>
           </div>
-          <div class="p-4 md:p-5 text-neutral-500 text-base">
+          <div class="p-4 md:p-5 text-body text-base">
             {render_slot(@dialog_content)}
           </div>
-          <div class="flex items-center justify-end p-4 md:p-5 border-t border-neutral-200 rounded-b">
+          <div class="flex items-center justify-end p-4 md:p-5 border-t border-border rounded-b">
             <.button
               data-dialog-action="cancel"
               type="submit"
