@@ -83,6 +83,15 @@ where
         self.inner.values().map(|e| &e.value)
     }
 
+    /// Set the expiration of an existing entry to `expires_at`. Returns
+    /// `true` if the entry exists.
+    ///
+    /// An `expires_at` in the past collapses to a zero TTL, evicting the
+    /// entry on the next `handle_timeout` call.
+    pub fn update_expiry_at(&mut self, key: &K, expires_at: Instant, now: Instant) -> bool {
+        self.update_expiry(key, now, expires_at.saturating_duration_since(now))
+    }
+
     /// Push back (or move forward) the expiration of an existing entry to
     /// `now + ttl`, re-bucketing it in the expiration index. Returns `true`
     /// if the entry exists.

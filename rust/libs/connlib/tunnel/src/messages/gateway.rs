@@ -4,6 +4,8 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
     SecretKey, SnownetCapabilities,
 };
+
+pub use crate::messages::Authorization;
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -99,15 +101,6 @@ pub struct Config {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoveResource {
     pub id: ResourceId,
-}
-
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct Authorization {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
 }
 
 #[derive(Debug, Deserialize, Clone)]
