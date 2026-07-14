@@ -34,11 +34,13 @@ mod sockets;
 #[cfg(all(test, feature = "proptest"))]
 #[allow(clippy::unwrap_in_result)]
 mod tests;
+mod utils;
 
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
 pub use sockets::UdpSocketThreadStopped;
+pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
 ///

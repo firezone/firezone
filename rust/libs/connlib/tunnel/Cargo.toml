@@ -19,6 +19,7 @@ futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
 http-client = { workspace = true }
 ip-packet = { workspace = true }
+itertools = { workspace = true, features = ["use_std"] }
 l4-tcp-dns-server = { workspace = true }
 l4-udp-dns-server = { workspace = true }
 logging = { workspace = true }

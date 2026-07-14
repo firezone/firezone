@@ -49,9 +49,6 @@ mod routing_table;
 mod unique_packet_buffer;
 mod unix_ts;
 pub mod unroutable_packet;
-mod utils;
-
-const REALM: &str = "firezone";
 
 pub const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
     Ok(n) => n,
@@ -68,7 +65,6 @@ pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use unroutable_packet::UnroutablePacket;
-pub use utils::turn;
 
 #[derive(Debug)]
 pub enum ClientEvent {
