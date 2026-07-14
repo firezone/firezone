@@ -143,6 +143,7 @@ impl PendingAuthorizations {
 
         tracing::debug!(trigger = %trigger_name, "Requesting authorization");
 
+        pending.resource_id = resource_id;
         pending.last_request_sent_at = now;
         self.authorization_requests
             .push_back(AuthorizationRequest { resource_id, ip });
@@ -150,7 +151,7 @@ impl PendingAuthorizations {
 }
 
 pub struct PendingAuthorization {
-    /// The resource that triggered this authorization request.
+    /// The resource of the most recent authorization request for this target.
     resource_id: ResourceId,
     last_request_sent_at: Instant,
     resource_packets: UniquePacketBuffer,
@@ -498,6 +499,53 @@ mod tests {
             .poll_authorization_requests()
             .unwrap();
         assert_eq!(request.ip, Some(ip_bar));
+    }
+
+    #[test]
+    fn entry_tracks_resource_of_most_recent_request() {
+        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut now = Instant::now();
+        let cid = client_foo();
+        let rid_one = ipv4_localhost_resource().id();
+        let rid_two = ipv6_localhost_resource().id();
+        let resources = BTreeMap::from([
+            (rid_one, ipv4_localhost_resource()),
+            (rid_two, ipv6_localhost_resource()),
+        ]);
+        let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
+
+        pending_authorizations.on_not_authorized_device(
+            cid,
+            rid_one,
+            ip,
+            udp_trigger(1),
+            &resources,
+            now,
+        );
+        assert!(
+            pending_authorizations
+                .poll_authorization_requests()
+                .is_some()
+        );
+
+        now += Duration::from_secs(3);
+
+        pending_authorizations.on_not_authorized_device(
+            cid,
+            rid_two,
+            ip,
+            udp_trigger(2),
+            &resources,
+            now,
+        );
+        assert!(
+            pending_authorizations
+                .poll_authorization_requests()
+                .is_some()
+        );
+
+        let entry = pending_authorizations.remove(cid).unwrap();
+        assert_eq!(entry.resource_id(), rid_two);
     }
 
     fn udp_trigger(payload: u8) -> IpPacket {

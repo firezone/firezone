@@ -853,10 +853,6 @@ impl ClientState {
             return Ok(Some((ClientOrGatewayId::Gateway(gid), packet)));
         }
 
-        // Reply to an inbound flow from a peer whose IP is NOT in our
-        // routing table — we are a one-way *target* (the initiator
-        // installed the inbound resource on us, but our routing_table
-        // entry for them is absent).
         if let Some((cid, peer)) = self.clients.peer_by_ip_mut(dst)
             && peer.is_known_flow(&packet)
         {
@@ -1087,9 +1083,9 @@ impl ClientState {
             (auth.resource_id, auth.filters, expires_at)
         });
 
-        let peer = self
-            .clients
-            .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
+        let peer = self.clients.upsert(cid, || {
+            ClientOnClient::new(cid, client_tun, client_name.clone())
+        });
 
         if peer.remote_name() != client_name {
             tracing::debug!(%cid, name = %client_name, "Updated client peer name");
@@ -1162,6 +1158,35 @@ impl ClientState {
             return;
         };
         peer.remove_resource(&resource_id);
+    }
+
+    /// Resync inbound client-to-client authorizations from the portal's `init`.
+    pub fn retain_authorizations(
+        &mut self,
+        authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    ) {
+        let no_authorizations = BTreeSet::new();
+
+        for peer in self.clients.iter_mut() {
+            let retain = authorizations.get(&peer.id()).unwrap_or(&no_authorizations);
+            peer.retain_authorizations(retain);
+        }
+    }
+
+    /// Update the expiry of an existing inbound authorization from `init`.
+    pub fn update_access_authorization_expiry(
+        &mut self,
+        cid: ClientId,
+        resource_id: ResourceId,
+        expires_at: Duration,
+        now: Instant,
+    ) {
+        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
+            return;
+        };
+
+        let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
+        peer.update_resource_expiry(resource_id, new_expiry, now);
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -1529,6 +1554,13 @@ impl ClientState {
                 self.device_stub_resolver
                     .poll_timeout()
                     .map(|instant| (instant, "Device stub resolver")),
+            )
+            .chain(
+                self.clients
+                    .iter_mut()
+                    .filter_map(|peer| peer.poll_timeout())
+                    .min()
+                    .map(|instant| (instant, "Client peer authorization expiry")),
             )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)

@@ -4,7 +4,7 @@ use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::messages::Filter;
 use anyhow::{Context, Result};
-use connlib_model::ResourceId;
+use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
 use std::time::Instant;
@@ -22,6 +22,7 @@ use std::time::Instant;
 /// Most importantly, accessing another client does not allow any inbound traffic that
 /// isn't the return traffic of packets that we have sent.
 pub(crate) struct ClientOnClient {
+    id: ClientId,
     remote_tun: IpConfig,
     remote_name: String,
     /// Inbound resources authorising the remote peer to send packets to us.
@@ -51,8 +52,9 @@ pub(crate) enum InboundResult {
 }
 
 impl ClientOnClient {
-    pub(crate) fn new(remote_tun: IpConfig, remote_name: String) -> ClientOnClient {
+    pub(crate) fn new(id: ClientId, remote_tun: IpConfig, remote_name: String) -> ClientOnClient {
         ClientOnClient {
+            id,
             remote_tun,
             remote_name,
             resources: ExpiringMap::default(),
@@ -60,6 +62,10 @@ impl ClientOnClient {
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),
         }
+    }
+
+    pub(crate) fn id(&self) -> ClientId {
+        self.id
     }
 
     pub(crate) fn remote_tun(&self) -> IpConfig {
@@ -97,6 +103,36 @@ impl ClientOnClient {
         self.resources
             .insert(resource_id, ResourceOnClient { filters }, now, ttl);
         self.recompute_inbound_filter();
+    }
+
+    /// Drop every inbound authorization not present in `retain`.
+    pub(crate) fn retain_authorizations(
+        &mut self,
+        retain: &std::collections::BTreeSet<ResourceId>,
+    ) {
+        let mut any_removed = false;
+
+        for (resource_id, _) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
+            tracing::info!(%resource_id, "Revoking peer authorization on resync");
+            any_removed = true;
+        }
+
+        if any_removed {
+            self.recompute_inbound_filter();
+        }
+    }
+
+    /// Update when an existing inbound authorization expires.
+    pub(crate) fn update_resource_expiry(
+        &mut self,
+        resource_id: ResourceId,
+        new_expiry: Instant,
+        now: Instant,
+    ) {
+        let ttl = new_expiry.saturating_duration_since(now);
+        if !self.resources.update_expiry(&resource_id, now, ttl) {
+            tracing::debug!(%resource_id, "Unknown resource");
+        }
     }
 
     /// Replace the filters carried by an existing resource.
@@ -143,9 +179,14 @@ impl ClientOnClient {
         self.inbound_filter = FilterEngine::new(&combined);
     }
 
-    /// Record an outbound packet so subsequent inbound replies are admitted.
+    /// Record an outbound packet of a flow we opened.
     pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
         self.conn_track.handle_outbound(packet, now);
+    }
+
+    /// The next instant at which one of this peer's inbound authorizations expires.
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        self.resources.poll_timeout()
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
@@ -203,5 +244,142 @@ impl ClientOnClient {
         // The packet passed our filters, record as successful inbound packet.
         self.conn_track.record_inbound(&packet, now);
         Ok(InboundResult::Send(packet))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages::PortRange;
+    use connlib_model::{ClientId, ResourceId};
+    use ip_packet::make;
+    use std::collections::BTreeSet;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use std::time::Duration;
+
+    fn peer_tun() -> IpConfig {
+        IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 2),
+            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2),
+        }
+    }
+
+    fn our_v4() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))
+    }
+
+    fn peer_v4() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 2))
+    }
+
+    fn udp_to(dport: u16) -> IpPacket {
+        make::udp_packet(peer_v4(), our_v4(), 40000, dport, &[]).unwrap()
+    }
+
+    fn udp_port(port: u16) -> Vec<Filter> {
+        vec![Filter::Udp(PortRange {
+            port_range_start: port,
+            port_range_end: port,
+        })]
+    }
+
+    fn is_send(result: InboundResult) -> bool {
+        matches!(result, InboundResult::Send(_))
+    }
+
+    #[test]
+    fn peer_opened_flow_is_re_filtered_after_revocation() {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        peer.add_resource(rid, udp_port(80), None, now);
+
+        assert!(is_send(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+        ));
+
+        peer.remove_resource(&rid);
+
+        assert!(matches!(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap(),
+            InboundResult::Filtered(_)
+        ));
+    }
+
+    #[test]
+    fn our_reply_admitted_for_flow_we_opened_without_authorization() {
+        let now = Instant::now();
+        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+
+        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        peer.record_outbound(&outbound, now);
+
+        let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
+        assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));
+    }
+
+    #[test]
+    fn authorization_expires_and_is_enforced() {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(60)), now);
+
+        assert!(is_send(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+        ));
+        assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
+
+        let later = now + Duration::from_secs(61);
+        peer.handle_timeout(later);
+
+        assert_eq!(peer.poll_timeout(), None);
+        assert!(matches!(
+            peer.ensure_allowed_inbound(udp_to(80), later).unwrap(),
+            InboundResult::Filtered(_)
+        ));
+    }
+
+    #[test]
+    fn retain_authorizations_drops_absent_resources() {
+        let now = Instant::now();
+        let keep = ResourceId::from_u128(1);
+        let drop = ResourceId::from_u128(2);
+        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        peer.add_resource(keep, udp_port(80), None, now);
+        peer.add_resource(drop, udp_port(90), None, now);
+
+        assert!(is_send(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+        ));
+        assert!(is_send(
+            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
+        ));
+
+        peer.retain_authorizations(&BTreeSet::from([keep]));
+
+        assert!(is_send(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+        ));
+        assert!(matches!(
+            peer.ensure_allowed_inbound(udp_to(90), now).unwrap(),
+            InboundResult::Filtered(_)
+        ));
+    }
+
+    #[test]
+    fn update_resource_expiry_in_the_past_evicts_on_timeout() {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(600)), now);
+
+        peer.update_resource_expiry(rid, now, now);
+        peer.handle_timeout(now);
+
+        assert!(matches!(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap(),
+            InboundResult::Filtered(_)
+        ));
     }
 }
