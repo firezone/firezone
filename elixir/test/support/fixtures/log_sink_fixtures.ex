@@ -79,6 +79,64 @@ defmodule Portal.LogSinkFixtures do
     datadog_log_sink
   end
 
+  def valid_newrelic_log_sink_attrs(attrs \\ %{}) do
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    Enum.into(attrs, %{
+      name: "New Relic #{unique_num}",
+      region: "US",
+      license_key: "nr-license-key-#{unique_num}",
+      enabled_streams: ~w[change session api_request flow]a,
+      retroactive: false
+    })
+  end
+
+  def newrelic_log_sink_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    account = Map.get(attrs, :account) || account_fixture()
+
+    {:ok, log_sink} =
+      %Portal.LogSink{
+        id: Ecto.UUID.generate(),
+        account_id: account.id
+      }
+      |> Ecto.Changeset.cast(%{type: :newrelic}, [:type])
+      |> Portal.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    newrelic_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Enum.into(%{
+        id: log_sink.id,
+        account_id: account.id
+      })
+      |> valid_newrelic_log_sink_attrs()
+
+    {:ok, newrelic_log_sink} =
+      %Portal.NewRelic.LogSink{}
+      |> Ecto.Changeset.cast(newrelic_attrs, [
+        :id,
+        :account_id,
+        :name,
+        :region,
+        :license_key,
+        :enabled_streams,
+        :retroactive,
+        :errored_at,
+        :error_message,
+        :error_email_count,
+        :last_error_email_at,
+        :is_disabled,
+        :disabled_reason
+      ])
+      |> Portal.NewRelic.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    newrelic_log_sink
+  end
+
   def splunk_log_sink_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 

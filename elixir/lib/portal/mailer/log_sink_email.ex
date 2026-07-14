@@ -38,6 +38,7 @@ defmodule Portal.Mailer.LogSinkEmail do
 
   defp type(%Portal.Splunk.LogSink{}), do: "Splunk"
   defp type(%Portal.Datadog.LogSink{}), do: "Datadog"
+  defp type(%Portal.NewRelic.LogSink{}), do: "New Relic"
 
   defp provider_hint(%Portal.Splunk.LogSink{}) do
     "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
@@ -50,6 +51,11 @@ defmodule Portal.Mailer.LogSinkEmail do
       "your organization's Datadog site."
   end
 
+  defp provider_hint(%Portal.NewRelic.LogSink{}) do
+    "Verify the license key is valid in New Relic, and that the region matches " <>
+      "your New Relic account."
+  end
+
   defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
@@ -58,6 +64,13 @@ defmodule Portal.Mailer.LogSinkEmail do
   end
 
   defp destination(%Portal.Datadog.LogSink{} = sink), do: sink.site
+
+  defp destination(%Portal.NewRelic.LogSink{} = sink) do
+    sink.region
+    |> Portal.NewRelic.APIClient.endpoint()
+    |> URI.parse()
+    |> Map.get(:host)
+  end
 
   defp streams(sink) do
     Enum.map_join(sink.enabled_streams, ", ", fn
