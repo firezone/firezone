@@ -6,6 +6,16 @@ defmodule Portal.LogSinks.Adapter do
   `Portal.LogSinks.Delivery`.
   """
 
+  @doc """
+  Optional one-time setup per sync run, before any batch is posted (e.g.
+  ensuring a destination index exists with the right mappings). An error
+  return feeds the same error path as a failed delivery.
+  """
+  @callback prepare(sink :: struct()) ::
+              :ok | {:error, {:status, Req.Response.t()} | {:transport, Exception.t()}}
+
+  @optional_callbacks prepare: 1
+
   @doc "Envelope and JSON-encode one rendered event."
   @callback encode_event(sink :: struct(), stream :: atom(), {number(), map()}) :: binary()
 

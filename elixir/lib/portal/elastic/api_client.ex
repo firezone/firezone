@@ -13,6 +13,58 @@ defmodule Portal.Elastic.APIClient do
 
   alias Portal.Elastic
 
+  # The change stream carries before/after snapshots of many different
+  # tables, so the same JSON path can hold an object in one document and a
+  # string in the next. Dynamic mappings lock each path's type on first
+  # sight and reject later documents that disagree, so the free-form fields
+  # must be mapped as `flattened` before anything is indexed.
+  @index_mappings %{
+    "mappings" => %{
+      "properties" => %{
+        "@timestamp" => %{"type" => "date"},
+        "firezone" => %{
+          "properties" => %{
+            "before" => %{"type" => "flattened"},
+            "after" => %{"type" => "flattened"},
+            "subject" => %{"type" => "flattened"}
+          }
+        }
+      }
+    }
+  }
+
+  @impl true
+  def prepare(%Elastic.LogSink{} = sink) do
+    result =
+      [base_url: sink.endpoint_url]
+      |> Keyword.merge(req_opts())
+      |> Req.new()
+      |> Req.merge(
+        url: "/#{sink.index}",
+        headers: [
+          {"authorization", "ApiKey " <> sink.api_key},
+          {"content-type", "application/json"}
+        ],
+        redirect: false
+      )
+      |> Req.put(body: JSON.encode!(@index_mappings))
+
+    case result do
+      {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        :ok
+
+      {:ok, %Req.Response{status: 400, body: %{"error" => %{"type" => type}}}}
+      when type == "resource_already_exists_exception" ->
+        :ok
+
+      {:ok, %Req.Response{} = response} ->
+        {:error, {:status, response}}
+
+      {:error, exception} ->
+        {:error, {:transport, exception}}
+    end
+  end
+
   @impl true
   def encode_event(sink, _stream, {time, event}) do
     action = JSON.encode!(%{"index" => %{"_index" => sink.index, "_id" => doc_id(event)}})

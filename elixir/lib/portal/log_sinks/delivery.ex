@@ -34,13 +34,9 @@ defmodule Portal.LogSinks.Delivery do
     Database.seed_missing_cursors(sink)
 
     result =
-      Enum.reduce_while(Database.list_cursors(sink), :ok, fn cursor, :ok ->
-        case sync_cursor(sink, adapter, cursor, @max_batches_per_stream) do
-          :ok -> {:cont, :ok}
-          {:error, :undeliverable} -> {:cont, :ok}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+      with :ok <- prepare(sink, adapter) do
+        sync_cursors(sink, adapter)
+      end
 
     case result do
       :ok -> handle_success(sink)
@@ -48,6 +44,24 @@ defmodule Portal.LogSinks.Delivery do
     end
 
     :ok
+  end
+
+  defp prepare(sink, adapter) do
+    if function_exported?(adapter, :prepare, 1) do
+      adapter.prepare(sink)
+    else
+      :ok
+    end
+  end
+
+  defp sync_cursors(sink, adapter) do
+    Enum.reduce_while(Database.list_cursors(sink), :ok, fn cursor, :ok ->
+      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream) do
+        :ok -> {:cont, :ok}
+        {:error, :undeliverable} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   # Rows younger than this are not delivered yet: a row whose seq was assigned

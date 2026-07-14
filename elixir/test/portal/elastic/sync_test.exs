@@ -16,23 +16,64 @@ defmodule Portal.Elastic.SyncTest do
     test_pid = self()
 
     Req.Test.stub(Elastic.APIClient, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      case conn.method do
+        "PUT" ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(test_pid, {:prepare, conn.request_path, JSON.decode!(body)})
 
-      lines = body |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
-      send(test_pid, {:bulk, conn, lines})
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"error" => %{"type" => "resource_already_exists_exception"}})
 
-      items =
-        lines
-        |> Enum.take_every(2)
-        |> Enum.map(fn _action -> %{"index" => %{"status" => 201}} end)
+        "POST" ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
 
-      Req.Test.json(conn, %{"took" => 5, "errors" => false, "items" => items})
+          lines = body |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
+          send(test_pid, {:bulk, conn, lines})
+
+          items =
+            lines
+            |> Enum.take_every(2)
+            |> Enum.map(fn _action -> %{"index" => %{"status" => 201}} end)
+
+          Req.Test.json(conn, %{"took" => 5, "errors" => false, "items" => items})
+      end
     end)
 
     %{account: account_fixture(features: %{log_sinks: true})}
   end
 
   describe "perform/1" do
+    test "creates the index with flattened mappings for the free-form fields", %{
+      account: account
+    } do
+      sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
+
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:prepare, "/firezone-logs", mappings}
+
+      for field <- ~w[before after subject] do
+        assert get_in(mappings, [
+                 "mappings",
+                 "properties",
+                 "firezone",
+                 "properties",
+                 field,
+                 "type"
+               ]) == "flattened"
+      end
+
+      # An already-existing index (the 400 the stub returns) is not an error:
+      # delivery proceeds.
+      log = session_log_fixture(account: account)
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor == log.seq
+      refute reload_sink(sink).errored_at
+    end
+
     test "bulk-indexes documents with log_id as _id", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
