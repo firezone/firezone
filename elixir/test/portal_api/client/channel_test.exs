@@ -21,6 +21,13 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.FeaturesFixtures
 
   defp join_channel(client, subject, opts \\ []) do
+    channel = Keyword.get(opts, :channel, PortalAPI.Client.Channel)
+
+    socket_module =
+      if channel == PortalAPI.Client.V2.Channel,
+        do: PortalAPI.Client.V2.Socket,
+        else: PortalAPI.Client.Socket
+
     client_version =
       Keyword.get_lazy(opts, :client_version, fn ->
         case Portal.Version.fetch_version(subject.context.user_agent) do
@@ -51,14 +58,14 @@ defmodule PortalAPI.Client.ChannelTest do
     }
 
     {:ok, _reply, socket} =
-      PortalAPI.Client.Socket
+      socket_module
       |> socket("client:#{client.id}", %{
         client: device,
         session: session,
         subject: subject,
         client_version: client_version
       })
-      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      |> subscribe_and_join(channel, "client")
 
     socket
   end
@@ -2989,11 +2996,8 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_in/3 create_flow" do
-    test "uses authorization messages for cutover clients", %{client: client, subject: subject} do
-      subject =
-        put_user_agent(subject, "Fedora/42 headless-client/1.5.11 (x86_64; 1.0)")
-
-      socket = join_channel(client, subject)
+    test "uses authorization messages on the v2 channel", %{client: client, subject: subject} do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
       assert_push "init", _init_payload
       resource_id = Ecto.UUID.generate()
 
@@ -4011,7 +4015,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "flow_created", _
     end
 
-    test "timeout is ignored when flow has already succeeded", %{
+    test "v2 pushes authorization_created and ignores its timeout after success", %{
       dns_resource: resource,
       dns_resource_policy: policy,
       membership: membership,
@@ -4021,7 +4025,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay,
       subject: subject
     } do
-      socket = join_channel(client, subject)
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
       assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = PG.register(gateway.id)
@@ -4045,7 +4049,7 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: membership
       })
 
-      push(socket, "create_flow", %{
+      push(socket, "request_authorization", %{
         "resource_id" => resource.id,
         "connected_gateway_ids" => []
       })
@@ -4063,12 +4067,12 @@ defmodule PortalAPI.Client.ChannelTest do
          payload.ice_credentials}
       )
 
-      assert_push "flow_created", %{resource_id: resource_id}
+      assert_push "authorization_created", %{resource_id: resource_id}
       assert resource_id == resource.id
 
       send(channel_pid, {:authorization_creation_timeout, resource.id, generation})
 
-      refute_push "flow_creation_failed", _
+      refute_push "authorization_creation_failed", _
     end
 
     test "second create_flow for same resource replaces the timer without dropping the flow", %{

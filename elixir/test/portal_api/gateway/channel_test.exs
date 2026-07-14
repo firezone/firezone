@@ -25,9 +25,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
   defp join_channel(gateway, site, token, opts \\ []) do
     device = fetch_device!(gateway)
     session = build_gateway_session(gateway, token, opts)
+    channel = Keyword.get(opts, :channel, PortalAPI.Gateway.Channel)
+
+    socket_module =
+      if channel == PortalAPI.Gateway.V2.Channel,
+        do: PortalAPI.Gateway.V2.Socket,
+        else: PortalAPI.Gateway.Socket
 
     {:ok, _reply, socket} =
-      PortalAPI.Gateway.Socket
+      socket_module
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: device,
@@ -36,7 +42,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      |> subscribe_and_join(channel, "gateway")
 
     socket
   end
@@ -3163,7 +3169,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
-    test "pushes create_authorization to a cutover gateway", %{
+    test "pushes create_authorization on the v2 channel", %{
       client: client,
       account: account,
       actor: actor,
@@ -3174,7 +3180,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       subject: subject,
       group: group
     } do
-      socket = join_channel(gateway, site, token, version: "1.5.3")
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
       assert_push "init", _init_payload
 
       policy_authorization =
@@ -3782,7 +3788,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      socket = join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
       assert_push "init", _init_payload
 
       push_ref = push(socket, "authorization_created", %{"ref" => "invalid"})
