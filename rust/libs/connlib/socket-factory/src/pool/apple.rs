@@ -398,15 +398,7 @@ fn evict_one(
         return;
     };
 
-    // A socket that received traffic served a live path; evicting those under cap
-    // pressure is the churn worth alarming on. Never-received victims are leftovers.
-    evictions.add(
-        1,
-        &[opentelemetry::KeyValue::new(
-            "socket.received",
-            victim.last_received.lock().is_some(),
-        )],
-    );
+    evictions.add(1, &[]);
 
     drain(&victim, port, recv_buffers, &mut inner.drained);
 

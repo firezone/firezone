@@ -70,10 +70,6 @@ pub fn network_packets_batch_count() -> Histogram<u64> {
 /// Only recorded on Apple, the only platform with per-destination flow sockets. Rebinding
 /// on a network change discards the whole pool and does not count; this measures cache
 /// churn - sockets displaced to make room for another pair.
-///
-/// Recorded with a `socket.received` boolean attribute: `true` means the evicted socket
-/// had received traffic (a live path was displaced - the churn worth alarming on),
-/// `false` means it never received anything and was merely leftover.
 pub fn flow_socket_evictions() -> Counter<u64> {
     meter()
         .u64_counter("connlib.flow_sockets.evicted")
