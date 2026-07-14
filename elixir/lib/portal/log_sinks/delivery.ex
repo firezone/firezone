@@ -55,8 +55,10 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp sync_cursors(sink, adapter) do
+    registry = Database.load_field_types()
+
     Enum.reduce_while(Database.list_cursors(sink), :ok, fn cursor, :ok ->
-      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream) do
+      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream, registry) do
         :ok -> {:cont, :ok}
         {:error, :undeliverable} -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
@@ -79,32 +81,97 @@ defmodule Portal.LogSinks.Delivery do
     |> Keyword.get(:max_body_bytes, 512_000)
   end
 
-  defp sync_cursor(_sink, _adapter, _cursor, 0), do: :ok
+  defp sync_cursor(_sink, _adapter, _cursor, 0, _registry), do: :ok
 
-  defp sync_cursor(sink, adapter, cursor, budget) do
+  defp sync_cursor(sink, adapter, cursor, budget, registry) do
     case Database.next_batch(cursor, @batch_size, visibility_lag_seconds()) do
       [] ->
         Database.maybe_complete_backfill(cursor, visibility_lag_seconds())
         :ok
 
       rows ->
-        deliver_batch(sink, adapter, cursor, rows, budget)
+        deliver_batch(sink, adapter, cursor, rows, budget, registry)
     end
   end
 
-  defp deliver_batch(sink, adapter, cursor, rows, budget) do
-    encoded =
+  defp deliver_batch(sink, adapter, cursor, rows, budget, registry) do
+    rendered =
       Enum.flat_map(rows, fn row ->
         for event <- render_event(cursor.stream, row, cursor.cursor) do
-          {row.seq, adapter.encode_event(sink, cursor.stream, event)}
+          {row.seq, event}
         end
       end)
 
+    validate_field_types(sink, cursor.stream, rendered, registry)
+
+    encoded =
+      Enum.map(rendered, fn {seq, event} ->
+        {seq, adapter.encode_event(sink, cursor.stream, event)}
+      end)
+
     case deliver_chunks(sink, adapter, cursor, chunk_by_bytes(encoded, max_body_bytes())) do
-      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1)
+      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1, registry)
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # Every envelope field's wire type is a compatibility contract: destinations
+  # remember types forever (Elasticsearch mappings are immutable), so a field
+  # changing type is one of our releases breaking customer data. New fields
+  # register themselves on first delivery; divergence from a registered type
+  # pages us via the error log. Detection only: the destination stays the
+  # arbiter of what it accepts.
+  defp validate_field_types(sink, stream, rendered, registry) do
+    observed =
+      Enum.reduce(rendered, %{}, fn {_seq, {_time, event}}, acc ->
+        Enum.reduce(event, acc, &observe_field_type/2)
+      end)
+
+    {known, unknown} =
+      Map.split_with(observed, fn {field, _type} -> is_map_key(registry, field) end)
+
+    for {field, type} <- known, registry[field] != type do
+      log_divergence(sink, stream, field, registry[field], type)
+    end
+
+    if unknown != %{} do
+      winners = Database.register_field_types(unknown)
+
+      for {field, type} <- unknown, winners[field] != type do
+        log_divergence(sink, stream, field, winners[field], type)
+      end
+    end
+
+    :ok
+  end
+
+  defp observe_field_type({field, value}, acc) do
+    case wire_type(value) do
+      nil -> acc
+      type -> Map.put_new(acc, Atom.to_string(field), type)
+    end
+  end
+
+  defp log_divergence(sink, stream, field, registered, observed) do
+    Logger.error("Log sink field type divergence",
+      log_sink_id: sink.id,
+      stream: stream,
+      field: field,
+      registered_type: registered,
+      observed_type: observed
+    )
+  end
+
+  defp wire_type(nil), do: nil
+  defp wire_type(%DateTime{}), do: "string"
+  defp wire_type(%Postgrex.INET{}), do: "string"
+  defp wire_type(value) when is_binary(value), do: "string"
+  defp wire_type(value) when is_boolean(value), do: "boolean"
+  defp wire_type(value) when is_atom(value), do: "string"
+  defp wire_type(value) when is_integer(value), do: "integer"
+  defp wire_type(value) when is_float(value), do: "number"
+  defp wire_type(value) when is_list(value), do: "array"
+  defp wire_type(value) when is_map(value), do: "object"
 
   defp deliver_chunks(_sink, _adapter, cursor, []), do: {:ok, cursor}
 
@@ -557,6 +624,39 @@ defmodule Portal.LogSinks.Delivery do
         ])
 
       {:ok, _sink} = changeset |> Safe.unscoped() |> Safe.update()
+    end
+
+    def load_field_types do
+      from(t in Portal.LogSinks.FieldType, select: {t.name, t.type})
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    def register_field_types(observed) do
+      now = DateTime.utc_now()
+
+      # Deterministic order: concurrent registrations taking row locks in
+      # different orders deadlock.
+      rows =
+        observed
+        |> Enum.sort()
+        |> Enum.map(fn {name, type} ->
+          %{name: name, type: type, inserted_at: now}
+        end)
+
+      Safe.unscoped()
+      |> Safe.insert_all(Portal.LogSinks.FieldType, rows, on_conflict: :nothing)
+
+      # Read the winners back: a lost insert race (or a pre-existing row) may
+      # hold a different type than the one just observed.
+      from(t in Portal.LogSinks.FieldType,
+        where: t.name in ^Map.keys(observed),
+        select: {t.name, t.type}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Map.new()
     end
 
     defp cursor_rows(sink, stream) do
