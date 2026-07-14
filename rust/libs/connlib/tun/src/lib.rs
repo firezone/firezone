@@ -21,12 +21,21 @@ pub mod apple;
 /// send / receive (and the associated task wake-up) is paid once per batch
 /// rather than once per packet.
 ///
-/// Mobile platforms are memory-constrained and cannot afford to buffer big
-/// batches of packets, so we use a smaller limit there. The desktop value also
-/// stays below the kernel's `kern.ipc.somaxrecvmsgx` clamp on Apple platforms.
+/// On Apple, sized as a multiple of `quinn_udp::BATCH_SIZE` (32): a TUN batch destined
+/// for a single peer becomes one GSO transmit, and the Apple UDP send path moves 32
+/// datagrams per `sendmsg_x`, so any other size leaves the last syscall of every full
+/// batch underfilled. iOS is memory-constrained and gets exactly one syscall's worth;
+/// macOS gets three. Both are far below the kernel's `sendmsg_x` / `recvmsg_x` clamp
+/// (`kern.ipc.somaxsendmsgx` / `somaxrecvmsgx`, 256 by default).
+///
+/// Elsewhere the batch size has no syscall quantum to align to - Linux and Android
+/// send real GSO super-datagrams of up to 64 segments per syscall regardless of batch
+/// size, and Windows sends a whole transmit in one USO call - so those values only
+/// balance channel amortisation against buffer memory.
 pub const MAX_BATCH_SIZE: usize = cfg_select! {
-    target_os = "ios" => { 25 }
+    target_os = "ios" => { 32 }
     target_os = "android" => { 25 }
+    target_os = "macos" => { 96 }
     _ => { 100 }
 };
 
