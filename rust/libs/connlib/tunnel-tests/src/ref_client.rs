@@ -7,7 +7,7 @@ use super::{
     strategies::{latency, malicious_behaviour},
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{
+use tunnel::{
     ClientState,
     client::{
         CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
@@ -531,7 +531,7 @@ impl RefClient {
     ) {
         // Peer destination: try device-pool routing (client-to-client) first,
         // then fall back to gateway routing.
-        if let Some(ip) = dst.ip_addr().filter(|ip| crate::is_peer(*ip)) {
+        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel::is_peer(*ip)) {
             let pools = self.static_device_pool_by_tun_ip(ip);
 
             if !pools.is_empty() {
@@ -564,7 +564,7 @@ impl RefClient {
             }
         }
 
-        let gateway = if dst.ip_addr().is_some_and(crate::is_peer) {
+        let gateway = if dst.ip_addr().is_some_and(tunnel::is_peer) {
             let Some(gateway) = gateway_by_ip(dst.ip_addr().unwrap()) else {
                 tracing::error!("Unknown gateway");
                 return;
@@ -622,7 +622,7 @@ impl RefClient {
         let proto = Protocol::Tcp(dport.0);
 
         // Peer destination: try device-pool routing first.
-        if let Some(ip) = dst.ip_addr().filter(|ip| crate::is_peer(*ip)) {
+        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel::is_peer(*ip)) {
             let pools = self.static_device_pool_by_tun_ip(ip);
 
             if !pools.is_empty() {
@@ -843,7 +843,7 @@ impl RefClient {
 
     /// Apply `filters` to `proto`, honoring the malicious-behaviour
     /// `ignore_resource_filters` bypass.
-    fn filter_allows(&self, filters: &[crate::messages::Filter], proto: Protocol) -> bool {
+    fn filter_allows(&self, filters: &[tunnel::messages::Filter], proto: Protocol) -> bool {
         if self.malicious_behaviour.ignore_resource_filters {
             return true;
         }
@@ -859,7 +859,7 @@ impl RefClient {
     pub(crate) fn static_device_pool_by_tun_ip(
         &self,
         ip: IpAddr,
-    ) -> Vec<(ResourceId, Vec<crate::messages::Filter>)> {
+    ) -> Vec<(ResourceId, Vec<tunnel::messages::Filter>)> {
         self.resources
             .iter()
             .filter_map(|r| {

@@ -8552,6 +8552,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "tunnel-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bufferpool",
+ "chrono",
+ "connlib-model",
+ "derive_more",
+ "dns-over-tcp",
+ "dns-types",
+ "firezone-relay",
+ "flow-tracker",
+ "hex",
+ "ip-packet",
+ "ip_network",
+ "ip_network_table",
+ "itertools",
+ "l3-tcp",
+ "proptest",
+ "proptest-state-machine",
+ "rand 0.10.2",
+ "secrecy",
+ "serde_json",
+ "sha2",
+ "snownet",
+ "test-case",
+ "test-strategy",
+ "tracing",
+ "tracing-subscriber",
+ "tunnel",
+]
+
+[[package]]
 name = "typed-path"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

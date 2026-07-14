@@ -7,14 +7,9 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::transition::{Destination, DnsQuery};
-use crate::client;
-use crate::dns::is_subdomain;
-use crate::messages::gateway::Client;
-use crate::messages::{IceCredentials, Key, SecretKey};
-use crate::tests::assertions::*;
-use crate::tests::flux_capacitor::FluxCapacitor;
-use crate::tests::transition::Transition;
-use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
+use crate::assertions::*;
+use crate::flux_capacitor::FluxCapacitor;
+use crate::transition::Transition;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
@@ -33,6 +28,11 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::debug_span;
+use tunnel::client;
+use tunnel::dns::is_subdomain;
+use tunnel::messages::gateway::Client;
+use tunnel::messages::{IceCredentials, Key, SecretKey};
+use tunnel::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
 /// The actual system-under-test.
 ///
@@ -1249,11 +1249,12 @@ impl TunnelTest {
                             .static_device_pool_filters(resource_id)
                             .unwrap_or_default();
 
-                        let remote_authorization = crate::messages::client::ResourceAuthorization {
-                            resource_id,
-                            filters: pool_filters,
-                            expires_at: None,
-                        };
+                        let remote_authorization =
+                            tunnel::messages::client::ResourceAuthorization {
+                                resource_id,
+                                filters: pool_filters,
+                                expires_at: None,
+                            };
                         remote_client.exec_mut(|c| {
                             c.sut
                                 .handle_client_device_access_authorized(
@@ -1263,7 +1264,7 @@ impl TunnelTest {
                                     preshared_key.clone(),
                                     remote_client_ice.clone(),
                                     local_client_ice.clone(),
-                                    crate::messages::IceRole::Controlled,
+                                    tunnel::messages::IceRole::Controlled,
                                     use_iceless,
                                     "initiating client".to_owned(),
                                     Some(remote_authorization),
@@ -1290,7 +1291,7 @@ impl TunnelTest {
                                     preshared_key,
                                     local_client_ice,
                                     remote_client_ice,
-                                    crate::messages::IceRole::Controlling,
+                                    tunnel::messages::IceRole::Controlling,
                                     use_iceless,
                                     "target client".to_owned(),
                                     None,
@@ -1366,7 +1367,7 @@ impl TunnelTest {
 
                 let result = portal
                     .resolve_device_pool_domain(&domain.to_string())
-                    .ok_or(crate::messages::client::FailReason::NotFound);
+                    .ok_or(tunnel::messages::client::FailReason::NotFound);
                 client.exec_mut(|c| {
                     c.sut
                         .handle_device_pool_domain_resolved(resource_id, domain, result);
@@ -1467,7 +1468,7 @@ fn address_from_destination(
     }
 }
 
-fn test_ingest_token() -> crate::messages::IngestToken {
+fn test_ingest_token() -> tunnel::messages::IngestToken {
     serde_json::from_str(&format!("\"{}\"", flow_tracker::TEST_INGEST_TOKEN)).unwrap()
 }
 
