@@ -13,6 +13,17 @@ defmodule Portal.Repo.Migrations.CreateLogSinkFieldTypes do
               device_os_name device_os_version protocol inner_src_ip inner_dst_ip
               outer_src_ip outer_dst_ip domain]
 
+  # Nested payload paths are qualified by producer (change payloads collide
+  # across tables). Subject shapes are fixed contracts (Subject.to_map plus
+  # the client/gateway session extras), so seed them; change.{table}.{column}
+  # paths are unbounded and register themselves at runtime instead.
+  @subject_strings ~w[actor_id actor_name actor_email actor_type auth_provider_id
+                      ip ip_region ip_city user_agent]
+
+  @subject_numbers ~w[ip_lat ip_lon]
+
+  @session_subject_strings ~w[device_id gateway_id token_id]
+
   def up do
     create table(:log_sink_field_types, primary_key: false) do
       add(:name, :string, null: false, primary_key: true)
@@ -22,11 +33,21 @@ defmodule Portal.Repo.Migrations.CreateLogSinkFieldTypes do
 
     # Seed the current envelope so steady-state delivery never has to write;
     # runtime registration only fires for fields added in future releases.
+    subject_paths =
+      for stream <- ~w[change session], {names, type} <- [{@subject_strings, "string"}, {@subject_numbers, "number"}],
+          name <- names do
+        {"#{stream}.subject.#{name}", type}
+      end
+
+    session_subject_paths =
+      Enum.map(@session_subject_strings, &{"session.subject.#{&1}", "string"})
+
     values =
       Enum.map_join(
         Enum.map(@objects, &{&1, "object"}) ++
           Enum.map(@integers, &{&1, "integer"}) ++
-          Enum.map(@strings, &{&1, "string"}),
+          Enum.map(@strings, &{&1, "string"}) ++
+          subject_paths ++ session_subject_paths,
         ", ",
         fn {name, type} -> "('#{name}', '#{type}', now())" end
       )

@@ -121,10 +121,17 @@ defmodule Portal.LogSinks.Delivery do
   # register themselves on first delivery; divergence from a registered type
   # pages us via the error log. Detection only: the destination stays the
   # arbiter of what it accepts.
+  #
+  # Top-level fields register unqualified: all streams share the destination
+  # namespace. The free-form payloads register under their producer instead,
+  # because their paths legitimately collide across producers: before/after
+  # mirror one table's schema each ("change.accounts.config"), and subjects
+  # are written per stream ("session.subject.actor_id"). A column changing
+  # type in a migration surfaces here as divergence on its qualified path.
   defp validate_field_types(sink, stream, rendered, registry) do
     observed =
       Enum.reduce(rendered, %{}, fn {_seq, {_time, event}}, acc ->
-        Enum.reduce(event, acc, &observe_field_type/2)
+        observe_event_types(stream, event, acc)
       end)
 
     {known, unknown} =
@@ -143,6 +150,42 @@ defmodule Portal.LogSinks.Delivery do
     end
 
     :ok
+  end
+
+  defp observe_event_types(stream, event, acc) do
+    Enum.reduce(event, acc, fn
+      {field, %{} = map}, acc when field in [:before, :after] ->
+        acc
+        |> Map.put_new(Atom.to_string(field), "object")
+        |> observe_nested(map, "change.#{event.object}")
+
+      {:subject, %{} = map}, acc ->
+        acc
+        |> Map.put_new("subject", "object")
+        |> observe_nested(map, "#{stream}.subject")
+
+      {field, value}, acc ->
+        observe_field_type({field, value}, acc)
+    end)
+  end
+
+  defp observe_nested(acc, map, prefix) do
+    Enum.reduce(map, acc, fn {key, value}, acc ->
+      observe_path(acc, "#{prefix}.#{key}", value)
+    end)
+  end
+
+  defp observe_path(acc, path, %{} = nested) do
+    acc
+    |> Map.put_new(path, "object")
+    |> observe_nested(nested, path)
+  end
+
+  defp observe_path(acc, path, value) do
+    case wire_type(value) do
+      nil -> acc
+      type -> Map.put_new(acc, path, type)
+    end
   end
 
   defp observe_field_type({field, value}, acc) do
@@ -524,11 +567,15 @@ defmodule Portal.LogSinks.Delivery do
     end
 
     def list_cursors(sink) do
+      # Deterministic order: field type registration takes row locks per
+      # stream batch, and concurrent runs acquiring them in different stream
+      # orders deadlock.
       from(c in LogSinkCursor,
         where: c.account_id == ^sink.account_id,
         where: c.log_sink_id == ^sink.id,
         where: c.stream in ^sink.enabled_streams,
-        where: is_nil(c.completed_at)
+        where: is_nil(c.completed_at),
+        order_by: [asc: c.stream, asc: c.phase]
       )
       |> Safe.unscoped()
       |> Safe.all()

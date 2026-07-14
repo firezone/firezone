@@ -4,6 +4,7 @@ defmodule Portal.LogSinks.FieldTypeRegistryTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ChangeLogFixtures
   import Portal.FlowLogFixtures
   import Portal.LogSinkFixtures
   import Portal.SessionLogFixtures
@@ -39,6 +40,60 @@ defmodule Portal.LogSinks.FieldTypeRegistryTest do
       |> Map.new(&{&1.name, &1.type})
 
     assert registered == %{"context" => "string", "rx_bytes" => "integer", "subject" => "object"}
+  end
+
+  test "nested payload fields register under their producer", %{account: account} do
+    sink = splunk_log_sink_fixture(account: account, enabled_streams: [:change])
+    assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+    change_log_fixture(
+      account: account,
+      object: "resources",
+      operation: :update,
+      before: %{"name" => "old", "port" => 443},
+      after: %{"name" => "new", "port" => 443, "config" => %{"deep" => true, "tags" => ["a"]}}
+    )
+
+    assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+    registered =
+      from(t in FieldType, where: like(t.name, "change.resources.%"))
+      |> Repo.all()
+      |> Map.new(&{&1.name, &1.type})
+
+    # before and after mirror the same table schema, so they share a namespace.
+    assert registered == %{
+             "change.resources.name" => "string",
+             "change.resources.port" => "integer",
+             "change.resources.config" => "object",
+             "change.resources.config.deep" => "boolean",
+             "change.resources.config.tags" => "array"
+           }
+  end
+
+  test "a column changing type in a migration pages us", %{account: account} do
+    Repo.insert_all(FieldType, [
+      %{name: "change.resources.port", type: "string", inserted_at: DateTime.utc_now()}
+    ])
+
+    sink = splunk_log_sink_fixture(account: account, enabled_streams: [:change])
+    assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+    change_log_fixture(
+      account: account,
+      object: "resources",
+      operation: :update,
+      before: %{"port" => 443},
+      after: %{"port" => 443}
+    )
+
+    log_output =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      end)
+
+    assert log_output =~ "Log sink field type divergence"
+    assert log_output =~ "change.resources.port"
   end
 
   test "a type change against the registered contract pages us", %{account: account} do

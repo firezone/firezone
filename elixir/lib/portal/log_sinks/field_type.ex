@@ -9,6 +9,11 @@ defmodule Portal.LogSinks.FieldType do
   delivered; a later delivery observing a different type for a registered
   field is one of our releases breaking the contract, and pages us via an
   error-level log. Add a NEW field instead of retyping an existing one.
+
+  Top-level envelope fields register unqualified. Free-form payload interiors
+  register under their producer ("change.resources.port",
+  "session.subject.actor_id"), because paths inside before/after legitimately
+  differ in type across tables.
   """
   # credo:disable-for-this-file Credo.Check.Warning.MissingChangesetFunction
   use Ecto.Schema
