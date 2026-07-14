@@ -17,16 +17,19 @@ defmodule Portal.Elastic.APIClient do
   # tables, so the same JSON path can hold an object in one document and a
   # string in the next. Dynamic mappings lock each path's type on first
   # sight and reject later documents that disagree, so the free-form fields
-  # must be mapped as `flattened` before anything is indexed.
+  # must be mapped as `flattened` before anything is indexed. ignore_above
+  # keeps oversized leaf values (certificate PEMs, JWKs) from rejecting the
+  # whole document via Lucene's term size limit; they stay retrievable in
+  # _source, just not searchable.
   @index_mappings %{
     "mappings" => %{
       "properties" => %{
         "@timestamp" => %{"type" => "date"},
         "firezone" => %{
           "properties" => %{
-            "before" => %{"type" => "flattened"},
-            "after" => %{"type" => "flattened"},
-            "subject" => %{"type" => "flattened"}
+            "before" => %{"type" => "flattened", "ignore_above" => 8191},
+            "after" => %{"type" => "flattened", "ignore_above" => 8191},
+            "subject" => %{"type" => "flattened", "ignore_above" => 8191}
           }
         }
       }
