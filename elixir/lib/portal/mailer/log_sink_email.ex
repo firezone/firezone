@@ -58,9 +58,9 @@ defmodule Portal.Mailer.LogSinkEmail do
   end
 
   defp provider_hint(%Portal.Elastic.LogSink{}) do
-    "Verify the API key is valid and unexpired in Elasticsearch, that it has write " <>
-      "access to the configured index, and that the endpoint URL points at your " <>
-      "cluster's Elasticsearch HTTPS endpoint."
+    "Verify the API key is valid and unexpired in Elasticsearch, that it can manage " <>
+      "index templates and write to the configured data stream, and that the " <>
+      "endpoint URL points at your cluster's Elasticsearch HTTPS endpoint."
   end
 
   defp destination(%Portal.Splunk.LogSink{} = sink) do

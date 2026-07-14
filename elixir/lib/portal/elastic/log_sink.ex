@@ -12,7 +12,7 @@ defmodule Portal.Elastic.LogSink do
           name: String.t(),
           endpoint_url: String.t(),
           api_key: String.t(),
-          index: String.t(),
+          data_stream: String.t(),
           enabled_streams: [atom()],
           retroactive: boolean(),
           errored_at: DateTime.t() | nil,
@@ -38,7 +38,7 @@ defmodule Portal.Elastic.LogSink do
     field :name, :string, default: "Elastic"
     field :endpoint_url, :string
     field :api_key, :string, redact: true
-    field :index, :string, default: "firezone-logs"
+    field :data_stream, :string, default: "logs-firezone-default"
 
     field :enabled_streams, {:array, Ecto.Enum},
       values: ~w[change session api_request flow]a,
@@ -63,7 +63,7 @@ defmodule Portal.Elastic.LogSink do
       :name,
       :endpoint_url,
       :api_key,
-      :index,
+      :data_stream,
       :enabled_streams
     ])
     |> validate_length(:name, min: 1, max: 255)
@@ -72,8 +72,8 @@ defmodule Portal.Elastic.LogSink do
     |> validate_length(:enabled_streams, min: 1)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> validate_endpoint_url()
-    |> validate_format(:index, ~r/^[a-z0-9][a-z0-9._-]{0,254}$/,
-      message: "must be a valid lowercase index name"
+    |> validate_format(:data_stream, ~r/^[a-z0-9][a-z0-9._-]{0,254}$/,
+      message: "must be a valid lowercase data stream name"
     )
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)

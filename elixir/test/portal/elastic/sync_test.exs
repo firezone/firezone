@@ -3,7 +3,9 @@ defmodule Portal.Elastic.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
+  import Portal.APIRequestLogFixtures
   import Portal.AccountFixtures
+  import Portal.ChangeLogFixtures
   import Portal.FlowLogFixtures
   import Portal.LogSinkFixtures
   import Portal.SessionLogFixtures
@@ -19,11 +21,18 @@ defmodule Portal.Elastic.SyncTest do
       case conn.method do
         "PUT" ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
-          send(test_pid, {:prepare, conn.request_path, JSON.decode!(body)})
+          decoded = if body == "", do: nil, else: JSON.decode!(body)
+          send(test_pid, {:put, conn.request_path, decoded})
 
-          conn
-          |> Plug.Conn.put_status(400)
-          |> Req.Test.json(%{"error" => %{"type" => "resource_already_exists_exception"}})
+          case conn.request_path do
+            "/_data_stream/" <> _ ->
+              conn
+              |> Plug.Conn.put_status(400)
+              |> Req.Test.json(%{"error" => %{"type" => "resource_already_exists_exception"}})
+
+            _ ->
+              Req.Test.json(conn, %{"acknowledged" => true})
+          end
 
         "POST" ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -34,7 +43,7 @@ defmodule Portal.Elastic.SyncTest do
           items =
             lines
             |> Enum.take_every(2)
-            |> Enum.map(fn _action -> %{"index" => %{"status" => 201}} end)
+            |> Enum.map(fn _action -> %{"create" => %{"status" => 201}} end)
 
           Req.Test.json(conn, %{"took" => 5, "errors" => false, "items" => items})
       end
@@ -44,18 +53,19 @@ defmodule Portal.Elastic.SyncTest do
   end
 
   describe "perform/1" do
-    test "creates the index with flattened mappings for the free-form fields", %{
-      account: account
-    } do
+    test "creates the data stream with explicit mappings", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
 
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
 
-      assert_receive {:prepare, "/firezone-logs", mappings}
+      assert_receive {:put, "/_index_template/firezone-logs-firezone-default", template}
+      assert template["index_patterns"] == ["logs-firezone-default"]
+      assert template["data_stream"] == %{}
 
-      assert get_in(mappings, ["mappings", "date_detection"]) == false
+      mappings = get_in(template, ["template", "mappings"])
+      assert mappings["date_detection"] == false
 
-      firezone = get_in(mappings, ["mappings", "properties", "firezone", "properties"])
+      firezone = get_in(mappings, ["properties", "firezone", "properties"])
 
       for field <- ~w[before after subject] do
         assert firezone[field]["type"] == "flattened"
@@ -65,8 +75,14 @@ defmodule Portal.Elastic.SyncTest do
       assert firezone["rx_bytes"]["type"] == "long"
       assert firezone["flow_start"]["type"] == "date"
 
-      # An already-existing index (the 400 the stub returns) is not an error:
-      # delivery proceeds.
+      # An already-existing data stream (the 400 the stub returns) is not an
+      # error, and mappings are re-applied additively on every run so fields
+      # added in later releases reach existing streams.
+      assert_receive {:put, "/_data_stream/logs-firezone-default", _body}
+      assert_receive {:put, "/logs-firezone-default/_mapping", mapping}
+      assert get_in(mapping, ["properties", "firezone", "properties", "rx_bytes"]) ==
+               %{"type" => "long"}
+
       log = session_log_fixture(account: account)
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
 
@@ -75,7 +91,32 @@ defmodule Portal.Elastic.SyncTest do
       refute reload_sink(sink).errored_at
     end
 
-    test "bulk-indexes documents with log_id as _id", %{account: account} do
+    test "every envelope field has an explicit mapping declaration", %{account: account} do
+      sink = elastic_log_sink_fixture(account: account)
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+
+      change_log_fixture(account: account)
+      session_log_fixture(account: account)
+      api_request_log_fixture(account: account)
+      flow_log_fixture(account: account)
+
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:put, "/_index_template/" <> _, template}
+
+      declared =
+        get_in(template, ["template", "mappings", "properties", "firezone", "properties"])
+
+      documents = collect_documents([])
+      assert length(documents) == 4
+
+      for document <- documents, {field, _value} <- document["firezone"] do
+        assert Map.has_key?(declared, field),
+               "envelope field #{field} has no explicit Elastic mapping declaration"
+      end
+    end
+
+    test "bulk-creates documents with log_id as _id", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
 
@@ -87,7 +128,7 @@ defmodule Portal.Elastic.SyncTest do
       assert conn.request_path == "/_bulk"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["ApiKey " <> sink.api_key]
       assert Plug.Conn.get_req_header(conn, "content-type") == ["application/x-ndjson"]
-      assert action == %{"index" => %{"_index" => "firezone-logs", "_id" => log.log_id}}
+      assert action == %{"create" => %{"_index" => "logs-firezone-default", "_id" => log.log_id}}
       assert document["stream"] == "session"
       assert document["firezone"]["log_id"] == log.log_id
       assert document["@timestamp"] ==
@@ -115,7 +156,7 @@ defmodule Portal.Elastic.SyncTest do
 
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
       assert_receive {:bulk, _conn, [start_action, _start_doc]}
-      assert start_action["index"]["_id"] == flow.log_id <> "-s"
+      assert start_action["create"]["_id"] == flow.log_id <> "-s"
 
       flow_end = DateTime.utc_now()
 
@@ -137,7 +178,7 @@ defmodule Portal.Elastic.SyncTest do
 
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
       assert_receive {:bulk, _conn, [end_action, end_doc]}
-      assert end_action["index"]["_id"] == flow.log_id <> "-e"
+      assert end_action["create"]["_id"] == flow.log_id <> "-e"
       assert end_doc["firezone"]["phase"] == "end"
     end
 
@@ -152,7 +193,7 @@ defmodule Portal.Elastic.SyncTest do
           "errors" => true,
           "items" => [
             %{
-              "index" => %{
+              "create" => %{
                 "status" => 409,
                 "error" => %{"type" => "version_conflict_engine_exception"}
               }
@@ -182,7 +223,7 @@ defmodule Portal.Elastic.SyncTest do
           "errors" => true,
           "items" => [
             %{
-              "index" => %{
+              "create" => %{
                 "status" => 429,
                 "error" => %{"type" => "es_rejected_execution_exception", "reason" => "queue full"}
               }
@@ -219,18 +260,18 @@ defmodule Portal.Elastic.SyncTest do
           Enum.map(documents, fn document ->
             if document["firezone"]["subject"]["actor_email"] == "poison@example.com" do
               %{
-                "index" => %{
+                "create" => %{
                   "status" => 400,
                   "error" => %{"type" => "document_parsing_exception", "reason" => "bad field"}
                 }
               }
             else
               send(test_pid, {:indexed, document["firezone"]["log_id"]})
-              %{"index" => %{"status" => 201}}
+              %{"create" => %{"status" => 201}}
             end
           end)
 
-        errors = Enum.any?(items, fn item -> item["index"]["status"] != 201 end)
+        errors = Enum.any?(items, fn item -> item["create"]["status"] != 201 end)
         Req.Test.json(conn, %{"took" => 2, "errors" => errors, "items" => items})
       end)
 
@@ -303,5 +344,13 @@ defmodule Portal.Elastic.SyncTest do
 
   defp reload_sink(sink) do
     Repo.get_by!(Elastic.LogSink, account_id: sink.account_id, id: sink.id)
+  end
+
+  defp collect_documents(acc) do
+    receive do
+      {:bulk, _conn, lines} -> collect_documents(acc ++ Enum.drop_every(lines, 2))
+    after
+      0 -> acc
+    end
   end
 end

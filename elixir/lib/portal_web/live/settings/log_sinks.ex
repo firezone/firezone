@@ -45,7 +45,7 @@ defmodule PortalWeb.Settings.LogSinks do
     Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
     Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
     NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
-    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key index]a
+    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a
   }
 
   @newrelic_region_options [
@@ -966,16 +966,17 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            A base64-encoded Elasticsearch API key with write access to the index.
+            A base64-encoded Elasticsearch API key with permission to manage index
+            templates and write to the data stream.
           </p>
         </div>
 
         <div :if={@type == "elastic"}>
-          <label for={@form[:index].id} class="block text-xs font-medium text-body mb-1.5">
-            Index <span class="text-error">*</span>
+          <label for={@form[:data_stream].id} class="block text-xs font-medium text-body mb-1.5">
+            Data stream <span class="text-error">*</span>
           </label>
           <.input
-            field={@form[:index]}
+            field={@form[:data_stream]}
             type="text"
             autocomplete="off"
             phx-debounce="300"
@@ -983,8 +984,9 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            The index to write events into. Deliveries are idempotent: redelivered
-            events overwrite themselves instead of duplicating.
+            The data stream to append events to. Firezone creates it with explicit
+            field mappings on first delivery; manage retention with the stream's
+            lifecycle in Kibana.
           </p>
         </div>
 

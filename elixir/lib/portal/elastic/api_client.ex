@@ -1,12 +1,17 @@
 defmodule Portal.Elastic.APIClient do
   @moduledoc """
-  Elasticsearch bulk API adapter for log sink delivery.
+  Elasticsearch data stream adapter for log sink delivery.
 
-  Batches are posted to `/_bulk` as NDJSON with an explicit `_id` per
-  document (the log_id, suffixed with the phase for flows), which makes
-  ingestion idempotent: redelivered events overwrite themselves instead of
-  duplicating. Works against any Elasticsearch-compatible cluster,
-  including Elastic Cloud and OpenSearch.
+  Events are appended to a data stream, the idiomatic Elastic store for
+  timestamped, append-only logs: retention is managed by the stream's
+  lifecycle, and rollover keeps backing indices bounded. Batches are posted
+  to `/_bulk` as NDJSON `create` actions (data streams reject `index`) with
+  an explicit `_id` per document (the log_id, suffixed with the phase for
+  flows). Redelivering into the same backing index returns a version
+  conflict, which counts as delivered, so ingestion stays idempotent within
+  a backing index generation; a retry that lands after a rollover can
+  duplicate, so consumers dedupe on `firezone.log_id`. Works against
+  Elastic Cloud (including Serverless) and self-managed clusters.
   """
 
   @behaviour Portal.LogSinks.Adapter
@@ -33,10 +38,9 @@ defmodule Portal.Elastic.APIClient do
   @long %{"type" => "long"}
   @flattened %{"type" => "flattened", "ignore_above" => 8191}
 
-  @index_mappings %{
-    "mappings" => %{
-      "date_detection" => false,
-      "properties" => %{
+  @mappings %{
+    "date_detection" => false,
+    "properties" => %{
         "@timestamp" => @date,
         "message" => %{"type" => "text"},
         "stream" => @keyword,
@@ -94,44 +98,25 @@ defmodule Portal.Elastic.APIClient do
           }
         }
       }
-    }
   }
 
+  # Three idempotent calls, so the mappings are a live contract instead of a
+  # point-in-time snapshot: the template applies them to every backing index
+  # created at rollover, and the additive _mapping PUT applies fields added
+  # in later releases to the current backing indices immediately. Priority
+  # 500 outranks Elastic's built-in logs-*-* template (100).
   @impl true
   def prepare(%Elastic.LogSink{} = sink) do
-    result =
-      [base_url: sink.endpoint_url]
-      |> Keyword.merge(req_opts())
-      |> Req.new()
-      |> Req.merge(
-        url: "/#{sink.index}",
-        headers: [
-          {"authorization", "ApiKey " <> sink.api_key},
-          {"content-type", "application/json"}
-        ],
-        redirect: false
-      )
-      |> Req.put(body: JSON.encode!(@index_mappings))
-
-    case result do
-      {:ok, %Req.Response{status: status}} when status in 200..299 ->
-        :ok
-
-      {:ok, %Req.Response{status: 400, body: %{"error" => %{"type" => type}}}}
-      when type == "resource_already_exists_exception" ->
-        :ok
-
-      {:ok, %Req.Response{} = response} ->
-        {:error, {:status, response}}
-
-      {:error, exception} ->
-        {:error, {:transport, exception}}
+    with :ok <- put_index_template(sink),
+         :ok <- create_data_stream(sink) do
+      put_mapping(sink)
     end
   end
 
   @impl true
   def encode_event(sink, _stream, {time, event}) do
-    action = JSON.encode!(%{"index" => %{"_index" => sink.index, "_id" => doc_id(event)}})
+    action =
+      JSON.encode!(%{"create" => %{"_index" => sink.data_stream, "_id" => doc_id(event)}})
 
     document =
       JSON.encode!(%{
@@ -153,18 +138,8 @@ defmodule Portal.Elastic.APIClient do
 
   @impl true
   def post_batch(%Elastic.LogSink{} = sink, body) when is_binary(body) do
-    [base_url: sink.endpoint_url]
-    |> Keyword.merge(req_opts())
-    |> Req.new()
-    # The bulk API never redirects; surface a redirect as the config error it is.
-    |> Req.merge(
-      url: "/_bulk",
-      headers: [
-        {"authorization", "ApiKey " <> sink.api_key},
-        {"content-type", "application/x-ndjson"}
-      ],
-      redirect: false
-    )
+    sink
+    |> request("/_bulk", "application/x-ndjson")
     |> Req.post(body: body)
   end
 
@@ -232,6 +207,66 @@ defmodule Portal.Elastic.APIClient do
 
   defp item_error_reason(item) do
     item |> Map.values() |> List.first() |> get_in(["error", "reason"])
+  end
+
+  defp put_index_template(sink) do
+    body = %{
+      "index_patterns" => [sink.data_stream],
+      "data_stream" => %{},
+      "priority" => 500,
+      "template" => %{"mappings" => @mappings}
+    }
+
+    sink
+    |> request("/_index_template/firezone-#{sink.data_stream}", "application/json")
+    |> Req.put(body: JSON.encode!(body))
+    |> prepare_result()
+  end
+
+  defp create_data_stream(sink) do
+    sink
+    |> request("/_data_stream/#{sink.data_stream}", "application/json")
+    |> Req.put(body: "")
+    |> prepare_result()
+  end
+
+  defp put_mapping(sink) do
+    sink
+    |> request("/#{sink.data_stream}/_mapping", "application/json")
+    |> Req.put(body: JSON.encode!(%{"properties" => @mappings["properties"]}))
+    |> prepare_result()
+  end
+
+  defp prepare_result(result) do
+    case result do
+      {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        :ok
+
+      {:ok, %Req.Response{status: 400, body: %{"error" => %{"type" => type}}}}
+      when type == "resource_already_exists_exception" ->
+        :ok
+
+      {:ok, %Req.Response{} = response} ->
+        {:error, {:status, response}}
+
+      {:error, exception} ->
+        {:error, {:transport, exception}}
+    end
+  end
+
+  # These APIs never redirect; surface a redirect as the config error it is.
+  defp request(sink, url, content_type) do
+    [base_url: sink.endpoint_url]
+    |> Keyword.merge(req_opts())
+    |> Req.new()
+    |> Req.merge(
+      url: url,
+      headers: [
+        {"authorization", "ApiKey " <> sink.api_key},
+        {"content-type", content_type}
+      ],
+      redirect: false
+    )
   end
 
   defp req_opts do

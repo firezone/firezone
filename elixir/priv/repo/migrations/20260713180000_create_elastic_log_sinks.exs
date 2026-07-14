@@ -31,7 +31,7 @@ defmodule Portal.Repo.Migrations.CreateElasticLogSinks do
       add(:name, :string, null: false)
       add(:endpoint_url, :text, null: false)
       add(:api_key, :string, null: false)
-      add(:index, :string, null: false)
+      add(:data_stream, :string, null: false)
       add(:enabled_streams, {:array, :string}, null: false)
       add(:retroactive, :boolean, default: false, null: false)
 

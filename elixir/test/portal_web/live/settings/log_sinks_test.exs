@@ -325,7 +325,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
             name: "SOC Elastic",
             endpoint_url: "https://acme.es.us-east-1.aws.elastic-cloud.com/_bulk",
             api_key: "es-test-key",
-            index: "firezone-logs",
+            data_stream: "logs-firezone-default",
             enabled_streams: ["", "session"]
           }
         )
@@ -337,7 +337,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert sink.name == "SOC Elastic"
       assert sink.endpoint_url == "https://acme.es.us-east-1.aws.elastic-cloud.com"
       assert sink.api_key == "es-test-key"
-      assert sink.index == "firezone-logs"
+      assert sink.data_stream == "logs-firezone-default"
 
       assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
       assert base.type == :elastic

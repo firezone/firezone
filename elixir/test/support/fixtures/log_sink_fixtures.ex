@@ -144,7 +144,7 @@ defmodule Portal.LogSinkFixtures do
       name: "Elastic #{unique_num}",
       endpoint_url: "https://deployment#{unique_num}.es.us-east-1.aws.elastic-cloud.example",
       api_key: "es-api-key-#{unique_num}",
-      index: "firezone-logs",
+      data_stream: "logs-firezone-default",
       enabled_streams: ~w[change session api_request flow]a,
       retroactive: false
     })
@@ -181,7 +181,7 @@ defmodule Portal.LogSinkFixtures do
         :name,
         :endpoint_url,
         :api_key,
-        :index,
+        :data_stream,
         :enabled_streams,
         :retroactive,
         :errored_at,
