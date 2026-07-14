@@ -403,7 +403,7 @@ fn evict_one(
     evictions.add(
         1,
         &[opentelemetry::KeyValue::new(
-            "received",
+            "socket.received",
             victim.last_received.lock().is_some(),
         )],
     );
