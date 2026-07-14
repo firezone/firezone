@@ -261,6 +261,8 @@ config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
 
 config :portal, Portal.Splunk.APIClient, req_opts: []
 
+config :portal, Portal.Datadog.APIClient, req_opts: []
+
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
   client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),

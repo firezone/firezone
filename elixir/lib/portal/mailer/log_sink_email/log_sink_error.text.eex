@@ -1,6 +1,6 @@
 Log Sink Delivery Error!
 
-Log delivery to your "<%= @sink.name %>" Splunk log sink has stopped: it
+Log delivery to your "<%= @sink.name %>" <%= @type %> log sink has stopped: it
 encountered an unrecoverable error and has been disabled.
 
 Below is the last delivery error message:
@@ -12,7 +12,7 @@ Log sink details:
   Account ID: <%= @account.id %>
   Log Sink Name: <%= @sink.name %>
   Log Sink ID: <%= @sink.id %>
-  Type: Splunk
+  Type: <%= @type %>
   Destination: <%= @destination %>
   Log Streams: <%= @streams %>
   Events Delivered: <%= @delivered %>
@@ -21,9 +21,7 @@ Log sink details:
 
 How to fix it:
 
-  1. Verify the HEC token is valid and enabled in Splunk, and that the HEC URL
-     points at your HTTP Event Collector. On Splunk Cloud that is usually
-     https://http-inputs-<stack>.splunkcloud.com (trial stacks use port 8088).
+  1. <%= @provider_hint %>
 
   2. Edit and Save the log sink in your Firezone settings to re-enable it:
      <%= @settings_url %>

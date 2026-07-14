@@ -70,6 +70,29 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       assert email.html_body =~ "Edit and Save"
     end
 
+    test "notifies for Datadog sinks with the provider's own details" do
+      account = account_fixture(features: %{log_sinks: true})
+      admin_actor_fixture(account: account)
+
+      datadog_log_sink_fixture(
+        account: account,
+        name: "SOC Datadog",
+        site: "datadoghq.eu",
+        is_disabled: true,
+        disabled_reason: "Sync error",
+        error_message: "Datadog returned HTTP 403: Invalid API key",
+        errored_at: DateTime.utc_now()
+      )
+
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Log Sink Delivery Error - SOC Datadog"
+      assert email.text_body =~ "Type: Datadog"
+      assert email.text_body =~ "Destination: datadoghq.eu"
+      assert email.text_body =~ "API key is valid and unrevoked"
+    end
+
     test "a sink crossing a frequency bucket is not emailed twice in one day" do
       account = account_fixture(features: %{log_sinks: true})
       admin_actor_fixture(account: account)

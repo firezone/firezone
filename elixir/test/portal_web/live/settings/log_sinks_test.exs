@@ -179,6 +179,39 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert base.type == :splunk
     end
 
+    test "creates a Datadog log sink with its base row", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/datadog/new")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Datadog",
+            site: "datadoghq.eu",
+            api_key: "dd-test-key",
+            enabled_streams: ["", "change"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.Datadog.LogSink, account_id: account.id)
+      assert sink.name == "SOC Datadog"
+      assert sink.site == "datadoghq.eu"
+      assert sink.api_key == "dd-test-key"
+      assert sink.enabled_streams == [:change]
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :datadog
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,

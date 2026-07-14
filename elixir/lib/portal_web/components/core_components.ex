@@ -1451,6 +1451,15 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("datadog") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-datadog.svg",
+      dark_src: ~p"/images/logo-datadog-dark.svg",
+      alt: "Datadog"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

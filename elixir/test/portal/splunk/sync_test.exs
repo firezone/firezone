@@ -166,17 +166,17 @@ defmodule Portal.Splunk.SyncTest do
           enabled_streams: [:session]
         )
 
-      Splunk.Sync.Database.seed_missing_cursors(sink)
+      Portal.LogSinks.Delivery.Database.seed_missing_cursors(sink)
       backfill = get_cursor(sink, :session, :backfill)
-      {:ok, drained} = Splunk.Sync.Database.advance_cursor(backfill, log.seq, 1, 0)
+      {:ok, drained} = Portal.LogSinks.Delivery.Database.advance_cursor(backfill, log.seq, 1, 0)
 
       # A transaction holding a seq below until_seq may commit up to a lag
       # window after the cursor was seeded, so a freshly seeded cursor must
       # not complete even when the probe finds nothing left to deliver.
-      assert :ok = Splunk.Sync.Database.maybe_complete_backfill(drained, 3600)
+      assert :ok = Portal.LogSinks.Delivery.Database.maybe_complete_backfill(drained, 3600)
       refute get_cursor(sink, :session, :backfill).completed_at
 
-      assert :ok = Splunk.Sync.Database.maybe_complete_backfill(drained, 0)
+      assert :ok = Portal.LogSinks.Delivery.Database.maybe_complete_backfill(drained, 0)
       assert get_cursor(sink, :session, :backfill).completed_at
     end
 
