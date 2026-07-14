@@ -20,7 +20,17 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
         primary_key: true
       )
 
-      add(:id, :binary_id, null: false, primary_key: true)
+      add(
+        :id,
+        references(:log_sinks,
+          column: :id,
+          with: [account_id: :account_id],
+          type: :binary_id,
+          on_delete: :delete_all
+        ),
+        null: false,
+        primary_key: true
+      )
 
       add(:name, :string, null: false)
       add(:collector_url, :text, null: false)
@@ -40,24 +50,24 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
 
     create(unique_index(:splunk_log_sinks, [:account_id, :name]))
 
-    execute(
-      """
-      ALTER TABLE splunk_log_sinks
-      ADD CONSTRAINT splunk_log_sinks_log_sink_id_fkey
-      FOREIGN KEY (account_id, id)
-      REFERENCES log_sinks(account_id, id)
-      ON DELETE CASCADE
-      """,
-      "ALTER TABLE splunk_log_sinks DROP CONSTRAINT splunk_log_sinks_log_sink_id_fkey"
-    )
-
     create table(:log_sink_cursors, primary_key: false) do
       add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
         null: false,
         primary_key: true
       )
 
-      add(:log_sink_id, :binary_id, null: false, primary_key: true)
+      add(
+        :log_sink_id,
+        references(:log_sinks,
+          column: :id,
+          with: [account_id: :account_id],
+          type: :binary_id,
+          on_delete: :delete_all
+        ),
+        null: false,
+        primary_key: true
+      )
+
       add(:stream, :string, null: false, primary_key: true)
       add(:phase, :string, null: false, primary_key: true)
 
@@ -82,17 +92,6 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
       constraint(:log_sink_cursors, :phase_must_be_valid,
         check: "phase IN ('live', 'backfill')"
       )
-    )
-
-    execute(
-      """
-      ALTER TABLE log_sink_cursors
-      ADD CONSTRAINT log_sink_cursors_log_sink_id_fkey
-      FOREIGN KEY (account_id, log_sink_id)
-      REFERENCES log_sinks(account_id, id)
-      ON DELETE CASCADE
-      """,
-      "ALTER TABLE log_sink_cursors DROP CONSTRAINT log_sink_cursors_log_sink_id_fkey"
     )
   end
 end
