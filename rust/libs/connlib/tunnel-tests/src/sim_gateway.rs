@@ -6,7 +6,6 @@ use super::{
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
-use crate::GatewayState;
 use anyhow::{Result, bail};
 use connlib_model::{GatewayId, RelayId};
 use dns_types::DomainName;
@@ -18,6 +17,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
+use tunnel::GatewayState;
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -37,7 +37,7 @@ pub(crate) struct SimGateway {
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
-    tcp_resources: BTreeMap<SocketAddr, crate::tests::tcp::Server>,
+    tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
@@ -63,7 +63,7 @@ impl SimGateway {
             tcp_resources: tcp_resources
                 .into_iter()
                 .map(|address| {
-                    let mut server = crate::tests::tcp::Server::new(now);
+                    let mut server = crate::tcp::Server::new(now);
                     if let Err(e) = server.listen(address) {
                         tracing::error!(%address, "Failed to listen on address: {e}")
                     }

@@ -5,7 +5,7 @@
 )]
 
 //! Hunt for regression seeds that cover tunnel-proptest log patterns
-//! missing from `proptest-regressions/tests.txt`. With no args, a dry
+//! missing from `proptest-regressions/lib.txt`. With no args, a dry
 //! pass first discovers which patterns the current suite misses.
 
 use std::collections::BTreeMap;
@@ -29,7 +29,10 @@ mod process_group;
 mod slot_pool;
 
 /// Resolved at compile time so the binary runs from anywhere.
-const TUNNEL_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../libs/connlib/tunnel");
+const TUNNEL_TESTS_DIR: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../libs/connlib/tunnel-tests"
+);
 
 const HARVESTED_SEED_MARKER: &str = "TUNNEL_TEST_HARVESTED_SEED";
 const MISSING_BEGIN: &str = "TUNNEL_TEST_MISSING_PATTERNS_BEGIN";
@@ -70,11 +73,11 @@ async fn main() -> Result<()> {
 }
 
 async fn harvest(patterns: Vec<Pattern>) -> Result<()> {
-    let tunnel_dir = Path::new(TUNNEL_DIR)
+    let tunnel_tests_dir = Path::new(TUNNEL_TESTS_DIR)
         .canonicalize()
-        .with_context(|| format!("resolving tunnel crate at {TUNNEL_DIR}"))?;
-    std::env::set_current_dir(&tunnel_dir)
-        .with_context(|| format!("cd {}", tunnel_dir.display()))?;
+        .with_context(|| format!("resolving tunnel-tests crate at {TUNNEL_TESTS_DIR}"))?;
+    std::env::set_current_dir(&tunnel_tests_dir)
+        .with_context(|| format!("cd {}", tunnel_tests_dir.display()))?;
 
     let max_workers = num_cpus::get().saturating_sub(1).max(1);
 
@@ -96,7 +99,7 @@ async fn harvest(patterns: Vec<Pattern>) -> Result<()> {
 
     eprintln!("Building test binary...");
     let mut build = Command::new("cargo");
-    build.args(["test", "tunnel_test", "--features", "proptest", "--no-run"]);
+    build.args(["test", "-p", "tunnel-tests", "tunnel_test", "--no-run"]);
     run_passthrough(build)
         .await
         .context("cargo test --no-run failed")?;
@@ -118,9 +121,9 @@ async fn dry_pass() -> Result<Vec<Pattern>> {
     let mut cmd = Command::new("cargo");
     cmd.args([
         "test",
+        "-p",
+        "tunnel-tests",
         "tunnel_test",
-        "--features",
-        "proptest",
         "--",
         "--nocapture",
     ])
@@ -339,9 +342,9 @@ async fn run_worker(
     let mut cmd = Command::new("cargo");
     cmd.args([
         "test",
+        "-p",
+        "tunnel-tests",
         "tunnel_test",
-        "--features",
-        "proptest",
         "--",
         "--nocapture",
     ])
@@ -423,7 +426,7 @@ fn print_summary(seeds: &BTreeMap<Pattern, Seed>) {
         return;
     }
 
-    eprintln!("\nHarvested seeds (append to proptest-regressions/tests.txt):");
+    eprintln!("\nHarvested seeds (append to proptest-regressions/lib.txt):");
     eprintln!("===========================================================");
     for seed in seeds.values() {
         println!("{seed}");

@@ -5,12 +5,6 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
 };
-use crate::{
-    client,
-    client::{DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource},
-    messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
-    proptest::*,
-};
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -25,6 +19,12 @@ use std::{
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Instant,
+};
+use tunnel::{
+    client,
+    client::{DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource},
+    messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
+    proptest::*,
 };
 
 /// Stub implementation of the portal.
@@ -371,7 +371,7 @@ impl StubPortal {
     pub(crate) fn change_filters_of_resource(
         &mut self,
         rid: ResourceId,
-        new_filters: Vec<crate::messages::Filter>,
+        new_filters: Vec<tunnel::messages::Filter>,
     ) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             resource.filters = new_filters;
@@ -407,7 +407,7 @@ impl StubPortal {
     pub(crate) fn static_device_pool_filters(
         &self,
         pool_id: ResourceId,
-    ) -> Option<Vec<crate::messages::Filter>> {
+    ) -> Option<Vec<tunnel::messages::Filter>> {
         Some(
             self.static_device_pool_resources
                 .get(&pool_id)?
@@ -615,14 +615,14 @@ fn realize_static_device_pool_plans(
 /// We use the CG-NAT range for IPv4.
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
 fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    crate::IPV4_TUNNEL.hosts()
+    tunnel::IPV4_TUNNEL.hosts()
 }
 
 /// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
 ///
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    crate::IPV6_TUNNEL
+    tunnel::IPV6_TUNNEL
         .subnets_with_prefix(128)
         .map(|n| n.network_address())
 }

@@ -1,12 +1,12 @@
-use crate::{
+use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use dns_types::{DomainName, OwnedRecordData, RecordType};
+use ip_network::IpNetwork;
+use tunnel::{
     client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
     dns,
     messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
     proptest::{host_v4, host_v6},
 };
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
-use dns_types::{DomainName, OwnedRecordData, RecordType};
-use ip_network::IpNetwork;
 
 use super::{
     reference::PrivateKey,

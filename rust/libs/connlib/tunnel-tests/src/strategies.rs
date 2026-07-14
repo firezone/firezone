@@ -2,14 +2,7 @@ use super::composite_strategy::CompositeStrategy;
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
-use crate::client::{
-    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
-    InternetResource,
-};
-use crate::malicious_behaviour::MaliciousBehaviour;
-use crate::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
-use crate::tests::coin;
-use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
+use crate::coin;
 use connlib_model::{RelayId, Site};
 use dns_types::{DoHUrl, DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -25,6 +18,13 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
+use tunnel::client::{
+    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
+    InternetResource,
+};
+use tunnel::malicious_behaviour::MaliciousBehaviour;
+use tunnel::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
+use tunnel::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 
 pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
@@ -521,7 +521,7 @@ pub(crate) fn cidr_resource_address() -> impl Strategy<Value = IpNetwork> {
 }
 
 fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
-    crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
+    tunnel::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(

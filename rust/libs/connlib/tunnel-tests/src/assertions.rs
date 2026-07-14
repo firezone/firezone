@@ -1,4 +1,4 @@
-use crate::tests::ref_gateway::RefGateway;
+use crate::ref_gateway::RefGateway;
 
 use super::{
     dns_records::DnsRecords,

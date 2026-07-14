@@ -2,7 +2,7 @@ use std::iter;
 
 use proptest::{prelude::*, sample::Selector};
 
-/// Creates a [`Coin`] that when flipped, will yield [`Side::Head`] with the given probability.
+/// Creates a [`Coin`] that when flipped, will yield [`Side::Heads`] with the given probability.
 pub(crate) fn head_biased(probability: u8) -> impl Strategy<Value = Coin> {
     assert!(probability <= 100);
 

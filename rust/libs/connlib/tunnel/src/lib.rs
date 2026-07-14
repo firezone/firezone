@@ -31,24 +31,21 @@ use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 mod sockets;
-#[cfg(all(test, feature = "proptest"))]
-mod client {
-    pub(crate) use tunnel_proto::{
+#[cfg(feature = "test-util")]
+pub mod client {
+    pub use tunnel_proto::{
         CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, DynamicDevicePoolResource,
         IPV4_RESOURCES, IPV6_RESOURCES, InternetResource, Resource, StaticDevicePoolResource,
     };
 }
-#[cfg(all(test, feature = "proptest"))]
-mod filter_engine {
-    pub(crate) use tunnel_proto::FilterEngine;
+#[cfg(feature = "test-util")]
+pub mod filter_engine {
+    pub use tunnel_proto::FilterEngine;
 }
-#[cfg(all(test, feature = "proptest"))]
-mod malicious_behaviour {
-    pub(crate) use tunnel_proto::{MaliciousBehaviour, MaliciousBehaviourGuard as Guard};
+#[cfg(feature = "test-util")]
+pub mod malicious_behaviour {
+    pub use tunnel_proto::{MaliciousBehaviour, MaliciousBehaviourGuard as Guard};
 }
-#[cfg(all(test, feature = "proptest"))]
-#[allow(clippy::unwrap_in_result)]
-mod tests;
 mod utils;
 
 pub use tunnel_proto::*;

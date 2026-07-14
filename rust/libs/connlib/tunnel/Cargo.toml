@@ -6,6 +6,8 @@ license = { workspace = true }
 
 [features]
 proptest = ["tunnel-proto/proptest", "tunnel-proto/malicious-behaviour"]
+# Exposes test-only protocol helpers through the tunnel re-exports.
+test-util = ["tunnel-proto/proptest", "tunnel-proto/malicious-behaviour"]
 
 [dependencies]
 anyhow = { workspace = true }

@@ -1,5 +1,5 @@
-use crate::tests::buffered_transmits::BufferedTransmits;
-use crate::tests::strategies::documentation_ip6s;
+use crate::buffered_transmits::BufferedTransmits;
+use crate::strategies::documentation_ip6s;
 use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
