@@ -195,6 +195,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
             name: "SOC Datadog",
             site: "datadoghq.eu",
             api_key: "dd-test-key",
+            tags: " env:dev , team:secops ",
             enabled_streams: ["", "change"]
           }
         )
@@ -206,6 +207,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert sink.name == "SOC Datadog"
       assert sink.site == "datadoghq.eu"
       assert sink.api_key == "dd-test-key"
+      assert sink.tags == "env:dev,team:secops"
       assert sink.enabled_streams == [:change]
 
       assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)

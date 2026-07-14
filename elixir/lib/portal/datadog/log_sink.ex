@@ -22,6 +22,7 @@ defmodule Portal.Datadog.LogSink do
           name: String.t(),
           site: String.t(),
           api_key: String.t(),
+          tags: String.t() | nil,
           enabled_streams: [atom()],
           retroactive: boolean(),
           errored_at: DateTime.t() | nil,
@@ -47,6 +48,7 @@ defmodule Portal.Datadog.LogSink do
     field :name, :string, default: "Datadog"
     field :site, :string, default: "datadoghq.com"
     field :api_key, :string, redact: true
+    field :tags, :string
 
     field :enabled_streams, {:array, Ecto.Enum},
       values: ~w[change session api_request flow]a,
@@ -79,11 +81,46 @@ defmodule Portal.Datadog.LogSink do
     |> validate_length(:enabled_streams, min: 1)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> validate_inclusion(:site, @sites)
+    |> update_change(:tags, &normalize_tags/1)
+    |> validate_tags()
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)
     |> unique_constraint(:name,
       name: :datadog_log_sinks_account_id_name_index,
       message: "A Datadog log sink with this name already exists."
     )
+  end
+
+  defp normalize_tags(tags) do
+    normalized =
+      tags
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join(",")
+
+    if normalized == "" do
+      nil
+    else
+      normalized
+    end
+  end
+
+  # Datadog tags start with a letter and allow alphanumerics, underscores,
+  # minuses, colons, periods, and slashes, up to 200 characters each.
+  defp validate_tags(changeset) do
+    validate_change(changeset, :tags, fn :tags, tags ->
+      invalid =
+        tags
+        |> String.split(",")
+        |> Enum.reject(fn tag ->
+          String.length(tag) <= 200 and tag =~ ~r{^[a-zA-Z][a-zA-Z0-9_\-:./]*$}
+        end)
+
+      case invalid do
+        [] -> []
+        invalid -> [tags: "contains invalid tags: #{Enum.join(invalid, ", ")}"]
+      end
+    end)
   end
 end

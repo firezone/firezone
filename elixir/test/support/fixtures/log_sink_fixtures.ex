@@ -63,6 +63,7 @@ defmodule Portal.LogSinkFixtures do
         :name,
         :site,
         :api_key,
+        :tags,
         :enabled_streams,
         :retroactive,
         :errored_at,

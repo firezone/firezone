@@ -26,7 +26,12 @@ defmodule Portal.Datadog.SyncTest do
 
   describe "perform/1" do
     test "delivers a JSON array of enveloped events", %{account: account} do
-      sink = datadog_log_sink_fixture(account: account, enabled_streams: [:session])
+      sink =
+        datadog_log_sink_fixture(
+          account: account,
+          enabled_streams: [:session],
+          tags: "env:prod,team:secops"
+        )
       assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
 
       log = session_log_fixture(account: account)
@@ -38,7 +43,7 @@ defmodule Portal.Datadog.SyncTest do
       assert conn.host == "http-intake.logs.datadoghq.com"
       assert Plug.Conn.get_req_header(conn, "dd-api-key") == [sink.api_key]
       assert event["ddsource"] == "firezone"
-      assert event["ddtags"] == "stream:session"
+      assert event["ddtags"] == "stream:session,env:prod,team:secops"
       assert event["service"] == "firezone"
       assert event["message"] =~ log.log_id
       assert event["firezone"]["type"] == "session"

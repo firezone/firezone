@@ -39,7 +39,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @fields %{
     Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
-    Datadog.LogSink => @common_fields ++ ~w[site api_key]a
+    Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a
   }
 
   def mount(_params, _session, socket) do
@@ -841,6 +841,25 @@ defmodule PortalWeb.Settings.LogSinks do
           />
           <p class="mt-1 text-xs text-subtle">
             A Datadog API key with log ingestion permission.
+          </p>
+        </div>
+
+        <div :if={@type == "datadog"}>
+          <label for={@form[:tags].id} class="block text-xs font-medium text-body mb-1.5">
+            Tags
+          </label>
+          <.input
+            field={@form[:tags]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Optional. Comma-separated tags added to every event, e.g.
+            <code class="text-xs">env:prod,team:secops</code>. A
+            <code class="text-xs">stream:&lt;stream&gt;</code>
+            tag is always included.
           </p>
         </div>
 

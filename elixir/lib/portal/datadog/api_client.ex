@@ -12,10 +12,10 @@ defmodule Portal.Datadog.APIClient do
   alias Portal.Datadog
 
   @impl true
-  def encode_event(_sink, stream, {time, event}) do
+  def encode_event(sink, stream, {time, event}) do
     JSON.encode!(%{
       "ddsource" => "firezone",
-      "ddtags" => "stream:#{stream}",
+      "ddtags" => ddtags(sink, stream),
       "service" => "firezone",
       "timestamp" => round(time * 1000),
       "message" => "firezone #{stream} #{event.log_id}",
@@ -74,6 +74,13 @@ defmodule Portal.Datadog.APIClient do
       error when is_binary(error) -> error
       error -> inspect(error)
     end)
+  end
+
+  defp ddtags(sink, stream) do
+    case sink.tags do
+      nil -> "stream:#{stream}"
+      tags -> "stream:#{stream},#{tags}"
+    end
   end
 
   defp req_opts do
