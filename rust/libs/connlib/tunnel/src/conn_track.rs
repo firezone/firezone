@@ -8,11 +8,12 @@
 //! - An inbound we received from a peer (`record_inbound`) and the outbound
 //!   reply we may produce (`is_known_flow`).
 //!
-//! That symmetry lets a single map serve both directions: a peer initiates
+//! That symmetry lets both directions share one key space: a peer initiates
 //! to us → we record on inbound → our reply outbound is admitted as a known
-//! flow without firing a fresh connection intent. The IP pair is part of
-//! the key so a v4 flow and a v6 flow with identical port pairs don't
-//! collide.
+//! flow without firing a fresh connection intent. Flows are held in separate
+//! maps by which side opened them, so callers can tell replies to our flows
+//! apart from flows the peer opened. The IP pair is part of the key so a v4
+//! flow and a v6 flow with identical port pairs don't collide.
 
 use ip_packet::{IpPacket, Protocol};
 use std::collections::BTreeMap;
@@ -21,7 +22,10 @@ use std::time::{Duration, Instant};
 
 #[derive(Default, Debug)]
 pub(crate) struct ConnTrack {
-    entries: BTreeMap<Key, Instant>,
+    /// Flows we opened, keyed from our perspective.
+    initiated: BTreeMap<Key, Instant>,
+    /// Flows the peer opened, keyed from our perspective.
+    received: BTreeMap<Key, Instant>,
 }
 
 impl ConnTrack {
@@ -34,7 +38,7 @@ impl ConnTrack {
             return;
         };
 
-        self.entries.insert(
+        self.initiated.insert(
             Key {
                 local,
                 peer,
@@ -54,7 +58,7 @@ impl ConnTrack {
             return;
         };
 
-        self.entries.insert(
+        self.received.insert(
             Key {
                 local,
                 peer,
@@ -76,12 +80,14 @@ impl ConnTrack {
             return false;
         };
 
-        self.entries.contains_key(&Key {
+        let key = Key {
             local,
             peer,
             local_ip: packet.destination(),
             peer_ip: packet.source(),
-        })
+        };
+
+        self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
     /// Returns `true` if the *outbound* packet is part of an existing flow
@@ -95,18 +101,22 @@ impl ConnTrack {
             return false;
         };
 
-        self.entries.contains_key(&Key {
+        let key = Key {
             local,
             peer,
             local_ip: packet.source(),
             peer_ip: packet.destination(),
-        })
+        };
+
+        self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        for _ in self.entries.extract_if(.., |key, last_seen| {
-            now.saturating_duration_since(*last_seen) >= ttl(key)
-        }) {}
+        for entries in [&mut self.initiated, &mut self.received] {
+            for _ in entries.extract_if(.., |key, last_seen| {
+                now.saturating_duration_since(*last_seen) >= ttl(key)
+            }) {}
+        }
     }
 }
 
