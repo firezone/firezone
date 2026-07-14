@@ -42,6 +42,7 @@ defmodule Portal.Repo.Migrations.CreateLogSinks do
       add(:errored_at, :timestamptz)
       add(:error_message, :text)
       add(:error_email_count, :integer, default: 0, null: false)
+      add(:last_error_email_at, :timestamptz)
       add(:is_disabled, :boolean, default: false, null: false)
       add(:disabled_reason, :string)
 

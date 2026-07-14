@@ -34,7 +34,7 @@ defmodule Portal.Splunk.Sync do
   def perform(%Oban.Job{args: %{"log_sink_id" => log_sink_id}}) do
     case Database.get_sink(log_sink_id) do
       nil ->
-        Logger.info("Splunk log sink not found, disabled, or account disabled, skipping",
+        Logger.info("Splunk log sink not found, disabled, or account ineligible, skipping",
           splunk_log_sink_id: log_sink_id
         )
 
@@ -85,7 +85,7 @@ defmodule Portal.Splunk.Sync do
   defp sync_cursor(sink, cursor, budget) do
     case Database.next_batch(cursor, @batch_size, visibility_lag_seconds()) do
       [] ->
-        Database.maybe_complete_backfill(cursor)
+        Database.maybe_complete_backfill(cursor, visibility_lag_seconds())
         :ok
 
       rows ->
@@ -424,7 +424,8 @@ defmodule Portal.Splunk.Sync do
         on: a.id == s.account_id,
         where: s.id == ^id,
         where: s.is_disabled == false,
-        where: is_nil(a.disabled_at)
+        where: is_nil(a.disabled_at),
+        where: fragment("(?)->>'log_sinks' = 'true'", a.features)
       )
       |> Safe.unscoped(:replica)
       |> Safe.one(fallback_to_primary: true)
@@ -518,22 +519,29 @@ defmodule Portal.Splunk.Sync do
       end
     end
 
-    def maybe_complete_backfill(%LogSinkCursor{phase: :backfill, completed_at: nil} = cursor) do
-      now = DateTime.utc_now()
+    # An empty guarded batch is not proof the backfill is done: rows at or
+    # below until_seq may still be hidden by the visibility lag, or not yet
+    # committed at all if their transaction was in flight when the cursor was
+    # seeded. Complete only once nothing remains without the lag guard AND
+    # the cursor has existed for a full lag window, so late writers landed.
+    def maybe_complete_backfill(%LogSinkCursor{phase: :backfill, completed_at: nil} = cursor, lag_seconds) do
+      if backfill_drained?(cursor) and older_than_lag?(cursor, lag_seconds) do
+        now = DateTime.utc_now()
 
-      from(c in LogSinkCursor,
-        where: c.account_id == ^cursor.account_id,
-        where: c.log_sink_id == ^cursor.log_sink_id,
-        where: c.stream == ^cursor.stream,
-        where: c.phase == ^cursor.phase
-      )
-      |> Safe.unscoped()
-      |> Safe.update_all(set: [completed_at: now, updated_at: now])
+        from(c in LogSinkCursor,
+          where: c.account_id == ^cursor.account_id,
+          where: c.log_sink_id == ^cursor.log_sink_id,
+          where: c.stream == ^cursor.stream,
+          where: c.phase == ^cursor.phase
+        )
+        |> Safe.unscoped()
+        |> Safe.update_all(set: [completed_at: now, updated_at: now])
+      end
 
       :ok
     end
 
-    def maybe_complete_backfill(_cursor), do: :ok
+    def maybe_complete_backfill(_cursor, _lag_seconds), do: :ok
 
     def update_sink(sink, attrs) do
       changeset =
@@ -602,6 +610,26 @@ defmodule Portal.Splunk.Sync do
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    defp backfill_drained?(cursor) do
+      {schema, _guard_column} = Map.fetch!(@stream_sources, cursor.stream)
+
+      from(l in schema,
+        where: l.account_id == ^cursor.account_id,
+        where: l.seq > ^cursor.cursor,
+        where: l.seq <= ^cursor.until_seq,
+        select: true,
+        limit: 1
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> is_nil()
+    end
+
+    defp older_than_lag?(cursor, lag_seconds) do
+      cutoff = DateTime.add(DateTime.utc_now(), -lag_seconds, :second)
+      DateTime.before?(cursor.inserted_at, cutoff)
     end
   end
 end

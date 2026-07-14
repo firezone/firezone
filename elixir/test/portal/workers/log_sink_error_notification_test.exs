@@ -52,10 +52,11 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
         }
       ])
 
-      assert :ok = perform_job(LogSinkErrorNotification, %{frequency: "daily"})
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
 
       updated_sink = reload_sink(sink)
       assert updated_sink.error_email_count == 1
+      assert updated_sink.last_error_email_at
 
       [email] = collect_queued_emails(account.id)
       assert email.subject == "Log Sink Delivery Error - SOC Splunk"
@@ -69,28 +70,56 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       assert email.html_body =~ "Edit and Save"
     end
 
-    test "matches sinks to the frequency for their error_email_count" do
+    test "a sink crossing a frequency bucket is not emailed twice in one day" do
       account = account_fixture(features: %{log_sinks: true})
       admin_actor_fixture(account: account)
-      sink = errored_sink_fixture(account, error_email_count: 3)
 
-      assert :ok = perform_job(LogSinkErrorNotification, %{frequency: "daily"})
-      assert collect_queued_emails(account.id) == []
+      sink =
+        errored_sink_fixture(account,
+          error_email_count: 2,
+          last_error_email_at: hours_ago(21)
+        )
+
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
+      assert [_email] = collect_queued_emails(account.id)
       assert reload_sink(sink).error_email_count == 3
 
-      assert :ok = perform_job(LogSinkErrorNotification, %{frequency: "three_days"})
+      # The increment moved it into the every-3-days bucket; a second run the
+      # same day (or the next) must not pick it up again.
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
       assert [_email] = collect_queued_emails(account.id)
-      assert reload_sink(sink).error_email_count == 4
+      assert reload_sink(sink).error_email_count == 3
+    end
+
+    test "email frequency follows the error_email_count bucket" do
+      account = account_fixture(features: %{log_sinks: true})
+      admin_actor_fixture(account: account)
+
+      three_days_fresh = errored_sink_fixture(account, error_email_count: 3, last_error_email_at: hours_ago(24))
+      three_days_due = errored_sink_fixture(account, error_email_count: 3, last_error_email_at: hours_ago(71))
+      weekly_fresh = errored_sink_fixture(account, error_email_count: 7, last_error_email_at: hours_ago(120))
+      weekly_due = errored_sink_fixture(account, error_email_count: 7, last_error_email_at: hours_ago(167))
+
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
+
+      assert length(collect_queued_emails(account.id)) == 2
+      assert reload_sink(three_days_fresh).error_email_count == 3
+      assert reload_sink(three_days_due).error_email_count == 4
+      assert reload_sink(weekly_fresh).error_email_count == 7
+      assert reload_sink(weekly_due).error_email_count == 8
     end
 
     test "stops notifying after 10 emails" do
       account = account_fixture(features: %{log_sinks: true})
       admin_actor_fixture(account: account)
-      sink = errored_sink_fixture(account, error_email_count: 10)
 
-      for frequency <- ~w[daily three_days weekly] do
-        assert :ok = perform_job(LogSinkErrorNotification, %{frequency: frequency})
-      end
+      sink =
+        errored_sink_fixture(account,
+          error_email_count: 10,
+          last_error_email_at: hours_ago(24 * 30)
+        )
+
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
 
       assert collect_queued_emails(account.id) == []
       assert reload_sink(sink).error_email_count == 10
@@ -108,7 +137,7 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
         disabled_reason: "Disabled by admin"
       )
 
-      assert :ok = perform_job(LogSinkErrorNotification, %{frequency: "daily"})
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
 
       assert collect_queued_emails(account.id) == []
     end
@@ -123,7 +152,7 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       admin_actor_fixture(account: account)
       sink = errored_sink_fixture(account)
 
-      assert :ok = perform_job(LogSinkErrorNotification, %{frequency: "daily"})
+      assert :ok = perform_job(LogSinkErrorNotification, %{})
 
       assert reload_sink(sink).error_email_count == 1
       assert collect_queued_emails(account.id) == []
@@ -132,5 +161,9 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
 
   defp reload_sink(sink) do
     Repo.get_by!(Portal.Splunk.LogSink, account_id: sink.account_id, id: sink.id)
+  end
+
+  defp hours_ago(hours) do
+    DateTime.add(DateTime.utc_now(), -hours, :hour)
   end
 end

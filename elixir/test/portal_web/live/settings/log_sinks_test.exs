@@ -388,5 +388,23 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       assert_enqueued(worker: Splunk.Sync, args: %{log_sink_id: sink.id})
     end
+
+    test "deliver now rejects sinks from other accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_sink = splunk_log_sink_fixture()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      html = render_click(lv, "sync_sink", %{"id" => other_sink.id})
+
+      assert html =~ "Failed to queue log sink delivery."
+      refute_enqueued(worker: Splunk.Sync)
+    end
   end
 end

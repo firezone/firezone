@@ -293,9 +293,7 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "weekly"}},
 
     # Log sink delivery error notifications
-    {"0 9 * * *", Portal.Workers.LogSinkErrorNotification, args: %{frequency: "daily"}},
-    {"0 9 */3 * *", Portal.Workers.LogSinkErrorNotification, args: %{frequency: "three_days"}},
-    {"0 9 * * 1", Portal.Workers.LogSinkErrorNotification, args: %{frequency: "weekly"}},
+    {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
 
     # Check account limits every 30 minutes
     {"*/30 * * * *", Portal.Workers.CheckAccountLimits},

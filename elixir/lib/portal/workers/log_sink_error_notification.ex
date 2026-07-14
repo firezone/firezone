@@ -2,12 +2,18 @@ defmodule Portal.Workers.LogSinkErrorNotification do
   @moduledoc """
   Oban worker for sending log sink delivery error notifications.
 
-  Three notification frequencies based on error_email_count:
-  - Daily: error_email_count < 3 (0, 1, 2)
-  - Every 3 days: error_email_count 3-6
-  - Weekly: error_email_count 7-10
+  Runs once a day; how often a sink is emailed depends on how many error
+  emails it has already received:
+  - error_email_count < 3: daily
+  - error_email_count 3-6: every 3 days
+  - error_email_count 7-9: weekly
 
-  After 10 failed notifications, stop sending emails.
+  After 10 emails, stop.
+
+  Due-ness comes from last_error_email_at rather than one cron per
+  frequency: with separate crons, a sink crossing a bucket boundary on a day
+  two schedules coincide would be emailed by both. Thresholds sit a few
+  hours under the nominal interval so cron jitter cannot skip a day.
   """
 
   use Oban.Worker,
@@ -21,19 +27,35 @@ defmodule Portal.Workers.LogSinkErrorNotification do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"frequency" => frequency}}) do
+  def perform(%Oban.Job{}) do
+    now = DateTime.utc_now()
+
     Splunk.LogSink
-    |> Database.errored_disabled_sinks(frequency)
-    |> Enum.each(&send_notification(&1, frequency))
+    |> Database.errored_disabled_sinks()
+    |> Enum.filter(&due_for_email?(&1, now))
+    |> Enum.each(&send_notification/1)
 
     :ok
   end
 
-  defp send_notification(sink, frequency) do
+  defp due_for_email?(%{last_error_email_at: nil}, _now), do: true
+
+  defp due_for_email?(sink, now) do
+    threshold_hours =
+      cond do
+        sink.error_email_count < 3 -> 20
+        sink.error_email_count <= 6 -> 70
+        true -> 166
+      end
+
+    cutoff = DateTime.add(now, -threshold_hours, :hour)
+    DateTime.before?(sink.last_error_email_at, cutoff)
+  end
+
+  defp send_notification(sink) do
     Logger.info("Sending log sink error notification",
       log_sink_id: sink.id,
       account_id: sink.account_id,
-      frequency: frequency,
       error_email_count: sink.error_email_count
     )
 
@@ -47,20 +69,19 @@ defmodule Portal.Workers.LogSinkErrorNotification do
         )
 
       admins ->
-        increment_error_email_count(sink)
-        send_email_notification(admins, sink, frequency)
+        record_error_email(sink)
+        send_email_notification(admins, sink)
     end
   end
 
-  defp send_email_notification(admins, sink, frequency) do
+  defp send_email_notification(admins, sink) do
     recipient_emails = Enum.map(admins, & &1.email)
     stats = Database.delivery_stats(sink)
 
     Logger.info("Sending log sink error email",
       recipient_count: length(recipient_emails),
       log_sink_id: sink.id,
-      log_sink_name: sink.name,
-      frequency: frequency
+      log_sink_name: sink.name
     )
 
     # Attempt to send the email but log errors if it fails. Important not to
@@ -94,12 +115,15 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     |> Keyword.get(:log_sink_email_module, Mailer.LogSinkEmail)
   end
 
-  defp increment_error_email_count(sink) do
-    new_count = sink.error_email_count + 1
+  defp record_error_email(sink) do
+    attrs = %{
+      error_email_count: sink.error_email_count + 1,
+      last_error_email_at: DateTime.utc_now()
+    }
 
     {:ok, _sink} =
       sink
-      |> Ecto.Changeset.cast(%{"error_email_count" => new_count}, [:error_email_count])
+      |> Ecto.Changeset.cast(attrs, [:error_email_count, :last_error_email_at])
       |> Database.update_sink()
   end
 
@@ -110,43 +134,16 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     # Sinks that are currently disabled due to delivery errors. Client errors
     # disable a sink immediately; transient errors disable it after 24 hours
     # of continuous failure. Admins are only notified once a sink is disabled.
-    def errored_disabled_sinks(schema, frequency) do
-      schema
-      |> errored_disabled_sinks_query(frequency)
-      |> Safe.unscoped(:replica)
-      |> Safe.all()
-    end
-
-    defp errored_disabled_sinks_query(schema, "daily") do
+    def errored_disabled_sinks(schema) do
       from(s in schema,
         where: not is_nil(s.errored_at),
         where: s.is_disabled == true,
         where: s.disabled_reason == "Sync error",
-        where: s.error_email_count < 3,
-        preload: [:account]
-      )
-    end
-
-    defp errored_disabled_sinks_query(schema, "three_days") do
-      from(s in schema,
-        where: not is_nil(s.errored_at),
-        where: s.is_disabled == true,
-        where: s.disabled_reason == "Sync error",
-        where: s.error_email_count >= 3,
-        where: s.error_email_count <= 6,
-        preload: [:account]
-      )
-    end
-
-    defp errored_disabled_sinks_query(schema, "weekly") do
-      from(s in schema,
-        where: not is_nil(s.errored_at),
-        where: s.is_disabled == true,
-        where: s.disabled_reason == "Sync error",
-        where: s.error_email_count >= 7,
         where: s.error_email_count < 10,
         preload: [:account]
       )
+      |> Safe.unscoped(:replica)
+      |> Safe.all()
     end
 
     def update_sink(changeset) do

@@ -173,16 +173,36 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   def handle_event("sync_sink", %{"id" => id}, socket) do
-    case Oban.insert(Splunk.Sync.new(%{"log_sink_id" => id})) do
-      {:ok, _job} ->
-        {:noreply,
-         socket
-         |> init()
-         |> put_flash(:success, "Log sink delivery has been queued successfully.")}
+    sink = socket.assigns.log_sinks |> Enum.find(fn s -> s.id == id end)
 
-      {:error, reason} ->
-        Logger.info("Failed to enqueue log sink sync job", id: id, reason: inspect(reason))
+    cond do
+      is_nil(sink) ->
         {:noreply, put_flash(socket, :error, "Failed to queue log sink delivery.")}
+
+      not socket.assigns.account.features.log_sinks ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Log sinks are available on the Enterprise plan. Please upgrade your plan."
+         )}
+
+      true ->
+        case Oban.insert(Splunk.Sync.new(%{"log_sink_id" => sink.id})) do
+          {:ok, _job} ->
+            {:noreply,
+             socket
+             |> init()
+             |> put_flash(:success, "Log sink delivery has been queued successfully.")}
+
+          {:error, reason} ->
+            Logger.info("Failed to enqueue log sink sync job",
+              id: sink.id,
+              reason: inspect(reason)
+            )
+
+            {:noreply, put_flash(socket, :error, "Failed to queue log sink delivery.")}
+        end
     end
   end
 
@@ -882,6 +902,7 @@ defmodule PortalWeb.Settings.LogSinks do
       |> put_change(:error_message, nil)
       |> put_change(:errored_at, nil)
       |> put_change(:error_email_count, 0)
+      |> put_change(:last_error_email_at, nil)
     else
       changeset
     end

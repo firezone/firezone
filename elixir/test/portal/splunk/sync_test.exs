@@ -24,10 +24,21 @@ defmodule Portal.Splunk.SyncTest do
       Req.Test.json(conn, %{"text" => "Success", "code" => 0})
     end)
 
-    %{account: account_fixture()}
+    %{account: account_fixture(features: %{log_sinks: true})}
   end
 
   describe "perform/1" do
+    test "skips sinks on accounts without the log_sinks feature" do
+      account = account_fixture()
+      sink = splunk_log_sink_fixture(account: account)
+      session_log_fixture(account: account)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      refute_receive {:hec, _conn, _events}
+      refute get_cursor(sink, :session, :live)
+    end
+
     test "seeds live cursors on first run and delivers only later logs", %{account: account} do
       session_log_fixture(account: account)
       sink = splunk_log_sink_fixture(account: account)
@@ -98,6 +109,73 @@ defmodule Portal.Splunk.SyncTest do
       assert backfill.completed_at
 
       assert get_cursor(sink, :session, :live)
+    end
+
+    test "a backfill does not complete while rows are still lag-hidden", %{account: account} do
+      old = DateTime.add(DateTime.utc_now(), -3600, :second)
+      hidden = DateTime.add(DateTime.utc_now(), 60, :second)
+
+      for _ <- 1..2 do
+        session_log_fixture(account: account, timestamp: old)
+      end
+
+      # Committed under until_seq but failing the visibility-lag guard, like
+      # rows written moments before the sink was created.
+      for _ <- 1..2 do
+        session_log_fixture(account: account, timestamp: hidden)
+      end
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:session]
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, events}
+      assert length(events) == 2
+
+      backfill = get_cursor(sink, :session, :backfill)
+      refute backfill.completed_at
+      assert backfill.synced_count == 2
+
+      from(l in Portal.SessionLog, where: l.account_id == ^account.id)
+      |> Repo.update_all(set: [timestamp: old])
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, events}
+      assert length(events) == 2
+
+      backfill = get_cursor(sink, :session, :backfill)
+      assert backfill.completed_at
+      assert backfill.synced_count == 4
+    end
+
+    test "a drained backfill only completes after a full lag window", %{account: account} do
+      log = session_log_fixture(account: account)
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:session]
+        )
+
+      Splunk.Sync.Database.seed_missing_cursors(sink)
+      backfill = get_cursor(sink, :session, :backfill)
+      {:ok, drained} = Splunk.Sync.Database.advance_cursor(backfill, log.seq, 1, 0)
+
+      # A transaction holding a seq below until_seq may commit up to a lag
+      # window after the cursor was seeded, so a freshly seeded cursor must
+      # not complete even when the probe finds nothing left to deliver.
+      assert :ok = Splunk.Sync.Database.maybe_complete_backfill(drained, 3600)
+      refute get_cursor(sink, :session, :backfill).completed_at
+
+      assert :ok = Splunk.Sync.Database.maybe_complete_backfill(drained, 0)
+      assert get_cursor(sink, :session, :backfill).completed_at
     end
 
     test "a closed flow is delivered again as an end event", %{account: account} do
