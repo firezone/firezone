@@ -16,7 +16,17 @@ defmodule Portal.Repo.Migrations.CreateNewRelicLogSinks do
         primary_key: true
       )
 
-      add(:id, :binary_id, null: false, primary_key: true)
+      add(
+        :id,
+        references(:log_sinks,
+          column: :id,
+          with: [account_id: :account_id],
+          type: :binary_id,
+          on_delete: :delete_all
+        ),
+        null: false,
+        primary_key: true
+      )
 
       add(:name, :string, null: false)
       add(:region, :string, null: false)
@@ -35,14 +45,6 @@ defmodule Portal.Repo.Migrations.CreateNewRelicLogSinks do
     end
 
     create(unique_index(:newrelic_log_sinks, [:account_id, :name]))
-
-    execute("""
-    ALTER TABLE newrelic_log_sinks
-    ADD CONSTRAINT newrelic_log_sinks_log_sink_id_fkey
-    FOREIGN KEY (account_id, id)
-    REFERENCES log_sinks(account_id, id)
-    ON DELETE CASCADE
-    """)
   end
 
   def down do
