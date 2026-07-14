@@ -53,16 +53,17 @@ defmodule Portal.Elastic.SyncTest do
 
       assert_receive {:prepare, "/firezone-logs", mappings}
 
+      assert get_in(mappings, ["mappings", "date_detection"]) == false
+
+      firezone = get_in(mappings, ["mappings", "properties", "firezone", "properties"])
+
       for field <- ~w[before after subject] do
-        assert get_in(mappings, [
-                 "mappings",
-                 "properties",
-                 "firezone",
-                 "properties",
-                 field,
-                 "type"
-               ]) == "flattened"
+        assert firezone[field]["type"] == "flattened"
       end
+
+      assert firezone["resource_name"]["type"] == "keyword"
+      assert firezone["rx_bytes"]["type"] == "long"
+      assert firezone["flow_start"]["type"] == "date"
 
       # An already-existing index (the 400 the stub returns) is not an error:
       # delivery proceeds.

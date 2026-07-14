@@ -13,23 +13,84 @@ defmodule Portal.Elastic.APIClient do
 
   alias Portal.Elastic
 
-  # The change stream carries before/after snapshots of many different
-  # tables, so the same JSON path can hold an object in one document and a
-  # string in the next. Dynamic mappings lock each path's type on first
-  # sight and reject later documents that disagree, so the free-form fields
-  # must be mapped as `flattened` before anything is indexed. ignore_above
-  # keeps oversized leaf values (certificate PEMs, JWKs) from rejecting the
-  # whole document via Lucene's term size limit; they stay retrievable in
-  # _source, just not searchable.
+  # Dynamic mappings lock each field's type on first sight and reject later
+  # documents that disagree, so nothing we emit may depend on inference:
+  #
+  # - before/after/subject carry snapshots of many different tables, so the
+  #   same path can hold an object in one document and a string in the next;
+  #   they are mapped `flattened` (leaves index as keywords, nothing to
+  #   conflict). ignore_above keeps oversized leaves (certificate PEMs, JWKs)
+  #   from rejecting the whole document via Lucene's term size limit; they
+  #   stay retrievable in _source, just not searchable.
+  # - every other envelope field is declared explicitly.
+  # - date_detection is off so a string that merely looks like a date (a
+  #   resource named "2026-07-01") cannot lock a string field as a date.
+  #
+  # Dynamic mapping remains only as a fallback for fields added in future
+  # releases, whose types render_event keeps stable.
+  @keyword %{"type" => "keyword", "ignore_above" => 1024}
+  @date %{"type" => "date"}
+  @long %{"type" => "long"}
+  @flattened %{"type" => "flattened", "ignore_above" => 8191}
+
   @index_mappings %{
     "mappings" => %{
+      "date_detection" => false,
       "properties" => %{
-        "@timestamp" => %{"type" => "date"},
+        "@timestamp" => @date,
+        "message" => %{"type" => "text"},
+        "stream" => @keyword,
         "firezone" => %{
           "properties" => %{
-            "before" => %{"type" => "flattened", "ignore_above" => 8191},
-            "after" => %{"type" => "flattened", "ignore_above" => 8191},
-            "subject" => %{"type" => "flattened", "ignore_above" => 8191}
+            "type" => @keyword,
+            "log_id" => @keyword,
+            "phase" => @keyword,
+            "timestamp" => @date,
+            "object" => @keyword,
+            "operation" => @keyword,
+            "context" => @keyword,
+            "before" => @flattened,
+            "after" => @flattened,
+            "subject" => @flattened,
+            "actor_id" => @keyword,
+            "actor_email" => @keyword,
+            "actor_name" => @keyword,
+            "api_token_id" => @keyword,
+            "device_id" => @keyword,
+            "policy_authorization_id" => @keyword,
+            "policy_id" => @keyword,
+            "resource_id" => @keyword,
+            "resource_name" => @keyword,
+            "resource_address" => @keyword,
+            "method" => @keyword,
+            "path" => @keyword,
+            "request_id" => @keyword,
+            "user_agent" => @keyword,
+            "ip" => @keyword,
+            "ip_region" => @keyword,
+            "ip_city" => @keyword,
+            "role" => @keyword,
+            "protocol" => @keyword,
+            "domain" => @keyword,
+            "client_version" => @keyword,
+            "device_os_name" => @keyword,
+            "device_os_version" => @keyword,
+            "inner_src_ip" => @keyword,
+            "inner_dst_ip" => @keyword,
+            "inner_src_port" => @long,
+            "inner_dst_port" => @long,
+            "outer_src_ip" => @keyword,
+            "outer_dst_ip" => @keyword,
+            "outer_src_port" => @long,
+            "outer_dst_port" => @long,
+            "content_length" => @long,
+            "rx_packets" => @long,
+            "tx_packets" => @long,
+            "rx_bytes" => @long,
+            "tx_bytes" => @long,
+            "flow_start" => @date,
+            "flow_end" => @date,
+            "last_packet" => @date
           }
         }
       }
