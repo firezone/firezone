@@ -54,6 +54,34 @@ pub(crate) struct ReferenceState {
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
+    /// Assemble a [`ReferenceState`] from already-generated parts.
+    ///
+    /// Used by the structured (`arbitrary`-driven) generator, which builds each
+    /// component directly instead of through a proptest `Strategy`.
+    pub(crate) fn from_parts(
+        clients: BTreeMap<ClientId, Host<RefClient>>,
+        gateways: BTreeMap<GatewayId, Host<RefGateway>>,
+        relays: BTreeMap<RelayId, Host<u64>>,
+        portal: StubPortal,
+        global_dns_records: DnsRecords,
+        tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+        icmp_error_hosts: IcmpErrorHosts,
+        network: RoutingTable,
+        drop_direct_client_traffic: bool,
+    ) -> Self {
+        Self {
+            clients,
+            gateways,
+            relays,
+            portal,
+            global_dns_records,
+            tcp_resources,
+            icmp_error_hosts,
+            network,
+            drop_direct_client_traffic,
+        }
+    }
+
     pub(crate) fn initial_state(start: Instant) -> BoxedStrategy<Self> {
         stub_portal()
             .prop_flat_map(move |portal| {
@@ -1345,7 +1373,7 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_resource_ids(&self) -> Vec<ResourceId> {
+    pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.clients
             .values()
             .flat_map(|c| c.inner().all_resource_ids())
@@ -1364,7 +1392,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -1376,7 +1404,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v4_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
+    pub(crate) fn resolved_v4_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -1388,7 +1416,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_ip4_for_non_resources(
+    pub(crate) fn resolved_ip4_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
         at: Instant,
@@ -1404,7 +1432,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn ipv6_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv6Network, Vec<Filter>)> {
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv6Network, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -1416,7 +1444,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v6_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
+    pub(crate) fn resolved_v6_domains(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, c)| {
@@ -1428,7 +1456,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_ip6_for_non_resources(
+    pub(crate) fn resolved_ip6_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
         at: Instant,
@@ -1444,7 +1472,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn dns_resource_domains(&self) -> Vec<DomainName> {
+    pub(crate) fn dns_resource_domains(&self) -> Vec<DomainName> {
         // We may have multiple gateways in a site, so we need to dedup.
         let unique_domains = self
             .gateways
@@ -1461,7 +1489,7 @@ impl ReferenceState {
         Vec::from_iter(unique_domains)
     }
 
-    fn reachable_dns_servers(&self) -> Vec<(ClientId, dns::Upstream)> {
+    pub(crate) fn reachable_dns_servers(&self) -> Vec<(ClientId, dns::Upstream)> {
         self.clients
             .iter()
             .flat_map(|(client_id, client)| {
@@ -1483,7 +1511,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_domains(&self, now: Instant) -> Vec<(ClientId, DomainName, Vec<RecordType>)> {
+    pub(crate) fn all_domains(&self, now: Instant) -> Vec<(ClientId, DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
             at: Instant,
@@ -1520,7 +1548,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_resources_not_known_to_client(&self) -> Vec<(ClientId, client::Resource)> {
+    pub(crate) fn all_resources_not_known_to_client(&self) -> Vec<(ClientId, client::Resource)> {
         let all_resources = self.portal.all_resources();
 
         self.clients
@@ -1539,7 +1567,7 @@ impl ReferenceState {
     ///
     /// connlib's `StubResolver` allows associating different resources with the same IPs and that
     /// state needs to be correct, even if we add a new resource that we have already assigned IPs for.
-    fn unknown_dns_resources_for_already_queried_domains(
+    pub(crate) fn unknown_dns_resources_for_already_queried_domains(
         &self,
     ) -> Vec<(ClientId, client::Resource)> {
         let all_resources = self.portal.all_resources();
@@ -1572,7 +1600,7 @@ impl ReferenceState {
     /// Resources that have configurable traffic filters and exist on at least one client.
     ///
     /// Used by `Transition::ChangeFiltersOfResource`.
-    fn resources_with_filters_on_client(&self) -> Vec<(ClientId, client::Resource)> {
+    pub(crate) fn resources_with_filters_on_client(&self) -> Vec<(ClientId, client::Resource)> {
         let all_resources = self.portal.all_resources();
 
         self.clients
@@ -1593,7 +1621,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn cidr_and_dns_resources_on_client(&self) -> Vec<(ClientId, client::Resource)> {
+    pub(crate) fn cidr_and_dns_resources_on_client(&self) -> Vec<(ClientId, client::Resource)> {
         let all_resources = self.portal.all_resources();
 
         self.clients
@@ -1610,7 +1638,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn cidr_resources_on_client(&self) -> Vec<(ClientId, client::CidrResource)> {
+    pub(crate) fn cidr_resources_on_client(&self) -> Vec<(ClientId, client::CidrResource)> {
         let cidr_resources: Vec<_> = self
             .portal
             .all_resources()
@@ -1635,7 +1663,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn wildcard_dns_resources(&self) -> Vec<(ClientId, client::DnsResource)> {
+    pub(crate) fn wildcard_dns_resources(&self) -> Vec<(ClientId, client::DnsResource)> {
         let wildcard_resources: Vec<_> = self
             .portal
             .all_resources()
@@ -1661,7 +1689,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn regular_sites(&self) -> Vec<Site> {
+    pub(crate) fn regular_sites(&self) -> Vec<Site> {
         let all_sites = self
             .portal
             .all_resources()
@@ -1673,7 +1701,7 @@ impl ReferenceState {
         Vec::from_iter(all_sites)
     }
 
-    fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
+    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1691,7 +1719,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
+    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1709,7 +1737,9 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v4_domains_with_tcp_resources(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
+    pub(crate) fn resolved_v4_domains_with_tcp_resources(
+        &self,
+    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1726,7 +1756,9 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v6_domains_with_tcp_resources(&self) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
+    pub(crate) fn resolved_v6_domains_with_tcp_resources(
+        &self,
+    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1743,7 +1775,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v4_domains_with_icmp_errors(
+    pub(crate) fn resolved_v4_domains_with_icmp_errors(
         &self,
         at: Instant,
     ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
@@ -1764,7 +1796,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn resolved_v6_domains_with_icmp_errors(
+    pub(crate) fn resolved_v6_domains_with_icmp_errors(
         &self,
         at: Instant,
     ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
@@ -1785,11 +1817,13 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_client_ids(&self) -> Vec<ClientId> {
+    pub(crate) fn all_client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
     }
 
-    fn static_device_pools_on_any_client(&self) -> Vec<client::StaticDevicePoolResource> {
+    pub(crate) fn static_device_pools_on_any_client(
+        &self,
+    ) -> Vec<client::StaticDevicePoolResource> {
         let pools = self
             .portal
             .all_resources()
@@ -1840,7 +1874,7 @@ impl ReferenceState {
     /// Pre-filters to the client × pool × reachable-dns cross-product so we
     /// never emit a no-op transition because the sampled client can't reach
     /// the sampled DNS server.
-    fn device_pool_query_targets(
+    pub(crate) fn device_pool_query_targets(
         &self,
     ) -> Vec<(ClientId, client::DynamicDevicePoolResource, dns::Upstream)> {
         let resources_on_client = self.device_pool_resources_on_client();
@@ -1860,7 +1894,7 @@ impl ReferenceState {
     /// Generates a list of `(src_client_id, dst_ipv4)` tuples where `dst_ipv4` is the tunnel
     /// IPv4 of an online client reachable from `src_client_id` via a static device pool whose
     /// filters allow ICMP, paired with the pool filters that authorize the route.
-    fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
+    pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id: BTreeMap<ClientId, (IpAddr, IpAddr)> = self
             .clients
             .iter()

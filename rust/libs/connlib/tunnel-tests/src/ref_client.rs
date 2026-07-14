@@ -133,6 +133,48 @@ pub struct RefClient {
 }
 
 impl RefClient {
+    /// Construct a fresh [`RefClient`] with all derived collections empty.
+    ///
+    /// Mirrors the `ref_client` proptest strategy but takes already-sampled
+    /// values, so the structured (`arbitrary`-driven) generator can build a
+    /// client without going through a `Strategy`.
+    pub(crate) fn new(
+        id: ClientId,
+        key: PrivateKey,
+        tunnel_ip4: Ipv4Addr,
+        tunnel_ip6: Ipv6Addr,
+        system_dns_resolvers: Vec<IpAddr>,
+        internet_resource_active: bool,
+        malicious_behaviour: MaliciousBehaviour,
+    ) -> Self {
+        Self {
+            id,
+            key,
+            tunnel_ip4,
+            tunnel_ip6,
+            system_dns_resolvers,
+            internet_resource_active,
+            malicious_behaviour,
+            dns_records: Default::default(),
+            connected_cidr_resources: Default::default(),
+            connected_dns_resources: Default::default(),
+            connected_internet_resource: Default::default(),
+            expected_gateway_icmp_handshakes: Default::default(),
+            expected_client_icmp_handshakes: Default::default(),
+            expected_gateway_udp_handshakes: Default::default(),
+            expected_client_udp_handshakes: Default::default(),
+            expected_tcp_connections: Default::default(),
+            expected_client_tcp_connections: Default::default(),
+            expected_udp_dns_handshakes: Default::default(),
+            expected_tcp_dns_handshakes: Default::default(),
+            resources: Default::default(),
+            routes: Default::default(),
+            site_status: Default::default(),
+            connection_resets: Default::default(),
+            gateway_send_times: Default::default(),
+        }
+    }
+
     /// Initialize the [`ClientState`].
     ///
     /// This simulates receiving the `init` message from the portal.

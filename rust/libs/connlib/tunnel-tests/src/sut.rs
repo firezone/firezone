@@ -1460,9 +1460,14 @@ fn address_from_destination(
                 .filter(|ip| match ip {
                     IpAddr::V4(_) => src.is_ipv4(),
                     IpAddr::V6(_) => src.is_ipv6(),
-                });
+                })
+                .copied()
+                .collect::<Vec<_>>();
 
-            *resolved_ip.select(available_ips)
+            // Select one candidate by index. The candidate set is only known here
+            // (it is filtered by source address family at apply-time), so we index
+            // with `% len` rather than relying on a `proptest::sample::Selector`.
+            available_ips[*resolved_ip as usize % available_ips.len()]
         }
         Destination::IpAddr(addr) => *addr,
     }

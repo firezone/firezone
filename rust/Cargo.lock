@@ -2863,6 +2863,7 @@ dependencies = [
  "arbitrary",
  "ip-packet",
  "libfuzzer-sys",
+ "tunnel-tests",
 ]
 
 [[package]]
@@ -8556,6 +8557,7 @@ name = "tunnel-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "arbitrary",
  "bufferpool",
  "chrono",
  "connlib-model",
@@ -8577,7 +8579,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "snownet",
- "test-case",
  "test-strategy",
  "tracing",
  "tracing-subscriber",
