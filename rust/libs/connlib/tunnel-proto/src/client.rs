@@ -11,9 +11,9 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-#[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
-pub(crate) use resource::{InternetResource, Resource, StaticDevicePoolResource};
+#[cfg(any(test, feature = "test-util"))]
+pub use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
+pub use resource::{InternetResource, Resource, StaticDevicePoolResource};
 
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
@@ -62,12 +62,11 @@ use std::time::{Duration, Instant};
 use std::{io, iter};
 use telemetry::{analytics, feature_flags};
 
-pub(crate) const IPV4_RESOURCES: Ipv4Network =
-    match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
-        Ok(n) => n,
-        Err(_) => unreachable!(),
-    };
-pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
+pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+pub const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
     Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
     107,
 ) {
@@ -81,12 +80,12 @@ const LLMNR_PORT: u16 = 5355;
 const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
 const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
 
-pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
+pub const DNS_SENTINELS_V4: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
-pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
+pub const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
     Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
     120,
 ) {
@@ -188,7 +187,7 @@ pub struct ClientState {
 }
 
 impl ClientState {
-    pub(crate) fn new(
+    pub fn new(
         seed: [u8; 32],
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
@@ -229,13 +228,13 @@ impl ClientState {
         }
     }
 
-    #[cfg(all(test, feature = "proptest"))]
-    pub(crate) fn tunnel_ip_config(&self) -> Option<crate::IpConfig> {
+    #[cfg(feature = "test-util")]
+    pub fn tunnel_ip_config(&self) -> Option<crate::IpConfig> {
         Some(self.tun_config.current()?.ip)
     }
 
-    #[cfg(all(test, feature = "proptest"))]
-    pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
+    #[cfg(feature = "test-util")]
+    pub fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
             IpAddr::V4(_) => self.tunnel_ip_config()?.v4.into(),
             IpAddr::V6(_) => self.tunnel_ip_config()?.v6.into(),
@@ -432,7 +431,7 @@ impl ClientState {
         self.drain_device_stub_resolver_events();
     }
 
-    pub(crate) fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
 
@@ -553,7 +552,7 @@ impl ClientState {
     /// Most packets originate from the TUN device, but internally-produced and previously-buffered
     /// packets also re-enter through this path. Sentinel DNS queries may be consumed locally; all
     /// other packets are routed and either sent or buffered here.
-    pub(crate) fn handle_tun_input(
+    pub fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -748,7 +747,7 @@ impl ClientState {
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
-    pub(crate) fn handle_network_input(
+    pub fn handle_network_input(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -882,7 +881,7 @@ impl ClientState {
         Ok(Some(packet))
     }
 
-    pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
+    pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
         let mut attributes = vec![
             match response.recursion {
                 dns::Recursion::Local => otel::attr::dns_recursion_local(),
@@ -1514,7 +1513,7 @@ impl ClientState {
     ///
     /// Note: The returned list is not necessarily the list of DNS resolvers that is active.
     /// If DNS servers are defined in the portal, those will be preferred over the system defined ones.
-    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> Vec<IpAddr> {
+    pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> Vec<IpAddr> {
         let changed = self.dns_config.update_system_resolvers(new_dns);
 
         if !changed {
@@ -2206,7 +2205,7 @@ impl ClientState {
         self.resource_list.update(self.resource_list_snapshot());
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
+    pub fn poll_event(&mut self) -> Option<ClientEvent> {
         if let Some(config) = self.tun_config.take_pending_update() {
             tracing::info!(?config, "Updating TUN device");
 
@@ -2240,7 +2239,7 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
+    pub fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
         self.node.reset(now);
@@ -2251,13 +2250,13 @@ impl ClientState {
         self.tcp_dns_client.reset();
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .poll_transmit()
             .or_else(|| self.node.poll_transmit())
     }
 
-    pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
+    pub fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
         self.buffered_dns_queries.pop_front()
     }
 
@@ -2615,7 +2614,7 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
         return true;
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-util"))]
     if crate::malicious_behaviour::ignore_resource_filter() {
         tracing::debug!("Malicious client: ignoring resource filter");
         return true;

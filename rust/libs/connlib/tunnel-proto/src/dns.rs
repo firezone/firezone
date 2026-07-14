@@ -16,11 +16,11 @@ use logging::err_with_src;
 use std::net::SocketAddr;
 use std::time::Instant;
 
-pub(crate) const DNS_PORT: u16 = 53;
+pub const DNS_PORT: u16 = 53;
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
 #[derive(Debug)]
-pub(crate) struct RecursiveQuery {
+pub struct RecursiveQuery {
     /// The server we want to send the query to.
     pub server: Upstream,
 
@@ -39,7 +39,7 @@ pub(crate) struct RecursiveQuery {
 
 /// A response to a [`RecursiveQuery`].
 #[derive(Debug)]
-pub(crate) struct RecursiveResponse {
+pub struct RecursiveResponse {
     /// The server we sent the query to.
     pub server: Upstream,
 
@@ -67,13 +67,13 @@ pub(crate) struct RecursiveResponse {
 
 /// Whether a recursive query was resolved locally or forwarded through the tunnel.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Recursion {
+pub enum Recursion {
     Local,
     Tunnel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
-pub(crate) enum Transport {
+pub enum Transport {
     #[display("UDP")]
     Udp,
     #[display("TCP")]
