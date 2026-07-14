@@ -48,6 +48,7 @@ defmodule PortalWeb.Settings.LogSinks do
   @newrelic_region_options [
     {"US (log-api.newrelic.com)", "US"},
     {"EU (log-api.eu.newrelic.com)", "EU"},
+    {"Japan (log-api.jp.nr-data.net)", "JP"},
     {"FedRAMP (gov-log-api.newrelic.com)", "FedRAMP"}
   ]
 
@@ -959,6 +960,10 @@ defmodule PortalWeb.Settings.LogSinks do
             Backfill logs recorded before this sink was created, oldest first, while new
             logs are delivered as they arrive. When disabled, only logs recorded from now
             on are delivered.
+          </p>
+          <p :if={@type == "newrelic"} class="mt-1 ml-7 text-xs text-subtle">
+            New Relic drops payloads with timestamps older than 48 hours, so backfilled
+            events older than that will not appear in New Relic.
           </p>
         </div>
       </div>

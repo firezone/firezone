@@ -6,7 +6,7 @@ defmodule Portal.NewRelic.LogSink do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
-  @regions ~w[US EU FedRAMP]
+  @regions ~w[US EU JP FedRAMP]
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),

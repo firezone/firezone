@@ -14,6 +14,7 @@ defmodule Portal.NewRelic.APIClient do
   @endpoints %{
     "US" => "https://log-api.newrelic.com",
     "EU" => "https://log-api.eu.newrelic.com",
+    "JP" => "https://log-api.jp.nr-data.net",
     "FedRAMP" => "https://gov-log-api.newrelic.com"
   }
 

@@ -72,6 +72,22 @@ defmodule Portal.NewRelic.SyncTest do
       assert conn.host == "log-api.eu.newrelic.com"
     end
 
+    test "Japan routes to the nr-data.net endpoint", %{account: account} do
+      sink =
+        newrelic_log_sink_fixture(
+          account: account,
+          region: "JP",
+          enabled_streams: [:session]
+        )
+
+      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+      assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:intake, conn, _payload}
+      assert conn.host == "log-api.jp.nr-data.net"
+    end
+
     test "a 403 disables the sink immediately", %{account: account} do
       sink = newrelic_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(NewRelic.Sync, %{log_sink_id: sink.id})
