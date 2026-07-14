@@ -234,13 +234,25 @@ defmodule Portal.Elastic.SyncTest do
         Req.Test.json(conn, %{"took" => 2, "errors" => errors, "items" => items})
       end)
 
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      log_output =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+        end)
+
+      # Drops page us via error-level logs but never touch the sink's
+      # customer-facing error state: a rejected document is our schema bug,
+      # not something an admin can fix by editing the sink.
+      assert log_output =~ "Dropping undeliverable log sink event"
+      assert log_output =~ "bad field"
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 1
       assert cursor.dropped_count == 1
 
-      refute reload_sink(sink).is_disabled
+      sink = reload_sink(sink)
+      refute sink.is_disabled
+      refute sink.errored_at
+      refute sink.error_message
     end
 
     test "a 401 disables the sink immediately", %{account: account} do
