@@ -1,0 +1,410 @@
+defmodule PortalWeb.Settings.LogSinksTest do
+  use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
+
+  import Phoenix.LiveViewTest
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.LogSinkFixtures
+
+  alias Portal.LogSinkCursor
+  alias Portal.Splunk
+
+  setup do
+    account = account_fixture(features: %{log_sinks: true})
+    actor = admin_actor_fixture(account: account)
+    %{account: account, actor: actor}
+  end
+
+  defp reload_sink(sink) do
+    Repo.get_by!(Splunk.LogSink, account_id: sink.account_id, id: sink.id)
+  end
+
+  defp open_sink_actions(lv, sink_id) do
+    lv
+    |> element("button[phx-click='toggle_sink_actions'][phx-value-id='#{sink_id}']")
+    |> render_click()
+  end
+
+  describe "unauthorized" do
+    test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
+      path = ~p"/#{account}/settings/log_sinks"
+
+      assert live(conn, path) ==
+               {:error,
+                {:redirect,
+                 %{
+                   to: ~p"/#{account}/sign_in?#{%{redirect_to: path}}",
+                   flash: %{"error" => "You must sign in to access that page."}
+                 }}}
+    end
+  end
+
+  describe "index" do
+    test "renders empty state when no log sinks exist", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      assert html =~ "Log Sinks"
+      assert html =~ "No log sinks configured."
+      assert html =~ "Add a log sink"
+    end
+
+    test "renders log sinks with status and delivery stats", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          name: "SOC Splunk",
+          retroactive: true
+        )
+
+      now = DateTime.utc_now()
+
+      Repo.insert_all(LogSinkCursor, [
+        %{
+          account_id: account.id,
+          log_sink_id: sink.id,
+          stream: :session,
+          phase: :live,
+          cursor: 100,
+          synced_count: 42,
+          last_synced_at: now,
+          inserted_at: now,
+          updated_at: now
+        },
+        %{
+          account_id: account.id,
+          log_sink_id: sink.id,
+          stream: :session,
+          phase: :backfill,
+          cursor: 50,
+          until_seq: 100,
+          synced_count: 50,
+          backfill_total: 100,
+          inserted_at: now,
+          updated_at: now
+        }
+      ])
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      assert html =~ "SOC Splunk"
+      assert html =~ "Active"
+      assert html =~ "92"
+      assert html =~ "50%"
+    end
+
+    test "renders error status for sinks disabled by delivery errors", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      splunk_log_sink_fixture(
+        account: account,
+        is_disabled: true,
+        disabled_reason: "Sync error",
+        error_message: "Splunk HEC returned HTTP 403: Invalid token",
+        errored_at: DateTime.utc_now()
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      assert html =~ "Error"
+      assert html =~ "Invalid token"
+      assert html =~ "Edit and Save this log sink to re-enable it."
+    end
+
+    test "shows upgrade prompt when the feature is disabled", %{conn: conn} do
+      account = account_fixture(features: %{log_sinks: false})
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      assert html =~ "Upgrade to Unlock"
+      refute html =~ "No log sinks configured."
+    end
+  end
+
+  describe "create" do
+    test "creates a Splunk log sink with its base row", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/new")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Splunk",
+            collector_url: "https://http-inputs-acme.splunkcloud.com/services/collector/event",
+            hec_token: "test-hec-token",
+            enabled_streams: ["", "session", "flow"],
+            retroactive: "true"
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Splunk.LogSink, account_id: account.id, name: "SOC Splunk")
+      assert sink.collector_url == "https://http-inputs-acme.splunkcloud.com"
+      assert sink.hec_token == "test-hec-token"
+      assert sink.enabled_streams == [:session, :flow]
+      assert sink.retroactive
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :splunk
+    end
+
+    test "renders validation errors for an invalid HEC URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/new")
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC Splunk",
+            collector_url: "not a url",
+            hec_token: "test-hec-token"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "must be a valid http(s) URL"
+      assert Repo.all(Splunk.LogSink) == []
+    end
+  end
+
+  describe "edit" do
+    test "updates the sink, resubmitting the rendered token", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      form = form(lv, "#log-sink-form", log_sink: %{name: "Renamed Sink"})
+      render_change(form)
+      render_submit(form)
+
+      updated = reload_sink(sink)
+      assert updated.name == "Renamed Sink"
+      assert updated.hec_token == sink.hec_token
+    end
+
+    test "requires the token", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      form = form(lv, "#log-sink-form", log_sink: %{name: "Renamed Sink", hec_token: ""})
+      render_change(form)
+      html = render_submit(form)
+
+      assert html =~ "can&#39;t be blank"
+
+      updated = reload_sink(sink)
+      assert updated.name == sink.name
+      assert updated.hec_token == sink.hec_token
+    end
+
+    test "editing a sink disabled by a delivery error re-enables it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          is_disabled: true,
+          disabled_reason: "Sync error",
+          error_message: "Splunk HEC returned HTTP 403: Invalid token",
+          errored_at: DateTime.utc_now()
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      form = form(lv, "#log-sink-form", log_sink: %{hec_token: "fixed-token"})
+      render_change(form)
+      render_submit(form)
+
+      updated = reload_sink(sink)
+      refute updated.is_disabled
+      refute updated.disabled_reason
+      refute updated.error_message
+      refute updated.errored_at
+    end
+  end
+
+  describe "actions" do
+    test "deletes the sink and everything under it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+      now = DateTime.utc_now()
+
+      Repo.insert_all(LogSinkCursor, [
+        %{
+          account_id: account.id,
+          log_sink_id: sink.id,
+          stream: :session,
+          phase: :live,
+          cursor: 0,
+          inserted_at: now,
+          updated_at: now
+        }
+      ])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      open_sink_actions(lv, sink.id)
+
+      lv
+      |> element("button[phx-click='delete_sink'][phx-value-id='#{sink.id}']")
+      |> render_click()
+
+      assert Repo.all(Splunk.LogSink) == []
+      assert Repo.all(Portal.LogSink) == []
+      assert Repo.all(LogSinkCursor) == []
+    end
+
+    test "disables and re-enables a sink", %{conn: conn, account: account, actor: actor} do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      open_sink_actions(lv, sink.id)
+
+      lv
+      |> element("button[phx-click='toggle_sink'][phx-value-id='#{sink.id}']")
+      |> render_click()
+
+      updated = reload_sink(sink)
+      assert updated.is_disabled
+      assert updated.disabled_reason == "Disabled by admin"
+
+      open_sink_actions(lv, sink.id)
+
+      lv
+      |> element("button[phx-click='toggle_sink'][phx-value-id='#{sink.id}']")
+      |> render_click()
+
+      updated = reload_sink(sink)
+      refute updated.is_disabled
+      refute updated.disabled_reason
+    end
+
+    test "an error-disabled sink has no enable action", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          is_disabled: true,
+          disabled_reason: "Sync error",
+          error_message: "Splunk HEC returned HTTP 403: Invalid token (code 4)",
+          errored_at: DateTime.utc_now()
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      html = open_sink_actions(lv, sink.id)
+
+      refute html =~ "toggle-sink-#{sink.id}"
+      assert html =~ "delete-sink-#{sink.id}"
+    end
+
+    test "deliver now enqueues a sync job", %{conn: conn, account: account, actor: actor} do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      open_sink_actions(lv, sink.id)
+
+      lv
+      |> element("button[phx-click='sync_sink'][phx-value-id='#{sink.id}']")
+      |> render_click()
+
+      assert_enqueued(worker: Splunk.Sync, args: %{log_sink_id: sink.id})
+    end
+
+    test "deliver now rejects sinks from other accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_sink = splunk_log_sink_fixture()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks")
+
+      html = render_click(lv, "sync_sink", %{"id" => other_sink.id})
+
+      assert html =~ "Failed to queue log sink delivery."
+      refute_enqueued(worker: Splunk.Sync)
+    end
+  end
+end

@@ -721,7 +721,8 @@ defmodule Portal.Repo.Seeds do
         rest_api: true,
         internet_resource: true,
         client_to_client: true,
-        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true"
+        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true",
+        log_sinks: true
       })
       |> put_change(:metadata, %{
         stripe: %{

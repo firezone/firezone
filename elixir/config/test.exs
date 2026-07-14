@@ -108,6 +108,14 @@ config :portal, Portal.Okta.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Splunk.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Splunk.Sync, visibility_lag_seconds: 0
+
 config :portal, Portal.Azure.ManagedIdentity,
   client_id: "test-azure-client-id",
   req_opts: [
@@ -126,6 +134,8 @@ config :portal, Portal.Entra.APIClient,
   ]
 
 config :portal, Portal.Workers.SyncErrorNotification, []
+
+config :portal, Portal.Workers.LogSinkErrorNotification, []
 
 config :portal, Portal.Telemetry, enabled: false
 

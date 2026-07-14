@@ -79,6 +79,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Entra.Scheduler},
        {worker_dev_schedule, Portal.Google.Scheduler},
        {worker_dev_schedule, Portal.Okta.Scheduler},
+       {worker_dev_schedule, Portal.Splunk.Scheduler},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
@@ -91,6 +92,7 @@ config :portal, Oban,
         args: %{provider: "entra", frequency: "weekly"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "weekly"}},
+       {worker_dev_schedule, Portal.Workers.LogSinkErrorNotification},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPolicyAuthorizations},
        {worker_dev_schedule, Portal.Workers.CheckAccountLimits},
        {worker_dev_schedule, Portal.Workers.OutdatedGateways},
@@ -110,6 +112,8 @@ config :portal, Oban,
     google_sync: 5,
     okta_scheduler: 1,
     okta_sync: 5,
+    splunk_scheduler: 1,
+    splunk_sync: 5,
     sync_error_notifications: 1,
     outbound_emails: 1
   ],
@@ -118,6 +122,16 @@ config :portal, Oban,
 
 config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
+
+# Splunk Cloud trial stacks serve HEC (port 8088) with a certificate from
+# Splunk's own CA, which no public trust store contains. Skip verification in
+# dev only so trial stacks are testable; prod verifies.
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    connect_options: [
+      transport_opts: [verify: :verify_none]
+    ]
+  ]
 
 ###############################
 ##### PortalWeb Endpoint ######
