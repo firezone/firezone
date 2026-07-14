@@ -36,7 +36,7 @@ use tunnel::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
 /// The actual system-under-test.
 ///
-/// [`proptest`] manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
+/// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
 pub(crate) struct TunnelTest {
     flux_capacitor: FluxCapacitor,
 

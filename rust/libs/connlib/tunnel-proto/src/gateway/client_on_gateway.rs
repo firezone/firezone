@@ -109,7 +109,7 @@ impl ClientOnGateway {
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
         if resolved_ips.is_empty() {
-            tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain")
+            tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain");
         }
 
         let mut resolved_ipv4 = resolved_ips.iter().filter(|ip| ip.is_ipv4()).cycle();
@@ -1439,7 +1439,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod proptests {
     use super::tests::*;
     use super::*;

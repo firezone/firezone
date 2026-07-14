@@ -5,9 +5,8 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [features]
-proptest = ["tunnel-proto/proptest", "tunnel-proto/malicious-behaviour"]
 # Exposes test-only protocol helpers through the tunnel re-exports.
-test-util = ["tunnel-proto/proptest", "tunnel-proto/malicious-behaviour"]
+test-util = ["tunnel-proto/malicious-behaviour"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -38,27 +37,10 @@ tun = { workspace = true }
 tunnel-proto = { workspace = true }
 
 [dev-dependencies]
-chrono = { workspace = true }
-derive_more = { workspace = true, features = ["debug"] }
-dns-over-tcp = { workspace = true }
-firezone-relay = { workspace = true, features = ["proptest"] }
-flow-tracker = { workspace = true }
-hex = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
-ip_network = { workspace = true }
-ip_network_table = { workspace = true }
-itertools = { workspace = true }
-l3-tcp = { workspace = true }
-proptest = { workspace = true }
-proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
-secrecy = { workspace = true }
-serde_json = { workspace = true }
-sha2 = { workspace = true }
-test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [lints]
 workspace = true

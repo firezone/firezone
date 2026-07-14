@@ -33,9 +33,8 @@ pub mod otel;
 mod p2p_control;
 mod packet_kind;
 mod peer_store;
-mod portal_connection;
-#[cfg(feature = "proptest")]
-pub mod proptest;
+#[cfg(test)]
+mod proptest;
 mod routing_table;
 mod unique_packet_buffer;
 mod unix_ts;

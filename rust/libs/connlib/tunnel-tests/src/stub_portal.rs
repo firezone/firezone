@@ -1,30 +1,34 @@
-use super::{
-    dns_records::DnsRecords,
-    ref_client::{RefClient, ref_client_host},
-    ref_gateway::{RefGateway, ref_gateway_host},
-    sim_net::Host,
-    strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
-};
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
-use proptest::{
-    collection, sample,
-    strategy::{Just, Strategy},
-};
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    time::Instant,
 };
 use tunnel::{
     client,
-    client::{DnsResource, DynamicDevicePoolResource, StaticDevicePoolResource},
-    messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
-    proptest::*,
+    client::{DynamicDevicePoolResource, StaticDevicePoolResource},
+    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
 };
+
+/// Number of online members and synthetic ClientIds for offline members in a sampled
+/// static device pool.
+///
+/// This is a "plan" rather than a fully-realized resource because at sample-time we don't
+/// yet know the IPs of the test clients. The plan gets materialized into a real
+/// `StaticDevicePoolResource` once the [`StubPortal`] has assigned tunnel IPs to clients.
+#[derive(Clone, Debug)]
+pub(crate) struct StaticDevicePoolPlan {
+    pub id: ResourceId,
+    pub name: String,
+    pub filters: Vec<Filter>,
+    pub n_online_members: usize,
+    /// Synthetic [`ClientId`]s for pool members that are not part of the test's
+    /// online clients — exercises the "device unknown / not connected" path.
+    pub offline_members: Vec<ClientId>,
+}
 
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
@@ -460,125 +464,6 @@ impl StubPortal {
             tracing::error!("Internet Resource cannot change site");
         }
     }
-
-    pub(crate) fn gateways(
-        &self,
-        at: Instant,
-    ) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> + use<> {
-        let dns_resources = self.dns_resources.clone();
-
-        self.gateways_by_site
-            .iter()
-            .flat_map(|(site_id, gateways)| {
-                gateways.iter().map(|(gid, ipv4_addr, ipv6_addr)| {
-                    (
-                        Just(*gid),
-                        ref_gateway_host(
-                            Just(*ipv4_addr),
-                            Just(*ipv6_addr),
-                            site_specific_dns_records(dns_resources.clone(), *site_id, at),
-                        ),
-                    )
-                })
-            })
-            .collect::<Vec<_>>() // A `Vec<Strategy>` implements `Strategy<Value = Vec<_>>`
-            .prop_map(BTreeMap::from_iter)
-    }
-
-    pub(crate) fn clients<S1>(
-        &self,
-        system_dns: S1,
-    ) -> impl Strategy<Value = BTreeMap<ClientId, Host<RefClient>>> + use<S1>
-    where
-        S1: Strategy<Value = Vec<IpAddr>> + Clone,
-    {
-        self.clients
-            .iter()
-            .map(|(id, client)| {
-                (
-                    Just(*id),
-                    ref_client_host(
-                        *id,
-                        Just(client.ipv4),
-                        Just(client.ipv6),
-                        system_dns.clone(),
-                    ),
-                )
-            })
-            .collect::<Vec<_>>()
-            .prop_map(BTreeMap::from_iter)
-    }
-
-    pub(crate) fn dns_resource_records(
-        &self,
-        at: Instant,
-    ) -> impl Strategy<Value = DnsRecords> + use<> {
-        dns_resource_records(self.dns_resources.clone().into_values(), at)
-    }
-}
-
-/// Generates site-specific DNS records for a particular site.
-fn site_specific_dns_records(
-    dns_resources: BTreeMap<ResourceId, client::DnsResource>,
-    site: SiteId,
-    at: Instant,
-) -> impl Strategy<Value = DnsRecords> {
-    let dns_resources_in_site = dns_resources
-        .into_values()
-        .filter(move |resource| resource.sites.iter().any(|s| s.id == site));
-
-    dns_resource_records(dns_resources_in_site, at).prop_flat_map(move |records| {
-        if records.is_empty() {
-            Just(DnsRecords::default()).boxed()
-        } else {
-            collection::btree_map(
-                sample::select(records.domains_iter().collect::<Vec<_>>()),
-                collection::btree_set(site_specific_dns_record(), 1..6)
-                    .prop_map(move |records| BTreeMap::from([(at, records)])),
-                0..5,
-            )
-            .prop_map_into()
-            .boxed()
-        }
-    })
-}
-
-fn dns_resource_records(
-    dns_resources: impl Iterator<Item = DnsResource>,
-    at: Instant,
-) -> impl Strategy<Value = DnsRecords> {
-    dns_resources
-        .map(|resource| {
-            let address = resource.address;
-
-            // Only generate simple wildcard domains for these tests.
-            // The matching logic is extensively unit-tested so we don't need to cover all cases here.
-            // What we do want to cover is multiple domains pointing to the same resource.
-            // For example, `*.example.com` and `app.example.com`.
-            match address.split_once('.') {
-                Some(("*" | "**", base)) => {
-                    subdomain_records(base.to_owned(), domain_label(), at).boxed()
-                }
-                _ => resolved_ips()
-                    .prop_map(move |resolved_ips| {
-                        DnsRecords::from([(
-                            address.parse().unwrap(),
-                            BTreeMap::from([(at, resolved_ips)]),
-                        )])
-                    })
-                    .boxed(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .prop_map(|records| {
-            let mut map = DnsRecords::default();
-
-            for record in records {
-                map.merge(record)
-            }
-
-            map
-        })
 }
 
 /// Picks an element from a set by index (`index % len`), or `None` if empty.
