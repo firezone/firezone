@@ -2,62 +2,43 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
+//!
+//! The sans-IO core (the [`ClientState`] / [`GatewayState`] state machines and all
+//! supporting, side-effect-free logic) lives in the [`tunnel_proto`] crate and is
+//! re-exported from here so that downstream consumers see a single, unchanged API.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
-use crate::unroutable_packet::RoutingError;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceList,
-};
-use dns_types::DomainName;
+use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::Io;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use logging::DisplayBTreeSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    future, mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    future,
+    net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
+use tunnel_proto::unroutable_packet::RoutingError;
 
-mod client;
-mod conn_track;
-mod dns;
-mod expiring_map;
-mod filter_engine;
-mod gateway;
 mod io;
-#[cfg(test)]
-mod malicious_behaviour;
-pub mod messages;
-mod otel;
-mod p2p_control;
-mod packet_kind;
-mod peer_store;
-mod portal_connection;
-#[cfg(all(test, feature = "proptest"))]
-mod proptest;
-mod routing_table;
 mod sockets;
 #[cfg(all(test, feature = "proptest"))]
 #[allow(clippy::unwrap_in_result)]
 mod tests;
-mod unique_packet_buffer;
-mod unix_ts;
-mod unroutable_packet;
-mod utils;
 
-const REALM: &str = "firezone";
+pub use tunnel_proto::*;
+
+pub use io::TunChannelClosed;
+pub use sockets::UdpSocketThreadStopped;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
 ///
@@ -67,27 +48,8 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
-pub const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
-    Ok(n) => n,
-    Err(_) => unreachable!(),
-};
-pub const IPV6_TUNNEL: Ipv6Network =
-    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
-        Ok(n) => n,
-        Err(_) => unreachable!(),
-    };
-
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
-
-pub use client::ClientState;
-pub use client::dns_config::DnsMapping;
-pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
-pub use io::TunChannelClosed;
-pub use sockets::UdpSocketThreadStopped;
-pub use unroutable_packet::UnroutablePacket;
-pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -612,162 +574,9 @@ impl GatewayTunnel {
     }
 }
 
-#[derive(Debug)]
-pub enum ClientEvent {
-    AddedIceCandidates {
-        conn_id: ClientOrGatewayId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    RemovedIceCandidates {
-        conn_id: ClientOrGatewayId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    ResourceConnectionIntent {
-        resource: ResourceId,
-        preferred_gateways: Vec<GatewayId>,
-        /// Set for connection intents to a specific device pool member;
-        /// `None` for intents to a gateway-routed resource.
-        ip: Option<IpAddr>,
-    },
-    DevicePoolDomainQueried {
-        resource_id: ResourceId,
-        domain: DomainName,
-    },
-    /// The list of resources or connected device peers has changed; UI clients
-    /// may have to be updated.
-    ResourcesChanged {
-        resources: ResourceList,
-    },
-    DnsRecordsChanged {
-        records: BTreeSet<DnsResourceRecord>,
-    },
-    TunInterfaceUpdated(TunConfig),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
-    Error(TunnelError),
-}
-
-#[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
-pub struct TunConfig {
-    pub ip: IpConfig,
-    /// The map of DNS servers that connlib will use.
-    ///
-    /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
-    /// - The "right" values are the effective DNS servers.
-    ///   If upstream DNS servers are configured (in the portal), we will use those.
-    ///   Otherwise, we will use the DNS servers configured on the system.
-    pub dns_by_sentinel: DnsMapping,
-    pub search_domain: Option<DomainName>,
-
-    #[debug("{}", DisplayBTreeSet(routes))]
-    pub routes: BTreeSet<IpNetwork>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct IpConfig {
-    pub v4: Ipv4Addr,
-    pub v6: Ipv6Addr,
-}
-
-impl IpConfig {
-    pub fn is_ip(&self, ip: IpAddr) -> bool {
-        match ip {
-            IpAddr::V4(v4) => v4 == self.v4,
-            IpAddr::V6(v6) => v6 == self.v6,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum GatewayEvent {
-    AddedIceCandidates {
-        conn_id: ClientId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    RemovedIceCandidates {
-        conn_id: ClientId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
-    Error(TunnelError),
-}
-
-/// A collection of errors that occurred during a single event-loop tick.
-///
-/// This type purposely doesn't provide a `From` implementation for any errors.
-/// We want compile-time safety inside the event-loop that we don't abort processing in the middle of a packet batch.
-#[derive(Debug, Default)]
-pub struct TunnelError {
-    errors: Vec<anyhow::Error>,
-}
-
-impl TunnelError {
-    pub fn single(e: impl Into<anyhow::Error>) -> Self {
-        Self {
-            errors: vec![e.into()],
-        }
-    }
-
-    pub fn push(&mut self, e: impl Into<anyhow::Error>) {
-        self.errors.push(e.into());
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
-        mem::take(&mut self.errors).into_iter()
-    }
-}
-
-impl Drop for TunnelError {
-    fn drop(&mut self) {
-        debug_assert!(
-            self.errors.is_empty(),
-            "should never drop `TunnelError` without consuming errors"
-        );
-
-        if !self.errors.is_empty() {
-            tracing::error!("should never drop `TunnelError` without consuming errors")
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("Not a client IP: {0}")]
-pub(crate) struct NotClientIp(IpAddr);
-
-#[derive(Debug, thiserror::Error)]
-#[error("Traffic to/from this resource IP is not allowed: {0}")]
-pub(crate) struct NotAllowedResource(IpAddr);
-
-#[derive(Debug, thiserror::Error)]
-#[error("Failed to decapsulate '{0}' packet")]
-pub struct FailedToDecapsulate(packet_kind::Kind);
-
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to handle packet from network (src {from} dst {local})")]
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
-}
-
-pub fn is_peer(dst: IpAddr) -> bool {
-    match dst {
-        IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
-        IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
-    }
-}
-
-#[cfg(test)]
-mod unittests {
-    use super::*;
-
-    #[test]
-    fn mldv2_routers_are_not_peers() {
-        assert!(!is_peer("ff02::16".parse().unwrap()))
-    }
 }

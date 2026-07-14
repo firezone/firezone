@@ -1,3 +1,10 @@
+// A shared toolbox of proptest strategies for connlib's domain types. Different
+// consumers (tunnel's own unit tests vs. the `tunnel-tests` harness) use
+// different subsets, so not every strategy is exercised in every build.
+#![allow(dead_code)]
+// Strategy helpers are test-only code; `unwrap` is idiomatic here.
+#![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
+
 use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -102,7 +109,7 @@ pub fn dynamic_device_pool_resource() -> impl Strategy<Value = DynamicDevicePool
 ///
 /// This is a "plan" rather than a fully-realized resource because at sample-time we don't
 /// yet know the IPs of the test clients. The plan gets materialized into a real
-/// `StaticDevicePoolResource` once the [`StubPortal`](crate::tests::stub_portal::StubPortal)
+/// `StaticDevicePoolResource` once the `StubPortal` (in the `tunnel-tests` crate)
 /// has assigned tunnel IPs to clients.
 #[derive(Clone, Debug)]
 pub struct StaticDevicePoolPlan {
