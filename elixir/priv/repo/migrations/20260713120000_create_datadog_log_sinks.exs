@@ -11,7 +11,17 @@ defmodule Portal.Repo.Migrations.CreateDatadogLogSinks do
         primary_key: true
       )
 
-      add(:id, :binary_id, null: false, primary_key: true)
+      add(
+        :id,
+        references(:log_sinks,
+          column: :id,
+          with: [account_id: :account_id],
+          type: :binary_id,
+          on_delete: :delete_all
+        ),
+        null: false,
+        primary_key: true
+      )
 
       add(:name, :string, null: false)
       add(:site, :string, null: false)
@@ -30,14 +40,6 @@ defmodule Portal.Repo.Migrations.CreateDatadogLogSinks do
     end
 
     create(unique_index(:datadog_log_sinks, [:account_id, :name]))
-
-    execute("""
-    ALTER TABLE datadog_log_sinks
-    ADD CONSTRAINT datadog_log_sinks_log_sink_id_fkey
-    FOREIGN KEY (account_id, id)
-    REFERENCES log_sinks(account_id, id)
-    ON DELETE CASCADE
-    """)
   end
 
   def down do
