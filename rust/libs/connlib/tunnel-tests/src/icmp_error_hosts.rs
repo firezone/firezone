@@ -14,6 +14,11 @@ pub(crate) struct IcmpErrorHosts {
 }
 
 impl IcmpErrorHosts {
+    /// Build from a precomputed IP -> error map (used by the structured generator).
+    pub(crate) fn from_inner(inner: BTreeMap<IpAddr, IcmpError>) -> Self {
+        Self { inner }
+    }
+
     pub(crate) fn icmp_error_for_ip(&self, ip: IpAddr) -> Option<IcmpError> {
         self.inner.get(&ip).copied()
     }

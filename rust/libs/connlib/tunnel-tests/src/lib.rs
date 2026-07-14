@@ -35,6 +35,7 @@ use std::{
     time::Instant,
 };
 
+mod arb;
 mod assertions;
 mod buffered_transmits;
 mod coin;
@@ -58,7 +59,31 @@ mod sut;
 mod tcp;
 mod transition;
 
+pub use arb::run_fuzz_case_structured;
+
 type QueryId = u16;
+
+/// Scope an error-detecting subscriber to the current fuzz case.
+///
+/// Mass fuzzing installs only [`PanicOnErrorEvents`] and writes no logs;
+/// setting `RUST_LOG` (e.g. when reproducing a saved crash) additionally
+/// writes a trace to stderr.
+fn init_fuzz_subscriber() -> tracing::subscriber::DefaultGuard {
+    let registry = tracing_subscriber::registry().with(PanicOnErrorEvents::new(0));
+
+    if std::env::var_os("RUST_LOG").is_some() {
+        registry
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .with_ansi(false)
+                    .with_filter(log_file_filter()),
+            )
+            .set_default()
+    } else {
+        registry.set_default()
+    }
+}
 
 #[test]
 fn tunnel_test() {

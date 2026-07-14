@@ -14,7 +14,15 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "tunnel"
+path = "fuzz_targets/tunnel.rs"
+test = false
+doc = false
+bench = false
+
 [dependencies]
 arbitrary = { workspace = true, features = ["derive"] }
 ip-packet = { workspace = true, features = ["arbitrary"] }
 libfuzzer-sys = { workspace = true }
+tunnel-tests = { workspace = true }
