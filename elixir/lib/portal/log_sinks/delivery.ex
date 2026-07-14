@@ -47,7 +47,9 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp prepare(sink, adapter) do
-    if function_exported?(adapter, :prepare, 1) do
+    # function_exported? alone is a trap outside embedded-mode releases: it
+    # returns false for a module that merely has not been loaded yet.
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :prepare, 1) do
       adapter.prepare(sink)
     else
       :ok

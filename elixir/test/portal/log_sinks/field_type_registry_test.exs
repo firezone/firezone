@@ -17,7 +17,7 @@ defmodule Portal.LogSinks.FieldTypeRegistryTest do
       Req.Test.json(conn, %{"text" => "Success", "code" => 0})
     end)
 
-    %{account: account_fixture()}
+    %{account: account_fixture(features: %{log_sinks: true})}
   end
 
   test "delivery re-registers unseeded fields with the seeded types", %{account: account} do
