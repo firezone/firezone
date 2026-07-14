@@ -214,6 +214,68 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert base.type == :datadog
     end
 
+    test "tags longer than the column used to hold are still accepted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/datadog/new")
+
+      # Two individually valid tags totalling over 255 chars overflowed the
+      # previous varchar(255) column after passing per-tag validation.
+      long_tags = "env:#{String.duplicate("a", 150)},team:#{String.duplicate("b", 150)}"
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Datadog",
+            site: "datadoghq.eu",
+            api_key: "dd-test-key",
+            tags: long_tags,
+            enabled_streams: ["", "change"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.Datadog.LogSink, account_id: account.id)
+      assert sink.tags == long_tags
+    end
+
+    test "tags over the 2000 character cap render a validation error", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/datadog/new")
+
+      long_tags = Enum.map_join(1..11, ",", fn i -> "tag#{i}:#{String.duplicate("a", 190)}" end)
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Datadog",
+            site: "datadoghq.eu",
+            api_key: "dd-test-key",
+            tags: long_tags,
+            enabled_streams: ["", "change"]
+          }
+        )
+
+      render_change(form)
+      html = render_submit(form)
+
+      assert html =~ "should be at most 2000 character"
+      refute Repo.get_by(Portal.Datadog.LogSink, account_id: account.id)
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,

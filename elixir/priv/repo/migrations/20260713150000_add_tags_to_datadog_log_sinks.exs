@@ -3,7 +3,7 @@ defmodule Portal.Repo.Migrations.AddTagsToDatadogLogSinks do
 
   def change do
     alter table(:datadog_log_sinks) do
-      add(:tags, :string)
+      add(:tags, :text)
     end
   end
 end

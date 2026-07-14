@@ -82,6 +82,7 @@ defmodule Portal.Datadog.LogSink do
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> validate_inclusion(:site, @sites)
     |> update_change(:tags, &normalize_tags/1)
+    |> validate_length(:tags, max: 2000)
     |> validate_tags()
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)
