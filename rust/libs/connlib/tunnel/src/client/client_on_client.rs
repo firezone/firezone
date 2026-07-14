@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
+use std::collections::BTreeSet;
 use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
@@ -106,10 +107,7 @@ impl ClientOnClient {
     }
 
     /// Drop every inbound authorization not present in `retain`.
-    pub(crate) fn retain_authorizations(
-        &mut self,
-        retain: &std::collections::BTreeSet<ResourceId>,
-    ) {
+    pub(crate) fn retain_authorizations(&mut self, retain: &BTreeSet<ResourceId>) {
         let mut any_removed = false;
 
         for (resource_id, _) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
@@ -257,36 +255,6 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
 
-    fn peer_tun() -> IpConfig {
-        IpConfig {
-            v4: Ipv4Addr::new(100, 64, 0, 2),
-            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2),
-        }
-    }
-
-    fn our_v4() -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))
-    }
-
-    fn peer_v4() -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 2))
-    }
-
-    fn udp_to(dport: u16) -> IpPacket {
-        make::udp_packet(peer_v4(), our_v4(), 40000, dport, &[]).unwrap()
-    }
-
-    fn udp_port(port: u16) -> Vec<Filter> {
-        vec![Filter::Udp(PortRange {
-            port_range_start: port,
-            port_range_end: port,
-        })]
-    }
-
-    fn is_send(result: InboundResult) -> bool {
-        matches!(result, InboundResult::Send(_))
-    }
-
     #[test]
     fn peer_opened_flow_is_re_filtered_after_revocation() {
         let now = Instant::now();
@@ -381,5 +349,35 @@ mod tests {
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap(),
             InboundResult::Filtered(_)
         ));
+    }
+
+    fn peer_tun() -> IpConfig {
+        IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 2),
+            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2),
+        }
+    }
+
+    fn our_v4() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))
+    }
+
+    fn peer_v4() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 2))
+    }
+
+    fn udp_to(dport: u16) -> IpPacket {
+        make::udp_packet(peer_v4(), our_v4(), 40000, dport, &[]).unwrap()
+    }
+
+    fn udp_port(port: u16) -> Vec<Filter> {
+        vec![Filter::Udp(PortRange {
+            port_range_start: port,
+            port_range_end: port,
+        })]
+    }
+
+    fn is_send(result: InboundResult) -> bool {
+        matches!(result, InboundResult::Send(_))
     }
 }
