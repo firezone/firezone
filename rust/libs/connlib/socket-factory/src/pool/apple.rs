@@ -85,6 +85,7 @@ pub(crate) struct SocketPool {
     /// The local address flow sockets bind to; they share the wildcard socket's port.
     local: SocketAddr,
     inner: Mutex<Inner>,
+    evictions: opentelemetry::metrics::Counter<u64>,
 }
 
 struct Inner {
@@ -140,6 +141,7 @@ impl SocketPool {
                 recv_waker: None,
                 round_robin: 0,
             }),
+            evictions: otel_instruments::flow_socket_evictions(),
         }
     }
 
@@ -246,7 +248,7 @@ impl SocketPool {
         }
 
         if inner.flows.len() >= MAX_FLOW_SOCKETS {
-            evict_one(&mut inner, self.local.port(), recv_buffers);
+            evict_one(&mut inner, self.local.port(), recv_buffers, &self.evictions);
         }
 
         match connect(self.local, src, dst, inner.buffer_sizes) {
@@ -373,7 +375,12 @@ impl RateGate {
 }
 
 /// Evicts the flow socket that is least likely to still be useful.
-fn evict_one(inner: &mut Inner, port: u16, recv_buffers: &RecvBuffers) {
+fn evict_one(
+    inner: &mut Inner,
+    port: u16,
+    recv_buffers: &RecvBuffers,
+    evictions: &opentelemetry::metrics::Counter<u64>,
+) {
     let Some(key) = inner
         .flows
         .iter()
@@ -390,6 +397,16 @@ fn evict_one(inner: &mut Inner, port: u16, recv_buffers: &RecvBuffers) {
     let Some(victim) = inner.flows.remove(&key) else {
         return;
     };
+
+    // A socket that received traffic served a live path; evicting those under cap
+    // pressure is the churn worth alarming on. Never-received victims are leftovers.
+    evictions.add(
+        1,
+        &[opentelemetry::KeyValue::new(
+            "received",
+            victim.last_received.lock().is_some(),
+        )],
+    );
 
     drain(&victim, port, recv_buffers, &mut inner.drained);
 
