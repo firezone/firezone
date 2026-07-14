@@ -65,6 +65,21 @@ pub fn network_packets_batch_count() -> Histogram<u64> {
         .build()
 }
 
+/// How many connected flow sockets were evicted from the socket pool's cache.
+///
+/// Only recorded on Apple, the only platform with per-destination flow sockets. Rebinding
+/// on a network change discards the whole pool and does not count; this measures cache
+/// churn - sockets displaced to make room for another pair.
+pub fn flow_socket_evictions() -> Counter<u64> {
+    meter()
+        .u64_counter("connlib.flow_sockets.evicted")
+        .with_description(
+            "Number of connected flow sockets evicted from the socket pool's cache to make room for another pair.",
+        )
+        .with_unit("{socket}")
+        .build()
+}
+
 /// Number of errors encountered while processing a packet batch.
 pub fn tunnel_errors() -> Counter<u64> {
     meter()
