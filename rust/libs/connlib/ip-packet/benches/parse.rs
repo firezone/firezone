@@ -48,14 +48,21 @@ fn parse(bencher: divan::Bencher, kind: Kind) {
         .bench_values(|(buf, len)| divan::black_box(IpPacket::new(buf, len).unwrap()));
 }
 
-/// Extracts the routing five-tuple (src/dst IP and src/dst protocol) from an
-/// already-parsed packet, i.e. the per-packet work `connlib` does when routing.
+/// Extracts the routing key (src/dst address and src/dst transport protocol)
+/// from an already-parsed packet, i.e. the per-packet work `connlib` does when
+/// routing.
+///
+/// The packet is black-boxed inside the timed closure so the optimizer can't
+/// treat its (loop-invariant) bytes as a compile-time constant and hoist the
+/// accessors out of the loop.
 #[divan::bench(args = KINDS)]
 fn route(bencher: divan::Bencher, kind: Kind) {
     let (buf, len) = kind.buf();
     let packet = IpPacket::new(buf, len).unwrap();
 
     bencher.bench_local(|| {
+        let packet = divan::black_box(&packet);
+
         (
             divan::black_box(packet.source()),
             divan::black_box(packet.destination()),
@@ -66,12 +73,14 @@ fn route(bencher: divan::Bencher, kind: Kind) {
 }
 
 /// Reads the transport-layer payload length of an already-parsed packet.
+///
+/// The packet is black-boxed inside the timed closure, see [`route`].
 #[divan::bench(args = KINDS)]
 fn payload_len(bencher: divan::Bencher, kind: Kind) {
     let (buf, len) = kind.buf();
     let packet = IpPacket::new(buf, len).unwrap();
 
-    bencher.bench_local(|| divan::black_box(packet.layer4_payload_len()));
+    bencher.bench_local(|| divan::black_box(divan::black_box(&packet).layer4_payload_len()));
 }
 
 impl Kind {
