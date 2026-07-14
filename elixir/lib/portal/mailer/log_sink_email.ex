@@ -40,6 +40,7 @@ defmodule Portal.Mailer.LogSinkEmail do
   defp type(%Portal.Datadog.LogSink{}), do: "Datadog"
   defp type(%Portal.NewRelic.LogSink{}), do: "New Relic"
   defp type(%Portal.Elastic.LogSink{}), do: "Elastic"
+  defp type(%Portal.Sentinel.LogSink{}), do: "Microsoft Sentinel"
 
   defp provider_hint(%Portal.Splunk.LogSink{}) do
     "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
@@ -63,6 +64,13 @@ defmodule Portal.Mailer.LogSinkEmail do
       "endpoint URL points at your cluster's Elasticsearch HTTPS endpoint."
   end
 
+  defp provider_hint(%Portal.Sentinel.LogSink{}) do
+    "Verify that admin consent has been granted for the Firezone application in your " <>
+      "Microsoft Entra tenant, that its service principal holds the Monitoring Metrics " <>
+      "Publisher role on the data collection rule, and that the ingestion endpoint, DCR " <>
+      "immutable ID, and stream name match your data collection rule."
+  end
+
   defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
@@ -83,6 +91,13 @@ defmodule Portal.Mailer.LogSinkEmail do
     case URI.new(sink.endpoint_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
       _ -> sink.endpoint_url
+    end
+  end
+
+  defp destination(%Portal.Sentinel.LogSink{} = sink) do
+    case URI.new(sink.ingestion_endpoint || "") do
+      {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
+      _ -> sink.ingestion_endpoint
     end
   end
 

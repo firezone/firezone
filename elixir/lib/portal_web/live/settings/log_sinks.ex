@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Datadog
   alias Portal.Elastic
   alias Portal.NewRelic
+  alias Portal.Sentinel
   alias Portal.Splunk
   alias __MODULE__.Database
 
@@ -15,7 +16,8 @@ defmodule PortalWeb.Settings.LogSinks do
     "splunk" => Splunk.LogSink,
     "datadog" => Datadog.LogSink,
     "newrelic" => NewRelic.LogSink,
-    "elastic" => Elastic.LogSink
+    "elastic" => Elastic.LogSink,
+    "sentinel" => Sentinel.LogSink
   }
 
   @types Map.keys(@modules)
@@ -45,7 +47,8 @@ defmodule PortalWeb.Settings.LogSinks do
     Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
     Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
     NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
-    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a
+    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a,
+    Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a
   }
 
   @newrelic_region_options [
@@ -400,6 +403,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Index logs into Elasticsearch or any compatible cluster.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/sentinel/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="sentinel" size="xl" />
+                      <span class="text-sm font-medium text-heading">Microsoft Sentinel</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Stream logs to Microsoft Sentinel via the Azure Monitor Logs Ingestion API.
                     </span>
                   </.link>
                 </li>
@@ -989,6 +1006,120 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "sentinel"} class="p-3 rounded border border-border bg-raised">
+          <p class="text-xs font-medium text-heading mb-2">Setup</p>
+          <ol class="list-decimal ml-4 space-y-1.5 text-xs text-subtle">
+            <li>
+              Enter your Microsoft Entra tenant ID below, then have a tenant administrator open
+              <a
+                href={sentinel_admin_consent_url(@form)}
+                target="_blank"
+                class="underline hover:text-heading"
+              >
+                this admin consent link
+              </a>
+              to create the Firezone service principal in your tenant. The application requests
+              no API permissions.
+            </li>
+            <li>
+              In your Log Analytics workspace, create a custom table (e.g.
+              <code class="text-xs">FirezoneLogs_CL</code>) with columns
+              <code class="text-xs">TimeGenerated</code> (datetime),
+              <code class="text-xs">Message</code> (string),
+              <code class="text-xs">Stream</code> (string), and
+              <code class="text-xs">Firezone</code> (dynamic), along with a data collection
+              rule (DCR).
+            </li>
+            <li>
+              On the DCR, under Access control (IAM), grant the Firezone service principal
+              the <strong>Monitoring Metrics Publisher</strong> role. Role assignments can
+              take up to 30 minutes to propagate.
+            </li>
+            <li>
+              Fill in the fields below from the DCR: its logs ingestion endpoint (or your
+              data collection endpoint), immutable ID, and stream name.
+            </li>
+          </ol>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label for={@form[:tenant_id].id} class="block text-xs font-medium text-body mb-1.5">
+            Tenant ID <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:tenant_id]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Your Microsoft Entra directory (tenant) ID, e.g.
+            <code class="text-xs">00000000-0000-0000-0000-000000000000</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label
+            for={@form[:ingestion_endpoint].id}
+            class="block text-xs font-medium text-body mb-1.5"
+          >
+            Ingestion Endpoint <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:ingestion_endpoint]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The DCR's logs ingestion endpoint or your data collection endpoint, e.g.
+            <code class="text-xs">https://my-dce-abcd.eastus-1.ingest.monitor.azure.com</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label
+            for={@form[:dcr_immutable_id].id}
+            class="block text-xs font-medium text-body mb-1.5"
+          >
+            DCR Immutable ID <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:dcr_immutable_id]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The data collection rule's immutable ID, shown on its overview page, e.g.
+            <code class="text-xs">dcr-0123456789abcdef0123456789abcdef</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label for={@form[:stream_name].id} class="block text-xs font-medium text-body mb-1.5">
+            Stream Name <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:stream_name]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The DCR's input stream, declared under its stream declarations, e.g.
+            <code class="text-xs">Custom-FirezoneLogs_CL</code>.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1084,6 +1215,7 @@ defmodule PortalWeb.Settings.LogSinks do
         Datadog.LogSink -> :datadog
         NewRelic.LogSink -> :newrelic
         Elastic.LogSink -> :elastic
+        Sentinel.LogSink -> :sentinel
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1108,6 +1240,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%Datadog.LogSink{}), do: Datadog.Sync
   defp sync_module(%NewRelic.LogSink{}), do: NewRelic.Sync
   defp sync_module(%Elastic.LogSink{}), do: Elastic.Sync
+  defp sync_module(%Sentinel.LogSink{}), do: Sentinel.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1180,6 +1313,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("datadog"), do: "Datadog"
   defp titleize("newrelic"), do: "New Relic"
   defp titleize("elastic"), do: "Elastic"
+  defp titleize("sentinel"), do: "Microsoft Sentinel"
 
   defp sink_type(sink) do
     case sink.__struct__ do
@@ -1187,6 +1321,7 @@ defmodule PortalWeb.Settings.LogSinks do
       Datadog.LogSink -> "datadog"
       NewRelic.LogSink -> "newrelic"
       Elastic.LogSink -> "elastic"
+      Sentinel.LogSink -> "sentinel"
     end
   end
 
@@ -1211,6 +1346,28 @@ defmodule PortalWeb.Settings.LogSinks do
       {:ok, %URI{host: host}} when is_binary(host) -> host
       _ -> sink.endpoint_url
     end
+  end
+
+  defp sink_destination(%Sentinel.LogSink{} = sink) do
+    case URI.new(sink.ingestion_endpoint || "") do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> sink.ingestion_endpoint
+    end
+  end
+
+  defp sentinel_admin_consent_url(form) do
+    client_id =
+      Portal.Config.fetch_env!(:portal, Portal.Sentinel.APIClient)
+      |> Keyword.get(:client_id)
+
+    tenant =
+      case get_field(form.source, :tenant_id) do
+        tenant when is_binary(tenant) and tenant != "" -> String.trim(tenant)
+        _ -> "organizations"
+      end
+
+    "https://login.microsoftonline.com/#{tenant}/adminconsent?" <>
+      URI.encode_query(%{"client_id" => client_id})
   end
 
   defp delivered_count(sink) do
@@ -1263,6 +1420,7 @@ defmodule PortalWeb.Settings.LogSinks do
     alias Portal.Elastic
     alias Portal.NewRelic
     alias Portal.Safe
+    alias Portal.Sentinel
     alias Portal.Splunk
 
     def list_all_sinks(subject, repo \\ :replica) do
@@ -1270,7 +1428,8 @@ defmodule PortalWeb.Settings.LogSinks do
         Splunk.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

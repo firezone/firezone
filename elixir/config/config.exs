@@ -267,6 +267,12 @@ config :portal, Portal.NewRelic.APIClient, req_opts: []
 
 config :portal, Portal.Elastic.APIClient, req_opts: []
 
+config :portal, Portal.Sentinel.APIClient,
+  client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("SENTINEL_SYNC_CLIENT_SECRET"),
+  token_base_url: "https://login.microsoftonline.com",
+  req_opts: []
+
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
   client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),

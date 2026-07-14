@@ -198,6 +198,68 @@ defmodule Portal.LogSinkFixtures do
     elastic_log_sink
   end
 
+  def valid_sentinel_log_sink_attrs(attrs \\ %{}) do
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    Enum.into(attrs, %{
+      name: "Microsoft Sentinel #{unique_num}",
+      tenant_id: Ecto.UUID.generate(),
+      ingestion_endpoint: "https://dce#{unique_num}.eastus-1.ingest.monitor.azure.example",
+      dcr_immutable_id: "dcr-#{String.replace(Ecto.UUID.generate(), "-", "")}",
+      stream_name: "Custom-FirezoneLogs_CL",
+      enabled_streams: ~w[change session api_request flow]a,
+      retroactive: false
+    })
+  end
+
+  def sentinel_log_sink_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    account = Map.get(attrs, :account) || account_fixture()
+
+    {:ok, log_sink} =
+      %Portal.LogSink{
+        id: Ecto.UUID.generate(),
+        account_id: account.id
+      }
+      |> Ecto.Changeset.cast(%{type: :sentinel}, [:type])
+      |> Portal.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    sentinel_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Enum.into(%{
+        id: log_sink.id,
+        account_id: account.id
+      })
+      |> valid_sentinel_log_sink_attrs()
+
+    {:ok, sentinel_log_sink} =
+      %Portal.Sentinel.LogSink{}
+      |> Ecto.Changeset.cast(sentinel_attrs, [
+        :id,
+        :account_id,
+        :name,
+        :tenant_id,
+        :ingestion_endpoint,
+        :dcr_immutable_id,
+        :stream_name,
+        :enabled_streams,
+        :retroactive,
+        :errored_at,
+        :error_message,
+        :error_email_count,
+        :last_error_email_at,
+        :is_disabled,
+        :disabled_reason
+      ])
+      |> Portal.Sentinel.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    sentinel_log_sink
+  end
+
   def splunk_log_sink_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 

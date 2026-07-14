@@ -1477,6 +1477,14 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("sentinel") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-sentinel.svg",
+      alt: "Microsoft Sentinel"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

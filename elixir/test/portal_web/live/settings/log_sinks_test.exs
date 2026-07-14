@@ -343,6 +343,97 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert base.type == :elastic
     end
 
+    test "creates a Microsoft Sentinel log sink with its base row", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      tenant_id = Ecto.UUID.generate()
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Sentinel",
+            tenant_id: tenant_id,
+            ingestion_endpoint: "https://dce.eastus-1.ingest.monitor.azure.com/",
+            dcr_immutable_id: "dcr-0123456789abcdef0123456789abcdef",
+            stream_name: "Custom-FirezoneLogs_CL",
+            enabled_streams: ["", "session"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.Sentinel.LogSink, account_id: account.id)
+      assert sink.name == "SOC Sentinel"
+      assert sink.tenant_id == tenant_id
+      assert sink.ingestion_endpoint == "https://dce.eastus-1.ingest.monitor.azure.com"
+      assert sink.dcr_immutable_id == "dcr-0123456789abcdef0123456789abcdef"
+      assert sink.stream_name == "Custom-FirezoneLogs_CL"
+      assert sink.enabled_streams == [:session]
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :sentinel
+    end
+
+    test "renders the Sentinel admin consent link for the entered tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      assert html =~ "Monitoring Metrics Publisher"
+
+      assert html =~
+               "https://login.microsoftonline.com/organizations/adminconsent?client_id=test_sentinel_client_id"
+
+      tenant_id = Ecto.UUID.generate()
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{tenant_id: tenant_id})
+        |> render_change()
+
+      assert html =~
+               "https://login.microsoftonline.com/#{tenant_id}/adminconsent?client_id=test_sentinel_client_id"
+    end
+
+    test "renders validation errors for an invalid DCR immutable ID", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC Sentinel",
+            tenant_id: Ecto.UUID.generate(),
+            ingestion_endpoint: "https://dce.eastus-1.ingest.monitor.azure.com",
+            dcr_immutable_id: "not-a-dcr-id"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "must look like dcr-"
+      assert Repo.all(Portal.Sentinel.LogSink) == []
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,

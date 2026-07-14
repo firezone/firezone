@@ -132,6 +132,15 @@ config :portal, Portal.Elastic.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Sentinel.APIClient,
+  client_id: "test_sentinel_client_id",
+  client_secret: "test_sentinel_client_secret",
+  token_base_url: "https://login.microsoftonline.com",
+  req_opts: [
+    plug: {Req.Test, Portal.Sentinel.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,

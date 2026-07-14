@@ -191,6 +191,11 @@ if config_env() == :prod do
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
+  config :portal, Portal.Sentinel.APIClient,
+    client_id: env_var_to_config!(:sentinel_sync_client_id),
+    client_secret: env_var_to_config!(:sentinel_sync_client_secret),
+    token_base_url: "https://login.microsoftonline.com"
+
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
   config :portal,
@@ -270,6 +275,7 @@ if config_env() == :prod do
     {"* * * * *", Portal.Datadog.Scheduler},
     {"* * * * *", Portal.NewRelic.Scheduler},
     {"* * * * *", Portal.Elastic.Scheduler},
+    {"* * * * *", Portal.Sentinel.Scheduler},
 
     # Directory sync error notifications - daily check for low error count
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
@@ -361,6 +367,8 @@ if config_env() == :prod do
       newrelic_sync: 5,
       elastic_scheduler: 1,
       elastic_sync: 5,
+      sentinel_scheduler: 1,
+      sentinel_sync: 5,
       sync_error_notifications: 1,
       outbound_emails: 1
     ],
