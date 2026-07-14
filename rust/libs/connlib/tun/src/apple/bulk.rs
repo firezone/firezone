@@ -105,11 +105,11 @@ pub fn recv(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
 
-            'recv: loop {
-                let mut bufs: Vec<IpPacketBuf> =
-                    (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
-                let mut lens = [0usize; MAX_BATCH_SIZE];
+            let mut bufs: Vec<IpPacketBuf> =
+                (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
+            let mut lens = [0usize; MAX_BATCH_SIZE];
 
+            'recv: loop {
                 let n = fd
                     .async_io(Interest::READABLE, |fd| {
                         // Safety: The file descriptor is valid within this module.
@@ -134,10 +134,13 @@ pub fn recv(
 
                 let mut batch = PacketBatch::default();
 
-                for (buf, len) in bufs.into_iter().zip(lens).take(n) {
+                for (buf, &len) in bufs.iter_mut().zip(&lens).take(n) {
                     if len == 0 {
                         continue; // Empty or truncated datagram.
                     }
+
+                    // `Default` refills the slot with a fresh buffer from the pool.
+                    let buf = std::mem::take(buf);
 
                     match IpPacket::new(buf, len).context("Failed to parse IP packet") {
                         Ok(packet) => {
