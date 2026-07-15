@@ -39,7 +39,7 @@ defmodule PortalWeb.Sites do
        socket
        |> unsubscribe_deploy_site_presence()
        |> merge_state(:site_panel, %{
-         tab: parse_site_tab(Map.get(params, "tab", "gateways")),
+         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
          view: :gateways,
          confirm_delete_site: false,
          expanded_gateway_id: nil
@@ -69,7 +69,7 @@ defmodule PortalWeb.Sites do
        socket
        |> unsubscribe_deploy_site_presence()
        |> merge_state(:site_panel, %{
-         tab: parse_site_tab(Map.get(params, "tab", "gateways")),
+         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
          view: :edit_site,
          confirm_delete_site: false
        })
@@ -120,12 +120,10 @@ defmodule PortalWeb.Sites do
   end
 
   defp site_panel_assigns(site, params, socket) do
-    all_gateways =
-      site.id
-      |> Database.list_gateways_for_site(socket.assigns.subject)
-      |> Presence.Gateways.preload_gateways_presence()
+    device_tokens = load_device_tokens(site.id, socket.assigns.subject)
 
-    gateways = Enum.filter(all_gateways, & &1.online?)
+    {gateways, total_gateway_count} =
+      load_panel_gateways(site.id, false, device_tokens, socket.assigns.subject)
 
     resources =
       if site.managed_by == :account do
@@ -146,11 +144,13 @@ defmodule PortalWeb.Sites do
       selected_site: site,
       site_panel:
         Map.merge(base_site_panel_state(), %{
-          tab: parse_site_tab(Map.get(params, "tab", "gateways")),
+          tab: parse_panel_tab(params, gateway_tokens),
           gateways: gateways,
-          total_gateway_count: length(all_gateways),
+          total_gateway_count: total_gateway_count,
           resources: resources,
-          gateway_tokens: gateway_tokens
+          gateway_tokens: gateway_tokens,
+          legacy_token_connections: legacy_token_connections(gateway_tokens),
+          device_tokens: device_tokens
         }),
       site_deploy: base_site_deploy_state(),
       site_resource_form: base_site_resource_form_state(),
@@ -444,14 +444,51 @@ defmodule PortalWeb.Sites do
       total_gateway_count: 0,
       resources: [],
       gateway_tokens: [],
+      legacy_token_connections: %{},
+      device_tokens: %{},
       show_all_gateways: false,
       view: :gateways,
       confirm_delete_site: false,
       confirm_delete_gateway_id: nil,
       confirm_revoke_token_id: nil,
       confirm_revoke_all_tokens: false,
+      confirm_rotate_gateway_id: nil,
+      rename_gateway_id: nil,
+      gateway_actions_open_id: nil,
+      rotated_gateway_token: nil,
       expanded_gateway_id: nil
     }
+  end
+
+  defp load_device_tokens(site_id, subject) do
+    site_id
+    |> Database.list_gateway_tokens_for_devices_in_site(subject)
+    |> Enum.group_by(& &1.device_id)
+  end
+
+  # Channels join the PG group under their token id, so the member count is
+  # the number of gateways currently connected with each legacy token
+  defp legacy_token_connections(gateway_tokens) do
+    Map.new(gateway_tokens, fn token -> {token.id, length(Portal.PG.members(token.id))} end)
+  end
+
+  # Single-owner gateways are always listed, even offline: their token maps to
+  # exactly one gateway, so the row is meaningful (unlike legacy multi-owner
+  # gateways, where one token can spawn many stale offline rows)
+  defp load_panel_gateways(site_id, show_all?, device_tokens, subject) do
+    all_gateways =
+      site_id
+      |> Database.list_gateways_for_site(subject)
+      |> Presence.Gateways.preload_gateways_presence()
+
+    gateways =
+      if show_all? do
+        all_gateways
+      else
+        Enum.filter(all_gateways, &(&1.online? or Map.has_key?(device_tokens, &1.id)))
+      end
+
+    {gateways, length(all_gateways)}
   end
 
   defp base_site_deploy_state do
@@ -614,11 +651,139 @@ defmodule PortalWeb.Sites do
     expanded =
       if socket.assigns.site_panel.expanded_gateway_id == id, do: nil, else: id
 
-    {:noreply, merge_state(socket, :site_panel, %{expanded_gateway_id: expanded})}
+    # The rotated token is revealed once; collapsing or switching rows drops it
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       expanded_gateway_id: expanded,
+       confirm_rotate_gateway_id: nil,
+       rename_gateway_id: nil,
+       rotated_gateway_token: nil
+     })}
+  end
+
+  def handle_event("toggle_gateway_actions", %{"id" => gateway_id}, socket) do
+    open_id =
+      if socket.assigns.site_panel.gateway_actions_open_id == gateway_id,
+        do: nil,
+        else: gateway_id
+
+    {:noreply, merge_state(socket, :site_panel, %{gateway_actions_open_id: open_id})}
+  end
+
+  def handle_event("close_gateway_actions", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{gateway_actions_open_id: nil})}
+  end
+
+  # The confirm dialog renders in the expanded details, so expand the row
+  def handle_event("rotate_gateway_token", %{"id" => gateway_id}, socket) do
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       confirm_rotate_gateway_id: gateway_id,
+       expanded_gateway_id: gateway_id,
+       rename_gateway_id: nil,
+       gateway_actions_open_id: nil
+     })}
+  end
+
+  def handle_event("rename_gateway", %{"id" => gateway_id}, socket) do
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       rename_gateway_id: gateway_id,
+       expanded_gateway_id: gateway_id,
+       confirm_rotate_gateway_id: nil,
+       gateway_actions_open_id: nil
+     })}
+  end
+
+  def handle_event("cancel_rename_gateway", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{rename_gateway_id: nil})}
+  end
+
+  def handle_event("save_gateway_name", %{"name" => name}, socket)
+      when not is_nil(socket.assigns.site_panel.rename_gateway_id) do
+    subject = socket.assigns.subject
+    gateway_id = socket.assigns.site_panel.rename_gateway_id
+
+    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, subject),
+         {:ok, _gateway} <- Database.rename_gateway(gateway, name, subject) do
+      {gateways, total_gateway_count} =
+        load_panel_gateways(
+          socket.assigns.selected_site.id,
+          socket.assigns.site_panel.show_all_gateways,
+          socket.assigns.site_panel.device_tokens,
+          subject
+        )
+
+      {:noreply,
+       socket
+       |> put_flash(:success, "Gateway renamed.")
+       |> merge_state(:site_panel, %{
+         rename_gateway_id: nil,
+         gateways: gateways,
+         total_gateway_count: total_gateway_count
+       })}
+    else
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to rename gateway.")
+         |> merge_state(:site_panel, %{rename_gateway_id: nil})}
+    end
+  end
+
+  def handle_event("save_gateway_name", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("cancel_rotate_gateway_token", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{confirm_rotate_gateway_id: nil})}
+  end
+
+  def handle_event("confirm_rotate_gateway_token", %{"id" => gateway_id}, socket) do
+    subject = socket.assigns.subject
+
+    with {:ok, gateway} <- Database.fetch_gateway(gateway_id, subject),
+         {:ok, _token, encoded_token} <- Database.rotate_gateway_token(gateway, subject) do
+      prior_tokens = Map.get(socket.assigns.site_panel.device_tokens, gateway_id, [])
+      device_tokens = load_device_tokens(socket.assigns.selected_site.id, subject)
+
+      # An active token existed before but no rotated sibling remains: the
+      # never-used token was replaced outright rather than put in grace
+      replaced_unused? =
+        Enum.any?(prior_tokens, &is_nil(&1.rotated_at)) and
+          not Enum.any?(Map.get(device_tokens, gateway_id, []), & &1.rotated_at)
+
+      {:noreply,
+       socket
+       |> put_flash(:success, "Token rotated.")
+       |> merge_state(:site_panel, %{
+         confirm_rotate_gateway_id: nil,
+         rotated_gateway_token: %{
+           gateway_id: gateway_id,
+           encoded: encoded_token,
+           replaced_unused: replaced_unused?
+         },
+         device_tokens: device_tokens
+       })}
+    else
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to rotate token.")
+         |> merge_state(:site_panel, %{confirm_rotate_gateway_id: nil})}
+    end
+  end
+
+  def handle_event("dismiss_rotated_gateway_token", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{rotated_gateway_token: nil})}
   end
 
   def handle_event("delete_gateway", %{"id" => gateway_id}, socket) do
-    {:noreply, merge_state(socket, :site_panel, %{confirm_delete_gateway_id: gateway_id})}
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       confirm_delete_gateway_id: gateway_id,
+       gateway_actions_open_id: nil
+     })}
   end
 
   def handle_event("cancel_delete_gateway", _params, socket) do
@@ -628,22 +793,26 @@ defmodule PortalWeb.Sites do
   def handle_event("confirm_delete_gateway", %{"id" => gateway_id}, socket) do
     case Database.delete_gateway_by_id(gateway_id, socket.assigns.subject) do
       {count, _} when count > 0 ->
-        all_gateways =
-          socket.assigns.selected_site.id
-          |> Database.list_gateways_for_site(socket.assigns.subject)
-          |> Presence.Gateways.preload_gateways_presence()
+        site_id = socket.assigns.selected_site.id
 
-        gateways =
-          if socket.assigns.site_panel.show_all_gateways,
-            do: all_gateways,
-            else: Enum.filter(all_gateways, & &1.online?)
+        # Deleting a gateway cascades to its single-owner tokens
+        device_tokens = load_device_tokens(site_id, socket.assigns.subject)
+
+        {gateways, total_gateway_count} =
+          load_panel_gateways(
+            site_id,
+            socket.assigns.site_panel.show_all_gateways,
+            device_tokens,
+            socket.assigns.subject
+          )
 
         {:noreply,
          socket
          |> put_flash(:success, "Gateway deleted.")
          |> merge_state(:site_panel, %{
            gateways: gateways,
-           total_gateway_count: length(all_gateways),
+           total_gateway_count: total_gateway_count,
+           device_tokens: device_tokens,
            confirm_delete_gateway_id: nil,
            expanded_gateway_id: nil
          })}
@@ -657,54 +826,80 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_event("show_all_gateways", _params, socket) do
-    gateways =
-      socket.assigns.selected_site.id
-      |> Database.list_gateways_for_site(socket.assigns.subject)
-      |> Presence.Gateways.preload_gateways_presence()
+    {gateways, _total} =
+      load_panel_gateways(
+        socket.assigns.selected_site.id,
+        true,
+        socket.assigns.site_panel.device_tokens,
+        socket.assigns.subject
+      )
 
     {:noreply, merge_state(socket, :site_panel, %{gateways: gateways, show_all_gateways: true})}
   end
 
   def handle_event("show_online_gateways", _params, socket) do
-    gateways =
-      socket.assigns.selected_site.id
-      |> Database.list_gateways_for_site(socket.assigns.subject)
-      |> Presence.Gateways.preload_gateways_presence()
-      |> Enum.filter(& &1.online?)
+    {gateways, _total} =
+      load_panel_gateways(
+        socket.assigns.selected_site.id,
+        false,
+        socket.assigns.site_panel.device_tokens,
+        socket.assigns.subject
+      )
 
     {:noreply, merge_state(socket, :site_panel, %{gateways: gateways, show_all_gateways: false})}
   end
 
   def handle_event("deploy_gateway", _params, socket) do
     site = socket.assigns.selected_site
-    {:ok, token, encoded_token} = Database.create_gateway_token(site, socket.assigns.subject)
+    subject = socket.assigns.subject
 
-    gateway_tokens = Database.list_gateway_tokens_for_site(site.id, socket.assigns.subject)
+    # Pre-create the gateway and bind a single-owner token to it; the gateway
+    # reports its FIREZONE_ID as a telemetry hint on first connect
+    case Database.deploy_gateway(site, subject) do
+      {:ok, _gateway, token, encoded_token} ->
+        device_tokens = load_device_tokens(site.id, subject)
 
-    socket =
-      socket
-      |> unsubscribe_deploy_site_presence()
-      |> subscribe_deploy_site_presence(site.id)
+        {gateways, total_gateway_count} =
+          load_panel_gateways(
+            site.id,
+            socket.assigns.site_panel.show_all_gateways,
+            device_tokens,
+            subject
+          )
 
-    env = [
-      {"FIREZONE_ID", Ecto.UUID.generate()},
-      {"FIREZONE_TOKEN", encoded_token}
-      | if(url = Portal.Config.get_env(:portal, :api_url_override),
-          do: [{"FIREZONE_API_URL", url}],
-          else: []
-        )
-    ]
+        socket =
+          socket
+          |> unsubscribe_deploy_site_presence()
+          |> subscribe_deploy_site_presence(site.id)
 
-    {:noreply,
-     socket
-     |> merge_state(:site_panel, %{view: :deploy, gateway_tokens: gateway_tokens})
-     |> put_state(:site_deploy, %{
-       env: env,
-       tab: "debian-instructions",
-       token: token,
-       connected?: false,
-       subscribed_site_id: site.id
-     })}
+        env = [
+          {"FIREZONE_ID", Ecto.UUID.generate()},
+          {"FIREZONE_TOKEN", encoded_token}
+          | if(url = Portal.Config.get_env(:portal, :api_url_override),
+              do: [{"FIREZONE_API_URL", url}],
+              else: []
+            )
+        ]
+
+        {:noreply,
+         socket
+         |> merge_state(:site_panel, %{
+           view: :deploy,
+           gateways: gateways,
+           total_gateway_count: total_gateway_count,
+           device_tokens: device_tokens
+         })
+         |> put_state(:site_deploy, %{
+           env: env,
+           tab: "debian-instructions",
+           token: token,
+           connected?: false,
+           subscribed_site_id: site.id
+         })}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to create gateway.")}
+    end
   end
 
   def handle_event("deploy_tab_selected", %{"tab" => tab}, socket) do
@@ -895,7 +1090,12 @@ defmodule PortalWeb.Sites do
         {:noreply,
          socket
          |> put_flash(:success, "Token revoked.")
-         |> merge_state(:site_panel, %{gateway_tokens: tokens, confirm_revoke_token_id: nil})}
+         |> merge_state(:site_panel, %{
+           gateway_tokens: tokens,
+           legacy_token_connections: legacy_token_connections(tokens),
+           confirm_revoke_token_id: nil,
+           tab: sanitize_panel_tab(socket.assigns.site_panel.tab, tokens)
+         })}
 
       _ ->
         {:noreply,
@@ -921,7 +1121,12 @@ defmodule PortalWeb.Sites do
     {:noreply,
      socket
      |> put_flash(:success, "All tokens revoked.")
-     |> merge_state(:site_panel, %{gateway_tokens: [], confirm_revoke_all_tokens: false})}
+     |> merge_state(:site_panel, %{
+       gateway_tokens: [],
+       legacy_token_connections: %{},
+       confirm_revoke_all_tokens: false,
+       tab: sanitize_panel_tab(socket.assigns.site_panel.tab, [])
+     })}
   end
 
   def handle_event("toggle_resource_filters_dropdown", _params, socket) do
@@ -982,27 +1187,34 @@ defmodule PortalWeb.Sites do
       ) do
     socket = load_sites_index_data(socket)
 
-    {panel_gateways, total_gateway_count} =
+    {device_tokens, panel_gateways, total_gateway_count} =
       if socket.assigns.selected_site do
-        all =
-          socket.assigns.selected_site.id
-          |> Database.list_gateways_for_site(socket.assigns.subject)
-          |> Presence.Gateways.preload_gateways_presence()
+        # Connects can confirm rotations (deleting the expiring token), so the
+        # per-gateway token state is refreshed along with the gateway list
+        device_tokens =
+          load_device_tokens(socket.assigns.selected_site.id, socket.assigns.subject)
 
-        gateways =
-          if socket.assigns.site_panel.show_all_gateways,
-            do: all,
-            else: Enum.filter(all, & &1.online?)
+        {panel_gateways, total_gateway_count} =
+          load_panel_gateways(
+            socket.assigns.selected_site.id,
+            socket.assigns.site_panel.show_all_gateways,
+            device_tokens,
+            socket.assigns.subject
+          )
 
-        {gateways, length(all)}
+        {device_tokens, panel_gateways, total_gateway_count}
       else
-        {socket.assigns.site_panel.gateways, socket.assigns.site_panel.total_gateway_count}
+        {socket.assigns.site_panel.device_tokens, socket.assigns.site_panel.gateways,
+         socket.assigns.site_panel.total_gateway_count}
       end
 
     socket =
       merge_state(socket, :site_panel, %{
+        device_tokens: device_tokens,
         gateways: panel_gateways,
-        total_gateway_count: total_gateway_count
+        total_gateway_count: total_gateway_count,
+        legacy_token_connections:
+          legacy_token_connections(socket.assigns.site_panel.gateway_tokens)
       })
 
     {:noreply, socket}
@@ -1037,6 +1249,17 @@ defmodule PortalWeb.Sites do
   defp parse_site_tab("gateways"), do: :gateways
   defp parse_site_tab("tokens"), do: :tokens
   defp parse_site_tab(_), do: :gateways
+
+  defp parse_panel_tab(params, gateway_tokens) do
+    params
+    |> Map.get("tab", "gateways")
+    |> parse_site_tab()
+    |> sanitize_panel_tab(gateway_tokens)
+  end
+
+  # The Legacy tokens tab is hidden when a site has no legacy tokens.
+  defp sanitize_panel_tab(:tokens, []), do: :gateways
+  defp sanitize_panel_tab(tab, _gateway_tokens), do: tab
 
   defp site_deploy_connection_status(%{connected?: true}, _joins), do: :noop
 
@@ -1211,10 +1434,74 @@ defmodule PortalWeb.Sites do
       |> Safe.insert()
     end
 
-    def create_gateway_token(site, subject) do
-      with {:ok, token} <- Portal.Authentication.create_gateway_token(site, subject) do
+    @spec deploy_gateway(Site.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Device.t(), GatewayToken.t(), binary()} | {:error, term()}
+    def deploy_gateway(site, subject) do
+      gateway = %Device{
+        account_id: site.account_id,
+        site_id: site.id,
+        type: :gateway,
+        name: Portal.Crypto.random_token(5, encoder: :user_friendly)
+      }
+
+      with {:ok, gateway} <- gateway |> Safe.scoped(subject) |> Safe.insert(),
+           {:ok, token} <- Portal.Authentication.create_gateway_token(gateway, subject) do
+        {:ok, gateway, %{token | secret_fragment: nil},
+         Portal.Authentication.encode_fragment!(token)}
+      end
+    end
+
+    @spec rename_gateway(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Device.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+    def rename_gateway(gateway, name, subject) do
+      # Device.changeset/1 requires firezone_id, which deploy-created
+      # gateways don't have until first connect — validate only the name
+      gateway
+      |> Ecto.Changeset.cast(%{name: name}, [:name])
+      |> Portal.Changeset.trim_change([:name])
+      |> Ecto.Changeset.validate_required([:name])
+      |> Ecto.Changeset.validate_length(:name, min: 1, max: 255)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    @spec fetch_gateway(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Device.t()} | {:error, :not_found} | {:error, :unauthorized}
+    def fetch_gateway(id, subject) do
+      result =
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.id == ^id and d.type == :gateway)
+        |> Safe.scoped(subject, :replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      case result do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    @spec rotate_gateway_token(Device.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, GatewayToken.t(), binary()} | {:error, term()}
+    def rotate_gateway_token(gateway, subject) do
+      with {:ok, token} <- Portal.Authentication.rotate_gateway_token(gateway, subject) do
         {:ok, %{token | secret_fragment: nil}, Portal.Authentication.encode_fragment!(token)}
       end
+    end
+
+    @spec list_gateway_tokens_for_devices_in_site(
+            Ecto.UUID.t(),
+            Portal.Authentication.Subject.t()
+          ) :: [GatewayToken.t()]
+    def list_gateway_tokens_for_devices_in_site(site_id, subject) do
+      from(t in GatewayToken, as: :gateway_tokens)
+      |> join(:inner, [gateway_tokens: t], d in Device,
+        on: d.account_id == t.account_id and d.id == t.device_id,
+        as: :devices
+      )
+      |> where([devices: d], d.site_id == ^site_id)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
     end
 
     @spec delete_gateway(Device.t(), Portal.Authentication.Subject.t()) ::

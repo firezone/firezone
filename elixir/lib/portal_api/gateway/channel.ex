@@ -541,6 +541,30 @@ defmodule PortalAPI.Gateway.Channel do
     {:stop, :shutdown, socket}
   end
 
+  # Another channel joined our gateway id group: a duplicate connection raced
+  # past the connect-time check. First wins — we were here first, so tell the
+  # newcomers to disconnect (their :disconnect handler pushes token_expired
+  # and stops). Two simultaneous cross-node joins can each observe the other
+  # and boot each other, but gateway reconnect backoff jitter settles that
+  # within a round or two.
+  def handle_info({_ref, :join, gateway_id, pids}, socket)
+      when gateway_id == socket.assigns.gateway.id do
+    for pid <- pids, pid != self() do
+      Logger.info("Disconnecting duplicate gateway connection",
+        gateway_id: socket.assigns.gateway.id
+      )
+
+      send(pid, :disconnect)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({_ref, :leave, gateway_id, _pids}, socket)
+      when gateway_id == socket.assigns.gateway.id do
+    {:noreply, socket}
+  end
+
   # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     cond do
@@ -1055,8 +1079,14 @@ defmodule PortalAPI.Gateway.Channel do
 
       new_pid ->
         Process.monitor(new_pid)
-        :ok = PG.register(socket.assigns.gateway.id)
+        :ok = PG.join(socket.assigns.gateway.id)
         :ok = PG.join(socket.assigns.token_id)
+
+        # Duplicate-connection resolution: watch our gateway id group and
+        # disconnect if a newer connection joins it. Monitors die with the
+        # scope, so this re-arms on every (re-)registration.
+        {_ref, _members} = PG.monitor(socket.assigns.gateway.id)
+
         socket = assign(socket, :pg_scope_pid, new_pid)
 
         # Only enqueue + arm on the first successful registration; re-registrations

@@ -1070,21 +1070,60 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
-    test "duplicate connection evicts the first gateway", %{
+    test "duplicate connection is evicted, first connection wins", %{
       gateway: gateway,
       site: site,
       token: token
     } do
       Process.flag(:trap_exit, true)
-      join_channel(gateway, site, token)
 
+      socket1 = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      # Simulate a second connection registering for the same gateway
-      PG.register(gateway.id)
+      socket2 = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
+      # The established channel observes the new join in its gateway id
+      # group and tells the newcomer to disconnect
+      channel2 = socket2.channel_pid
+      assert_receive {:EXIT, ^channel2, :shutdown}
       assert_push "disconnect", %{reason: "token_expired"}
-      assert_receive {:EXIT, _pid, :shutdown}
+
+      assert Process.alive?(socket1.channel_pid)
+    end
+  end
+
+  describe "handle_info/2 pg group monitoring" do
+    test "boots a newcomer that joins the gateway id group", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      # Simulate a duplicate connection registering from another node
+      :ok = PG.join(gateway.id)
+
+      # The established channel tells the newcomer to disconnect and stays up
+      assert_receive :disconnect
+      assert Process.alive?(socket.channel_pid)
+      refute_push "disconnect", _payload
+    end
+
+    test "stays connected on leave notifications and self joins", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {make_ref(), :leave, gateway.id, [self()]})
+      send(socket.channel_pid, {make_ref(), :join, gateway.id, [socket.channel_pid]})
+
+      refute_push "disconnect", _payload
+      assert Process.alive?(socket.channel_pid)
     end
   end
 

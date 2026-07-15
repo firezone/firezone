@@ -41,6 +41,10 @@ defmodule PortalAPI.Error do
     ProblemDetails.send(conn, 403, reason)
   end
 
+  def handle(conn, {:error, :conflict, reason: reason}) do
+    ProblemDetails.send(conn, 409, reason)
+  end
+
   def handle(conn, {:error, %Ecto.Changeset{} = changeset}) do
     ProblemDetails.send(conn, 422, "The request body failed validation.", %{
       validation_errors: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
