@@ -287,17 +287,18 @@ defmodule Portal.Splunk.SyncTest do
       refute reload_sink(sink).is_disabled
     end
 
-    test "drops an event that exceeds the chunk budget when the server rejects it", %{
+    test "halts on an event that exceeds the chunk budget instead of skipping it", %{
       account: account
     } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      log =
-        session_log_fixture(
-          account: account,
-          subject: %{"blob" => String.duplicate("x", 600_000)}
-        )
+      parked = get_cursor(sink, :session, :live)
+
+      session_log_fixture(
+        account: account,
+        subject: %{"blob" => String.duplicate("x", 600_000)}
+      )
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
         conn
@@ -305,17 +306,25 @@ defmodule Portal.Splunk.SyncTest do
         |> Req.Test.json(%{"text" => "Request too large", "code" => 6})
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
 
       cursor = get_cursor(sink, :session, :live)
-      assert cursor.cursor == log.seq
+      assert cursor.cursor == parked.cursor
       assert cursor.synced_count == 0
-      assert cursor.dropped_count == 1
+      assert cursor.dropped_count == 0
 
-      refute reload_sink(sink).is_disabled
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
     end
 
-    test "isolates and drops a malformed event without disabling the sink", %{
+    test "parks on a poison event after delivering the healthy prefix", %{
       account: account
     } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
@@ -341,14 +350,24 @@ defmodule Portal.Splunk.SyncTest do
         end
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
 
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      # The healthy prefix is delivered; the cursor parks just before the
+      # poison event so nothing is ever skipped.
       cursor = get_cursor(sink, :session, :live)
-      assert cursor.synced_count == 2
-      assert cursor.dropped_count == 1
-      assert cursor.cursor >= poison.seq
+      assert cursor.synced_count == 1
+      assert cursor.dropped_count == 0
+      assert cursor.cursor < poison.seq
 
-      refute reload_sink(sink).is_disabled
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
     end
 
     test "round timestamps render in fixed sec.ms notation", %{account: account} do
@@ -368,7 +387,7 @@ defmodule Portal.Splunk.SyncTest do
       assert event["time"] == "1752480000.000"
     end
 
-    test "an indexed-fields rejection is isolated, not a sink error", %{account: account} do
+    test "an indexed-fields rejection parks the stream and pages us", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
@@ -387,16 +406,56 @@ defmodule Portal.Splunk.SyncTest do
       end)
 
       log_output =
-        ExUnit.CaptureLog.capture_log(fn ->
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
           assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
         end)
 
-      assert log_output =~ "Dropping undeliverable log sink event"
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
 
       cursor = get_cursor(sink, :session, :live)
-      assert cursor.dropped_count == 1
-      assert cursor.cursor >= poison.seq
-      refute reload_sink(sink).is_disabled
+      assert cursor.dropped_count == 0
+      assert cursor.cursor < poison.seq
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
+    end
+
+    test "a parked stream does not block other streams", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:change, :session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      poison = change_log_fixture(account: account)
+      log = session_log_fixture(account: account)
+
+      test_pid = self()
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        if body =~ "firezone:change" do
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"text" => "Invalid data format", "code" => 6})
+        else
+          send(test_pid, {:delivered, body})
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      assert_receive {:delivered, body}
+      assert body =~ log.log_id
+
+      assert get_cursor(sink, :change, :live).cursor < poison.seq
+      assert get_cursor(sink, :session, :live).cursor == log.seq
       refute reload_sink(sink).errored_at
     end
 
@@ -422,7 +481,7 @@ defmodule Portal.Splunk.SyncTest do
       refute sink.errored_at
     end
 
-    test "a 413 for a small event disables the sink instead of dropping data", %{
+    test "a 413 for a small event halts the stream instead of dropping data", %{
       account: account
     } do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
@@ -435,15 +494,21 @@ defmodule Portal.Splunk.SyncTest do
         |> Req.Test.json(%{"text" => "Unexpected request data received", "code" => 6})
       end)
 
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
       assert cursor.dropped_count == 0
 
       sink = reload_sink(sink)
-      assert sink.is_disabled
-      assert sink.error_message =~ "413"
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
     end
 
     test "a redirect disables the sink with a pointed error", %{account: account} do
