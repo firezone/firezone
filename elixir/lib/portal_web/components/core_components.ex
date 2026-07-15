@@ -176,6 +176,45 @@ defmodule PortalWeb.CoreComponents do
   end
 
   @doc """
+  Render a full-screen result page for standalone browser windows (verification,
+  admin consent). `auto_close_after_ms` closes the window via the global
+  `[data-auto-close-window-after-ms]` listener; browsers that refuse to close
+  the window fall back to the copy in the inner block.
+
+  ## Examples
+
+  <.result_page success title="Verification Successful" auto_close_after_ms={1000}>
+    <p>If this window remains open, close it to return to the Firezone portal.</p>
+  </.result_page>
+  """
+  attr :success, :boolean, required: true
+  attr :title, :string, required: true
+  attr :auto_close_after_ms, :integer, default: nil
+  slot :inner_block, required: true
+
+  def result_page(assigns) do
+    ~H"""
+    <div
+      class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gray-50"
+      data-auto-close-window-after-ms={@auto_close_after_ms}
+    >
+      <div class="w-full max-w-md">
+        <div class="text-center space-y-4">
+          <div class="mx-auto flex h-32 w-32 items-center justify-center">
+            <.icon :if={@success} name="ri-checkbox-circle-line" class="h-32 w-32 text-green-600" />
+            <.icon :if={!@success} name="ri-alert-line" class="h-32 w-32 text-red-600" />
+          </div>
+          <h2 class="text-4xl font-bold tracking-tight text-gray-900">
+            {@title}
+          </h2>
+          {render_slot(@inner_block)}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Render a section header. Section headers are used in the main content section
   to provide a title for the content and option actions button(s) aligned on the right.
 

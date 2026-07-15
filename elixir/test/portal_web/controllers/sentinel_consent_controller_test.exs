@@ -1,7 +1,7 @@
 defmodule PortalWeb.SentinelConsentControllerTest do
   use PortalWeb.ConnCase, async: true
 
-  test "renders the granted page with a link back to log sink settings", %{conn: conn} do
+  test "renders the self-closing granted page", %{conn: conn} do
     conn =
       get(conn, ~p"/auth/sentinel/consent", %{
         "admin_consent" => "True",
@@ -11,15 +11,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
 
     html = html_response(conn, 200)
     assert html =~ "Admin Consent Granted"
-    assert html =~ "/acme/settings/log_sinks"
-  end
-
-  test "renders the granted page without a settings link when state is missing", %{conn: conn} do
-    conn = get(conn, ~p"/auth/sentinel/consent", %{"admin_consent" => "True"})
-
-    html = html_response(conn, 200)
-    assert html =~ "Admin Consent Granted"
-    refute html =~ "settings/log_sinks"
+    assert html =~ ~s(data-auto-close-window-after-ms="1000")
   end
 
   test "renders the Entra error when consent is declined", %{conn: conn} do
@@ -33,6 +25,7 @@ defmodule PortalWeb.SentinelConsentControllerTest do
     html = html_response(conn, 200)
     assert html =~ "Consent Was Not Granted"
     assert html =~ "AADSTS65004"
+    refute html =~ "data-auto-close-window-after-ms"
   end
 
   test "renders the declined page for an invalid response", %{conn: conn} do

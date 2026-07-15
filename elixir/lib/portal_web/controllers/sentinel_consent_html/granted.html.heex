@@ -1,23 +1,6 @@
-<div class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gray-50">
-  <div class="w-full max-w-md">
-    <div class="text-center space-y-4">
-      <div class="mx-auto flex h-32 w-32 items-center justify-center">
-        <.icon name="ri-checkbox-circle-line" class="h-32 w-32 text-green-600" />
-      </div>
-      <h2 class="text-4xl font-bold tracking-tight text-gray-900">
-        Admin Consent Granted
-      </h2>
-      <p class="mt-2 text-base text-gray-600">
-        The Firezone application has been added to your Microsoft Entra tenant. You can
-        close this window.
-      </p>
-      <a
-        :if={@settings_path}
-        href={@settings_path}
-        class="inline-block bg-accent-600 hover:bg-accent-700 text-white font-medium py-2 px-4 rounded-sm"
-      >
-        Continue to Log Sinks settings
-      </a>
-    </div>
-  </div>
-</div>
+<.result_page success title="Admin Consent Granted" auto_close_after_ms={1000}>
+  <p class="mt-2 text-base text-gray-600">
+    The Firezone application has been added to your Microsoft Entra tenant. If this
+    window remains open, close it to return to the Firezone portal.
+  </p>
+</.result_page>
