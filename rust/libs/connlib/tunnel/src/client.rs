@@ -1160,7 +1160,7 @@ impl ClientState {
         peer.remove_resource(&resource_id);
     }
 
-    /// Resync inbound client-to-client authorizations from the portal's `init`.
+    /// Resyncs inbound client-to-client authorizations from the portal's `init`.
     pub fn retain_authorizations(
         &mut self,
         authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
@@ -1173,7 +1173,7 @@ impl ClientState {
         }
     }
 
-    /// Update the expiry of an existing inbound authorization from `init`.
+    /// Updates the expiry of an existing inbound authorization from `init`.
     pub fn update_access_authorization_expiry(
         &mut self,
         cid: ClientId,

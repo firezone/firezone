@@ -106,7 +106,7 @@ impl ClientOnClient {
         self.recompute_inbound_filter();
     }
 
-    /// Drop every inbound authorization not present in `retain`.
+    /// Drops every inbound authorization not present in `retain`.
     pub(crate) fn retain_authorizations(&mut self, retain: &BTreeSet<ResourceId>) {
         let mut any_removed = false;
 
@@ -120,7 +120,7 @@ impl ClientOnClient {
         }
     }
 
-    /// Update when an existing inbound authorization expires.
+    /// Updates when an existing inbound authorization expires.
     pub(crate) fn update_resource_expiry(
         &mut self,
         resource_id: ResourceId,
@@ -179,12 +179,12 @@ impl ClientOnClient {
         self.inbound_filter = FilterEngine::new(&combined);
     }
 
-    /// Record an outbound packet of a flow we opened.
+    /// Records an outbound packet of a flow we opened.
     pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
         self.conn_track.handle_outbound(packet, now);
     }
 
-    /// The next instant at which one of this peer's inbound authorizations expires.
+    /// Returns the next instant at which one of this peer's inbound authorizations expires.
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         self.resources.poll_timeout()
     }
