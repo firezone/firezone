@@ -1,6 +1,7 @@
 defmodule Portal.Sentinel.LogSink do
   use Ecto.Schema
   import Ecto.Changeset
+  import Portal.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -87,7 +88,7 @@ defmodule Portal.Sentinel.LogSink do
     |> validate_format(:stream_name, ~r/^Custom-[A-Za-z0-9_.\-]{1,200}$/,
       message: "must start with Custom- followed by the stream name"
     )
-    |> validate_ingestion_endpoint()
+    |> validate_uri(:ingestion_endpoint, schemes: ~w[https], block_private_ips: true)
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)
     |> unique_constraint(:name,
@@ -102,15 +103,4 @@ defmodule Portal.Sentinel.LogSink do
     |> String.trim_trailing("/")
   end
 
-  defp validate_ingestion_endpoint(changeset) do
-    validate_change(changeset, :ingestion_endpoint, fn :ingestion_endpoint, url ->
-      case URI.new(url) do
-        {:ok, %URI{scheme: "https", host: host}} when is_binary(host) and host != "" ->
-          []
-
-        _ ->
-          [ingestion_endpoint: "must be a valid https URL"]
-      end
-    end)
-  end
 end
