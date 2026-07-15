@@ -1,6 +1,7 @@
 defmodule Portal.Elastic.LogSink do
   use Ecto.Schema
   import Ecto.Changeset
+  import Portal.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -73,7 +74,7 @@ defmodule Portal.Elastic.LogSink do
     |> validate_length(:api_key, min: 1, max: 255)
     |> validate_length(:enabled_streams, min: 1)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
-    |> validate_endpoint_url()
+    |> validate_uri(:endpoint_url, schemes: ~w[https], block_private_ips: true)
     |> validate_format(:data_stream, ~r/^[a-z0-9][a-z0-9._-]{0,254}$/,
       message: "must be a valid lowercase data stream name"
     )
@@ -93,16 +94,4 @@ defmodule Portal.Elastic.LogSink do
     |> String.trim_trailing("/")
   end
 
-  defp validate_endpoint_url(changeset) do
-    validate_change(changeset, :endpoint_url, fn :endpoint_url, url ->
-      case URI.new(url) do
-        {:ok, %URI{scheme: scheme, host: host}}
-        when scheme in ["http", "https"] and is_binary(host) and host != "" ->
-          []
-
-        _ ->
-          [endpoint_url: "must be a valid http(s) URL"]
-      end
-    end)
-  end
 end
