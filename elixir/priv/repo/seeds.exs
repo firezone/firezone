@@ -507,7 +507,7 @@ defmodule Portal.Repo.Seeds do
   # Row-snapshot helpers. Mirror the shape the WAL replicator captures so
   # change_log diffs render every column, not just the one that changed.
   # Callers supply keyword overrides for the fields they care about.
-  defp policy_row(overrides \\ []) do
+  defp policy_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -525,7 +525,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp resource_row(overrides \\ []) do
+  defp resource_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -542,7 +542,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp group_row(overrides \\ []) do
+  defp group_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -557,7 +557,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp actor_row(overrides \\ []) do
+  defp actor_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -574,7 +574,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp provider_row(overrides \\ []) do
+  defp provider_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -589,7 +589,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp client_row(overrides \\ []) do
+  defp client_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -606,7 +606,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp site_row(overrides \\ []) do
+  defp site_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -619,7 +619,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp gateway_token_row(overrides \\ []) do
+  defp gateway_token_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
@@ -633,7 +633,7 @@ defmodule Portal.Repo.Seeds do
     )
   end
 
-  defp api_token_row(overrides \\ []) do
+  defp api_token_row(overrides) do
     Map.merge(
       %{
         "id" => Ecto.UUID.generate(),
