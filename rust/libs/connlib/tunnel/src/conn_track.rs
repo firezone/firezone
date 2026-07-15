@@ -18,9 +18,9 @@ pub(crate) struct ConnTrack {
 impl ConnTrack {
     /// Handles an outbound packet we sent to a peer.
     ///
-    /// The first packet of a flow records it as one *we* opened. A reply to a
-    /// flow the peer opened records nothing: it must not earn a return-traffic
-    /// exemption, or the peer's flow would outlive its authorization.
+    /// Remembers the packet's flow as one that we opened. Replies to flows
+    /// that the peer opened are ignored: those flows must keep passing the
+    /// inbound filter, so that they stop once their authorization is gone.
     pub(crate) fn handle_outbound(&mut self, packet: &IpPacket, now: Instant) {
         let Ok(local) = packet.source_protocol() else {
             return;
