@@ -449,7 +449,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.sink_form form={@form} type={@type} live_action={@live_action} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -498,7 +498,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
                 {@sink.error_message}
               </.flash>
-              <.sink_form form={@form} type={@type} live_action={@live_action} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -793,6 +793,7 @@ defmodule PortalWeb.Settings.LogSinks do
   attr :form, :any, required: true
   attr :type, :string, required: true
   attr :live_action, :atom, required: true
+  attr :account, :any, required: true
 
   defp sink_form(assigns) do
     ~H"""
@@ -1012,7 +1013,7 @@ defmodule PortalWeb.Settings.LogSinks do
             <li>
               Enter your Microsoft Entra tenant ID below, then have a tenant administrator open
               <a
-                href={sentinel_admin_consent_url(@form)}
+                href={sentinel_admin_consent_url(@form, @account)}
                 target="_blank"
                 class="underline hover:text-heading"
               >
@@ -1355,7 +1356,7 @@ defmodule PortalWeb.Settings.LogSinks do
     end
   end
 
-  defp sentinel_admin_consent_url(form) do
+  defp sentinel_admin_consent_url(form, account) do
     client_id =
       Portal.Config.fetch_env!(:portal, Portal.Sentinel.APIClient)
       |> Keyword.get(:client_id)
@@ -1367,7 +1368,11 @@ defmodule PortalWeb.Settings.LogSinks do
       end
 
     "https://login.microsoftonline.com/#{tenant}/adminconsent?" <>
-      URI.encode_query(%{"client_id" => client_id})
+      URI.encode_query(%{
+        "client_id" => client_id,
+        "redirect_uri" => url(~p"/auth/sentinel/consent"),
+        "state" => Phoenix.Param.to_param(account)
+      })
   end
 
   defp delivered_count(sink) do

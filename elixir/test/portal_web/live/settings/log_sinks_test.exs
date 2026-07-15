@@ -397,6 +397,9 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert html =~
                "https://login.microsoftonline.com/organizations/adminconsent?client_id=test_sentinel_client_id"
 
+      assert html =~ "redirect_uri=#{URI.encode_www_form(url(~p"/auth/sentinel/consent"))}"
+      assert html =~ "state=#{account.slug}"
+
       tenant_id = Ecto.UUID.generate()
 
       html =
