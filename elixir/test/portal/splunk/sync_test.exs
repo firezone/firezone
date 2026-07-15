@@ -200,6 +200,7 @@ defmodule Portal.Splunk.SyncTest do
       assert_receive {:hec, _conn, [start_event]}
       assert start_event["event"]["phase"] == "start"
       assert start_event["event"]["log_id"] == flow.log_id
+      assert start_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_start)
       assert_in_delta String.to_float(start_event["time"]),
                       DateTime.to_unix(flow.flow_start, :millisecond) / 1000,
                       0.001
@@ -226,6 +227,7 @@ defmodule Portal.Splunk.SyncTest do
 
       assert_receive {:hec, _conn, [end_event]}
       assert end_event["event"]["phase"] == "end"
+      assert end_event["event"]["timestamp"] == DateTime.to_iso8601(flow_end)
       assert end_event["event"]["log_id"] == flow.log_id
       assert end_event["event"]["rx_bytes"] == 1024
       assert_in_delta String.to_float(end_event["time"]),
