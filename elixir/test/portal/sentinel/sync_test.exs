@@ -42,16 +42,18 @@ defmodule Portal.Sentinel.SyncTest do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
 
+      refute_receive {:token, _conn, _params}
+
+      log = session_log_fixture(account: account)
+
+      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+
       assert_receive {:token, token_conn, token_params}
       assert token_conn.request_path == "/#{sink.tenant_id}/oauth2/v2.0/token"
       assert token_params["grant_type"] == "client_credentials"
       assert token_params["client_id"] == "test_sentinel_client_id"
       assert token_params["client_secret"] == "test_sentinel_client_secret"
       assert token_params["scope"] == "https://monitor.azure.com//.default"
-
-      log = session_log_fixture(account: account)
-
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
 
       assert_receive {:ingest, conn, [event]}
 
@@ -76,6 +78,8 @@ defmodule Portal.Sentinel.SyncTest do
 
     test "a token error for a missing service principal disables the sink", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
 
       Req.Test.stub(Sentinel.APIClient, fn conn ->
         conn
