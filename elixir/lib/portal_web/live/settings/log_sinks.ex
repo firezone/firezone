@@ -1050,14 +1050,24 @@ defmodule PortalWeb.Settings.LogSinks do
             class="list-decimal ml-4 space-y-1.5 text-xs text-subtle"
           >
             <li>
-              In Azure Monitor, under Data Collection Endpoints, create an endpoint in the
-              same region as your Log Analytics workspace.
+              You need a Log Analytics workspace: use the one Microsoft Sentinel is enabled
+              on. If you don't have one yet, search for
+              <strong>Log Analytics workspaces</strong> in the Azure portal, create one, then
+              enable Microsoft Sentinel on it.
             </li>
             <li>
-              In your Log Analytics workspace, under Tables, choose
+              Search for <strong>Data collection endpoints</strong> in the Azure portal and
+              create one in the same region as your workspace. Firezone delivers logs to
+              this endpoint.
+            </li>
+            <li>
+              Open your workspace and go to <strong>Settings &rarr; Tables</strong>. Choose
               <strong>Create &rarr; New custom log (DCR-based)</strong>. Name the table
-              <code class="text-xs">FirezoneLogs</code>, create a new data collection rule
-              (DCR), and select the data collection endpoint. At the schema step, upload
+              <code class="text-xs">FirezoneLogs</code>, choose
+              <strong>Create a new data collection rule</strong> and give it a name (e.g.
+              <code class="text-xs">firezone-logs</code>), and select the data collection
+              endpoint from the previous step. On the
+              <strong>Schema and transformation</strong> step, upload
               <a
                 href={~p"/downloads/firezone-sentinel-sample.json"}
                 download
@@ -1065,29 +1075,36 @@ defmodule PortalWeb.Settings.LogSinks do
               >
                 this sample file
               </a>
-              and keep the default transformation.
+              and keep the default transformation, then create the table.
             </li>
             <li>
-              On the DCR, under Access control (IAM), grant the Firezone service principal
-              the <strong>Monitoring Metrics Publisher</strong> role. Role assignments can
-              take up to 30 minutes to propagate.
+              Search for <strong>Data collection rules</strong>, open the rule you just
+              created, and go to <strong>Access control (IAM)</strong>. Choose
+              <strong>Add &rarr; Add role assignment</strong>, select the
+              <strong>Monitoring Metrics Publisher</strong> role, then under
+              <strong>Members</strong> choose <strong>User, group, or service principal</strong>
+              and select the <strong>Firezone Sentinel Log Ingestion</strong> application
+              (created by the admin consent above). Review and assign. The assignment can
+              take up to 30 minutes to take effect.
             </li>
             <li>
-              Fill in the fields below: the endpoint's logs ingestion URI, the DCR's
-              immutable ID, and stream name <code class="text-xs">Custom-FirezoneLogs_CL</code>.
+              Fill in the fields below. Each field's hint says where to find its value in
+              the Azure portal; if you followed these steps, the stream name is
+              <code class="text-xs">Custom-FirezoneLogs_CL</code>.
             </li>
           </ol>
           <div :if={@sentinel_setup_tab == "cli"}>
             <p class="text-xs text-subtle mb-2">
-              Set the variables for your environment, then run the script with the Azure CLI
-              logged into your subscription. It prints the values for the fields below.
+              Assumes an existing Log Analytics workspace. Set the variables for your
+              environment, then run the script with the Azure CLI logged into your
+              subscription. It prints the values for the fields below.
             </p>
             <.code_block id="sentinel-setup-cli" class="rounded text-xs">{sentinel_cli_snippet()}</.code_block>
           </div>
           <div :if={@sentinel_setup_tab == "terraform"}>
             <p class="text-xs text-subtle mb-2">
-              Requires the azurerm, azuread, and azapi providers. The outputs are the values
-              for the fields below.
+              Assumes an existing Log Analytics workspace and requires the azurerm, azuread,
+              and azapi providers. The outputs are the values for the fields below.
             </p>
             <.code_block id="sentinel-setup-terraform" class="rounded text-xs">{sentinel_terraform_snippet()}</.code_block>
           </div>
@@ -1127,7 +1144,8 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            The DCR's logs ingestion endpoint or your data collection endpoint, e.g.
+            The <strong>Logs Ingestion</strong> URI shown on your data collection endpoint's
+            Overview page, e.g.
             <code class="text-xs">https://my-dce-abcd.eastus-1.ingest.monitor.azure.com</code>.
           </p>
         </div>
@@ -1148,7 +1166,8 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            The data collection rule's immutable ID, shown on its overview page, e.g.
+            The <strong>Immutable Id</strong> shown on the data collection rule's Overview
+            page (also in its <strong>JSON View</strong>), e.g.
             <code class="text-xs">dcr-0123456789abcdef0123456789abcdef</code>.
           </p>
         </div>
@@ -1166,7 +1185,9 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            The DCR's input stream, declared under its stream declarations, e.g.
+            The DCR's input stream, listed in its <strong>JSON View</strong> under
+            <code class="text-xs">streamDeclarations</code>. The Azure portal wizard names it
+            <code class="text-xs">Custom-&lt;table&gt;_CL</code>, e.g.
             <code class="text-xs">Custom-FirezoneLogs_CL</code>.
           </p>
         </div>
