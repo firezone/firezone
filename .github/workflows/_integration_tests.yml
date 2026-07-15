@@ -97,10 +97,10 @@ jobs:
         run: |
           set -xe
 
-          # Save every image present locally: the pulled registry images plus the
-          # `*-router` images built in the previous step. The `docker image inspect`
-          # filter keeps images that were actually built or pulled and drops any
-          # build-only service that wasn't built.
+          # Save the compose project's images that are present locally: the pulled
+          # registry images plus the `*-router` images built in the previous step.
+          # The `docker image inspect` filter drops any build-only service that
+          # wasn't built.
           images=$(docker compose config --images | sort -u | while read -r image; do
             if docker image inspect "$image" > /dev/null 2>&1; then
               echo "$image"
