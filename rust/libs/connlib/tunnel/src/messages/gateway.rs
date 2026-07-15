@@ -14,6 +14,8 @@ use std::{
     time::Duration,
 };
 
+pub use crate::messages::Authorization;
+
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionDns {
@@ -99,15 +101,6 @@ pub struct Config {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoveResource {
     pub id: ResourceId,
-}
-
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct Authorization {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
 }
 
 #[derive(Debug, Deserialize, Clone)]
