@@ -1260,6 +1260,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bootstrap-dns-client",
+ "clock",
  "connlib-model",
  "dns-types",
  "etc-hosts-dns-client",
@@ -1290,6 +1291,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "15efe7a882b08f34e38556b14f2fb3daa98769d06c7f0c1b076dfd0d983bc892"
 dependencies = [
  "error-code",
+]
+
+[[package]]
+name = "clock"
+version = "0.1.0"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]
@@ -2327,6 +2335,7 @@ dependencies = [
  "bin-shared",
  "caps",
  "clap",
+ "clock",
  "dns-types",
  "flow-log-upload",
  "flow-log-writer",

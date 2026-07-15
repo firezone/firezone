@@ -124,6 +124,7 @@ impl ClientTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
+        now: Instant,
     ) -> Self {
         Self {
             io: Io::new(
@@ -135,7 +136,7 @@ impl ClientTunnel {
                 rand::random(),
                 records,
                 is_internet_resource_active,
-                Instant::now(),
+                now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
@@ -148,8 +149,16 @@ impl ClientTunnel {
         self.role_state.public_key()
     }
 
-    pub fn reset(&mut self, reason: &str) {
-        self.role_state.reset(Instant::now(), reason);
+    pub fn reset(&mut self, reason: &str, now: Instant) {
+        if self
+            .role_state
+            .poll_timeout()
+            .is_some_and(|(timeout, _)| timeout <= now)
+        {
+            self.role_state.handle_timeout(now);
+        }
+
+        self.role_state.reset(now, reason);
         self.io.reset();
     }
 
@@ -161,9 +170,9 @@ impl ClientTunnel {
     }
 
     /// Shut down the Client tunnel.
-    pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
+    pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
-        self.role_state.shut_down(Instant::now());
+        self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
@@ -185,10 +194,19 @@ impl ClientTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>, now: Instant) -> Poll<ClientEvent> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            if self
+                .role_state
+                .poll_timeout()
+                .is_some_and(|(timeout, _)| timeout <= now)
+            {
+                self.role_state.handle_timeout(now);
+                tick.want_continue();
+            }
+
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             // Pass up existing events.
@@ -223,13 +241,12 @@ impl ClientTunnel {
 
             // Drain all scheduled DNS queries.
             while let Some(query) = self.role_state.poll_dns_queries() {
-                self.io.send_dns_query(query);
+                self.io.send_dns_query(query, now);
                 tick.want_continue();
             }
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                now,
                 timeout,
                 dns_response,
                 tcp_dns_queries: _,
@@ -241,7 +258,7 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.io.schedule_timeout(now);
+                    self.io.schedule_timeout();
 
                     tick.want_continue();
                 }
@@ -263,7 +280,7 @@ impl ClientTunnel {
                         }
                     }
 
-                    self.io.schedule_timeout(now);
+                    self.io.schedule_timeout();
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -299,7 +316,7 @@ impl ClientTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.io.schedule_timeout(now),
+                            Ok(None) => self.io.schedule_timeout(),
                             Err(e) => error.push(e),
                         };
                     }
@@ -317,7 +334,8 @@ impl ClientTunnel {
 
         // Reset timer for time-based wakeup before we suspend.
         if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-            self.io.reset_timeout(timeout, reason);
+            self.io
+                .reset_timeout_after(timeout.saturating_duration_since(now), reason);
         }
 
         Poll::Pending
@@ -329,12 +347,13 @@ impl GatewayTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        now: Instant,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(
                 rand::random(),
-                Instant::now(),
+                now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("Should be able to compute UNIX timestamp"),
@@ -348,9 +367,9 @@ impl GatewayTunnel {
     }
 
     /// Shut down the Gateway tunnel.
-    pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
+    pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
-        self.role_state.shut_down(Instant::now());
+        self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
@@ -372,10 +391,19 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<GatewayEvent> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>, now: Instant) -> Poll<GatewayEvent> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            if self
+                .role_state
+                .poll_timeout()
+                .is_some_and(|(timeout, _)| timeout <= now)
+            {
+                self.role_state.handle_timeout(now);
+                tick.want_continue();
+            }
+
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             // Pass up existing events.
@@ -393,7 +421,6 @@ impl GatewayTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                now,
                 timeout,
                 dns_response,
                 tcp_dns_queries,
@@ -464,7 +491,7 @@ impl GatewayTunnel {
                         }
                     }
 
-                    self.io.schedule_timeout(now);
+                    self.io.schedule_timeout();
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -500,7 +527,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.io.schedule_timeout(now),
+                            Ok(None) => self.io.schedule_timeout(),
                             Err(e) => error.push(e),
                         };
                     }
@@ -512,15 +539,18 @@ impl GatewayTunnel {
 
                 for query in udp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery {
-                            server: dns::Upstream::Do53 {
-                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                        self.io.send_dns_query(
+                            dns::RecursiveQuery {
+                                server: dns::Upstream::Do53 {
+                                    server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                                },
+                                local: query.local,
+                                remote: query.remote,
+                                message: query.message,
+                                transport: dns::Transport::Udp,
                             },
-                            local: query.local,
-                            remote: query.remote,
-                            message: query.message,
-                            transport: dns::Transport::Udp,
-                        });
+                            now,
+                        );
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
@@ -538,15 +568,18 @@ impl GatewayTunnel {
 
                 for query in tcp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery {
-                            server: dns::Upstream::Do53 {
-                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                        self.io.send_dns_query(
+                            dns::RecursiveQuery {
+                                server: dns::Upstream::Do53 {
+                                    server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                                },
+                                local: query.local,
+                                remote: query.remote,
+                                message: query.message,
+                                transport: dns::Transport::Tcp,
                             },
-                            local: query.local,
-                            remote: query.remote,
-                            message: query.message,
-                            transport: dns::Transport::Tcp,
-                        });
+                            now,
+                        );
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
@@ -570,7 +603,8 @@ impl GatewayTunnel {
 
         // Reset timer for time-based wakeup before we suspend.
         if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-            self.io.reset_timeout(timeout, reason);
+            self.io
+                .reset_timeout_after(timeout.saturating_duration_since(now), reason);
         }
 
         Poll::Pending
