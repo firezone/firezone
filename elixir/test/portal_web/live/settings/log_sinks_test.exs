@@ -330,7 +330,45 @@ defmodule PortalWeb.Settings.LogSinksTest do
         )
         |> render_change()
 
-      assert html =~ "must be a valid http(s) URL"
+      assert html =~ "is invalid"
+      assert Repo.all(Splunk.LogSink) == []
+    end
+
+    test "rejects plaintext and private-address HEC URLs", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/new")
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC Splunk",
+            collector_url: "http://splunk.internal.example:8088",
+            hec_token: "test-hec-token"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "only https schemes are supported"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC Splunk",
+            collector_url: "https://169.254.169.254:8088",
+            hec_token: "test-hec-token"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "must not be a private or reserved IP address"
       assert Repo.all(Splunk.LogSink) == []
     end
   end
