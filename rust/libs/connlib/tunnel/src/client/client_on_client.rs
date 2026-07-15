@@ -145,7 +145,7 @@ impl ClientOnClient {
 
     /// Record an outbound packet so subsequent inbound replies are admitted.
     pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
-        self.conn_track.record_outbound(packet, now);
+        self.conn_track.handle_outbound(packet, now);
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {

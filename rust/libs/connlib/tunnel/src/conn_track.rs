@@ -16,10 +16,12 @@ pub(crate) struct ConnTrack {
 }
 
 impl ConnTrack {
-    /// Record an outbound packet as a flow *we* opened, unless it is a reply
-    /// to a flow the peer opened: that must not earn a return-traffic
-    /// exemption, or a peer-opened flow would outlive its authorization.
-    pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
+    /// Handles an outbound packet we sent to a peer.
+    ///
+    /// The first packet of a flow records it as one *we* opened. A reply to a
+    /// flow the peer opened records nothing: it must not earn a return-traffic
+    /// exemption, or the peer's flow would outlive its authorization.
+    pub(crate) fn handle_outbound(&mut self, packet: &IpPacket, now: Instant) {
         let Ok(local) = packet.source_protocol() else {
             return;
         };
@@ -61,7 +63,7 @@ impl ConnTrack {
         );
     }
 
-    /// Returns `true` if the inbound packet is the reply to a flow *we* opened.
+    /// Returns `true` if the packet is the reply to a flow *we* opened.
     pub(crate) fn is_return_traffic(&self, packet: &IpPacket) -> bool {
         let Ok(peer) = packet.source_protocol() else {
             return false;
@@ -78,8 +80,7 @@ impl ConnTrack {
         })
     }
 
-    /// Returns `true` if the *outbound* packet belongs to an existing flow in
-    /// either direction.
+    /// Returns `true` if the packet belongs to an existing flow in either direction.
     pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
         let Ok(local) = packet.source_protocol() else {
             return false;
@@ -145,7 +146,7 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.record_outbound(&outbound, now);
+        ct.handle_outbound(&outbound, now);
 
         let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
@@ -159,7 +160,7 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.record_outbound(&outbound, now);
+        ct.handle_outbound(&outbound, now);
 
         // Different source port — not the reply we expected.
         let unrelated = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 9999, 53535, &[])
@@ -192,9 +193,9 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.record_outbound(&outbound, start);
+        ct.handle_outbound(&outbound, start);
 
-        ct.record_outbound(&outbound, start + UDP_TTL - Duration::from_secs(1));
+        ct.handle_outbound(&outbound, start + UDP_TTL - Duration::from_secs(1));
 
         ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
 
@@ -214,7 +215,7 @@ mod tests {
 
         let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
-        ct.record_outbound(&reply, now);
+        ct.handle_outbound(&reply, now);
 
         let next = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
             .expect("valid packet");
@@ -228,7 +229,7 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.record_outbound(&outbound, start);
+        ct.handle_outbound(&outbound, start);
 
         ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
 
@@ -244,7 +245,7 @@ mod tests {
 
         let request =
             make::icmp_request_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 1, 42, &[]).expect("valid");
-        ct.record_outbound(&request, now);
+        ct.handle_outbound(&request, now);
 
         let reply =
             make::icmp_reply_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[]).expect("valid");
@@ -258,7 +259,7 @@ mod tests {
 
         let v4_outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 5353, 5353, &[])
             .expect("valid packet");
-        ct.record_outbound(&v4_outbound, now);
+        ct.handle_outbound(&v4_outbound, now);
 
         // A v6 reply on the same port pair must NOT count as return traffic.
         let v6_reply = make::udp_packet(
