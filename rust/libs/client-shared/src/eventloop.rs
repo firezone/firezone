@@ -19,10 +19,11 @@ use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
-    ClientDeviceAccessAuthorized, ClientDeviceAccessDenied, ClientIceCandidates,
-    ClientRejectAccess, DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages,
-    FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates, IngressMessages, InitClient,
-    ResourceAuthorization, ResourceFiltersUpdated,
+    AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
+    ClientDeviceAccessDenied, ClientIceCandidates, ClientRejectAccess,
+    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
+    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
+    ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
@@ -347,7 +348,7 @@ impl Eventloop {
                 };
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::CreateFlow {
+                    .send(PortalCommand::Send(EgressMessages::RequestAuthorization {
                         resource_id: resource,
                         preferred_gateways,
                         ipv4,
@@ -522,7 +523,7 @@ impl Eventloop {
                         .remove_ice_candidate(client_id, candidate, Instant::now())
                 }
             }
-            IngressMessages::FlowCreated(FlowCreated {
+            IngressMessages::AuthorizationCreated(AuthorizationCreated {
                 resource_id,
                 gateway_id,
                 site_id,
@@ -554,7 +555,7 @@ impl Eventloop {
                 ) {
                     Ok(Ok(())) => {}
                     Ok(Err(e @ snownet::NoTurnServers {})) => {
-                        tracing::debug!("Failed to handle flow created: {e}");
+                        tracing::debug!("Failed to handle authorization created: {e}");
 
                         self.portal_cmd_tx
                             .send(PortalCommand::Send(EgressMessages::NoRelays {}))
@@ -562,16 +563,16 @@ impl Eventloop {
                             .context("Failed to send message to portal")?;
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to handle flow created: {e:#}");
+                        tracing::warn!("Failed to handle authorization created: {e:#}");
                     }
                 };
             }
-            IngressMessages::FlowCreationFailed(FlowCreationFailed {
+            IngressMessages::AuthorizationCreationFailed(AuthorizationCreationFailed {
                 reason,
                 resource_id,
                 ..
             }) => {
-                tracing::debug!("Failed to create flow: {reason:?}");
+                tracing::debug!("Failed to create authorization: {reason:?}");
 
                 match reason {
                     FailReason::Offline => {
