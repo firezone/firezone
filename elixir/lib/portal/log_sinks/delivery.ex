@@ -13,7 +13,9 @@ defmodule Portal.LogSinks.Delivery do
   in a `Portal.LogSinks.Adapter`. Errors follow the directory sync
   convention: an unrecoverable response disables the sink immediately,
   transient failures (408/429/5xx/transport) disable it only after 24 hours
-  of continuous failure. Nothing here can re-enable a disabled sink.
+  of continuous failure. An event the destination rejects outright parks its
+  stream and pages us with no customer-facing state at all: failing to map
+  our own data is our bug to fix, not the admin's. Nothing here can re-enable a disabled sink.
   """
 
   alias __MODULE__.Database
@@ -35,6 +37,7 @@ defmodule Portal.LogSinks.Delivery do
       Enum.reduce_while(Database.list_cursors(sink), :ok, fn cursor, :ok ->
         case sync_cursor(sink, adapter, cursor, @max_batches_per_stream) do
           :ok -> {:cont, :ok}
+          {:error, :undeliverable} -> {:cont, :ok}
           {:error, reason} -> {:halt, {:error, reason}}
         end
       end)
@@ -121,27 +124,26 @@ defmodule Portal.LogSinks.Delivery do
     end
   end
 
-  # A single event the destination cannot accept, ever, is counted as dropped
-  # and the cursor moves past it: malformed events never fix themselves, and
-  # oversized ones only count when they genuinely exceed our own chunk budget.
-  # A too-large rejection for a small event is not a size problem, it is a
-  # server that is not the intake (this happened: Splunk Web answers 413 to
-  # redirected deliveries), so it errors out rather than silently dropping
-  # data. A rejected multi-event chunk is bisected until the offender is
-  # isolated.
+  # A single event the destination rejects is never skipped: the cursor parks
+  # on it and the error pages us with the exact request and response, every
+  # run, until we fix the cause and delivery resumes with nothing lost. The
+  # sink's customer-facing state stays untouched and other streams keep
+  # flowing. A rejected multi-event chunk is bisected until the offender is
+  # isolated, delivering the healthy events along the way.
   defp handle_rejected_chunk(_sink, _adapter, cursor, [{seq, json}] = _chunk, response, reason) do
-    if reason == :malformed or byte_size(json) > max_body_bytes() do
-      Logger.warning("Dropping undeliverable log sink event",
-        log_sink_id: cursor.log_sink_id,
-        stream: cursor.stream,
-        seq: seq,
-        reason: reason
-      )
+    Logger.error("Log sink event cannot be delivered, halting stream",
+      log_sink_id: cursor.log_sink_id,
+      account_id: cursor.account_id,
+      stream: cursor.stream,
+      seq: seq,
+      reason: reason,
+      request_bytes: byte_size(json),
+      request: binary_part(json, 0, min(byte_size(json), 65_536)),
+      response_status: response.status,
+      response_body: response.body
+    )
 
-      advance(cursor, seq, 0, 1)
-    else
-      {:error, {:status, response}}
-    end
+    {:error, :undeliverable}
   end
 
   defp handle_rejected_chunk(sink, adapter, cursor, chunk, _response, _reason) do
