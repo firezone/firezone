@@ -220,10 +220,7 @@ impl ClientOnGateway {
         new_expiry: Instant,
         now: Instant,
     ) {
-        // A past `new_expiry` collapses to a zero TTL, evicting the
-        // entry on the next `handle_timeout` call.
-        let ttl = new_expiry.saturating_duration_since(now);
-        if !self.resources.update_expiry(&rid, now, ttl) {
+        if !self.resources.update_expiry_at(&rid, new_expiry, now) {
             tracing::debug!(%rid, "Unknown resource");
         }
     }

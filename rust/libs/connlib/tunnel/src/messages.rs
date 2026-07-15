@@ -1,11 +1,14 @@
 //! Message types that are used by both the gateway and client.
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc, serde::ts_seconds};
-use connlib_model::RelayId;
+use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, serde_as};
 use std::fmt;
 
 pub mod client;
@@ -14,6 +17,35 @@ mod key;
 
 pub use flow_tracker::IngestToken;
 pub use key::{Key, SecretKey};
+
+/// An active authorization: `client_id` may access `resource_id` until `expires_at`.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct Authorization {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
+}
+
+/// Group the authorizations of an `init` message by client, for resyncing
+/// against the currently connected peers.
+pub fn group_authorizations_by_client(
+    authorizations: &[Authorization],
+) -> BTreeMap<ClientId, BTreeSet<ResourceId>> {
+    authorizations.iter().fold(
+        BTreeMap::new(),
+        |mut grouped,
+         Authorization {
+             client_id,
+             resource_id,
+             ..
+         }| {
+            grouped.entry(*client_id).or_default().insert(*resource_id);
+            grouped
+        },
+    )
+}
 
 /// Represents a wireguard peer.
 #[derive(Debug, Deserialize, Serialize, Clone)]

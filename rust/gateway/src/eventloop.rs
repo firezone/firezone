@@ -7,7 +7,7 @@ use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::rr::RecordType;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::future::{self, Future, poll_fn};
 use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
@@ -21,7 +21,7 @@ use tunnel::messages::gateway::{
     Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
     InitGateway, RejectAccess,
 };
-use tunnel::messages::{RelaysPresence, SnownetCapabilities};
+use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
@@ -417,16 +417,8 @@ impl Eventloop {
                 });
                 tunnel
                     .state_mut()
-                    .retain_authorizations(authorizations.iter().fold(
-                        BTreeMap::new(),
-                        |mut authorizations, next| {
-                            authorizations
-                                .entry(next.client_id)
-                                .or_default()
-                                .insert(next.resource_id);
-
-                            authorizations
-                        },
+                    .retain_authorizations(messages::group_authorizations_by_client(
+                        &authorizations,
                     ));
                 for Authorization {
                     client_id: cid,
