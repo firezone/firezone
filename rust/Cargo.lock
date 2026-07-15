@@ -704,7 +704,7 @@ dependencies = [
  "libc",
  "logging",
  "netlink-packet-core",
- "netlink-packet-route",
+ "netlink-packet-route 0.31.0",
  "nix 0.31.3",
  "opentelemetry",
  "otel-instruments",
@@ -1869,7 +1869,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4137,7 +4137,7 @@ version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a1886916523694cd6ea3d175f03a1e5010699a2a4cc13696d83d7bea1d80638"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4508,7 +4508,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4579,6 +4579,18 @@ name = "netlink-packet-route"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df9854ea6ad14e3f4698a7f03b65bce0833dd2d81d594a0e4a984170537146b6"
+dependencies = [
+ "bitflags 2.10.0",
+ "libc",
+ "log",
+ "netlink-packet-core",
+]
+
+[[package]]
+name = "netlink-packet-route"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2288fcb784eb3defd5fb16f4c4160d5f477de192eac730f43e1d11c24d9a007"
 dependencies = [
  "bitflags 2.10.0",
  "libc",
@@ -4693,7 +4705,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5769,7 +5781,7 @@ dependencies = [
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6064,7 +6076,7 @@ dependencies = [
  "futures-util",
  "log",
  "netlink-packet-core",
- "netlink-packet-route",
+ "netlink-packet-route 0.29.0",
  "netlink-proto",
  "netlink-sys",
  "nix 0.30.1",
@@ -6126,7 +6138,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6183,7 +6195,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6884,7 +6896,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7653,7 +7665,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8285,7 +8297,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9712,7 +9724,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
