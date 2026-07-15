@@ -99,7 +99,7 @@ impl ConnTrack {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
-    /// Whether a flow with our endpoint `local_ip`/`local` and the peer's
+    /// Returns `true` if a flow with our endpoint `local_ip`/`local` and the peer's
     /// `peer_ip`/`peer` is known in either direction.
     pub(crate) fn is_known_flow_parts(
         &self,

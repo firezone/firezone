@@ -270,7 +270,7 @@ pub struct ClientDeviceAccessDenied {
     pub reason: FailReason,
 }
 
-/// Portal's report that our ICE candidates could not be delivered to a target peer.
+/// Sent by the portal when our ICE candidates could not be delivered to a target peer.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientIceCandidateError {
     pub client_id: ClientId,

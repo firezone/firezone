@@ -401,7 +401,7 @@ impl ClientState {
         );
     }
 
-    /// Abandon a pending connection whose ICE candidates the portal could not deliver.
+    /// Abandons a pending connection whose ICE candidates the portal could not deliver.
     pub fn handle_client_ice_candidate_error(&mut self, cid: ClientId, now: Instant) {
         let member_networks = self
             .static_device_pools()
