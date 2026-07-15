@@ -6,8 +6,8 @@ defmodule Portal.Elastic.APIClient do
   timestamped, append-only logs: retention is managed by the stream's
   lifecycle, and rollover keeps backing indices bounded. Batches are posted
   to `/_bulk` as NDJSON `create` actions (data streams reject `index`) with
-  an explicit `_id` per document (the log_id, suffixed with the phase for
-  flows). Redelivering into the same backing index returns a version
+  an explicit `_id` per document (the log_id, which flows suffix per start
+  and end event). Redelivering into the same backing index returns a version
   conflict, which counts as delivered, so ingestion stays idempotent within
   a backing index generation; a retry that lands after a rollover can
   duplicate, so consumers dedupe on `firezone.log_id`. Works against
@@ -87,7 +87,7 @@ defmodule Portal.Elastic.APIClient do
   @impl true
   def encode_event(sink, _stream, {time, event}) do
     action =
-      JSON.encode!(%{"create" => %{"_index" => sink.data_stream, "_id" => doc_id(event)}})
+      JSON.encode!(%{"create" => %{"_index" => sink.data_stream, "_id" => event.log_id}})
 
     document =
       JSON.encode!(%{
@@ -168,12 +168,6 @@ defmodule Portal.Elastic.APIClient do
         "Elasticsearch returned HTTP #{status}"
     end
   end
-
-  # Flow logs deliver two events sharing a log_id; the phase suffix gives each
-  # its own stable document id.
-  defp doc_id(%{log_id: log_id, phase: "start"}), do: log_id <> "-s"
-  defp doc_id(%{log_id: log_id, phase: "end"}), do: log_id <> "-e"
-  defp doc_id(%{log_id: log_id}), do: log_id
 
   defp item_status(item) do
     case Map.values(item) do

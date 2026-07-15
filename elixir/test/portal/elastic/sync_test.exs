@@ -135,6 +135,7 @@ defmodule Portal.Elastic.SyncTest do
         where: f.account_id == ^account.id,
         update: [
           set: [
+            start_seq: f.seq,
             seq: fragment("nextval('flow_logs_seq_seq')"),
             flow_end: ^flow_end,
             last_packet: ^flow_end,
@@ -150,7 +151,7 @@ defmodule Portal.Elastic.SyncTest do
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
       assert_receive {:bulk, _conn, [end_action, end_doc]}
       assert end_action["create"]["_id"] == flow.log_id <> "-e"
-      assert end_doc["firezone"]["phase"] == "end"
+      assert end_doc["firezone"]["log_id"] == flow.log_id <> "-e"
     end
 
     test "version conflicts count as delivered", %{account: account} do
