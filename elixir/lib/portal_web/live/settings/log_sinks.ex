@@ -984,9 +984,8 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            The data stream to append events to. Firezone creates it with explicit
-            field mappings on first delivery; manage retention with the stream's
-            lifecycle in Kibana.
+            The data stream to append events to. Firezone creates it on first
+            delivery; manage retention with the stream's lifecycle in Kibana.
           </p>
         </div>
 

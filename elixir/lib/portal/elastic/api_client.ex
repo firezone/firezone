@@ -18,86 +18,41 @@ defmodule Portal.Elastic.APIClient do
 
   alias Portal.Elastic
 
-  # Dynamic mappings lock each field's type on first sight and reject later
-  # documents that disagree, so nothing we emit may depend on inference:
+  # Elasticsearch guesses each field's type on first sight and locks the
+  # guess per backing index, so instead of enumerating fields we correct the
+  # guesser once, with rules keyed on kinds of JSON value. Rules apply to
+  # fields that do not exist yet, so schema changes need no edits here:
   #
-  # - before/after/subject carry snapshots of many different tables, so the
-  #   same path can hold an object in one document and a string in the next;
-  #   they are mapped `flattened` (leaves index as keywords, nothing to
-  #   conflict). ignore_above keeps oversized leaves (certificate PEMs, JWKs)
-  #   from rejecting the whole document via Lucene's term size limit; they
-  #   stay retrievable in _source, just not searchable.
-  # - every other envelope field is declared explicitly.
-  # - date_detection is off so a string that merely looks like a date (a
-  #   resource named "2026-07-01") cannot lock a string field as a date.
-  #
-  # Dynamic mapping remains only as a fallback for fields added in future
-  # releases, whose types render_event keeps stable.
-  @keyword %{"type" => "keyword", "ignore_above" => 1024}
-  @date %{"type" => "date"}
-  @long %{"type" => "long"}
-  @flattened %{"type" => "flattened", "ignore_above" => 8191}
-
+  # - nested objects are mapped `flattened`: before/after/subject carry
+  #   snapshots of many different tables, so the same path can hold an object
+  #   in one document and a string in the next; flattened indexes leaves as
+  #   keywords with nothing to conflict. ignore_above keeps oversized leaves
+  #   (certificate PEMs, JWKs) from rejecting the whole document; they stay
+  #   retrievable in _source, just not searchable.
+  # - strings are keywords, and date_detection is off, so a value that merely
+  #   looks like a date (a resource named "2026-07-01") cannot lock a string
+  #   field as a date. Date-valued fields ship as ISO 8601, which sorts
+  #   chronologically as a keyword; @timestamp is typed by the data stream
+  #   itself.
+  # - numbers and booleans already map correctly by default.
   @mappings %{
     "date_detection" => false,
-    "properties" => %{
-        "@timestamp" => @date,
-        "message" => %{"type" => "text"},
-        "stream" => @keyword,
-        "firezone" => %{
-          "properties" => %{
-            "type" => @keyword,
-            "log_id" => @keyword,
-            "phase" => @keyword,
-            "timestamp" => @date,
-            "object" => @keyword,
-            "operation" => @keyword,
-            "context" => @keyword,
-            "before" => @flattened,
-            "after" => @flattened,
-            "subject" => @flattened,
-            "actor_id" => @keyword,
-            "actor_email" => @keyword,
-            "actor_name" => @keyword,
-            "api_token_id" => @keyword,
-            "device_id" => @keyword,
-            "policy_authorization_id" => @keyword,
-            "policy_id" => @keyword,
-            "resource_id" => @keyword,
-            "resource_name" => @keyword,
-            "resource_address" => @keyword,
-            "method" => @keyword,
-            "path" => @keyword,
-            "request_id" => @keyword,
-            "user_agent" => @keyword,
-            "ip" => @keyword,
-            "ip_region" => @keyword,
-            "ip_city" => @keyword,
-            "role" => @keyword,
-            "protocol" => @keyword,
-            "domain" => @keyword,
-            "client_version" => @keyword,
-            "device_os_name" => @keyword,
-            "device_os_version" => @keyword,
-            "inner_src_ip" => @keyword,
-            "inner_dst_ip" => @keyword,
-            "inner_src_port" => @long,
-            "inner_dst_port" => @long,
-            "outer_src_ip" => @keyword,
-            "outer_dst_ip" => @keyword,
-            "outer_src_port" => @long,
-            "outer_dst_port" => @long,
-            "content_length" => @long,
-            "rx_packets" => @long,
-            "tx_packets" => @long,
-            "rx_bytes" => @long,
-            "tx_bytes" => @long,
-            "flow_start" => @date,
-            "flow_end" => @date,
-            "last_packet" => @date
-          }
+    "dynamic_templates" => [
+      %{
+        "firezone_objects" => %{
+          "path_match" => "firezone.*",
+          "match_mapping_type" => "object",
+          "mapping" => %{"type" => "flattened", "ignore_above" => 8191}
+        }
+      },
+      %{
+        "firezone_strings" => %{
+          "path_match" => "firezone.*",
+          "match_mapping_type" => "string",
+          "mapping" => %{"type" => "keyword", "ignore_above" => 1024}
         }
       }
+    ]
   }
 
   # Three idempotent calls, so the mappings are a live contract instead of a
@@ -156,6 +111,9 @@ defmodule Portal.Elastic.APIClient do
     statuses = Enum.map(items, &item_status/1)
 
     cond do
+      # An unrecognizable item (a middlebox mangling the response) must not
+      # bisect into drops; fail the batch and let error handling classify.
+      Enum.any?(statuses, &is_nil/1) -> :failed
       Enum.any?(statuses, &(&1 in [429, 503])) -> :retriable
       Enum.all?(statuses, &(&1 in 200..299 or &1 == 409)) -> :accepted
       true -> :malformed_payload
@@ -202,7 +160,10 @@ defmodule Portal.Elastic.APIClient do
   defp doc_id(%{log_id: log_id}), do: log_id
 
   defp item_status(item) do
-    item |> Map.values() |> List.first() |> Map.get("status")
+    case Map.values(item) do
+      [%{"status" => status} | _] -> status
+      _ -> nil
+    end
   end
 
   defp item_error_reason(item) do
@@ -233,7 +194,7 @@ defmodule Portal.Elastic.APIClient do
   defp put_mapping(sink) do
     sink
     |> request("/#{sink.data_stream}/_mapping", "application/json")
-    |> Req.put(body: JSON.encode!(%{"properties" => @mappings["properties"]}))
+    |> Req.put(body: JSON.encode!(@mappings))
     |> prepare_result()
   end
 

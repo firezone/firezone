@@ -3,9 +3,7 @@ defmodule Portal.Elastic.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
-  import Portal.APIRequestLogFixtures
   import Portal.AccountFixtures
-  import Portal.ChangeLogFixtures
   import Portal.FlowLogFixtures
   import Portal.LogSinkFixtures
   import Portal.SessionLogFixtures
@@ -53,7 +51,7 @@ defmodule Portal.Elastic.SyncTest do
   end
 
   describe "perform/1" do
-    test "creates the data stream with explicit mappings", %{account: account} do
+    test "creates the data stream with type rules instead of a field list", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
 
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
@@ -64,24 +62,22 @@ defmodule Portal.Elastic.SyncTest do
 
       mappings = get_in(template, ["template", "mappings"])
       assert mappings["date_detection"] == false
+      refute mappings["properties"]
 
-      firezone = get_in(mappings, ["properties", "firezone", "properties"])
+      rules =
+        mappings["dynamic_templates"]
+        |> Enum.flat_map(&Map.values/1)
+        |> Map.new(fn rule -> {rule["match_mapping_type"], rule["mapping"]} end)
 
-      for field <- ~w[before after subject] do
-        assert firezone[field]["type"] == "flattened"
-      end
-
-      assert firezone["resource_name"]["type"] == "keyword"
-      assert firezone["rx_bytes"]["type"] == "long"
-      assert firezone["flow_start"]["type"] == "date"
+      assert rules["object"]["type"] == "flattened"
+      assert rules["string"]["type"] == "keyword"
 
       # An already-existing data stream (the 400 the stub returns) is not an
-      # error, and mappings are re-applied additively on every run so fields
-      # added in later releases reach existing streams.
+      # error, and the rules are re-applied on every run so template repairs
+      # reach existing streams.
       assert_receive {:put, "/_data_stream/logs-firezone-default", _body}
       assert_receive {:put, "/logs-firezone-default/_mapping", mapping}
-      assert get_in(mapping, ["properties", "firezone", "properties", "rx_bytes"]) ==
-               %{"type" => "long"}
+      assert mapping["dynamic_templates"]
 
       log = session_log_fixture(account: account)
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
@@ -89,31 +85,6 @@ defmodule Portal.Elastic.SyncTest do
       cursor = get_cursor(sink, :session, :live)
       assert cursor.cursor == log.seq
       refute reload_sink(sink).errored_at
-    end
-
-    test "every envelope field has an explicit mapping declaration", %{account: account} do
-      sink = elastic_log_sink_fixture(account: account)
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
-
-      change_log_fixture(account: account)
-      session_log_fixture(account: account)
-      api_request_log_fixture(account: account)
-      flow_log_fixture(account: account)
-
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
-
-      assert_receive {:put, "/_index_template/" <> _, template}
-
-      declared =
-        get_in(template, ["template", "mappings", "properties", "firezone", "properties"])
-
-      documents = collect_documents([])
-      assert length(documents) == 4
-
-      for document <- documents, {field, _value} <- document["firezone"] do
-        assert Map.has_key?(declared, field),
-               "envelope field #{field} has no explicit Elastic mapping declaration"
-      end
     end
 
     test "bulk-creates documents with log_id as _id", %{account: account} do
@@ -346,11 +317,4 @@ defmodule Portal.Elastic.SyncTest do
     Repo.get_by!(Elastic.LogSink, account_id: sink.account_id, id: sink.id)
   end
 
-  defp collect_documents(acc) do
-    receive do
-      {:bulk, _conn, lines} -> collect_documents(acc ++ Enum.drop_every(lines, 2))
-    after
-      0 -> acc
-    end
-  end
 end
