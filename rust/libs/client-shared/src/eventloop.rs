@@ -1,6 +1,7 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
+use clock::Clock;
 use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceList};
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -8,7 +9,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{
     collections::BTreeSet,
     io,
@@ -48,6 +49,7 @@ use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, 
 static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
 pub struct Eventloop {
+    clock: Clock,
     tunnel: Option<ClientTunnel>,
 
     resolver_bypass: tunnel_bypass_resolver::Bypass,
@@ -126,12 +128,14 @@ impl Eventloop {
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
+        let mut clock = Clock::new();
 
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
+            clock.now(),
         );
         tunnel.update_system_resolvers(dns_servers.clone());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
@@ -147,6 +151,7 @@ impl Eventloop {
         ));
 
         Self {
+            clock,
             tunnel: Some(tunnel),
             resolver_bypass,
             flow_logs_dir,
@@ -234,13 +239,12 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             Command::SetInternetResourceState(active) => {
+                let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     return Ok(ControlFlow::Continue(()));
                 };
 
-                tunnel
-                    .state_mut()
-                    .set_internet_resource_state(active, Instant::now())
+                tunnel.state_mut().set_internet_resource_state(active, now)
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -250,11 +254,12 @@ impl Eventloop {
                 tunnel.set_tun(tun);
             }
             Command::Reset(reason) => {
+                let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     return Ok(ControlFlow::Continue(()));
                 };
 
-                tunnel.reset(&reason);
+                tunnel.reset(&reason, now);
                 tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
                 self.portal_cmd_tx
@@ -430,6 +435,7 @@ impl Eventloop {
     }
 
     async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
+        let now = self.clock.now();
         let Some(tunnel) = self.tunnel.as_mut() else {
             return Ok(());
         };
@@ -445,7 +451,7 @@ impl Eventloop {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .add_ice_candidate(gateway_id, candidate, Instant::now())
+                        .add_ice_candidate(gateway_id, candidate, now)
                 }
             }
             IngressMessages::ClientIceCandidates(ClientIceCandidates {
@@ -455,7 +461,7 @@ impl Eventloop {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .add_ice_candidate(client_id, candidate, Instant::now())
+                        .add_ice_candidate(client_id, candidate, now)
                 }
             }
             IngressMessages::Init(InitClient {
@@ -485,14 +491,14 @@ impl Eventloop {
                 let state = tunnel.state_mut();
 
                 state.update_interface_config(interface);
-                state.set_resources(resources, Instant::now());
-                state.update_relays(BTreeSet::default(), tunnel::turn(&relays), Instant::now());
+                state.set_resources(resources, now);
+                state.update_relays(BTreeSet::default(), tunnel::turn(&relays), now);
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
-                tunnel.state_mut().add_resource(resource, Instant::now());
+                tunnel.state_mut().add_resource(resource, now);
             }
             IngressMessages::ResourceDeleted(resource) => {
-                tunnel.state_mut().remove_resource(resource, Instant::now());
+                tunnel.state_mut().remove_resource(resource, now);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
@@ -500,7 +506,7 @@ impl Eventloop {
             }) => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
                 tunnel::turn(&connected),
-                Instant::now(),
+                now,
             ),
             IngressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
@@ -509,7 +515,7 @@ impl Eventloop {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .remove_ice_candidate(gateway_id, candidate, Instant::now())
+                        .remove_ice_candidate(gateway_id, candidate, now)
                 }
             }
             IngressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
@@ -519,7 +525,7 @@ impl Eventloop {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .remove_ice_candidate(client_id, candidate, Instant::now())
+                        .remove_ice_candidate(client_id, candidate, now)
                 }
             }
             IngressMessages::FlowCreated(FlowCreated {
@@ -550,7 +556,7 @@ impl Eventloop {
                     client_ice_credentials,
                     gateway_ice_credentials,
                     use_iceless,
-                    Instant::now(),
+                    now,
                 ) {
                     Ok(Ok(())) => {}
                     Ok(Err(e @ snownet::NoTurnServers {})) => {
@@ -575,9 +581,7 @@ impl Eventloop {
 
                 match reason {
                     FailReason::Offline => {
-                        tunnel
-                            .state_mut()
-                            .set_resource_offline(resource_id, Instant::now());
+                        tunnel.state_mut().set_resource_offline(resource_id, now);
 
                         let _ = self
                             .user_notification_sender
@@ -639,7 +643,7 @@ impl Eventloop {
                     use_iceless,
                     client_name,
                     authorization,
-                    Instant::now(),
+                    now,
                 ) {
                     Ok(()) => {}
                     Err(e @ snownet::NoTurnServers {}) => {
@@ -675,12 +679,9 @@ impl Eventloop {
                 ipv6,
                 reason,
             }) => {
-                tunnel.state_mut().handle_client_device_access_denied(
-                    ipv4,
-                    ipv6,
-                    reason,
-                    Instant::now(),
-                );
+                tunnel
+                    .state_mut()
+                    .handle_client_device_access_denied(ipv4, ipv6, reason, now);
             }
             IngressMessages::DevicePoolDomainResolved(DevicePoolDomainResolved {
                 resource_id,
@@ -727,7 +728,8 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
 
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx)) {
+        let now = self.clock.now();
+        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
@@ -735,13 +737,14 @@ impl Eventloop {
     }
 
     async fn shut_down_tunnel(&mut self) -> Result<()> {
+        let now = self.clock.now();
         let Some(tunnel) = self.tunnel.take() else {
             tracing::debug!("Tunnel has already been shut down");
             return Ok(());
         };
 
         tunnel
-            .shut_down()
+            .shut_down(now)
             .await
             .context("Failed to shut down tunnel")?;
 

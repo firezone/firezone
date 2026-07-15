@@ -28,6 +28,7 @@ anyhow = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
+clock = { workspace = true }
 dns-types = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
