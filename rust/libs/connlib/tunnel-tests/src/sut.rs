@@ -1384,7 +1384,13 @@ impl TunnelTest {
         global_dns_records: &DnsRecords,
         now: Instant,
     ) -> dns_types::Response {
-        const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
+        // Long enough that a query repeated within one `advance` window is served
+        // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
+        // the entry — so the corpus exercises the cache hit and expiry paths. The
+        // reference model is cache-agnostic (it expects a response per query
+        // regardless of how it is produced), so activating the cache is
+        // observationally transparent.
+        const TTL: u32 = 30;
 
         let qtype = query.qtype();
         let domain = query.domain();
