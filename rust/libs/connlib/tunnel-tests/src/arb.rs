@@ -284,6 +284,11 @@ pub fn run_fuzz_case_structured(data: &[u8]) {
             continue;
         }
 
+        // One line per applied transition. Silent during mass fuzzing (no
+        // subscriber is installed unless `RUST_LOG` is set); with `RUST_LOG`
+        // this makes a reduced/crashing input self-describing on stderr.
+        tracing::debug!("Applying transition {applied}: {transition:?}");
+
         if transition.should_clear_packets() {
             ReferenceState::clear_packets(&mut ref_state);
             TunnelTest::clear_packets(&mut sut);

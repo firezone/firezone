@@ -62,6 +62,13 @@ env = { CARGO_PROFILE_RELEASE_LTO = "false" }
 raw = true
 run = "cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0"
 
+[tasks.tunnel-fuzz-repro]
+description = "Replay one fuzz input through the tunnel target with tracing, so a crash/reduced case prints its scenario to stderr. Reduce a crash first with `cargo +nightly fuzz tmin --fuzz-dir tests/fuzz tunnel <artifact>`. Override RUST_LOG for more detail."
+usage = 'arg "testcase" help="Path to a fuzz input, e.g. tests/fuzz/artifacts/tunnel/crash-..."'
+env = { CARGO_PROFILE_RELEASE_LTO = "false" }
+raw = true
+run = 'RUST_LOG="${RUST_LOG:-debug}" cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel "${usage_testcase}"'
+
 [tasks.tauri-mock]
 description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
 dir = "gui-client"

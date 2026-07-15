@@ -45,6 +45,27 @@ For the `tunnel` target, allow long inputs so deep scenarios stay reachable:
 cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0
 ```
 
+## Reproducing a crash
+
+A crash writes the offending input to `artifacts/tunnel/`. To triage it:
+
+1. Reduce it (libFuzzer test-case minimization; the positional decoder shrinks
+   cleanly since dropping trailing bytes drops trailing transitions):
+
+   ```
+   cargo +nightly fuzz tmin --fuzz-dir tests/fuzz --target-dir ./target tunnel artifacts/tunnel/crash-<hash>
+   ```
+
+1. Replay the single input with tracing to see the scenario. The harness
+   installs a stderr subscriber only when `RUST_LOG` is set (mass fuzzing runs
+   silent), and logs one line per applied transition plus the connlib trace:
+
+   ```
+   RUST_LOG=debug cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel <reduced-input> 2> repro.log
+   ```
+
+   Or via mise: `mise run tunnel-fuzz-repro <reduced-input>` (set `RUST_LOG=trace` for more).
+
 ## Coverage
 
 1. Replay the corpus under instrumentation (writes
