@@ -1052,8 +1052,9 @@ defmodule PortalWeb.Settings.LogSinks do
             <li>
               You need a Log Analytics workspace: use the one Microsoft Sentinel is enabled
               on. If you don't have one yet, search for
-              <strong>Log Analytics workspaces</strong> in the Azure portal, create one, then
-              enable Microsoft Sentinel on it.
+              <strong>Log Analytics workspaces</strong> in the Azure portal and create one,
+              then search for <strong>Microsoft Sentinel</strong>, choose
+              <strong>Create</strong>, and add it to that workspace.
             </li>
             <li>
               Search for <strong>Data collection endpoints</strong> in the Azure portal and
