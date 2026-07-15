@@ -80,7 +80,7 @@ defmodule Portal.Splunk.SyncTest do
 
       sourcetypes =
         for _batch <- 1..4 do
-          assert_receive {:hec, _conn, [event]}
+          assert_receive {:hec, _conn, [event | _rest]}
           event["sourcetype"]
         end
 
@@ -180,7 +180,7 @@ defmodule Portal.Splunk.SyncTest do
       assert get_cursor(sink, :session, :backfill).completed_at
     end
 
-    test "a closed flow is delivered again as an end event", %{account: account} do
+    test "closing a delivered flow sends only the end event", %{account: account} do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:flow])
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
@@ -198,41 +198,82 @@ defmodule Portal.Splunk.SyncTest do
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [start_event]}
-      assert start_event["event"]["phase"] == "start"
-      assert start_event["event"]["log_id"] == flow.log_id
+      assert start_event["event"]["log_id"] == flow.log_id <> "-s"
+      refute Map.has_key?(start_event["event"], "phase")
       assert start_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_start)
       assert_in_delta String.to_float(start_event["time"]),
                       DateTime.to_unix(flow.flow_start, :millisecond) / 1000,
                       0.001
 
       flow_end = DateTime.utc_now()
-
-      from(f in FlowLog,
-        where: f.account_id == ^account.id,
-        update: [
-          set: [
-            seq: fragment("nextval('flow_logs_seq_seq')"),
-            flow_end: ^flow_end,
-            last_packet: ^flow_end,
-            rx_packets: 10,
-            tx_packets: 12,
-            rx_bytes: 1024,
-            tx_bytes: 2048
-          ]
-        ]
-      )
-      |> Repo.update_all([])
+      close_flow(account, flow_end)
 
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
+      # start_seq sits at or below this sink's frontier, so the start is known
+      # to be delivered and only the end event ships: no duplicates.
       assert_receive {:hec, _conn, [end_event]}
-      assert end_event["event"]["phase"] == "end"
+      assert end_event["event"]["log_id"] == flow.log_id <> "-e"
       assert end_event["event"]["timestamp"] == DateTime.to_iso8601(flow_end)
-      assert end_event["event"]["log_id"] == flow.log_id
       assert end_event["event"]["rx_bytes"] == 1024
       assert_in_delta String.to_float(end_event["time"]),
                       DateTime.to_unix(flow_end, :millisecond) / 1000,
                       0.001
+    end
+
+    test "a flow that closes before delivery sends both events", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:flow])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      flow =
+        flow_log_fixture(
+          account: account,
+          flow_end: nil,
+          last_packet: nil,
+          rx_packets: nil,
+          tx_packets: nil,
+          rx_bytes: nil,
+          tx_bytes: nil
+        )
+
+      # Closed before any sync swept the open-state row: start_seq is above
+      # the sink's frontier, so the start must be synthesized.
+      close_flow(account, DateTime.utc_now())
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [start_event, end_event]}
+      assert start_event["event"]["log_id"] == flow.log_id <> "-s"
+      refute start_event["event"]["rx_bytes"]
+      assert end_event["event"]["log_id"] == flow.log_id <> "-e"
+      assert end_event["event"]["rx_bytes"] == 1024
+    end
+
+    test "a backfilled closed flow delivers both start and end events", %{account: account} do
+      flow = flow_log_fixture(account: account)
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:flow]
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [start_event, end_event]}
+      assert start_event["event"]["log_id"] == flow.log_id <> "-s"
+      assert start_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_start)
+      refute start_event["event"]["flow_end"]
+      refute start_event["event"]["rx_bytes"]
+
+      assert end_event["event"]["log_id"] == flow.log_id <> "-e"
+      assert end_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_end)
+      assert end_event["event"]["rx_bytes"] == flow.rx_bytes
+
+      backfill = get_cursor(sink, :flow, :backfill)
+      assert backfill.synced_count == 2
+      assert backfill.completed_at
     end
 
     test "splits deliveries that exceed the HEC request size limit", %{account: account} do
@@ -649,6 +690,25 @@ defmodule Portal.Splunk.SyncTest do
       refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: feature_off_sink.id})
     end
+  end
+
+  defp close_flow(account, flow_end) do
+    from(f in FlowLog,
+      where: f.account_id == ^account.id,
+      update: [
+        set: [
+          start_seq: f.seq,
+          seq: fragment("nextval('flow_logs_seq_seq')"),
+          flow_end: ^flow_end,
+          last_packet: ^flow_end,
+          rx_packets: 10,
+          tx_packets: 12,
+          rx_bytes: 1024,
+          tx_bytes: 2048
+        ]
+      ]
+    )
+    |> Repo.update_all([])
   end
 
   defp get_cursor(sink, stream, phase) do
