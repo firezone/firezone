@@ -302,6 +302,7 @@ defmodule Portal.LogSinks.Delivery do
        type: "flow",
        log_id: log.log_id,
        phase: phase,
+       timestamp: log.flow_end || log.flow_start,
        flow_start: log.flow_start,
        flow_end: log.flow_end,
        last_packet: log.last_packet,
