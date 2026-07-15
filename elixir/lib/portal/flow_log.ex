@@ -64,6 +64,7 @@ defmodule Portal.FlowLog do
     belongs_to :account, Portal.Account, primary_key: true
     field :log_id, Portal.Types.LogId
     field :seq, :integer, read_after_writes: true
+    field :start_seq, :integer
 
     field :device_id, :binary_id, primary_key: true
     field :role, Ecto.Enum, values: @roles, primary_key: true

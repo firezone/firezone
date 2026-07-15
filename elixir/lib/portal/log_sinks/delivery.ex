@@ -80,8 +80,10 @@ defmodule Portal.LogSinks.Delivery do
 
   defp deliver_batch(sink, adapter, cursor, rows, budget) do
     encoded =
-      Enum.map(rows, fn row ->
-        {row.seq, adapter.encode_event(sink, cursor.stream, render_event(cursor.stream, row))}
+      Enum.flat_map(rows, fn row ->
+        for event <- render_event(cursor.stream, row, cursor.cursor) do
+          {row.seq, adapter.encode_event(sink, cursor.stream, event)}
+        end
       end)
 
     case deliver_chunks(sink, adapter, cursor, chunk_by_bytes(encoded, max_body_bytes())) do
@@ -161,24 +163,32 @@ defmodule Portal.LogSinks.Delivery do
     end
   end
 
+  # Same-seq events (a flow's start/end pair) never split across chunks: the
+  # cursor advances past their seq when a chunk lands, so a crash between
+  # chunks could otherwise lose the trailing half of the pair.
   defp chunk_by_bytes(encoded, max_bytes) do
-    Enum.chunk_while(
-      encoded,
+    encoded
+    |> Enum.chunk_by(fn {seq, _json} -> seq end)
+    |> Enum.chunk_while(
       {[], 0},
-      fn {_seq, json} = item, {acc, bytes} ->
-        size = byte_size(json) + 1
+      fn group, {acc, bytes} ->
+        size = group |> Enum.map(fn {_seq, json} -> byte_size(json) + 1 end) |> Enum.sum()
 
         cond do
-          acc == [] -> {:cont, {[item], size}}
-          bytes + size > max_bytes -> {:cont, Enum.reverse(acc), {[item], size}}
-          true -> {:cont, {[item | acc], bytes + size}}
+          acc == [] -> {:cont, {[group], size}}
+          bytes + size > max_bytes -> {:cont, flatten_groups(acc), {[group], size}}
+          true -> {:cont, {[group | acc], bytes + size}}
         end
       end,
       fn
         {[], _bytes} -> {:cont, []}
-        {acc, _bytes} -> {:cont, Enum.reverse(acc), []}
+        {acc, _bytes} -> {:cont, flatten_groups(acc), []}
       end
     )
+  end
+
+  defp flatten_groups(reversed_groups) do
+    reversed_groups |> Enum.reverse() |> List.flatten()
   end
 
   # Clears transient error streaks only. A disabled sink never syncs, so
@@ -247,8 +257,9 @@ defmodule Portal.LogSinks.Delivery do
 
   defp format_error(_adapter, :cursor_conflict), do: "Concurrent sync detected."
 
-  defp render_event(:change, log) do
-    {epoch(log.timestamp),
+  defp render_event(:change, log, _batch_floor) do
+    [
+      {epoch(log.timestamp),
      %{
        type: "change",
        log_id: log.log_id,
@@ -259,10 +270,12 @@ defmodule Portal.LogSinks.Delivery do
        after: log.after,
        subject: log.subject
      }}
+    ]
   end
 
-  defp render_event(:session, log) do
-    {epoch(log.timestamp),
+  defp render_event(:session, log, _batch_floor) do
+    [
+      {epoch(log.timestamp),
      %{
        type: "session",
        log_id: log.log_id,
@@ -270,10 +283,12 @@ defmodule Portal.LogSinks.Delivery do
        context: log.context,
        subject: log.subject
      }}
+    ]
   end
 
-  defp render_event(:api_request, log) do
-    {epoch(log.inserted_at),
+  defp render_event(:api_request, log, _batch_floor) do
+    [
+      {epoch(log.inserted_at),
      %{
        type: "api_request",
        log_id: log.log_id,
@@ -289,22 +304,51 @@ defmodule Portal.LogSinks.Delivery do
        ip_region: log.ip_region,
        ip_city: log.ip_city
      }}
+    ]
   end
 
-  defp render_event(:flow, log) do
-    phase =
-      if is_nil(log.flow_end) do
-        "start"
-      else
-        "end"
-      end
+  # A flow yields two logical events sharing its log_id. The close bumps seq
+  # and replaces the open-state row, so a sink that was not live for the open
+  # phase (backfills, fast-closing flows) would otherwise never see a start
+  # event: a closed row therefore renders as a start/end pair. Sinks that
+  # already delivered the start at open time redeliver it here; (log_id,
+  # phase) stays the dedup key, and destinations with _id semantics collapse
+  # it entirely.
+  defp render_event(:flow, %{flow_end: nil} = log, _batch_floor) do
+    [flow_event(log, "-s", log.flow_start)]
+  end
 
-    {epoch(log.flow_end || log.flow_start),
+  # A closed row is the only version left of the flow, so the start event is
+  # synthesized unless this sink already delivered it: start_seq records the
+  # open-state seq the close replaced, and the frontier can only have swept
+  # that version if it lies at or below where this batch started. Suffixed
+  # log_ids make log_id alone the dedup key everywhere.
+  defp render_event(:flow, log, batch_floor) do
+    end_event = flow_event(log, "-e", log.flow_end)
+
+    if is_nil(log.start_seq) or log.start_seq > batch_floor do
+      open = %{
+        log
+        | flow_end: nil,
+          last_packet: nil,
+          rx_packets: nil,
+          tx_packets: nil,
+          rx_bytes: nil,
+          tx_bytes: nil
+      }
+
+      [flow_event(open, "-s", log.flow_start), end_event]
+    else
+      [end_event]
+    end
+  end
+
+  defp flow_event(log, suffix, time) do
+    {epoch(time),
      %{
        type: "flow",
-       log_id: log.log_id,
-       phase: phase,
-       timestamp: log.flow_end || log.flow_start,
+       log_id: log.log_id <> suffix,
+       timestamp: time,
        flow_start: log.flow_start,
        flow_end: log.flow_end,
        last_packet: log.last_packet,
