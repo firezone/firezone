@@ -4,8 +4,6 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
     SecretKey, SnownetCapabilities,
 };
-
-pub use crate::messages::Authorization;
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -15,6 +13,8 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
+
+pub use crate::messages::Authorization;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone)]
