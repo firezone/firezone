@@ -18,7 +18,7 @@ defmodule PortalWeb do
   """
 
   def static_paths,
-    do: ~w(assets fonts images .well-known site.webmanifest favicon.ico robots.txt)
+    do: ~w(assets downloads fonts images .well-known site.webmanifest favicon.ico robots.txt)
 
   def router do
     quote do

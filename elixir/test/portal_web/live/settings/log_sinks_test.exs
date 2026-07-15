@@ -411,6 +411,41 @@ defmodule PortalWeb.Settings.LogSinksTest do
                "https://login.microsoftonline.com/#{tenant_id}/adminconsent?client_id=test_sentinel_client_id"
     end
 
+    test "renders the Sentinel setup tabs with prefilled snippets", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/sentinel/new")
+
+      assert html =~ "/downloads/firezone-sentinel-sample.json"
+      assert html =~ "New custom log (DCR-based)"
+
+      sample_conn = get(conn, ~p"/downloads/firezone-sentinel-sample.json")
+      assert [record | _] = JSON.decode!(sample_conn.resp_body)
+      assert Map.keys(record) == ["Firezone", "Message", "Stream", "TimeGenerated"]
+
+      html =
+        lv
+        |> element("button[phx-value-tab=cli]")
+        |> render_click()
+
+      assert html =~ "az monitor data-collection rule create"
+      assert html =~ "az ad sp show --id test_sentinel_client_id"
+
+      html =
+        lv
+        |> element("button[phx-value-tab=terraform]")
+        |> render_click()
+
+      assert html =~ "azurerm_monitor_data_collection_rule"
+      assert html =~ "azuread_service_principal"
+      assert html =~ "test_sentinel_client_id"
+    end
+
     test "renders validation errors for an invalid DCR immutable ID", %{
       conn: conn,
       account: account,
