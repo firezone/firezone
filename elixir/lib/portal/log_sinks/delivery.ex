@@ -35,12 +35,7 @@ defmodule Portal.LogSinks.Delivery do
   def sync(sink, adapter) do
     Database.seed_missing_cursors(sink)
 
-    result =
-      with :ok <- prepare(sink, adapter) do
-        sync_cursors(sink, adapter)
-      end
-
-    case result do
+    case sync_cursors(sink, adapter) do
       :ok -> handle_success(sink)
       {:error, reason} -> handle_error(sink, adapter, reason)
     end
@@ -48,7 +43,12 @@ defmodule Portal.LogSinks.Delivery do
     :ok
   end
 
-  defp prepare(sink, adapter) do
+  # Adapter setup (and any credentials it fetches) runs lazily, before the
+  # first batch that actually has rows: an idle run makes no destination
+  # calls at all, which matters at one scheduled run per minute per sink.
+  defp ensure_prepared(_sink, _adapter, true), do: :ok
+
+  defp ensure_prepared(sink, adapter, false) do
     # function_exported? alone is a trap outside embedded-mode releases: it
     # returns false for a module that merely has not been loaded yet.
     if Code.ensure_loaded?(adapter) and function_exported?(adapter, :prepare, 1) do
@@ -61,13 +61,18 @@ defmodule Portal.LogSinks.Delivery do
   defp sync_cursors(sink, adapter) do
     registry = Database.load_field_types()
 
-    Enum.reduce_while(Database.list_cursors(sink), :ok, fn cursor, :ok ->
-      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream, registry) do
-        :ok -> {:cont, :ok}
-        {:error, :undeliverable} -> {:cont, :ok}
+    Database.list_cursors(sink)
+    |> Enum.reduce_while({:ok, false}, fn cursor, {:ok, prepared?} ->
+      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream, registry, prepared?) do
+        {:ok, prepared?} -> {:cont, {:ok, prepared?}}
+        {:error, :undeliverable} -> {:cont, {:ok, true}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+    |> case do
+      {:ok, _prepared?} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # Rows younger than this are not delivered yet: a row whose seq was assigned
@@ -85,16 +90,18 @@ defmodule Portal.LogSinks.Delivery do
     |> Keyword.get(:max_body_bytes, 512_000)
   end
 
-  defp sync_cursor(_sink, _adapter, _cursor, 0, _registry), do: :ok
+  defp sync_cursor(_sink, _adapter, _cursor, 0, _registry, prepared?), do: {:ok, prepared?}
 
-  defp sync_cursor(sink, adapter, cursor, budget, registry) do
+  defp sync_cursor(sink, adapter, cursor, budget, registry, prepared?) do
     case Database.next_batch(cursor, @batch_size, visibility_lag_seconds()) do
       [] ->
         Database.maybe_complete_backfill(cursor, visibility_lag_seconds())
-        :ok
+        {:ok, prepared?}
 
       rows ->
-        deliver_batch(sink, adapter, cursor, rows, budget, registry)
+        with :ok <- ensure_prepared(sink, adapter, prepared?) do
+          deliver_batch(sink, adapter, cursor, rows, budget, registry)
+        end
     end
   end
 
@@ -114,7 +121,7 @@ defmodule Portal.LogSinks.Delivery do
       end)
 
     case deliver_chunks(sink, adapter, cursor, chunk_by_bytes(encoded, max_body_bytes())) do
-      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1, registry)
+      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1, registry, true)
       {:error, reason} -> {:error, reason}
     end
   end

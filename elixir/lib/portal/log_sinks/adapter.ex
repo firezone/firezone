@@ -7,9 +7,10 @@ defmodule Portal.LogSinks.Adapter do
   """
 
   @doc """
-  Optional one-time setup per sync run, before any batch is posted (e.g.
-  ensuring a destination index exists with the right mappings). An error
-  return feeds the same error path as a failed delivery.
+  Optional one-time setup per sync run, invoked before the first batch that
+  has rows to post (e.g. ensuring a destination data stream exists with the
+  right mappings); runs with nothing to deliver make no destination calls.
+  An error return feeds the same error path as a failed delivery.
   """
   @callback prepare(sink :: struct()) ::
               :ok | {:error, {:status, Req.Response.t()} | {:transport, Exception.t()}}

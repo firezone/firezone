@@ -54,6 +54,11 @@ defmodule Portal.Elastic.SyncTest do
     test "creates the data stream with type rules instead of a field list", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
 
+      # An idle run has nothing to deliver and makes no destination calls.
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      refute_receive {:put, _path, _body}
+
+      session_log_fixture(account: account)
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
 
       assert_receive {:put, "/_index_template/firezone-logs-firezone-default", template}
@@ -79,11 +84,8 @@ defmodule Portal.Elastic.SyncTest do
       assert_receive {:put, "/logs-firezone-default/_mapping", mapping}
       assert mapping["dynamic_templates"]
 
-      log = session_log_fixture(account: account)
-      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
-
       cursor = get_cursor(sink, :session, :live)
-      assert cursor.cursor == log.seq
+      assert cursor.synced_count == 1
       refute reload_sink(sink).errored_at
     end
 
