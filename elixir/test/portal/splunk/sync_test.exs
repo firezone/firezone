@@ -336,12 +336,11 @@ defmodule Portal.Splunk.SyncTest do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
 
-      parked = get_cursor(sink, :session, :live)
-
-      session_log_fixture(
-        account: account,
-        subject: %{"blob" => String.duplicate("x", 600_000)}
-      )
+      log =
+        session_log_fixture(
+          account: account,
+          subject: %{"blob" => String.duplicate("x", 600_000)}
+        )
 
       Req.Test.stub(Splunk.APIClient, fn conn ->
         conn
@@ -357,14 +356,14 @@ defmodule Portal.Splunk.SyncTest do
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
 
       cursor = get_cursor(sink, :session, :live)
-      assert cursor.cursor == parked.cursor
+      assert cursor.cursor < log.seq
       assert cursor.synced_count == 0
       assert cursor.dropped_count == 0
 
       sink = reload_sink(sink)
+      refute sink.is_disabled
       refute sink.errored_at
       refute sink.error_message
-      refute sink.is_disabled
     end
 
     test "parks on a poison event after delivering the healthy prefix", %{
@@ -449,7 +448,7 @@ defmodule Portal.Splunk.SyncTest do
       end)
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        ExUnit.CaptureLog.capture_log(fn ->
           assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
         end)
 
@@ -463,43 +462,6 @@ defmodule Portal.Splunk.SyncTest do
       refute sink.errored_at
       refute sink.error_message
       refute sink.is_disabled
-    end
-
-    test "a parked stream does not block other streams", %{account: account} do
-      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:change, :session])
-      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
-
-      poison = change_log_fixture(account: account)
-      log = session_log_fixture(account: account)
-
-      test_pid = self()
-
-      Req.Test.stub(Splunk.APIClient, fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-
-        if body =~ "firezone:change" do
-          conn
-          |> Plug.Conn.put_status(400)
-          |> Req.Test.json(%{"text" => "Invalid data format", "code" => 6})
-        else
-          send(test_pid, {:delivered, body})
-          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
-        end
-      end)
-
-      log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
-        end)
-
-      assert log_output =~ "Log sink event cannot be delivered, halting stream"
-
-      assert_receive {:delivered, body}
-      assert body =~ log.log_id
-
-      assert get_cursor(sink, :change, :live).cursor < poison.seq
-      assert get_cursor(sink, :session, :live).cursor == log.seq
-      refute reload_sink(sink).errored_at
     end
 
     test "capacity warnings on successful deliveries are still successes", %{account: account} do

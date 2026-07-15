@@ -17,6 +17,9 @@ defmodule Portal.Elastic.APIClient do
   @behaviour Portal.LogSinks.Adapter
 
   alias Portal.Elastic
+  alias __MODULE__.Database
+
+  require Logger
 
   # Elasticsearch guesses each field's type on first sight and locks the
   # guess per backing index, so instead of enumerating fields we correct the
@@ -66,6 +69,19 @@ defmodule Portal.Elastic.APIClient do
          :ok <- create_data_stream(sink) do
       put_mapping(sink)
     end
+  end
+
+  # A mapping rejection is healed by starting a fresh backing index: the
+  # corrected template applies to it immediately, so the parked event
+  # delivers on the next run. The cooldown stops a rejection the template
+  # cannot fix from creating an index per minute.
+  @impl true
+  def recover_undeliverable(%Elastic.LogSink{} = sink, %Req.Response{} = response) do
+    if mapping_conflict?(response) and rollover_cooldown_elapsed?(sink) do
+      rollover(sink)
+    end
+
+    :ok
   end
 
   @impl true
@@ -230,8 +246,78 @@ defmodule Portal.Elastic.APIClient do
     )
   end
 
+  @mapping_conflict_types ~w[mapper_parsing_exception document_parsing_exception
+                             strict_dynamic_mapping_exception illegal_argument_exception]
+
+  defp mapping_conflict?(%Req.Response{body: %{"items" => items}}) do
+    Enum.any?(items, fn item ->
+      type = item |> Map.values() |> List.first() |> get_in(["error", "type"])
+      type in @mapping_conflict_types
+    end)
+  end
+
+  defp mapping_conflict?(_response), do: false
+
+  defp rollover_cooldown_elapsed?(%Elastic.LogSink{last_rollover_at: nil}), do: true
+
+  defp rollover_cooldown_elapsed?(%Elastic.LogSink{last_rollover_at: last}) do
+    DateTime.before?(last, DateTime.add(DateTime.utc_now(), -3600, :second))
+  end
+
+  defp rollover(sink) do
+    result =
+      sink
+      |> request("/#{sink.data_stream}/_rollover", "application/json")
+      |> Req.post(body: "")
+
+    case result do
+      {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        Database.record_rollover(sink)
+
+        Logger.warning("Rolled Elastic data stream over after a mapping rejection",
+          elastic_log_sink_id: sink.id,
+          account_id: sink.account_id,
+          data_stream: sink.data_stream
+        )
+
+      {:ok, %Req.Response{} = response} ->
+        Logger.warning("Elastic data stream rollover failed",
+          elastic_log_sink_id: sink.id,
+          account_id: sink.account_id,
+          response_status: response.status,
+          response_body: response.body
+        )
+
+      {:error, exception} ->
+        Logger.warning("Elastic data stream rollover failed",
+          elastic_log_sink_id: sink.id,
+          account_id: sink.account_id,
+          reason: inspect(exception)
+        )
+    end
+  end
+
   defp req_opts do
     Portal.Config.fetch_env!(:portal, __MODULE__)
     |> Keyword.fetch!(:req_opts)
+  end
+
+  defmodule Database do
+    import Ecto.Query
+
+    alias Portal.Safe
+
+    def record_rollover(sink) do
+      now = DateTime.utc_now()
+
+      from(s in Portal.Elastic.LogSink,
+        where: s.account_id == ^sink.account_id,
+        where: s.id == ^sink.id
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [last_rollover_at: now, updated_at: now])
+
+      :ok
+    end
   end
 end

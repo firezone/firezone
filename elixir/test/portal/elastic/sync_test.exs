@@ -213,58 +213,75 @@ defmodule Portal.Elastic.SyncTest do
       assert sink.errored_at
     end
 
-    test "a poison document is isolated and dropped", %{account: account} do
+    test "a mapping rejection parks the stream and rolls the data stream over", %{
+      account: account
+    } do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
 
-      session_log_fixture(account: account, actor_email: "fine@example.com")
-      session_log_fixture(account: account, actor_email: "poison@example.com")
+      fine = session_log_fixture(account: account, actor_email: "fine@example.com")
+      poison = session_log_fixture(account: account, actor_email: "poison@example.com")
 
-      test_pid = self()
-
-      Req.Test.stub(Elastic.APIClient, fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        lines = body |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
-        documents = lines |> Enum.drop_every(2)
-
-        items =
-          Enum.map(documents, fn document ->
-            if document["firezone"]["subject"]["actor_email"] == "poison@example.com" do
-              %{
-                "create" => %{
-                  "status" => 400,
-                  "error" => %{"type" => "document_parsing_exception", "reason" => "bad field"}
-                }
-              }
-            else
-              send(test_pid, {:indexed, document["firezone"]["log_id"]})
-              %{"create" => %{"status" => 201}}
-            end
-          end)
-
-        errors = Enum.any?(items, fn item -> item["create"]["status"] != 201 end)
-        Req.Test.json(conn, %{"took" => 2, "errors" => errors, "items" => items})
-      end)
+      stub_with_poison(self(), "document_parsing_exception")
 
       log_output =
-        ExUnit.CaptureLog.capture_log(fn ->
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
           assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
         end)
 
-      # Drops page us via error-level logs but never touch the sink's
-      # customer-facing error state: a rejected document is our schema bug,
-      # not something an admin can fix by editing the sink.
-      assert log_output =~ "Dropping undeliverable log sink event"
-      assert log_output =~ "bad field"
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
 
+      assert_receive {:rollover, "/logs-firezone-default/_rollover"}
+
+      # The healthy prefix is delivered and the cursor parks just before the
+      # poison event: nothing is skipped, and after the rollover the next run
+      # can deliver it against the corrected mappings.
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 1
-      assert cursor.dropped_count == 1
+      assert cursor.dropped_count == 0
+      assert cursor.cursor == fine.seq
+      assert cursor.cursor < poison.seq
 
       sink = reload_sink(sink)
+      assert sink.last_rollover_at
       refute sink.is_disabled
       refute sink.errored_at
       refute sink.error_message
+    end
+
+    test "rollovers are rate limited by the cooldown", %{account: account} do
+      sink =
+        elastic_log_sink_fixture(
+          account: account,
+          enabled_streams: [:session],
+          last_rollover_at: DateTime.utc_now()
+        )
+
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account, actor_email: "poison@example.com")
+
+      stub_with_poison(self(), "document_parsing_exception")
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      end)
+
+      refute_receive {:rollover, _path}
+    end
+
+    test "a non-mapping rejection parks without rolling over", %{account: account} do
+      sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account, actor_email: "poison@example.com")
+
+      stub_with_poison(self(), "circuit_breaking_exception")
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+      end)
+
+      refute_receive {:rollover, _path}
+      refute reload_sink(sink).last_rollover_at
     end
 
     test "a 401 disables the sink immediately", %{account: account} do
@@ -315,6 +332,42 @@ defmodule Portal.Elastic.SyncTest do
 
   defp reload_sink(sink) do
     Repo.get_by!(Elastic.LogSink, account_id: sink.account_id, id: sink.id)
+  end
+
+  defp stub_with_poison(test_pid, error_type) do
+    Req.Test.stub(Elastic.APIClient, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+      cond do
+        conn.method == "PUT" ->
+          Req.Test.json(conn, %{"acknowledged" => true})
+
+        String.ends_with?(conn.request_path, "/_rollover") ->
+          send(test_pid, {:rollover, conn.request_path})
+          Req.Test.json(conn, %{"acknowledged" => true, "rolled_over" => true})
+
+        true ->
+          lines = body |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
+          documents = lines |> Enum.drop_every(2)
+
+          items =
+            Enum.map(documents, fn document ->
+              if document["firezone"]["subject"]["actor_email"] == "poison@example.com" do
+                %{
+                  "create" => %{
+                    "status" => 400,
+                    "error" => %{"type" => "#{error_type}", "reason" => "bad field"}
+                  }
+                }
+              else
+                %{"create" => %{"status" => 201}}
+              end
+            end)
+
+          errors = Enum.any?(items, fn item -> item["create"]["status"] != 201 end)
+          Req.Test.json(conn, %{"took" => 2, "errors" => errors, "items" => items})
+      end
+    end)
   end
 
 end

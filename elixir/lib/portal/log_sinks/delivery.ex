@@ -13,9 +13,11 @@ defmodule Portal.LogSinks.Delivery do
   in a `Portal.LogSinks.Adapter`. Errors follow the directory sync
   convention: an unrecoverable response disables the sink immediately,
   transient failures (408/429/5xx/transport) disable it only after 24 hours
-  of continuous failure. An event the destination rejects outright parks its
-  stream and pages us with no customer-facing state at all: failing to map
-  our own data is our bug to fix, not the admin's. Nothing here can re-enable a disabled sink.
+  of continuous failure. Nothing here can re-enable a disabled sink. An
+  event the destination rejects outright parks its stream and pages us with
+  no customer-facing state at all: failing to map our own data is our bug to
+  fix, not the admin's. Adapters may implement `recover_undeliverable/2` to
+  attempt destination-side self-healing before the next run retries.
   """
 
   alias __MODULE__.Database
@@ -257,11 +259,11 @@ defmodule Portal.LogSinks.Delivery do
 
   # A single event the destination rejects is never skipped: the cursor parks
   # on it and the error pages us with the exact request and response, every
-  # run, until we fix the cause and delivery resumes with nothing lost. The
+  # run, until the cause is fixed and delivery resumes with nothing lost. The
   # sink's customer-facing state stays untouched and other streams keep
-  # flowing. A rejected multi-event chunk is bisected until the offender is
-  # isolated, delivering the healthy events along the way.
-  defp handle_rejected_chunk(_sink, _adapter, cursor, [{seq, json}] = _chunk, response, reason) do
+  # flowing. The adapter gets a chance to self-heal the destination (Elastic
+  # rolls the data stream over) so the next run can deliver the parked event.
+  defp handle_rejected_chunk(sink, adapter, cursor, [{seq, json}] = _chunk, response, reason) do
     Logger.error("Log sink event cannot be delivered, halting stream",
       log_sink_id: cursor.log_sink_id,
       account_id: cursor.account_id,
@@ -274,6 +276,8 @@ defmodule Portal.LogSinks.Delivery do
       response_body: response.body
     )
 
+    recover_undeliverable(sink, adapter, response)
+
     {:error, :undeliverable}
   end
 
@@ -282,6 +286,14 @@ defmodule Portal.LogSinks.Delivery do
 
     with {:ok, cursor} <- deliver_chunk(sink, adapter, cursor, left) do
       deliver_chunk(sink, adapter, cursor, right)
+    end
+  end
+
+  defp recover_undeliverable(sink, adapter, response) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :recover_undeliverable, 2) do
+      adapter.recover_undeliverable(sink, response)
+    else
+      :ok
     end
   end
 

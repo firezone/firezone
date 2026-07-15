@@ -182,6 +182,7 @@ defmodule Portal.LogSinkFixtures do
         :endpoint_url,
         :api_key,
         :data_stream,
+        :last_rollover_at,
         :enabled_streams,
         :retroactive,
         :errored_at,

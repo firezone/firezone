@@ -19,6 +19,7 @@ defmodule Portal.Elastic.LogSink do
           error_message: String.t() | nil,
           error_email_count: non_neg_integer(),
           last_error_email_at: DateTime.t() | nil,
+          last_rollover_at: DateTime.t() | nil,
           is_disabled: boolean(),
           disabled_reason: String.t() | nil,
           inserted_at: DateTime.t(),
@@ -50,6 +51,7 @@ defmodule Portal.Elastic.LogSink do
     field :error_message, :string
     field :error_email_count, :integer, default: 0, read_after_writes: true
     field :last_error_email_at, :utc_datetime_usec
+    field :last_rollover_at, :utc_datetime_usec
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
 
