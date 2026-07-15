@@ -268,6 +268,7 @@ if config_env() == :prod do
     # Schedule log sink deliveries every minute
     {"* * * * *", Portal.Splunk.Scheduler},
     {"* * * * *", Portal.Datadog.Scheduler},
+    {"* * * * *", Portal.NewRelic.Scheduler},
 
     # Directory sync error notifications - daily check for low error count
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
@@ -355,6 +356,8 @@ if config_env() == :prod do
       splunk_sync: 5,
       datadog_scheduler: 1,
       datadog_sync: 5,
+      newrelic_scheduler: 1,
+      newrelic_sync: 5,
       sync_error_notifications: 1,
       outbound_emails: 1
     ],

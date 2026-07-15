@@ -940,6 +940,7 @@ defmodule Portal.Safe do
   def permit(_action, Portal.LogSink, :account_admin_user), do: :ok
   def permit(_action, Portal.Splunk.LogSink, :account_admin_user), do: :ok
   def permit(_action, Portal.Datadog.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.NewRelic.LogSink, :account_admin_user), do: :ok
   def permit(:read, Portal.LogSinkCursor, :account_admin_user), do: :ok
 
   def permit(_action, Portal.PortalSession, :account_admin_user), do: :ok
