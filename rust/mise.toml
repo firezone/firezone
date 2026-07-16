@@ -12,6 +12,7 @@ RUSTFLAGS = "--cfg tokio_unstable"
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
+"cargo:cargo-fuzz" = { version = "0.13.2", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 
