@@ -12,9 +12,7 @@ use libc::{
     open,
 };
 use logging::{DisplayBTreeSet, err_with_src};
-use netlink_packet_route::link::{
-    AfSpecInet6, AfSpecUnspec, In6AddrGenMode, LinkAttribute, State,
-};
+use netlink_packet_route::link::{AfSpecInet6, AfSpecUnspec, In6AddrGenMode, LinkAttribute, State};
 use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
 };
@@ -142,25 +140,7 @@ impl TunDeviceManager {
         let handle = &self.connection.handle;
         let index = tun_device_index(handle).await?;
 
-        // Disable automatic IPv6 link-local address generation on the TUN device.
-        // We assign explicit tunnel IPs and never use a link-local here. Suppressing
-        // it before the interface is brought up also avoids a race where the cleanup
-        // below tries to delete a still-tentative (DAD) link-local and fails with
-        // EBUSY, which would otherwise abort the whole client.
-        if let Err(e) = handle
-            .link()
-            .set(
-                LinkUnspec::new_with_index(index)
-                    .append_extra_attribute(LinkAttribute::AfSpecUnspec(vec![
-                        AfSpecUnspec::Inet6(vec![AfSpecInet6::AddrGenMode(In6AddrGenMode::None)]),
-                    ]))
-                    .build(),
-            )
-            .execute()
-            .await
-        {
-            tracing::warn!("Failed to disable IPv6 link-local address generation: {e}");
-        }
+        disable_ipv6_link_local(handle, index).await;
 
         let ips = handle
             .address()
@@ -374,6 +354,42 @@ async fn install_rules<const N: usize, T>(
     }
 
     Ok(())
+}
+
+/// Disables automatic IPv6 link-local address generation on the TUN device.
+///
+/// We assign explicit tunnel IPs and never use a link-local address on the TUN
+/// device. Suppressing it before the interface is brought up also avoids a race
+/// where the address cleanup in `set_ips` deletes a still-tentative (DAD)
+/// link-local and fails with `EBUSY`, which would otherwise abort the client.
+async fn disable_ipv6_link_local(handle: &Handle, index: u32) {
+    let result = handle
+        .link()
+        .set(
+            LinkUnspec::new_with_index(index)
+                .append_extra_attribute(LinkAttribute::AfSpecUnspec(vec![AfSpecUnspec::Inet6(
+                    vec![AfSpecInet6::AddrGenMode(In6AddrGenMode::None)],
+                )]))
+                .build(),
+        )
+        .execute()
+        .await;
+
+    match result {
+        Ok(()) => {}
+        // Older kernels / netlink stacks may not support `IFLA_INET6_ADDR_GEN_MODE`.
+        // That is harmless (we just fall back to the kernel-generated link-local), so
+        // don't warn on every connect.
+        Err(NetlinkError(err)) if err.raw_code() == -libc::EOPNOTSUPP => {
+            tracing::debug!("Kernel does not support setting `addr_gen_mode` on the TUN device")
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to disable IPv6 link-local address generation: {}",
+                err_with_src(&e)
+            )
+        }
+    }
 }
 
 async fn tun_device_index(handle: &Handle) -> Result<u32> {
