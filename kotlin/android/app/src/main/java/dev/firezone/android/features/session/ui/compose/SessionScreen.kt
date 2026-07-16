@@ -38,7 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
-import dev.firezone.android.features.session.ui.ResourceViewModel
+import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import kotlinx.collections.immutable.ImmutableList
@@ -50,7 +50,7 @@ private const val TAB_ALL = 1
 @Composable
 fun SessionScreen(
     actorName: String?,
-    resources: ImmutableList<ResourceViewModel>,
+    resources: ImmutableList<ResourceUiModel>,
     connectedDevices: ImmutableList<ConnectedDevice>,
     favorites: Favorites,
     onToggleInternet: () -> Unit,
