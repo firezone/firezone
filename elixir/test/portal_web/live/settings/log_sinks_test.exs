@@ -488,6 +488,36 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert Repo.all(Portal.Sentinel.LogSink) == []
     end
 
+    test "renders the S3 setup tabs with prefilled snippets", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/s3/new")
+
+      assert html =~ "Custom trust policy"
+      assert html =~ "s3:PutObject"
+
+      html =
+        lv
+        |> element("button[phx-value-tab=cli]")
+        |> render_click()
+
+      assert html =~ "aws iam create-role"
+      assert html =~ "arn:aws:iam::123456789012:root"
+
+      html =
+        lv
+        |> element("button[phx-value-tab=terraform]")
+        |> render_click()
+
+      assert html =~ "aws_iam_role_policy"
+      assert html =~ "arn:aws:iam::123456789012:root"
+    end
+
     test "creates an Amazon S3 log sink with a generated external id", %{
       conn: conn,
       account: account,
