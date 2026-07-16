@@ -43,7 +43,15 @@ defmodule Portal.ChangeLogs.Consumer do
     "client_tokens" => Portal.ClientToken,
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,
-    "userpass_auth_providers" => Portal.Userpass.AuthProvider
+    "userpass_auth_providers" => Portal.Userpass.AuthProvider,
+    "splunk_log_sinks" => Portal.Splunk.LogSink,
+    "datadog_log_sinks" => Portal.Datadog.LogSink,
+    "newrelic_log_sinks" => Portal.NewRelic.LogSink,
+    "elastic_log_sinks" => Portal.Elastic.LogSink,
+    "sentinel_log_sinks" => Portal.Sentinel.LogSink,
+    "s3_log_sinks" => Portal.S3.LogSink,
+    "qradar_log_sinks" => Portal.QRadar.LogSink,
+    "http_log_sinks" => Portal.HTTP.LogSink
   }
 
   @impl true

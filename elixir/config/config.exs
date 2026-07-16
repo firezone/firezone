@@ -134,6 +134,14 @@ config :portal, Portal.ChangeLogs.Consumer,
     api_tokens
     trust_anchors
     trust_anchor_certificates
+    splunk_log_sinks
+    datadog_log_sinks
+    newrelic_log_sinks
+    elastic_log_sinks
+    sentinel_log_sinks
+    s3_log_sinks
+    qradar_log_sinks
+    http_log_sinks
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.

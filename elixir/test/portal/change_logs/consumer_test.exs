@@ -44,6 +44,18 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert "trust_anchors" in tables
       assert "trust_anchor_certificates" in tables
     end
+
+    test "includes the provider log sink tables but not the delivery machinery", %{
+      tables: tables
+    } do
+      for table <- ~w[splunk_log_sinks datadog_log_sinks newrelic_log_sinks elastic_log_sinks
+                      sentinel_log_sinks s3_log_sinks qradar_log_sinks http_log_sinks] do
+        assert table in tables
+      end
+
+      refute "log_sinks" in tables
+      refute "log_sink_cursors" in tables
+    end
   end
 
   describe "on_begin/2" do
@@ -173,6 +185,33 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert attrs.account_id == account.id
       assert attrs.vsn == 0
       assert attrs.timestamp == @commit_timestamp
+    end
+
+    test "redacts log sink credentials in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "SOC Splunk",
+        "collector_url" => "https://http-inputs-acme.splunkcloud.com",
+        "hec_token" => "super-secret-token"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12345,
+          :insert,
+          "splunk_log_sinks",
+          nil,
+          data
+        )
+
+      attrs = result_state.flush_buffer[12345]
+      assert attrs.after["hec_token"] == "[redacted]"
+      assert attrs.after["collector_url"] == "https://http-inputs-acme.splunkcloud.com"
     end
 
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do
