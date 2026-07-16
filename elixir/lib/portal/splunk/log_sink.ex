@@ -1,6 +1,7 @@
 defmodule Portal.Splunk.LogSink do
   use Ecto.Schema
   import Ecto.Changeset
+  import Portal.Changeset
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -71,7 +72,7 @@ defmodule Portal.Splunk.LogSink do
     |> validate_length(:index, max: 255)
     |> validate_length(:enabled_streams, min: 1)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
-    |> validate_collector_url()
+    |> validate_uri(:collector_url, schemes: ~w[https], block_private_ips: true)
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)
     |> unique_constraint(:name,
@@ -91,16 +92,4 @@ defmodule Portal.Splunk.LogSink do
     |> String.trim_trailing("/")
   end
 
-  defp validate_collector_url(changeset) do
-    validate_change(changeset, :collector_url, fn :collector_url, url ->
-      case URI.new(url) do
-        {:ok, %URI{scheme: scheme, host: host}}
-        when scheme in ["http", "https"] and is_binary(host) and host != "" ->
-          []
-
-        _ ->
-          [collector_url: "must be a valid http(s) URL"]
-      end
-    end)
-  end
 end
