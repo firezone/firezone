@@ -37,7 +37,14 @@ defmodule Portal.LogSinks.Adapter do
   """
   @callback rejection_origin(sink :: struct(), Req.Response.t()) :: :internal | :customer
 
-  @optional_callbacks prepare: 1, recover_undeliverable: 2, rejection_origin: 2
+  @doc """
+  Optional cap on events per request: a chunk closes once it reaches this
+  many events even when under the byte budget. `nil` keeps byte-budgeted
+  chunking only.
+  """
+  @callback max_batch_events(sink :: struct()) :: pos_integer() | nil
+
+  @optional_callbacks prepare: 1, recover_undeliverable: 2, rejection_origin: 2, max_batch_events: 1
 
   @typedoc """
   Metadata for one delivered batch: the stream it came from, the seq range it

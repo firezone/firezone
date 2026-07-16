@@ -111,7 +111,9 @@ defmodule Portal.LogSinks.Delivery do
         end
       end)
 
-    case deliver_chunks(sink, adapter, cursor, chunk_by_bytes(encoded, max_body_bytes())) do
+    chunks = chunk_by_bytes(encoded, max_body_bytes(), max_batch_events(sink, adapter))
+
+    case deliver_chunks(sink, adapter, cursor, chunks) do
       {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1, true)
       {:error, reason} -> {:error, reason}
     end
@@ -234,26 +236,41 @@ defmodule Portal.LogSinks.Delivery do
     end
   end
 
+  defp max_batch_events(sink, adapter) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :max_batch_events, 1) do
+      adapter.max_batch_events(sink)
+    else
+      nil
+    end
+  end
+
   # Same-seq events (a flow's start/end pair) never split across chunks: the
   # cursor advances past their seq when a chunk lands, so a crash between
-  # chunks could otherwise lose the trailing half of the pair.
-  defp chunk_by_bytes(encoded, max_bytes) do
+  # chunks could otherwise lose the trailing half of the pair. An adapter's
+  # event cap closes chunks the same way, so a lone same-seq group may exceed it.
+  defp chunk_by_bytes(encoded, max_bytes, max_events) do
     encoded
     |> Enum.chunk_by(fn {seq, _time, _json} -> seq end)
     |> Enum.chunk_while(
-      {[], 0},
-      fn group, {acc, bytes} ->
+      {[], 0, 0},
+      fn group, {acc, bytes, count} ->
         size = group |> Enum.map(fn {_seq, _time, json} -> byte_size(json) + 1 end) |> Enum.sum()
 
         cond do
-          acc == [] -> {:cont, {[group], size}}
-          bytes + size > max_bytes -> {:cont, flatten_groups(acc), {[group], size}}
-          true -> {:cont, {[group | acc], bytes + size}}
+          acc == [] ->
+            {:cont, {[group], size, length(group)}}
+
+          bytes + size > max_bytes or
+              (is_integer(max_events) and count + length(group) > max_events) ->
+            {:cont, flatten_groups(acc), {[group], size, length(group)}}
+
+          true ->
+            {:cont, {[group | acc], bytes + size, count + length(group)}}
         end
       end,
       fn
-        {[], _bytes} -> {:cont, []}
-        {acc, _bytes} -> {:cont, flatten_groups(acc), []}
+        {[], _bytes, _count} -> {:cont, []}
+        {acc, _bytes, _count} -> {:cont, flatten_groups(acc), []}
       end
     )
   end

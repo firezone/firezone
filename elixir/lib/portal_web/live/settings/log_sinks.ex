@@ -3,6 +3,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
   alias Portal.Datadog
   alias Portal.Elastic
+  alias Portal.HTTP
   alias Portal.NewRelic
   alias Portal.QRadar
   alias Portal.Sentinel
@@ -21,7 +22,8 @@ defmodule PortalWeb.Settings.LogSinks do
     "elastic" => Elastic.LogSink,
     "sentinel" => Sentinel.LogSink,
     "s3" => S3.LogSink,
-    "qradar" => QRadar.LogSink
+    "qradar" => QRadar.LogSink,
+    "http" => HTTP.LogSink
   }
 
   @types Map.keys(@modules)
@@ -54,7 +56,8 @@ defmodule PortalWeb.Settings.LogSinks do
     Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a,
     Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a,
     S3.LogSink => @common_fields ++ ~w[bucket region role_arn key_prefix]a,
-    QRadar.LogSink => @common_fields ++ ~w[endpoint_url auth_header]a
+    QRadar.LogSink => @common_fields ++ ~w[endpoint_url auth_header]a,
+    HTTP.LogSink => @common_fields ++ ~w[endpoint_url bearer_token batch_max_events]a
   }
 
   @newrelic_region_options [
@@ -468,6 +471,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to an IBM QRadar HTTP Receiver log source.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/http/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="http" size="xl" />
+                      <span class="text-sm font-medium text-heading">HTTP</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      POST batches of logs as JSON to any HTTPS endpoint.
                     </span>
                   </.link>
                 </li>
@@ -1471,6 +1488,59 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "http"}>
+          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
+            Endpoint URL <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:endpoint_url]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The HTTPS URL to POST log batches to, e.g.
+            <code class="text-xs">https://logs.example.com/ingest</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "http"}>
+          <label for={@form[:bearer_token].id} class="block text-xs font-medium text-body mb-1.5">
+            Bearer Token
+          </label>
+          <.input
+            field={@form[:bearer_token]}
+            type="password"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Optional. Sent as an <code class="text-xs">Authorization: Bearer</code>
+            header on every request; leave blank for none.
+          </p>
+        </div>
+
+        <div :if={@type == "http"}>
+          <label for={@form[:batch_max_events].id} class="block text-xs font-medium text-body mb-1.5">
+            Batch Size <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:batch_max_events]}
+            type="number"
+            min="1"
+            max="1000"
+            phx-debounce="300"
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The maximum number of events per POST, between 1 and 1000. Requests stay
+            under 512 KB regardless.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1569,6 +1639,7 @@ defmodule PortalWeb.Settings.LogSinks do
         Sentinel.LogSink -> :sentinel
         S3.LogSink -> :s3
         QRadar.LogSink -> :qradar
+        HTTP.LogSink -> :http
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1596,6 +1667,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%Sentinel.LogSink{}), do: Sentinel.Sync
   defp sync_module(%S3.LogSink{}), do: S3.Sync
   defp sync_module(%QRadar.LogSink{}), do: QRadar.Sync
+  defp sync_module(%HTTP.LogSink{}), do: HTTP.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1671,6 +1743,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("sentinel"), do: "Microsoft Sentinel"
   defp titleize("s3"), do: "Amazon S3"
   defp titleize("qradar"), do: "IBM QRadar"
+  defp titleize("http"), do: "HTTP"
 
   defp sink_type(sink) do
     case sink.__struct__ do
@@ -1681,6 +1754,7 @@ defmodule PortalWeb.Settings.LogSinks do
       Sentinel.LogSink -> "sentinel"
       S3.LogSink -> "s3"
       QRadar.LogSink -> "qradar"
+      HTTP.LogSink -> "http"
     end
   end
 
@@ -1722,6 +1796,13 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   defp sink_destination(%QRadar.LogSink{} = sink) do
+    case URI.new(sink.endpoint_url || "") do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> sink.endpoint_url
+    end
+  end
+
+  defp sink_destination(%HTTP.LogSink{} = sink) do
     case URI.new(sink.endpoint_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) -> host
       _ -> sink.endpoint_url
@@ -2144,6 +2225,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
     alias Portal.Datadog
     alias Portal.Elastic
+    alias Portal.HTTP
     alias Portal.NewRelic
     alias Portal.QRadar
     alias Portal.S3
@@ -2159,7 +2241,8 @@ defmodule PortalWeb.Settings.LogSinks do
         Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         S3.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        QRadar.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        QRadar.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        HTTP.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

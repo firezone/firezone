@@ -1541,6 +1541,13 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("http") do
+    %{
+      type: :icon,
+      name: "ri-webhook-line"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

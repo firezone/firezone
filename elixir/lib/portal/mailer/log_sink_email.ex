@@ -43,6 +43,7 @@ defmodule Portal.Mailer.LogSinkEmail do
   defp type(%Portal.Sentinel.LogSink{}), do: "Microsoft Sentinel"
   defp type(%Portal.S3.LogSink{}), do: "Amazon S3"
   defp type(%Portal.QRadar.LogSink{}), do: "IBM QRadar"
+  defp type(%Portal.HTTP.LogSink{}), do: "HTTP"
 
   defp provider_hint(%Portal.Splunk.LogSink{}) do
     "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
@@ -86,6 +87,11 @@ defmodule Portal.Mailer.LogSinkEmail do
       "authorization header."
   end
 
+  defp provider_hint(%Portal.HTTP.LogSink{}) do
+    "Verify the endpoint URL accepts HTTPS POST requests from Firezone, and that the " <>
+      "bearer token, if one is configured, is still valid."
+  end
+
   defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
@@ -124,6 +130,13 @@ defmodule Portal.Mailer.LogSinkEmail do
   end
 
   defp destination(%Portal.QRadar.LogSink{} = sink) do
+    case URI.new(sink.endpoint_url || "") do
+      {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
+      _ -> sink.endpoint_url
+    end
+  end
+
+  defp destination(%Portal.HTTP.LogSink{} = sink) do
     case URI.new(sink.endpoint_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
       _ -> sink.endpoint_url

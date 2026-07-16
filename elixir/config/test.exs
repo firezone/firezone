@@ -155,6 +155,12 @@ config :portal, Portal.QRadar.APIClient,
     retry: false
   ]
 
+config :portal, Portal.HTTP.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.HTTP.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
 config :portal, Portal.Azure.ManagedIdentity,

@@ -690,6 +690,84 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert Repo.all(Portal.QRadar.LogSink) == []
     end
 
+    test "creates an HTTP log sink with its base row", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/http/new")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC Webhook",
+            endpoint_url: "https://logs.acme.example/firezone/",
+            bearer_token: "http-secret-token",
+            batch_max_events: "250",
+            enabled_streams: ["", "session"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.HTTP.LogSink, account_id: account.id)
+      assert sink.name == "SOC Webhook"
+      assert sink.endpoint_url == "https://logs.acme.example/firezone/"
+      assert sink.bearer_token == "http-secret-token"
+      assert sink.batch_max_events == 250
+      assert sink.enabled_streams == [:session]
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :http
+    end
+
+    test "rejects an insecure, private, or out-of-range HTTP sink", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/http/new")
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC Webhook",
+            endpoint_url: "http://logs.acme.example/firezone"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "only https schemes are supported"
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{endpoint_url: "https://10.0.0.1/logs"})
+        |> render_change()
+
+      assert html =~ "must not be a private or reserved IP address"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            endpoint_url: "https://logs.acme.example/firezone",
+            batch_max_events: "5000"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "is invalid"
+      assert Repo.all(Portal.HTTP.LogSink) == []
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,
