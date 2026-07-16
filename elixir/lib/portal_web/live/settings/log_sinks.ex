@@ -5,6 +5,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Elastic
   alias Portal.NewRelic
   alias Portal.Sentinel
+  alias Portal.S3
   alias Portal.Splunk
   alias __MODULE__.Database
 
@@ -17,7 +18,8 @@ defmodule PortalWeb.Settings.LogSinks do
     "datadog" => Datadog.LogSink,
     "newrelic" => NewRelic.LogSink,
     "elastic" => Elastic.LogSink,
-    "sentinel" => Sentinel.LogSink
+    "sentinel" => Sentinel.LogSink,
+    "s3" => S3.LogSink
   }
 
   @types Map.keys(@modules)
@@ -48,7 +50,8 @@ defmodule PortalWeb.Settings.LogSinks do
     Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
     NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
     Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a,
-    Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a
+    Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a,
+    S3.LogSink => @common_fields ++ ~w[bucket region role_arn key_prefix]a
   }
 
   @newrelic_region_options [
@@ -73,7 +76,7 @@ defmodule PortalWeb.Settings.LogSinks do
   def handle_params(%{"type" => type}, _url, %{assigns: %{live_action: :new}} = socket)
       when type in @types do
     schema = Map.get(@modules, type)
-    changeset = changeset(struct(schema), %{})
+    changeset = schema |> new_sink() |> changeset(%{})
 
     {:noreply,
      assign(socket,
@@ -428,6 +431,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to Microsoft Sentinel via the Azure Monitor Logs Ingestion API.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/s3/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="s3" size="xl" />
+                      <span class="text-sm font-medium text-heading">Amazon S3</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Archive logs to an Amazon S3 bucket as NDJSON objects.
                     </span>
                   </.link>
                 </li>
@@ -1214,6 +1231,88 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "s3"}>
+          <label for={@form[:bucket].id} class="block text-xs font-medium text-body mb-1.5">
+            Bucket <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:bucket]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The name of the S3 bucket to write log objects to.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:region].id} class="block text-xs font-medium text-body mb-1.5">
+            Region <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:region]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The AWS region the bucket is in, e.g. <code class="text-xs">us-east-1</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:role_arn].id} class="block text-xs font-medium text-body mb-1.5">
+            Role ARN <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:role_arn]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            An IAM role in your AWS account that Firezone assumes to write objects.
+            Grant it <code class="text-xs">s3:PutObject</code>
+            on the bucket and attach this trust policy:
+          </p>
+          <pre class="mt-2 p-3 rounded border border-border bg-raised text-xs text-body overflow-x-auto"><code>{trust_policy_json(@form)}</code></pre>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:key_prefix].id} class="block text-xs font-medium text-body mb-1.5">
+            Key Prefix
+          </label>
+          <.input
+            field={@form[:key_prefix]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Optional. A prefix added to every object key, e.g.
+            <code class="text-xs">firezone/logs</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <span class="block text-xs font-medium text-body mb-1.5">External ID</span>
+          <p class="text-sm font-mono text-heading">
+            {get_field(@form.source, :external_id)}
+          </p>
+          <p class="mt-1 text-xs text-subtle">
+            Generated by Firezone and pinned to this sink. The role's trust policy must
+            require it via <code class="text-xs">sts:ExternalId</code>.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1310,6 +1409,7 @@ defmodule PortalWeb.Settings.LogSinks do
         NewRelic.LogSink -> :newrelic
         Elastic.LogSink -> :elastic
         Sentinel.LogSink -> :sentinel
+        S3.LogSink -> :s3
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1335,6 +1435,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%NewRelic.LogSink{}), do: NewRelic.Sync
   defp sync_module(%Elastic.LogSink{}), do: Elastic.Sync
   defp sync_module(%Sentinel.LogSink{}), do: Sentinel.Sync
+  defp sync_module(%S3.LogSink{}), do: S3.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1408,6 +1509,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("newrelic"), do: "New Relic"
   defp titleize("elastic"), do: "Elastic"
   defp titleize("sentinel"), do: "Microsoft Sentinel"
+  defp titleize("s3"), do: "Amazon S3"
 
   defp sink_type(sink) do
     case sink.__struct__ do
@@ -1416,6 +1518,7 @@ defmodule PortalWeb.Settings.LogSinks do
       NewRelic.LogSink -> "newrelic"
       Elastic.LogSink -> "elastic"
       Sentinel.LogSink -> "sentinel"
+      S3.LogSink -> "s3"
     end
   end
 
@@ -1446,6 +1549,13 @@ defmodule PortalWeb.Settings.LogSinks do
     case URI.new(sink.ingestion_endpoint || "") do
       {:ok, %URI{host: host}} when is_binary(host) -> host
       _ -> sink.ingestion_endpoint
+    end
+  end
+
+  defp sink_destination(%S3.LogSink{} = sink) do
+    case sink.key_prefix do
+      nil -> "s3://#{sink.bucket}"
+      prefix -> "s3://#{sink.bucket}/#{prefix}"
     end
   end
 
@@ -1646,6 +1756,28 @@ defmodule PortalWeb.Settings.LogSinks do
     String.replace(@sentinel_terraform_snippet, "FIREZONE_CLIENT_ID", sentinel_client_id())
   end
 
+  defp new_sink(S3.LogSink), do: %S3.LogSink{external_id: Ecto.UUID.generate()}
+  defp new_sink(schema), do: struct(schema)
+
+  defp trust_policy_json(form) do
+    external_id = get_field(form.source, :external_id)
+    aws_account_id = S3.APIClient.aws_account_id()
+
+    """
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "AWS": "arn:aws:iam::#{aws_account_id}:root" },
+          "Action": "sts:AssumeRole",
+          "Condition": { "StringEquals": { "sts:ExternalId": "#{external_id}" } }
+        }
+      ]
+    }\
+    """
+  end
+
   defp delivered_count(sink) do
     case sink.delivery_stats do
       %{delivered: delivered} when is_integer(delivered) -> delivered
@@ -1695,6 +1827,7 @@ defmodule PortalWeb.Settings.LogSinks do
     alias Portal.Datadog
     alias Portal.Elastic
     alias Portal.NewRelic
+    alias Portal.S3
     alias Portal.Safe
     alias Portal.Sentinel
     alias Portal.Splunk
@@ -1705,7 +1838,8 @@ defmodule PortalWeb.Settings.LogSinks do
         Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        S3.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

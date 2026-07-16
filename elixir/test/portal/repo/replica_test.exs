@@ -120,9 +120,15 @@ defmodule Portal.Repo.ReplicaTest do
     test "returns correct config" do
       config = Replica.config()
 
+      partition_suffix =
+        case System.get_env("MIX_TEST_PARTITION") do
+          nil -> ""
+          partition -> "_p#{partition}"
+        end
+
       assert Keyword.has_key?(config, :database)
       assert Keyword.has_key?(config, :hostname) or Keyword.has_key?(config, :socket_dir)
-      assert config[:database] == "firezone_test"
+      assert config[:database] == "firezone_test#{partition_suffix}"
     end
 
     test "uses sandbox pool in test environment" do

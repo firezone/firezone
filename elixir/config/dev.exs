@@ -84,6 +84,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.NewRelic.Scheduler},
        {worker_dev_schedule, Portal.Elastic.Scheduler},
        {worker_dev_schedule, Portal.Sentinel.Scheduler},
+       {worker_dev_schedule, Portal.S3.Scheduler},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
@@ -127,6 +128,8 @@ config :portal, Oban,
     elastic_sync: 5,
     sentinel_scheduler: 1,
     sentinel_sync: 5,
+    s3_scheduler: 1,
+    s3_sync: 5,
     sync_error_notifications: 1,
     outbound_emails: 1
   ],
@@ -145,6 +148,11 @@ config :portal, Portal.Splunk.APIClient,
       transport_opts: [verify: :verify_none]
     ]
   ]
+
+config :portal, Portal.S3.APIClient,
+  access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+  secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
+  session_token: System.get_env("AWS_SESSION_TOKEN")
 
 ###############################
 ##### PortalWeb Endpoint ######

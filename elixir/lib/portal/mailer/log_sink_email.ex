@@ -41,6 +41,7 @@ defmodule Portal.Mailer.LogSinkEmail do
   defp type(%Portal.NewRelic.LogSink{}), do: "New Relic"
   defp type(%Portal.Elastic.LogSink{}), do: "Elastic"
   defp type(%Portal.Sentinel.LogSink{}), do: "Microsoft Sentinel"
+  defp type(%Portal.S3.LogSink{}), do: "Amazon S3"
 
   defp provider_hint(%Portal.Splunk.LogSink{}) do
     "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
@@ -71,6 +72,12 @@ defmodule Portal.Mailer.LogSinkEmail do
       "immutable ID, and stream name match your data collection rule."
   end
 
+  defp provider_hint(%Portal.S3.LogSink{}) do
+    "Verify the bucket, region, and role ARN, that the role's trust policy allows " <>
+      "Firezone's AWS account with this sink's External ID, and that the role can " <>
+      "write objects to the bucket."
+  end
+
   defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
@@ -98,6 +105,13 @@ defmodule Portal.Mailer.LogSinkEmail do
     case URI.new(sink.ingestion_endpoint || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
       _ -> sink.ingestion_endpoint
+    end
+  end
+
+  defp destination(%Portal.S3.LogSink{} = sink) do
+    case sink.key_prefix do
+      nil -> "s3://#{sink.bucket}"
+      prefix -> "s3://#{sink.bucket}/#{prefix}"
     end
   end
 

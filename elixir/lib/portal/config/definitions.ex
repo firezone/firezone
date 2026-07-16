@@ -197,6 +197,24 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Access key ID for Firezone's AWS account, used to assume customer IAM roles
+  for Amazon S3 log sinks.
+  """
+  defconfig(:log_sinks_aws_access_key_id, :string, default: nil, sensitive: true)
+
+  @doc """
+  Secret access key for Firezone's AWS account, used to assume customer IAM
+  roles for Amazon S3 log sinks.
+  """
+  defconfig(:log_sinks_aws_secret_access_key, :string, default: nil, sensitive: true)
+
+  @doc """
+  Firezone's AWS account ID, shown to customers in the IAM trust policy their
+  S3 log sink role must attach.
+  """
+  defconfig(:log_sinks_aws_account_id, :string, default: "000000000000")
+
+  @doc """
   The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:web_refill_rate, :integer, default: 10)

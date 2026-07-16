@@ -1524,6 +1524,14 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("s3") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-s3.svg",
+      alt: "Amazon S3"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,
