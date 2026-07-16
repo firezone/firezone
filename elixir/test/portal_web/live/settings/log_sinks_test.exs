@@ -503,6 +503,15 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       html =
         lv
+        |> form("#log-sink-form",
+          log_sink: %{bucket: "acme-logs", key_prefix: "firezone/logs"}
+        )
+        |> render_change()
+
+      assert html =~ "arn:aws:s3:::acme-logs/firezone/logs/*"
+
+      html =
+        lv
         |> element("button[phx-value-tab=cli]")
         |> render_click()
 
