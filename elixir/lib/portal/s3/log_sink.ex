@@ -72,7 +72,7 @@ defmodule Portal.S3.LogSink do
       :enabled_streams
     ])
     |> validate_length(:name, min: 1, max: 255)
-    |> validate_format(:bucket, ~r/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/,
+    |> validate_format(:bucket, ~r/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/,
       message: "must be a valid S3 bucket name"
     )
     |> validate_length(:region, min: 1, max: 64)
