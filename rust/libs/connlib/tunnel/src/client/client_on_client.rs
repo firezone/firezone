@@ -24,6 +24,7 @@ use std::time::Instant;
 /// isn't the return traffic of packets that we have sent.
 pub(crate) struct ClientOnClient {
     id: ClientId,
+    local_tun: IpConfig,
     remote_tun: IpConfig,
     remote_name: String,
     /// Inbound resources authorising the remote peer to send packets to us.
@@ -53,9 +54,15 @@ pub(crate) enum InboundResult {
 }
 
 impl ClientOnClient {
-    pub(crate) fn new(id: ClientId, remote_tun: IpConfig, remote_name: String) -> ClientOnClient {
+    pub(crate) fn new(
+        id: ClientId,
+        local_tun: IpConfig,
+        remote_tun: IpConfig,
+        remote_name: String,
+    ) -> ClientOnClient {
         ClientOnClient {
             id,
+            local_tun,
             remote_tun,
             remote_name,
             resources: ExpiringMap::default(),
@@ -221,13 +228,12 @@ impl ClientOnClient {
     pub(crate) fn ensure_allowed_inbound(
         &mut self,
         packet: IpPacket,
-        local_tun: IpConfig,
         now: Instant,
     ) -> Result<InboundResult> {
         let src = packet.source();
         let dst = packet.destination();
         anyhow::ensure!(
-            self.remote_tun.is_ip(src) && local_tun.is_ip(dst),
+            self.remote_tun.is_ip(src) && self.local_tun.is_ip(dst),
             "Dropping spoofed inbound packet from peer (src {src}, dst {dst})"
         );
 
@@ -281,10 +287,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        assert!(
-            peer.ensure_allowed_inbound(spoofed, local_tun(), now)
-                .is_err()
-        );
+        assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
     }
 
     #[test]
@@ -301,10 +304,7 @@ mod tests {
             &[],
         )
         .unwrap();
-        assert!(
-            peer.ensure_allowed_inbound(spoofed, local_tun(), now)
-                .is_err()
-        );
+        assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
     }
 
     #[test]
@@ -313,12 +313,10 @@ mod tests {
         let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
-        peer.record_outbound(&outbound, now);
+        peer.handle_outbound(&outbound, now);
         let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
 
-        assert!(is_send(
-            peer.ensure_allowed_inbound(icmp, local_tun(), now).unwrap()
-        ));
+        assert!(is_send(peer.ensure_allowed_inbound(icmp, now).unwrap()));
     }
 
     #[test]
@@ -329,7 +327,7 @@ mod tests {
         let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
         let icmp = make::icmp_dest_unreachable_prohibited(&stray).unwrap();
 
-        assert!(peer.ensure_allowed_inbound(icmp, local_tun(), now).is_err());
+        assert!(peer.ensure_allowed_inbound(icmp, now).is_err());
     }
 
     #[test]
@@ -340,15 +338,13 @@ mod tests {
         peer.add_resource(rid, udp_port(80), None, now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
 
         peer.remove_resource(&rid);
 
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
     }
 
@@ -361,10 +357,7 @@ mod tests {
         peer.handle_outbound(&outbound, now);
 
         let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
-        assert!(is_send(
-            peer.ensure_allowed_inbound(reply, local_tun(), now)
-                .unwrap()
-        ));
+        assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));
     }
 
     #[test]
@@ -375,8 +368,7 @@ mod tests {
         peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(60)), now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
         assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
 
@@ -385,8 +377,7 @@ mod tests {
 
         assert_eq!(peer.poll_timeout(), None);
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), later)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), later).unwrap()
         ));
     }
 
@@ -400,23 +391,19 @@ mod tests {
         peer.add_resource(drop, udp_port(90), None, now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(90), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
         ));
 
         peer.retain_authorizations(&BTreeSet::from([keep]));
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(90), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
         ));
     }
 
@@ -431,13 +418,17 @@ mod tests {
         peer.handle_timeout(now);
 
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), local_tun(), now)
-                .unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
     }
 
     fn peer() -> ClientOnClient {
-        ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned())
+        ClientOnClient::new(
+            ClientId::from_u128(1),
+            local_tun(),
+            peer_tun(),
+            "peer".to_owned(),
+        )
     }
 
     fn peer_tun() -> IpConfig {

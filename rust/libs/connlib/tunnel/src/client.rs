@@ -403,27 +403,25 @@ impl ClientState {
 
     /// Abandons a pending connection whose ICE candidates the portal could not deliver.
     pub fn handle_client_ice_candidate_error(&mut self, cid: ClientId, now: Instant) {
-        let member_networks = self
+        let memberships = self
             .static_device_pools()
             .flat_map(|pool| {
                 let pool_id = pool.id;
                 pool.devices
                     .iter()
                     .filter(|d| d.id == cid)
-                    .map(move |d| (pool_id, d.ipv4, d.ipv6))
+                    .map(move |d| (pool_id, d.clone()))
             })
             .collect::<Vec<_>>();
 
-        self.pending_authorizations
-            .extract_device_authorizations(|pool, addr| {
-                member_networks.iter().any(|(pool_id, v4, v6)| {
-                    *pool_id == pool
-                        && match addr {
-                            IpAddr::V4(a) => v4.contains(a),
-                            IpAddr::V6(a) => v6.contains(a),
-                        }
-                })
-            });
+        for _ in self
+            .pending_authorizations
+            .remove_device_authorizations(|pool, addr| {
+                memberships
+                    .iter()
+                    .any(|(pool_id, member)| *pool_id == pool && member.contains(addr))
+            })
+        {}
 
         if self.clients.remove(&cid).is_some() {
             self.node
@@ -677,19 +675,13 @@ impl ClientState {
 
         match pid {
             ClientOrGatewayId::Client(cid) => {
-                let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {
-                    tracing::debug!("Dropping inbound peer packet: no TUN configuration");
-
-                    return Ok(None);
-                };
-
                 let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
 
                     return Ok(None);
                 };
 
-                let packet = match peer.ensure_allowed_inbound(packet, local_tun, now)? {
+                let packet = match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered(reply) => {
                         encapsulate_and_queue(
@@ -1111,6 +1103,12 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
 
+        let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {
+            tracing::debug!("Ignoring device access authorization: no TUN configuration");
+
+            return Ok(());
+        };
+
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
@@ -1132,7 +1130,7 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || {
-            ClientOnClient::new(cid, client_tun, client_name.clone())
+            ClientOnClient::new(cid, local_tun, client_tun, client_name.clone())
         });
 
         if peer.remote_name() != client_name {
@@ -2562,8 +2560,10 @@ impl ClientState {
 
         self.pending_authorizations.remove(id);
 
-        self.pending_authorizations
-            .extract_device_authorizations(|pool, _| pool == id);
+        for _ in self
+            .pending_authorizations
+            .remove_device_authorizations(|pool, _| pool == id)
+        {}
 
         for cid in pool_members {
             if self.is_client_in_other_static_device_pool(cid, id) {
