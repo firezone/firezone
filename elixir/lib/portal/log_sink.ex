@@ -8,7 +8,7 @@ defmodule Portal.LogSink do
   schema "log_sinks" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[splunk datadog newrelic]a
+    field :type, Ecto.Enum, values: ~w[splunk datadog newrelic elastic]a
 
     has_one :splunk_log_sink, Portal.Splunk.LogSink,
       references: :id,
@@ -19,6 +19,10 @@ defmodule Portal.LogSink do
       foreign_key: :id
 
     has_one :newrelic_log_sink, Portal.NewRelic.LogSink,
+      references: :id,
+      foreign_key: :id
+
+    has_one :elastic_log_sink, Portal.Elastic.LogSink,
       references: :id,
       foreign_key: :id
 

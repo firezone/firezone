@@ -2,6 +2,7 @@ defmodule PortalWeb.Settings.LogSinks do
   use PortalWeb, :live_view
 
   alias Portal.Datadog
+  alias Portal.Elastic
   alias Portal.NewRelic
   alias Portal.Splunk
   alias __MODULE__.Database
@@ -13,7 +14,8 @@ defmodule PortalWeb.Settings.LogSinks do
   @modules %{
     "splunk" => Splunk.LogSink,
     "datadog" => Datadog.LogSink,
-    "newrelic" => NewRelic.LogSink
+    "newrelic" => NewRelic.LogSink,
+    "elastic" => Elastic.LogSink
   }
 
   @types Map.keys(@modules)
@@ -42,7 +44,8 @@ defmodule PortalWeb.Settings.LogSinks do
   @fields %{
     Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
     Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
-    NewRelic.LogSink => @common_fields ++ ~w[region license_key]a
+    NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
+    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a
   }
 
   @newrelic_region_options [
@@ -383,6 +386,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to the New Relic Log API.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/elastic/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="elastic" size="xl" />
+                      <span class="text-sm font-medium text-heading">Elastic</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Index logs into Elasticsearch or any compatible cluster.
                     </span>
                   </.link>
                 </li>
@@ -917,6 +934,61 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "elastic"}>
+          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
+            Endpoint URL <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:endpoint_url]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Your cluster's Elasticsearch endpoint, e.g.
+            <code class="text-xs">https://my-deployment.es.us-east-1.aws.elastic-cloud.com</code>.
+            OpenSearch and other compatible clusters work too.
+          </p>
+        </div>
+
+        <div :if={@type == "elastic"}>
+          <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
+            API Key <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:api_key]}
+            type="password"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            A base64-encoded Elasticsearch API key with permission to manage index
+            templates and write to the data stream.
+          </p>
+        </div>
+
+        <div :if={@type == "elastic"}>
+          <label for={@form[:data_stream].id} class="block text-xs font-medium text-body mb-1.5">
+            Data stream <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:data_stream]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The data stream to append events to. Firezone creates it on first
+            delivery; manage retention with the stream's lifecycle in Kibana.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1011,6 +1083,7 @@ defmodule PortalWeb.Settings.LogSinks do
         Splunk.LogSink -> :splunk
         Datadog.LogSink -> :datadog
         NewRelic.LogSink -> :newrelic
+        Elastic.LogSink -> :elastic
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1034,6 +1107,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%Splunk.LogSink{}), do: Splunk.Sync
   defp sync_module(%Datadog.LogSink{}), do: Datadog.Sync
   defp sync_module(%NewRelic.LogSink{}), do: NewRelic.Sync
+  defp sync_module(%Elastic.LogSink{}), do: Elastic.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1105,12 +1179,14 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("splunk"), do: "Splunk"
   defp titleize("datadog"), do: "Datadog"
   defp titleize("newrelic"), do: "New Relic"
+  defp titleize("elastic"), do: "Elastic"
 
   defp sink_type(sink) do
     case sink.__struct__ do
       Splunk.LogSink -> "splunk"
       Datadog.LogSink -> "datadog"
       NewRelic.LogSink -> "newrelic"
+      Elastic.LogSink -> "elastic"
     end
   end
 
@@ -1128,6 +1204,13 @@ defmodule PortalWeb.Settings.LogSinks do
     |> NewRelic.APIClient.endpoint()
     |> URI.parse()
     |> Map.get(:host)
+  end
+
+  defp sink_destination(%Elastic.LogSink{} = sink) do
+    case URI.new(sink.endpoint_url || "") do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> sink.endpoint_url
+    end
   end
 
   defp delivered_count(sink) do
@@ -1177,6 +1260,7 @@ defmodule PortalWeb.Settings.LogSinks do
     import Ecto.Query
 
     alias Portal.Datadog
+    alias Portal.Elastic
     alias Portal.NewRelic
     alias Portal.Safe
     alias Portal.Splunk
@@ -1185,7 +1269,8 @@ defmodule PortalWeb.Settings.LogSinks do
       [
         Splunk.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

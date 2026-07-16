@@ -6,6 +6,35 @@ defmodule Portal.LogSinks.Adapter do
   `Portal.LogSinks.Delivery`.
   """
 
+  @doc """
+  Optional one-time setup per sync run, invoked before the first batch that
+  has rows to post (e.g. ensuring a destination data stream exists with the
+  right mappings); runs with nothing to deliver make no destination calls.
+  An error return feeds the same error path as a failed delivery.
+  """
+  @callback prepare(sink :: struct()) ::
+              :ok | {:error, {:status, Req.Response.t()} | {:transport, Exception.t()}}
+
+  @doc """
+  Optional destination-side self-healing after an event is rejected and its
+  stream parks (e.g. rolling an Elastic data stream over so corrected
+  mappings apply). Called after the rejection is logged; the next scheduler
+  run retries the parked event.
+  """
+  @callback recover_undeliverable(sink :: struct(), Req.Response.t()) :: :ok
+
+  @doc """
+  Optional attribution of a single rejected event. `:internal` (the default)
+  means our own rendering produced something the destination cannot accept:
+  the stream parks, we get paged, and the customer sees no error state.
+  `:customer` means destination-side configuration only the admin can fix,
+  so the rejection follows the transient error path: 24 hours of grace, then
+  the sink disables and notification emails go out.
+  """
+  @callback rejection_origin(sink :: struct(), Req.Response.t()) :: :internal | :customer
+
+  @optional_callbacks prepare: 1, recover_undeliverable: 2, rejection_origin: 2
+
   @doc "Envelope and JSON-encode one rendered event."
   @callback encode_event(sink :: struct(), stream :: atom(), {number(), map()}) :: binary()
 
@@ -18,12 +47,14 @@ defmodule Portal.LogSinks.Adapter do
 
   @doc """
   Read a response: `:accepted` advances the cursor, `:payload_too_large`
-  bisects and drops only genuinely oversized events, `:malformed_payload`
-  bisects and drops the offending event unconditionally, and `:failed` puts
-  the sink into the error path.
+  and `:malformed_payload` bisect until the offending event is isolated and
+  its stream parks on it, `:retriable` treats the response as a transient
+  failure regardless of its HTTP status (for destinations that report
+  per-item backpressure inside a 200), and `:failed` puts the sink into the
+  error path.
   """
   @callback interpret(sink :: struct(), Req.Response.t()) ::
-              :accepted | :payload_too_large | :malformed_payload | :failed
+              :accepted | :payload_too_large | :malformed_payload | :retriable | :failed
 
   @doc "User-facing message for a `:failed` response."
   @callback format_status_error(Req.Response.t()) :: String.t()

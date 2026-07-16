@@ -25,7 +25,12 @@ defmodule Portal.Workers.LogSinkErrorNotification do
   alias __MODULE__.Database
   require Logger
 
-  @sink_schemas [Portal.Splunk.LogSink, Portal.Datadog.LogSink, Portal.NewRelic.LogSink]
+  @sink_schemas [
+    Portal.Splunk.LogSink,
+    Portal.Datadog.LogSink,
+    Portal.NewRelic.LogSink,
+    Portal.Elastic.LogSink
+  ]
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do

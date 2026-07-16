@@ -13,9 +13,11 @@ defmodule Portal.LogSinks.Delivery do
   in a `Portal.LogSinks.Adapter`. Errors follow the directory sync
   convention: an unrecoverable response disables the sink immediately,
   transient failures (408/429/5xx/transport) disable it only after 24 hours
-  of continuous failure. An event the destination rejects outright parks its
-  stream and pages us with no customer-facing state at all: failing to map
-  our own data is our bug to fix, not the admin's. Nothing here can re-enable a disabled sink.
+  of continuous failure. Nothing here can re-enable a disabled sink. An
+  event the destination rejects outright parks its stream and pages us with
+  no customer-facing state at all: failing to map our own data is our bug to
+  fix, not the admin's. Adapters may implement `recover_undeliverable/2` to
+  attempt destination-side self-healing before the next run retries.
   """
 
   alias __MODULE__.Database
@@ -33,21 +35,42 @@ defmodule Portal.LogSinks.Delivery do
   def sync(sink, adapter) do
     Database.seed_missing_cursors(sink)
 
-    result =
-      Enum.reduce_while(Database.list_cursors(sink), :ok, fn cursor, :ok ->
-        case sync_cursor(sink, adapter, cursor, @max_batches_per_stream) do
-          :ok -> {:cont, :ok}
-          {:error, :undeliverable} -> {:cont, :ok}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
-
-    case result do
+    case sync_cursors(sink, adapter) do
       :ok -> handle_success(sink)
       {:error, reason} -> handle_error(sink, adapter, reason)
     end
 
     :ok
+  end
+
+  # Adapter setup (and any credentials it fetches) runs lazily, before the
+  # first batch that actually has rows: an idle run makes no destination
+  # calls at all, which matters at one scheduled run per minute per sink.
+  defp ensure_prepared(_sink, _adapter, true), do: :ok
+
+  defp ensure_prepared(sink, adapter, false) do
+    # function_exported? alone is a trap outside embedded-mode releases: it
+    # returns false for a module that merely has not been loaded yet.
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :prepare, 1) do
+      adapter.prepare(sink)
+    else
+      :ok
+    end
+  end
+
+  defp sync_cursors(sink, adapter) do
+    Database.list_cursors(sink)
+    |> Enum.reduce_while({:ok, false}, fn cursor, {:ok, prepared?} ->
+      case sync_cursor(sink, adapter, cursor, @max_batches_per_stream, prepared?) do
+        {:ok, prepared?} -> {:cont, {:ok, prepared?}}
+        {:error, :undeliverable} -> {:cont, {:ok, true}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, _prepared?} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # Rows younger than this are not delivered yet: a row whose seq was assigned
@@ -65,16 +88,18 @@ defmodule Portal.LogSinks.Delivery do
     |> Keyword.get(:max_body_bytes, 512_000)
   end
 
-  defp sync_cursor(_sink, _adapter, _cursor, 0), do: :ok
+  defp sync_cursor(_sink, _adapter, _cursor, 0, prepared?), do: {:ok, prepared?}
 
-  defp sync_cursor(sink, adapter, cursor, budget) do
+  defp sync_cursor(sink, adapter, cursor, budget, prepared?) do
     case Database.next_batch(cursor, @batch_size, visibility_lag_seconds()) do
       [] ->
         Database.maybe_complete_backfill(cursor, visibility_lag_seconds())
-        :ok
+        {:ok, prepared?}
 
       rows ->
-        deliver_batch(sink, adapter, cursor, rows, budget)
+        with :ok <- ensure_prepared(sink, adapter, prepared?) do
+          deliver_batch(sink, adapter, cursor, rows, budget)
+        end
     end
   end
 
@@ -87,7 +112,7 @@ defmodule Portal.LogSinks.Delivery do
       end)
 
     case deliver_chunks(sink, adapter, cursor, chunk_by_bytes(encoded, max_body_bytes())) do
-      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1)
+      {:ok, cursor} -> sync_cursor(sink, adapter, cursor, budget - 1, true)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -117,6 +142,9 @@ defmodule Portal.LogSinks.Delivery do
           :malformed_payload ->
             handle_rejected_chunk(sink, adapter, cursor, chunk, response, :malformed)
 
+          :retriable ->
+            {:error, {:retriable, response}}
+
           :failed ->
             {:error, {:status, response}}
         end
@@ -127,25 +155,36 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   # A single event the destination rejects is never skipped: the cursor parks
-  # on it and the error pages us with the exact request and response, every
-  # run, until we fix the cause and delivery resumes with nothing lost. The
-  # sink's customer-facing state stays untouched and other streams keep
-  # flowing. A rejected multi-event chunk is bisected until the offender is
-  # isolated, delivering the healthy events along the way.
-  defp handle_rejected_chunk(_sink, _adapter, cursor, [{seq, json}] = _chunk, response, reason) do
-    Logger.error("Log sink event cannot be delivered, halting stream",
-      log_sink_id: cursor.log_sink_id,
-      account_id: cursor.account_id,
-      stream: cursor.stream,
-      seq: seq,
-      reason: reason,
-      request_bytes: byte_size(json),
-      request: binary_part(json, 0, min(byte_size(json), 65_536)),
-      response_status: response.status,
-      response_body: response.body
-    )
+  # on it until delivery can resume with nothing lost. A rejection our own
+  # rendering caused (the default) pages us with the exact request and
+  # response and stays invisible to the customer, with a chance for the
+  # adapter to self-heal the destination (Elastic rolls its data stream
+  # over). A rejection the adapter attributes to destination-side
+  # configuration only the admin can fix becomes an ordinary transient sink
+  # error instead: 24 hours of grace, then the sink disables and
+  # notification emails go out.
+  defp handle_rejected_chunk(sink, adapter, cursor, [{seq, json}] = _chunk, response, reason) do
+    case rejection_origin(sink, adapter, response) do
+      :customer ->
+        {:error, {:retriable, response}}
 
-    {:error, :undeliverable}
+      :internal ->
+        Logger.error("Log sink event cannot be delivered, halting stream",
+          log_sink_id: cursor.log_sink_id,
+          account_id: cursor.account_id,
+          stream: cursor.stream,
+          seq: seq,
+          reason: reason,
+          request_bytes: byte_size(json),
+          request: binary_part(json, 0, min(byte_size(json), 65_536)),
+          response_status: response.status,
+          response_body: response.body
+        )
+
+        recover_undeliverable(sink, adapter, response)
+
+        {:error, :undeliverable}
+    end
   end
 
   defp handle_rejected_chunk(sink, adapter, cursor, chunk, _response, _reason) do
@@ -153,6 +192,22 @@ defmodule Portal.LogSinks.Delivery do
 
     with {:ok, cursor} <- deliver_chunk(sink, adapter, cursor, left) do
       deliver_chunk(sink, adapter, cursor, right)
+    end
+  end
+
+  defp rejection_origin(sink, adapter, response) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :rejection_origin, 2) do
+      adapter.rejection_origin(sink, response)
+    else
+      :internal
+    end
+  end
+
+  defp recover_undeliverable(sink, adapter, response) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :recover_undeliverable, 2) do
+      adapter.recover_undeliverable(sink, response)
+    else
+      :ok
     end
   end
 
@@ -244,10 +299,15 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp classify({:status, _response}), do: :client_error
+  defp classify({:retriable, _response}), do: :transient
   defp classify({:transport, _exception}), do: :transient
   defp classify(:cursor_conflict), do: :transient
 
   defp format_error(adapter, {:status, %Req.Response{} = response}) do
+    adapter.format_status_error(response)
+  end
+
+  defp format_error(adapter, {:retriable, %Req.Response{} = response}) do
     adapter.format_status_error(response)
   end
 
@@ -439,7 +499,8 @@ defmodule Portal.LogSinks.Delivery do
         where: c.account_id == ^sink.account_id,
         where: c.log_sink_id == ^sink.id,
         where: c.stream in ^sink.enabled_streams,
-        where: is_nil(c.completed_at)
+        where: is_nil(c.completed_at),
+        order_by: [asc: c.stream, asc: c.phase]
       )
       |> Safe.unscoped()
       |> Safe.all()

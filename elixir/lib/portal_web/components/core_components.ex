@@ -1469,6 +1469,14 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("elastic") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-elastic.svg",
+      alt: "Elastic"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

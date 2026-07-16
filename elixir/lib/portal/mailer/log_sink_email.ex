@@ -39,6 +39,7 @@ defmodule Portal.Mailer.LogSinkEmail do
   defp type(%Portal.Splunk.LogSink{}), do: "Splunk"
   defp type(%Portal.Datadog.LogSink{}), do: "Datadog"
   defp type(%Portal.NewRelic.LogSink{}), do: "New Relic"
+  defp type(%Portal.Elastic.LogSink{}), do: "Elastic"
 
   defp provider_hint(%Portal.Splunk.LogSink{}) do
     "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
@@ -56,6 +57,12 @@ defmodule Portal.Mailer.LogSinkEmail do
       "your New Relic account."
   end
 
+  defp provider_hint(%Portal.Elastic.LogSink{}) do
+    "Verify the API key is valid and unexpired in Elasticsearch, that it can manage " <>
+      "index templates and write to the configured data stream, and that the " <>
+      "endpoint URL points at your cluster's Elasticsearch HTTPS endpoint."
+  end
+
   defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
@@ -70,6 +77,13 @@ defmodule Portal.Mailer.LogSinkEmail do
     |> Portal.NewRelic.APIClient.endpoint()
     |> URI.parse()
     |> Map.get(:host)
+  end
+
+  defp destination(%Portal.Elastic.LogSink{} = sink) do
+    case URI.new(sink.endpoint_url || "") do
+      {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
+      _ -> sink.endpoint_url
+    end
   end
 
   defp streams(sink) do
