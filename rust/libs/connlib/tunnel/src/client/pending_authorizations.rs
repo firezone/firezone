@@ -127,33 +127,36 @@ impl PendingAuthorizations {
     ) {
         let trigger_name = trigger.name();
 
-        let pending = self.inner.entry(target).or_insert_with(|| {
-            // Insert with a negative time to ensure we instantly send a request.
-            PendingAuthorization::new(resource_id, now - Duration::from_secs(10))
-        });
+        let pending = self
+            .inner
+            .entry(target)
+            .or_insert_with(PendingAuthorization::new);
 
         pending.push(trigger);
 
-        let time_since_last_request = now.duration_since(pending.last_request_sent_at);
+        if let Some(last_request_sent_at) = pending.requested_resources.get(&resource_id) {
+            let time_since_last_request = now.duration_since(*last_request_sent_at);
 
-        if time_since_last_request < Duration::from_secs(2) {
-            tracing::trace!(?time_since_last_request, "Skipping authorization request");
-            return;
+            if time_since_last_request < Duration::from_secs(2) {
+                tracing::trace!(?time_since_last_request, "Skipping authorization request");
+                return;
+            }
         }
 
         tracing::debug!(trigger = %trigger_name, "Requesting authorization");
 
-        pending.resource_id = resource_id;
-        pending.last_request_sent_at = now;
+        pending.requested_resources.insert(resource_id, now);
         self.authorization_requests
             .push_back(AuthorizationRequest { resource_id, ip });
     }
 }
 
 pub struct PendingAuthorization {
-    /// The resource of the most recent authorization request for this target.
-    resource_id: ResourceId,
-    last_request_sent_at: Instant,
+    /// When we last requested authorization, per resource that triggered a request.
+    ///
+    /// A device can be reachable through several resources with different
+    /// filters, so we must track (and eventually authorize) every one of them.
+    requested_resources: BTreeMap<ResourceId, Instant>,
     resource_packets: UniquePacketBuffer,
     dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
@@ -166,10 +169,9 @@ impl PendingAuthorization {
     /// Thus, we may receive a fair few packets before we can send them.
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    fn new(resource_id: ResourceId, now: Instant) -> Self {
+    fn new() -> Self {
         Self {
-            resource_id,
-            last_request_sent_at: now,
+            requested_resources: BTreeMap::new(),
             resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
                 "pending-authorization",
@@ -188,8 +190,8 @@ impl PendingAuthorization {
         }
     }
 
-    pub fn resource_id(&self) -> ResourceId {
-        self.resource_id
+    pub fn resource_ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.requested_resources.keys().copied()
     }
 
     pub fn into_buffered_packets(self) -> (UniquePacketBuffer, AllocRingBuffer<DnsQueryForSite>) {
@@ -502,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn entry_tracks_resource_of_most_recent_request() {
+    fn entry_tracks_every_requested_resource() {
         let mut pending_authorizations = PendingAuthorizations::default();
         let mut now = Instant::now();
         let cid = client_foo();
@@ -528,7 +530,9 @@ mod tests {
                 .is_some()
         );
 
-        now += Duration::from_secs(3);
+        // Within the per-resource throttle window: a request for a different
+        // resource must still go out immediately.
+        now += Duration::from_millis(500);
 
         pending_authorizations.on_not_authorized_device(
             cid,
@@ -545,7 +549,10 @@ mod tests {
         );
 
         let entry = pending_authorizations.remove(cid).unwrap();
-        assert_eq!(entry.resource_id(), rid_two);
+        assert_eq!(
+            entry.resource_ids().collect::<Vec<_>>(),
+            vec![rid_one, rid_two]
+        );
     }
 
     fn udp_trigger(payload: u8) -> IpPacket {

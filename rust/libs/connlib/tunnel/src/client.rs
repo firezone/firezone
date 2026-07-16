@@ -1099,26 +1099,26 @@ impl ClientState {
         }
 
         if let Some(pending_authorization) = pending_authorization {
-            // We initiated this connection — record the (resource, peer) pair
+            // We initiated this connection — record each (resource, peer) pair
             // as authorised so future sends in the same direction skip
             // `pending_authorizations` and route directly via the peer.
-            let resource_id = pending_authorization.resource_id();
-
-            match self
-                .authorized_resources
-                .entry(resource_id)
-                .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
-            {
-                AccessPath::Direct(set) => {
-                    set.insert(cid);
-                }
-                AccessPath::Gateway(_) => {
-                    tracing::warn!(
-                        %resource_id,
-                        "Static device pool clobbering existing gateway authorisation"
-                    );
-                    self.authorized_resources
-                        .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
+            for resource_id in pending_authorization.resource_ids() {
+                match self
+                    .authorized_resources
+                    .entry(resource_id)
+                    .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
+                {
+                    AccessPath::Direct(set) => {
+                        set.insert(cid);
+                    }
+                    AccessPath::Gateway(_) => {
+                        tracing::warn!(
+                            %resource_id,
+                            "Static device pool clobbering existing gateway authorisation"
+                        );
+                        self.authorized_resources
+                            .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
+                    }
                 }
             }
 
