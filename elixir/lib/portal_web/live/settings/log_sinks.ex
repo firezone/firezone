@@ -1861,7 +1861,8 @@ defmodule PortalWeb.Settings.LogSinks do
         _ -> "my-firezone-logs"
       end
 
-    resource = s3_put_object_resource(bucket, get_field(form.source, :key_prefix))
+    resource =
+      "arn:aws:s3:::#{bucket}/#{s3_objects_pattern(get_field(form.source, :key_prefix))}"
 
     """
     {
@@ -1877,17 +1878,17 @@ defmodule PortalWeb.Settings.LogSinks do
     """
   end
 
-  defp s3_put_object_resource(bucket, prefix) when is_binary(prefix) do
+  defp s3_objects_pattern(prefix) when is_binary(prefix) do
     case prefix |> String.trim() |> String.trim("/") do
-      "" -> "arn:aws:s3:::#{bucket}/*"
-      prefix -> "arn:aws:s3:::#{bucket}/#{prefix}/*"
+      "" -> "*"
+      prefix -> "#{prefix}/*"
     end
   end
 
-  defp s3_put_object_resource(bucket, _prefix), do: "arn:aws:s3:::#{bucket}/*"
+  defp s3_objects_pattern(_prefix), do: "*"
 
   @s3_cli_snippet ~S"""
-  BUCKET="my-firezone-logs"
+  BUCKET="SINK_BUCKET"
   REGION="us-east-1"
   ROLE="firezone-logs"
 
@@ -1923,7 +1924,7 @@ defmodule PortalWeb.Settings.LogSinks do
   fi
 
   aws iam put-role-policy --role-name "$ROLE" --policy-name put-objects \
-    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::$BUCKET/*\"}]}"
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::$BUCKET/SINK_OBJECTS_PATTERN\"}]}"
 
   echo "Enter these in the Firezone form:"
   echo "  Bucket:   $BUCKET"
@@ -1933,7 +1934,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @s3_terraform_snippet ~S"""
   locals {
-    bucket = "my-firezone-logs"
+    bucket = "SINK_BUCKET"
   }
 
   resource "aws_s3_bucket" "firezone_logs" {
@@ -1966,7 +1967,7 @@ defmodule PortalWeb.Settings.LogSinks do
         {
           Effect   = "Allow"
           Action   = "s3:PutObject"
-          Resource = "${aws_s3_bucket.firezone_logs.arn}/*"
+          Resource = "${aws_s3_bucket.firezone_logs.arn}/SINK_OBJECTS_PATTERN"
         }
       ]
     })
@@ -1986,9 +1987,17 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   defp prefill_s3_snippet(snippet, form) do
+    bucket =
+      case get_field(form.source, :bucket) do
+        bucket when is_binary(bucket) and bucket != "" -> bucket
+        _ -> "my-firezone-logs"
+      end
+
     snippet
     |> String.replace("FIREZONE_AWS_ACCOUNT_ID", S3.APIClient.aws_account_id())
     |> String.replace("SINK_EXTERNAL_ID", get_field(form.source, :external_id) || "")
+    |> String.replace("SINK_BUCKET", bucket)
+    |> String.replace("SINK_OBJECTS_PATTERN", s3_objects_pattern(get_field(form.source, :key_prefix)))
   end
 
   defp delivered_count(sink) do
