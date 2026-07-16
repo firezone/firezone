@@ -142,7 +142,7 @@ l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
-libfuzzer-sys = "0.4.12"
+libfuzzer-sys = "0.4.13"
 logging = { path = "libs/logging" }
 lru = "0.18.0"
 mimalloc = { version = "0.1.52" }
