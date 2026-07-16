@@ -12,7 +12,9 @@ use libc::{
     open,
 };
 use logging::{DisplayBTreeSet, err_with_src};
-use netlink_packet_route::link::{LinkAttribute, State};
+use netlink_packet_route::link::{
+    AfSpecInet6, AfSpecUnspec, In6AddrGenMode, LinkAttribute, State,
+};
 use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
 };
@@ -139,6 +141,26 @@ impl TunDeviceManager {
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<TunIpStack> {
         let handle = &self.connection.handle;
         let index = tun_device_index(handle).await?;
+
+        // Disable automatic IPv6 link-local address generation on the TUN device.
+        // We assign explicit tunnel IPs and never use a link-local here. Suppressing
+        // it before the interface is brought up also avoids a race where the cleanup
+        // below tries to delete a still-tentative (DAD) link-local and fails with
+        // EBUSY, which would otherwise abort the whole client.
+        if let Err(e) = handle
+            .link()
+            .set(
+                LinkUnspec::new_with_index(index)
+                    .append_extra_attribute(LinkAttribute::AfSpecUnspec(vec![
+                        AfSpecUnspec::Inet6(vec![AfSpecInet6::AddrGenMode(In6AddrGenMode::None)]),
+                    ]))
+                    .build(),
+            )
+            .execute()
+            .await
+        {
+            tracing::warn!("Failed to disable IPv6 link-local address generation: {e}");
+        }
 
         let ips = handle
             .address()
