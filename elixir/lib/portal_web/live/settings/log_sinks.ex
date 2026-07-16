@@ -66,6 +66,7 @@ defmodule PortalWeb.Settings.LogSinks do
       assign(socket,
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
+        s3_setup_tab: "console",
         trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
       )
 
@@ -131,6 +132,11 @@ defmodule PortalWeb.Settings.LogSinks do
   def handle_event("sentinel_setup_tab", %{"tab" => tab}, socket)
       when tab in ~w[portal cli terraform] do
     {:noreply, assign(socket, sentinel_setup_tab: tab)}
+  end
+
+  def handle_event("s3_setup_tab", %{"tab" => tab}, socket)
+      when tab in ~w[console cli terraform] do
+    {:noreply, assign(socket, s3_setup_tab: tab)}
   end
 
   def handle_event("sentinel_admin_consent", _params, socket) do
@@ -477,7 +483,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -526,7 +532,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
                 {@sink.error_message}
               </.flash>
-              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -823,6 +829,7 @@ defmodule PortalWeb.Settings.LogSinks do
   attr :live_action, :atom, required: true
   attr :account, :any, required: true
   attr :sentinel_setup_tab, :string, required: true
+  attr :s3_setup_tab, :string, required: true
 
   defp sink_form(assigns) do
     ~H"""
@@ -1231,6 +1238,72 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "s3"} class="p-3 rounded border border-border bg-raised">
+          <p class="text-xs font-medium text-heading mb-2">Setup</p>
+          <p class="text-xs text-subtle mb-3">
+            Firezone assumes an IAM role in your AWS account to write log objects. The
+            trust policy and snippets below are pinned to this sink's External ID, so
+            complete setup and save without leaving this page:
+          </p>
+          <div class="flex border-b border-border mb-3" role="tablist">
+            <button
+              :for={{tab, label} <- [{"console", "AWS Console"}, {"cli", "AWS CLI"}, {"terraform", "Terraform"}]}
+              type="button"
+              role="tab"
+              phx-click="s3_setup_tab"
+              phx-value-tab={tab}
+              class={[
+                "px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+                @s3_setup_tab == tab && "border-brand text-brand",
+                @s3_setup_tab != tab &&
+                  "border-transparent text-body hover:text-heading hover:border-border-strong"
+              ]}
+            >
+              {label}
+            </button>
+          </div>
+          <ol
+            :if={@s3_setup_tab == "console"}
+            class="list-decimal ml-4 space-y-1.5 text-xs text-subtle"
+          >
+            <li>
+              In the S3 console, create a bucket (or pick an existing one) and note its
+              region.
+            </li>
+            <li>
+              In IAM under <strong>Roles</strong>, choose
+              <strong>Create role &rarr; Custom trust policy</strong> and paste:
+              <pre class="mt-2 mb-1 p-3 rounded border border-border bg-surface text-xs text-body overflow-x-auto"><code>{trust_policy_json(@form)}</code></pre>
+              Continue without adding permissions and give the role a name, e.g.
+              <code class="text-xs">firezone-logs</code>.
+            </li>
+            <li>
+              On the new role, choose
+              <strong>Add permissions &rarr; Create inline policy &rarr; JSON</strong>
+              and paste:
+              <pre class="mt-2 mb-1 p-3 rounded border border-border bg-surface text-xs text-body overflow-x-auto"><code>{s3_permission_policy_json(@form)}</code></pre>
+            </li>
+            <li>
+              Fill in the fields below: the bucket name, its region, and the role's ARN
+              (shown at the top of the role's page).
+            </li>
+          </ol>
+          <div :if={@s3_setup_tab == "cli"}>
+            <p class="text-xs text-subtle mb-2">
+              Set the variables, then run the script with the AWS CLI logged into your
+              account. It prints the Role ARN for the field below.
+            </p>
+            <.code_block id="s3-setup-cli" class="rounded text-xs">{s3_cli_snippet(@form)}</.code_block>
+          </div>
+          <div :if={@s3_setup_tab == "terraform"}>
+            <p class="text-xs text-subtle mb-2">
+              Requires the aws provider; the bucket is created in the provider's region.
+              The output is the Role ARN for the field below.
+            </p>
+            <.code_block id="s3-setup-terraform" class="rounded text-xs">{s3_terraform_snippet(@form)}</.code_block>
+          </div>
+        </div>
+
         <div :if={@type == "s3"}>
           <label for={@form[:bucket].id} class="block text-xs font-medium text-body mb-1.5">
             Bucket <span class="text-error">*</span>
@@ -1278,11 +1351,9 @@ defmodule PortalWeb.Settings.LogSinks do
             required
           />
           <p class="mt-1 text-xs text-subtle">
-            An IAM role in your AWS account that Firezone assumes to write objects.
-            Grant it <code class="text-xs">s3:PutObject</code>
-            on the bucket and attach this trust policy:
+            The IAM role in your AWS account that Firezone assumes to write objects,
+            e.g. <code class="text-xs">arn:aws:iam::123456789012:role/firezone-logs</code>.
           </p>
-          <pre class="mt-2 p-3 rounded border border-border bg-raised text-xs text-body overflow-x-auto"><code>{trust_policy_json(@form)}</code></pre>
         </div>
 
         <div :if={@type == "s3"}>
@@ -1776,6 +1847,122 @@ defmodule PortalWeb.Settings.LogSinks do
       ]
     }\
     """
+  end
+
+  defp s3_permission_policy_json(form) do
+    bucket =
+      case get_field(form.source, :bucket) do
+        bucket when is_binary(bucket) and bucket != "" -> bucket
+        _ -> "my-firezone-logs"
+      end
+
+    """
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": "s3:PutObject",
+          "Resource": "arn:aws:s3:::#{bucket}/*"
+        }
+      ]
+    }\
+    """
+  end
+
+  @s3_cli_snippet ~S"""
+  BUCKET="my-firezone-logs"
+  REGION="us-east-1"
+  ROLE="firezone-logs"
+
+  if [ "$REGION" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
+  else
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
+      --create-bucket-configuration LocationConstraint="$REGION"
+  fi
+
+  cat > firezone-trust.json <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::FIREZONE_AWS_ACCOUNT_ID:root" },
+        "Action": "sts:AssumeRole",
+        "Condition": { "StringEquals": { "sts:ExternalId": "SINK_EXTERNAL_ID" } }
+      }
+    ]
+  }
+  EOF
+
+  aws iam create-role --role-name "$ROLE" \
+    --assume-role-policy-document file://firezone-trust.json
+
+  aws iam put-role-policy --role-name "$ROLE" --policy-name put-objects \
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::$BUCKET/*\"}]}"
+
+  aws iam get-role --role-name "$ROLE" --query Role.Arn --output text
+  """
+
+  @s3_terraform_snippet ~S"""
+  locals {
+    bucket = "my-firezone-logs"
+  }
+
+  resource "aws_s3_bucket" "firezone_logs" {
+    bucket = local.bucket
+  }
+
+  resource "aws_iam_role" "firezone_logs" {
+    name = "firezone-logs"
+
+    assume_role_policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect    = "Allow"
+          Principal = { AWS = "arn:aws:iam::FIREZONE_AWS_ACCOUNT_ID:root" }
+          Action    = "sts:AssumeRole"
+          Condition = { StringEquals = { "sts:ExternalId" = "SINK_EXTERNAL_ID" } }
+        }
+      ]
+    })
+  }
+
+  resource "aws_iam_role_policy" "firezone_logs_put" {
+    name = "put-objects"
+    role = aws_iam_role.firezone_logs.id
+
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect   = "Allow"
+          Action   = "s3:PutObject"
+          Resource = "${aws_s3_bucket.firezone_logs.arn}/*"
+        }
+      ]
+    })
+  }
+
+  output "role_arn" {
+    value = aws_iam_role.firezone_logs.arn
+  }
+  """
+
+  defp s3_cli_snippet(form) do
+    prefill_s3_snippet(@s3_cli_snippet, form)
+  end
+
+  defp s3_terraform_snippet(form) do
+    prefill_s3_snippet(@s3_terraform_snippet, form)
+  end
+
+  defp prefill_s3_snippet(snippet, form) do
+    snippet
+    |> String.replace("FIREZONE_AWS_ACCOUNT_ID", S3.APIClient.aws_account_id())
+    |> String.replace("SINK_EXTERNAL_ID", get_field(form.source, :external_id) || "")
   end
 
   defp delivered_count(sink) do
