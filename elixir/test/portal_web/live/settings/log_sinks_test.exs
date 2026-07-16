@@ -718,7 +718,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.external_id == sink.external_id
     end
 
-    test "editing a sink disabled by a delivery error re-enables it", %{
+    test "saving a sink disabled by a delivery error unchanged re-enables it", %{
       conn: conn,
       account: account,
       actor: actor
@@ -737,15 +737,18 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
 
-      form = form(lv, "#log-sink-form", log_sink: %{hec_token: "fixed-token"})
-      render_change(form)
-      render_submit(form)
+      refute has_element?(lv, "button[type=submit][disabled]")
+
+      lv
+      |> form("#log-sink-form")
+      |> render_submit()
 
       updated = reload_sink(sink)
       refute updated.is_disabled
       refute updated.disabled_reason
       refute updated.error_message
       refute updated.errored_at
+      assert updated.hec_token == sink.hec_token
     end
   end
 

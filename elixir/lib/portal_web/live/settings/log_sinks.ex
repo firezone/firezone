@@ -542,7 +542,7 @@ defmodule PortalWeb.Settings.LogSinks do
                 form="log-sink-form"
                 type="submit"
                 style="primary"
-                disabled={not @form.source.valid? or Enum.empty?(@form.source.changes)}
+                disabled={not @form.source.valid?}
               >
                 Save
               </.button>
