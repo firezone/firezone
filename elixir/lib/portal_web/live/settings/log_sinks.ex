@@ -1880,7 +1880,7 @@ defmodule PortalWeb.Settings.LogSinks do
   REGION="us-east-1"
   ROLE="firezone-logs"
 
-  if ! aws s3api head-bucket --bucket "$BUCKET" 2> /dev/null; then
+  if ! aws s3api head-bucket --bucket "$BUCKET" > /dev/null 2>&1; then
     if [ "$REGION" = "us-east-1" ]; then
       aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" > /dev/null
     else
