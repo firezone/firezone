@@ -4,8 +4,7 @@ mod client_on_client;
 mod dns_cache;
 mod dns_resource_nat;
 mod gateway_on_client;
-mod pending_device_access;
-mod pending_flows;
+mod pending_authorizations;
 mod resource;
 mod tracked_state;
 
@@ -18,8 +17,7 @@ pub(crate) use resource::{InternetResource, Resource, StaticDevicePoolResource};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
-use crate::client::pending_device_access::PendingDeviceAccessRequests;
-use crate::client::pending_flows::{ConnectionTrigger, DnsQueryForSite, PendingFlows};
+use crate::client::pending_authorizations::{DnsQueryForSite, PendingAuthorizations, Trigger};
 use crate::client::tracked_state::TrackedState;
 use crate::dns::{
     DeviceStubResolver, DnsResourceRecord, ResourceStubResolver, device_stub_resolver,
@@ -115,10 +113,8 @@ pub struct ClientState {
     gateways: PeerStore<GatewayId, GatewayOnClient>,
     /// All clients we are connected to and the associated, connection-specific state.
     clients: PeerStore<ClientId, ClientOnClient>,
-    /// Tracks the flows to resources that we are currently trying to establish.
-    pending_flows: PendingFlows,
-    /// Tracks pending access to other devices.
-    pending_device_access: PendingDeviceAccessRequests,
+    /// Tracks the authorizations we have requested but not yet been granted.
+    pending_authorizations: PendingAuthorizations,
 
     /// Packets buffered per peer while its connection is still being established.
     pending_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
@@ -215,8 +211,7 @@ impl ClientState {
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(10), seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
             dns_streams_by_local_upstream_and_query_id: Default::default(),
-            pending_flows: Default::default(),
-            pending_device_access: Default::default(),
+            pending_authorizations: Default::default(),
             pending_packets: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
@@ -381,7 +376,7 @@ impl ClientState {
             return;
         };
 
-        self.pending_device_access.remove(&entry.client_id);
+        self.pending_authorizations.remove(entry.client_id);
         // TODO: Update resource list with offline client.
 
         let Some(_) = self.clients.remove(&entry.client_id) else {
@@ -683,9 +678,9 @@ impl ClientState {
                         "icmp-error-unreachable-prohibited-create-new-flow",
                     );
 
-                    self.on_not_connected_resource(
+                    self.on_not_authorized_resource(
                         resource,
-                        ConnectionTrigger::IcmpDestinationUnreachableProhibited,
+                        Trigger::IcmpDestinationUnreachableProhibited,
                         now,
                     );
                 }
@@ -891,13 +886,13 @@ impl ClientState {
                 return Ok(Some((ClientOrGatewayId::Client(entry.client_id), packet)));
             }
 
-            // Not yet authorized: Buffer + send intent.
-            self.pending_device_access.on_not_connected_device(
+            // Not yet authorized: Buffer + send request.
+            self.pending_authorizations.on_not_authorized_device(
                 entry.client_id,
                 entry.resource_id,
                 dst,
-                &entry.filter,
                 packet,
+                &self.resources_by_id,
                 now,
             );
             return Ok(None);
@@ -922,7 +917,7 @@ impl ClientState {
         }
 
         // Not yet authorized: Buffer + send intent.
-        self.on_not_connected_resource(resource, packet, now);
+        self.on_not_authorized_resource(resource, packet, now);
 
         Ok(None)
     }
@@ -965,8 +960,8 @@ impl ClientState {
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
 
-        let Some(pending_flow) = self.pending_flows.remove(&rid) else {
-            tracing::debug!("No pending flow");
+        let Some(pending_authorization) = self.pending_authorizations.remove(rid) else {
+            tracing::debug!("No pending authorization");
 
             return Ok(Ok(()));
         };
@@ -999,7 +994,8 @@ impl ClientState {
 
         // Deal with buffered packets
 
-        let (buffered_resource_packets, dns_queries) = pending_flow.into_buffered_packets();
+        let (buffered_resource_packets, dns_queries) =
+            pending_authorization.into_buffered_packets();
 
         // If we are making this connection because we want to send a DNS query to the Gateway,
         // mark it as "used" through the DNS resource ID.
@@ -1069,7 +1065,7 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
 
-        let pending_device_access = self.pending_device_access.remove(&cid);
+        let pending_authorization = self.pending_authorizations.remove(cid);
 
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
@@ -1106,11 +1102,11 @@ impl ClientState {
             peer.add_resource(resource_id, filters, expires_at, now);
         }
 
-        if let Some(pending_client_access) = pending_device_access {
+        if let Some(pending_authorization) = pending_authorization {
             // We initiated this connection — record the (resource, peer) pair
             // as authorised so future sends in the same direction skip
-            // `pending_device_access` and route directly via the peer.
-            let resource_id = pending_client_access.resource_id();
+            // `pending_authorizations` and route directly via the peer.
+            let resource_id = pending_authorization.resource_id();
 
             match self
                 .authorized_resources
@@ -1130,7 +1126,9 @@ impl ClientState {
                 }
             }
 
-            for packet in pending_client_access.into_buffered_packets() {
+            let (buffered_packets, _) = pending_authorization.into_buffered_packets();
+
+            for packet in buffered_packets {
                 peer.record_outbound(&packet, now);
                 encapsulate_and_queue(
                     packet,
@@ -1222,7 +1220,7 @@ impl ClientState {
     }
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
-        self.pending_flows.remove(&resource);
+        self.pending_authorizations.remove(resource);
         let Some(AccessPath::Gateway(disconnected_gateway)) =
             self.authorized_resources.remove(&resource)
         else {
@@ -1883,7 +1881,7 @@ impl ClientState {
                     &mut self.gateways,
                     resource,
                 ) else {
-                    self.on_not_connected_resource(
+                    self.on_not_authorized_resource(
                         resource,
                         DnsQueryForSite {
                             local,
@@ -2154,19 +2152,17 @@ impl ClientState {
             return Some(ClientEvent::ResourcesChanged { resources });
         }
 
-        if let Some(resource) = self.pending_flows.poll_connection_intents() {
-            return Some(ClientEvent::ResourceConnectionIntent {
-                resource,
-                preferred_gateways: self.preferred_gateways(resource),
-                ip: None,
-            });
-        }
+        if let Some(request) = self.pending_authorizations.poll_authorization_requests() {
+            // `ip` is only set for device requests, which never involve a gateway.
+            let preferred_gateways = match request.ip {
+                None => self.preferred_gateways(request.resource_id),
+                Some(_) => Vec::new(),
+            };
 
-        if let Some(intent) = self.pending_device_access.poll_connection_intents() {
             return Some(ClientEvent::ResourceConnectionIntent {
-                resource: intent.resource_id,
-                preferred_gateways: Vec::new(),
-                ip: Some(intent.ip),
+                resource: request.resource_id,
+                preferred_gateways,
+                ip: request.ip,
             });
         }
 
@@ -2357,7 +2353,7 @@ impl ClientState {
             // connection so traffic doesn't keep flowing to a revoked device —
             // but only if no other pool still authorises it.
             if new_member.is_none() && !self.is_client_in_other_static_device_pool(*cid, pool_id) {
-                self.pending_device_access.remove(cid);
+                self.pending_authorizations.remove(*cid);
 
                 if let hash_map::Entry::Occupied(mut entry) =
                     self.authorized_resources.entry(pool_id)
@@ -2468,7 +2464,7 @@ impl ClientState {
 
         tracing::info!(%name, address, sites, "Deactivating resource");
 
-        self.pending_flows.remove(&id);
+        self.pending_authorizations.remove(id);
 
         let Some((_, peer)) =
             gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
@@ -2507,14 +2503,18 @@ impl ClientState {
         self.drain_node_events(now); // Ensure all state changes are fully-propagated.
     }
 
-    fn on_not_connected_resource(
+    fn on_not_authorized_resource(
         &mut self,
         resource: ResourceId,
-        trigger: impl Into<ConnectionTrigger>,
+        trigger: impl Into<Trigger>,
         now: Instant,
     ) {
-        self.pending_flows
-            .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
+        self.pending_authorizations.on_not_authorized_resource(
+            resource,
+            trigger,
+            &self.resources_by_id,
+            now,
+        );
     }
 
     /// Whether the resource's traffic filters permit a packet with the given protocol.
