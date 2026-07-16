@@ -11,7 +11,9 @@ multi-ecosystem-groups:
       interval: weekly
 
 updates:
+  # Keep version update jobs on the active codebase while the legacy branch exists.
   - package-ecosystem: mix
+    target-branch: main
     directory: elixir/
     schedule:
       interval: weekly
@@ -27,6 +29,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: pip
+    target-branch: main
     directory: /.github
     schedule:
       interval: weekly
@@ -42,6 +45,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: github-actions
+    target-branch: main
     directories:
       - "/.github/workflows"
       # Dependabot doesn't look in these by default
@@ -81,6 +85,7 @@ updates:
         patterns:
           - github/codeql-action/*
   - package-ecosystem: cargo
+    target-branch: main
     directory: rust/
     open-pull-requests-limit: 100
     schedule:
@@ -146,6 +151,7 @@ updates:
           - zeroize
           - zeroize_derive
   - package-ecosystem: gradle
+    target-branch: main
     directory: kotlin/android/
     schedule:
       interval: weekly
@@ -218,6 +224,7 @@ updates:
           - com.google.firebase:firebase-analytics-ktx
 
   - package-ecosystem: swift
+    target-branch: main
     directory: swift/apple/FirezoneKit
     schedule:
       interval: weekly
@@ -233,6 +240,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: npm
+    target-branch: main
     directory: rust/gui-client/
     schedule:
       interval: weekly
@@ -266,6 +274,7 @@ updates:
           - "@types/react"
           - "@types/react-dom"
   - package-ecosystem: npm
+    target-branch: main
     directory: elixir/assets/
     schedule:
       interval: weekly
@@ -282,6 +291,7 @@ updates:
           - "*"
 
   - package-ecosystem: docker
+    target-branch: main
     directories:
       - /rust
       - /elixir
@@ -304,6 +314,7 @@ updates:
 
   # Tauri group
   - package-ecosystem: npm
+    target-branch: main
     directory: rust/gui-client/
     schedule:
       interval: weekly
@@ -311,6 +322,7 @@ updates:
     patterns:
       - "@tauri-apps/*"
   - package-ecosystem: cargo
+    target-branch: main
     directory: rust/
     schedule:
       interval: weekly
