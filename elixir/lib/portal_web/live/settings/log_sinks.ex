@@ -1880,11 +1880,13 @@ defmodule PortalWeb.Settings.LogSinks do
   REGION="us-east-1"
   ROLE="firezone-logs"
 
-  if [ "$REGION" = "us-east-1" ]; then
-    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" > /dev/null
-  else
-    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
-      --create-bucket-configuration LocationConstraint="$REGION" > /dev/null
+  if ! aws s3api head-bucket --bucket "$BUCKET" 2> /dev/null; then
+    if [ "$REGION" = "us-east-1" ]; then
+      aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" > /dev/null
+    else
+      aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
+        --create-bucket-configuration LocationConstraint="$REGION" > /dev/null
+    fi
   fi
 
   cat > firezone-trust.json <<EOF
@@ -1901,8 +1903,13 @@ defmodule PortalWeb.Settings.LogSinks do
   }
   EOF
 
-  aws iam create-role --role-name "$ROLE" \
-    --assume-role-policy-document file://firezone-trust.json > /dev/null
+  if aws iam get-role --role-name "$ROLE" > /dev/null 2>&1; then
+    aws iam update-assume-role-policy --role-name "$ROLE" \
+      --policy-document file://firezone-trust.json
+  else
+    aws iam create-role --role-name "$ROLE" \
+      --assume-role-policy-document file://firezone-trust.json > /dev/null
+  fi
 
   aws iam put-role-policy --role-name "$ROLE" --policy-name put-objects \
     --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::$BUCKET/*\"}]}"
