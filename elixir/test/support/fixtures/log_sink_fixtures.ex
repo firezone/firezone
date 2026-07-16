@@ -380,6 +380,66 @@ defmodule Portal.LogSinkFixtures do
     s3_log_sink
   end
 
+  def valid_http_log_sink_attrs(attrs \\ %{}) do
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    Enum.into(attrs, %{
+      name: "HTTP #{unique_num}",
+      endpoint_url: "https://logs#{unique_num}.webhook.example/ingest",
+      bearer_token: "http-bearer-token-#{unique_num}",
+      batch_max_events: 100,
+      enabled_streams: ~w[change session api_request flow]a,
+      retroactive: false
+    })
+  end
+
+  def http_log_sink_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    account = Map.get(attrs, :account) || account_fixture()
+
+    {:ok, log_sink} =
+      %Portal.LogSink{
+        id: Ecto.UUID.generate(),
+        account_id: account.id
+      }
+      |> Ecto.Changeset.cast(%{type: :http}, [:type])
+      |> Portal.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    http_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Enum.into(%{
+        id: log_sink.id,
+        account_id: account.id
+      })
+      |> valid_http_log_sink_attrs()
+
+    {:ok, http_log_sink} =
+      %Portal.HTTP.LogSink{}
+      |> Ecto.Changeset.cast(http_attrs, [
+        :id,
+        :account_id,
+        :name,
+        :endpoint_url,
+        :bearer_token,
+        :batch_max_events,
+        :enabled_streams,
+        :retroactive,
+        :errored_at,
+        :error_message,
+        :error_email_count,
+        :last_error_email_at,
+        :is_disabled,
+        :disabled_reason
+      ])
+      |> Portal.HTTP.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    http_log_sink
+  end
+
   def splunk_log_sink_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
