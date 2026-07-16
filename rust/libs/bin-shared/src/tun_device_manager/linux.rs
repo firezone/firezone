@@ -373,22 +373,13 @@ async fn disable_ipv6_link_local(handle: &Handle, index: u32) {
                 .build(),
         )
         .execute()
-        .await;
+        .await
+        .context("Failed to disable IPv6 link-local address generation");
 
-    match result {
-        Ok(()) => {}
-        // Older kernels / netlink stacks may not support `IFLA_INET6_ADDR_GEN_MODE`.
-        // That is harmless (we just fall back to the kernel-generated link-local), so
-        // don't warn on every connect.
-        Err(NetlinkError(err)) if err.raw_code() == -libc::EOPNOTSUPP => {
-            tracing::debug!("Kernel does not support setting `addr_gen_mode` on the TUN device")
-        }
-        Err(e) => {
-            tracing::warn!(
-                "Failed to disable IPv6 link-local address generation: {}",
-                err_with_src(&e)
-            )
-        }
+    // Not fatal: an older kernel without `IFLA_INET6_ADDR_GEN_MODE` just keeps its
+    // default link-local, which the address cleanup in `set_ips` handles.
+    if let Err(e) = result {
+        tracing::debug!("{e:#}");
     }
 }
 
