@@ -42,6 +42,7 @@ defmodule Portal.Mailer.LogSinkEmail do
   defp type(%Portal.Elastic.LogSink{}), do: "Elastic"
   defp type(%Portal.Sentinel.LogSink{}), do: "Microsoft Sentinel"
   defp type(%Portal.S3.LogSink{}), do: "Amazon S3"
+  defp type(%Portal.QRadar.LogSink{}), do: "IBM QRadar"
 
   defp provider_hint(%Portal.Splunk.LogSink{}) do
     "Verify the HEC token is valid and enabled in Splunk, and that the HEC URL points " <>
@@ -78,6 +79,13 @@ defmodule Portal.Mailer.LogSinkEmail do
       "write objects to the bucket."
   end
 
+  defp provider_hint(%Portal.QRadar.LogSink{}) do
+    "Verify the endpoint URL points at your QRadar HTTP Receiver's listen port and is " <>
+      "reachable from the internet, that the receiver presents a TLS certificate from a " <>
+      "publicly trusted CA, and that any proxy in front of it accepts the configured " <>
+      "authorization header."
+  end
+
   defp destination(%Portal.Splunk.LogSink{} = sink) do
     case URI.new(sink.collector_url || "") do
       {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
@@ -112,6 +120,13 @@ defmodule Portal.Mailer.LogSinkEmail do
     case sink.key_prefix do
       nil -> "s3://#{sink.bucket}"
       prefix -> "s3://#{sink.bucket}/#{prefix}"
+    end
+  end
+
+  defp destination(%Portal.QRadar.LogSink{} = sink) do
+    case URI.new(sink.endpoint_url || "") do
+      {:ok, %URI{host: host}} when is_binary(host) and host != "" -> host
+      _ -> sink.endpoint_url
     end
   end
 
