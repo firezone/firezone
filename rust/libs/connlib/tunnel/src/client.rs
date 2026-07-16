@@ -401,8 +401,8 @@ impl ClientState {
         );
     }
 
-    /// Abandons a pending connection whose ICE candidates the portal could not deliver.
-    pub fn handle_client_ice_candidate_error(&mut self, cid: ClientId, now: Instant) {
+    /// Abandons the pending authorizations and any connection to an offline device.
+    pub fn set_device_offline(&mut self, cid: ClientId, now: Instant) {
         let memberships = self
             .static_device_pools()
             .flat_map(|pool| {

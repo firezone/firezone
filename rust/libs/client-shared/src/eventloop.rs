@@ -708,9 +708,19 @@ impl Eventloop {
             }) => {
                 tracing::debug!(%client_id, ?reason, "ICE candidates could not be delivered to peer");
 
-                tunnel
-                    .state_mut()
-                    .handle_client_ice_candidate_error(client_id, now);
+                match reason {
+                    FailReason::Offline => {
+                        tunnel.state_mut().set_device_offline(client_id, now);
+                    }
+                    FailReason::NotFound
+                    | FailReason::VersionMismatch
+                    | FailReason::Forbidden
+                    | FailReason::Disabled
+                    | FailReason::AmbiguousAddress
+                    | FailReason::MissingAddress
+                    | FailReason::InvalidAddress
+                    | FailReason::Unknown => {}
+                }
             }
             IngressMessages::DevicePoolDomainResolved(DevicePoolDomainResolved {
                 resource_id,
