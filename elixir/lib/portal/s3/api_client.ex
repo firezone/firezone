@@ -20,11 +20,27 @@ defmodule Portal.S3.APIClient do
     config() |> Keyword.fetch!(:aws_account_id)
   end
 
+  # A trust policy missing the sts:ExternalId condition would let any
+  # Firezone account's sink pointed at this role write into the customer's
+  # bucket. A successful AssumeRole with a random external id proves the
+  # condition is not enforced, so the sink refuses to deliver until it is.
   @impl true
   def prepare(%S3.LogSink{} = sink) do
-    case credentials(sink) do
-      {:ok, _credentials} -> :ok
-      {:error, reason} -> {:error, reason}
+    case assume_role(sink, Ecto.UUID.generate()) do
+      {:ok, _credentials} ->
+        {:error,
+         {:config,
+          "The IAM role's trust policy does not require this sink's External ID. Add the " <>
+            "sts:ExternalId condition from the setup instructions to the role's trust policy."}}
+
+      {:error, {:status, _denied}} ->
+        case credentials(sink) do
+          {:ok, _credentials} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -74,7 +90,7 @@ defmodule Portal.S3.APIClient do
   defp credentials(%S3.LogSink{} = sink) do
     case Process.get({__MODULE__, :credentials, sink.id}) do
       nil ->
-        with {:ok, credentials} <- assume_role(sink) do
+        with {:ok, credentials} <- assume_role(sink, sink.external_id) do
           Process.put({__MODULE__, :credentials, sink.id}, credentials)
           {:ok, credentials}
         end
@@ -84,7 +100,7 @@ defmodule Portal.S3.APIClient do
     end
   end
 
-  defp assume_role(%S3.LogSink{} = sink) do
+  defp assume_role(%S3.LogSink{} = sink, external_id) do
     url = "https://sts.#{sink.region}.amazonaws.com/"
 
     form =
@@ -93,7 +109,7 @@ defmodule Portal.S3.APIClient do
         "Version" => "2011-06-15",
         "RoleArn" => sink.role_arn,
         "RoleSessionName" => "firezone-#{sink.id}",
-        "ExternalId" => sink.external_id
+        "ExternalId" => external_id
       })
 
     headers =

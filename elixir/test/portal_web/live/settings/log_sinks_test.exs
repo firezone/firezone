@@ -583,6 +583,15 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> render_change()
 
       assert html =~ "must be an IAM role ARN"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{role_arn: "arn:aws-us-gov:iam::123456789012:role/firezone-logs"}
+        )
+        |> render_change()
+
+      assert html =~ "must be an IAM role ARN"
       assert Repo.all(Portal.S3.LogSink) == []
     end
 

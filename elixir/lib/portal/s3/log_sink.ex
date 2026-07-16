@@ -80,7 +80,7 @@ defmodule Portal.S3.LogSink do
       message: "must be a valid AWS region, e.g. us-east-1"
     )
     |> validate_length(:role_arn, min: 1, max: 2048)
-    |> validate_format(:role_arn, ~r"^arn:(aws|aws-us-gov):iam::\d{12}:role/[\w+=,.@/-]+$",
+    |> validate_format(:role_arn, ~r"^arn:aws:iam::\d{12}:role/[\w+=,.@/-]+$",
       message: "must be an IAM role ARN, e.g. arn:aws:iam::123456789012:role/firezone-logs"
     )
     |> validate_length(:key_prefix, max: 512)

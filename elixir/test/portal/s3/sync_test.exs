@@ -40,9 +40,17 @@ defmodule Portal.S3.SyncTest do
       case conn.host do
         "sts." <> _rest ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
-          send(test_pid, {:sts, conn, URI.decode_query(body)})
+          params = URI.decode_query(body)
+          send(test_pid, {:sts, conn, params})
 
-          Plug.Conn.resp(conn, 200, @sts_response)
+          "firezone-" <> sink_id = params["RoleSessionName"]
+          sink = Portal.Repo.get_by!(S3.LogSink, id: sink_id)
+
+          if params["ExternalId"] == sink.external_id do
+            Plug.Conn.resp(conn, 200, @sts_response)
+          else
+            Plug.Conn.resp(conn, 403, @sts_access_denied)
+          end
 
         _bucket_host ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -71,6 +79,10 @@ defmodule Portal.S3.SyncTest do
       log = session_log_fixture(account: account)
 
       assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:sts, _probe_conn, probe_params}
+      assert probe_params["RoleArn"] == sink.role_arn
+      refute probe_params["ExternalId"] == sink.external_id
 
       assert_receive {:sts, sts_conn, params}
       assert sts_conn.host == "sts.us-east-1.amazonaws.com"
@@ -123,7 +135,7 @@ defmodule Portal.S3.SyncTest do
       Req.Test.stub(S3.APIClient, fn conn ->
         case conn.host do
           "sts." <> _rest ->
-            Plug.Conn.resp(conn, 200, @sts_response)
+            sts_reply(conn)
 
           _bucket_host ->
             send(test_pid, {:put_object_key, conn.request_path})
@@ -144,7 +156,7 @@ defmodule Portal.S3.SyncTest do
       Req.Test.stub(S3.APIClient, fn conn ->
         case conn.host do
           "sts." <> _rest ->
-            Plug.Conn.resp(conn, 200, @sts_response)
+            sts_reply(conn)
 
           _bucket_host ->
             send(test_pid, {:put_object_key, conn.request_path})
@@ -157,6 +169,24 @@ defmodule Portal.S3.SyncTest do
 
       assert first_key == second_key
       refute reload_sink(sink).errored_at
+    end
+
+    test "a role that ignores the external id disables the sink", %{account: account} do
+      sink = s3_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(S3.APIClient, fn conn ->
+        {:ok, _body, conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.resp(conn, 200, @sts_response)
+      end)
+
+      assert :ok = perform_job(S3.Sync, %{log_sink_id: sink.id})
+
+      sink = reload_sink(sink)
+      assert sink.is_disabled
+      assert sink.disabled_reason == "Sync error"
+      assert sink.error_message =~ "does not require this sink's External ID"
     end
 
     test "an STS AccessDenied disables the sink with an actionable message", %{account: account} do
@@ -188,7 +218,7 @@ defmodule Portal.S3.SyncTest do
       Req.Test.stub(S3.APIClient, fn conn ->
         case conn.host do
           "sts." <> _rest ->
-            Plug.Conn.resp(conn, 200, @sts_response)
+            sts_reply(conn)
 
           _bucket_host ->
             conn
@@ -216,7 +246,7 @@ defmodule Portal.S3.SyncTest do
       Req.Test.stub(S3.APIClient, fn conn ->
         case conn.host do
           "sts." <> _rest ->
-            Plug.Conn.resp(conn, 200, @sts_response)
+            sts_reply(conn)
 
           _bucket_host ->
             Plug.Conn.resp(
@@ -248,6 +278,19 @@ defmodule Portal.S3.SyncTest do
       assert_enqueued(worker: S3.Sync, args: %{log_sink_id: sink.id})
       refute_enqueued(worker: S3.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: S3.Sync, args: %{log_sink_id: feature_off_sink.id})
+    end
+  end
+
+  defp sts_reply(conn) do
+    {:ok, body, conn} = Plug.Conn.read_body(conn)
+    params = URI.decode_query(body)
+    "firezone-" <> sink_id = params["RoleSessionName"]
+    sink = Portal.Repo.get_by!(S3.LogSink, id: sink_id)
+
+    if params["ExternalId"] == sink.external_id do
+      Plug.Conn.resp(conn, 200, @sts_response)
+    else
+      Plug.Conn.resp(conn, 403, @sts_access_denied)
     end
   end
 
