@@ -122,6 +122,10 @@ updates:
         patterns:
           - sentry
           - sentry-*
+      str0m:
+        patterns:
+          - is
+          - str0m-proto
       rust-crypto:
         patterns:
           - aead
