@@ -382,7 +382,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert base.type == :sentinel
     end
 
-    test "renders the Sentinel admin consent link for the entered tenant", %{
+    test "opens the Sentinel admin consent link for the entered tenant", %{
       conn: conn,
       account: account,
       actor: actor
@@ -394,20 +394,27 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       assert html =~ "Monitoring Metrics Publisher"
 
-      assert html =~
+      lv |> element("#sentinel-consent-link") |> render_click()
+      assert_push_event(lv, "open_url", %{url: consent_url})
+
+      assert consent_url =~
                "https://login.microsoftonline.com/organizations/adminconsent?client_id=test_sentinel_client_id"
 
-      assert html =~ "redirect_uri=#{URI.encode_www_form(url(~p"/auth/sentinel/consent"))}"
-      assert html =~ "state=#{account.slug}"
+      assert consent_url =~
+               "redirect_uri=#{URI.encode_www_form(url(~p"/auth/sentinel/consent"))}"
+
+      assert consent_url =~ "state=#{account.slug}"
 
       tenant_id = Ecto.UUID.generate()
 
-      html =
-        lv
-        |> form("#log-sink-form", log_sink: %{tenant_id: tenant_id})
-        |> render_change()
+      lv
+      |> form("#log-sink-form", log_sink: %{tenant_id: tenant_id})
+      |> render_change()
 
-      assert html =~
+      lv |> element("#sentinel-consent-link") |> render_click()
+      assert_push_event(lv, "open_url", %{url: tenant_url})
+
+      assert tenant_url =~
                "https://login.microsoftonline.com/#{tenant_id}/adminconsent?client_id=test_sentinel_client_id"
     end
 

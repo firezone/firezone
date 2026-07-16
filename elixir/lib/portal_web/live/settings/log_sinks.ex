@@ -130,6 +130,11 @@ defmodule PortalWeb.Settings.LogSinks do
     {:noreply, assign(socket, sentinel_setup_tab: tab)}
   end
 
+  def handle_event("sentinel_admin_consent", _params, socket) do
+    url = sentinel_admin_consent_url(socket.assigns.form, socket.assigns.account)
+    {:noreply, push_event(socket, "open_url", %{url: url})}
+  end
+
   def handle_event("validate", %{"log_sink" => attrs}, socket) do
     changeset = socket.assigns.form.source
     attrs = normalize_attrs(attrs, changeset)
@@ -1018,15 +1023,18 @@ defmodule PortalWeb.Settings.LogSinks do
           <p class="text-xs font-medium text-heading mb-2">Setup</p>
           <p class="text-xs text-subtle mb-3">
             Enter your Microsoft Entra tenant ID below, then have a tenant administrator open
-            <a
-              href={sentinel_admin_consent_url(@form, @account)}
-              target="_blank"
+            <button
+              type="button"
+              id="sentinel-consent-link"
+              phx-click="sentinel_admin_consent"
+              phx-hook="OpenURL"
               class="underline hover:text-heading"
             >
               this admin consent link
-            </a>
-            to create the Firezone service principal in your tenant. The application requests
-            no API permissions. Then create the ingestion resources in your Azure subscription:
+            </button>
+            to add the <strong>Firezone Sentinel Log Ingestion</strong> application to your
+            tenant. The application requests no API permissions. Then create the ingestion
+            resources in your Azure subscription:
           </p>
           <div class="flex border-b border-border mb-3" role="tablist">
             <button

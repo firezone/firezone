@@ -89,7 +89,8 @@ defmodule Portal.Sentinel.APIClient do
     detail = description |> String.split(~r/\r?\n/) |> List.first()
 
     "Microsoft Entra returned HTTP #{status}: #{detail} Ensure the tenant ID is correct " <>
-      "and admin consent has been granted for the Firezone application in your tenant."
+      "and admin consent has been granted for the Firezone Sentinel Log Ingestion " <>
+      "application in your tenant."
   end
 
   def format_status_error(%Req.Response{status: status, body: body})
