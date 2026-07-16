@@ -592,6 +592,13 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> render_change()
 
       assert html =~ "must be an IAM role ARN"
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{bucket: "logs.example.com"})
+        |> render_change()
+
+      assert html =~ "must be a valid S3 bucket name"
       assert Repo.all(Portal.S3.LogSink) == []
     end
 
