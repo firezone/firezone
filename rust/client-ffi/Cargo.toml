@@ -34,12 +34,12 @@ tun = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 uniffi = { workspace = true }
 
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+oslog = { version = "0.2.0", default-features = false }
+
 # Everywhere except iOS, where the Network Extension memory cap makes mimalloc's retained pages risky.
 [target.'cfg(not(target_os = "ios"))'.dependencies]
 mimalloc = { workspace = true }
-
-[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
-oslog = { version = "0.2.0", default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3.2"
