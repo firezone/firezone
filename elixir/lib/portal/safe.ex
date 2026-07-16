@@ -943,6 +943,7 @@ defmodule Portal.Safe do
   def permit(_action, Portal.NewRelic.LogSink, :account_admin_user), do: :ok
   def permit(_action, Portal.Elastic.LogSink, :account_admin_user), do: :ok
   def permit(_action, Portal.Sentinel.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.S3.LogSink, :account_admin_user), do: :ok
   def permit(:read, Portal.LogSinkCursor, :account_admin_user), do: :ok
 
   def permit(_action, Portal.PortalSession, :account_admin_user), do: :ok

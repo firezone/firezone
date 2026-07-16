@@ -114,6 +114,9 @@ defmodule Portal.MixProject do
       {:ymlr, "~> 5.0"},
       {:hammer, "~> 7.4.0"},
 
+      # AWS request signing
+      {:aws_signature, "~> 0.4"},
+
       # Observability
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},

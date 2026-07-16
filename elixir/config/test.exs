@@ -140,6 +140,14 @@ config :portal, Portal.Sentinel.APIClient,
     plug: {Req.Test, Portal.Sentinel.APIClient},
     retry: false
   ]
+config :portal, Portal.S3.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.S3.APIClient},
+    retry: false
+  ],
+  access_key_id: "test-aws-access-key-id",
+  secret_access_key: "test-aws-secret-access-key",
+  aws_account_id: "123456789012"
 
 config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
 
