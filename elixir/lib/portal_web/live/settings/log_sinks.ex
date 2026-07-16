@@ -1663,7 +1663,8 @@ defmodule PortalWeb.Settings.LogSinks do
 
   az monitor log-analytics workspace table create \
     -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
-    --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic
+    --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic \
+    --output none
 
   DCE_ID=$(az monitor data-collection endpoint create \
     -g "$RG" -n firezone-logs -l "$LOCATION" \
@@ -1708,13 +1709,15 @@ defmodule PortalWeb.Settings.LogSinks do
 
   az role assignment create --assignee-object-id "$SP_ID" \
     --assignee-principal-type ServicePrincipal \
-    --role "Monitoring Metrics Publisher" --scope "$DCR_ID"
+    --role "Monitoring Metrics Publisher" --scope "$DCR_ID" \
+    --output none
 
-  echo "Ingestion endpoint: $(az monitor data-collection endpoint show \
+  echo "Enter these in the Firezone form:"
+  echo "  Ingestion Endpoint: $(az monitor data-collection endpoint show \
     -g "$RG" -n firezone-logs --query logsIngestion.endpoint -o tsv)"
-  echo "DCR immutable ID: $(az monitor data-collection rule show \
+  echo "  DCR Immutable ID:   $(az monitor data-collection rule show \
     -g "$RG" -n firezone-logs --query immutableId -o tsv)"
-  echo "Stream name: Custom-FirezoneLogs_CL"
+  echo "  Stream Name:        Custom-FirezoneLogs_CL"
   """
 
   @sentinel_terraform_snippet ~S"""
@@ -1878,10 +1881,10 @@ defmodule PortalWeb.Settings.LogSinks do
   ROLE="firezone-logs"
 
   if [ "$REGION" = "us-east-1" ]; then
-    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" > /dev/null
   else
     aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
-      --create-bucket-configuration LocationConstraint="$REGION"
+      --create-bucket-configuration LocationConstraint="$REGION" > /dev/null
   fi
 
   cat > firezone-trust.json <<EOF
@@ -1899,12 +1902,15 @@ defmodule PortalWeb.Settings.LogSinks do
   EOF
 
   aws iam create-role --role-name "$ROLE" \
-    --assume-role-policy-document file://firezone-trust.json
+    --assume-role-policy-document file://firezone-trust.json > /dev/null
 
   aws iam put-role-policy --role-name "$ROLE" --policy-name put-objects \
     --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::$BUCKET/*\"}]}"
 
-  aws iam get-role --role-name "$ROLE" --query Role.Arn --output text
+  echo "Enter these in the Firezone form:"
+  echo "  Bucket:   $BUCKET"
+  echo "  Region:   $REGION"
+  echo "  Role ARN: $(aws iam get-role --role-name "$ROLE" --query Role.Arn --output text)"
   """
 
   @s3_terraform_snippet ~S"""
