@@ -315,6 +315,7 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp classify({:status, _response}), do: :client_error
+  defp classify({:config, _message}), do: :client_error
   defp classify({:retriable, _response}), do: :transient
   defp classify({:transport, _exception}), do: :transient
   defp classify(:cursor_conflict), do: :transient
@@ -326,6 +327,8 @@ defmodule Portal.LogSinks.Delivery do
   defp format_error(adapter, {:retriable, %Req.Response{} = response}) do
     adapter.format_status_error(response)
   end
+
+  defp format_error(_adapter, {:config, message}), do: message
 
   defp format_error(_adapter, {:transport, exception}) do
     Portal.DirectorySync.ErrorHandler.format_transport_error(exception)

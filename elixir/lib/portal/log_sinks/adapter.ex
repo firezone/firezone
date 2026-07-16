@@ -13,7 +13,11 @@ defmodule Portal.LogSinks.Adapter do
   An error return feeds the same error path as a failed delivery.
   """
   @callback prepare(sink :: struct()) ::
-              :ok | {:error, {:status, Req.Response.t()} | {:transport, Exception.t()}}
+              :ok
+              | {:error,
+                 {:status, Req.Response.t()}
+                 | {:transport, Exception.t()}
+                 | {:config, String.t()}}
 
   @doc """
   Optional destination-side self-healing after an event is rejected and its
