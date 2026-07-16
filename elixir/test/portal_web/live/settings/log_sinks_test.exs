@@ -611,6 +611,13 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> render_change()
 
       assert html =~ "must be a valid S3 bucket name"
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{key_prefix: "firezone/*"})
+        |> render_change()
+
+      assert html =~ "may contain only letters, numbers, dots, underscores"
       assert Repo.all(Portal.S3.LogSink) == []
     end
 
