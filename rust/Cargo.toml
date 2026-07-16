@@ -50,6 +50,7 @@ members = [
     "tests/http-test-server",
     "tests/loadtest",
     "tests/tunnel-proptest-harvester",
+    "tools/tidy-dependabot-pr",
     "tools/uniffi-bindgen",
 ]
 

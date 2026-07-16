@@ -1,0 +1,52 @@
+name: Tidy Dependabot PR body
+
+# Dependabot PR descriptions are stuffed with collapsed release notes, a
+# compatibility badge and the `@dependabot` command reference, and grouped-update
+# titles blow past our 64-character limit. We squash-merge and use the PR body as
+# the commit message, so all of that lands in `main`'s history.
+#
+# This clears the body of single-dependency updates (the title already says
+# everything), reduces grouped updates to their per-dependency list and shortens
+# their title, and moves the release notes/commits into a PR comment. The parsing
+# lives in rust/tools/tidy-dependabot-pr (unit-tested Rust, run via `cargo run`);
+# scripts/tidy-dependabot-pr.sh is the `gh` glue.
+#
+# Runs automatically on Dependabot PRs, and can be triggered manually for any PR
+# via workflow_dispatch (the script is a no-op on non-Dependabot descriptions).
+
+on:
+  pull_request:
+    types: [opened, reopened, edited]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Number of the pull request to tidy"
+        required: true
+        type: number
+
+permissions:
+  pull-requests: write
+  issues: write
+
+concurrency:
+  # Serialize runs for the same PR so overlapping events can't race the comment
+  # upsert. Not cancel-in-progress: our own edits also trigger this workflow, and
+  # cancelling could kill a run between editing the body and posting the comment.
+  group: tidy-dependabot-pr-body-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  tidy:
+    # Dependabot's own PRs, or a manual run. Our own edits re-fire `edited` as
+    # `github-actions[bot]`, which fails this condition, so we don't loop.
+    if: github.actor == 'dependabot[bot]' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-rust-stable
+      - name: Tidy the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+        run: scripts/tidy-dependabot-pr.sh

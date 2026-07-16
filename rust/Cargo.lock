@@ -7813,6 +7813,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tidy-dependabot-pr"
+version = "0.1.0"
+
+[[package]]
 name = "time"
 version = "0.3.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
