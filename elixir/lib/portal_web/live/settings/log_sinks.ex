@@ -1075,18 +1075,19 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
           <div class="flex border-b border-border mb-3" role="tablist">
             <button
-              :for={{tab, label} <- [{"portal", "Azure Portal"}, {"cli", "Azure CLI"}, {"terraform", "Terraform"}]}
+              :for={{tab, label, icon} <- [{"portal", "Azure Portal", "ri-window-line"}, {"cli", "Azure CLI", "ri-terminal-line"}, {"terraform", "Terraform", "ri-stack-line"}]}
               type="button"
               role="tab"
               phx-click="sentinel_setup_tab"
               phx-value-tab={tab}
               class={[
-                "px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+                "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
                 @sentinel_setup_tab == tab && "border-brand text-brand",
                 @sentinel_setup_tab != tab &&
                   "border-transparent text-body hover:text-heading hover:border-border-strong"
               ]}
             >
+              <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
               {label}
             </button>
           </div>
@@ -1247,18 +1248,19 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
           <div class="flex border-b border-border mb-3" role="tablist">
             <button
-              :for={{tab, label} <- [{"console", "AWS Console"}, {"cli", "AWS CLI"}, {"terraform", "Terraform"}]}
+              :for={{tab, label, icon} <- [{"console", "AWS Console", "ri-window-line"}, {"cli", "AWS CLI", "ri-terminal-line"}, {"terraform", "Terraform", "ri-stack-line"}]}
               type="button"
               role="tab"
               phx-click="s3_setup_tab"
               phx-value-tab={tab}
               class={[
-                "px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+                "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
                 @s3_setup_tab == tab && "border-brand text-brand",
                 @s3_setup_tab != tab &&
                   "border-transparent text-body hover:text-heading hover:border-border-strong"
               ]}
             >
+              <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
               {label}
             </button>
           </div>
