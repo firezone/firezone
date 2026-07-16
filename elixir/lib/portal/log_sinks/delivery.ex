@@ -155,27 +155,36 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   # A single event the destination rejects is never skipped: the cursor parks
-  # on it and the error pages us with the exact request and response, every
-  # run, until the cause is fixed and delivery resumes with nothing lost. The
-  # sink's customer-facing state stays untouched and other streams keep
-  # flowing. The adapter gets a chance to self-heal the destination (Elastic
-  # rolls the data stream over) so the next run can deliver the parked event.
+  # on it until delivery can resume with nothing lost. A rejection our own
+  # rendering caused (the default) pages us with the exact request and
+  # response and stays invisible to the customer, with a chance for the
+  # adapter to self-heal the destination (Elastic rolls its data stream
+  # over). A rejection the adapter attributes to destination-side
+  # configuration only the admin can fix becomes an ordinary transient sink
+  # error instead: 24 hours of grace, then the sink disables and
+  # notification emails go out.
   defp handle_rejected_chunk(sink, adapter, cursor, [{seq, json}] = _chunk, response, reason) do
-    Logger.error("Log sink event cannot be delivered, halting stream",
-      log_sink_id: cursor.log_sink_id,
-      account_id: cursor.account_id,
-      stream: cursor.stream,
-      seq: seq,
-      reason: reason,
-      request_bytes: byte_size(json),
-      request: binary_part(json, 0, min(byte_size(json), 65_536)),
-      response_status: response.status,
-      response_body: response.body
-    )
+    case rejection_origin(sink, adapter, response) do
+      :customer ->
+        {:error, {:retriable, response}}
 
-    recover_undeliverable(sink, adapter, response)
+      :internal ->
+        Logger.error("Log sink event cannot be delivered, halting stream",
+          log_sink_id: cursor.log_sink_id,
+          account_id: cursor.account_id,
+          stream: cursor.stream,
+          seq: seq,
+          reason: reason,
+          request_bytes: byte_size(json),
+          request: binary_part(json, 0, min(byte_size(json), 65_536)),
+          response_status: response.status,
+          response_body: response.body
+        )
 
-    {:error, :undeliverable}
+        recover_undeliverable(sink, adapter, response)
+
+        {:error, :undeliverable}
+    end
   end
 
   defp handle_rejected_chunk(sink, adapter, cursor, chunk, _response, _reason) do
@@ -183,6 +192,14 @@ defmodule Portal.LogSinks.Delivery do
 
     with {:ok, cursor} <- deliver_chunk(sink, adapter, cursor, left) do
       deliver_chunk(sink, adapter, cursor, right)
+    end
+  end
+
+  defp rejection_origin(sink, adapter, response) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :rejection_origin, 2) do
+      adapter.rejection_origin(sink, response)
+    else
+      :internal
     end
   end
 

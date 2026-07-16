@@ -272,19 +272,76 @@ defmodule Portal.Elastic.SyncTest do
       refute_receive {:rollover, _path}
     end
 
-    test "a non-mapping rejection parks without rolling over", %{account: account} do
+    test "a non-mapping rejection is a customer-facing transient error", %{account: account} do
       sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
-      session_log_fixture(account: account, actor_email: "poison@example.com")
+      poison = session_log_fixture(account: account, actor_email: "poison@example.com")
 
-      stub_with_poison(self(), "circuit_breaking_exception")
+      stub_with_poison(self(), "cluster_block_exception")
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+        end)
+
+      refute log_output =~ "cannot be delivered"
+      refute_receive {:rollover, _path}
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor < poison.seq
+      assert cursor.synced_count == 0
+
+      sink = reload_sink(sink)
+      refute sink.is_disabled
+      refute sink.last_rollover_at
+      assert sink.errored_at
+      assert sink.error_message =~ "Elasticsearch rejected documents"
+      assert sink.error_message =~ "bad field"
+    end
+
+    test "parallel streams cannot roll the data stream over twice in one run", %{
+      account: account
+    } do
+      sink = elastic_log_sink_fixture(account: account, enabled_streams: [:session, :flow])
+      assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
+
+      session_log_fixture(account: account)
+      flow_log_fixture(account: account, domain: "example.com")
+
+      test_pid = self()
+
+      Req.Test.stub(Elastic.APIClient, fn conn ->
+        {:ok, _body, conn} = Plug.Conn.read_body(conn)
+
+        cond do
+          conn.method == "PUT" ->
+            Req.Test.json(conn, %{"acknowledged" => true})
+
+          String.ends_with?(conn.request_path, "/_rollover") ->
+            send(test_pid, {:rollover, conn.request_path})
+            Req.Test.json(conn, %{"acknowledged" => true, "rolled_over" => true})
+
+          true ->
+            Req.Test.json(conn, %{
+              "errors" => true,
+              "items" => [
+                %{
+                  "create" => %{
+                    "status" => 400,
+                    "error" => %{"type" => "mapper_parsing_exception", "reason" => "bad"}
+                  }
+                }
+              ]
+            })
+        end
+      end)
 
       ExUnit.CaptureLog.capture_log(fn ->
         assert :ok = perform_job(Elastic.Sync, %{log_sink_id: sink.id})
       end)
 
+      assert_receive {:rollover, _path}
       refute_receive {:rollover, _path}
-      refute reload_sink(sink).last_rollover_at
     end
 
     test "a 401 disables the sink immediately", %{account: account} do

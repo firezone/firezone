@@ -23,7 +23,17 @@ defmodule Portal.LogSinks.Adapter do
   """
   @callback recover_undeliverable(sink :: struct(), Req.Response.t()) :: :ok
 
-  @optional_callbacks prepare: 1, recover_undeliverable: 2
+  @doc """
+  Optional attribution of a single rejected event. `:internal` (the default)
+  means our own rendering produced something the destination cannot accept:
+  the stream parks, we get paged, and the customer sees no error state.
+  `:customer` means destination-side configuration only the admin can fix,
+  so the rejection follows the transient error path: 24 hours of grace, then
+  the sink disables and notification emails go out.
+  """
+  @callback rejection_origin(sink :: struct(), Req.Response.t()) :: :internal | :customer
+
+  @optional_callbacks prepare: 1, recover_undeliverable: 2, rejection_origin: 2
 
   @doc "Envelope and JSON-encode one rendered event."
   @callback encode_event(sink :: struct(), stream :: atom(), {number(), map()}) :: binary()

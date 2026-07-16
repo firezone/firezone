@@ -75,13 +75,24 @@ defmodule Portal.Elastic.APIClient do
   # corrected template applies to it immediately, so the parked event
   # delivers on the next run. The cooldown stops a rejection the template
   # cannot fix from creating an index per minute.
+  @rollover_cooldown_seconds 3600
+
   @impl true
   def recover_undeliverable(%Elastic.LogSink{} = sink, %Req.Response{} = response) do
-    if mapping_conflict?(response) and rollover_cooldown_elapsed?(sink) do
+    if mapping_conflict?(response) and Database.claim_rollover(sink, @rollover_cooldown_seconds) do
       rollover(sink)
     end
 
     :ok
+  end
+
+  @impl true
+  def rejection_origin(%Elastic.LogSink{}, %Req.Response{} = response) do
+    if mapping_conflict?(response) do
+      :internal
+    else
+      :customer
+    end
   end
 
   @impl true
@@ -252,12 +263,6 @@ defmodule Portal.Elastic.APIClient do
 
   defp mapping_conflict?(_response), do: false
 
-  defp rollover_cooldown_elapsed?(%Elastic.LogSink{last_rollover_at: nil}), do: true
-
-  defp rollover_cooldown_elapsed?(%Elastic.LogSink{last_rollover_at: last}) do
-    DateTime.before?(last, DateTime.add(DateTime.utc_now(), -3600, :second))
-  end
-
   defp rollover(sink) do
     result =
       sink
@@ -266,8 +271,6 @@ defmodule Portal.Elastic.APIClient do
 
     case result do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
-        Database.record_rollover(sink)
-
         Logger.warning("Rolled Elastic data stream over after a mapping rejection",
           elastic_log_sink_id: sink.id,
           account_id: sink.account_id,
@@ -301,17 +304,23 @@ defmodule Portal.Elastic.APIClient do
 
     alias Portal.Safe
 
-    def record_rollover(sink) do
+    # The cooldown claim is a conditional update so parallel streams in one
+    # run (or concurrent jobs) cannot each observe a stale struct and roll
+    # the data stream over more than once per cooldown window.
+    def claim_rollover(sink, cooldown_seconds) do
       now = DateTime.utc_now()
+      cutoff = DateTime.add(now, -cooldown_seconds, :second)
 
-      from(s in Portal.Elastic.LogSink,
-        where: s.account_id == ^sink.account_id,
-        where: s.id == ^sink.id
-      )
-      |> Safe.unscoped()
-      |> Safe.update_all(set: [last_rollover_at: now, updated_at: now])
+      {claimed, _} =
+        from(s in Portal.Elastic.LogSink,
+          where: s.account_id == ^sink.account_id,
+          where: s.id == ^sink.id,
+          where: is_nil(s.last_rollover_at) or s.last_rollover_at < ^cutoff
+        )
+        |> Safe.unscoped()
+        |> Safe.update_all(set: [last_rollover_at: now, updated_at: now])
 
-      :ok
+      claimed == 1
     end
   end
 end
