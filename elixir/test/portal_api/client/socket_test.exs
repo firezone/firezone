@@ -22,12 +22,13 @@ defmodule PortalAPI.Client.SocketTest do
       token = client_token_fixture()
       encoded_token = encode_token(token)
 
-      # Attrs without token param, but with other required fields
+      # Attrs without token param, but with other required fields. The legacy
+      # firezone_id wire name must keep working.
       attrs =
         valid_client_attrs()
         |> Map.take([:firezone_id])
-        |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+        |> then(fn attrs -> %{"firezone_id" => attrs.firezone_id} end)
+        |> Map.put("public_key", Portal.DeviceFixtures.generate_public_key())
 
       connect_info = build_connect_info(token: encoded_token)
 

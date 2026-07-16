@@ -25,9 +25,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
   defp join_channel(gateway, site, token, opts \\ []) do
     device = fetch_device!(gateway)
     session = build_gateway_session(gateway, token, opts)
+    channel = Keyword.get(opts, :channel, PortalAPI.Gateway.Channel)
+
+    socket_module =
+      if channel == PortalAPI.Gateway.V2.Channel,
+        do: PortalAPI.Gateway.V2.Socket,
+        else: PortalAPI.Gateway.Socket
 
     {:ok, _reply, socket} =
-      PortalAPI.Gateway.Socket
+      socket_module
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: device,
@@ -36,7 +42,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
-      |> subscribe_and_join(PortalAPI.Gateway.Channel, "gateway")
+      |> subscribe_and_join(channel, "gateway")
 
     socket
   end
@@ -108,8 +114,47 @@ defmodule PortalAPI.Gateway.ChannelTest do
         gateway.latest_session && gateway.latest_session.remote_ip_location_lat,
       remote_ip_location_lon:
         gateway.latest_session && gateway.latest_session.remote_ip_location_lon,
-      version: (gateway.latest_session && gateway.latest_session.version) || "1.3.0"
+      version:
+        Keyword.get(
+          opts,
+          :version,
+          (gateway.latest_session && gateway.latest_session.version) || "1.3.0"
+        )
     }
+  end
+
+  defp send_create_authorization(socket, client, subject, resource, policy_authorization_id) do
+    expires_at = DateTime.add(DateTime.utc_now(), 30, :second)
+    preshared_key = "PSK"
+    public_key = Portal.DeviceFixtures.generate_public_key()
+
+    ice_credentials = %{
+      initiator: %{username: "A", password: "B"},
+      receiver: %{username: "C", password: "D"}
+    }
+
+    send(
+      socket.channel_pid,
+      {:create_authorization, {self(), make_ref()},
+       %{
+         client:
+           PortalAPI.Gateway.Views.Client.render(
+             client,
+             public_key,
+             preshared_key,
+             @test_user_agent
+           ),
+         subject: PortalAPI.Gateway.Views.Subject.render(subject),
+         resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+         resource_id: to_cache(resource).id,
+         policy_authorization_id: policy_authorization_id,
+         authorization_expires_at: expires_at,
+         ice_credentials: ice_credentials,
+         preshared_key: preshared_key
+       }}
+    )
+
+    %{expires_at: expires_at, preshared_key: preshared_key, public_key: public_key, ice_credentials: ice_credentials}
   end
 
   setup do
@@ -761,7 +806,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {self(), make_ref()},
+        {:create_authorization, {self(), make_ref()},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -1070,21 +1115,60 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
-    test "duplicate connection evicts the first gateway", %{
+    test "duplicate connection is evicted, first connection wins", %{
       gateway: gateway,
       site: site,
       token: token
     } do
       Process.flag(:trap_exit, true)
-      join_channel(gateway, site, token)
 
+      socket1 = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      # Simulate a second connection registering for the same gateway
-      PG.register(gateway.id)
+      socket2 = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
 
+      # The established channel observes the new join in its gateway id
+      # group and tells the newcomer to disconnect
+      channel2 = socket2.channel_pid
+      assert_receive {:EXIT, ^channel2, :shutdown}
       assert_push "disconnect", %{reason: "token_expired"}
-      assert_receive {:EXIT, _pid, :shutdown}
+
+      assert Process.alive?(socket1.channel_pid)
+    end
+  end
+
+  describe "handle_info/2 pg group monitoring" do
+    test "boots a newcomer that joins the gateway id group", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      # Simulate a duplicate connection registering from another node
+      :ok = PG.join(gateway.id)
+
+      # The established channel tells the newcomer to disconnect and stays up
+      assert_receive :disconnect
+      assert Process.alive?(socket.channel_pid)
+      refute_push "disconnect", _payload
+    end
+
+    test "stays connected on leave notifications and self joins", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {make_ref(), :leave, gateway.id, [self()]})
+      send(socket.channel_pid, {make_ref(), :join, gateway.id, [socket.channel_pid]})
+
+      refute_push "disconnect", _payload
+      assert Process.alive?(socket.channel_pid)
     end
   end
 
@@ -1215,7 +1299,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -1308,7 +1392,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -1331,7 +1415,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3018,7 +3102,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "pushes authorize_flow message", %{
+    test "pushes authorize_flow to a legacy gateway", %{
       client: client,
       account: account,
       actor: actor,
@@ -3041,37 +3125,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
           group: group
         )
 
-      channel_pid = self()
-      socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      preshared_key = "PSK"
-      public_key = Portal.DeviceFixtures.generate_public_key()
-
-      ice_credentials = %{
-        initiator: %{username: "A", password: "B"},
-        receiver: %{username: "C", password: "D"}
-      }
-
-      send(
-        socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
-         %{
-           client:
-             PortalAPI.Gateway.Views.Client.render(
-               client,
-               public_key,
-               preshared_key,
-               @test_user_agent
-             ),
-           subject: PortalAPI.Gateway.Views.Subject.render(subject),
-           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-           resource_id: to_cache(resource).id,
-           policy_authorization_id: policy_authorization.id,
-           authorization_expires_at: expires_at,
-           ice_credentials: ice_credentials,
-           preshared_key: preshared_key
-         }}
-      )
+      %{
+        expires_at: expires_at,
+        preshared_key: preshared_key,
+        public_key: public_key,
+        ice_credentials: ice_credentials
+      } = send_create_authorization(socket, client, subject, resource, policy_authorization.id)
 
       assert_push "authorize_flow", payload
 
@@ -3108,6 +3167,35 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert DateTime.from_unix!(payload.expires_at) ==
                DateTime.truncate(expires_at, :second)
+    end
+
+    test "pushes create_authorization on the v2 channel", %{
+      client: client,
+      account: account,
+      actor: actor,
+      gateway: gateway,
+      resource: resource,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
+      assert_push "init", _init_payload
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      send_create_authorization(socket, client, subject, resource, policy_authorization.id)
+
+      assert_push "create_authorization", %{ref: ref}
+      assert is_binary(ref)
     end
 
     test "authorize_flow tracks policy authorization and sends reject_access when policy authorization is deleted",
@@ -3149,7 +3237,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3295,7 +3383,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3334,7 +3422,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "authorize_policy intersects gateway and client snownet capabilities", %{
+    test "create_authorization intersects gateway and client snownet capabilities", %{
       client: client,
       account: account,
       actor: actor,
@@ -3376,7 +3464,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       # Both sides advertise iceless → negotiated set is iceless: true.
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3408,7 +3496,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert use_iceless == true
     end
 
-    test "authorize_policy with mismatched iceless flag intersects to false", %{
+    test "create_authorization with mismatched iceless flag intersects to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3447,7 +3535,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3473,7 +3561,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "authorize_policy without initiator_iceless_capable defaults to false", %{
+    test "create_authorization without initiator_iceless_capable defaults to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3512,7 +3600,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3537,7 +3625,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "authorize_policy does not use iceless when account feature flag is disabled", %{
+    test "create_authorization does not use iceless when account feature flag is disabled", %{
       client: client,
       account: account,
       actor: actor,
@@ -3578,7 +3666,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3653,7 +3741,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_policy, {channel_pid, socket_ref},
+        {:create_authorization, {channel_pid, socket_ref},
          %{
            client:
              PortalAPI.Gateway.Views.Client.render(
@@ -3691,6 +3779,19 @@ defmodule PortalAPI.Gateway.ChannelTest do
         push(socket, "flow_authorized", %{
           "ref" => "foo"
         })
+
+      assert_reply push_ref, :error, %{reason: :invalid_ref}
+    end
+
+    test "authorization_created accepts the renamed acknowledgement", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
+      assert_push "init", _init_payload
+
+      push_ref = push(socket, "authorization_created", %{"ref" => "invalid"})
 
       assert_reply push_ref, :error, %{reason: :invalid_ref}
     end

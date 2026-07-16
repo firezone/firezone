@@ -75,7 +75,6 @@ struct DnsQueryMetaData {
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input<D, I> {
-    pub now: Instant,
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
@@ -88,7 +87,6 @@ pub struct Input<D, I> {
 impl<D, I> Input<D, I> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
-            now: Instant::now(),
             timeout: false,
             device: None,
             network: None,
@@ -366,7 +364,6 @@ impl Io {
         }
 
         Poll::Ready(Input {
-            now: Instant::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
             network: poll_to_option(network),
@@ -457,9 +454,16 @@ impl Io {
         }
     }
 
-    pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
+    pub fn reset_timeout_after(&mut self, wakeup_in: Duration, reason: &'static str) {
+        let now = Instant::now();
+        let Some(timeout) = now.checked_add(wakeup_in) else {
+            tracing::warn!(?wakeup_in, %reason, "Unable to schedule tunnel timeout without overflowing");
+
+            return;
+        };
+
         let wakeup_in = tracing::event_enabled!(Level::TRACE)
-            .then(|| timeout.saturating_duration_since(Instant::now()))
+            .then_some(wakeup_in)
             .map(tracing::field::debug);
 
         if self.timeout.deadline() != timeout {
@@ -470,8 +474,9 @@ impl Io {
     }
 
     /// Schedules a wakeup in case one isn't registered yet.
-    pub fn schedule_timeout(&mut self, now: Instant) {
-        self.timeout.schedule(now + Duration::from_secs(1));
+    pub fn schedule_timeout(&mut self) {
+        self.timeout
+            .schedule(Instant::now() + Duration::from_secs(1));
     }
 
     /// The GSO queue used as the destination buffer when encapsulating packets in place.
@@ -489,14 +494,14 @@ impl Io {
         self.gso_queue.enqueue(src, dst, payload, ecn);
     }
 
-    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
         let meta = DnsQueryMetaData {
             query: query.message.clone(),
             server: query.server.clone(),
             transport: query.transport,
             local: query.local,
             remote: query.remote,
-            started_at: Instant::now(),
+            started_at: now,
         };
 
         match (query.transport, query.server) {
@@ -606,48 +611,9 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use futures::task::noop_waker_ref;
     use std::{future::poll_fn, net::Ipv4Addr};
 
     use super::*;
-
-    #[tokio::test]
-    async fn timer_is_reset_after_it_fires() {
-        let mut io = Io::for_test();
-
-        let deadline = Instant::now() + Duration::from_secs(1);
-        io.reset_timeout(deadline, "");
-        let scheduled_deadline = io.timeout.deadline();
-
-        let input = io.next().await;
-
-        assert!(input.timeout);
-        assert!(input.now >= deadline, "timer expire after deadline");
-        assert_eq!(deadline, scheduled_deadline);
-
-        drop(input);
-
-        let poll = io.poll_test();
-
-        assert!(poll.is_pending());
-        assert_eq!(
-            io.timeout.deadline().duration_since(scheduled_deadline),
-            DEFAULT_TIME_ADVANCE
-        );
-    }
-
-    #[tokio::test]
-    async fn emits_now_in_case_timeout_is_in_the_past() {
-        let now = Instant::now();
-        let mut io = Io::for_test();
-
-        io.reset_timeout(now - Duration::from_secs(10), "");
-
-        let input = io.next().await;
-        let timeout = input.now;
-
-        assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
-    }
 
     #[tokio::test]
     async fn bootstrap_doh() {
@@ -660,7 +626,7 @@ mod tests {
         io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
 
         {
-            io.send_dns_query(example_com_recursive_query());
+            io.send_dns_query(example_com_recursive_query(), Instant::now());
 
             let input = io.next().await;
 
@@ -674,7 +640,7 @@ mod tests {
         let _ = tokio::time::timeout(Duration::from_secs(2), io.next()).await;
 
         {
-            io.send_dns_query(example_com_recursive_query());
+            io.send_dns_query(example_com_recursive_query(), Instant::now());
 
             let input = io.next().await;
 
@@ -692,13 +658,13 @@ mod tests {
         // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
         // schedule_timeout should pull it in to ~1s from now.
         let now = Instant::now();
-        io.schedule_timeout(now);
+        io.schedule_timeout();
 
         let deadline = io.timeout.deadline();
         let wakeup_in = deadline.duration_since(now);
 
         assert!(
-            wakeup_in <= Duration::from_secs(1),
+            wakeup_in <= Duration::from_millis(1_010),
             "expected deadline within 1s, got {wakeup_in:?}"
         );
     }
@@ -708,11 +674,10 @@ mod tests {
         let mut io = Io::for_test();
 
         // Set a deadline that is already sooner than 1s.
-        let now = Instant::now();
-        let close_deadline = now + Duration::from_millis(100);
-        io.reset_timeout(close_deadline, "close deadline");
+        io.reset_timeout_after(Duration::from_millis(100), "close deadline");
+        let close_deadline = io.timeout.deadline();
 
-        io.schedule_timeout(now);
+        io.schedule_timeout();
 
         let deadline = io.timeout.deadline();
 
@@ -781,17 +746,6 @@ mod tests {
         ) -> Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>>
         {
             poll_fn(|cx| self.poll(cx)).await
-        }
-
-        fn poll_test(
-            &mut self,
-        ) -> Poll<
-            Input<
-                tun::PacketBatch,
-                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-            >,
-        > {
-            self.poll(&mut Context::from_waker(noop_waker_ref()))
         }
     }
 

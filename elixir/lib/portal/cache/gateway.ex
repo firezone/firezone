@@ -5,11 +5,11 @@ defmodule Portal.Cache.Gateway do
     updated via WAL messages streamed from the Portal.Changes.Consumer module.
 
     It mirrors the data plane, which keeps a single authorization per `(client, resource)` pair
-    (last-one-wins): a fresh `authorize_flow` for a pair supersedes the previous one. We track the
+    (last-one-wins): a fresh authorization for a pair supersedes the previous one. We track the
     currently-authorized `policy_authorization_id` per pair so that, when a policy_authorization is
     deleted, we only push `reject_access` if the deleted row is the one currently granting access.
     A delete for a superseded authorization is ignored. The client recovers from a reject by
-    tripping ICMP "destination prohibited" and requesting a fresh flow.
+    tripping ICMP "destination prohibited" and requesting a fresh authorization.
 
     We use basic data structures and binary representations instead of full Ecto schema structs
     to minimize memory usage.

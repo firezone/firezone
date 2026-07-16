@@ -21,6 +21,7 @@ use telemetry::SentryMeterProvider;
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
+use clock::Clock;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretString};
 use std::{collections::BTreeSet, fmt};
@@ -204,10 +205,12 @@ async fn try_main(cli: Cli) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
+    let mut clock = Clock::new();
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
+        clock.now(),
     );
 
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
@@ -258,6 +261,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         .context("Failed to build DNS resolver")?;
 
     Eventloop::new(
+        clock,
         tunnel,
         portal,
         tun_device_manager,

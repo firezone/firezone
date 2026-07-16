@@ -423,6 +423,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       assert log.flow_end == ~U[2026-03-20 10:05:00.000000Z]
       assert log.tx_bytes == 999
       assert log.seq > open_seq
+      assert log.start_seq == open_seq
     end
 
     test "replaying a closed record is idempotent", %{conn: _conn, account: account} do

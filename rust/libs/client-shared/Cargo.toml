@@ -7,6 +7,7 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 bootstrap-dns-client = { workspace = true }
+clock = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 etc-hosts-dns-client = { workspace = true }

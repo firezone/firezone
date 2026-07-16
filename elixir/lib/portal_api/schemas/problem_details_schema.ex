@@ -93,6 +93,9 @@ defmodule PortalAPI.Schemas.ProblemDetails do
   defp response_for(:not_found),
     do: {"Not Found", @content_type, __MODULE__}
 
+  defp response_for(:conflict),
+    do: {"Conflict", @content_type, __MODULE__}
+
   defp response_for(:unprocessable_entity),
     do: {"Unprocessable Content", @content_type, ValidationError}
 

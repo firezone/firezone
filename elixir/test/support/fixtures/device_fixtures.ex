@@ -289,6 +289,7 @@ defmodule Portal.DeviceFixtures do
       |> Map.drop([
         :account,
         :site,
+        :token,
         :ipv4_address,
         :ipv6_address,
         :last_seen_user_agent,
@@ -337,8 +338,15 @@ defmodule Portal.DeviceFixtures do
       |> maybe_sync_device_ipv4(ipv4)
       |> maybe_sync_device_ipv6(ipv6)
 
-    # Always create a gateway session (gateways always have sessions in practice)
-    token = gateway_token_fixture(account: account, site: site)
+    # Always create a gateway session (gateways always have sessions in practice).
+    # Defaults to a legacy multi-owner site token; pass `token: :single_owner` to
+    # bind the session to a single-owner token, or pass a token struct directly.
+    token =
+      case Map.get(attrs, :token) do
+        nil -> gateway_token_fixture(account: account, site: site)
+        :single_owner -> gateway_token_fixture(gateway: gateway)
+        %Portal.GatewayToken{} = token -> token
+      end
 
     public_key = Map.get(device_attrs, :public_key, generate_public_key())
 

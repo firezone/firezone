@@ -73,7 +73,10 @@ defmodule PortalAPI.Router do
       post "/gateway_tokens", GatewayTokenController, :create
       delete "/gateway_tokens", GatewayTokenController, :delete_all
       delete "/gateway_tokens/:id", GatewayTokenController, :delete
-      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update]
+      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update] do
+        post "/token", GatewayTokenController, :create_for_gateway
+        post "/token/rotate", GatewayTokenController, :rotate
+      end
     end
 
     resources "/actors", ActorController, except: [:new, :edit] do

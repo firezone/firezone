@@ -21,6 +21,13 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.FeaturesFixtures
 
   defp join_channel(client, subject, opts \\ []) do
+    channel = Keyword.get(opts, :channel, PortalAPI.Client.Channel)
+
+    socket_module =
+      if channel == PortalAPI.Client.V2.Channel,
+        do: PortalAPI.Client.V2.Socket,
+        else: PortalAPI.Client.Socket
+
     client_version =
       Keyword.get_lazy(opts, :client_version, fn ->
         case Portal.Version.fetch_version(subject.context.user_agent) do
@@ -51,14 +58,14 @@ defmodule PortalAPI.Client.ChannelTest do
     }
 
     {:ok, _reply, socket} =
-      PortalAPI.Client.Socket
+      socket_module
       |> socket("client:#{client.id}", %{
         client: device,
         session: session,
         subject: subject,
         client_version: client_version
       })
-      |> subscribe_and_join(PortalAPI.Client.Channel, "client")
+      |> subscribe_and_join(channel, "client")
 
     socket
   end
@@ -83,17 +90,17 @@ defmodule PortalAPI.Client.ChannelTest do
     %{subject | context: %{subject.context | user_agent: user_agent}}
   end
 
-  defp gateway_flow_generation(channel_pid, resource_id) do
+  defp gateway_authorization_generation(channel_pid, resource_id) do
     {generation, _timer_ref, _initiator_token} =
-      :sys.get_state(channel_pid).assigns.pending_flows |> Map.fetch!(resource_id)
+      :sys.get_state(channel_pid).assigns.pending_authorizations |> Map.fetch!(resource_id)
 
     generation
   end
 
-  defp fire_flow_creation_timeout(channel_pid, resource_id) do
+  defp fire_authorization_creation_timeout(channel_pid, resource_id) do
     send(
       channel_pid,
-      {:flow_creation_timeout, resource_id, gateway_flow_generation(channel_pid, resource_id)}
+      {:authorization_creation_timeout, resource_id, gateway_authorization_generation(channel_pid, resource_id)}
     )
   end
 
@@ -2989,6 +2996,19 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_in/3 create_flow" do
+    test "uses authorization messages on the v2 channel", %{client: client, subject: subject} do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
+      assert_push "init", _init_payload
+      resource_id = Ecto.UUID.generate()
+
+      push(socket, "request_authorization", %{"resource_id" => resource_id})
+
+      assert_push "authorization_creation_failed", %{
+        reason: :not_found,
+        resource_id: ^resource_id
+      }
+    end
+
     test "returns error when resource is not found", %{client: client, subject: subject} do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
@@ -3143,7 +3163,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Queue must NOT have buffered a policy_authorization for the offline
       # gateway: if it did, flushing would create a row that can never be
       # revoked via the dispatched `:reject_access` path (because no
-      # `:authorize_policy` ever reached a gateway).
+      # `:create_authorization` ever reached a gateway).
       Portal.Queue.flush(:policy_authorization_queue)
       assert Repo.all(Portal.PolicyAuthorization) == []
     end
@@ -3191,7 +3211,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
 
       assert %{
                client: received_client,
@@ -3210,13 +3230,13 @@ defmodule PortalAPI.Client.ChannelTest do
     # End-to-end ordering test for the gateway create_flow path. The invariant
     # we're guarding against regressions of: a queued `policy_authorization`
     # that later fails to persist must produce a `:reject_access` AFTER the
-    # original `:authorize_policy`, never before. The sender-pid guarantee
+    # original `:create_authorization`, never before. The sender-pid guarantee
     # (both sends originate from the Queue pid) is asserted at the Queue level
     # in `Portal.QueueTest`. Here we verify the channel correctly wires the
     # call site through the Queue: if it didn't, the row would never be
     # buffered and `on_failed` would never fire, so `:reject_access` would
     # never arrive.
-    test "delivers :authorize_policy before :reject_access on FK violation",
+    test "delivers :create_authorization before :reject_access on FK violation",
          %{
            dns_resource: resource,
            dns_resource_policy: policy,
@@ -3257,7 +3277,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _allow_payload}, 500
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _allow_payload}, 500
 
       # Force the queued insert to fail by deleting the policy parent row.
       # After flush, on_failed must fire reject_access for the orphaned entry.
@@ -3322,7 +3342,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, payload}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, payload}
 
       assert %{
                client: recv_client,
@@ -3379,7 +3399,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
 
       assert %{
                resource: %{id: resource_id},
@@ -3481,7 +3501,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
       assert is_binary(payload.flow_logs_ingest_token)
 
       assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
@@ -3537,7 +3557,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
       assert is_binary(payload.flow_logs_ingest_token)
 
       assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
@@ -3580,7 +3600,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, _refs, payload}
+      assert_receive {:create_authorization, _refs, payload}
       assert is_binary(payload.flow_logs_ingest_token)
 
       assert {:ok, claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
@@ -3603,7 +3623,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         put_in(
-          state.assigns.pending_flows,
+          state.assigns.pending_authorizations,
           %{resource.id => {make_ref(), timer_ref, "ingest-token"}}
         )
       end)
@@ -3711,7 +3731,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _payload}
     end
 
     test "selects compatible gateway versions", %{
@@ -3798,7 +3818,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _payload}
     end
 
     test "selects already connected gateway", %{
@@ -3861,7 +3881,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => [gateway2.id]
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{}}
 
       wait_for(fn ->
         assert Repo.get_by(Portal.PolicyAuthorization,
@@ -3876,7 +3896,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => [gateway1.id]
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, %{}}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{}}
 
       wait_for(fn ->
         assert Repo.get_by(Portal.PolicyAuthorization,
@@ -3888,7 +3908,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 flow_creation_timeout" do
+  describe "handle_info/2 authorization_creation_timeout" do
     test "pushes flow_creation_failed when gateway does not respond in time", %{
       dns_resource: resource,
       dns_resource_policy: policy,
@@ -3928,9 +3948,9 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {_channel_pid, _socket_ref}, _payload}
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, _payload}
 
-      fire_flow_creation_timeout(socket.channel_pid, resource.id)
+      fire_authorization_creation_timeout(socket.channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
@@ -3975,9 +3995,9 @@ defmodule PortalAPI.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
 
-      fire_flow_creation_timeout(channel_pid, resource.id)
+      fire_authorization_creation_timeout(channel_pid, resource.id)
 
       assert_push "flow_creation_failed", %{resource_id: resource_id, reason: :offline}
       assert resource_id == resource.id
@@ -3995,7 +4015,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "flow_created", _
     end
 
-    test "timeout is ignored when flow has already succeeded", %{
+    test "v2 pushes authorization_created and ignores its timeout after success", %{
       dns_resource: resource,
       dns_resource_policy: policy,
       membership: membership,
@@ -4005,7 +4025,7 @@ defmodule PortalAPI.Client.ChannelTest do
       global_relay: global_relay,
       subject: subject
     } do
-      socket = join_channel(client, subject)
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
       assert_push "init", _init_payload
       :ok = Portal.Presence.Relays.connect(global_relay)
       :ok = PG.register(gateway.id)
@@ -4029,14 +4049,14 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: membership
       })
 
-      push(socket, "create_flow", %{
+      push(socket, "request_authorization", %{
         "resource_id" => resource.id,
         "connected_gateway_ids" => []
       })
 
-      assert_receive {:authorize_policy, {channel_pid, socket_ref}, payload}
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
 
-      generation = gateway_flow_generation(channel_pid, resource.id)
+      generation = gateway_authorization_generation(channel_pid, resource.id)
 
       rid_bytes = Ecto.UUID.dump!(resource.id)
 
@@ -4047,12 +4067,12 @@ defmodule PortalAPI.Client.ChannelTest do
          payload.ice_credentials}
       )
 
-      assert_push "flow_created", %{resource_id: resource_id}
+      assert_push "authorization_created", %{resource_id: resource_id}
       assert resource_id == resource.id
 
-      send(channel_pid, {:flow_creation_timeout, resource.id, generation})
+      send(channel_pid, {:authorization_creation_timeout, resource.id, generation})
 
-      refute_push "flow_creation_failed", _
+      refute_push "authorization_creation_failed", _
     end
 
     test "second create_flow for same resource replaces the timer without dropping the flow", %{
@@ -4080,14 +4100,14 @@ defmodule PortalAPI.Client.ChannelTest do
       end
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:authorize_policy, {channel_pid, _socket_ref1}, _payload1}
-      stale_generation = gateway_flow_generation(channel_pid, resource.id)
+      assert_receive {:create_authorization, {channel_pid, _socket_ref1}, _payload1}
+      stale_generation = gateway_authorization_generation(channel_pid, resource.id)
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:authorize_policy, {^channel_pid, socket_ref2}, payload2}
-      refute gateway_flow_generation(channel_pid, resource.id) == stale_generation
+      assert_receive {:create_authorization, {^channel_pid, socket_ref2}, payload2}
+      refute gateway_authorization_generation(channel_pid, resource.id) == stale_generation
 
-      send(channel_pid, {:flow_creation_timeout, resource.id, stale_generation})
+      send(channel_pid, {:authorization_creation_timeout, resource.id, stale_generation})
       refute_push "flow_creation_failed", _
 
       send(
@@ -6071,7 +6091,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
 
     # End-to-end ordering test for the c2c path. Same shape as the
-    # `delivers :authorize_policy before :reject_access` test for gateway
+    # `delivers :create_authorization before :reject_access` test for gateway
     # flows. We register the test pid as the c2c receiver in `:pg` (instead
     # of joining a real target channel) so we can directly observe the order
     # of `:client_device_access_authorized` and `:reject_access` at the
@@ -6226,7 +6246,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:client_device_access_authorized, {_ack_to, ref}, _payload}, 500
 
       # Simulate the ack-wait timeout firing before any ack arrives.
-      send(initiating_socket.channel_pid, {:flow_creation_timeout, ref})
+      send(initiating_socket.channel_pid, {:authorization_creation_timeout, ref})
 
       assert_push "client_device_access_denied", %{
         client_id: ^target_client_id,

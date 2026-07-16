@@ -1460,6 +1460,15 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("newrelic") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-newrelic.svg",
+      dark_src: ~p"/images/logo-newrelic-dark.svg",
+      alt: "New Relic"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

@@ -2,6 +2,7 @@ defmodule PortalWeb.Settings.LogSinks do
   use PortalWeb, :live_view
 
   alias Portal.Datadog
+  alias Portal.NewRelic
   alias Portal.Splunk
   alias __MODULE__.Database
 
@@ -11,7 +12,8 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @modules %{
     "splunk" => Splunk.LogSink,
-    "datadog" => Datadog.LogSink
+    "datadog" => Datadog.LogSink,
+    "newrelic" => NewRelic.LogSink
   }
 
   @types Map.keys(@modules)
@@ -39,8 +41,16 @@ defmodule PortalWeb.Settings.LogSinks do
 
   @fields %{
     Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
-    Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a
+    Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
+    NewRelic.LogSink => @common_fields ++ ~w[region license_key]a
   }
+
+  @newrelic_region_options [
+    {"US (log-api.newrelic.com)", "US"},
+    {"EU (log-api.eu.newrelic.com)", "EU"},
+    {"Japan (log-api.jp.nr-data.net)", "JP"},
+    {"FedRAMP (gov-log-api.newrelic.com)", "FedRAMP"}
+  ]
 
   def mount(_params, _session, socket) do
     socket =
@@ -359,6 +369,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to Datadog Log Management.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/newrelic/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="newrelic" size="xl" />
+                      <span class="text-sm font-medium text-heading">New Relic</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Stream logs to the New Relic Log API.
                     </span>
                   </.link>
                 </li>
@@ -863,6 +887,36 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "newrelic"}>
+          <.input
+            field={@form[:region]}
+            type="select"
+            label="Region"
+            options={newrelic_region_options()}
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The region your New Relic account reports to.
+          </p>
+        </div>
+
+        <div :if={@type == "newrelic"}>
+          <label for={@form[:license_key].id} class="block text-xs font-medium text-body mb-1.5">
+            License Key <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:license_key]}
+            type="password"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            A New Relic license key (ingest key) to authenticate with.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -906,6 +960,10 @@ defmodule PortalWeb.Settings.LogSinks do
             Backfill logs recorded before this sink was created, oldest first, while new
             logs are delivered as they arrive. When disabled, only logs recorded from now
             on are delivered.
+          </p>
+          <p :if={@type == "newrelic"} class="mt-1 ml-7 text-xs text-subtle">
+            New Relic drops payloads with timestamps older than 48 hours, so backfilled
+            events older than that will not appear in New Relic.
           </p>
         </div>
       </div>
@@ -952,6 +1010,7 @@ defmodule PortalWeb.Settings.LogSinks do
       case schema do
         Splunk.LogSink -> :splunk
         Datadog.LogSink -> :datadog
+        NewRelic.LogSink -> :newrelic
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -974,6 +1033,7 @@ defmodule PortalWeb.Settings.LogSinks do
   # next delivery prove the fix.
   defp sync_module(%Splunk.LogSink{}), do: Splunk.Sync
   defp sync_module(%Datadog.LogSink{}), do: Datadog.Sync
+  defp sync_module(%NewRelic.LogSink{}), do: NewRelic.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1023,6 +1083,8 @@ defmodule PortalWeb.Settings.LogSinks do
 
   defp datadog_site_options, do: @datadog_site_options
 
+  defp newrelic_region_options, do: @newrelic_region_options
+
   defp streams, do: @streams
 
   defp stream_enabled?(form, stream) do
@@ -1042,11 +1104,13 @@ defmodule PortalWeb.Settings.LogSinks do
 
   defp titleize("splunk"), do: "Splunk"
   defp titleize("datadog"), do: "Datadog"
+  defp titleize("newrelic"), do: "New Relic"
 
   defp sink_type(sink) do
     case sink.__struct__ do
       Splunk.LogSink -> "splunk"
       Datadog.LogSink -> "datadog"
+      NewRelic.LogSink -> "newrelic"
     end
   end
 
@@ -1058,6 +1122,13 @@ defmodule PortalWeb.Settings.LogSinks do
   end
 
   defp sink_destination(%Datadog.LogSink{} = sink), do: sink.site
+
+  defp sink_destination(%NewRelic.LogSink{} = sink) do
+    sink.region
+    |> NewRelic.APIClient.endpoint()
+    |> URI.parse()
+    |> Map.get(:host)
+  end
 
   defp delivered_count(sink) do
     case sink.delivery_stats do
@@ -1106,13 +1177,15 @@ defmodule PortalWeb.Settings.LogSinks do
     import Ecto.Query
 
     alias Portal.Datadog
+    alias Portal.NewRelic
     alias Portal.Safe
     alias Portal.Splunk
 
     def list_all_sinks(subject, repo \\ :replica) do
       [
         Splunk.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

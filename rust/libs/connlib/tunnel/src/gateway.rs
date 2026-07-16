@@ -283,7 +283,7 @@ impl GatewayState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %client.id))]
-    pub fn authorize_flow(
+    pub fn create_authorization(
         &mut self,
         client: Client,
         client_ice: IceCredentials,

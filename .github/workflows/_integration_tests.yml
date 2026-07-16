@@ -83,28 +83,29 @@ jobs:
       - uses: ./.github/actions/setup-scripts
       - name: Pull all images once
         # Pulls every registry image in the compose project (resolving `extends`,
-        # anchors and env interpolation). Services that are only built locally
-        # (the routers) have no `image:` and are skipped, so we additionally pull
-        # their base image (see `scripts/router/Dockerfile`) to let the test jobs
-        # build the routers without reaching out to Docker Hub.
+        # anchors and env interpolation). The build-only `*-router` services have
+        # no `image:` and are skipped here; they are built once in the next step.
         run: |
           retry docker compose pull
-          retry docker pull alpine:3.23
+      - name: Build the router images once
+        # The `*-router` services are built once here and shipped in the images
+        # archive so the downstream test-matrix jobs load them via `docker load`
+        # instead of each running `docker build` + `apk add` against the Alpine
+        # CDN, which was a recurring source of flaky failures.
+        run: retry docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
       - name: Save pulled images as a single archive
         run: |
           set -xe
 
-          # Save exactly the images that were pulled (i.e. are present locally) so
-          # that the auto-generated names of build-only services are excluded.
+          # Save the compose project's images that are present locally: the pulled
+          # registry images plus the `*-router` images built in the previous step.
+          # The `docker image inspect` filter drops any build-only service that
+          # wasn't built.
           images=$(docker compose config --images | sort -u | while read -r image; do
             if docker image inspect "$image" > /dev/null 2>&1; then
               echo "$image"
             fi
           done)
-
-          # Also archive the routers' base image so the build-only `*-router`
-          # services can be built offline in the test jobs.
-          images="$images alpine:3.23"
 
           echo "Saving images:"
           echo "$images"
@@ -263,7 +264,8 @@ jobs:
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
           fi
 
-          docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
+          # The `*-router` images are pre-built in the `collect-images` job and
+          # loaded from the images archive above, so they are not built here.
 
           # Start one-by-one to avoid variability in service startup order
           # Retries are used because network I/O is flaky in GitHub Actions runners
