@@ -280,6 +280,8 @@ config :portal, Portal.S3.APIClient,
   session_token: nil,
   aws_account_id: System.get_env("LOG_SINKS_AWS_ACCOUNT_ID", "000000000000")
 
+config :portal, Portal.QRadar.APIClient, req_opts: []
+
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
   client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),

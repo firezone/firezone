@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Datadog
   alias Portal.Elastic
   alias Portal.NewRelic
+  alias Portal.QRadar
   alias Portal.Sentinel
   alias Portal.S3
   alias Portal.Splunk
@@ -19,7 +20,8 @@ defmodule PortalWeb.Settings.LogSinks do
     "newrelic" => NewRelic.LogSink,
     "elastic" => Elastic.LogSink,
     "sentinel" => Sentinel.LogSink,
-    "s3" => S3.LogSink
+    "s3" => S3.LogSink,
+    "qradar" => QRadar.LogSink
   }
 
   @types Map.keys(@modules)
@@ -51,7 +53,8 @@ defmodule PortalWeb.Settings.LogSinks do
     NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
     Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a,
     Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a,
-    S3.LogSink => @common_fields ++ ~w[bucket region role_arn key_prefix]a
+    S3.LogSink => @common_fields ++ ~w[bucket region role_arn key_prefix]a,
+    QRadar.LogSink => @common_fields ++ ~w[endpoint_url auth_header]a
   }
 
   @newrelic_region_options [
@@ -451,6 +454,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                     <span class="text-xs text-body">
                       Archive logs to an Amazon S3 bucket as NDJSON objects.
+                    </span>
+                  </.link>
+                </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/qradar/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="qradar" size="xl" />
+                      <span class="text-sm font-medium text-heading">IBM QRadar</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Stream logs to an IBM QRadar HTTP Receiver log source.
                     </span>
                   </.link>
                 </li>
@@ -1386,6 +1403,74 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "qradar"} class="p-3 rounded border border-border bg-raised">
+          <p class="text-xs font-medium text-heading mb-2">Setup</p>
+          <p class="text-xs text-subtle mb-3">
+            Firezone delivers events as newline-delimited JSON, one event per POST line,
+            to a QRadar HTTP Receiver log source:
+          </p>
+          <ol class="list-decimal ml-4 space-y-1.5 text-xs text-subtle">
+            <li>
+              In QRadar, open the <strong>Admin</strong> tab, choose
+              <strong>Log Sources</strong>, and add a log source with the
+              <strong>HTTP Receiver</strong> protocol. On QRadar on Cloud, the receiver
+              runs on your data gateway.
+            </li>
+            <li>
+              Set <strong>Communication Type</strong> to HTTPs, pick a
+              <strong>Listen Port</strong> (the default is
+              <code class="text-xs">12469</code>), set
+              <strong>Message Pattern</strong> to
+              <code class="text-xs">{~S|\{"type":"|}</code> so each event in a delivery
+              is parsed separately, and raise <strong>Max Payload Length</strong> to
+              <code class="text-xs">32767</code> so large events are not split.
+            </li>
+            <li>
+              Deploy the changes and allow inbound HTTPS from the internet to the listen
+              port. The receiver must present a TLS certificate from a publicly trusted
+              CA; QRadar's self-signed default will not work, so replace it or put a
+              TLS-terminating proxy in front of the receiver.
+            </li>
+          </ol>
+        </div>
+
+        <div :if={@type == "qradar"}>
+          <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
+            Endpoint URL <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:endpoint_url]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The public HTTPS URL of the HTTP Receiver, including its listen port, e.g.
+            <code class="text-xs">https://qradar.example.com:12469</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "qradar"}>
+          <label for={@form[:auth_header].id} class="block text-xs font-medium text-body mb-1.5">
+            Authorization Header
+          </label>
+          <.input
+            field={@form[:auth_header]}
+            type="password"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Optional. Sent as the <code class="text-xs">Authorization</code> header on
+            every delivery, e.g. <code class="text-xs">Bearer my-secret-token</code>.
+            QRadar's HTTP Receiver ignores it; set it when a proxy in front of the
+            receiver requires authentication.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1483,6 +1568,7 @@ defmodule PortalWeb.Settings.LogSinks do
         Elastic.LogSink -> :elastic
         Sentinel.LogSink -> :sentinel
         S3.LogSink -> :s3
+        QRadar.LogSink -> :qradar
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1509,6 +1595,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%Elastic.LogSink{}), do: Elastic.Sync
   defp sync_module(%Sentinel.LogSink{}), do: Sentinel.Sync
   defp sync_module(%S3.LogSink{}), do: S3.Sync
+  defp sync_module(%QRadar.LogSink{}), do: QRadar.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1583,6 +1670,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("elastic"), do: "Elastic"
   defp titleize("sentinel"), do: "Microsoft Sentinel"
   defp titleize("s3"), do: "Amazon S3"
+  defp titleize("qradar"), do: "IBM QRadar"
 
   defp sink_type(sink) do
     case sink.__struct__ do
@@ -1592,6 +1680,7 @@ defmodule PortalWeb.Settings.LogSinks do
       Elastic.LogSink -> "elastic"
       Sentinel.LogSink -> "sentinel"
       S3.LogSink -> "s3"
+      QRadar.LogSink -> "qradar"
     end
   end
 
@@ -1629,6 +1718,13 @@ defmodule PortalWeb.Settings.LogSinks do
     case sink.key_prefix do
       nil -> "s3://#{sink.bucket}"
       prefix -> "s3://#{sink.bucket}/#{prefix}"
+    end
+  end
+
+  defp sink_destination(%QRadar.LogSink{} = sink) do
+    case URI.new(sink.endpoint_url || "") do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> sink.endpoint_url
     end
   end
 
@@ -2049,6 +2145,7 @@ defmodule PortalWeb.Settings.LogSinks do
     alias Portal.Datadog
     alias Portal.Elastic
     alias Portal.NewRelic
+    alias Portal.QRadar
     alias Portal.S3
     alias Portal.Safe
     alias Portal.Sentinel
@@ -2061,7 +2158,8 @@ defmodule PortalWeb.Settings.LogSinks do
         NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        S3.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        S3.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        QRadar.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

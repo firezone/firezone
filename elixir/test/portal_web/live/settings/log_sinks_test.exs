@@ -621,6 +621,75 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert Repo.all(Portal.S3.LogSink) == []
     end
 
+    test "creates an IBM QRadar log sink with its base row", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/qradar/new")
+
+      assert html =~ "HTTP Receiver"
+      assert html =~ "Message Pattern"
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC QRadar",
+            endpoint_url: "https://qradar.example.com:12469/",
+            auth_header: "Bearer test-shared-secret",
+            enabled_streams: ["", "session"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.QRadar.LogSink, account_id: account.id)
+      assert sink.name == "SOC QRadar"
+      assert sink.endpoint_url == "https://qradar.example.com:12469"
+      assert sink.auth_header == "Bearer test-shared-secret"
+      assert sink.enabled_streams == [:session]
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :qradar
+    end
+
+    test "rejects plaintext and private-address QRadar endpoint URLs", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/qradar/new")
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC QRadar",
+            endpoint_url: "http://qradar.internal.example:12469"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "only https schemes are supported"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{endpoint_url: "https://169.254.169.254:12469"}
+        )
+        |> render_change()
+
+      assert html =~ "must not be a private or reserved IP address"
+      assert Repo.all(Portal.QRadar.LogSink) == []
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,
