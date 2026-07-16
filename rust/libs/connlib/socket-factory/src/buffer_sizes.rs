@@ -12,10 +12,7 @@ use std::time::Duration;
 ///
 /// On Apple platforms UDP datagrams are handed straight to the interface and `SO_SNDBUF` primarily
 /// caps the maximum datagram size, so 64 KiB is sufficient for one complete send.
-pub const SEND_BUFFER_SIZE: usize = cfg_select! {
-    apple => { MAX_ATOMIC_UDP_SEND_BYTES.next_power_of_two() }
-    _ => { send_buffer_size_for_queue_window(SEND_QUEUE_WINDOW) }
-};
+pub const SEND_BUFFER_SIZE: usize = send_buffer_size_for_queue_window(SEND_QUEUE_WINDOW);
 
 /// Kernel backlog for a UDP socket, sized by ingress rate and receive-service gap.
 ///
@@ -47,7 +44,10 @@ const MAX_EXPECTED_UDP_BITS_PER_SECOND: u64 = 10_000_000_000;
 /// Largest payload handed to the kernel by one GSO / USO send.
 const MAX_ATOMIC_UDP_SEND_BYTES: usize = u16::MAX as usize;
 /// Time worth of controlled egress that may be queued in the kernel.
-const SEND_QUEUE_WINDOW: Duration = Duration::from_millis(1);
+const SEND_QUEUE_WINDOW: Duration = cfg_select! {
+    apple => { Duration::ZERO }
+    _ => { Duration::from_millis(1) }
+};
 /// How long a normally-scheduled receive thread may reasonably go without servicing its socket.
 const RECV_SERVICE_GAP: Duration = Duration::from_millis(10);
 /// Apple has no UDP GRO, and Quinn leaves Windows URO disabled because some Windows systems omit the
