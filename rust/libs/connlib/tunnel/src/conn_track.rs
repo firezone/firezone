@@ -81,7 +81,18 @@ impl ConnTrack {
     }
 
     /// Returns `true` if the packet belongs to an existing flow in either direction.
+    ///
+    /// An ICMP error belongs to the flow of the failed packet it references.
     pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
+        if let Ok(Some((failed, _))) = packet.icmp_error() {
+            return self.contains(Key {
+                local: failed.src_proto(),
+                peer: failed.dst_proto(),
+                local_ip: failed.src(),
+                peer_ip: failed.dst(),
+            });
+        }
+
         let Ok(local) = packet.source_protocol() else {
             return false;
         };
@@ -89,32 +100,15 @@ impl ConnTrack {
             return false;
         };
 
-        let key = Key {
+        self.contains(Key {
             local,
             peer,
             local_ip: packet.source(),
             peer_ip: packet.destination(),
-        };
-
-        self.initiated.contains_key(&key) || self.received.contains_key(&key)
+        })
     }
 
-    /// Returns `true` if a flow with our endpoint `local_ip`/`local` and the peer's
-    /// `peer_ip`/`peer` is known in either direction.
-    pub(crate) fn is_known_flow_parts(
-        &self,
-        local_ip: IpAddr,
-        local: Protocol,
-        peer_ip: IpAddr,
-        peer: Protocol,
-    ) -> bool {
-        let key = Key {
-            local,
-            peer,
-            local_ip,
-            peer_ip,
-        };
-
+    fn contains(&self, key: Key) -> bool {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 

@@ -231,14 +231,9 @@ impl ClientOnClient {
             "Dropping spoofed inbound packet from peer (src {src}, dst {dst})"
         );
 
-        if let Ok(Some((failed, _))) = packet.icmp_error() {
+        if packet.icmp_error().is_ok_and(|e| e.is_some()) {
             anyhow::ensure!(
-                self.conn_track.is_known_flow_parts(
-                    failed.src(),
-                    failed.src_proto(),
-                    failed.dst(),
-                    failed.dst_proto(),
-                ),
+                self.conn_track.is_known_flow(&packet),
                 "Dropping ICMP error from peer referencing an unknown flow"
             );
 
