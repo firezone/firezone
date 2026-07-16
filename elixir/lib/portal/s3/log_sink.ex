@@ -84,6 +84,9 @@ defmodule Portal.S3.LogSink do
       message: "must be an IAM role ARN, e.g. arn:aws:iam::123456789012:role/firezone-logs"
     )
     |> validate_length(:key_prefix, max: 512)
+    |> validate_format(:key_prefix, ~r/^[A-Za-z0-9._\/-]+$/,
+      message: "may contain only letters, numbers, dots, underscores, dashes, and slashes"
+    )
     |> validate_length(:enabled_streams, min: 1)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)
