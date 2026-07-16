@@ -2,41 +2,49 @@
 
 source "./scripts/tests/lib.sh"
 
-client sh -c "curl --fail --max-time 10 --output /tmp/download1.file http://download.httpbin/bytes?num=5000000" &
-PID1=$!
+domains=(download.httpbin alias.httpbin alias2.httpbin)
+sizes=(5000000 7000000 9000000)
 
-client sh -c "curl --fail --max-time 10 --output /tmp/download2.file http://download.httpbin/bytes?num=5000000" &
-PID2=$!
+client sh -c 'echo "5555 5555" > /proc/sys/net/ipv4/ip_local_port_range'
 
-client sh -c "curl --fail --max-time 10 --output /tmp/download3.file http://download.httpbin/bytes?num=5000000" &
-PID3=$!
+pids=()
+for i in "${!domains[@]}"; do
+    client sh -c "curl --fail --max-time 15 --output /tmp/download$i.file http://${domains[$i]}/bytes?num=${sizes[$i]}" &
+    pids+=($!)
+done
 
-wait $PID1 || {
-    echo "Download 1 failed"
-    exit 1
-}
-
-wait $PID2 || {
-    echo "Download 2 failed"
-    exit 1
-}
-
-wait $PID3 || {
-    echo "Download 3 failed"
-    exit 1
-}
+for i in "${!pids[@]}"; do
+    wait "${pids[$i]}" || {
+        echo "Download via ${domains[$i]} failed"
+        exit 1
+    }
+done
 
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_gteq "${#flows[@]}" 3
+assert_eq "${#flows[@]}" 3
 
-rx_bytes=0
+for i in "${!domains[@]}"; do
+    domain="${domains[$i]}"
+    size="${sizes[$i]}"
 
-for flow in "${flows[@]}"; do
-    assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
-    assert_eq "$(get_flow_field "$flow" "inner_domain")" "download.httpbin"
-    rx_bytes+="$(get_flow_field "$flow" "rx_bytes")"
+    found=""
+    for flow in "${flows[@]}"; do
+        if [ "$(get_flow_field "$flow" "domain")" == "$domain" ]; then
+            found="$flow"
+            break
+        fi
+    done
+
+    if [ -z "$found" ]; then
+        echo "No flow log found for $domain"
+        exit 1
+    fi
+
+    rx_bytes="$(get_flow_field "$found" "rx_bytes")"
+
+    assert_eq "$(get_flow_field "$found" "inner_dst_ip")" "172.21.0.101"
+    assert_gteq "$rx_bytes" "$size"
+    assert_lteq "$rx_bytes" "$((size + 1000000))"
 done
-
-assert_gteq "$rx_bytes" $((3 * 5000000))

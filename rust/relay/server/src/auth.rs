@@ -38,7 +38,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use bytecodec::Encode;
 use once_cell::sync::Lazy;
-use rand::Rng;
+use rand::RngExt;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::Sha256;
 use sha2::digest::FixedOutput;
@@ -184,7 +184,7 @@ impl Nonces {
     ///
     /// If we have already issued a nonce to this client that is still valid, the
     /// same nonce is returned. Otherwise, a fresh one is minted using `rng`.
-    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl Rng) -> Uuid {
+    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl RngExt) -> Uuid {
         if let Some(nonce) = self
             .inner
             .get(&client)
@@ -193,7 +193,7 @@ impl Nonces {
             return nonce.value;
         }
 
-        let value = Uuid::from_u128(rng.r#gen());
+        let value = Uuid::from_u128(rng.random());
         self.add_new(client, value);
 
         value
@@ -290,7 +290,7 @@ pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
 mod tests {
     use super::*;
     use crate::Attribute;
-    use rand::rngs::mock::StepRng;
+    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::SocketAddr;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
@@ -412,7 +412,7 @@ mod tests {
     fn reuses_the_same_nonce_for_repeated_requests_from_one_client() {
         let mut nonces = Nonces::default();
         let client = client_socket(1);
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let first = nonces.issue(client, &mut rng);
         let second = nonces.issue(client, &mut rng);
@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn issues_distinct_nonces_to_distinct_clients() {
         let mut nonces = Nonces::default();
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let alice = nonces.issue(client_socket(1), &mut rng);
         let bob = nonces.issue(client_socket(2), &mut rng);
@@ -434,7 +434,7 @@ mod tests {
     #[test]
     fn a_nonce_issued_to_one_client_is_invalid_for_another() {
         let mut nonces = Nonces::default();
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let nonce = nonces.issue(client_socket(1), &mut rng);
 
@@ -450,7 +450,7 @@ mod tests {
     fn issues_a_fresh_nonce_once_the_previous_one_is_used_up() {
         let mut nonces = Nonces::default();
         let client = client_socket(1);
-        let mut rng = StepRng::new(0, 1);
+        let mut rng = StdRng::seed_from_u64(0);
 
         let first = nonces.issue(client, &mut rng);
         for _ in 0..Nonces::NUM_REQUESTS {

@@ -52,6 +52,8 @@ struct GrantNotificationsView: View {
 
   func grantNotifications() {
     Task {
+      errorHandler.clear()
+
       do {
         try await store.grantNotifications()
       } catch {

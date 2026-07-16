@@ -31,13 +31,13 @@ jobs:
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Plan jobs to run
         id: plan
         run: |
           set -e
 
-          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest";
+          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest,nix";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -98,6 +98,12 @@ jobs:
             jobs="${jobs},rust"
           fi
 
+          # The Nix packages build the Rust workspace from source, so any
+          # rust/ change can affect them.
+          if grep -qE '^(rust/|scripts/nix/|flake\.nix|flake\.lock)' changed_files.txt; then
+            jobs="${jobs},nix"
+          fi
+
           # The data plane (client/gateway/relay/http-test-server images) and the
           # integration/compatibility tests that exercise them are built from the
           # headless client, gateway and relay. The platform client shims
@@ -135,6 +141,11 @@ jobs:
           if grep -q '^rust/tests/gui-smoke-test/' changed_files.txt; then
             jobs="${jobs},tauri"
           fi
+          # The install canary (scripts/tests/gui-client-install-*) runs inside
+          # the tauri build, so re-run that build when the canary changes.
+          if grep -q '^scripts/tests/gui-client-install' changed_files.txt; then
+            jobs="${jobs},tauri"
+          fi
           if grep -q '^elixir/' changed_files.txt; then
             jobs="${jobs},elixir,codeql,control-plane,data-plane"
           fi
@@ -164,11 +175,12 @@ jobs:
         data-plane,
         integration-tests,
         compatibility-tests,
+        nix,
       ]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Check if all jobs are successful
         run: |
           set -e
@@ -185,7 +197,7 @@ jobs:
     name: shell-tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # v4.0.0
         id: setup-bats
       - run: bats scripts/tests/bats
@@ -209,7 +221,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   swift:
@@ -229,7 +241,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   elixir:
@@ -247,7 +259,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   rust:
@@ -267,7 +279,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   tauri:
@@ -286,7 +298,29 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - run: gh run cancel ${{ github.run_id }}
+
+  nix:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'nix')
+    uses: ./.github/workflows/_nix.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
+    with:
+      # Build only x86_64 on PRs to control cost; both systems elsewhere.
+      systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
+
+  monitor-nix:
+    needs: [nix]
+    if: "!cancelled() && needs.nix.result == 'failure' && github.event_name == 'merge_group'"
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # gh run cancel
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   codeql:
@@ -306,7 +340,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   control-plane:
@@ -326,7 +360,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
@@ -352,7 +386,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   loadtest:
@@ -371,7 +405,7 @@ jobs:
     permissions:
       actions: write # gh run cancel
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:

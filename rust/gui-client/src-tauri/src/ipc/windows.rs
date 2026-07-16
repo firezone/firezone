@@ -44,7 +44,7 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 /// process with the `SYSAPPID` attribute.
 ///
 /// In debug builds the Tunnel pipe may also be opened without the
-/// `Owner` pin — see [`skip_tunnel_pipe_owner_check`] — so the
+/// `Owner` pin — see [`skip_peer_verification`] — so the
 /// `gui-smoke-test`, which launches the Tunnel binary as a
 /// subprocess of the test runner (not as a service running under
 /// LocalSystem), doesn't fail `CreateNamedPipeW` with
@@ -84,16 +84,16 @@ fn test_pipe_dacl() -> PipeDacl {
         .allow(FileRights::ReadWrite, Trustee::builtin_users())
 }
 
-/// Whether to skip the tunnel pipe owner check.
+/// Whether to skip verifying the peer (the Tunnel pipe's `LocalSystem` owner).
 #[cfg(debug_assertions)]
-static SKIP_TUNNEL_PIPE_OWNER_CHECK: AtomicBool = AtomicBool::new(false);
+static SKIP_PEER_VERIFICATION: AtomicBool = AtomicBool::new(false);
 
-/// Set [`SKIP_TUNNEL_PIPE_OWNER_CHECK`].
+/// Set [`SKIP_PEER_VERIFICATION`].
 ///
 /// Call once at process startup, before any `Server::new(SocketId::Tunnel)` or `connect_to_socket`.
 #[cfg(debug_assertions)]
-pub fn skip_tunnel_pipe_owner_check() {
-    SKIP_TUNNEL_PIPE_OWNER_CHECK.store(true, Ordering::Relaxed);
+pub fn skip_peer_verification() {
+    SKIP_PEER_VERIFICATION.store(true, Ordering::Relaxed);
 }
 
 pub struct Server {
@@ -135,7 +135,7 @@ fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
         #[cfg(test)]
         SocketId::Test(_) => Ok(()),
         #[cfg(debug_assertions)]
-        SocketId::Tunnel if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) => Ok(()),
+        SocketId::Tunnel if SKIP_PEER_VERIFICATION.load(Ordering::Relaxed) => Ok(()),
         // Refuse to connect to tunnel pipes not owned by local system
         SocketId::Tunnel if !is_pipe_owned_by_local_system(handle)? => {
             bail!("Tunnel pipe owner is not LocalSystem; possible pipe-squatting attack")
@@ -160,9 +160,7 @@ impl Server {
             // flag, so reuse it to fall back to the relaxed test DACL
             // for both pipes.
             #[cfg(debug_assertions)]
-            SocketId::Tunnel | SocketId::Gui
-                if SKIP_TUNNEL_PIPE_OWNER_CHECK.load(Ordering::Relaxed) =>
-            {
+            SocketId::Tunnel | SocketId::Gui if SKIP_PEER_VERIFICATION.load(Ordering::Relaxed) => {
                 test_pipe_dacl()
             }
             SocketId::Tunnel => tunnel_pipe_dacl(),

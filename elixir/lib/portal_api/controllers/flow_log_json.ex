@@ -1,5 +1,5 @@
 defmodule PortalAPI.FlowLogJSON do
-  def render("accepted.json", _assigns) do
-    %{data: %{status: "accepted"}}
+  def render("ok.json", _assigns) do
+    %{data: %{status: "ok"}}
   end
 end

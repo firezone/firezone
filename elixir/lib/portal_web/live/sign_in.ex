@@ -50,16 +50,16 @@ defmodule PortalWeb.SignIn do
     <% end %>
 
     <div class="flex items-center gap-3 mb-8 mt-4">
-      <div class="w-11 h-11 rounded bg-[var(--brand)]/10 border border-[var(--brand)]/20 flex items-center justify-center shrink-0">
-        <span class="text-lg font-bold text-[var(--brand)]">
+      <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
+        <span class="text-lg font-bold text-brand">
           {String.upcase(String.first(@account.name))}
         </span>
       </div>
       <div>
-        <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+        <h1 class="text-xl font-bold text-heading tracking-tight">
           Sign in to {@account.name}
         </h1>
-        <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+        <p class="text-xs text-subtle mt-0.5">
           Choose how you'd like to sign in.
         </p>
       </div>
@@ -85,7 +85,7 @@ defmodule PortalWeb.SignIn do
             type="google"
           >
             <:icon>
-              <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-5 h-5" />
+              <.provider_icon provider="google" size="md" />
             </:icon>
           </.auth_button>
 
@@ -97,7 +97,7 @@ defmodule PortalWeb.SignIn do
             type="okta"
           >
             <:icon>
-              <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5" />
+              <.provider_icon provider="okta" size="md" />
             </:icon>
           </.auth_button>
 
@@ -109,7 +109,7 @@ defmodule PortalWeb.SignIn do
             type="entra"
           >
             <:icon>
-              <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5" />
+              <.provider_icon provider="entra" size="md" />
             </:icon>
           </.auth_button>
 
@@ -121,7 +121,7 @@ defmodule PortalWeb.SignIn do
             type="oidc"
           >
             <:icon>
-              <.provider_icon type={provider_type_from_issuer(provider.issuer)} class="w-5 h-5" />
+              <.provider_icon provider={provider_type_from_issuer(provider.issuer)} size="md" />
             </:icon>
           </.auth_button>
         </div>
@@ -148,13 +148,13 @@ defmodule PortalWeb.SignIn do
 
     <div
       :if={!PortalWeb.Authentication.client_sign_in?(@params)}
-      class="mt-8 pt-6 border-t border-[var(--border)] text-center"
+      class="mt-8 pt-6 border-t border-border text-center"
     >
-      <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+      <p class="text-xs text-subtle leading-relaxed">
         Meant to sign in from a client instead?
         <.website_link path="/kb/client-apps">Read the docs.</.website_link>
       </p>
-      <p class="text-xs text-[var(--text-tertiary)] mt-1.5">
+      <p class="text-xs text-subtle mt-1.5">
         Looking for a different account?
         <.link href={~p"/"} class={[link_style()]}>See recently used accounts.</.link>
       </p>
@@ -165,9 +165,9 @@ defmodule PortalWeb.SignIn do
   def separator(assigns) do
     ~H"""
     <div class="flex items-center gap-3 my-5">
-      <div class="flex-1 h-px bg-[var(--border)]"></div>
-      <span class="text-xs text-[var(--text-muted)]">or</span>
-      <div class="flex-1 h-px bg-[var(--border)]"></div>
+      <div class="flex-1 h-px bg-border"></div>
+      <span class="text-xs text-muted">or</span>
+      <div class="flex-1 h-px bg-border"></div>
     </div>
     """
   end
@@ -181,14 +181,14 @@ defmodule PortalWeb.SignIn do
   defp auth_button(assigns) do
     ~H"""
     <.link
-      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-[var(--border)] bg-[var(--surface)] hover:border-[var(--brand)] hover:shadow-sm transition-all duration-150 group text-sm font-medium text-[var(--text-primary)]"
+      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group text-sm font-medium text-heading"
       href={~p"/#{@account}/sign_in/#{@type}/#{@provider.id}?#{@params}"}
     >
       {render_slot(@icon)}
       <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
       <.icon
         name="ri-arrow-right-s-line"
-        class="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--brand)] group-hover:translate-x-0.5 transition-all shrink-0"
+        class="w-5 h-5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </.link>
     """
@@ -215,19 +215,19 @@ defmodule PortalWeb.SignIn do
         name="userpass[idp_id]"
         value={@userpass_form[:idp_id].value}
         placeholder="Username"
-        class="w-full px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
         required
       />
       <input
         type="password"
         name="userpass[secret]"
         placeholder="Password"
-        class="w-full px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
         required
       />
       <button
         type="submit"
-        class="w-full py-2.5 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors"
+        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
       >
         Sign in
       </button>
@@ -256,12 +256,12 @@ defmodule PortalWeb.SignIn do
           name="email[email]"
           value={@email_form[:email].value}
           placeholder="you@example.com"
-          class="flex-1 px-3 py-2 text-sm rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors placeholder:text-[var(--text-muted)]"
+          class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
           required
         />
         <button
           type="submit"
-          class="px-4 py-2 rounded text-sm font-semibold bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] transition-colors whitespace-nowrap"
+          class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
         >
           Send code →
         </button>

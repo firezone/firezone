@@ -28,17 +28,22 @@ anyhow = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
+clock = { workspace = true }
 dns-types = { workspace = true }
+flow-log-upload = { workspace = true }
+flow-log-writer = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
+mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
+otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }
 rustls = { workspace = true }
@@ -57,6 +62,7 @@ url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 nix = { workspace = true, features = ["user"] }
 
 [dev-dependencies]

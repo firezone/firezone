@@ -73,26 +73,7 @@ impl<'a> Drop for Budget<'a> {
 fn poll_duration_histogram() -> &'static Histogram<f64> {
     static STORAGE: OnceLock<Histogram<f64>> = OnceLock::new();
 
-    STORAGE.get_or_init(|| {
-        opentelemetry::global::meter("connlib")
-            .f64_histogram("eventloop.poll.duration")
-            .with_description("Duration of a single event-loop poll.")
-            .with_unit("s")
-            .with_boundaries(vec![
-                0.000_005, // 5µs
-                0.000_010, // 10µs
-                0.000_025, // 25µs
-                0.000_050, // 50µs
-                0.000_100, // 100µs
-                0.000_250, // 250µs
-                0.000_500, // 500µs
-                0.001_000, // 1ms
-                0.002_500, // 2.5ms
-                0.005_000, // 5ms
-                0.010_000, // 10ms
-            ])
-            .build()
-    })
+    STORAGE.get_or_init(otel_instruments::eventloop_poll_duration)
 }
 
 #[cfg(test)]

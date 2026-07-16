@@ -32,6 +32,7 @@
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>
+	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->

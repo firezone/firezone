@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:next-gui-version
-version = "1.5.13"
+version = "1.5.16"
 description = "Firezone"
 edition = { workspace = true }
 default-run = "firezone-gui-client"
@@ -30,6 +30,8 @@ client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 fd-lock = { workspace = true }
+flow-log-upload = { workspace = true }
+flow-log-writer = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
@@ -53,6 +55,7 @@ semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_variant = { workspace = true }
+socket-factory = { workspace = true }
 specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
 strum = { workspace = true }
@@ -71,6 +74,7 @@ tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }
@@ -84,15 +88,18 @@ dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 ksni = { workspace = true } # Tray icon for Linux.
 libc = { workspace = true }
+mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 notify-rust = { workspace = true }
 sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+mimalloc = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 admx-macro = { workspace = true }
+mimalloc = { workspace = true }
 tauri-winrt-notification = "0.7.2"
 windows-native-keyring-store = { workspace = true }
 windows-security = { workspace = true }

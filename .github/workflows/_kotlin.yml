@@ -16,7 +16,7 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-android
       - name: Check formatting
         run: ./gradlew spotlessCheck
@@ -25,6 +25,10 @@ jobs:
       # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
       - name: Run Android Lint
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
+      # AGP 9 only creates unit test components for the tested build type
+      # (debug). Narrowing to one ABI reuses the cargo build from lint above.
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
 
   update-release-draft:
     name: update-release-draft
@@ -33,9 +37,9 @@ jobs:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
-      RELEASE_NAME: android-client-1.5.11
+      RELEASE_NAME: android-client-1.5.13
     steps:
-      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
+      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -68,7 +72,7 @@ jobs:
             build-command: "./gradlew assembleRelease"
             output-path: app/build/outputs/apk/release/app-release.apk
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
@@ -95,9 +99,6 @@ jobs:
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         run: |
           sentry-cli debug-files upload --log-level info --project android-client --include-sources ../../rust/target
-      - name: Run Unit Test
-        run: |
-          ./gradlew testReleaseUnitTest
       - name: Upload package artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -109,7 +110,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
-          RELEASE_NAME: android-client-1.5.11
+          RELEASE_NAME: android-client-1.5.13
         run: |
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
@@ -172,7 +173,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: build-debug
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-android
       - name: Build debug APK
         run: |

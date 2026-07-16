@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<component type="desktop-application">
+  <id>dev.firezone.client</id>
+
+  <name>Firezone</name>
+  <summary>Zero-trust access to your organization's resources</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+
+  <developer id="dev.firezone">
+    <name>Firezone, Inc.</name>
+  </developer>
+
+  <launchable type="desktop-id">firezone-client-gui.desktop</launchable>
+
+  <description>
+    <p>
+      Firezone is an open-source, zero-trust access platform built on WireGuard®.
+      This is the GUI client used to securely connect your device to resources
+      protected by your organization's Firezone deployment.
+    </p>
+  </description>
+
+  <categories>
+    <category>Network</category>
+    <category>Security</category>
+  </categories>
+
+  <keywords>
+    <keyword>VPN</keyword>
+    <keyword>WireGuard</keyword>
+    <keyword>zero-trust</keyword>
+  </keywords>
+
+  <url type="homepage">https://www.firezone.dev</url>
+  <url type="bugtracker">https://github.com/firezone/firezone/issues</url>
+  <url type="help">https://www.firezone.dev/kb</url>
+  <url type="vcs-browser">https://github.com/firezone/firezone</url>
+
+  <content_rating type="oars-1.1" />
+</component>

@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{http_health_check, signals};
@@ -14,7 +17,7 @@ use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -25,7 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
-use telemetry::{RELAY_DSN, Telemetry};
+use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
 use tracing::Subscriber;
 use tracing_core::Dispatch;
@@ -140,16 +143,14 @@ fn main() -> ExitCode {
         .build()
         .expect("Failed to build tokio runtime");
 
-    let mut telemetry = if args.telemetry {
-        Telemetry::new()
-    } else {
-        Telemetry::disabled()
-    };
-    telemetry.start(
-        args.api_url.as_str(),
-        VERSION.unwrap_or("unknown"),
-        RELAY_DSN,
-    );
+    if args.telemetry {
+        telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+        telemetry::start(
+            args.api_url.as_str(),
+            VERSION.unwrap_or("unknown"),
+            RELAY_DSN,
+        );
+    }
 
     let code = match runtime.block_on(try_main(args)) {
         Ok(()) => ExitCode::SUCCESS,
@@ -159,7 +160,7 @@ fn main() -> ExitCode {
         }
     };
 
-    runtime.block_on(telemetry.stop());
+    telemetry::stop();
 
     code
 }
@@ -414,7 +415,7 @@ struct JoinMessage {
 
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
-        return StdRng::from_entropy();
+        return StdRng::from_seed(rand::random());
     };
 
     tracing::info!(target: "relay", "Seeding RNG from '{seed}'");
@@ -450,7 +451,7 @@ struct Eventloop<R> {
 
 impl<R> Eventloop<R>
 where
-    R: Rng,
+    R: RngExt,
 {
     fn new(
         server: Server<R>,

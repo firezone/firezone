@@ -10,9 +10,9 @@ mod make_writer;
 mod tun;
 
 // mark:next-android-version
-pub const RELEASE: &str = "connlib-android@1.5.11";
+pub const RELEASE: &str = "connlib-android@1.5.13";
 // mark:next-android-version
-pub const VERSION: &str = "1.5.11";
+pub const VERSION: &str = "1.5.13";
 pub const COMPONENT: &str = "android-client";
 
 /// We have valid use cases for headless Android clients

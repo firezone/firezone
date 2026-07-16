@@ -20,7 +20,6 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use logging::err_with_src;
-use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
@@ -1051,8 +1050,7 @@ impl<T> PhoenixMessage<T> {
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
 fn make_request(url: Url, host: String, user_agent: String, token: &SecretString) -> Request {
-    let mut r = [0u8; 16];
-    OsRng.fill_bytes(&mut r);
+    let r: [u8; 16] = rand::random();
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
     let user_agent = user_agent.replace(|c: char| !c.is_ascii(), "");

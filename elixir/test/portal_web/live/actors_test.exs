@@ -1,9 +1,14 @@
 defmodule PortalWeb.ActorsTest do
   use PortalWeb.ConnCase, async: true
 
+  alias Portal.Actor
+  alias Portal.Changes.Change
+
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -405,6 +410,73 @@ defmodule PortalWeb.ActorsTest do
       render_click(lv, "delete_session", %{"id" => session.id})
 
       refute Portal.Repo.get_by(Portal.PortalSession, account_id: account.id, id: session.id)
+    end
+
+    test "shows client session details in the client sessions tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: other_actor)
+
+      client_session_fixture(
+        account: account,
+        actor: other_actor,
+        token: token,
+        remote_ip: {198, 51, 100, 23},
+        remote_ip_location_city: "San Francisco",
+        remote_ip_location_region: "US",
+        user_agent: "iOS/17.0 apple-client/1.4.0",
+        version: "1.4.0"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=client_sessions")
+
+      assert html =~ "IP Address"
+      assert html =~ "198.51.100.23"
+      assert html =~ "User Agent"
+      assert html =~ "iOS/17.0 apple-client/1.4.0"
+      assert html =~ "Client Version"
+      assert html =~ "1.4.0"
+      assert html =~ "San Francisco, US"
+      assert html =~ token.id
+    end
+
+    test "shows portal session details in the portal sessions tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      session =
+        portal_session_fixture(
+          account: account,
+          actor: other_actor,
+          auth_provider: auth_provider,
+          remote_ip: %Postgrex.INET{address: {203, 0, 113, 5}},
+          remote_ip_location_city: "Berlin",
+          remote_ip_location_region: "DE",
+          user_agent: "Mozilla/5.0 (Macintosh)"
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=portal_sessions")
+
+      assert html =~ "IP Address"
+      assert html =~ "203.0.113.5"
+      assert html =~ "User Agent"
+      assert html =~ "Mozilla/5.0 (Macintosh)"
+      assert html =~ "Berlin, DE"
+      assert html =~ "Session ID"
+      assert html =~ session.id
     end
 
     test "opens and cancels actor edit form", %{conn: conn, account: account, actor: actor} do
@@ -1349,6 +1421,130 @@ defmodule PortalWeb.ActorsTest do
 
       assert is_nil(Portal.Repo.get_by(Portal.Actor, account_id: account.id, id: other_actor.id))
       assert is_nil(Portal.Repo.get_by(Portal.Device, account_id: account.id, id: client.id))
+    end
+  end
+
+  describe "count badge" do
+    test "shows total actor count after async load", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on actor insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
+
+      html = render(lv)
+      assert html =~ "2"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on actor delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :account_user}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores user actor update changes without warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      log =
+        capture_log(fn ->
+          send(lv.pid, %Change{op: :update, struct: %Actor{type: :account_user}})
+          render(lv)
+        end)
+
+      refute log =~ "Unhandled handle_info message in LiveView"
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "logs and ignores service account changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      render_async(lv)
+
+      log =
+        capture_log(fn ->
+          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+          render(lv)
+        end)
+
+      assert log =~ "[error]"
+      assert log =~ "Unhandled handle_info message in LiveView"
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "does not crash on unexpected messages", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors")
+
+      pid = lv.pid
+      ref = Process.monitor(pid)
+
+      send(pid, :directories_changed)
+      send(pid, {:unknown_tuple_message, "some data"})
+      send(pid, {})
+
+      render(lv)
+
+      refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 500
     end
   end
 end

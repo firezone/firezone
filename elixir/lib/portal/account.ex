@@ -16,6 +16,10 @@ defmodule Portal.Account do
 
     field :legal_name, :string
 
+    # Per-account symmetric key used to sign and verify flow-log ingest tokens.
+    # DB-generated and redacted; see Portal.FlowLogToken.
+    field :ingest_signing_key, :binary, read_after_writes: true, redact: true
+
     # Updated by the billing subscription metadata fields
     embeds_one :features, Portal.Accounts.Features, on_replace: :delete
     embeds_one :limits, Portal.Accounts.Limits, on_replace: :delete
@@ -32,6 +36,8 @@ defmodule Portal.Account do
     has_many :auth_providers, Portal.AuthProvider
     has_many :external_identities, Portal.ExternalIdentity
     has_many :pending_identities, Portal.PendingIdentity
+    has_many :trust_anchors, Portal.TrustAnchor
+    has_many :trust_anchor_certificates, Portal.TrustAnchorCertificate
 
     has_many :policies, Portal.Policy
 
@@ -127,11 +133,20 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{}), do: true
 
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields) do
+  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :iceless do
     def unquote(:"#{feature}_enabled?")(account) do
       Config.global_feature_enabled?(unquote(feature)) and
         account_feature_enabled?(account, unquote(feature))
     end
+  end
+
+  # Unlike the other features, ICE-less is gated per-account only and has no
+  # global `enabled_features` flag, so it can be rolled out to individual
+  # accounts without a release. Keeping the toggle in the portal (rather than a
+  # device-local flag) makes it the single source of truth, so client and
+  # gateway can never disagree on whether to use it.
+  def iceless_enabled?(account) do
+    account_feature_enabled?(account, :iceless)
   end
 
   defp account_feature_enabled?(account, feature) do

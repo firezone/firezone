@@ -9,8 +9,16 @@ defmodule Portal.Changes.Hooks.ClientsTest do
   alias Portal.PubSub
 
   describe "insert/1" do
-    test "returns :ok" do
-      assert :ok == on_insert(0, %{})
+    test "broadcasts inserted client" do
+      account = account_fixture()
+      client = client_fixture(account: account)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
+
+      data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
+
+      assert :ok == on_insert(0, data)
+      assert_receive %Change{op: :insert, struct: %Device{} = inserted_client, lsn: 0}
+      assert inserted_client.id == client.id
     end
   end
 
@@ -18,7 +26,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
     test "update broadcasts updated client" do
       account = account_fixture()
       client = client_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(client.account_id)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
 
       old_data = %{"id" => client.id, "name" => "Old Name", "account_id" => client.account_id}
       data = %{"id" => client.id, "name" => "New Name", "account_id" => client.account_id}
@@ -40,7 +48,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
     test "update unverifies client and deletes associated policy authorizations" do
       account = account_fixture()
       client = client_fixture(account: account, verified_at: DateTime.utc_now())
-      :ok = PubSub.Changes.subscribe(client.account_id)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
 
       old_data = %{
         "id" => client.id,
@@ -78,7 +86,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
     test "broadcasts deleted client" do
       account = account_fixture()
       client = client_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(client.account_id)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
 
       old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
 

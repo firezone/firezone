@@ -1,0 +1,726 @@
+defmodule Portal.Splunk.SyncTest do
+  use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
+
+  import Ecto.Query
+  import Portal.APIRequestLogFixtures
+  import Portal.AccountFixtures
+  import Portal.ChangeLogFixtures
+  import Portal.FlowLogFixtures
+  import Portal.LogSinkFixtures
+  import Portal.SessionLogFixtures
+
+  alias Portal.FlowLog
+  alias Portal.LogSinkCursor
+  alias Portal.Splunk
+
+  setup do
+    test_pid = self()
+
+    Req.Test.stub(Splunk.APIClient, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      events = body |> String.split("\n", trim: true) |> Enum.map(&JSON.decode!/1)
+      send(test_pid, {:hec, conn, events})
+      Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+    end)
+
+    %{account: account_fixture(features: %{log_sinks: true})}
+  end
+
+  describe "perform/1" do
+    test "skips sinks on accounts without the log_sinks feature" do
+      account = account_fixture()
+      sink = splunk_log_sink_fixture(account: account)
+      session_log_fixture(account: account)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      refute_receive {:hec, _conn, _events}
+      refute get_cursor(sink, :session, :live)
+    end
+
+    test "seeds live cursors on first run and delivers only later logs", %{account: account} do
+      session_log_fixture(account: account)
+      sink = splunk_log_sink_fixture(account: account)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      refute_receive {:hec, _conn, _events}
+
+      log = session_log_fixture(account: account)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, conn, [event]}
+      assert conn.request_path == "/services/collector/event"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Splunk " <> sink.hec_token]
+      assert event["source"] == "firezone"
+      assert event["sourcetype"] == "firezone:session"
+      assert event["event"]["type"] == "session"
+      assert event["event"]["log_id"] == log.log_id
+      assert_in_delta String.to_float(event["time"]),
+                      DateTime.to_unix(log.timestamp, :millisecond) / 1000,
+                      0.001
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor == log.seq
+      assert cursor.synced_count == 1
+      assert cursor.last_synced_at
+    end
+
+    test "delivers every enabled stream with its own sourcetype", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account)
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      change_log_fixture(account: account)
+      session_log_fixture(account: account)
+      api_request_log_fixture(account: account)
+      flow_log_fixture(account: account)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      sourcetypes =
+        for _batch <- 1..4 do
+          assert_receive {:hec, _conn, [event | _rest]}
+          event["sourcetype"]
+        end
+
+      assert Enum.sort(sourcetypes) ==
+               ~w[firezone:api_request firezone:change firezone:flow firezone:session]
+    end
+
+    test "a retroactive sink backfills logs that predate it", %{account: account} do
+      for _ <- 1..3 do
+        session_log_fixture(account: account)
+      end
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:session]
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, events}
+      assert length(events) == 3
+
+      backfill = get_cursor(sink, :session, :backfill)
+      assert backfill.backfill_total == 3
+      assert backfill.synced_count == 3
+      assert backfill.completed_at
+
+      assert get_cursor(sink, :session, :live)
+    end
+
+    test "a backfill does not complete while rows are still lag-hidden", %{account: account} do
+      old = DateTime.add(DateTime.utc_now(), -3600, :second)
+      hidden = DateTime.add(DateTime.utc_now(), 60, :second)
+
+      for _ <- 1..2 do
+        session_log_fixture(account: account, timestamp: old)
+      end
+
+      # Committed under until_seq but failing the visibility-lag guard, like
+      # rows written moments before the sink was created.
+      for _ <- 1..2 do
+        session_log_fixture(account: account, timestamp: hidden)
+      end
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:session]
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, events}
+      assert length(events) == 2
+
+      backfill = get_cursor(sink, :session, :backfill)
+      refute backfill.completed_at
+      assert backfill.synced_count == 2
+
+      from(l in Portal.SessionLog, where: l.account_id == ^account.id)
+      |> Repo.update_all(set: [timestamp: old])
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, events}
+      assert length(events) == 2
+
+      backfill = get_cursor(sink, :session, :backfill)
+      assert backfill.completed_at
+      assert backfill.synced_count == 4
+    end
+
+    test "a drained backfill only completes after a full lag window", %{account: account} do
+      log = session_log_fixture(account: account)
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:session]
+        )
+
+      Portal.LogSinks.Delivery.Database.seed_missing_cursors(sink)
+      backfill = get_cursor(sink, :session, :backfill)
+      {:ok, drained} = Portal.LogSinks.Delivery.Database.advance_cursor(backfill, log.seq, 1, 0)
+
+      # A transaction holding a seq below until_seq may commit up to a lag
+      # window after the cursor was seeded, so a freshly seeded cursor must
+      # not complete even when the probe finds nothing left to deliver.
+      assert :ok = Portal.LogSinks.Delivery.Database.maybe_complete_backfill(drained, 3600)
+      refute get_cursor(sink, :session, :backfill).completed_at
+
+      assert :ok = Portal.LogSinks.Delivery.Database.maybe_complete_backfill(drained, 0)
+      assert get_cursor(sink, :session, :backfill).completed_at
+    end
+
+    test "closing a delivered flow sends only the end event", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:flow])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      flow =
+        flow_log_fixture(
+          account: account,
+          flow_end: nil,
+          last_packet: nil,
+          rx_packets: nil,
+          tx_packets: nil,
+          rx_bytes: nil,
+          tx_bytes: nil
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [start_event]}
+      assert start_event["event"]["log_id"] == flow.log_id <> "-s"
+      refute Map.has_key?(start_event["event"], "phase")
+      assert start_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_start)
+      assert_in_delta String.to_float(start_event["time"]),
+                      DateTime.to_unix(flow.flow_start, :millisecond) / 1000,
+                      0.001
+
+      flow_end = DateTime.utc_now()
+      close_flow(account, flow_end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      # start_seq sits at or below this sink's frontier, so the start is known
+      # to be delivered and only the end event ships: no duplicates.
+      assert_receive {:hec, _conn, [end_event]}
+      assert end_event["event"]["log_id"] == flow.log_id <> "-e"
+      assert end_event["event"]["timestamp"] == DateTime.to_iso8601(flow_end)
+      assert end_event["event"]["rx_bytes"] == 1024
+      assert_in_delta String.to_float(end_event["time"]),
+                      DateTime.to_unix(flow_end, :millisecond) / 1000,
+                      0.001
+    end
+
+    test "a flow that closes before delivery sends both events", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:flow])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      flow =
+        flow_log_fixture(
+          account: account,
+          flow_end: nil,
+          last_packet: nil,
+          rx_packets: nil,
+          tx_packets: nil,
+          rx_bytes: nil,
+          tx_bytes: nil
+        )
+
+      # Closed before any sync swept the open-state row: start_seq is above
+      # the sink's frontier, so the start must be synthesized.
+      close_flow(account, DateTime.utc_now())
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [start_event, end_event]}
+      assert start_event["event"]["log_id"] == flow.log_id <> "-s"
+      refute start_event["event"]["rx_bytes"]
+      assert end_event["event"]["log_id"] == flow.log_id <> "-e"
+      assert end_event["event"]["rx_bytes"] == 1024
+    end
+
+    test "a backfilled closed flow delivers both start and end events", %{account: account} do
+      flow = flow_log_fixture(account: account)
+
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          retroactive: true,
+          enabled_streams: [:flow]
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [start_event, end_event]}
+      assert start_event["event"]["log_id"] == flow.log_id <> "-s"
+      assert start_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_start)
+      refute start_event["event"]["flow_end"]
+      refute start_event["event"]["rx_bytes"]
+
+      assert end_event["event"]["log_id"] == flow.log_id <> "-e"
+      assert end_event["event"]["timestamp"] == DateTime.to_iso8601(flow.flow_end)
+      assert end_event["event"]["rx_bytes"] == flow.rx_bytes
+
+      backfill = get_cursor(sink, :flow, :backfill)
+      assert backfill.synced_count == 2
+      assert backfill.completed_at
+    end
+
+    test "splits deliveries that exceed the HEC request size limit", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      blob = String.duplicate("x", 400_000)
+      session_log_fixture(account: account, subject: %{"blob" => blob})
+      session_log_fixture(account: account, subject: %{"blob" => blob})
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [_event_a]}
+      assert_receive {:hec, _conn, [_event_b]}
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 2
+    end
+
+    test "bisects a rejected batch until events deliver individually", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      for _ <- 1..4 do
+        session_log_fixture(account: account)
+      end
+
+      test_pid = self()
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        events = String.split(body, "\n", trim: true)
+
+        if length(events) > 1 do
+          conn
+          |> Plug.Conn.put_status(413)
+          |> Req.Test.json(%{"text" => "Request too large", "code" => 6})
+        else
+          send(test_pid, {:hec_single, hd(events)})
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      for _ <- 1..4 do
+        assert_receive {:hec_single, _event}
+      end
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 4
+      assert cursor.dropped_count == 0
+
+      refute reload_sink(sink).is_disabled
+    end
+
+    test "halts on an event that exceeds the chunk budget instead of skipping it", %{
+      account: account
+    } do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      parked = get_cursor(sink, :session, :live)
+
+      session_log_fixture(
+        account: account,
+        subject: %{"blob" => String.duplicate("x", 600_000)}
+      )
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(413)
+        |> Req.Test.json(%{"text" => "Request too large", "code" => 6})
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor == parked.cursor
+      assert cursor.synced_count == 0
+      assert cursor.dropped_count == 0
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
+    end
+
+    test "parks on a poison event after delivering the healthy prefix", %{
+      account: account
+    } do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      session_log_fixture(account: account, actor_email: "fine@example.com")
+      poison = session_log_fixture(account: account, actor_email: "poison@example.com")
+      session_log_fixture(account: account, actor_email: "fine@example.com")
+
+      test_pid = self()
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        if body =~ "poison@example.com" do
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"text" => "Invalid data format", "code" => 6})
+        else
+          events = String.split(body, "\n", trim: true)
+          send(test_pid, {:hec_delivered, length(events)})
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      # The healthy prefix is delivered; the cursor parks just before the
+      # poison event so nothing is ever skipped.
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 1
+      assert cursor.dropped_count == 0
+      assert cursor.cursor < poison.seq
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
+    end
+
+    test "round timestamps render in fixed sec.ms notation", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      # 1752480000.0 JSON-encodes as 1.75248e9, which HEC rejects with
+      # "Error in handling indexed fields (code 15)".
+      session_log_fixture(
+        account: account,
+        timestamp: DateTime.from_unix!(1_752_480_000_000_000, :microsecond)
+      )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:hec, _conn, [event]}
+      assert event["time"] == "1752480000.000"
+    end
+
+    test "an indexed-fields rejection parks the stream and pages us", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      poison = session_log_fixture(account: account, actor_email: "poison@example.com")
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        if body =~ "poison@example.com" do
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"text" => "Error in handling indexed fields", "code" => 15})
+        else
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.dropped_count == 0
+      assert cursor.cursor < poison.seq
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
+    end
+
+    test "a parked stream does not block other streams", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:change, :session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      poison = change_log_fixture(account: account)
+      log = session_log_fixture(account: account)
+
+      test_pid = self()
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        if body =~ "firezone:change" do
+          conn
+          |> Plug.Conn.put_status(400)
+          |> Req.Test.json(%{"text" => "Invalid data format", "code" => 6})
+        else
+          send(test_pid, {:delivered, body})
+          Req.Test.json(conn, %{"text" => "Success", "code" => 0})
+        end
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      assert_receive {:delivered, body}
+      assert body =~ log.log_id
+
+      assert get_cursor(sink, :change, :live).cursor < poison.seq
+      assert get_cursor(sink, :session, :live).cursor == log.seq
+      refute reload_sink(sink).errored_at
+    end
+
+    test "capacity warnings on successful deliveries are still successes", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      log = session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "text" => "HEC queue is approaching its capacity limit",
+          "code" => 24
+        })
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.cursor == log.seq
+      assert cursor.synced_count == 1
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+    end
+
+    test "a 413 for a small event halts the stream instead of dropping data", %{
+      account: account
+    } do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(413)
+        |> Req.Test.json(%{"text" => "Unexpected request data received", "code" => 6})
+      end)
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+      assert cursor.dropped_count == 0
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+      refute sink.is_disabled
+    end
+
+    test "a redirect disables the sink with a pointed error", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header(
+          "location",
+          "https://prd-p-test.splunkcloud.com/en-US/services/collector/event"
+        )
+        |> Plug.Conn.send_resp(303, "")
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+
+      sink = reload_sink(sink)
+      assert sink.is_disabled
+      assert sink.error_message =~ "port 8088"
+    end
+
+    test "a 4xx response disables the sink immediately", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"text" => "Invalid token", "code" => 4})
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      sink = reload_sink(sink)
+      assert sink.is_disabled
+      assert sink.disabled_reason == "Sync error"
+      assert sink.errored_at
+      assert sink.error_message == "Splunk HEC returned HTTP 403: Invalid token (code 4)"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+    end
+
+    test "transient errors disable the sink only after 24 hours", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(503)
+        |> Req.Test.json(%{"text" => "Server is busy", "code" => 9})
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      sink = reload_sink(sink)
+      refute sink.is_disabled
+      assert sink.errored_at
+      assert sink.error_message == "Splunk HEC returned HTTP 503: Server is busy (code 9)"
+
+      stale_errored_at = DateTime.add(DateTime.utc_now(), -25, :hour)
+
+      {:ok, sink} =
+        sink
+        |> Ecto.Changeset.change(errored_at: stale_errored_at)
+        |> Repo.update()
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      sink = reload_sink(sink)
+      assert sink.is_disabled
+      assert sink.disabled_reason == "Sync error"
+    end
+
+    test "transport errors are transient", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Splunk.APIClient, fn conn ->
+        Req.Test.transport_error(conn, :econnrefused)
+      end)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      sink = reload_sink(sink)
+      refute sink.is_disabled
+      assert sink.errored_at
+      assert sink.error_message == "Connection refused."
+    end
+
+    test "a successful delivery clears previous error state", %{account: account} do
+      sink =
+        splunk_log_sink_fixture(
+          account: account,
+          enabled_streams: [:session],
+          errored_at: DateTime.utc_now(),
+          error_message: "Splunk HEC returned HTTP 503: Server is busy"
+        )
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+
+      sink = reload_sink(sink)
+      refute sink.errored_at
+      refute sink.error_message
+    end
+
+    test "skips sinks that are disabled or missing", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, is_disabled: true)
+
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Splunk.Sync, %{log_sink_id: Ecto.UUID.generate()})
+
+      refute_receive {:hec, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
+    end
+  end
+
+  describe "Scheduler" do
+    test "enqueues sync jobs for enabled sinks on feature-enabled accounts" do
+      enabled_account = account_fixture(features: %{log_sinks: true})
+      sink = splunk_log_sink_fixture(account: enabled_account)
+      disabled_sink = splunk_log_sink_fixture(account: enabled_account, is_disabled: true)
+      feature_off_sink = splunk_log_sink_fixture()
+
+      assert {:ok, :scheduled} = perform_job(Splunk.Scheduler, %{})
+
+      assert_enqueued(worker: Splunk.Sync, args: %{log_sink_id: sink.id})
+      refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: disabled_sink.id})
+      refute_enqueued(worker: Splunk.Sync, args: %{log_sink_id: feature_off_sink.id})
+    end
+  end
+
+  defp close_flow(account, flow_end) do
+    from(f in FlowLog,
+      where: f.account_id == ^account.id,
+      update: [
+        set: [
+          start_seq: f.seq,
+          seq: fragment("nextval('flow_logs_seq_seq')"),
+          flow_end: ^flow_end,
+          last_packet: ^flow_end,
+          rx_packets: 10,
+          tx_packets: 12,
+          rx_bytes: 1024,
+          tx_bytes: 2048
+        ]
+      ]
+    )
+    |> Repo.update_all([])
+  end
+
+  defp get_cursor(sink, stream, phase) do
+    Repo.get_by(LogSinkCursor,
+      account_id: sink.account_id,
+      log_sink_id: sink.id,
+      stream: stream,
+      phase: phase
+    )
+  end
+
+  defp reload_sink(sink) do
+    Repo.get_by!(Splunk.LogSink, account_id: sink.account_id, id: sink.id)
+  end
+end

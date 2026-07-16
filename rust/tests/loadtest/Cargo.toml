@@ -12,20 +12,31 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio", "ws"] }
+backoff = { workspace = true }
+bufferpool = { workspace = true }
+bytecodec = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
+gat-lending-iterator = { workspace = true }
+ip-packet = { workspace = true }
+known-dirs = { workspace = true }
 logging = { workspace = true }
+phoenix-channel = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-no-provider", "gzip", "http2"] }
+rustls = { workspace = true }
+secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-surge-ping = "0.8"
+socket-factory = { workspace = true }
+stun_codec = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 [lints]
 workspace = true

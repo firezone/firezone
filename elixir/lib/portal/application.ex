@@ -35,15 +35,19 @@ defmodule Portal.Application do
   end
 
   defp children do
-    base_children = [
+    # Must start before the repos: they fetch Entra access tokens from it
+    # when connecting with DATABASE_ENTRA_AUTH enabled
+    base_children = managed_identity() ++ [
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
-      # Isolated connection pools (web/api)
+      # Isolated connection pools (web/api/poller)
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Replica.Web,
       Portal.Repo.Replica.Api,
+      Portal.Repo.Poller,
+      Portal.Repo.Replica.Poller,
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
       # Named pg scope for Portal.PG, isolated so a crash here does not affect replication
@@ -53,7 +57,9 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
-      Portal.ComponentVersions
+      Portal.ComponentVersions,
+      Portal.ClockDriftAlarm,
+      OpenIDConnect.Document.Cache
     ]
 
     endpoint_children = [
@@ -66,7 +72,7 @@ defmodule Portal.Application do
 
     # Child order is chosen to make reverse-order shutdown graceful:
     # 1) Portal.Cluster sends goodbye while DB/PubSub are healthy.
-    # 2) Replication managers disconnect while BEAM is still fully alive.
+    # 2) Replication slot pollers stop while BEAM is still fully alive.
     # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
     # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
@@ -135,6 +141,14 @@ defmodule Portal.Application do
     end
   end
 
+  defp managed_identity do
+    if Portal.Config.env_var_to_config!(:database_entra_auth) do
+      [Portal.Azure.ManagedIdentity]
+    else
+      []
+    end
+  end
+
   defp telemetry do
     config = Application.fetch_env!(:portal, Portal.Telemetry)
 
@@ -157,26 +171,14 @@ defmodule Portal.Application do
   end
 
   defp replication do
-    connection_modules = [
-      Portal.Changes.ReplicationConnection,
-      Portal.ChangeLogs.ReplicationConnection
+    consumers = [
+      Portal.Changes.Consumer,
+      Portal.ChangeLogs.Consumer
     ]
 
-    # Filter out disabled replication connections
-    Enum.reduce(connection_modules, [], fn module, enabled ->
-      config = Application.fetch_env!(:portal, module)
-
-      if config[:enabled] do
-        spec = %{
-          id: module,
-          start: {Portal.Replication.Manager, :start_link, [module, []]}
-        }
-
-        [spec | enabled]
-      else
-        enabled
-      end
-    end)
+    for consumer <- consumers, Application.fetch_env!(:portal, consumer)[:enabled] do
+      Supervisor.child_spec({Portal.Replication.SlotPoller, consumer: consumer}, id: consumer)
+    end
   end
 
   defp rate_limit do

@@ -14,7 +14,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "broadcasts created policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       data = %{
         "id" => policy.id,
@@ -39,7 +39,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
       account = account_fixture()
       resource = resource_fixture(account: account)
       policy = policy_fixture(account: account, resource: resource)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,
@@ -71,7 +71,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "enable policy broadcasts created policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,
@@ -95,7 +95,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
     test "non-breaking update broadcasts updated policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,
@@ -186,13 +186,33 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
       assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(PolicyAuthorization, id: policy_authorization.id)
     end
+
+    test "flipping flow_log_uploads_enabled deletes policy authorizations" do
+      account = account_fixture()
+      policy = policy_fixture(account: account)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "group_id" => policy.group_id,
+        "resource_id" => policy.resource_id,
+        "flow_log_uploads_enabled" => true
+      }
+
+      data = Map.put(old_data, "flow_log_uploads_enabled", false)
+
+      policy_authorization = policy_authorization_fixture(policy: policy, account: account)
+
+      assert :ok = on_update(0, old_data, data)
+      refute Repo.get_by(PolicyAuthorization, id: policy_authorization.id)
+    end
   end
 
   describe "delete/1" do
     test "broadcasts deleted policy" do
       account = account_fixture()
       policy = policy_fixture(account: account)
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :policies)
 
       old_data = %{
         "id" => policy.id,

@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
@@ -10,15 +13,15 @@ use bin_shared::{
 use clap::Parser;
 
 use hickory_resolver::config::ResolveHosts;
-use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::{SentryMeterProvider, Telemetry, otel};
+use telemetry::SentryMeterProvider;
 use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
+use clock::Clock;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretString};
 use std::{collections::BTreeSet, fmt};
@@ -29,10 +32,17 @@ use tun::Tun;
 use url::Url;
 
 mod eventloop;
+mod otel;
 
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
+
+/// Spool directory for flow logs pending upload.
+///
+/// Holds Bearer tokens, so it lives outside the log directory and is written
+/// with 0700/0600 permissions.
+const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -50,29 +60,29 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let mut telemetry = Telemetry::new();
+    telemetry::configure(Arc::new(tcp_socket_factory));
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime");
 
-    match runtime.block_on(try_main(cli, &mut telemetry)) {
+    match runtime.block_on(try_main(cli)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
-            runtime.block_on(telemetry.stop());
+            telemetry::stop();
 
             ExitCode::SUCCESS
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
-            runtime.block_on(telemetry.stop());
+            telemetry::stop();
 
             ExitCode::FAILURE
         }
         Err(e) => {
             tracing::info!("{e:#}");
-            runtime.block_on(telemetry.stop());
+            telemetry::stop();
 
             ExitCode::FAILURE
         }
@@ -93,10 +103,16 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
+async fn try_main(cli: Cli) -> Result<()> {
+    let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
+
+    // Hold the guard until exit so the writer thread drains on shutdown.
+    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
+
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
         layer::Identity::default(),
+        flow_log_layer,
         match cli.log_format {
             LogFormat::Json => true,
             LogFormat::Human => false,
@@ -139,15 +155,15 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     };
 
     if cli.is_telemetry_allowed() {
-        telemetry.start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
-        Telemetry::set_firezone_id(firezone_id.clone()).await;
+        telemetry::start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
+        telemetry::set_firezone_id(firezone_id.clone());
     }
 
     if let Some(backend) = cli.metrics {
-        let resource = otel::default_resource_with([
-            otel::attr::service_name!(),
-            otel::attr::service_version!(),
-            otel::attr::service_instance_id(firezone_id.clone()),
+        let resource = telemetry::otel::default_resource_with([
+            telemetry::otel::attr::service_name!(),
+            telemetry::otel::attr::service_version!(),
+            telemetry::otel::attr::service_instance_id(firezone_id.clone()),
         ]);
 
         match (backend, cli.otlp_grpc_endpoint) {
@@ -189,12 +205,16 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
+    let mut clock = Clock::new();
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
-        cli.flow_logs,
+        clock.now(),
     );
+
+    flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
+
     let max_partition_time = cli
         .max_partition_time
         .map(|d| d.into())
@@ -240,10 +260,18 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
-        .run()
-        .await
-        .context(EventloopFailed)?;
+    Eventloop::new(
+        clock,
+        tunnel,
+        portal,
+        tun_device_manager,
+        resolver,
+        flow_logs_dir,
+        cli.flow_logs,
+    )?
+    .run()
+    .await
+    .context(EventloopFailed)?;
 
     Ok(())
 }
@@ -328,7 +356,11 @@ struct Cli {
     #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
     log_format: LogFormat,
 
-    /// Enable logging of tunneled UDP and TCP flows.
+    /// Track flow logs even when the portal has them disabled, and emit them
+    /// to the log output by adding the `flow_logs=trace` log directive.
+    ///
+    /// Flows tracked only because of this flag stay on the log output;
+    /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 
@@ -401,18 +433,18 @@ impl Cli {
 
 /// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
 struct ValidateChecksumAdapter {
-    outbound_tx: tokio::sync::mpsc::Sender<IpPacket>,
-    inbound_rx: tokio::sync::mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
     name: String,
     _task: AbortOnDropHandle<()>,
 }
 
 impl Tun for ValidateChecksumAdapter {
-    fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 
@@ -426,43 +458,20 @@ impl ValidateChecksumAdapter {
         let name = inner.name().to_string();
 
         // Channel for inbound packets (from TUN device to gateway)
-        let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(1000);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
 
         // Get reference to inner TUN's sender for outbound packets
         let outbound_tx = inner.sender().clone();
 
         // Spawn task to validate and forward inbound packets from TUN device
         let task = tokio::spawn(async move {
-            while let Some(packet) = inner.receiver().recv().await {
-                if let Some(ipv4) = packet.ipv4_header() {
-                    let expected = ipv4.calc_header_checksum();
-                    let actual = ipv4.header_checksum;
-
-                    if expected != actual {
-                        tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
-                    }
+            while let Some(batch) = inner.receiver().recv().await {
+                for packet in batch.iter() {
+                    validate_checksums(packet);
                 }
 
-                if let Some(udp) = packet.as_udp() {
-                    let actual = udp.checksum();
-                    if let Ok(expected) = packet.calculate_udp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
-                    }
-                }
-
-                if let Some(tcp) = packet.as_tcp() {
-                    let actual = tcp.checksum();
-                    if let Ok(expected) = packet.calculate_tcp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
-                    }
-                }
-
-                // Forward the validated packet to our inbound channel
-                if inbound_tx.send(packet).await.is_err() {
+                // Forward the validated batch to our inbound channel
+                if inbound_tx.send(batch).await.is_err() {
                     break;
                 }
             }
@@ -474,6 +483,35 @@ impl ValidateChecksumAdapter {
             name,
             _task: AbortOnDropHandle::new(task),
         })
+    }
+}
+
+fn validate_checksums(packet: &ip_packet::IpPacket) {
+    if let Some(ipv4) = packet.ipv4_header() {
+        let expected = ipv4.calc_header_checksum();
+        let actual = ipv4.header_checksum;
+
+        if expected != actual {
+            tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
+        }
+    }
+
+    if let Some(udp) = packet.as_udp() {
+        let actual = udp.checksum();
+        if let Ok(expected) = packet.calculate_udp_checksum()
+            && expected != actual
+        {
+            tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
+        }
+    }
+
+    if let Some(tcp) = packet.as_tcp() {
+        let actual = tcp.checksum();
+        if let Ok(expected) = packet.calculate_tcp_checksum()
+            && expected != actual
+        {
+            tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
+        }
     }
 }
 

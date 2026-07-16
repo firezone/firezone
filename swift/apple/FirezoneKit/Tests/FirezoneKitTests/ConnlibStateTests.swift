@@ -239,7 +239,9 @@ struct ConnlibStateTests {
 
     #expect(state.connectedDevices.count == 1)
     #expect(state.connectedDevices[0].id == "device-1")
+    #expect(state.connectedDevices[0].name == "Device device-1")
     #expect(state.connectedDevices[0].tunIPv4 == "100.64.0.1")
+    #expect(state.connectedDevices[0].tunIPv6 == "fd00:2021:1111::1")
     #expect(state.connectedDevices[0].pools == ["pool-a"])
   }
 
@@ -284,6 +286,12 @@ struct ConnlibStateTests {
   }
 
   private func makeTestConnectedDevice(id: String) -> FirezoneKit.ConnectedDevice {
-    FirezoneKit.ConnectedDevice(id: id, tunIPv4: "100.64.0.1", pools: ["pool-a"])
+    FirezoneKit.ConnectedDevice(
+      id: id,
+      name: "Device \(id)",
+      tunIPv4: "100.64.0.1",
+      tunIPv6: "fd00:2021:1111::1",
+      pools: ["pool-a"]
+    )
   }
 }

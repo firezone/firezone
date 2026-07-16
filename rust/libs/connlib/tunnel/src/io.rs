@@ -1,20 +1,20 @@
 mod device;
 mod doh;
-mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
 mod timeout;
 mod udp_dns;
+mod udp_gso_queue;
 
 pub use device::{Device, TunChannelClosed};
+pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
 use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
-use anyhow::{Context as _, ErrorExt, Result};
+use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use dns_types::DoHUrl;
 use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
-use gso_queue::GsoQueue;
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
@@ -30,28 +30,13 @@ use std::{
 use tracing::Level;
 use tun::Tun;
 
-/// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
-///
-/// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
-/// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
-///
-/// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
-/// Thus, we limit the batch-size there to 25.
-const MAX_INBOUND_PACKET_BATCH: usize = {
-    if cfg!(any(target_os = "ios", target_os = "android")) {
-        25
-    } else {
-        100
-    }
-};
-
 const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    gso_queue: GsoQueue,
+    gso_queue: UdpGsoQueue,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -85,24 +70,11 @@ struct DnsQueryMetaData {
     started_at: Instant,
 }
 
-pub(crate) struct Buffers {
-    ip: Vec<IpPacket>,
-}
-
-impl Default for Buffers {
-    fn default() -> Self {
-        Self {
-            ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-        }
-    }
-}
-
 /// Represents all IO sources that may be ready during a single event-loop tick.
 ///
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input<D, I> {
-    pub now: Instant,
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
@@ -115,7 +87,6 @@ pub struct Input<D, I> {
 impl<D, I> Input<D, I> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
-            now: Instant::now(),
             timeout: false,
             device: None,
             network: None,
@@ -189,15 +160,12 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
-            gso_queue: GsoQueue::new(),
+            gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packets")
-                .with_description("The number of packets processed.")
-                .build(),
-            dropped_packets: otel::metrics::network_packet_dropped(),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
@@ -259,15 +227,11 @@ impl Io {
         self.nameservers.fastest()
     }
 
-    pub fn poll<'b>(
+    pub fn poll(
         &mut self,
         cx: &mut Context<'_>,
-        buffers: &'b mut Buffers,
     ) -> Poll<
-        Input<
-            impl Iterator<Item = IpPacket> + use<'b>,
-            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-        >,
+        Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>>,
     > {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
@@ -292,41 +256,36 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx).map(|network| {
-            anyhow::Ok(
-                network
-                    .context("UDP socket failed")?
-                    .filter(is_max_wg_packet_size),
-            )
+        let network = self
+            .sockets
+            .poll_recv_from(cx)
+            .map(|network| network.filter(is_max_wg_packet_size));
+
+        while let Poll::Ready(e) = self.sockets.poll_error(cx) {
+            error.push(e);
+        }
+
+        let device = self.tun.poll_read(cx).map_ok(|batch| {
+            let num_ipv4 = batch.iter().filter(|p| p.ipv4_header().is_some()).count();
+            let num_ipv6 = batch.len() - num_ipv4;
+
+            self.packet_counter.add(
+                num_ipv4 as u64,
+                &[
+                    otel::attr::network_type_ipv4(),
+                    otel::attr::network_io_direction_receive(),
+                ],
+            );
+            self.packet_counter.add(
+                num_ipv6 as u64,
+                &[
+                    otel::attr::network_type_ipv6(),
+                    otel::attr::network_io_direction_receive(),
+                ],
+            );
+
+            batch
         });
-
-        let device = self
-            .tun
-            .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
-            .map_ok(|num_packets| {
-                let num_ipv4 = buffers.ip[..num_packets]
-                    .iter()
-                    .filter(|p| p.ipv4_header().is_some())
-                    .count();
-                let num_ipv6 = num_packets - num_ipv4;
-
-                self.packet_counter.add(
-                    num_ipv4 as u64,
-                    &[
-                        otel::attr::network_type_ipv4(),
-                        otel::attr::network_io_direction_receive(),
-                    ],
-                );
-                self.packet_counter.add(
-                    num_ipv6 as u64,
-                    &[
-                        otel::attr::network_type_ipv6(),
-                        otel::attr::network_io_direction_receive(),
-                    ],
-                );
-
-                buffers.ip.drain(..num_packets)
-            });
 
         let udp_dns_queries = self
             .udp_dns_server
@@ -405,10 +364,9 @@ impl Io {
         }
 
         Poll::Ready(Input {
-            now: Instant::now(),
             timeout,
             device: poll_result_to_option(device, &mut error),
-            network: poll_result_to_option(network, &mut error),
+            network: poll_to_option(network),
             tcp_dns_queries,
             udp_dns_queries,
             dns_response: poll_to_option(dns_response),
@@ -444,6 +402,17 @@ impl Io {
                 break;
             };
 
+            for segment in datagram.packet.chunks(datagram.segment_size) {
+                self.packet_counter.add(
+                    1,
+                    &[
+                        otel::attr::network_protocol_name(segment),
+                        otel::attr::network_transport_udp(),
+                        otel::attr::network_io_direction_transmit(),
+                    ],
+                );
+            }
+
             self.sockets.send(datagram)?;
         }
 
@@ -454,7 +423,7 @@ impl Io {
         self.tun.set_tun(tun);
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) {
+    pub fn queue_tun(&mut self, packet: IpPacket) {
         self.packet_counter.add(
             1,
             &[
@@ -463,7 +432,12 @@ impl Io {
             ],
         );
 
-        self.tun.send(packet);
+        self.tun.queue(packet);
+    }
+
+    /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
+    pub fn flush_tun_batch(&mut self) {
+        self.tun.flush_batch();
     }
 
     pub fn reset(&mut self) {
@@ -480,9 +454,16 @@ impl Io {
         }
     }
 
-    pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
+    pub fn reset_timeout_after(&mut self, wakeup_in: Duration, reason: &'static str) {
+        let now = Instant::now();
+        let Some(timeout) = now.checked_add(wakeup_in) else {
+            tracing::warn!(?wakeup_in, %reason, "Unable to schedule tunnel timeout without overflowing");
+
+            return;
+        };
+
         let wakeup_in = tracing::event_enabled!(Level::TRACE)
-            .then(|| timeout.saturating_duration_since(Instant::now()))
+            .then_some(wakeup_in)
             .map(tracing::field::debug);
 
         if self.timeout.deadline() != timeout {
@@ -493,8 +474,14 @@ impl Io {
     }
 
     /// Schedules a wakeup in case one isn't registered yet.
-    pub fn schedule_timeout(&mut self, now: Instant) {
-        self.timeout.schedule(now + Duration::from_secs(1));
+    pub fn schedule_timeout(&mut self) {
+        self.timeout
+            .schedule(Instant::now() + Duration::from_secs(1));
+    }
+
+    /// The GSO queue used as the destination buffer when encapsulating packets in place.
+    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
+        &mut self.gso_queue
     }
 
     pub fn send_network(
@@ -505,25 +492,16 @@ impl Io {
         ecn: Ecn,
     ) {
         self.gso_queue.enqueue(src, dst, payload, ecn);
-
-        self.packet_counter.add(
-            1,
-            &[
-                otel::attr::network_protocol_name(payload),
-                otel::attr::network_transport_udp(),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        );
     }
 
-    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
         let meta = DnsQueryMetaData {
             query: query.message.clone(),
             server: query.server.clone(),
             transport: query.transport,
             local: query.local,
             remote: query.remote,
-            started_at: Instant::now(),
+            started_at: now,
         };
 
         match (query.transport, query.server) {
@@ -633,48 +611,9 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use futures::task::noop_waker_ref;
-    use std::{future::poll_fn, net::Ipv4Addr, ptr::addr_of_mut};
+    use std::{future::poll_fn, net::Ipv4Addr};
 
     use super::*;
-
-    #[tokio::test]
-    async fn timer_is_reset_after_it_fires() {
-        let mut io = Io::for_test();
-
-        let deadline = Instant::now() + Duration::from_secs(1);
-        io.reset_timeout(deadline, "");
-        let scheduled_deadline = io.timeout.deadline();
-
-        let input = io.next().await;
-
-        assert!(input.timeout);
-        assert!(input.now >= deadline, "timer expire after deadline");
-        assert_eq!(deadline, scheduled_deadline);
-
-        drop(input);
-
-        let poll = io.poll_test();
-
-        assert!(poll.is_pending());
-        assert_eq!(
-            io.timeout.deadline().duration_since(scheduled_deadline),
-            DEFAULT_TIME_ADVANCE
-        );
-    }
-
-    #[tokio::test]
-    async fn emits_now_in_case_timeout_is_in_the_past() {
-        let now = Instant::now();
-        let mut io = Io::for_test();
-
-        io.reset_timeout(now - Duration::from_secs(10), "");
-
-        let input = io.next().await;
-        let timeout = input.now;
-
-        assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
-    }
 
     #[tokio::test]
     async fn bootstrap_doh() {
@@ -687,7 +626,7 @@ mod tests {
         io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
 
         {
-            io.send_dns_query(example_com_recursive_query());
+            io.send_dns_query(example_com_recursive_query(), Instant::now());
 
             let input = io.next().await;
 
@@ -701,7 +640,7 @@ mod tests {
         let _ = tokio::time::timeout(Duration::from_secs(2), io.next()).await;
 
         {
-            io.send_dns_query(example_com_recursive_query());
+            io.send_dns_query(example_com_recursive_query(), Instant::now());
 
             let input = io.next().await;
 
@@ -719,13 +658,13 @@ mod tests {
         // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
         // schedule_timeout should pull it in to ~1s from now.
         let now = Instant::now();
-        io.schedule_timeout(now);
+        io.schedule_timeout();
 
         let deadline = io.timeout.deadline();
         let wakeup_in = deadline.duration_since(now);
 
         assert!(
-            wakeup_in <= Duration::from_secs(1),
+            wakeup_in <= Duration::from_millis(1_010),
             "expected deadline within 1s, got {wakeup_in:?}"
         );
     }
@@ -735,11 +674,10 @@ mod tests {
         let mut io = Io::for_test();
 
         // Set a deadline that is already sooner than 1s.
-        let now = Instant::now();
-        let close_deadline = now + Duration::from_millis(100);
-        io.reset_timeout(close_deadline, "close deadline");
+        io.reset_timeout_after(Duration::from_millis(100), "close deadline");
+        let close_deadline = io.timeout.deadline();
 
-        io.schedule_timeout(now);
+        io.schedule_timeout();
 
         let deadline = io.timeout.deadline();
 
@@ -790,8 +728,6 @@ mod tests {
         }
     }
 
-    static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
-
     /// Helper functions to make the test more concise.
     impl Io {
         fn for_test() -> Io {
@@ -807,54 +743,37 @@ mod tests {
 
         async fn next(
             &mut self,
-        ) -> Input<
-            impl Iterator<Item = IpPacket> + use<>,
-            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
-        > {
-            poll_fn(|cx| {
-                self.poll(
-                    cx,
-                    // SAFETY: This is a test and we never receive packets here.
-                    unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-                )
-            })
-            .await
-        }
-
-        fn poll_test(
-            &mut self,
-        ) -> Poll<
-            Input<
-                impl Iterator<Item = IpPacket> + use<>,
-                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-            >,
-        > {
-            self.poll(
-                &mut Context::from_waker(noop_waker_ref()),
-                // SAFETY: This is a test and we never receive packets here.
-                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-            )
+        ) -> Input<tun::PacketBatch, impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>>
+        {
+            poll_fn(|cx| self.poll(cx)).await
         }
     }
 
     struct DummyTun {
-        tx: tokio::sync::mpsc::Sender<IpPacket>,
-        rx: tokio::sync::mpsc::Receiver<IpPacket>,
+        tx: tun::OutboundTx,
+        rx: tun::InboundRx,
+        _keep_alive: (tun::OutboundRx, tun::InboundTx),
     }
 
     impl DummyTun {
         fn new() -> Self {
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
-            Self { tx, rx }
+            let (tx, outbound_rx) = tun::outbound_channel();
+            let (inbound_tx, rx) = tun::inbound_channel();
+
+            Self {
+                tx,
+                rx,
+                _keep_alive: (outbound_rx, inbound_tx),
+            }
         }
     }
 
     impl Tun for DummyTun {
-        fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
+        fn sender(&self) -> &tun::OutboundTx {
             &self.tx
         }
 
-        fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+        fn receiver(&mut self) -> &mut tun::InboundRx {
             &mut self.rx
         }
 

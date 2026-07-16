@@ -6,6 +6,8 @@ defmodule Portal.OneTimePasscode do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @max_attempts 3
+
   schema "one_time_passcodes" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
@@ -17,9 +19,12 @@ defmodule Portal.OneTimePasscode do
     field :code, :string, virtual: true, redact: true
 
     field :expires_at, :utc_datetime_usec
+    field :attempts, :integer, default: 0
 
     timestamps()
   end
+
+  def max_attempts, do: @max_attempts
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset

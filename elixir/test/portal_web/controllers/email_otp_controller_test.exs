@@ -1017,8 +1017,8 @@ defmodule PortalWeb.EmailOTPControllerTest do
   # Helper to extract the OTP code from the email
   defp extract_code_from_email(email) do
     # The code is on its own line after "Copy and paste..."
-    # It's 5 characters, URL-friendly (lowercase alphanumeric)
-    case Regex.run(~r/\n([a-z0-9]{5})\n/, email.text_body) do
+    # It's 6 characters, URL-friendly (lowercase alphanumeric)
+    case Regex.run(~r/\n([a-z0-9]{6})\n/, email.text_body) do
       [_, code] -> code
       _ -> raise "Could not extract code from email: #{email.text_body}"
     end

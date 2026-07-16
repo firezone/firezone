@@ -42,7 +42,7 @@ jobs:
             artifact_name: aarch64
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
@@ -100,23 +100,36 @@ jobs:
             rust/${{ matrix.binary }}
             rust/${{ matrix.binary }}.sha256sum.txt
 
-      - name: Upload to Azure Storage
+      - name: Azure login (OIDC)
+        if: github.ref == 'refs/heads/main'
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_QA_SUBSCRIPTION_ID }}
+          # The QA principal only holds a data-plane role on the storage account,
+          # not subscription-wide Reader, so don't fail on subscription enumeration.
+          allow-no-subscriptions: true
+
+      - name: Upload to QA artifacts storage
         if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -e
           az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
             --container-name binaries \
             --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}" \
             --file "${{ matrix.binary }}" \
             --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --no-progress
 
           az storage blob upload \
+            --account-name firezoneqaartifacts \
+            --auth-mode login \
             --container-name binaries \
             --name "loadtest/${{ matrix.os }}/${{ inputs.sha }}/${{ matrix.artifact_name }}.sha256sum.txt" \
             --file "${{ matrix.binary }}.sha256sum.txt" \
             --overwrite true \
-            --no-progress \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --no-progress

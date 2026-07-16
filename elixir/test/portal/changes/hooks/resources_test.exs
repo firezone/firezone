@@ -15,7 +15,7 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
       filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
       resource = resource_fixture(account: account, filters: filters)
 
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :resources)
 
       data = %{
         "id" => resource.id,
@@ -50,7 +50,7 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
       filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
       resource = resource_fixture(account: account, filters: filters)
 
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :resources)
 
       old_data = %{
         "id" => resource.id,
@@ -111,7 +111,7 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
       filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
       resource = resource_fixture(account: account, filters: filters)
 
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :resources)
 
       old_data = %{
         "id" => resource.id,

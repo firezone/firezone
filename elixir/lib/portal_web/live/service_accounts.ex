@@ -6,17 +6,28 @@ defmodule PortalWeb.ServiceAccounts do
 
   alias Portal.Actor
   alias Portal.Authentication
-  alias Portal.Presence
+  alias Portal.Changes.Change
   alias Portal.ClientToken
+  alias Portal.Presence
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
 
   import Ecto.Changeset
 
   require Logger
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :actors)
+    end
+
     socket =
       socket
       |> assign(page_title: "Service Accounts")
+      |> assign(stale: false)
+      |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -121,7 +132,7 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event(event, params, socket)
-      when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
+      when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, %{assigns: %{actor_panel: %{creating_actor: true}}} = socket) do
@@ -552,6 +563,36 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
+  def handle_info(%Change{op: :insert, struct: %Actor{type: :service_account}} = change, socket) do
+    {:noreply,
+     socket
+     |> update(:actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: :service_account}} = change, socket) do
+    {:noreply,
+     socket
+     |> update(:actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{struct: %Actor{type: :service_account}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
+  end
+
+  def handle_info(%Change{struct: %Actor{}} = message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_info(%Change{old_struct: %Actor{}} = message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
 
@@ -568,6 +609,8 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
   def handle_actors_update!(socket, list_opts) do
     with {:ok, actors, metadata} <- Database.list_actors(socket.assigns.subject, list_opts) do
       {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
@@ -579,7 +622,7 @@ defmodule PortalWeb.ServiceAccounts do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-robot-3-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-robot-3-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Service Accounts</:title>
         <:description>
@@ -593,6 +636,15 @@ defmodule PortalWeb.ServiceAccounts do
             New Service Account
           </.button>
         </:action>
+        <:stats>
+          <.async_result :let={count} assign={@actors_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -610,40 +662,41 @@ defmodule PortalWeb.ServiceAccounts do
           filter={@filter_form_by_table_id["actors"]}
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
+          stale={@stale}
           class="flex-1 min-h-0"
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
               <.actor_type_icon_with_badge actor={actor} />
               <div>
-                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
                 </div>
-                <div class="font-mono text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[11px] text-subtle mt-0.5">
                   {actor.id}
                 </div>
               </div>
             </div>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
+            <.actor_status_badge disabled_at={actor.disabled_at} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-robot-3-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-robot-3-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">
+                <p class="text-sm font-medium text-heading">
                   No service accounts yet
                 </p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-xs text-subtle mt-0.5">
                   No service accounts have been created yet.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/service_accounts/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Service Account
               </.link>
@@ -713,6 +766,14 @@ defmodule PortalWeb.ServiceAccounts do
 
   defp merge_state(socket, key, updates) do
     update(socket, key, &Map.merge(&1, Map.new(updates)))
+  end
+
+  defp mark_stale_if_unreflected(socket, change) do
+    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.actors, change) do
+      socket
+    else
+      assign(socket, stale: true)
+    end
   end
 
   defp default_token_expiration do
@@ -856,6 +917,13 @@ defmodule PortalWeb.ServiceAccounts do
     alias Portal.Safe
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
+
+    def count_actors(subject) do
+      from(a in Actor, as: :actors)
+      |> where([actors: a], a.type == :service_account)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
+    end
 
     defp index_query do
       from(actors in Actor, as: :actors)

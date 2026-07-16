@@ -340,6 +340,68 @@ defmodule Portal.Resource do
     struct
     |> cast(attrs, [:protocol, :ports])
     |> validate_required([:protocol])
+    |> validate_ports(attrs)
+  end
+
+  # Validates the raw port tokens rather than the cast value, since the cast
+  # parser silently strips a leading "-" (turning "-1" into "1").
+  defp validate_ports(changeset, attrs) do
+    if Keyword.has_key?(changeset.errors, :ports) do
+      changeset
+    else
+      apply_port_validation(changeset, parse_port_ranges(port_tokens(attrs)))
+    end
+  end
+
+  defp apply_port_validation(changeset, :error) do
+    add_error(changeset, :ports, "must be between 1 and 65535")
+  end
+
+  defp apply_port_validation(changeset, {:ok, ranges}) do
+    cond do
+      Enum.any?(ranges, fn {lower, upper} -> lower < 1 or upper > 65_535 end) ->
+        add_error(changeset, :ports, "must be between 1 and 65535")
+
+      port_ranges_overlap?(ranges) ->
+        add_error(changeset, :ports, "port ranges must not overlap")
+
+      true ->
+        changeset
+    end
+  end
+
+  defp port_tokens(attrs) do
+    case Map.fetch(attrs, :ports) do
+      {:ok, ports} -> ports
+      :error -> Map.get(attrs, "ports", [])
+    end
+    |> List.wrap()
+    |> Enum.map(&to_string/1)
+  end
+
+  defp parse_port_ranges(tokens) do
+    tokens
+    |> Enum.reduce_while({:ok, []}, fn token, {:ok, acc} ->
+      case Regex.run(~r/^\s*(\d+)\s*(?:-\s*(\d+))?\s*$/, token) do
+        [_, lower] -> {:cont, {:ok, [port_range(lower, lower) | acc]}}
+        [_, lower, ""] -> {:cont, {:ok, [port_range(lower, lower) | acc]}}
+        [_, lower, upper] -> {:cont, {:ok, [port_range(lower, upper) | acc]}}
+        nil -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, ranges} -> {:ok, Enum.reverse(ranges)}
+      :error -> :error
+    end
+  end
+
+  defp port_range(lower, upper), do: {String.to_integer(lower), String.to_integer(upper)}
+
+  defp port_ranges_overlap?(ranges) do
+    ranges
+    |> Enum.sort_by(fn {lower, _upper} -> lower end)
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.any?(fn [{_lower1, upper1}, {lower2, _upper2}] -> lower2 <= upper1 end)
   end
 
   # Utility functions moved from Portal.Resources

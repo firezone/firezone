@@ -10,6 +10,7 @@ defmodule PortalAPI.Router do
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
+    plug PortalAPI.Plugs.RequestLog
     plug PortalAPI.Plugs.ValidateUUIDParams
   end
 
@@ -41,7 +42,9 @@ defmodule PortalAPI.Router do
       length: 10_000_000
 
     plug :accepts, ["json"]
-    plug PortalAPI.Plugs.IngestionAuth
+    # Auth is the per-authorization ingest token in the Authorization header,
+    # verified in the controller (it needs the token's account_id to load the
+    # signing key). Rate limiting is keyed on the source IP.
     plug PortalAPI.Plugs.IngestionRateLimit
   end
 
@@ -60,11 +63,8 @@ defmodule PortalAPI.Router do
     put "/clients/:id/verify", ClientController, :verify
     put "/clients/:id/unverify", ClientController, :unverify
 
-    resources "/client_sessions", ClientSessionController, only: [:index, :show]
-    resources "/gateway_sessions", GatewaySessionController, only: [:index, :show]
-
-    get "/change_logs", ChangeLogController, :index
-    get "/change_logs/:event_id", ChangeLogController, :show
+    get "/logs", LogController, :index
+    get "/logs/:log_id", LogController, :show
 
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
@@ -73,7 +73,10 @@ defmodule PortalAPI.Router do
       post "/gateway_tokens", GatewayTokenController, :create
       delete "/gateway_tokens", GatewayTokenController, :delete_all
       delete "/gateway_tokens/:id", GatewayTokenController, :delete
-      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update]
+      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update] do
+        post "/token", GatewayTokenController, :create_for_gateway
+        post "/token/rotate", GatewayTokenController, :rotate
+      end
     end
 
     resources "/actors", ActorController, except: [:new, :edit] do
@@ -91,7 +94,6 @@ defmodule PortalAPI.Router do
       patch "/memberships", MembershipController, :update_patch
     end
 
-    resources "/userpass_auth_providers", UserpassAuthProviderController, only: [:index, :show]
     resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
     resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
     resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]

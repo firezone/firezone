@@ -1,30 +1,30 @@
 //! TOML configuration for randomized load testing.
 //!
-//! All config fields are required - see loadtest.example.toml for defaults.
-//! Each invocation randomly selects a test type and parameters from the config.
+//! Every section is optional - see loadtest.example.toml for the available options.
+//! Each invocation randomly selects a test type from the sections that are present
+//! and picks parameters from its config.
 
-/// Minimum ping count (must send at least 1 ping).
-pub const MIN_PING_COUNT: usize = 1;
-
+use crate::cli::parse_bitrate;
+use crate::turn::{MAX_FLOWS, TURN_HEADER_SIZE};
 use anyhow::{Context as _, Result, bail};
-use rand::distributions::uniform::SampleRange;
+use rand::distr::uniform::SampleRange;
 use rand::prelude::*;
 use serde::Deserialize;
-use std::net::IpAddr;
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use url::Url;
 
-use crate::ping::MAX_ICMP_PAYLOAD_SIZE;
-
 /// Top-level configuration loaded from TOML.
+///
+/// Each section is optional; a random test is selected from whichever
+/// sections are present.
 #[derive(Debug, Deserialize)]
 pub struct LoadTestConfig {
-    /// Test types to run. Must be non-empty.
-    pub types: Vec<TestType>,
-    pub http: HttpConfig,
-    pub tcp: TcpConfig,
-    pub websocket: WebsocketConfig,
-    pub ping: PingConfig,
+    pub http: Option<HttpConfig>,
+    pub tcp: Option<TcpConfig>,
+    pub websocket: Option<WebsocketConfig>,
+    pub turn: Option<TurnConfig>,
 }
 
 /// A numeric range with optional step constraint.
@@ -74,12 +74,17 @@ impl<'de> serde::Deserialize<'de> for Range {
 }
 
 impl SampleRange<u64> for Range {
-    fn sample_single<R: RngCore + ?Sized>(self, rng: &mut R) -> u64 {
-        rng.gen_range(std::ops::RangeInclusive::new(self.min, self.max))
+    fn sample_single<R: Rng + ?Sized>(
+        self,
+        rng: &mut R,
+    ) -> Result<u64, rand::distr::uniform::Error> {
+        std::ops::RangeInclusive::new(self.min, self.max).sample_single(rng)
     }
 
     fn is_empty(&self) -> bool {
-        self.max - self.min == 0
+        // An inclusive `[min, max]` range is only empty when `min > max`; when the
+        // bounds are equal it still contains that single value.
+        self.min > self.max
     }
 }
 
@@ -177,38 +182,92 @@ impl WebsocketConfig {
     }
 }
 
-/// ICMP ping load test configuration.
-#[derive(Debug, Deserialize)]
-pub struct PingConfig {
-    /// List of target IP addresses to ping.
-    pub addresses: Vec<String>,
-    /// Number of pings per target.
-    pub count: Range,
-    /// Interval between pings in milliseconds.
-    pub interval_ms: Range,
-    /// Ping timeout in milliseconds.
-    pub timeout_ms: Range,
-    /// Payload size in bytes.
-    pub payload_size: Range,
+/// Maximum TURN payload size.
+///
+/// Bounded by a conservative typical Internet MTU to avoid IP fragmentation of
+/// the relayed datagrams.
+pub const MAX_TURN_PAYLOAD_SIZE: usize = 1400;
+
+/// TURN (relay) load test configuration.
+///
+/// Unlike the other sections, a TURN test targets a single relay with a single
+/// set of credentials, so its fields are scalars rather than lists or ranges.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TurnConfig {
+    /// Relay socket address (`ip:port`).
+    pub address: SocketAddr,
+    /// TURN username (long-term credential, scoped to this relay).
+    pub username: String,
+    /// TURN password (long-term credential, scoped to this relay).
+    pub password: String,
+    /// UDP payload size in bytes for each relayed datagram.
+    #[serde(default = "default_turn_payload_size")]
+    pub payload_size: usize,
+    /// Target send bitrate in bits per second (e.g. "2mbps", "500kbps").
+    #[serde(rename = "bitrate", deserialize_with = "deserialize_bitrate")]
+    pub bitrate_bps: u64,
+    /// How long to stream datagrams for, in seconds.
+    #[serde(default = "default_turn_duration_secs")]
+    pub duration_secs: u64,
+    /// Number of parallel flows (distinct peer ports fed from one allocation).
+    #[serde(default = "default_turn_flows")]
+    pub flows: NonZeroUsize,
+    /// Fail the test if packet loss exceeds this percentage.
+    pub max_loss_percent: Option<f64>,
 }
 
-impl PingConfig {
+/// Default TURN payload size (a typical media MTU).
+fn default_turn_payload_size() -> usize {
+    1280
+}
+
+/// Default TURN test duration in seconds.
+fn default_turn_duration_secs() -> u64 {
+    30
+}
+
+/// Default number of parallel flows.
+fn default_turn_flows() -> NonZeroUsize {
+    NonZeroUsize::MIN
+}
+
+fn deserialize_bitrate<'de, D>(d: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    let string = String::deserialize(d)?;
+    parse_bitrate(&string).map_err(D::Error::custom)
+}
+
+impl TurnConfig {
     fn validate(&self) -> Result<()> {
-        if self.addresses.is_empty() {
-            bail!("[ping] addresses list is empty");
+        if self.username.is_empty() {
+            bail!("[turn] username is empty");
         }
-
-        // Validate all addresses are valid IP addresses
-        for addr in &self.addresses {
-            addr.parse::<IpAddr>()
-                .with_context(|| format!("[ping] invalid IP address '{addr}'"))?;
+        if self.password.is_empty() {
+            bail!("[turn] password is empty");
         }
-
-        if self.payload_size.max as usize > MAX_ICMP_PAYLOAD_SIZE {
+        if self.payload_size < TURN_HEADER_SIZE {
             bail!(
-                "[ping] payload_size.max ({}) exceeds maximum ICMP payload of {} bytes",
-                self.payload_size.max,
-                MAX_ICMP_PAYLOAD_SIZE
+                "[turn] payload_size ({}) must be at least {TURN_HEADER_SIZE} bytes (sequence header)",
+                self.payload_size
+            );
+        }
+        if self.payload_size > MAX_TURN_PAYLOAD_SIZE {
+            bail!(
+                "[turn] payload_size ({}) exceeds the maximum of {MAX_TURN_PAYLOAD_SIZE} bytes",
+                self.payload_size
+            );
+        }
+        if self.bitrate_bps == 0 {
+            bail!("[turn] bitrate must be greater than zero");
+        }
+        if self.flows.get() > MAX_FLOWS {
+            bail!(
+                "[turn] flows ({}) exceeds the maximum of {MAX_FLOWS}",
+                self.flows
             );
         }
 
@@ -226,43 +285,42 @@ impl LoadTestConfig {
     }
 
     fn validate(&self) -> Result<()> {
-        // Validate types field
-        if self.types.is_empty() {
-            bail!("'types' list cannot be empty");
+        if let Some(http) = &self.http {
+            http.validate()?;
         }
-
-        // Validate all sections
-        self.http.validate()?;
-        self.tcp.validate()?;
-        self.websocket.validate()?;
-        self.ping.validate()?;
+        if let Some(tcp) = &self.tcp {
+            tcp.validate()?;
+        }
+        if let Some(websocket) = &self.websocket {
+            websocket.validate()?;
+        }
+        if let Some(turn) = &self.turn {
+            turn.validate()?;
+        }
 
         Ok(())
     }
 
-    pub fn enabled_types(&self) -> &[TestType] {
-        &self.types
+    /// The test types that have a config section present, in a stable order.
+    pub fn enabled_types(&self) -> Vec<TestType> {
+        [
+            self.http.is_some().then_some(TestType::Http),
+            self.tcp.is_some().then_some(TestType::Tcp),
+            self.websocket.is_some().then_some(TestType::Websocket),
+            self.turn.is_some().then_some(TestType::Turn),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TestType {
     Http,
     Tcp,
     Websocket,
-    Ping,
-}
-
-impl std::fmt::Display for TestType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Http => write!(f, "http"),
-            Self::Tcp => write!(f, "tcp"),
-            Self::Websocket => write!(f, "websocket"),
-            Self::Ping => write!(f, "ping"),
-        }
-    }
+    Turn,
 }
 
 #[cfg(test)]
@@ -353,34 +411,14 @@ mod tests {
     }
 
     #[test]
-    fn test_load_missing_required_fields() {
+    fn test_load_empty_config() {
         let dir = std::env::temp_dir();
-        let path = dir.join("no_types_config.toml");
-        // Config missing required 'types' field - should fail to parse
+        let path = dir.join("empty_config.toml");
+        // A config with no test sections is valid; it simply enables nothing.
         std::fs::write(&path, "# Empty config\n").unwrap();
 
-        let result = LoadTestConfig::load(&path);
-        assert_eq!(
-            format!("{:#}", result.unwrap_err()),
-            "Failed to parse TOML: TOML parse error at line 1, column 1\n  |\n1 | # Empty config\n  | ^\nmissing field `types`\n"
-        );
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_load_explicit_empty_types() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("explicit_empty_types_config.toml");
-        // Empty types array should fail validation
-        let config = example_config_content().replace(r#"types = ["http"]"#, "types = []");
-        std::fs::write(&path, &config).unwrap();
-
-        let result = LoadTestConfig::load(&path);
-        assert_eq!(
-            format!("{:#}", result.unwrap_err()),
-            "'types' list cannot be empty"
-        );
+        let config = LoadTestConfig::load(&path).unwrap();
+        assert!(config.enabled_types().is_empty());
 
         std::fs::remove_file(&path).ok();
     }
@@ -459,36 +497,122 @@ mod tests {
     fn test_load_valid_config() {
         let dir = std::env::temp_dir();
         let path = dir.join("valid_config.toml");
-        let config =
-            example_config_content().replace(r#"types = ["http"]"#, r#"types = ["http", "tcp"]"#);
-        std::fs::write(&path, &config).unwrap();
+        std::fs::write(&path, example_config_content()).unwrap();
 
         let result = LoadTestConfig::load(&path);
         assert!(result.is_ok());
 
         let config = result.unwrap();
-        assert_eq!(config.enabled_types(), &[TestType::Http, TestType::Tcp]);
+        assert_eq!(
+            config.enabled_types(),
+            vec![TestType::Http, TestType::Tcp, TestType::Websocket]
+        );
 
         std::fs::remove_file(&path).ok();
     }
 
     #[test]
-    fn test_load_ping_payload_too_large() {
+    fn test_load_with_optional_sections_omitted() {
         let dir = std::env::temp_dir();
-        let path = dir.join("ping_payload_too_large_config.toml");
-        let config = example_config_content().replace(
-            "payload_size = \"56..1024\"",
-            "payload_size = \"56..100000\"",
-        );
-        std::fs::write(&path, &config).unwrap();
+        let path = dir.join("optional_sections_config.toml");
+        // Only the [http] section is present; the others are omitted.
+        std::fs::write(
+            &path,
+            "[http]\naddresses = [\"https://example.com\"]\nhttp_version = [1, 2]\nmax_connections = 100\n",
+        )
+        .unwrap();
 
         let result = LoadTestConfig::load(&path);
-        let error = format!("{:#}", result.unwrap_err());
+        assert!(result.is_ok());
+
+        let config = result.unwrap();
+        assert_eq!(config.enabled_types(), vec![TestType::Http]);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_section() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_config.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"2mbps\"\n",
+        )
+        .unwrap();
+
+        let config = LoadTestConfig::load(&path).unwrap();
+        assert_eq!(config.enabled_types(), vec![TestType::Turn]);
+
+        let turn = config.turn.unwrap();
+        assert_eq!(turn.bitrate_bps, 2_000_000);
+        assert_eq!(turn.payload_size, 1280); // default
+        assert_eq!(turn.duration_secs, 30); // default
+        assert_eq!(turn.flows.get(), 1); // default
+        assert_eq!(turn.address, "1.2.3.4:3478".parse().unwrap());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_with_flows() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_flows.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"2mbps\"\nflows = 4\n",
+        )
+        .unwrap();
+
+        let config = LoadTestConfig::load(&path).unwrap();
+        assert_eq!(config.turn.unwrap().flows.get(), 4);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_rejects_too_many_flows() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_too_many_flows.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"1mbps\"\nflows = 99999\n",
+        )
+        .unwrap();
+
+        let result = LoadTestConfig::load(&path);
         assert_eq!(
-            error,
-            "[ping] payload_size.max (100000) exceeds maximum ICMP payload of 65507 bytes"
+            format!("{:#}", result.unwrap_err()),
+            "[turn] flows (99999) exceeds the maximum of 16384"
         );
 
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_turn_rejects_small_payload() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("turn_small_payload.toml");
+        std::fs::write(
+            &path,
+            "[turn]\naddress = \"1.2.3.4:3478\"\nusername = \"u\"\npassword = \"p\"\nbitrate = \"1mbps\"\npayload_size = 8\n",
+        )
+        .unwrap();
+
+        let result = LoadTestConfig::load(&path);
+        assert_eq!(
+            format!("{:#}", result.unwrap_err()),
+            "[turn] payload_size (8) must be at least 16 bytes (sequence header)"
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn range_with_equal_bounds_is_not_empty() {
+        // `gen_range` panics on a range it believes is empty; an inclusive range
+        // with equal bounds still contains its single value.
+        assert!(!Range { min: 5, max: 5 }.is_empty());
+        assert!(Range { min: 6, max: 5 }.is_empty());
     }
 }

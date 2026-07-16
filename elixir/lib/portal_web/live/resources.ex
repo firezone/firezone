@@ -15,8 +15,7 @@ defmodule PortalWeb.Resources do
       panel_shell: 1,
       resource_details_panel: 1,
       resource_form_panel: 1,
-      resource_online?: 2,
-      resource_status: 2,
+      resource_status_badge: 1,
       resource_type_label: 1,
       type_badge_class: 1,
       to_grant_form: 0
@@ -26,11 +25,14 @@ defmodule PortalWeb.Resources do
   alias Portal.Presence
   alias Portal.PubSub
   alias Portal.Resource
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :resources)
       :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
     end
 
@@ -39,8 +41,14 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
+      |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
+        selected_resource_pool_member_ids: [],
+        selected_resource_pool_clients: [],
+        clients_expanded_id: nil,
+        online_client_ids: MapSet.new(),
         selected_groups: [],
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -71,7 +79,7 @@ defmodule PortalWeb.Resources do
 
       resource ->
         page = parse_page(params)
-        tab = parse_show_tab(params)
+        tab = parse_show_tab(params, resource)
 
         groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
 
@@ -80,11 +88,17 @@ defmodule PortalWeb.Resources do
 
         filter_site = filter_site_from_params(params, socket.assigns.subject)
 
+        pool_clients = Database.list_pool_members(resource, socket.assigns.subject)
+        pool_member_ids = Enum.map(pool_clients, & &1.id)
+
         {:noreply,
          socket
          |> assign(
            filter_site: filter_site,
            selected_resource: resource,
+           selected_resource_pool_member_ids: pool_member_ids,
+           selected_resource_pool_clients: pool_clients,
+           clients_expanded_id: nil,
            selected_groups: groups,
            policy_authorizations: policy_authorizations,
            policy_authorizations_page: page,
@@ -282,12 +296,23 @@ defmodule PortalWeb.Resources do
     end
   end
 
-  defp parse_show_tab(params) do
-    case Map.get(params, "tab", "groups") do
-      tab when tab in ~w[groups authorizations] -> String.to_existing_atom(tab)
-      _ -> :groups
+  defp parse_show_tab(params, resource) do
+    default = if device_pool?(resource), do: "clients", else: "groups"
+
+    case Map.get(params, "tab", default) do
+      "clients" ->
+        if device_pool?(resource), do: :clients, else: :groups
+
+      tab when tab in ~w[groups authorizations] ->
+        String.to_existing_atom(tab)
+
+      _ ->
+        String.to_existing_atom(default)
     end
   end
+
+  defp device_pool?(%{type: :static_device_pool}), do: true
+  defp device_pool?(_), do: false
 
   defp redirect_to_resources_index(socket, message) do
     {:noreply,
@@ -328,11 +353,16 @@ defmodule PortalWeb.Resources do
       resource_policy_counts =
         Database.count_policies_for_resources(all_resources, socket.assigns.subject)
 
+      device_pool_members =
+        Database.pool_member_ids_for_resources(all_resources, socket.assigns.subject)
+
       {:ok,
        assign(socket,
          resources: resources,
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
+         device_pool_members: device_pool_members,
+         online_client_ids: online_client_ids(socket.assigns.account.id),
          resources_metadata: metadata
        )}
     end
@@ -343,7 +373,7 @@ defmodule PortalWeb.Resources do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-server-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-server-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Resources</:title>
         <:description>
@@ -355,27 +385,15 @@ defmodule PortalWeb.Resources do
             New Resource
           </.button>
         </:action>
-        <:filters>
-          <% online_count = Enum.count(@resources, &resource_online?(&1, @presence_tick)) %>
-          <% offline_count = length(@resources) - online_count %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@resources_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative flex items-center justify-center w-1.5 h-1.5">
-              <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-active)]">
-              </span>
-            </span>
-            Online {online_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-[var(--status-neutral)]">
-            </span>
-            Offline {offline_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@resources_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -395,12 +413,12 @@ defmodule PortalWeb.Resources do
           <:prepend_rows :if={not is_nil(@internet_resource)}>
             <tr
               class={[
-                "border-b border-[var(--border)] cursor-pointer transition-colors group",
+                "border-b border-border cursor-pointer transition-colors group",
                 "bg-violet-50/60 dark:bg-violet-950/20",
                 if(
                   not is_nil(@selected_resource) and
                     @selected_resource.id == @internet_resource.id,
-                  do: "border-l-4 border-l-[var(--brand)]",
+                  do: "border-l-4 border-l-brand",
                   else: "hover:bg-violet-100/60 dark:hover:bg-violet-900/20"
                 )
               ]}
@@ -410,14 +428,14 @@ defmodule PortalWeb.Resources do
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
                   <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
-                  <div class="font-semibold transition-colors text-[var(--text-primary)] group-hover:text-[var(--brand)]">
+                  <div class="font-semibold transition-colors text-heading group-hover:text-brand">
                     Internet Resource
                   </div>
                   <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-200/70 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
                     system
                   </span>
                 </div>
-                <div class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <div class="text-xs text-subtle mt-0.5">
                   Network traffic outside defined resources
                 </div>
               </td>
@@ -427,7 +445,7 @@ defmodule PortalWeb.Resources do
                 </span>
               </td>
               <td class="px-4 py-3 hidden lg:table-cell">
-                <span class="font-mono text-xs text-[var(--text-primary)]">0.0.0.0/0, ::/0</span>
+                <span class="font-mono text-xs text-heading">0.0.0.0/0, ::/0</span>
               </td>
               <td class="px-4 py-3">
                 <% count = Map.get(@resource_policy_counts, @internet_resource.id, 0) %>
@@ -437,20 +455,20 @@ defmodule PortalWeb.Resources do
                     ~p"/#{@account}/policies?policies_filter[resource_id]=#{@internet_resource.id}"
                   }
                 >
-                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-tertiary)] text-[var(--brand)]">
+                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
                     {count}
                   </span>
                 </.link>
                 <span
                   :if={count == 0}
-                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
                 >
                   0
                 </span>
               </td>
-              <td class="px-4 py-3 text-[var(--text-secondary)] text-xs">Internet</td>
+              <td class="px-4 py-3 text-body text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.status_badge status={resource_status(@internet_resource, @presence_tick)} />
+                <.resource_status_badge resource={@internet_resource} presence_tick={@presence_tick} />
               </td>
             </tr>
           </:prepend_rows>
@@ -461,14 +479,14 @@ defmodule PortalWeb.Resources do
             </.link>
           </:notice>
           <:col :let={resource} field={{:resources, :name}} label="Name">
-            <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+            <div class="font-medium text-heading group-hover:text-brand transition-colors">
               {resource.name}
             </div>
             <div class={[
               "text-xs mt-0.5 truncate max-w-xs",
               if(resource.address_description,
-                do: "text-[var(--text-tertiary)]",
-                else: "text-[var(--text-muted)] italic"
+                do: "text-subtle",
+                else: "text-muted italic"
               )
             ]}>
               {resource.address_description || "No Address Description"}
@@ -487,19 +505,19 @@ defmodule PortalWeb.Resources do
           >
             <span
               :if={resource.type not in [:internet, :static_device_pool]}
-              class="font-mono text-xs text-[var(--text-primary)]"
+              class="font-mono text-xs text-heading"
             >
               {resource.address}
             </span>
             <span
               :if={resource.type == :internet}
-              class="font-mono text-xs text-[var(--text-primary)]"
+              class="font-mono text-xs text-heading"
             >
               0.0.0.0/0, ::/0
             </span>
             <span
               :if={resource.type == :static_device_pool}
-              class="font-mono text-xs italic text-[var(--text-tertiary)]"
+              class="font-mono text-xs italic text-subtle"
             >
               Multiple Addresses
             </span>
@@ -510,13 +528,13 @@ defmodule PortalWeb.Resources do
               :if={count > 0}
               navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
             >
-              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--brand-tertiary)] text-[var(--brand)]">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
                 {count}
               </span>
             </.link>
             <span
               :if={count == 0}
-              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
             >
               0
             </span>
@@ -525,31 +543,36 @@ defmodule PortalWeb.Resources do
             <.link
               :if={resource.site}
               navigate={~p"/#{@account}/sites/#{resource.site}"}
-              class="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              class="text-xs text-body hover:text-heading transition-colors"
             >
               {resource.site.name}
             </.link>
-            <span :if={is_nil(resource.site)} class="text-[var(--text-muted)] italic">
+            <span :if={is_nil(resource.site)} class="text-muted italic">
               {nil_site_label(resource)}
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.status_badge status={resource_status(resource, @presence_tick)} />
+            <.resource_status_badge
+              resource={resource}
+              presence_tick={@presence_tick}
+              pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
+              online_client_ids={@online_client_ids}
+            />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-server-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-server-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No resources yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  No resources have been added yet.
+                <p class="text-sm font-medium text-heading">No resources yet</p>
+                <p class="text-xs text-subtle mt-0.5">
+                  Create a Resource to represent an asset or service.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/resources/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
               </.link>
@@ -573,6 +596,11 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+            pool_member_ids={@selected_resource_pool_member_ids}
+            pool_clients={@selected_resource_pool_clients}
+            clients_expanded_id={@clients_expanded_id}
+            online_client_ids={@online_client_ids}
             presence_tick={@presence_tick}
             groups={@selected_groups}
             policy_authorizations={@policy_authorizations}
@@ -654,6 +682,13 @@ defmodule PortalWeb.Resources do
       if socket.assigns.policy_authorizations_expanded_id == id, do: nil, else: id
 
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
+  end
+
+  def handle_event("toggle_pool_client_row", %{"id" => id}, socket) do
+    expanded =
+      if socket.assigns.clients_expanded_id == id, do: nil, else: id
+
+    {:noreply, assign(socket, clients_expanded_id: expanded)}
   end
 
   def handle_event("change_resource_form", %{"resource" => attrs} = payload, socket) do
@@ -1009,6 +1044,11 @@ defmodule PortalWeb.Resources do
      end)}
   end
 
+  def handle_event("change_tod_timezone", params, socket) do
+    timezone = get_in(params, ["policy", "conditions", "current_utc_datetime", "timezone"])
+    {:noreply, merge_state(socket, :resource_grant, timezone: timezone)}
+  end
+
   def handle_event("toggle_grant_group", %{"group_id" => group_id}, socket) do
     selected = socket.assigns.resource_grant.grant_selected_group_ids
 
@@ -1183,6 +1223,28 @@ defmodule PortalWeb.Resources do
      )}
   end
 
+  def handle_info(%Change{op: :insert, struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Resource{type: type}} = change, socket)
+      when type != :internet do
+    {:noreply,
+     socket
+     |> update(:resources_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
   def handle_info(%Change{old_struct: %Resource{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
@@ -1193,11 +1255,20 @@ defmodule PortalWeb.Resources do
 
   def handle_info(%Phoenix.Socket.Broadcast{event: event}, socket)
       when event in ["presence_diff", "presence_state"] do
-    {:noreply, update(socket, :presence_tick, &(&1 + 1))}
+    {:noreply,
+     socket
+     |> update(:presence_tick, &(&1 + 1))
+     |> assign(online_client_ids: online_client_ids(socket.assigns.account.id))}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
+  end
+
+  defp online_client_ids(account_id) do
+    account_id
+    |> Presence.Clients.online_client_ids()
+    |> MapSet.new()
   end
 
   defp resource_filter_ports(nil), do: %{}
@@ -1212,6 +1283,26 @@ defmodule PortalWeb.Resources do
 
   defp resource_filter_ports(_), do: %{}
 
+  defp resource_filter_errors(nil), do: %{}
+
+  defp resource_filter_errors(%Phoenix.HTML.Form{source: nil}), do: %{}
+
+  defp resource_filter_errors(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = source}) do
+    source
+    |> Ecto.Changeset.get_change(:filters, [])
+    |> Enum.flat_map(fn filter ->
+      protocol = Ecto.Changeset.get_field(filter, :protocol)
+
+      case Keyword.get(filter.errors, :ports) do
+        {msg, _opts} -> [{protocol, msg}]
+        nil -> []
+      end
+    end)
+    |> Map.new()
+  end
+
+  defp resource_filter_errors(_), do: %{}
+
   defp resource_form_panel_state(assigns) do
     %{
       resource_form: assigns.resource_form.form,
@@ -1222,7 +1313,8 @@ defmodule PortalWeb.Resources do
       resource_form_client_search: assigns.resource_form.client_search,
       resource_form_client_search_results: assigns.resource_form.client_search_results,
       client_to_client_enabled: assigns.resource_panel.client_to_client_enabled?,
-      filter_ports: resource_filter_ports(assigns.resource_form.form)
+      filter_ports: resource_filter_ports(assigns.resource_form.form),
+      filter_errors: resource_filter_errors(assigns.resource_form.form)
     }
   end
 
@@ -1329,6 +1421,7 @@ defmodule PortalWeb.Resources do
     alias Portal.ClientToken
     alias Portal.Actor
     alias Portal.Device
+    alias Portal.ClientSession
     alias Portal.Site
     alias Portal.Group
     alias Portal.Directory
@@ -1337,6 +1430,12 @@ defmodule PortalWeb.Resources do
     defdelegate client_to_client_enabled?(account), to: Components.Database
     defdelegate get_client(client_id, subject), to: Components.Database
     defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
+
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
 
     def all_sites(subject) do
       from(s in Site, as: :sites)
@@ -1446,18 +1545,60 @@ defmodule PortalWeb.Resources do
           ids -> ids
         end
 
-      from(c in Portal.Device, as: :devices)
+      from(c in Device, as: :devices)
+      |> join(
+        :left_lateral,
+        [devices: d],
+        s in subquery(
+          from(s in ClientSession,
+            where: s.device_id == parent_as(:devices).id,
+            where: s.account_id == parent_as(:devices).account_id,
+            order_by: [desc: s.inserted_at],
+            limit: 1
+          )
+        ),
+        on: true,
+        as: :latest_session
+      )
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^client_ids)
+      |> select_merge([latest_session: s], %{
+        latest_session_inserted_at: s.inserted_at,
+        latest_session_version: s.version,
+        latest_session_user_agent: s.user_agent
+      })
+      |> preload(:actor)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do
-        {:error, _} -> []
-        clients -> Portal.Presence.Clients.preload_clients_presence(clients)
+        {:error, _} ->
+          []
+
+        clients ->
+          clients
+          |> build_latest_sessions()
+          |> Portal.Presence.Clients.preload_clients_presence()
       end
     end
 
     def list_pool_members(_resource, _subject), do: []
+
+    defp build_latest_sessions(clients) do
+      Enum.map(clients, fn client ->
+        if client.latest_session_inserted_at do
+          %{
+            client
+            | latest_session: %ClientSession{
+                version: client.latest_session_version,
+                inserted_at: client.latest_session_inserted_at,
+                user_agent: client.latest_session_user_agent
+              }
+          }
+        else
+          client
+        end
+      end)
+    end
 
     def get_resource(id, subject) do
       from(r in Resource, as: :resources)
@@ -1482,6 +1623,13 @@ defmodule PortalWeb.Resources do
       |> Safe.one(fallback_to_primary: true)
     end
 
+    def count_resources(subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.type != :internet)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
+    end
+
     def list_resources(subject, opts \\ []) do
       from(resources in Resource, as: :resources)
       |> where([resources: r], r.type != :internet)
@@ -1502,6 +1650,30 @@ defmodule PortalWeb.Resources do
       |> case do
         {:error, _} -> %{}
         counts -> Map.new(counts)
+      end
+    end
+
+    def pool_member_ids_for_resources(resources, subject) do
+      ids =
+        resources
+        |> Enum.filter(&(&1.type == :static_device_pool))
+        |> Enum.map(& &1.id)
+        |> Enum.uniq()
+
+      from(m in StaticDevicePoolMember, as: :members)
+      |> where([members: m], m.resource_id in ^ids)
+      |> select([members: m], {m.resource_id, m.device_id})
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          %{}
+
+        rows ->
+          Enum.group_by(rows, fn {resource_id, _device_id} -> resource_id end, fn {_resource_id,
+                                                                                   device_id} ->
+            device_id
+          end)
       end
     end
 
@@ -1610,12 +1782,13 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
+        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()

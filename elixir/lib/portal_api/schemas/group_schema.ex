@@ -65,17 +65,49 @@ defmodule PortalAPI.Schemas.Group do
     })
   end
 
-  defmodule Request do
+  defmodule CreateRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Group
 
     OpenApiSpex.schema(%{
-      title: "GroupRequest",
-      description: "POST body for creating an Group",
+      title: "GroupCreateRequest",
+      description: "POST body for creating a Group",
       type: :object,
       properties: %{
-        group: Group.Schema
+        group: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{type: :string, description: "Group Name"}
+          },
+          required: [:name]
+        }
+      },
+      required: [:group],
+      example: %{
+        "group" => %{
+          "name" => "Engineering"
+        }
+      }
+    })
+  end
+
+  defmodule UpdateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "GroupUpdateRequest",
+      description:
+        "PATCH/PUT body for updating a Group. All fields are optional; omitted fields keep " <>
+          "their current value.",
+      type: :object,
+      properties: %{
+        group: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{type: :string, description: "Group Name"}
+          }
+        }
       },
       required: [:group],
       example: %{
@@ -118,6 +150,7 @@ defmodule PortalAPI.Schemas.Group do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Group
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "GroupListResponse",
@@ -125,7 +158,7 @@ defmodule PortalAPI.Schemas.Group do
       type: :object,
       properties: %{
         data: %Schema{description: "Group details", type: :array, items: Group.Schema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

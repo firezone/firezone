@@ -16,7 +16,7 @@
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <!-- mark:next-gui-version -->
-  <assemblyIdentity version="1.5.13.0" name="Firezone.Client.GUI" />
+  <assemblyIdentity version="1.5.16.0" name="Firezone.Client.GUI" />
   <!-- Preserves tauri-build's default Common-Controls dependency
        (themed dialogs / modern UI controls). -->
   <dependency>

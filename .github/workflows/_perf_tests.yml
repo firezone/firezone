@@ -33,11 +33,13 @@ jobs:
           - tcp-server2client
           - udp-client2server
           - udp-server2client
+          - quic-client2server
+          - quic-server2client
         flavour:
           - direct
           - relayed
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,10 +47,12 @@ jobs:
       - uses: ./.github/actions/setup-scripts
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
-      - name: Increase max UDP buffer sizes
+      - name: Tune Linux kernel
         run: |
-          sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
-          sudo sysctl -w net.core.rmem_max=134217728 # 128 MB
+          sudo sysctl -w net.core.wmem_max=2097152            # 2 MB
+          sudo sysctl -w net.core.rmem_max=16777216           # 16 MB
+          sudo sysctl -w net.core.netdev_max_backlog=100000   # matches the netem limit
+          sudo sysctl -w net.core.netdev_budget=5000          # drain more per softirq poll
       - name: Start docker compose in the background
         run: |
           if [ "${{ matrix.flavour }}" = "relayed" ]; then
@@ -61,6 +65,7 @@ jobs:
           # Start services in the same order each time for the tests
           # Retries are used because network I/O is flaky in GitHub Actions runners
           retry docker compose up -d iperf3
+          retry docker compose up -d secnetperf
           retry docker compose up -d portal --no-build
           retry docker compose up -d relay-1 relay-2 --no-build
           retry docker compose up -d gateway --no-build
@@ -70,14 +75,12 @@ jobs:
         timeout-minutes: 5
         env:
           TEST_NAME: ${{ matrix.flavour }}-${{ matrix.test }}
-        run: |
-          ./scripts/tests/perf/${{ matrix.test }}.sh
-          jq '{ "${{ matrix.flavour }}-${{ matrix.test }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.flavour }}-${{ matrix.test }}.json > ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
+        run: ./scripts/tests/perf/${{ matrix.test }}.sh
       - name: "Save performance test results: ${{ matrix.flavour }}-${{ matrix.test }}"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           overwrite: true
-          name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-iperf3results
+          name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-perf-results
           path: ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
       - name: Show Client logs
         if: "!cancelled()"
@@ -97,6 +100,9 @@ jobs:
       - name: Show iperf3 logs
         if: "!cancelled()"
         run: docker compose logs iperf3
+      - name: Show secnetperf logs
+        if: "!cancelled()"
+        run: docker compose logs secnetperf
 
       - name: Ensure no warnings are logged
         if: "!cancelled()"
@@ -134,12 +140,12 @@ jobs:
       pull-requests: write # post Bencher PR comments
       checks: write # Bencher check annotations
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: bencherdev/bencher@50fb1e138651a46d2fb704fab1adab38c181552e # v0.6.6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: bencherdev/bencher@5f9d4cf890255c35e0354af1ed325108a6a0babd # v0.6.8
       - name: Download performance test results
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: "*-${{ github.sha }}-iperf3results"
+          pattern: "*-${{ github.sha }}-perf-results"
           merge-multiple: true
           path: ./${{ github.sha }}
       - name: Merge benchmarks results into one report

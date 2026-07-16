@@ -107,17 +107,11 @@ defmodule PortalAPI.Schemas.Client do
         name: %Schema{
           type: :string,
           description: "Client Name"
-        },
-        hostname: %Schema{
-          type: :string,
-          nullable: true,
-          description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
         }
       },
       required: [:name],
       example: %{
-        "name" => "John's Macbook Air",
-        "hostname" => "johns-macbook.example.com"
+        "name" => "John's Macbook Air"
       }
     })
   end
@@ -137,8 +131,7 @@ defmodule PortalAPI.Schemas.Client do
       required: [:client],
       example: %{
         "client" => %{
-          "name" => "John's Macbook Air",
-          "hostname" => "johns-macbook.example.com"
+          "name" => "John's Macbook Air"
         }
       }
     })
@@ -182,6 +175,7 @@ defmodule PortalAPI.Schemas.Client do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Client
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "ClientsResponse",
@@ -189,7 +183,7 @@ defmodule PortalAPI.Schemas.Client do
       type: :object,
       properties: %{
         data: %Schema{description: "Clients details", type: :array, items: Client.GetSchema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

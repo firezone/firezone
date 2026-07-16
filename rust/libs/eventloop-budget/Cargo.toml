@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-instruments = { workspace = true }
 
 [lints]
 workspace = true

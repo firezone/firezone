@@ -32,11 +32,11 @@ defmodule PortalWeb.SignInHTML do
           href={~p"/assets/main.css"}
         />
       </head>
-      <body class="bg-[var(--surface)] min-h-screen flex items-center justify-center">
+      <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
-          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-[var(--status-active-bg)] flex items-center justify-center">
+          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-success-light flex items-center justify-center">
             <svg
-              class="w-7 h-7 text-[var(--status-active)]"
+              class="w-7 h-7 text-success"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -47,13 +47,13 @@ defmodule PortalWeb.SignInHTML do
               <path d="M20 6L9 17l-5-5" />
             </svg>
           </div>
-          <h1 class="text-xl font-semibold text-[var(--text-primary)] tracking-tight">
+          <h1 class="text-xl font-semibold text-heading tracking-tight">
             Signed in successfully
           </h1>
-          <p class="mt-2 text-sm text-[var(--text-secondary)]">
-            You're signed in to <span class="font-medium text-[var(--text-primary)]">{@account.name}</span>.
+          <p class="mt-2 text-sm text-body">
+            You're signed in to <span class="font-medium text-heading">{@account.name}</span>.
           </p>
-          <p class="mt-4 text-xs text-[var(--text-muted)]">
+          <p class="mt-4 text-xs text-muted">
             You can now close this window and return to the Firezone client.
           </p>
         </div>
@@ -92,7 +92,7 @@ defmodule PortalWeb.SignInHTML do
           href={~p"/assets/main.css"}
         />
       </head>
-      <body class="bg-[var(--surface)] min-h-screen flex items-center justify-center">
+      <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-6 py-12">
           <img src="/images/logo-text.svg" alt="Firezone" class="h-8 block mx-auto mb-8" />
           <div class="flex items-center gap-3 mb-8">
@@ -112,13 +112,13 @@ defmodule PortalWeb.SignInHTML do
               </svg>
             </div>
             <div>
-              <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+              <h1 class="text-xl font-bold text-heading tracking-tight">
                 Sign in error
               </h1>
-              <p class="text-xs text-[var(--text-tertiary)] mt-0.5">{@account.name}</p>
+              <p class="text-xs text-subtle mt-0.5">{@account.name}</p>
             </div>
           </div>
-          <p class="text-sm text-center text-[var(--text-secondary)]">{@error}</p>
+          <p class="text-sm text-center text-body">{@error}</p>
           <div class="flex justify-center">
             <.link
               href={@retry_path}
@@ -163,11 +163,11 @@ defmodule PortalWeb.SignInHTML do
           href={~p"/assets/main.css"}
         />
       </head>
-      <body class="bg-[var(--surface)] min-h-screen flex items-center justify-center">
+      <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-sm px-4 py-12 text-center">
-          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-[var(--status-error-bg)] flex items-center justify-center">
+          <div class="mx-auto mb-6 w-14 h-14 rounded-full bg-error-light flex items-center justify-center">
             <svg
-              class="w-7 h-7 text-[var(--status-error)]"
+              class="w-7 h-7 text-error"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -180,14 +180,14 @@ defmodule PortalWeb.SignInHTML do
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <h1 class="text-xl font-semibold text-[var(--text-primary)] tracking-tight">
+          <h1 class="text-xl font-semibold text-heading tracking-tight">
             Account disabled
           </h1>
-          <p class="mt-2 text-sm text-[var(--text-secondary)]">
-            <span class="font-medium text-[var(--text-primary)]">{@account.name}</span>
+          <p class="mt-2 text-sm text-body">
+            <span class="font-medium text-heading">{@account.name}</span>
             has been disabled.
           </p>
-          <p class="mt-4 text-xs text-[var(--text-muted)]">
+          <p class="mt-4 text-xs text-muted">
             Please contact your Firezone administrator to re-enable this account.
           </p>
         </div>
@@ -234,7 +234,7 @@ defmodule PortalWeb.SignInHTML do
         >
         </script>
       </head>
-      <body class="bg-[var(--surface)] min-h-screen flex items-center justify-center">
+      <body class="bg-surface min-h-screen flex items-center justify-center">
         <div class="w-full max-w-lg px-6 py-12">
           <img src="/images/logo-text.svg" alt="Firezone" class="h-8 block mx-auto mb-8" />
           <div class="flex items-center gap-3 mb-8">
@@ -252,46 +252,46 @@ defmodule PortalWeb.SignInHTML do
               </svg>
             </div>
             <div>
-              <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+              <h1 class="text-xl font-bold text-heading tracking-tight">
                 Signed in successfully
               </h1>
-              <p class="text-xs text-[var(--text-tertiary)] mt-0.5">{@account.name}</p>
+              <p class="text-xs text-subtle mt-0.5">{@account.name}</p>
             </div>
           </div>
 
-          <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 mb-6">
-            <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-3">
+          <div class="rounded border border-border bg-raised p-4 mb-6">
+            <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
               Session details
             </p>
             <dl class="space-y-2">
               <div class="flex gap-2">
-                <dt class="text-xs text-[var(--text-tertiary)] w-28 shrink-0 pt-0.5">Signed in as</dt>
-                <dd class="text-xs text-[var(--text-primary)] font-medium">{@actor_name}</dd>
+                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Signed in as</dt>
+                <dd class="text-xs text-heading font-medium">{@actor_name}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-[var(--text-tertiary)] w-28 shrink-0 pt-0.5">Account</dt>
-                <dd class="text-xs text-[var(--text-primary)]">{@account.name}</dd>
+                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account</dt>
+                <dd class="text-xs text-heading">{@account.name}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-[var(--text-tertiary)] w-28 shrink-0 pt-0.5">Slug</dt>
-                <dd class="text-xs text-[var(--text-primary)] font-mono">{@account.slug}</dd>
+                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Slug</dt>
+                <dd class="text-xs text-heading font-mono">{@account.slug}</dd>
               </div>
               <div class="flex gap-2">
-                <dt class="text-xs text-[var(--text-tertiary)] w-28 shrink-0 pt-0.5">Account ID</dt>
-                <dd class="text-xs text-[var(--text-primary)] font-mono">{@account.id}</dd>
+                <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account ID</dt>
+                <dd class="text-xs text-heading font-mono">{@account.id}</dd>
               </div>
             </dl>
           </div>
 
           <div class="space-y-3 mb-6">
-            <p class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest">
+            <p class="text-xs font-semibold text-body uppercase tracking-widest">
               Your token
             </p>
-            <div class="rounded border border-[var(--border)] bg-[var(--surface-raised)] p-3 font-mono text-xs text-[var(--text-primary)] break-all select-all">
+            <div class="rounded border border-border bg-raised p-3 font-mono text-xs text-heading break-all select-all">
               <code id="token-value">{@token}</code>
             </div>
             <div class="flex items-center justify-between gap-4">
-              <p :if={@expires_at} class="text-xs text-[var(--text-tertiary)]">
+              <p :if={@expires_at} class="text-xs text-subtle">
                 Expires
                 <time datetime={DateTime.to_iso8601(@expires_at)}>
                   {Calendar.strftime(@expires_at, "%Y-%m-%d %H:%M:%S UTC")}
@@ -309,10 +309,10 @@ defmodule PortalWeb.SignInHTML do
             </div>
           </div>
 
-          <div class="pt-5 border-t border-[var(--border)]">
-            <p class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+          <div class="pt-5 border-t border-border">
+            <p class="text-xs text-subtle leading-relaxed">
               Paste this token in the prompt opened by the Firezone Client, or set it as the
-              <code class="px-1 py-0.5 rounded border border-[var(--border)] bg-[var(--surface-raised)] font-mono">
+              <code class="px-1 py-0.5 rounded border border-border bg-raised font-mono">
                 FIREZONE_TOKEN
               </code>
               environment variable.

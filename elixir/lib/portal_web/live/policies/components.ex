@@ -154,6 +154,7 @@ defmodule PortalWeb.Policies.Components do
   attr :policy, :any, default: nil
   attr :providers, :list, default: []
   attr :subject, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
   attr :confirm_state, :map, required: true
@@ -187,7 +188,7 @@ defmodule PortalWeb.Policies.Components do
       id="policy-panel"
       class={[
         "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+        "bg-elevated border-l border-border-strong",
         "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
         "transition-transform duration-200 ease-in-out",
         if(@policy || @panel.panel_view in [:edit_form, :new_form],
@@ -203,6 +204,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel_form={@panel.panel_form}
         panel_selected_resource={@panel.panel_selected_resource}
         panel_active_conditions={@conditions_state.panel_active_conditions}
@@ -216,6 +218,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel_form={@panel.panel_form}
         panel_selected_resource={@panel.panel_selected_resource}
         panel_active_conditions={@conditions_state.panel_active_conditions}
@@ -229,6 +232,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         tab={@panel.panel_tab}
         confirm_disable_policy={@confirm_state.confirm_disable_policy}
         confirm_delete_policy={@confirm_state.confirm_delete_policy}
@@ -244,6 +248,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
@@ -256,6 +261,7 @@ defmodule PortalWeb.Policies.Components do
     <div class="flex flex-col h-full overflow-hidden">
       <.policy_form_header mode={@mode} />
       <.form
+        id="policy-form"
         for={@panel_form}
         phx-submit="submit_policy_form"
         phx-change="change_policy_form"
@@ -266,6 +272,7 @@ defmodule PortalWeb.Policies.Components do
           mode={@mode}
           subject={@subject}
           providers={@providers}
+          flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
           panel_form={@panel_form}
           panel_selected_resource={@panel_selected_resource}
           panel_active_conditions={@panel_active_conditions}
@@ -282,18 +289,12 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_form_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
+    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+        <h2 class="text-sm font-semibold text-heading">
           {if @mode == :new, do: "Add Policy", else: "Edit Policy"}
         </h2>
-        <button
-          phx-click="cancel_policy_form"
-          class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-          title="Close (Esc)"
-        >
-          <.icon name="ri-close-line" class="w-4 h-4" />
-        </button>
+        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
       </div>
     </div>
     """
@@ -303,6 +304,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
@@ -313,7 +315,13 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
       <.policy_form_error panel_form={@panel_form} />
-      <.policy_fields mode={@mode} panel_form={@panel_form} subject={@subject} />
+      <.policy_fields
+        mode={@mode}
+        panel_form={@panel_form}
+        panel_selected_resource={@panel_selected_resource}
+        subject={@subject}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+      />
       <.policy_conditions_section
         account={@account}
         mode={@mode}
@@ -333,10 +341,10 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div
       :if={@panel_form.errors[:base]}
-      class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+      class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-error/20 bg-error-light"
     >
-      <.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-[var(--status-error)]" />
-      <p class="text-xs text-[var(--status-error)]">
+      <.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-error" />
+      <p class="text-xs text-error">
         {translate_error(@panel_form.errors[:base])}
       </p>
     </div>
@@ -345,7 +353,9 @@ defmodule PortalWeb.Policies.Components do
 
   attr :mode, :atom, required: true
   attr :panel_form, :any, default: nil
+  attr :panel_selected_resource, :any, default: nil
   attr :subject, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
 
   def policy_fields(assigns) do
     ~H"""
@@ -353,6 +363,11 @@ defmodule PortalWeb.Policies.Components do
       <.policy_group_field mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_resource_field mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_description_field panel_form={@panel_form} />
+      <.policy_flow_log_uploads_field
+        panel_form={@panel_form}
+        panel_selected_resource={@panel_selected_resource}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+      />
     </fieldset>
     """
   end
@@ -377,7 +392,7 @@ defmodule PortalWeb.Policies.Components do
       <:options_group :let={options_group}>{options_group}</:options_group>
       <:option :let={row}>
         <div class="flex items-center gap-2">
-          <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4 shrink-0" />
+          <.provider_icon provider={provider_type_from_group(row)} size="sm" />
           <span>{row.group.name}</span>
         </div>
       </:option>
@@ -413,7 +428,7 @@ defmodule PortalWeb.Policies.Components do
           Internet
         <% else %>
           {resource.name}
-          <span :if={resource.site_id} class="text-[var(--text-tertiary)]">
+          <span :if={resource.site_id} class="text-subtle">
             ({resource.site.name})
           </span>
         <% end %>
@@ -474,6 +489,76 @@ defmodule PortalWeb.Policies.Components do
     """
   end
 
+  attr :panel_form, :any, default: nil
+  attr :panel_selected_resource, :any, default: nil
+  attr :flow_logs_feature_enabled?, :boolean, required: true
+
+  def policy_flow_log_uploads_field(assigns) do
+    ~H"""
+    <div :if={@flow_logs_feature_enabled? and not internet_resource?(@panel_selected_resource)}>
+      <.flow_log_uploads_toggle form={@panel_form} />
+      <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
+        Changing this setting expires all active connections created by this Policy;
+        users may experience a few seconds of interrupted connectivity.
+      </p>
+    </div>
+    <p
+      :if={@flow_logs_feature_enabled? and internet_resource?(@panel_selected_resource)}
+      class="text-xs text-subtle"
+    >
+      Flow log uploads are not available for the Internet Resource.
+    </p>
+    """
+  end
+
+  # Warn only when flipping the flag on an existing policy: the flip expires
+  # the policy's active authorizations so fresh ingest tokens get minted.
+  defp flow_log_uploads_changed?(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
+    not is_nil(changeset.data.id) and Map.has_key?(changeset.changes, :flow_log_uploads_enabled)
+  end
+
+  defp flow_log_uploads_changed?(_form), do: false
+
+  @doc """
+  The flow-log reporting toggle shared by every form that creates or edits a
+  policy. On by default (uploads default to on); posts the schema field
+  directly. Callers gate it behind the `flow_logs` feature flag, which each
+  LiveView checks once at mount.
+  """
+  attr :form, :any, required: true
+
+  def flow_log_uploads_toggle(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between py-1">
+      <div>
+        <p class="text-sm font-medium text-body">Flow log reporting</p>
+        <p class="text-[11px] text-subtle">
+          Report flow logs for connections created by this Policy
+        </p>
+      </div>
+      <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
+      <.toggle
+        id={@form[:flow_log_uploads_enabled].id}
+        name={@form[:flow_log_uploads_enabled].name}
+        value="true"
+        checked={flow_log_uploads_checked?(@form)}
+      />
+    </div>
+    """
+  end
+
+  # A map-backed form (the grant panels before first submit) has no value for
+  # the field; absent means the schema default, which is enabled.
+  defp flow_log_uploads_checked?(form) do
+    case form[:flow_log_uploads_enabled].value do
+      nil -> true
+      value -> Phoenix.HTML.Form.normalize_value("checkbox", value)
+    end
+  end
+
+  defp internet_resource?(%{type: :internet}), do: true
+  defp internet_resource?(_resource), do: false
+
   attr :mode, :atom, required: true
   attr :account, :any, required: true
   attr :panel_selected_resource, :any, default: nil
@@ -493,7 +578,7 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div
       :if={@mode == :new or not is_nil(@panel_selected_resource) or @policy_conditions_enabled? == false}
-      class="border-t border-[var(--border)] pt-4"
+      class="border-t border-border pt-4"
     >
       <.policy_conditions_header
         policy_conditions_enabled?={@policy_conditions_enabled?}
@@ -532,9 +617,9 @@ defmodule PortalWeb.Policies.Components do
   def policy_conditions_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between mb-3">
-      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
         Conditions
-        <span class="ml-1 font-normal normal-case tracking-normal text-[var(--text-muted)]">
+        <span class="ml-1 font-normal normal-case tracking-normal text-muted">
           (optional)
         </span>
       </h4>
@@ -554,7 +639,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_conditions_placeholder(assigns) do
     ~H"""
-    <p class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]">
+    <p class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border">
       Select a resource above to configure conditions
     </p>
     """
@@ -568,7 +653,7 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <p
       :if={@panel_active_conditions == []}
-      class="text-xs text-[var(--text-muted)] text-center py-4 rounded-lg border border-dashed border-[var(--border)]"
+      class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border"
     >
       No conditions — access is unrestricted
     </p>
@@ -593,19 +678,19 @@ defmodule PortalWeb.Policies.Components do
       <button
         type="button"
         phx-click="toggle_conditions_dropdown"
-        class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+        class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
       >
         <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
       </button>
       <div :if={@panel_conditions_dropdown_open}>
         <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
-        <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-overlay)] shadow-lg py-1 overflow-hidden">
+        <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
           <button
             :for={type <- available_conditions(@panel_selected_resource) -- @panel_active_conditions}
             type="button"
             phx-click="add_condition"
             phx-value-type={type}
-            class="w-full text-left px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
             {condition_type_label(type)}
           </button>
@@ -619,20 +704,13 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_form_actions(assigns) do
     ~H"""
-    <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--surface-overlay)]">
-      <button
-        type="button"
-        phx-click="cancel_policy_form"
-        class="px-3 py-1.5 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-      >
+    <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
+      <.button type="button" phx-click="cancel_policy_form" size="xs">
         Cancel
-      </button>
-      <button
-        type="submit"
-        class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]"
-      >
+      </.button>
+      <.button type="submit" style="primary" size="xs">
         {if @mode == :new, do: "Create Policy", else: "Save Changes"}
-      </button>
+      </.button>
     </div>
     """
   end
@@ -640,6 +718,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
@@ -656,6 +735,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         tab={@tab}
         confirm_disable_policy={@confirm_disable_policy}
         confirm_delete_policy={@confirm_delete_policy}
@@ -671,6 +751,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
@@ -681,11 +762,11 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_details_layout(assigns) do
     ~H"""
-    <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
+    <div class="flex flex-1 min-h-0 divide-x divide-border">
       <div class="flex-1 flex flex-col overflow-hidden">
         <div
           role="tablist"
-          class="flex items-end gap-0 px-5 border-b border-[var(--border)] bg-[var(--surface-raised)] shrink-0"
+          class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
         >
           <button
             role="tab"
@@ -695,8 +776,8 @@ defmodule PortalWeb.Policies.Components do
             class={[
               "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
               if(@tab == :overview,
-                do: "border-[var(--brand)] text-[var(--brand)]",
-                else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "border-brand text-brand",
+                else: "border-transparent text-body hover:text-heading"
               )
             ]}
           >
@@ -710,8 +791,8 @@ defmodule PortalWeb.Policies.Components do
             class={[
               "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
               if(@tab == :authorizations,
-                do: "border-[var(--brand)] text-[var(--brand)]",
-                else: "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "border-brand text-brand",
+                else: "border-transparent text-body hover:text-heading"
               )
             ]}
           >
@@ -734,6 +815,7 @@ defmodule PortalWeb.Policies.Components do
       </div>
       <.policy_sidebar
         policy={@policy}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         confirm_disable_policy={@confirm_disable_policy}
         confirm_delete_policy={@confirm_delete_policy}
       />
@@ -745,49 +827,28 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_details_header(assigns) do
     ~H"""
-    <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)]">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <h2 class="text-sm font-semibold text-[var(--text-primary)]">
-            <%= if @policy.group do %>
-              {@policy.group.name} — {@policy.resource.name}
-            <% else %>
-              <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
-            <% end %>
-          </h2>
-          <p class="font-mono text-xs text-[var(--text-tertiary)] mt-0.5">{@policy.id}</p>
+    <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
+      <div class="flex items-center gap-4">
+        <%!-- Left: title + status + ID --%>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-heading truncate">
+              <%= if @policy.group do %>
+                {@policy.group.name} — {@policy.resource.name}
+              <% else %>
+                <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
+              <% end %>
+            </h2>
+            <.policy_status_badge disabled_at={@policy.disabled_at} />
+          </div>
+          <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@policy.id}</p>
         </div>
+        <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            phx-click="open_edit_form"
-            class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-          >
-            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </button>
-          <button
-            phx-click="close_panel"
-            class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-            title="Close (Esc)"
-          >
-            <.icon name="ri-close-line" class="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-      <div class="flex items-center gap-5 mt-3 pt-3 border-t border-[var(--border)]">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Status
-          </span>
-          <.status_badge status={if is_nil(@policy.disabled_at), do: :active, else: :disabled} />
-        </div>
-        <div class="w-px h-3.5 bg-[var(--border-strong)]"></div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
-            Conditions
-          </span>
-          <span class="text-xs font-semibold tabular-nums text-[var(--text-primary)]">
-            {length(@policy.conditions)}
-          </span>
+          <.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
+            Edit
+          </.button>
+          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -799,9 +860,9 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_access_mapping(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-4 border-b border-[var(--border)]">
+    <div class="px-5 pt-4 pb-4 border-b border-border">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
           Access Mapping
         </h3>
       </div>
@@ -822,16 +883,14 @@ defmodule PortalWeb.Policies.Components do
     <%= if @policy.group do %>
       <.link
         navigate={~p"/#{@account}/groups/#{@policy.group}"}
-        class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] transition-colors text-left group"
+        class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
       >
-        <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--icon-bg)] border border-[var(--border)] shrink-0">
-          <.provider_icon type={provider_type_from_group(@policy.group)} class="w-4 h-4" />
-        </div>
+        <.provider_icon provider={provider_type_from_group(@policy.group)} size="sm" variant="circle" />
         <div class="min-w-0">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
             Group
           </p>
-          <p class="text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors truncate">
+          <p class="text-sm font-medium text-heading group-hover:text-brand transition-colors truncate">
             {@policy.group.name}
           </p>
         </div>
@@ -840,7 +899,7 @@ defmodule PortalWeb.Policies.Components do
       <div class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20">
         <.icon name="ri-error-warning-line" class="w-5 h-5 text-amber-600 shrink-0" />
         <div class="min-w-0">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
             Group
           </p>
           <p class="text-sm text-amber-600">Group deleted</p>
@@ -852,7 +911,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_mapping_arrow(assigns) do
     ~H"""
-    <div class="flex items-center shrink-0 text-[var(--text-muted)]">
+    <div class="flex items-center shrink-0 text-muted">
       <.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
     </div>
     """
@@ -865,19 +924,19 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <.link
       navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
-      class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)] hover:bg-[var(--surface)] transition-colors text-left group"
+      class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
     >
       <span class={resource_type_badge_class(@policy.resource.type)}>
         {@policy.resource.type}
       </span>
       <div class="min-w-0">
-        <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
           Resource
         </p>
-        <p class="text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors truncate">
+        <p class="text-sm font-medium text-heading group-hover:text-brand transition-colors truncate">
           {@policy.resource.name}
         </p>
-        <p class="font-mono text-xs text-[var(--text-tertiary)] truncate">
+        <p class="font-mono text-xs text-subtle truncate">
           {@policy.resource.address}
         </p>
       </div>
@@ -893,12 +952,12 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div class="px-5 pt-4 pb-4">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
           Conditions
         </h3>
       </div>
       <%= if @policy.conditions == [] do %>
-        <p class="text-xs text-[var(--text-muted)]">
+        <p class="text-xs text-muted">
           No conditions — access is always granted to group members.
         </p>
       <% else %>
@@ -927,14 +986,14 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_condition_row(assigns) do
     ~H"""
-    <li class="flex items-start gap-3 px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)]">
+    <li class="flex items-start gap-3 px-3 py-2.5 rounded border border-border bg-raised">
       <span class={condition_type_badge_class(@condition.property)}>
         {condition_type_label(@condition.property)}
       </span>
       <%= if @condition.property == :current_utc_datetime do %>
         <.policy_tod_condition_values values={@condition.values} />
       <% else %>
-        <span class="text-xs text-[var(--text-secondary)] flex-1 min-w-0 mt-0.5">
+        <span class="text-xs text-body flex-1 min-w-0 mt-0.5">
           {condition_values_display(@condition, @providers, @account)}
         </span>
       <% end %>
@@ -952,14 +1011,14 @@ defmodule PortalWeb.Policies.Components do
       <div class="space-y-0.5">
         <%= for {day, ranges} <- elem(@tod, 1) do %>
           <div class="flex items-baseline gap-2">
-            <span class="text-[11px] font-medium text-[var(--text-secondary)] w-7 shrink-0">
+            <span class="text-[11px] font-medium text-body w-7 shrink-0">
               {day}
             </span>
-            <span class="text-xs text-[var(--text-secondary)]">{ranges}</span>
+            <span class="text-xs text-body">{ranges}</span>
           </div>
         <% end %>
       </div>
-      <p class="text-[10px] text-[var(--text-muted)] mt-1">{elem(@tod, 0)}</p>
+      <p class="text-[10px] text-muted mt-1">{elem(@tod, 0)}</p>
     </div>
     """
   end
@@ -976,7 +1035,7 @@ defmodule PortalWeb.Policies.Components do
     <div class="flex-1 flex flex-col overflow-hidden">
       <div
         :if={@policy_authorizations == []}
-        class="flex flex-col items-center justify-center h-full gap-2 text-[var(--text-tertiary)]"
+        class="flex flex-col items-center justify-center h-full gap-2 text-subtle"
       >
         <.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
@@ -984,8 +1043,8 @@ defmodule PortalWeb.Policies.Components do
       <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
         <div class="flex-1 overflow-y-auto">
           <table class="w-full text-xs">
-            <thead class="sticky top-0 bg-[var(--surface)] z-10">
-              <tr class="border-b border-[var(--border)] text-[var(--text-tertiary)]">
+            <thead class="sticky top-0 bg-surface z-10">
+              <tr class="border-b border-border text-subtle">
                 <th class="text-left px-4 py-2 font-medium">Actor</th>
                 <th class="text-left px-4 py-2 font-medium">Authorized</th>
                 <th class="text-left px-4 py-2 font-medium">Expires</th>
@@ -1000,18 +1059,18 @@ defmodule PortalWeb.Policies.Components do
                   phx-key="Enter"
                   phx-value-id={row.authorization.id}
                   tabindex="0"
-                  class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)] cursor-pointer focus:outline-none focus:bg-[var(--surface-raised)]"
+                  class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
                 >
-                  <td class="px-4 py-2 text-[var(--text-primary)]">
+                  <td class="px-4 py-2 text-heading">
                     {if row.actor, do: row.actor.name, else: "—"}
                   </td>
-                  <td class="px-4 py-2 text-[var(--text-tertiary)]">
+                  <td class="px-4 py-2 text-subtle">
                     <.relative_datetime datetime={row.authorization.inserted_at} />
                   </td>
-                  <td class="px-4 py-2 text-[var(--text-tertiary)]">
+                  <td class="px-4 py-2 text-subtle">
                     <.relative_datetime datetime={row.authorization.expires_at} />
                   </td>
-                  <td class="px-4 py-2 text-[var(--text-tertiary)]">
+                  <td class="px-4 py-2 text-subtle">
                     <.icon
                       name={
                         if @expanded_id == row.authorization.id,
@@ -1024,55 +1083,55 @@ defmodule PortalWeb.Policies.Components do
                 </tr>
                 <tr
                   :if={@expanded_id == row.authorization.id}
-                  class="border-b border-[var(--border)] bg-[var(--surface-raised)]"
+                  class="border-b border-border bg-raised"
                 >
                   <td colspan="4" class="px-4 py-3">
                     <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
                       <div>
-                        <p class="text-[var(--text-tertiary)] font-medium mb-1">
+                        <p class="text-subtle font-medium mb-1">
                           {case row.initiating_device && row.initiating_device.type do
                             :gateway -> "Initiator (Gateway)"
                             :client -> "Initiator (Client)"
                             _ -> "Initiator"
                           end}
                         </p>
-                        <p class="text-[var(--text-primary)]">
+                        <p class="text-heading">
                           {if row.initiating_device, do: row.initiating_device.name, else: "—"}
                         </p>
-                        <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
+                        <p class="text-subtle font-mono mt-0.5">
                           {if row.authorization.initiator_remote_ip,
                             do: Portal.Types.INET.to_string(row.authorization.initiator_remote_ip),
                             else: "—"}
                         </p>
                       </div>
                       <div>
-                        <p class="text-[var(--text-tertiary)] font-medium mb-1">
+                        <p class="text-subtle font-medium mb-1">
                           {case row.receiving_device && row.receiving_device.type do
                             :gateway -> "Receiver (Gateway)"
                             :client -> "Receiver (Client)"
                             _ -> "Receiver"
                           end}
                         </p>
-                        <p class="text-[var(--text-primary)]">
+                        <p class="text-heading">
                           {if row.receiving_device, do: row.receiving_device.name, else: "—"}
                         </p>
-                        <p class="text-[var(--text-tertiary)] font-mono mt-0.5">
+                        <p class="text-subtle font-mono mt-0.5">
                           {if row.authorization.receiver_remote_ip,
                             do: Portal.Types.INET.to_string(row.authorization.receiver_remote_ip),
                             else: "—"}
                         </p>
                       </div>
                       <div>
-                        <p class="text-[var(--text-tertiary)] font-medium mb-1">Owner</p>
-                        <p class="text-[var(--text-primary)]">
+                        <p class="text-subtle font-medium mb-1">Owner</p>
+                        <p class="text-heading">
                           {if row.actor, do: row.actor.name, else: "—"}
                         </p>
                       </div>
                       <div>
-                        <p class="text-[var(--text-tertiary)] font-medium mb-1">Resource</p>
+                        <p class="text-subtle font-medium mb-1">Resource</p>
                         <.link
                           navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
-                          class="text-[var(--brand)] hover:underline"
+                          class="text-brand hover:underline"
                         >
                           {@policy.resource.name}
                         </.link>
@@ -1084,21 +1143,21 @@ defmodule PortalWeb.Policies.Components do
             </tbody>
           </table>
         </div>
-        <div class="flex items-center justify-between px-4 py-2 border-t border-[var(--border)] shrink-0">
+        <div class="flex items-center justify-between px-4 py-2 border-t border-border shrink-0">
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page - 1}
             disabled={@page == 1}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-[var(--text-muted)] disabled:cursor-not-allowed text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)]"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
             <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
-          <span class="text-xs text-[var(--text-tertiary)]">Page {@page}</span>
+          <span class="text-xs text-subtle">Page {@page}</span>
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page + 1}
             disabled={not @has_next}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-[var(--text-muted)] disabled:cursor-not-allowed text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)]"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
             Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
@@ -1109,48 +1168,59 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :policy, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
 
   def policy_sidebar(assigns) do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
-      <.policy_details_section policy={@policy} />
-      <div class="border-t border-[var(--border)]"></div>
+      <.policy_details_section
+        policy={@policy}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+      />
+      <div class="border-t border-border"></div>
       <.policy_actions_section
         policy={@policy}
         confirm_disable_policy={@confirm_disable_policy}
       />
-      <div class="border-t border-[var(--border)]"></div>
+      <div class="border-t border-border"></div>
       <.policy_danger_zone confirm_delete_policy={@confirm_delete_policy} />
     </div>
     """
   end
 
   attr :policy, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
 
   def policy_details_section(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
         Details
       </h3>
       <dl class="space-y-2.5">
         <div>
-          <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Policy ID</dt>
-          <dd class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+          <dt class="text-[10px] text-subtle mb-0.5">Policy ID</dt>
+          <dd class="font-mono text-[11px] text-body break-all">
             {@policy.id}
           </dd>
         </div>
         <div>
-          <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Created</dt>
-          <dd class="text-xs text-[var(--text-secondary)]">
+          <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
+          <dd class="text-xs text-body">
             <.relative_datetime datetime={@policy.inserted_at} />
           </dd>
         </div>
+        <div :if={@flow_logs_feature_enabled?}>
+          <dt class="text-[10px] text-subtle mb-0.5">Flow log reporting</dt>
+          <dd class="text-xs text-body">
+            {if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}
+          </dd>
+        </div>
         <div :if={@policy.description}>
-          <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">Description</dt>
-          <dd class="text-xs text-[var(--text-secondary)]">{@policy.description}</dd>
+          <dt class="text-[10px] text-subtle mb-0.5">Description</dt>
+          <dd class="text-xs text-body">{@policy.description}</dd>
         </div>
       </dl>
     </section>
@@ -1163,53 +1233,45 @@ defmodule PortalWeb.Policies.Components do
   def policy_actions_section(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
         Actions
       </h3>
       <div class="space-y-2">
-        <button
+        <.action_button
           :if={is_nil(@policy.disabled_at) and not @confirm_disable_policy}
-          type="button"
           phx-click="confirm_disable_policy"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-warning)] hover:bg-[var(--surface-raised)] transition-colors"
+          style="warning"
+          icon="ri-pause-line"
         >
-          <.icon name="ri-pause-line" class="w-3.5 h-3.5" /> Disable policy
-        </button>
+          Disable policy
+        </.action_button>
         <div
           :if={is_nil(@policy.disabled_at) and @confirm_disable_policy}
-          class="px-3 py-2.5 rounded border border-[var(--border)] bg-[var(--surface-raised)]"
+          class="px-3 py-2.5 rounded border border-border bg-raised"
         >
-          <p class="text-xs font-medium text-[var(--text-primary)] mb-1">
+          <p class="text-xs font-medium text-heading mb-1">
             Disable this policy?
           </p>
-          <p class="text-xs text-[var(--text-secondary)] mb-3">
+          <p class="text-xs text-body mb-3">
             This will immediately revoke all access granted by it.
           </p>
           <div class="flex items-center gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_disable_policy"
-              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-            >
+            <.button type="button" phx-click="cancel_disable_policy" size="xs">
               Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="disable_policy"
-              class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors font-medium"
-            >
+            </.button>
+            <.button type="button" style="primary" phx-click="disable_policy" size="xs">
               Disable
-            </button>
+            </.button>
           </div>
         </div>
-        <button
+        <.action_button
           :if={not is_nil(@policy.disabled_at)}
-          type="button"
           phx-click="enable_policy"
-          class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-[var(--status-active)] hover:bg-[var(--surface-raised)] transition-colors"
+          style="success"
+          icon="ri-play-line"
         >
-          <.icon name="ri-play-line" class="w-3.5 h-3.5" /> Enable policy
-        </button>
+          Enable policy
+        </.action_button>
       </div>
     </section>
     """
@@ -1220,42 +1282,34 @@ defmodule PortalWeb.Policies.Components do
   def policy_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--status-error)]/60 mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
         Danger Zone
       </h3>
       <button
         :if={not @confirm_delete_policy}
         type="button"
         phx-click="confirm_delete_policy"
-        class="w-full text-left px-3 py-2 rounded border border-[var(--status-error)]/20 text-xs text-[var(--status-error)] hover:bg-[var(--status-error-bg)] transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        Delete policy
+        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete policy
       </button>
       <div
         :if={@confirm_delete_policy}
-        class="px-3 py-2.5 rounded border border-[var(--status-error)]/20 bg-[var(--status-error-bg)]"
+        class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
       >
-        <p class="text-xs font-medium text-[var(--status-error)] mb-1">
+        <p class="text-xs font-medium text-error mb-1">
           Delete this policy?
         </p>
-        <p class="text-xs text-[var(--status-error)]/70 mb-3">
+        <p class="text-xs text-error/70 mb-3">
           All sessions authorized by it will be expired.
         </p>
         <div class="flex items-center gap-1.5">
-          <button
-            type="button"
-            phx-click="cancel_delete_policy"
-            class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors"
-          >
+          <.button type="button" phx-click="cancel_delete_policy" size="xs">
             Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="delete_policy"
-            class="px-2 py-1 text-xs rounded border border-[var(--status-error)]/40 text-[var(--status-error)] hover:bg-[var(--status-error)]/10 bg-[var(--surface)] transition-colors font-medium"
-          >
+          </.button>
+          <.button type="button" phx-click="delete_policy" style="danger" size="xs" class="font-medium">
             Delete
-          </button>
+          </.button>
         </div>
       </div>
     </section>
@@ -1273,15 +1327,15 @@ defmodule PortalWeb.Policies.Components do
   @spec resource_type_badge_class(atom()) :: String.t()
   def resource_type_badge_class(:dns),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-dns-bg)] text-[var(--badge-dns-text)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-dns text-badge-dns-text"
 
   def resource_type_badge_class(:ip),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-ip-bg)] text-[var(--badge-ip-text)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-ip text-badge-ip-text"
 
   def resource_type_badge_class(:cidr),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--badge-cidr-bg)] text-[var(--badge-cidr-text)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-cidr text-badge-cidr-text"
 
   def resource_type_badge_class(:internet),
     do:
@@ -1289,32 +1343,32 @@ defmodule PortalWeb.Policies.Components do
 
   def resource_type_badge_class(_),
     do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-[var(--surface-raised)] text-[var(--text-secondary)]"
+      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   @spec condition_type_badge_class(atom()) :: String.t()
   defp condition_type_badge_class(:client_verified),
     do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-[var(--status-active)] bg-[var(--status-active-bg)]"
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
   defp condition_type_badge_class(:auth_provider_id),
     do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-[var(--badge-dns-text)] bg-[var(--badge-dns-bg)]"
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-dns-text bg-badge-dns"
 
   defp condition_type_badge_class(:remote_ip_location_region),
     do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-[var(--badge-ip-text)] bg-[var(--badge-ip-bg)]"
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-ip-text bg-badge-ip"
 
   defp condition_type_badge_class(:remote_ip),
     do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-[var(--badge-cidr-text)] bg-[var(--badge-cidr-bg)]"
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-cidr-text bg-badge-cidr"
 
   defp condition_type_badge_class(:current_utc_datetime),
     do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-[var(--text-secondary)] bg-[var(--surface-raised)] border border-[var(--border)]"
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-body bg-raised border border-border"
 
   defp condition_type_badge_class(_),
     do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-[var(--text-secondary)] bg-[var(--surface-raised)]"
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-body bg-raised"
 
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
@@ -1577,22 +1631,22 @@ defmodule PortalWeb.Policies.Components do
 
       <div
         :if={@policy_conditions_enabled? == false}
-        class="rounded-xl border border-[var(--border-strong)] bg-[var(--surface-raised)] p-4"
+        class="rounded-xl border border-border-strong bg-raised p-4"
       >
         <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-overlay)] text-[var(--text-secondary)]">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-elevated text-body">
             <.icon name="ri-lock-line" class="h-4 w-4" />
           </div>
           <div class="space-y-2">
-            <p class="text-sm font-medium text-[var(--text-primary)]">
+            <p class="text-sm font-medium text-heading">
               Upgrade your plan to unlock policy conditions.
             </p>
-            <p class="text-sm text-[var(--text-secondary)]">
+            <p class="text-sm text-body">
               Starter accounts can view this section, but only higher plans can add policy restrictions like IP ranges, identity providers, and time windows.
             </p>
             <.link
               navigate={~p"/#{@account}/settings/account"}
-              class="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-1.5 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]"
+              class="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm font-medium text-heading transition-colors hover:border-border-emphasis hover:text-heading"
             >
               <.icon name="ri-arrow-right-line" class="h-4 w-4" /> Unlock in Account Settings
             </.link>
@@ -1603,14 +1657,14 @@ defmodule PortalWeb.Policies.Components do
       <div class="relative">
         <div
           :if={@policy_conditions_enabled? == false}
-          class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-[var(--surface-overlay)]/40"
+          class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-elevated/40"
         />
         <div
           id="policy-conditions-locked-container"
           class={[
             @policy_conditions_enabled? == false &&
               "pointer-events-none select-none blur-[2px] opacity-70",
-            "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition"
+            "rounded-xl border border-border bg-surface p-4 transition"
           ]}
         >
           <.remote_ip_location_region_condition_form
@@ -2052,7 +2106,7 @@ defmodule PortalWeb.Policies.Components do
             name="policy[conditions][current_utc_datetime][timezone]"
             id="policy_conditions_current_utc_datetime_timezone"
             field={condition_form[:timezone]}
-            options={Tzdata.zone_list()}
+            options={TzExtra.time_zone_ids(include_aliases: true)}
             disabled={@disabled}
             value={condition_form[:timezone].value || @timezone}
           />
@@ -2150,7 +2204,7 @@ defmodule PortalWeb.Policies.Components do
     |> Enum.find_value(code, fn {label, c} -> if c == code, do: label end)
   end
 
-  @condition_input_class "w-full text-xs rounded border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-primary)] px-2 py-1.5 outline-none focus:border-[var(--control-focus)] focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors"
+  @condition_input_class "w-full text-xs rounded border border-border bg-raised text-heading px-2 py-1.5 outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
 
   attr :type, :atom, required: true
   attr :providers, :list, default: []
@@ -2196,15 +2250,15 @@ defmodule PortalWeb.Policies.Components do
 
   defp grant_condition_card_header(assigns) do
     ~H"""
-    <div class="flex items-center justify-between px-3 py-2 bg-[var(--surface-raised)] border-b border-[var(--border)]">
-      <span class="text-xs font-medium text-[var(--text-primary)]">
+    <div class="flex items-center justify-between px-3 py-2 bg-raised border-b border-border">
+      <span class="text-xs font-medium text-heading">
         {condition_type_label(@type)}
       </span>
       <button
         type="button"
         phx-click="remove_condition"
         phx-value-type={@type}
-        class="flex items-center justify-center w-5 h-5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] transition-colors"
+        class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
         title="Remove condition"
       >
         <.icon name="ri-close-line" class="w-3.5 h-3.5" />
@@ -2217,7 +2271,7 @@ defmodule PortalWeb.Policies.Components do
 
   defp grant_client_verified_condition_card(assigns) do
     ~H"""
-    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+    <div class="rounded-lg border border-border overflow-hidden">
       <.grant_condition_card_header type={@type} />
       <input
         type="hidden"
@@ -2247,7 +2301,7 @@ defmodule PortalWeb.Policies.Components do
     assigns = assign(assigns, :input_class, @condition_input_class)
 
     ~H"""
-    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+    <div class="rounded-lg border border-border overflow-hidden">
       <.grant_condition_card_header type={@type} />
       <div class="px-3 py-2.5 space-y-2">
         <input
@@ -2260,7 +2314,7 @@ defmodule PortalWeb.Policies.Components do
           name="policy[conditions][remote_ip][operator]"
           value={@ip_range_operator}
         />
-        <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+        <div class="inline-flex rounded border border-border overflow-hidden">
           <button
             type="button"
             phx-click="change_ip_range_operator"
@@ -2268,8 +2322,8 @@ defmodule PortalWeb.Policies.Components do
             class={[
               "px-2 py-0.5 text-[10px] transition-colors",
               if(@ip_range_operator == "is_in_cidr",
-                do: "bg-[var(--brand)] text-white",
-                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "bg-brand text-white",
+                else: "bg-surface text-body hover:text-heading"
               )
             ]}
           >
@@ -2280,10 +2334,10 @@ defmodule PortalWeb.Policies.Components do
             phx-click="change_ip_range_operator"
             phx-value-operator="is_not_in_cidr"
             class={[
-              "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+              "px-2 py-0.5 text-[10px] border-l border-border transition-colors",
               if(@ip_range_operator == "is_not_in_cidr",
-                do: "bg-[var(--brand)] text-white",
-                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "bg-brand text-white",
+                else: "bg-surface text-body hover:text-heading"
               )
             ]}
           >
@@ -2299,14 +2353,14 @@ defmodule PortalWeb.Policies.Components do
         <div :if={@ip_range_values != []} class="flex flex-wrap gap-1 mb-2">
           <span
             :for={v <- @ip_range_values}
-            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-mono bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-mono bg-brand-muted text-brand border border-brand/20"
           >
             {v}
             <button
               type="button"
               phx-click="remove_ip_range_value"
               phx-value-range={v}
-              class="hover:text-[var(--status-error)] transition-colors"
+              class="hover:text-error transition-colors"
             >
               <.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
@@ -2321,15 +2375,11 @@ defmodule PortalWeb.Policies.Components do
             phx-change="update_ip_range_input"
             phx-key="Enter"
             phx-keyup="add_ip_range_value"
-            class={[@input_class, "flex-1 font-mono placeholder:text-[var(--text-muted)]"]}
+            class={[@input_class, "flex-1 font-mono placeholder:text-muted"]}
           />
-          <button
-            type="button"
-            phx-click="add_ip_range_value"
-            class="px-2 py-1 text-xs rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--surface)] transition-colors shrink-0"
-          >
+          <.button type="button" phx-click="add_ip_range_value" size="xs" class="shrink-0">
             Add
-          </button>
+          </.button>
         </div>
       </div>
     </div>
@@ -2343,7 +2393,7 @@ defmodule PortalWeb.Policies.Components do
 
   defp grant_location_condition_card(assigns) do
     ~H"""
-    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+    <div class="rounded-lg border border-border overflow-hidden">
       <.grant_condition_card_header type={@type} />
       <div class="px-3 py-2.5">
         <input
@@ -2362,7 +2412,7 @@ defmodule PortalWeb.Policies.Components do
           name="policy[conditions][remote_ip_location_region][values][]"
           value={code}
         />
-        <div class="inline-flex rounded border border-[var(--border)] overflow-hidden mb-3">
+        <div class="inline-flex rounded border border-border overflow-hidden mb-3">
           <button
             type="button"
             phx-click="change_location_operator"
@@ -2370,8 +2420,8 @@ defmodule PortalWeb.Policies.Components do
             class={[
               "px-2 py-0.5 text-[10px] transition-colors",
               if(@location_operator == "is_in",
-                do: "bg-[var(--brand)] text-white",
-                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "bg-brand text-white",
+                else: "bg-surface text-body hover:text-heading"
               )
             ]}
           >
@@ -2382,10 +2432,10 @@ defmodule PortalWeb.Policies.Components do
             phx-click="change_location_operator"
             phx-value-operator="is_not_in"
             class={[
-              "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+              "px-2 py-0.5 text-[10px] border-l border-border transition-colors",
               if(@location_operator == "is_not_in",
-                do: "bg-[var(--brand)] text-white",
-                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "bg-brand text-white",
+                else: "bg-surface text-body hover:text-heading"
               )
             ]}
           >
@@ -2395,14 +2445,14 @@ defmodule PortalWeb.Policies.Components do
         <div :if={@location_values != []} class="flex flex-wrap gap-1 mb-2">
           <span
             :for={code <- @location_values}
-            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-brand-muted text-brand border border-brand/20"
           >
             {country_name(code)}
             <button
               type="button"
               phx-click="toggle_location_value"
               phx-value-code={code}
-              class="hover:text-[var(--status-error)] transition-colors"
+              class="hover:text-error transition-colors"
             >
               <.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
@@ -2415,12 +2465,12 @@ defmodule PortalWeb.Policies.Components do
           phx-change="update_location_search"
           phx-debounce="150"
           name="_location_search"
-          class="w-full px-2.5 py-1.5 text-xs rounded border bg-[var(--control-bg)] border-[var(--control-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--control-focus)] transition-colors mb-1"
+          class="w-full px-2.5 py-1.5 text-xs rounded border bg-input border-input-border text-heading placeholder:text-muted outline-none focus:border-border-focus transition-colors mb-1"
         />
-        <div class="max-h-36 overflow-y-auto rounded border border-[var(--border)] bg-[var(--surface)]">
+        <div class="max-h-36 overflow-y-auto rounded border border-border bg-surface">
           <p
             :if={@location_search == ""}
-            class="px-2.5 py-3 text-xs text-[var(--text-muted)] text-center"
+            class="px-2.5 py-3 text-xs text-muted text-center"
           >
             Type to search countries
           </p>
@@ -2436,17 +2486,17 @@ defmodule PortalWeb.Policies.Components do
                   end)
                 end
             }
-            class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+            class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-raised transition-colors"
             phx-click="toggle_location_value"
             phx-value-code={code}
           >
             <input
               type="checkbox"
-              class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
+              class="w-3 h-3 accent-brand pointer-events-none"
               readonly
               checked={code in @location_values}
             />
-            <span class="text-xs text-[var(--text-secondary)]">{label}</span>
+            <span class="text-xs text-body">{label}</span>
           </label>
         </div>
       </div>
@@ -2461,7 +2511,7 @@ defmodule PortalWeb.Policies.Components do
 
   defp grant_auth_provider_condition_card(assigns) do
     ~H"""
-    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+    <div class="rounded-lg border border-border overflow-hidden">
       <.grant_condition_card_header type={@type} />
       <div class="px-3 py-2.5 space-y-2">
         <input
@@ -2474,7 +2524,7 @@ defmodule PortalWeb.Policies.Components do
           name="policy[conditions][auth_provider_id][operator]"
           value={@auth_provider_operator}
         />
-        <div class="inline-flex rounded border border-[var(--border)] overflow-hidden">
+        <div class="inline-flex rounded border border-border overflow-hidden">
           <button
             type="button"
             phx-click="change_auth_provider_operator"
@@ -2482,8 +2532,8 @@ defmodule PortalWeb.Policies.Components do
             class={[
               "px-2 py-0.5 text-[10px] transition-colors",
               if(@auth_provider_operator == "is_in",
-                do: "bg-[var(--brand)] text-white",
-                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "bg-brand text-white",
+                else: "bg-surface text-body hover:text-heading"
               )
             ]}
           >
@@ -2494,10 +2544,10 @@ defmodule PortalWeb.Policies.Components do
             phx-click="change_auth_provider_operator"
             phx-value-operator="is_not_in"
             class={[
-              "px-2 py-0.5 text-[10px] border-l border-[var(--border)] transition-colors",
+              "px-2 py-0.5 text-[10px] border-l border-border transition-colors",
               if(@auth_provider_operator == "is_not_in",
-                do: "bg-[var(--brand)] text-white",
-                else: "bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                do: "bg-brand text-white",
+                else: "bg-surface text-body hover:text-heading"
               )
             ]}
           >
@@ -2513,33 +2563,33 @@ defmodule PortalWeb.Policies.Components do
         <div :if={@auth_provider_values != []} class="flex flex-wrap gap-1 mb-2">
           <span
             :for={p <- Enum.filter(@providers, &(&1.id in @auth_provider_values))}
-            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-[var(--brand-muted)] text-[var(--brand)] border border-[var(--brand)]/20"
+            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-brand-muted text-brand border border-brand/20"
           >
             {p.name}
             <button
               type="button"
               phx-click="toggle_auth_provider_value"
               phx-value-id={p.id}
-              class="hover:text-[var(--status-error)] transition-colors"
+              class="hover:text-error transition-colors"
             >
               <.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
-        <div class="rounded border border-[var(--border)] bg-[var(--surface)]">
+        <div class="rounded border border-border bg-surface">
           <label
             :for={p <- @providers}
-            class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+            class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-raised transition-colors"
             phx-click="toggle_auth_provider_value"
             phx-value-id={p.id}
           >
             <input
               type="checkbox"
-              class="w-3 h-3 accent-[var(--brand)] pointer-events-none"
+              class="w-3 h-3 accent-brand pointer-events-none"
               readonly
               checked={p.id in @auth_provider_values}
             />
-            <span class="text-xs text-[var(--text-secondary)]">{p.name}</span>
+            <span class="text-xs text-body">{p.name}</span>
           </label>
         </div>
       </div>
@@ -2558,7 +2608,7 @@ defmodule PortalWeb.Policies.Components do
     assigns = assign(assigns, :input_class, @condition_input_class)
 
     ~H"""
-    <div class="rounded-lg border border-[var(--border)] overflow-hidden">
+    <div class="rounded-lg border border-border overflow-hidden">
       <.grant_condition_card_header type={@type} />
       <div class="px-3 py-2.5 space-y-2">
         <input
@@ -2573,9 +2623,10 @@ defmodule PortalWeb.Policies.Components do
         />
         <select
           name="policy[conditions][current_utc_datetime][timezone]"
+          phx-change="change_tod_timezone"
           class={@input_class}
         >
-          <option :for={tz <- Tzdata.zone_list()} value={tz} selected={tz == @timezone}>
+          <option :for={tz <- TzExtra.time_zone_ids(include_aliases: true)} value={tz} selected={tz == @timezone}>
             {tz}
           </option>
         </select>
@@ -2601,11 +2652,11 @@ defmodule PortalWeb.Policies.Components do
               name={"policy[conditions][current_utc_datetime][values][#{idx}][off]"}
               value={range["off"]}
             />
-            <div class="flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-[var(--surface-raised)] border border-[var(--border)]">
-              <span class="text-[10px] font-medium text-[var(--text-primary)]">
+            <div class="flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-raised border border-border">
+              <span class="text-[10px] font-medium text-heading">
                 {format_tod_days(range["days"])}
               </span>
-              <span class="text-[10px] font-medium text-[var(--text-primary)] tabular-nums shrink-0">
+              <span class="text-[10px] font-medium text-heading tabular-nums shrink-0">
                 {range["on"]} – {range["off"]}
               </span>
             </div>
@@ -2613,7 +2664,7 @@ defmodule PortalWeb.Policies.Components do
               type="button"
               phx-click="remove_tod_range"
               phx-value-index={idx}
-              class="shrink-0 p-0.5 rounded text-[var(--text-muted)] hover:text-red-500 transition-colors"
+              class="shrink-0 p-0.5 rounded text-muted hover:text-red-500 transition-colors"
               title="Remove"
             >
               <.icon name="ri-close-line" class="w-3.5 h-3.5" />
@@ -2625,7 +2676,7 @@ defmodule PortalWeb.Policies.Components do
           :if={@tod_adding}
           id="tod_add_row"
           phx-hook="TimePicker"
-          class="space-y-1.5 p-2 rounded border border-[var(--border)] bg-[var(--surface)]"
+          class="space-y-1.5 p-2 rounded border border-border bg-surface"
         >
           <div class="flex flex-wrap gap-1">
             <button
@@ -2646,9 +2697,9 @@ defmodule PortalWeb.Policies.Components do
               class={[
                 "px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors",
                 if code in @tod_pending["days"] do
-                  "bg-[var(--brand)] border-[var(--brand)] text-white"
+                  "bg-brand border-brand text-white"
                 else
-                  "bg-[var(--surface-raised)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  "bg-raised border-border text-body hover:text-heading"
                 end
               ]}
             >
@@ -2657,89 +2708,51 @@ defmodule PortalWeb.Policies.Components do
           </div>
           <div class="flex items-start gap-1.5">
             <div class="flex flex-col items-center gap-0.5">
-              <div class="flex">
-                <input
-                  type="time"
-                  name="_tod_on"
-                  id="tod_pending_on"
-                  value={@tod_pending["on"]}
-                  phx-change="change_tod_pending"
-                  class={[
-                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                    "[&::-webkit-calendar-picker-indicator]:hidden"
-                  ]}
-                />
-                <button
-                  type="button"
-                  data-target="pending_on"
-                  class={[
-                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                    "hover:bg-[var(--surface)] transition-colors"
-                  ]}
-                  title="Pick start time"
-                >
-                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <span class="text-[9px] text-[var(--text-muted)]">on</span>
+              <input
+                type="time"
+                name="_tod_on"
+                id="tod_pending_on"
+                value={@tod_pending["on"]}
+                phx-change="change_tod_pending"
+                class={[
+                  "shrink-0 text-xs rounded border border-border bg-raised",
+                  "text-heading px-2 py-1 outline-none focus:border-border-focus",
+                  "focus:ring-1 focus:ring-border-focus/30 transition-colors"
+                ]}
+              />
+              <span class="text-[9px] text-muted">on</span>
             </div>
-            <span class="text-[var(--text-muted)] text-xs pt-1">–</span>
+            <span class="text-muted text-xs pt-1">–</span>
             <div class="flex flex-col items-center gap-0.5">
-              <div class="flex">
-                <input
-                  type="time"
-                  name="_tod_off"
-                  id="tod_pending_off"
-                  value={@tod_pending["off"]}
-                  phx-change="change_tod_pending"
-                  class={[
-                    "shrink-0 text-xs rounded-l border border-[var(--border)] bg-[var(--surface-raised)]",
-                    "text-[var(--text-primary)] px-2 py-1 outline-none focus:border-[var(--control-focus)]",
-                    "focus:ring-1 focus:ring-[var(--control-focus)]/30 transition-colors",
-                    "[&::-webkit-calendar-picker-indicator]:hidden"
-                  ]}
-                />
-                <button
-                  type="button"
-                  data-target="pending_off"
-                  class={[
-                    "flex items-center px-1.5 rounded-r border border-l-0 border-[var(--border)]",
-                    "bg-[var(--surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                    "hover:bg-[var(--surface)] transition-colors"
-                  ]}
-                  title="Pick end time"
-                >
-                  <.icon name="ri-time-line" class="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <span class="text-[9px] text-[var(--text-muted)]">off</span>
+              <input
+                type="time"
+                name="_tod_off"
+                id="tod_pending_off"
+                value={@tod_pending["off"]}
+                phx-change="change_tod_pending"
+                class={[
+                  "shrink-0 text-xs rounded border border-border bg-raised",
+                  "text-heading px-2 py-1 outline-none focus:border-border-focus",
+                  "focus:ring-1 focus:ring-border-focus/30 transition-colors"
+                ]}
+              />
+              <span class="text-[9px] text-muted">off</span>
             </div>
           </div>
           <p
             :if={@tod_pending_error}
-            class="flex items-center gap-1 text-[10px] text-[var(--status-error)]"
+            class="flex items-center gap-1 text-[10px] text-error"
           >
             <.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
             {@tod_pending_error}
           </p>
           <div class="flex justify-end gap-1.5">
-            <button
-              type="button"
-              phx-click="cancel_tod_range"
-              class="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-            >
+            <.button type="button" phx-click="cancel_tod_range" size="xs">
               Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="confirm_tod_range"
-              class="px-2 py-1 text-xs rounded bg-[var(--brand)] text-white hover:opacity-90 transition-opacity"
-            >
+            </.button>
+            <.button type="button" phx-click="confirm_tod_range" style="primary" size="xs">
               Add
-            </button>
+            </.button>
           </div>
         </div>
         <button
@@ -2748,8 +2761,8 @@ defmodule PortalWeb.Policies.Components do
           phx-click="start_add_tod_range"
           class={[
             "flex items-center justify-center gap-1 w-full px-2 py-1.5 rounded text-xs font-medium",
-            "border border-[var(--border-strong)] text-[var(--text-secondary)]",
-            "hover:border-[var(--brand)] hover:text-[var(--brand)] hover:bg-[var(--brand)]/5",
+            "border border-border-strong text-body",
+            "hover:border-brand hover:text-brand hover:bg-brand/5",
             "transition-colors"
           ]}
         >
@@ -3188,5 +3201,15 @@ defmodule PortalWeb.Policies.Components do
         {:policy_authorizations, :desc, :inserted_at},
         {:policy_authorizations, :asc, :id}
       ]
+  end
+
+  attr :disabled_at, :any, required: true
+
+  def policy_status_badge(assigns) do
+    ~H"""
+    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
+      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
+    </.status_badge>
+    """
   end
 end

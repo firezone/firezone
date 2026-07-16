@@ -64,6 +64,7 @@ module.exports = {
     "./js/**/*.js",
     "../lib/portal_web.ex",
     "../lib/portal_web/**/*.*ex",
+    "../portal_dev/**/*.*ex",
   ],
   theme: {
     fontFamily: {
@@ -133,6 +134,41 @@ module.exports = {
               [`--ri-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
               "-webkit-mask": `var(--ri-${name})`,
               mask: `var(--ri-${name})`,
+              "background-color": "currentColor",
+              "vertical-align": "middle",
+              display: "inline-block",
+              width: theme("spacing.5"),
+              height: theme("spacing.5"),
+            };
+          },
+        },
+        { values }
+      );
+    }),
+
+    // Embeds local custom icons into your app.css bundle.
+    // Icons are sourced from assets/icons/*.svg.
+    // Use any icon with the `icon-` prefix, e.g. `icon-spinner`, `icon-os-linux`.
+    plugin(function ({ matchComponents, theme }) {
+      let iconsDir = path.join(__dirname, "icons");
+      let values = {};
+      fs.readdirSync(iconsDir).forEach((file) => {
+        if (file.endsWith(".svg")) {
+          let name = path.basename(file, ".svg");
+          values[name] = { name, fullPath: path.join(iconsDir, file) };
+        }
+      });
+      matchComponents(
+        {
+          icon: ({ name, fullPath }) => {
+            let content = fs
+              .readFileSync(fullPath)
+              .toString()
+              .replace(/\r?\n|\r/g, "");
+            return {
+              [`--icon-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
+              "-webkit-mask": `var(--icon-${name})`,
+              mask: `var(--icon-${name})`,
               "background-color": "currentColor",
               "vertical-align": "middle",
               display: "inline-block",

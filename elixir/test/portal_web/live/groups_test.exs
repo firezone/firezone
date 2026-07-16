@@ -2,9 +2,11 @@ defmodule PortalWeb.GroupsTest do
   use PortalWeb.ConnCase, async: true
 
   alias Portal.{Group, Membership, Policy, Repo}
+  alias Portal.Changes.Change
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyFixtures
@@ -197,6 +199,33 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "open_grant_resource_form")
       assert html =~ "Grant access"
       assert render_click(lv, "close_grant_resource_form") =~ resource.name
+    end
+
+    test "grants access with flow log reporting disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:flow_logs)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      html = render_click(lv, "open_grant_resource_form")
+      assert html =~ "Flow log reporting"
+
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+
+      lv
+      |> form("#grant-resource-form", policy: %{flow_log_uploads_enabled: false})
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == false
     end
 
     test "grants access to multiple resources at once", %{
@@ -623,6 +652,80 @@ defmodule PortalWeb.GroupsTest do
 
       html = render(lv)
       refute html =~ group.name
+    end
+  end
+
+  describe "count badge" do
+    test "shows total group count after async load", %{conn: conn, account: account, actor: actor} do
+      _group = group_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on group insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Group{type: :static}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on group delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Group{type: :static}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "ignores managed Everyone group changes", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Group{type: :managed, idp_id: nil, name: "Everyone"}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
     end
   end
 end

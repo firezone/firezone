@@ -48,7 +48,7 @@ defmodule PortalWeb.Settings.ApiClients.BetaTest do
 
       assert html =~ "REST API is in closed beta"
       assert html =~ "Request access"
-      assert html =~ "swaggerui"
+      assert html =~ "https://www.firezone.dev/kb/reference/rest-api"
     end
 
     test "shows access request submitted after requesting", %{

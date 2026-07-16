@@ -6,7 +6,7 @@
 use crate::echo_payload::{self, EchoPayload};
 use crate::util::{EchoStats, StreamingStats, saturating_usize_to_u32};
 use crate::{DEFAULT_ECHO_PAYLOAD_SIZE, WithSeed};
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use clap::Parser;
 use serde::Serialize;
 use std::sync::Arc;
@@ -16,6 +16,18 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+
+/// Default number of concurrent connections.
+const DEFAULT_CONCURRENT: usize = 10;
+
+/// Default connection hold duration.
+const DEFAULT_HOLD_DURATION: Duration = Duration::from_secs(30);
+
+/// Default connection timeout.
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Default timeout for reading echo responses.
+const DEFAULT_ECHO_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Configuration for TCP connection load testing.
 #[derive(Debug, Clone)]
@@ -98,71 +110,93 @@ pub struct Args {
     #[arg(short = 'p', long, default_value = "9000")]
     port: u16,
 
-    /// Target address (host:port) - required in client mode
+    /// Target address (host:port). Overrides the config's `[tcp]` addresses.
     #[arg(long, value_name = "ADDR")]
     target: Option<String>,
 
     /// Number of concurrent connections to establish
-    #[arg(short = 'c', long, default_value = "10")]
-    concurrent: usize,
+    #[arg(short = 'c', long)]
+    concurrent: Option<usize>,
 
     /// How long to hold each connection open (e.g., 30s, 5m)
-    #[arg(short = 'd', long, default_value = "30s", value_parser = crate::cli::parse_duration)]
-    duration: Duration,
+    #[arg(short = 'd', long, value_parser = crate::cli::parse_duration)]
+    duration: Option<Duration>,
 
     /// Connection timeout for establishing connections
-    #[arg(long, default_value = "10s", value_parser = crate::cli::parse_duration)]
-    timeout: Duration,
+    #[arg(long, value_parser = crate::cli::parse_duration)]
+    timeout: Option<Duration>,
 
     /// Enable echo mode: send timestamped payloads and verify responses
     #[arg(long)]
     echo: bool,
 
     /// Echo payload size in bytes (minimum 16 for header)
-    #[arg(long, default_value_t = DEFAULT_ECHO_PAYLOAD_SIZE, value_parser = crate::cli::parse_echo_payload_size)]
-    echo_payload_size: usize,
+    #[arg(long, value_parser = crate::cli::parse_echo_payload_size)]
+    echo_payload_size: Option<usize>,
 
     /// Interval between echo messages (e.g., 1s, 500ms)
     #[arg(long, value_parser = crate::cli::parse_duration)]
     echo_interval: Option<Duration>,
 
     /// Timeout for reading echo responses (e.g., 5s)
-    #[arg(long, default_value = "5s", value_parser = crate::cli::parse_duration)]
-    echo_read_timeout: Duration,
+    #[arg(long, value_parser = crate::cli::parse_duration)]
+    echo_read_timeout: Option<Duration>,
 }
 
-/// Run TCP test with manual CLI args.
-pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
+/// Build a [`TestConfig`] from CLI args, filling unspecified values from `base`.
+///
+/// `--echo` forces echo mode on; it cannot disable echo mode set in the config.
+pub fn merge(args: Args, base: Option<TestConfig>) -> Result<TestConfig> {
+    let base = base.as_ref();
+
+    let target = args
+        .target
+        .or_else(|| base.map(|b| b.target.clone()))
+        .context("--target is required (or add [tcp] to the config)")?;
+    let concurrent = args
+        .concurrent
+        .or_else(|| base.map(|b| b.concurrent))
+        .unwrap_or(DEFAULT_CONCURRENT);
+    let hold_duration = args
+        .duration
+        .or_else(|| base.map(|b| b.hold_duration))
+        .unwrap_or(DEFAULT_HOLD_DURATION);
+    let connect_timeout = args
+        .timeout
+        .or_else(|| base.map(|b| b.connect_timeout))
+        .unwrap_or(DEFAULT_CONNECT_TIMEOUT);
+    let echo_mode = args.echo || base.is_some_and(|b| b.echo_mode);
+    let echo_payload_size = args
+        .echo_payload_size
+        .or_else(|| base.map(|b| b.echo_payload_size))
+        .unwrap_or(DEFAULT_ECHO_PAYLOAD_SIZE);
+    let echo_interval = args
+        .echo_interval
+        .or_else(|| base.and_then(|b| b.echo_interval));
+    let echo_read_timeout = args
+        .echo_read_timeout
+        .or_else(|| base.map(|b| b.echo_read_timeout))
+        .unwrap_or(DEFAULT_ECHO_READ_TIMEOUT);
+
+    Ok(TestConfig {
+        target,
+        concurrent,
+        hold_duration,
+        connect_timeout,
+        echo_mode,
+        echo_payload_size,
+        echo_interval,
+        echo_read_timeout,
+    })
+}
+
+/// Run TCP test from CLI args merged over an optional config base.
+pub async fn run_with_args(args: Args, base: Option<TestConfig>, seed: u64) -> Result<()> {
     if args.server {
-        // Server mode
-        let config = TcpServerConfig { port: args.port };
-        run_server(config).await?;
-    } else {
-        // Client mode
-        let target = args.target.ok_or_else(|| {
-            anyhow::anyhow!("--target is required in client mode (or use --server for server mode)")
-        })?;
-
-        let config = TestConfig {
-            target,
-            concurrent: args.concurrent,
-            hold_duration: args.duration,
-            connect_timeout: args.timeout,
-            echo_mode: args.echo,
-            echo_payload_size: args.echo_payload_size,
-            echo_interval: args.echo_interval,
-            echo_read_timeout: args.echo_read_timeout,
-        };
-
-        let summary = run(config, 0).await?;
-
-        println!(
-            "{}",
-            serde_json::to_string(&summary).expect("Failed to serialize metrics")
-        );
+        return run_server(TcpServerConfig { port: args.port }).await;
     }
 
-    Ok(())
+    run_with_config(merge(args, base)?, seed).await
 }
 
 /// Run TCP test from resolved config.

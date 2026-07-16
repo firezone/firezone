@@ -1,8 +1,14 @@
 defmodule PortalWeb.ServiceAccountsTest do
   use PortalWeb.ConnCase, async: true
 
+  alias Portal.Actor
+  alias Portal.Changes.Change
+  alias Portal.Repo
+
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.TokenFixtures
@@ -385,6 +391,40 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       assert html =~ "Last used:"
       refute html =~ "No tokens. Add one to authenticate this service account."
+    end
+
+    test "shows token session details in the tokens tab", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+      token = client_token_fixture(account: account, actor: service_account)
+
+      client_session_fixture(
+        account: account,
+        actor: service_account,
+        token: token,
+        remote_ip: {198, 51, 100, 42},
+        remote_ip_location_city: "Tokyo",
+        remote_ip_location_region: "JP",
+        user_agent: "Linux/6.0 headless-client/1.4.0",
+        version: "1.4.0"
+      )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      assert html =~ "IP Address"
+      assert html =~ "198.51.100.42"
+      assert html =~ "User Agent"
+      assert html =~ "Linux/6.0 headless-client/1.4.0"
+      assert html =~ "Client Version"
+      assert html =~ "Tokyo, JP"
+      assert html =~ "Token ID"
+      assert html =~ token.id
     end
 
     test "shows empty token state when no tokens", %{
@@ -937,6 +977,127 @@ defmodule PortalWeb.ServiceAccountsTest do
       |> render_submit()
 
       assert render(lv) =~ "Failed to update some group memberships."
+    end
+  end
+
+  describe "count badge" do
+    test "shows total service account count after async load", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _service_account = service_account_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts")
+
+      assert html =~ "Loading..."
+
+      html = render_async(lv)
+
+      assert html =~ "1"
+      assert html =~ "Total"
+      refute html =~ "Loading..."
+    end
+
+    test "increments count on service account insert change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+
+      html = render(lv)
+      assert html =~ "1"
+      assert html =~ "Total"
+    end
+
+    test "decrements count on service account delete change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      _service_account = service_account_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts")
+
+      render_async(lv)
+
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :service_account}})
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+    end
+
+    test "logs and ignores regular actor changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts")
+
+      render_async(lv)
+
+      log =
+        capture_log(fn ->
+          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
+          render(lv)
+        end)
+
+      assert log =~ "[error]"
+      assert log =~ "Unhandled handle_info message in LiveView"
+
+      html = render(lv)
+      assert html =~ "0"
+      assert html =~ "Total"
+      refute has_element?(lv, "#actors-reload-btn")
+    end
+
+    test "marks the table stale on service account update change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts")
+
+      render_async(lv)
+      refute has_element?(lv, "#actors-reload-btn")
+
+      {:ok, _updated} =
+        service_account
+        |> Ecto.Changeset.change(name: "Renamed Service Account")
+        |> Repo.update()
+
+      send(lv.pid, %Change{
+        op: :update,
+        struct: %Actor{type: :service_account, id: service_account.id}
+      })
+
+      assert has_element?(lv, "#actors-reload-btn")
+
+      render_click(lv, "reload", %{"table_id" => "actors"})
+      assert render(lv) =~ "Renamed Service Account"
     end
   end
 end

@@ -84,6 +84,16 @@ function assert_gteq() {
     fi
 }
 
+function assert_lteq() {
+    local actual="$1"
+    local expected="$2"
+
+    if [ "$actual" -gt "$expected" ]; then
+        echo "Expected $actual to be less than or equal to $expected"
+        exit 1
+    fi
+}
+
 function process_state() {
     local container="$1"
 
@@ -129,7 +139,7 @@ function get_flow_logs() {
     local protocol="$1"
 
     docker compose logs gateway --since 30s 2>/dev/null |
-        grep "flow_logs::${protocol}.*flow completed" |
+        grep "flow_logs.*${protocol^^} flow completed" |
         grep -v "rx_bytes=0 tx_bytes=0" || true
 }
 

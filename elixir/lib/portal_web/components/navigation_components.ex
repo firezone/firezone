@@ -3,6 +3,23 @@ defmodule PortalWeb.NavigationComponents do
   use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
+  defmodule Database do
+    import Ecto.Query, only: [from: 2]
+    alias Portal.{Features, Safe}
+
+    def trust_anchors_feature_enabled? do
+      query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
+      Safe.unscoped(query, :replica) |> Safe.exists?()
+    end
+  end
+
+  @doc """
+  Returns whether the global `trust_anchors` feature flag is enabled. Callers
+  should compute this once in `mount/3` and pass it to `settings_nav/1` as the
+  `trust_anchors_enabled?` assign, rather than calling this on every render.
+  """
+  def trust_anchors_enabled?, do: Database.trust_anchors_feature_enabled?()
+
   @doc """
   Renders the top navigation bar.
   """
@@ -10,14 +27,14 @@ defmodule PortalWeb.NavigationComponents do
 
   def topbar(assigns) do
     ~H"""
-    <header class="flex items-center justify-between h-14 px-6 border-b border-[var(--border)] bg-[var(--surface)] shrink-0 z-20">
-      <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]"></div>
+    <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
+      <div class="flex items-center gap-2 text-sm text-body"></div>
       <div class="flex items-center gap-3">
         <a
           target="_blank"
           href="https://www.firezone.dev/kb?utm_source=product"
           rel="noopener noreferrer"
-          class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hidden md:block"
+          class="text-sm text-body hover:text-heading hidden md:block"
         >
           Docs
         </a>
@@ -25,7 +42,7 @@ defmodule PortalWeb.NavigationComponents do
           target="_blank"
           href="https://firezone.statuspage.io"
           rel="noopener noreferrer"
-          class="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hidden md:block"
+          class="text-sm text-body hover:text-heading hidden md:block"
         >
           Status
         </a>
@@ -37,7 +54,7 @@ defmodule PortalWeb.NavigationComponents do
             data-popover-target-id="theme-dropdown"
             data-popover-trigger="click"
             data-popover-placement="bottom"
-            class="p-2 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            class="p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
             aria-label="Change theme"
           >
             <.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
@@ -46,7 +63,7 @@ defmodule PortalWeb.NavigationComponents do
           </button>
           <div
             id="theme-dropdown"
-            class="invisible opacity-0 fixed z-50 w-36 text-sm bg-[var(--surface-overlay)] rounded shadow-sm border border-[var(--border)]"
+            class="invisible opacity-0 fixed z-50 w-36 text-sm bg-elevated rounded shadow-sm border border-border"
           >
             <ul class="py-1" role="listbox" aria-label="Theme">
               <li>
@@ -54,7 +71,7 @@ defmodule PortalWeb.NavigationComponents do
                   type="button"
                   role="option"
                   data-theme-option="system"
-                  class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
                 >
                   <.icon name="ri-computer-line" class="w-4 h-4 shrink-0" />
                   <span>System</span>
@@ -66,7 +83,7 @@ defmodule PortalWeb.NavigationComponents do
                   type="button"
                   role="option"
                   data-theme-option="light"
-                  class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
                 >
                   <.icon name="ri-sun-line" class="w-4 h-4 shrink-0" />
                   <span>Light</span>
@@ -78,7 +95,7 @@ defmodule PortalWeb.NavigationComponents do
                   type="button"
                   role="option"
                   data-theme-option="dark"
-                  class="flex items-center gap-2 w-full px-3 py-2 text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
                 >
                   <.icon name="ri-moon-line" class="w-4 h-4 shrink-0" />
                   <span>Dark</span>
@@ -110,30 +127,30 @@ defmodule PortalWeb.NavigationComponents do
   def subject_dropdown(assigns) do
     ~H"""
     <div class="py-3 px-4">
-      <span class="block text-sm font-medium text-[var(--text-primary)]">
+      <span class="block text-sm font-medium text-heading">
         {@subject.actor.name}
       </span>
-      <span class="block text-sm text-[var(--text-secondary)] truncate">
+      <span class="block text-sm text-body truncate">
         {@subject.actor.email}
       </span>
     </div>
-    <ul class="py-1 text-[var(--text-secondary)]" aria-labelledby="user-menu-dropdown">
+    <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
       <li>
         <.link
           navigate={~p"/#{@subject.account}/settings/profile"}
-          class="block py-2 px-4 text-sm hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+          class="block py-2 px-4 text-sm hover:bg-raised hover:text-heading"
         >
           Profile
         </.link>
       </li>
     </ul>
-    <ul class="py-1 text-[var(--text-secondary)]" aria-labelledby="user-menu-dropdown">
+    <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
       <li>
-        <form action={~p"/#{@subject.account}/sign_out"} method="post">
+        <form id="sign-out-form" action={~p"/#{@subject.account}/sign_out"} method="post">
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button
             type="submit"
-            class="block w-full text-left py-2 px-4 text-sm hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+            class="block w-full text-left py-2 px-4 text-sm hover:bg-raised hover:text-heading"
           >
             Sign out
           </button>
@@ -154,12 +171,12 @@ defmodule PortalWeb.NavigationComponents do
     ~H"""
     <aside
       id="sidebar"
-      class="flex flex-col shrink-0 border-r border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-[width] duration-200 ease-in-out w-56 z-20"
+      class="flex flex-col shrink-0 border-r border-border bg-surface overflow-hidden transition-[width] duration-200 ease-in-out w-56 z-20"
     >
       <%!-- Wordmark --%>
       <div
         data-sidebar-wordmark
-        class="flex items-center h-14 px-3 border-b border-[var(--border)] shrink-0"
+        class="flex items-center h-14 px-3 border-b border-border shrink-0"
       >
         <a
           href={PortalWeb.Session.Redirector.default_portal_path(@account, @subject.actor)}
@@ -168,7 +185,7 @@ defmodule PortalWeb.NavigationComponents do
           <img src={~p"/images/logo.svg"} class="h-6 w-6 shrink-0" alt="Firezone Logo" />
           <span
             data-sidebar-label
-            class="font-semibold text-[var(--text-primary)] whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+            class="font-semibold text-heading whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
           >
             Firezone
           </span>
@@ -176,7 +193,7 @@ defmodule PortalWeb.NavigationComponents do
         <span
           :if={@subject.actor.type == :account_admin_user}
           data-sidebar-label
-          class="ml-2 shrink-0 text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-[var(--brand-muted)] text-[var(--brand)] transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          class="ml-2 shrink-0 text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-brand-muted text-brand transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
         >
           ADMIN
         </span>
@@ -188,7 +205,7 @@ defmodule PortalWeb.NavigationComponents do
         <div>
           <p
             data-sidebar-group-label
-            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
           >
             Access Control
           </p>
@@ -221,7 +238,7 @@ defmodule PortalWeb.NavigationComponents do
         <div>
           <p
             data-sidebar-group-label
-            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
           >
             Infrastructure
           </p>
@@ -247,7 +264,7 @@ defmodule PortalWeb.NavigationComponents do
         <div>
           <p
             data-sidebar-group-label
-            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
           >
             Actors
           </p>
@@ -268,19 +285,40 @@ defmodule PortalWeb.NavigationComponents do
             </.sidebar_item>
           </ul>
         </div>
+
+        <%!-- Audit --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+          >
+            Audit
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/change_logs"}
+              match="/#{@account.slug}/logs"
+              icon="ri-file-list-3-line"
+              badge="NEW"
+            >
+              Logs
+            </.sidebar_item>
+          </ul>
+        </div>
       </nav>
 
       <%!-- Settings --%>
-      <div class="border-t border-[var(--border)] py-2 px-2 shrink-0">
+      <div class="border-t border-border py-2 px-2 shrink-0">
         <% settings_active? = String.contains?(@current_path, "/settings") %>
         <.link
           navigate={~p"/#{@account}/settings/account"}
           data-sidebar-nav-item
           class={[
             "flex items-center gap-2.5 px-2 py-1.5 rounded text-sm transition-colors",
-            settings_active? && "bg-[var(--brand-muted)] text-[var(--brand)] font-medium",
+            settings_active? && "bg-brand-muted text-brand font-medium",
             not settings_active? &&
-              "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)]"
+              "text-body hover:text-heading hover:bg-raised"
           ]}
         >
           <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
@@ -294,13 +332,13 @@ defmodule PortalWeb.NavigationComponents do
       </div>
 
       <%!-- Footer: collapse toggle --%>
-      <div class="border-t border-[var(--border)] p-2 space-y-0.5 shrink-0">
+      <div class="border-t border-border p-2 space-y-0.5 shrink-0">
         <button
           id="sidebar-toggle"
           phx-hook="SidebarCollapse"
           data-sidebar-nav-item
           type="button"
-          class="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+          class="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm text-body hover:text-heading hover:bg-raised transition-colors"
           title="Toggle sidebar"
         >
           <.icon
@@ -327,9 +365,11 @@ defmodule PortalWeb.NavigationComponents do
   attr :navigate, :string, required: true
   slot :inner_block, required: true
   attr :current_path, :string, required: true
+  attr :badge, :string, default: nil
+  attr :match, :string, default: nil, doc: "Prefix used for the active-state check; defaults to navigate. Set to a shared parent when one sidebar item covers multiple sibling routes."
 
   def sidebar_item(assigns) do
-    active? = sidebar_item_active?(assigns.current_path, assigns.navigate)
+    active? = sidebar_item_active?(assigns.current_path, assigns.match || assigns.navigate)
     assigns = assign(assigns, :active?, active?)
 
     ~H"""
@@ -339,17 +379,24 @@ defmodule PortalWeb.NavigationComponents do
         data-sidebar-nav-item
         class={[
           "flex items-center gap-2.5 px-2 py-1.5 rounded text-sm transition-colors",
-          @active? && "bg-[var(--brand-muted)] text-[var(--brand)] font-medium",
+          @active? && "bg-brand-muted text-brand font-medium",
           not @active? &&
-            "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)]"
+            "text-body hover:text-heading hover:bg-raised"
         ]}
       >
         <.icon name={@icon} class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
-          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
         >
           {render_slot(@inner_block)}
+        </span>
+        <span
+          :if={@badge}
+          data-sidebar-badge
+          class="ml-auto px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+        >
+          {@badge}
         </span>
       </.link>
     </li>
@@ -362,21 +409,22 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
+  attr :trust_anchors_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
     ~H"""
-    <div class="flex flex-col bg-[var(--surface)]">
+    <div class="flex flex-col bg-surface">
       <%!-- Page header --%>
-      <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-[var(--border)]">
-        <div class="absolute inset-x-0 top-0 h-[2px] bg-[var(--brand)] opacity-50"></div>
+      <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
         <div class="flex items-center gap-5">
-          <.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-brand" />
           <div class="flex-1 min-w-0">
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
-                <h1 class="text-base font-semibold text-[var(--text-primary)]">{@account.name}</h1>
-                <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{@account.legal_name}</p>
+                <h1 class="text-base font-semibold text-heading">{@account.name}</h1>
+                <p class="mt-0.5 text-sm text-body">{@account.legal_name}</p>
               </div>
               <div :if={@actions != []} class="shrink-0">
                 {render_slot(@actions)}
@@ -384,28 +432,28 @@ defmodule PortalWeb.NavigationComponents do
             </div>
             <div class="flex items-start gap-6 md:gap-12 mt-4">
               <div class="flex flex-col gap-0.5">
-                <span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-widest font-semibold">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
                   Slug
                 </span>
-                <span class="font-mono text-xs text-[var(--text-primary)]">{@account.slug}</span>
+                <span class="font-mono text-xs text-heading">{@account.slug}</span>
               </div>
               <div class="hidden md:flex flex-col gap-0.5">
-                <span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-widest font-semibold">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
                   Key
                 </span>
-                <span class="font-mono text-xs text-[var(--text-primary)]">{@account.key}</span>
+                <span class="font-mono text-xs text-heading">{@account.key}</span>
               </div>
               <div class="hidden md:flex flex-col gap-0.5">
-                <span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-widest font-semibold">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
                   ID
                 </span>
-                <span class="font-mono text-xs text-[var(--text-primary)]">{@account.id}</span>
+                <span class="font-mono text-xs text-heading">{@account.id}</span>
               </div>
               <div class="flex flex-col gap-0.5">
-                <span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-widest font-semibold">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
                   Member Since
                 </span>
-                <span class="text-xs text-[var(--text-primary)]">
+                <span class="text-xs text-heading">
                   {format_member_since(@account.inserted_at)}
                 </span>
               </div>
@@ -414,7 +462,7 @@ defmodule PortalWeb.NavigationComponents do
         </div>
       </div>
       <%!-- Tab strip --%>
-      <div class="flex overflow-x-auto overflow-y-hidden border-b border-[var(--border)] px-6 shrink-0 bg-[var(--surface)]">
+      <div class="flex overflow-x-auto overflow-y-hidden border-b border-border px-6 shrink-0 bg-surface">
         <.settings_tab
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/account"}
@@ -449,6 +497,14 @@ defmodule PortalWeb.NavigationComponents do
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}
+          navigate={~p"/#{@account}/settings/log_sinks"}
+          tab_path="settings/log_sinks"
+          icon="ri-upload-cloud-2-fill"
+        >
+          Log Sinks
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
           navigate={~p"/#{@account}/settings/dns"}
           tab_path="settings/dns"
           icon="ri-global-fill"
@@ -462,6 +518,15 @@ defmodule PortalWeb.NavigationComponents do
           icon="ri-code-s-slash-fill"
         >
           REST API
+        </.settings_tab>
+        <.settings_tab
+          :if={@trust_anchors_enabled?}
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/trust_anchors"}
+          tab_path="settings/trust_anchors"
+          icon="ri-shield-check-fill"
+        >
+          Trust Anchors
         </.settings_tab>
       </div>
     </div>
@@ -483,9 +548,9 @@ defmodule PortalWeb.NavigationComponents do
       navigate={@navigate}
       class={[
         "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
-        @active? && "border-[var(--brand)] text-[var(--brand)]",
+        @active? && "border-brand text-brand",
         not @active? &&
-          "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]"
+          "border-transparent text-body hover:text-heading hover:border-border-strong"
       ]}
     >
       <.icon name={@icon} class="w-4 h-4 shrink-0" />
@@ -497,6 +562,101 @@ defmodule PortalWeb.NavigationComponents do
   defp settings_tab_active?(current_path, tab_path) do
     [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
     String.starts_with?(current_subpath, tab_path)
+  end
+
+  @doc """
+  Renders the Logs page header and tab strip.
+  Shared across the four log LiveViews so they read as one destination.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+
+  def logs_nav(assigns) do
+    ~H"""
+    <div class="flex flex-col bg-surface shrink-0">
+      <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
+        <div class="flex items-start gap-5">
+          <div class="hidden md:block shrink-0 mt-0.5">
+            <.icon name="ri-file-list-3-line" class="w-16 h-16 text-brand" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div class="min-w-0">
+                <h1 class="text-base font-semibold text-heading">Logs</h1>
+                <p class="hidden md:block mt-0.5 text-sm text-body">
+                  Structured, immutable records of every configuration change, session, connection, and API call in your account.
+                </p>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <.docs_action path="/administer/logs" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex overflow-x-auto overflow-y-hidden border-b border-border px-6 shrink-0 bg-surface">
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/change_logs"}
+          tab_path="logs/change_logs"
+          icon="ri-history-line"
+        >
+          Change Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/session_logs"}
+          tab_path="logs/session_logs"
+          icon="ri-login-circle-line"
+        >
+          Session Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/flow_logs"}
+          tab_path="logs/flow_logs"
+          icon="ri-exchange-line"
+        >
+          Flow Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/api_request_logs"}
+          tab_path="logs/api_request_logs"
+          icon="ri-terminal-box-line"
+        >
+          API Request Logs
+        </.logs_tab>
+      </div>
+    </div>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
+  attr :tab_path, :string, required: true
+  attr :icon, :string, required: true
+  slot :inner_block, required: true
+
+  defp logs_tab(assigns) do
+    active? = settings_tab_active?(assigns.current_path, assigns.tab_path)
+    assigns = assign(assigns, :active?, active?)
+
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+        @active? && "border-brand text-brand",
+        not @active? &&
+          "border-transparent text-body hover:text-heading hover:border-border-strong"
+      ]}
+    >
+      <.icon name={@icon} class="w-4 h-4 shrink-0" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
   end
 
   defp format_member_since(nil), do: "—"
@@ -531,7 +691,7 @@ defmodule PortalWeb.NavigationComponents do
       {render_slot(@button)}
     </button>
     <div
-      class="invisible opacity-0 fixed z-50 my-4 w-56 text-base list-none bg-[var(--surface-overlay)] rounded-sm divide-y divide-[var(--border)] shadow-sm"
+      class="invisible opacity-0 fixed z-50 my-4 w-56 text-base list-none bg-elevated rounded-sm divide-y divide-border shadow-sm"
       id={"#{@id}-dropdown"}
     >
       {render_slot(@dropdown)}
@@ -556,7 +716,7 @@ defmodule PortalWeb.NavigationComponents do
         <li class="inline-flex items-center">
           <.link
             navigate={if @account, do: ~p"/#{@account}/sites", else: @home_path}
-            class="inline-flex items-center text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            class="inline-flex items-center text-body hover:text-heading"
           >
             <.icon name="ri-home-2-fill" class="w-3.5 h-3.5 mr-2" /> Home
           </.link>
@@ -577,17 +737,17 @@ defmodule PortalWeb.NavigationComponents do
   def breadcrumb(assigns) do
     ~H"""
     <li class="inline-flex items-center">
-      <div class="flex items-center text-[var(--text-tertiary)]">
+      <div class="flex items-center text-subtle">
         <.icon name="ri-arrow-right-s-fill" class="w-3.5 h-3.5" />
         <.link
           :if={not is_nil(@path)}
           navigate={@path}
-          class="ml-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] md:ml-2"
+          class="ml-1 text-body hover:text-heading md:ml-2"
         >
           {render_slot(@inner_block)}
         </.link>
 
-        <span :if={is_nil(@path)} class="ml-1 text-sm text-[var(--text-primary)] md:ml-2">
+        <span :if={is_nil(@path)} class="ml-1 text-sm text-heading md:ml-2">
           {render_slot(@inner_block)}
         </span>
       </div>
@@ -610,7 +770,7 @@ defmodule PortalWeb.NavigationComponents do
     <div class="mt-16">
       <.link
         navigate={@navigate}
-        class="text-sm font-semibold leading-6 text-[var(--text-primary)] hover:text-[var(--text-secondary)]"
+        class="text-sm font-semibold leading-6 text-heading hover:text-body"
       >
         <.icon name="ri-arrow-left-fill" class="h-3 w-3" />
         {render_slot(@inner_block)}
@@ -667,7 +827,7 @@ defmodule PortalWeb.NavigationComponents do
       rel="noopener noreferrer"
       {@rest}
     >
-      <.icon name="ri-question-line" class="mr-2 w-5 h-5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]" />
+      <.icon name="ri-question-line" class="mr-2 w-5 h-5 text-body hover:text-heading" />
     </.link>
     """
   end

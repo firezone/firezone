@@ -253,14 +253,14 @@ defmodule Portal.Policies.Evaluator do
 
   defp datetime_in_time_ranges?(datetime, day_of_the_week, time_ranges) do
     Enum.find_value(time_ranges, fn {start_time, end_time, timezone} ->
-      datetime = DateTime.shift_zone!(datetime, timezone, Tzdata.TimeZoneDatabase)
+      datetime = DateTime.shift_zone!(datetime, timezone, Tz.TimeZoneDatabase)
       date = DateTime.to_date(datetime)
       time = DateTime.to_time(datetime)
 
       if Enum.at(@days_of_week, Date.day_of_week(date) - 1) == day_of_the_week and
            Time.compare(start_time, time) != :gt and Time.compare(time, end_time) != :gt do
-        DateTime.new!(date, end_time, timezone, Tzdata.TimeZoneDatabase)
-        |> DateTime.shift_zone!("UTC", Tzdata.TimeZoneDatabase)
+        DateTime.new!(date, end_time, timezone, Tz.TimeZoneDatabase)
+        |> DateTime.shift_zone!("UTC", Tz.TimeZoneDatabase)
       end
     end)
   end
@@ -300,7 +300,7 @@ defmodule Portal.Policies.Evaluator do
   end
 
   def parse_time_ranges(time_ranges, timezone) do
-    with true <- Tzdata.zone_exists?(timezone),
+    with true <- TzExtra.time_zone_id_exists?(timezone),
          {:ok, time_ranges} <- parse_time_ranges(time_ranges) do
       time_ranges =
         Enum.map(time_ranges, fn {start_time, end_time} ->

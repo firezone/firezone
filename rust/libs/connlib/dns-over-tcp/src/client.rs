@@ -11,7 +11,7 @@ use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::{
     InMemoryDevice, Interface, PollResult, SocketSet, create_interface, create_tcp_socket,
 };
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 /// A sans-io DNS-over-TCP client.
 ///
@@ -20,6 +20,11 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 ///
 /// One of the design goals of this client is to always provide a result for a query.
 /// If the TCP connection fails, we report all currently pending queries to that resolver as failed.
+///
+/// Because all queries to a resolver share a single TCP connection,
+/// queries are sent upstream with a rewritten, locally-unique query ID.
+/// Stub resolvers may issue concurrent queries with overlapping IDs (some always use ID 1 for TCP).
+/// Responses are translated back to the original query ID before they are surfaced as a [`QueryResult`].
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     device: InMemoryDevice,
     interface: Interface,
@@ -30,7 +35,7 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     local_ports_by_socket: BTreeMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
     pending_queries_by_remote_and_local: BTreeMap<(SocketAddr, SocketAddr), VecDeque<PendingQuery>>,
-    /// Queries we have sent to a DNS resolver and are waiting for a reply.
+    /// Queries we have sent to a DNS resolver and are waiting for a reply, keyed by their wire ID.
     sent_queries_by_remote_and_local:
         BTreeMap<(SocketAddr, SocketAddr), BTreeMap<u16, PendingQuery>>,
 
@@ -47,6 +52,10 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 #[derive(Debug)]
 struct PendingQuery {
     query: dns_types::Query,
+    /// The query ID we use on the wire towards the resolver.
+    ///
+    /// Unique per connection, unlike the ID of the original query.
+    wire_id: u16,
     deadline: Instant,
 }
 
@@ -107,34 +116,30 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             && let Some(local_port) = self.local_ports_by_socket.get(s).copied()
         {
             let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
+            let wire_id = self.sample_new_unique_query_id(server, local_endpoint)?;
 
-            let pending_queries = self
-                .pending_queries_by_remote_and_local
+            self.pending_queries_by_remote_and_local
                 .entry((server, local_endpoint))
-                .or_default();
-
-            let id = message.id();
-
-            if pending_queries.iter().any(|qq| qq.query.id() == id) {
-                bail!("A query with ID {id} is already pending")
-            }
-
-            pending_queries.push_back(PendingQuery {
-                query: message,
-                deadline,
-            });
+                .or_default()
+                .push_back(PendingQuery {
+                    query: message,
+                    wire_id,
+                    deadline,
+                });
 
             return Ok(local_endpoint);
         };
 
         let local_port = self.sample_new_unique_port()?;
         let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
+        let wire_id = self.sample_new_unique_query_id(server, local_endpoint)?;
 
         self.pending_queries_by_remote_and_local
             .entry((server, local_endpoint))
             .or_default()
             .push_back(PendingQuery {
                 query: message,
+                wire_id,
                 deadline,
             });
 
@@ -429,10 +434,35 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
 
         loop {
-            let port = self.rng.gen_range(range.clone());
+            let port = self.rng.random_range(range.clone());
 
             if !used_ports.contains(&port) {
                 return Ok(port);
+            }
+        }
+    }
+
+    /// Samples a wire ID that is unique among all in-flight queries on the given connection.
+    fn sample_new_unique_query_id(&mut self, server: SocketAddr, local: SocketAddr) -> Result<u16> {
+        let pending = self
+            .pending_queries_by_remote_and_local
+            .get(&(server, local));
+        let sent = self.sent_queries_by_remote_and_local.get(&(server, local));
+
+        let num_in_flight = pending.map_or(0, VecDeque::len) + sent.map_or(0, BTreeMap::len);
+
+        if num_in_flight > u16::MAX as usize {
+            bail!("All query IDs exhausted")
+        }
+
+        loop {
+            let id = self.rng.random::<u16>();
+
+            let in_pending = pending.is_some_and(|q| q.iter().any(|pq| pq.wire_id == id));
+            let in_sent = sent.is_some_and(|q| q.contains_key(&id));
+
+            if !in_pending && !in_sent {
+                return Ok(id);
             }
         }
     }
@@ -467,12 +497,12 @@ fn send_pending_queries(
             break;
         };
 
-        match codec::try_send(socket, pending.query.as_bytes()).context("Failed to send DNS query")
-        {
+        let wire_query = pending.query.clone().with_id(pending.wire_id);
+
+        match codec::try_send(socket, wire_query.as_bytes()).context("Failed to send DNS query") {
             Ok(()) => {
-                let id = pending.query.id();
-                let replaced = sent_queries.insert(id, pending).is_some();
-                debug_assert!(!replaced, "Query ID is not unique");
+                let replaced = sent_queries.insert(pending.wire_id, pending).is_some();
+                debug_assert!(!replaced, "Wire ID is not unique");
             }
             Err(e) => {
                 // We failed to send the query, declare the socket as failed.
@@ -517,11 +547,13 @@ fn recv_responses(
                 .remove(&response.id())
                 .context("DNS resolver sent response for unknown query")?;
 
+            let original_id = queued.query.id();
+
             Ok(vec![QueryResult {
                 query: queued.query,
                 server,
                 local,
-                result: Ok(response),
+                result: Ok(response.with_id(original_id)),
             }])
         })
         .unwrap_or_else(|e| {

@@ -18,6 +18,7 @@ pub use fz_p2p_control_slice::FzP2pControlSlice;
 pub use icmp_error::{FailedPacket, IcmpError};
 
 use anyhow::{Context as _, Result, bail};
+use incremental_inet_checksum::ChecksumUpdate;
 use std::net::IpAddr;
 use std::sync::LazyLock;
 
@@ -376,11 +377,23 @@ impl IpPacket {
 
     pub fn set_source_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
+            let checksum = ChecksumUpdate::new(p.get_checksum())
+                .remove_u16(p.get_source_port())
+                .add_u16(v)
+                .into_ip_checksum();
+
             p.set_source_port(v);
+            p.set_checksum(checksum);
         }
 
         if let Some(mut p) = self.as_udp_mut() {
+            let checksum = ChecksumUpdate::new(p.get_checksum())
+                .remove_u16(p.get_source_port())
+                .add_u16(v)
+                .into_udp_checksum();
+
             p.set_source_port(v);
+            set_udp_checksum_if_computed(&mut p, checksum);
         }
 
         self.set_icmp_identifier(v);
@@ -388,42 +401,61 @@ impl IpPacket {
 
     pub fn set_destination_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
+            let checksum = ChecksumUpdate::new(p.get_checksum())
+                .remove_u16(p.get_destination_port())
+                .add_u16(v)
+                .into_ip_checksum();
+
             p.set_destination_port(v);
+            p.set_checksum(checksum);
         }
 
         if let Some(mut p) = self.as_udp_mut() {
+            let checksum = ChecksumUpdate::new(p.get_checksum())
+                .remove_u16(p.get_destination_port())
+                .add_u16(v)
+                .into_udp_checksum();
+
             p.set_destination_port(v);
+            set_udp_checksum_if_computed(&mut p, checksum);
         }
 
         self.set_icmp_identifier(v);
     }
 
     fn set_icmp_identifier(&mut self, v: u16) {
-        if let Some(icmpv4) = self.as_icmpv4()
-            && matches!(
-                icmpv4.icmp_type(),
-                Icmpv4Type::EchoRequest(_) | Icmpv4Type::EchoReply(_)
-            )
+        if let Some(mut p) = self.as_icmpv4_mut()
+            && p.is_echo_request_or_reply()
         {
-            self.as_icmpv4_mut()
-                .expect("Not an ICMPv4 packet")
-                .set_identifier(v);
+            let checksum = ChecksumUpdate::new(p.get_checksum())
+                .remove_u16(p.get_identifier())
+                .add_u16(v)
+                .into_ip_checksum();
+
+            p.set_identifier(v);
+            p.set_checksum(checksum);
         }
 
-        if let Some(icmpv6) = self.as_icmpv6()
-            && matches!(
-                icmpv6.icmp_type(),
-                Icmpv6Type::EchoRequest(_) | Icmpv6Type::EchoReply(_)
-            )
+        if let Some(mut p) = self.as_icmpv6_mut()
+            && p.is_echo_request_or_reply()
         {
-            self.as_icmpv6_mut()
-                .expect("Not an ICMPv6 packet")
-                .set_identifier(v);
+            let checksum = ChecksumUpdate::new(p.get_checksum())
+                .remove_u16(p.get_identifier())
+                .add_u16(v)
+                .into_ip_checksum();
+
+            p.set_identifier(v);
+            p.set_checksum(checksum);
         }
     }
 
-    #[inline]
-    pub fn update_checksum(&mut self) {
+    /// Computes all checksums of this packet from scratch.
+    ///
+    /// The mutators on [`IpPacket`] maintain checksums incrementally, so regular packet
+    /// processing never needs this. It exists for packets whose bytes were serialized by
+    /// an external stack: smoltcp emits TCP segments with incorrect checksums through our
+    /// in-memory device, so `l3-tcp` has to finalize them with a full computation.
+    pub fn compute_checksums(&mut self) {
         // Note: ipv6 doesn't have a checksum.
         self.set_icmpv6_checksum();
         self.set_icmpv4_checksum();
@@ -432,6 +464,28 @@ impl IpPacket {
         // Note: Ipv4 checksum should be set after the others,
         // since it's in an upper layer.
         self.set_ipv4_checksum();
+    }
+
+    /// Patches all transport checksums that cover the IP pseudo-header.
+    ///
+    /// `patch` receives the running update of each affected checksum and must apply the
+    /// diff of the changed pseudo-header words to it. ICMPv4 is deliberately absent:
+    /// its checksum does not cover a pseudo-header, so address changes don't affect it.
+    fn patch_pseudo_header_checksums(&mut self, patch: impl Fn(ChecksumUpdate) -> ChecksumUpdate) {
+        if let Some(mut p) = self.as_tcp_mut() {
+            let checksum = patch(ChecksumUpdate::new(p.get_checksum())).into_ip_checksum();
+            p.set_checksum(checksum);
+        }
+
+        if let Some(mut p) = self.as_udp_mut() {
+            let checksum = patch(ChecksumUpdate::new(p.get_checksum())).into_udp_checksum();
+            set_udp_checksum_if_computed(&mut p, checksum);
+        }
+
+        if let Some(mut p) = self.as_icmpv6_mut() {
+            let checksum = patch(ChecksumUpdate::new(p.get_checksum())).into_ip_checksum();
+            p.set_checksum(checksum);
+        }
     }
 
     fn as_ipv4(&self) -> Option<Ipv4Slice<'_>> {
@@ -781,14 +835,40 @@ impl IpPacket {
     #[inline]
     pub fn set_dst(&mut self, dst: IpAddr) -> Result<()> {
         match dst {
-            IpAddr::V4(addr) => self
-                .as_ipv4_header_mut()
-                .context("Not an IPv4 packet")?
-                .set_destination(addr.octets()),
-            IpAddr::V6(addr) => self
-                .as_ipv6_header_mut()
-                .context("Not an IPv6 packet")?
-                .set_destination(addr.octets()),
+            IpAddr::V4(addr) => {
+                let (old, new) = {
+                    let mut hdr = self.as_ipv4_header_mut().context("Not an IPv4 packet")?;
+
+                    let old = u32::from_be_bytes(hdr.get_destination());
+                    let new = addr.to_bits();
+
+                    hdr.set_destination(addr.octets());
+
+                    let checksum = ChecksumUpdate::new(hdr.get_checksum())
+                        .remove_u32(old)
+                        .add_u32(new)
+                        .into_ip_checksum();
+                    hdr.set_checksum(checksum);
+
+                    (old, new)
+                };
+
+                self.patch_pseudo_header_checksums(|u| u.remove_u32(old).add_u32(new));
+            }
+            IpAddr::V6(addr) => {
+                let (old, new) = {
+                    let mut hdr = self.as_ipv6_header_mut().context("Not an IPv6 packet")?;
+
+                    let old = u128::from_be_bytes(hdr.get_destination());
+                    let new = addr.to_bits();
+
+                    hdr.set_destination(addr.octets());
+
+                    (old, new)
+                };
+
+                self.patch_pseudo_header_checksums(|u| u.remove_u128(old).add_u128(new));
+            }
         }
 
         Ok(())
@@ -797,14 +877,40 @@ impl IpPacket {
     #[inline]
     pub fn set_src(&mut self, src: IpAddr) -> Result<()> {
         match src {
-            IpAddr::V4(addr) => self
-                .as_ipv4_header_mut()
-                .context("Not an IPv4 packet")?
-                .set_source(addr.octets()),
-            IpAddr::V6(addr) => self
-                .as_ipv6_header_mut()
-                .context("Not an IPv6 packet")?
-                .set_source(addr.octets()),
+            IpAddr::V4(addr) => {
+                let (old, new) = {
+                    let mut hdr = self.as_ipv4_header_mut().context("Not an IPv4 packet")?;
+
+                    let old = u32::from_be_bytes(hdr.get_source());
+                    let new = addr.to_bits();
+
+                    hdr.set_source(addr.octets());
+
+                    let checksum = ChecksumUpdate::new(hdr.get_checksum())
+                        .remove_u32(old)
+                        .add_u32(new)
+                        .into_ip_checksum();
+                    hdr.set_checksum(checksum);
+
+                    (old, new)
+                };
+
+                self.patch_pseudo_header_checksums(|u| u.remove_u32(old).add_u32(new));
+            }
+            IpAddr::V6(addr) => {
+                let (old, new) = {
+                    let mut hdr = self.as_ipv6_header_mut().context("Not an IPv6 packet")?;
+
+                    let old = u128::from_be_bytes(hdr.get_source());
+                    let new = addr.to_bits();
+
+                    hdr.set_source(addr.octets());
+
+                    (old, new)
+                };
+
+                self.patch_pseudo_header_checksums(|u| u.remove_u128(old).add_u128(new));
+            }
         }
 
         Ok(())
@@ -850,10 +956,25 @@ impl IpPacket {
     /// This is most likely not what you want unless you know what you're doing or you are writing a test.
     fn with_ecn(mut self, ecn: Ecn) -> Self {
         match &mut self.version {
-            IpVersion::V4 => self.as_ipv4_header_mut_unchecked().set_ecn(ecn as u8),
+            IpVersion::V4 => {
+                // The ECN bits are part of the checksummed word formed by the first two
+                // header bytes; the L4 checksums don't cover them.
+                let old = u16::from_be_bytes([self.buf[0], self.buf[1]]);
+                let new = (old & !0b11) | ecn as u16;
+
+                let mut hdr = self.as_ipv4_header_mut_unchecked();
+                hdr.set_ecn(ecn as u8);
+
+                let checksum = ChecksumUpdate::new(hdr.get_checksum())
+                    .remove_u16(old)
+                    .add_u16(new)
+                    .into_ip_checksum();
+                hdr.set_checksum(checksum);
+            }
+            // IPv6 has no header checksum and the traffic class is not part of the
+            // pseudo-header, so no checksum needs updating.
             IpVersion::V6 => self.as_ipv6_header_mut_unchecked().set_ecn(ecn as u8),
         }
-        self.update_checksum();
 
         self
     }
@@ -927,6 +1048,17 @@ impl IpPacket {
 #[derive(Debug, thiserror::Error)]
 #[error("Fragmented IP packets are unsupported")]
 pub struct Fragmented;
+
+/// Writes `checksum` to the packet unless its current checksum is zero.
+///
+/// A zero UDP checksum means "not computed" (IPv4); translation must preserve that.
+fn set_udp_checksum_if_computed(p: &mut UdpHeaderSliceMut<'_>, checksum: u16) {
+    if p.get_checksum() == 0 {
+        return;
+    }
+
+    p.set_checksum(checksum);
+}
 
 fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol> {
     // ICMP messages SHOULD always contain at least 8 bytes of the original L4 payload.

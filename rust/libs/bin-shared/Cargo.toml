@@ -22,6 +22,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 known-dirs = { workspace = true }
 logging = { workspace = true }
+otel-instruments = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -48,6 +49,7 @@ zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it wil
 dashmap = { workspace = true }
 ipconfig = "0.3.4"
 itertools = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
 ring = "0.17"
 uuid = { workspace = true, features = ["v4"] }
 windows-core = { workspace = true }
@@ -79,7 +81,6 @@ features = [
 
 [dev-dependencies]
 bufferpool = { workspace = true }
-bytes = { workspace = true }
 gat-lending-iterator = { workspace = true }
 http = { workspace = true }
 tempfile = { workspace = true }

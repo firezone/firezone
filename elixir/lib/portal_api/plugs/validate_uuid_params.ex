@@ -1,7 +1,5 @@
 defmodule PortalAPI.Plugs.ValidateUUIDParams do
-  import Plug.Conn
-
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   def init(opts), do: opts
 
@@ -12,11 +10,11 @@ defmodule PortalAPI.Plugs.ValidateUUIDParams do
       |> Enum.any?(fn {_, value} -> not valid_id?(value) end)
 
     if invalid? do
-      conn
-      |> put_status(:bad_request)
-      |> Phoenix.Controller.put_view(json: PortalAPI.ErrorJSON)
-      |> Phoenix.Controller.render(:"400")
-      |> halt()
+      PortalAPI.ProblemDetails.send(
+        conn,
+        400,
+        "One or more path parameters are not valid identifiers."
+      )
     else
       conn
     end
@@ -25,7 +23,7 @@ defmodule PortalAPI.Plugs.ValidateUUIDParams do
   defp valid_id?(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
       {:ok, _} -> true
-      :error -> EventId.valid?(value)
+      :error -> LogId.valid?(value)
     end
   end
 

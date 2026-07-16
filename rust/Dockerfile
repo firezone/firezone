@@ -1,7 +1,7 @@
 ARG PACKAGE
 
 # Base image which is used to run the application binary
-FROM alpine:3.23 AS runtime_base
+FROM alpine:3.24 AS runtime_base
 
 ENV LANG=C.UTF-8 \
     TERM=xterm \
@@ -62,7 +62,7 @@ COPY ${PACKAGE} .
 FROM runtime AS dev
 
 ARG PACKAGE
-ARG RUST_VERSION="1.96.0" # Keep in sync with `rust-toolchain.toml`
+ARG RUST_VERSION="1.97.0" # Keep in sync with `rust-toolchain.toml`
 
 WORKDIR /app
 

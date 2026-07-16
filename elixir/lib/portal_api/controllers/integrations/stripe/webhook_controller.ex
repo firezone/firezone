@@ -20,8 +20,14 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
       [] ->
         send_resp(conn, 400, "Bad Request: missing signature header")
 
+      # coveralls-ignore-start
+      # Plug.Conn.read_body/2 never returns {:error, :too_large}; an oversized
+      # body yields {:more, _, _} which falls through to the catch-all below.
+      # This defensive clause is kept in case the adapter contract changes.
       {:error, :too_large} ->
         send_resp(conn, 413, "Request Entity Too Large")
+
+      # coveralls-ignore-stop
 
       {:error, :missing_timestamp} ->
         send_resp(conn, 400, "Bad Request: missing timestamp")

@@ -3,19 +3,23 @@ defmodule PortalAPI.ResourceController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Resources"]
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Resources",
     parameters: [
       limit: [in: :query, description: "Limit Resources returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
@@ -29,6 +33,7 @@ defmodule PortalAPI.ResourceController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Resource",
     parameters: [
@@ -39,9 +44,11 @@ defmodule PortalAPI.ResourceController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
@@ -52,15 +59,23 @@ defmodule PortalAPI.ResourceController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Resource",
     parameters: [],
     request_body:
-      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request,
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
        required: true},
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [created: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"resource" => params}) do
@@ -81,6 +96,7 @@ defmodule PortalAPI.ResourceController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update,
     summary: "Update Resource",
     parameters: [
@@ -92,20 +108,28 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     request_body:
-      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.Request,
+      {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.UpdateRequest,
        required: true},
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, %{"id" => id, "resource" => params}) do
     subject = conn.assigns.subject
-    attrs = set_param_defaults(params)
 
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
-         {:ok, resource} <- Database.update_resource(resource, attrs, subject) do
+         {:ok, resource} <- Database.update_resource(resource, params, subject) do
       render(conn, :show, resource: resource)
     else
       error -> Error.handle(conn, error)
@@ -116,6 +140,7 @@ defmodule PortalAPI.ResourceController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete Resource",
     parameters: [
@@ -126,9 +151,17 @@ defmodule PortalAPI.ResourceController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
-    responses: [
-      ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}
-    ]
+    responses:
+      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"id" => id}) do
@@ -168,6 +201,7 @@ defmodule PortalAPI.ResourceController do
     changeset
     |> Ecto.Changeset.validate_required(required)
     |> Database.validate_static_device_pool_feature_enabled(subject.account)
+    |> Database.validate_traffic_filters_feature_enabled(subject.account)
   end
 
   defmodule Database do
@@ -188,7 +222,6 @@ defmodule PortalAPI.ResourceController do
 
       case result do
         nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
         resource -> {:ok, resource}
       end
     end
@@ -212,6 +245,23 @@ defmodule PortalAPI.ResourceController do
       account_feature_enabled? = account.features.client_to_client == true
 
       Safe.unscoped(query, :replica) |> Safe.exists?() and account_feature_enabled?
+    end
+
+    def validate_traffic_filters_feature_enabled(changeset, account) do
+      adding_filters? =
+        changeset
+        |> Ecto.Changeset.get_change(:filters, [])
+        |> Enum.any?(fn filter -> filter.action in [:insert, :update] end)
+
+      if adding_filters? and not Portal.Account.traffic_filters_enabled?(account) do
+        Ecto.Changeset.add_error(
+          changeset,
+          :filters,
+          "traffic filters are not enabled for this account"
+        )
+      else
+        changeset
+      end
     end
 
     def update_resource(resource, attrs, subject) do
@@ -250,6 +300,7 @@ defmodule PortalAPI.ResourceController do
       changeset
       |> Ecto.Changeset.validate_required(required_fields)
       |> validate_static_device_pool_feature_enabled(subject.account)
+      |> validate_traffic_filters_feature_enabled(subject.account)
     end
 
     def cursor_fields do

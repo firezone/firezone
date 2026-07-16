@@ -27,8 +27,8 @@ defmodule PortalWeb.Settings.Authentication do
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
-    "border-[var(--border)] bg-[var(--surface)]",
-    "hover:bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)]"
+    "border-border bg-surface",
+    "hover:bg-raised hover:border-border-emphasis"
   ]
 
   @new_types ~w[google entra okta oidc]
@@ -48,10 +48,15 @@ defmodule PortalWeb.Settings.Authentication do
   }
 
   def mount(_params, _session, socket) do
-    socket = assign(socket, page_title: "Authentication")
+    socket =
+      assign(socket,
+        page_title: "Authentication",
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+      )
 
     if connected?(socket) do
-      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :client_tokens)
+      :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :portal_sessions)
     end
 
     {:ok, init(socket)}
@@ -564,17 +569,21 @@ defmodule PortalWeb.Settings.Authentication do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+        <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
-            <h2 class="text-xs font-semibold text-[var(--text-primary)]">Identity Providers</h2>
-            <span class="text-xs text-[var(--text-tertiary)] tabular-nums">{length(@providers)}</span>
+            <h2 class="text-xs font-semibold text-heading">Identity Providers</h2>
+            <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
           </div>
           <.link
             patch={~p"/#{@account}/settings/authentication/new"}
-            class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+            class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
           >
             <.icon name="ri-add-line" class="w-3 h-3" /> Add
           </.link>
@@ -582,24 +591,24 @@ defmodule PortalWeb.Settings.Authentication do
 
         <div class="flex-1 overflow-auto">
           <table class="w-full text-sm border-collapse">
-            <thead class="sticky top-0 z-10 bg-[var(--surface-raised)]">
-              <tr class="border-b border-[var(--border-strong)]">
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+            <thead class="sticky top-0 z-10 bg-raised">
+              <tr class="border-b border-border-strong">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
                   Provider
                 </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-32">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-32">
                   Context
                 </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
                   Issuer
                 </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                   Portal TTL
                 </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                   Client TTL
                 </th>
-                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-48">
+                <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
                   Sessions
                 </th>
                 <th class="px-6 py-2.5 w-14"></th>
@@ -623,7 +632,7 @@ defmodule PortalWeb.Settings.Authentication do
           id="add-provider-panel"
           class={[
             "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-            "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+            "bg-elevated border-l border-border-strong",
             "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
             "transition-transform duration-200 ease-in-out",
             (@live_action in [:select_type, :new] && "translate-x-0") || "translate-x-full"
@@ -633,18 +642,12 @@ defmodule PortalWeb.Settings.Authentication do
         >
           <!-- Select Provider Type -->
           <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">Select Provider Type</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 class="text-sm font-semibold text-heading">Select Provider Type</h2>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <p class="mb-4 text-xs text-[var(--text-tertiary)]">
+              <p class="mb-4 text-xs text-subtle">
                 Select an authentication provider type to add:
               </p>
               <ul class="flex flex-col gap-2">
@@ -654,10 +657,10 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="google" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">Google</span>
+                      <.provider_icon provider="google" size="xl" />
+                      <span class="text-sm font-medium text-heading">Google</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Authenticate users against a Google account.
                     </span>
                   </.link>
@@ -668,10 +671,10 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="entra" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">Entra</span>
+                      <.provider_icon provider="entra" size="xl" />
+                      <span class="text-sm font-medium text-heading">Entra</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Authenticate users against a Microsoft Entra account.
                     </span>
                   </.link>
@@ -682,10 +685,10 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="okta" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">Okta</span>
+                      <.provider_icon provider="okta" size="xl" />
+                      <span class="text-sm font-medium text-heading">Okta</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Authenticate users against an Okta account.
                     </span>
                   </.link>
@@ -696,10 +699,10 @@ defmodule PortalWeb.Settings.Authentication do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="oidc" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">OIDC</span>
+                      <.provider_icon provider="oidc" size="xl" />
+                      <span class="text-sm font-medium text-heading">OIDC</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Authenticate users against any OpenID Connect compliant identity provider.
                     </span>
                   </.link>
@@ -713,30 +716,24 @@ defmodule PortalWeb.Settings.Authentication do
             :if={@live_action == :new and assigns[:form] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <div class="flex items-center gap-2">
                 <.link
                   patch={~p"/#{@account}/settings/authentication/new"}
-                  class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                   title="Back"
                 >
                   <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
-                  <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+                  <.provider_icon provider={@type} size="md" />
+                  <h2 class="text-sm font-semibold text-heading">
                     Add {titleize(@type)} Provider
                   </h2>
                   <.docs_action path={"/authenticate/#{@type}"} />
                 </div>
               </div>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.provider_form
@@ -747,21 +744,13 @@ defmodule PortalWeb.Settings.Authentication do
                 submit_event="submit_provider"
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
-              <button
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-sm rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-              >
+            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <.button phx-click="close_panel">
                 Cancel
-              </button>
-              <button
-                form="auth-provider-form"
-                type="submit"
-                disabled={not @form.source.valid?}
-                class="px-3 py-1.5 text-sm rounded bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              </.button>
+              <.button form="auth-provider-form" type="submit" style="primary" disabled={not @form.source.valid?}>
                 Create
-              </button>
+              </.button>
             </div>
           </div>
         </div>
@@ -772,7 +761,7 @@ defmodule PortalWeb.Settings.Authentication do
         id="edit-provider-panel"
         class={[
           "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-          "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+          "bg-elevated border-l border-border-strong",
           "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
           "transition-transform duration-200 ease-in-out",
           (@live_action == :edit && assigns[:form] != nil && "translate-x-0") || "translate-x-full"
@@ -784,21 +773,15 @@ defmodule PortalWeb.Settings.Authentication do
           :if={@live_action == :edit and assigns[:form] != nil}
           class="flex flex-col h-full overflow-hidden"
         >
-          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
             <div class="flex items-center gap-2">
-              <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+              <.provider_icon provider={@type} size="md" />
+              <h2 class="text-sm font-semibold text-heading">
                 Edit {@provider_name}
               </h2>
               <.docs_action path={"/authenticate/#{@type}"} />
             </div>
-            <button
-              phx-click="close_panel"
-              class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-              title="Close (Esc)"
-            >
-              <.icon name="ri-close-line" class="w-4 h-4" />
-            </button>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
@@ -814,23 +797,21 @@ defmodule PortalWeb.Settings.Authentication do
               is_legacy={assigns[:is_legacy]}
             />
           </div>
-          <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
-            <button
-              phx-click="close_panel"
-              class="px-3 py-1.5 text-sm rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-            >
+          <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+            <.button phx-click="close_panel" size="sm">
               Cancel
-            </button>
-            <button
+            </.button>
+            <.button
               form="auth-provider-form"
               type="submit"
+              style="primary"
+              size="sm"
               disabled={
                 not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
               }
-              class="px-3 py-1.5 text-sm rounded bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Save
-            </button>
+            </.button>
           </div>
         </div>
       </div>
@@ -849,13 +830,13 @@ defmodule PortalWeb.Settings.Authentication do
       @is_pending_delete && "border-red-200 bg-red-50",
       @is_pending_revoke && "border-orange-200 bg-orange-50",
       !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
-        "border-[var(--border)] hover:bg-[var(--surface-raised)]",
+        "border-border hover:bg-raised",
       @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
         "opacity-60"
     ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon type={@type} class="w-7 h-7 shrink-0" />
+          <.provider_icon provider={@type} size="lg" />
           <div>
             <div class="flex items-center gap-1.5">
               <span class={[
@@ -864,13 +845,13 @@ defmodule PortalWeb.Settings.Authentication do
                 @is_pending_delete && "text-red-900",
                 @is_pending_revoke && "text-orange-900",
                 !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
-                  "text-[var(--text-primary)]"
+                  "text-heading"
               ]}>
                 {@provider.name}
               </span>
               <span
                 :if={@is_default && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke}
-                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--brand-muted)] text-[var(--brand)]"
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-brand-muted text-brand"
               >
                 Default
               </span>
@@ -879,7 +860,7 @@ defmodule PortalWeb.Settings.Authentication do
                   @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete &&
                     !@is_pending_revoke
                 }
-                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--text-tertiary)] border border-[var(--border)]"
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle border border-border"
               >
                 Disabled
               </span>
@@ -893,30 +874,31 @@ defmodule PortalWeb.Settings.Authentication do
                 Legacy
               </span>
             </div>
-            <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">{@provider.id}</div>
+            <div class="font-mono text-[10px] text-subtle mt-0.5">{@provider.id}</div>
           </div>
         </div>
       </td>
       <%= if @is_pending_revoke do %>
         <td colspan="6" class="px-6 py-3">
           <div class="flex items-center gap-4">
-            <span class="text-xs text-orange-700">
+            <span class="text-xs text-warning">
               Revoke all sessions for this provider? This will immediately sign out all users authenticated this provider.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <button
+              <.button
                 phx-click="cancel_confirm"
-                class="px-2.5 py-1 text-xs rounded border border-orange-300 bg-white text-orange-800 hover:bg-orange-100 transition-colors"
+                size="xs"
               >
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 phx-click="revoke_sessions"
                 phx-value-id={@provider.id}
-                class="px-2.5 py-1 text-xs rounded bg-orange-600 text-white hover:bg-orange-700 transition-colors"
+                size="xs"
+                style="warning"
               >
                 Revoke sessions
-              </button>
+              </.button>
             </div>
           </div>
         </td>
@@ -924,26 +906,27 @@ defmodule PortalWeb.Settings.Authentication do
         <%= if @is_pending_toggle do %>
           <td colspan="6" class="px-6 py-3">
             <div class="flex items-center gap-4">
-              <span class="text-xs text-amber-700">
+              <span class="text-xs text-warning">
                 {if @provider.is_disabled,
                   do: "Re-enable this provider?",
                   else:
                     "Disable this provider? Users will not be able to sign in while it is disabled."}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <button
+                <.button
                   phx-click="cancel_confirm"
-                  class="px-2.5 py-1 text-xs rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 transition-colors"
+                  size="xs"
                 >
                   Cancel
-                </button>
-                <button
+                </.button>
+                <.button
                   phx-click="toggle_provider"
                   phx-value-id={@provider.id}
-                  class="px-2.5 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                  size="xs"
+                  style="warning"
                 >
                   {if @provider.is_disabled, do: "Enable", else: "Disable"}
-                </button>
+                </.button>
               </div>
             </div>
           </td>
@@ -951,23 +934,24 @@ defmodule PortalWeb.Settings.Authentication do
           <%= if @is_pending_delete do %>
             <td colspan="6" class="px-6 py-3">
               <div class="flex items-center gap-4">
-                <span class="text-xs text-red-700">
+                <span class="text-xs text-danger">
                   Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
                 </span>
                 <div class="flex items-center gap-2 ml-auto shrink-0">
-                  <button
+                  <.button
                     phx-click="cancel_confirm"
-                    class="px-2.5 py-1 text-xs rounded border border-red-300 bg-white text-red-800 hover:bg-red-100 transition-colors"
+                    size="xs"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </.button>
+                  <.button
                     phx-click="delete_provider"
                     phx-value-id={@provider.id}
-                    class="px-2.5 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                    size="xs"
+                    style="danger"
                   >
                     Delete
-                  </button>
+                  </.button>
                 </div>
               </div>
             </td>
@@ -976,27 +960,27 @@ defmodule PortalWeb.Settings.Authentication do
               <.context_badge context={@provider.context} />
             </td>
             <td class="px-6 py-3">
-              <span class="font-mono text-xs text-[var(--text-secondary)]">
+              <span class="font-mono text-xs text-body">
                 {Map.get(@provider, :issuer) || "—"}
               </span>
             </td>
-            <td class="px-6 py-3 text-sm tabular-nums text-[var(--text-secondary)]">
+            <td class="px-6 py-3 text-sm tabular-nums text-body">
               {@portal_ttl || "—"}
             </td>
-            <td class="px-6 py-3 text-sm tabular-nums text-[var(--text-secondary)]">
+            <td class="px-6 py-3 text-sm tabular-nums text-body">
               {@client_ttl || "—"}
             </td>
             <td class="px-6 py-3">
-              <div class="flex items-center gap-2.5 text-xs text-[var(--text-secondary)] tabular-nums">
+              <div class="flex items-center gap-2.5 text-xs text-body tabular-nums">
                 <span>
-                  <span class="font-medium text-[var(--text-primary)]">
+                  <span class="font-medium text-heading">
                     {@provider.portal_sessions_count}
                   </span>
                   portal
                 </span>
-                <span class="w-px h-3 bg-[var(--border-strong)] shrink-0"></span>
+                <span class="w-px h-3 bg-border-strong shrink-0"></span>
                 <span>
-                  <span class="font-medium text-[var(--text-primary)]">
+                  <span class="font-medium text-heading">
                     {@provider.client_tokens_count}
                   </span>
                   client
@@ -1015,38 +999,38 @@ defmodule PortalWeb.Settings.Authentication do
                     :if={@can_be_default and not @is_default}
                     phx-click="set_default_provider"
                     phx-value-id={@provider.id}
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
                     <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                   </button>
                   <button
                     :if={@can_be_default and @is_default}
                     phx-click="clear_default_provider"
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
                     <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
                   </button>
                   <button
                     :if={not @can_be_default}
                     disabled
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-subtle cursor-default"
                   >
                     <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                   </button>
-                  <div class="my-1 border-t border-[var(--border)]"></div>
+                  <div class="my-1 border-t border-border"></div>
                   <.link
                     patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
                     <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
                   </.link>
-                  <div class="my-1 border-t border-[var(--border)]"></div>
+                  <div class="my-1 border-t border-border"></div>
                   <button
                     :if={@has_sessions}
                     phx-click="request_confirm"
                     phx-value-id={@provider.id}
                     phx-value-action="revoke"
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
                     <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
                     Revoke sessions
@@ -1054,17 +1038,17 @@ defmodule PortalWeb.Settings.Authentication do
                   <button
                     :if={not @has_sessions}
                     disabled
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-[var(--text-tertiary)] cursor-default"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-subtle cursor-default"
                   >
                     <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
                     Revoke sessions
                   </button>
-                  <div class="my-1 border-t border-[var(--border)]"></div>
+                  <div class="my-1 border-t border-border"></div>
                   <button
                     phx-click="request_confirm"
                     phx-value-id={@provider.id}
                     phx-value-action="toggle"
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
                     <.icon
                       name={
@@ -1081,7 +1065,7 @@ defmodule PortalWeb.Settings.Authentication do
                     phx-click="request_confirm"
                     phx-value-id={@provider.id}
                     phx-value-action="delete"
-                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)]"
+                    class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                   </button>
@@ -1178,9 +1162,9 @@ defmodule PortalWeb.Settings.Authentication do
           <div>
             <label
               for={@form[:name].id}
-              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              class="block text-xs font-medium text-body mb-1.5"
             >
-              Name <span class="text-[var(--status-error)]">*</span>
+              Name <span class="text-error">*</span>
             </label>
             <.input
               field={@form[:name]}
@@ -1194,9 +1178,9 @@ defmodule PortalWeb.Settings.Authentication do
           <div>
             <label
               for={@form[:context].id}
-              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              class="block text-xs font-medium text-body mb-1.5"
             >
-              Context <span class="text-[var(--status-error)]">*</span>
+              Context <span class="text-error">*</span>
             </label>
             <.input
               field={@form[:context]}
@@ -1208,15 +1192,15 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
 
         <%!-- Session lifetimes --%>
-        <div class="pt-4 border-t border-[var(--border)]">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+        <div class="pt-4 border-t border-border">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Session Lifetimes
           </p>
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label
                 for={@form[:portal_session_lifetime_secs].id}
-                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                class="block text-xs font-medium text-body mb-1.5"
               >
                 Portal (seconds)
               </label>
@@ -1226,11 +1210,14 @@ defmodule PortalWeb.Settings.Authentication do
                 placeholder="28800"
                 phx-debounce="300"
               />
+              <p class="mt-2 text-xs text-subtle">
+                Portal default: 8 hours
+              </p>
             </div>
             <div>
               <label
                 for={@form[:client_session_lifetime_secs].id}
-                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                class="block text-xs font-medium text-body mb-1.5"
               >
                 Client (seconds)
               </label>
@@ -1240,24 +1227,24 @@ defmodule PortalWeb.Settings.Authentication do
                 placeholder="604800"
                 phx-debounce="300"
               />
+              <p class="mt-2 text-xs text-subtle">
+                Client default: 7 days
+              </p>
             </div>
           </div>
-          <p class="mt-2 text-xs text-[var(--text-tertiary)]">
-            Portal default: 8 hours · Client default: 7 days
-          </p>
         </div>
 
         <%!-- Entra-specific config --%>
-        <div :if={@type == "entra"} class="pt-4 border-t border-[var(--border)] space-y-4">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        <div :if={@type == "entra"} class="pt-4 border-t border-border space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
             Provider Configuration
           </p>
           <div>
             <label
               for={@form[:email_claim].id}
-              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              class="block text-xs font-medium text-body mb-1.5"
             >
-              Email Claim <span class="text-[var(--status-error)]">*</span>
+              Email Claim <span class="text-error">*</span>
             </label>
             <.input
               field={@form[:email_claim]}
@@ -1269,24 +1256,24 @@ defmodule PortalWeb.Settings.Authentication do
               ]}
               required
             />
-            <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+            <p class="mt-1 text-xs text-subtle">
               The OIDC claim to use as the user's email address during sign-in.
             </p>
           </div>
         </div>
 
         <%!-- Provider-specific config (Okta / OIDC) --%>
-        <div :if={@type in ["okta", "oidc"]} class="pt-4 border-t border-[var(--border)] space-y-4">
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        <div :if={@type in ["okta", "oidc"]} class="pt-4 border-t border-border space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
             Provider Configuration
           </p>
 
           <div :if={@type == "okta"}>
             <label
               for={@form[:okta_domain].id}
-              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              class="block text-xs font-medium text-body mb-1.5"
             >
-              Okta Domain <span class="text-[var(--status-error)]">*</span>
+              Okta Domain <span class="text-error">*</span>
             </label>
             <.input
               field={@form[:okta_domain]}
@@ -1302,9 +1289,9 @@ defmodule PortalWeb.Settings.Authentication do
           <div :if={@type == "oidc"}>
             <label
               for={@form[:discovery_document_uri].id}
-              class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+              class="block text-xs font-medium text-body mb-1.5"
             >
-              Discovery Document URI <span class="text-[var(--status-error)]">*</span>
+              Discovery Document URI <span class="text-error">*</span>
             </label>
             <.input
               field={@form[:discovery_document_uri]}
@@ -1321,9 +1308,9 @@ defmodule PortalWeb.Settings.Authentication do
             <div>
               <label
                 for={@form[:client_id].id}
-                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                class="block text-xs font-medium text-body mb-1.5"
               >
-                Client ID <span class="text-[var(--status-error)]">*</span>
+                Client ID <span class="text-error">*</span>
               </label>
               <.input
                 field={@form[:client_id]}
@@ -1337,9 +1324,9 @@ defmodule PortalWeb.Settings.Authentication do
             <div>
               <label
                 for={@form[:client_secret].id}
-                class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+                class="block text-xs font-medium text-body mb-1.5"
               >
-                Client Secret <span class="text-[var(--status-error)]">*</span>
+                Client Secret <span class="text-error">*</span>
               </label>
               <.input
                 field={@form[:client_secret]}
@@ -1353,16 +1340,16 @@ defmodule PortalWeb.Settings.Authentication do
           </div>
 
           <fieldset :if={@type == "oidc"}>
-            <legend class="block text-xs font-medium text-[var(--text-secondary)] mb-3">
-              Email Verification <span class="text-[var(--status-error)]">*</span>
+            <legend class="block text-xs font-medium text-body mb-3">
+              Email Verification <span class="text-error">*</span>
             </legend>
             <% email_verification_method = get_field(@form.source, :email_verification_method) %>
             <div class="grid gap-3 md:grid-cols-3">
               <label class={[
                 "flex flex-col p-3 border rounded cursor-pointer transition-all",
                 if(email_verification_method == :none,
-                  do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                  else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
                 )
               ]}>
                 <input
@@ -1373,10 +1360,10 @@ defmodule PortalWeb.Settings.Authentication do
                   class="sr-only"
                   required
                 />
-                <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+                <span class="text-sm font-semibold text-heading mb-1">
                   None
                 </span>
-                <span class="text-xs text-[var(--text-secondary)]">
+                <span class="text-xs text-body">
                   Do not require the identity provider to confirm email ownership before linking an identity.
                   <strong class="block mt-1">Not recommended.</strong>
                 </span>
@@ -1385,8 +1372,8 @@ defmodule PortalWeb.Settings.Authentication do
               <label class={[
                 "flex flex-col p-3 border rounded cursor-pointer transition-all",
                 if(email_verification_method == :claim,
-                  do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                  else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
                 )
               ]}>
                 <input
@@ -1397,10 +1384,10 @@ defmodule PortalWeb.Settings.Authentication do
                   class="sr-only"
                   required
                 />
-                <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+                <span class="text-sm font-semibold text-heading mb-1">
                   Claim
                 </span>
-                <span class="text-xs text-[var(--text-secondary)]">
+                <span class="text-xs text-body">
                   Trust the email address only when the identity provider returns
                   <code class="text-xs"><strong>email_verified=true</strong></code>.
                   Authentication fails when the claim is missing or false.
@@ -1411,8 +1398,8 @@ defmodule PortalWeb.Settings.Authentication do
               <label class={[
                 "flex flex-col p-3 border rounded cursor-pointer transition-all",
                 if(email_verification_method == :proof,
-                  do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                  else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
                 )
               ]}>
                 <input
@@ -1423,10 +1410,10 @@ defmodule PortalWeb.Settings.Authentication do
                   class="sr-only"
                   required
                 />
-                <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+                <span class="text-sm font-semibold text-heading mb-1">
                   Proof
                 </span>
-                <span class="text-xs text-[var(--text-secondary)]">
+                <span class="text-xs text-body">
                   Send a one-time passcode to the claimed email address before linking a new OIDC identity.
                   Use this when the provider cannot reliably send
                   <code class="text-xs"><strong>email_verified=true</strong></code>.
@@ -1437,32 +1424,32 @@ defmodule PortalWeb.Settings.Authentication do
 
           <%!-- Redirect URI --%>
           <div>
-            <label class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+            <label class="block text-xs font-medium text-body mb-1.5">
               Redirect URI
             </label>
             <div
-              class="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] bg-[var(--surface-raised)]"
+              class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised"
               id="redirect-uri"
               phx-hook="CopyClipboard"
             >
               <span id="redirect-uri-text" class="hidden">{@redirect_uri}</span>
-              <code class="flex-1 text-xs font-mono text-[var(--text-secondary)] truncate">
+              <code class="flex-1 text-xs font-mono text-body truncate">
                 {@redirect_uri}
               </code>
               <button
                 type="button"
                 data-copy-to-clipboard-target="redirect-uri-text"
-                class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                class="shrink-0 text-subtle hover:text-heading transition-colors"
               >
                 <span id="redirect-uri-default-message">
                   <.icon name="ri-clipboard-line" class="w-4 h-4" />
                 </span>
                 <span id="redirect-uri-success-message" class="hidden">
-                  <.icon name="ri-check-line" class="w-4 h-4 text-green-600" />
+                  <.icon name="ri-check-line" class="w-4 h-4 text-success" />
                 </span>
               </button>
             </div>
-            <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+            <p class="mt-1 text-xs text-subtle">
               Add this to your {titleize(@type)} application's allowed redirect URIs.
             </p>
           </div>
@@ -1471,17 +1458,17 @@ defmodule PortalWeb.Settings.Authentication do
         <%!-- Verification --%>
         <div
           :if={@type in ["entra", "google", "okta", "oidc"] and not @is_legacy}
-          class="pt-4 border-t border-[var(--border)]"
+          class="pt-4 border-t border-border"
         >
-          <p class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-3">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Verification
           </p>
           <.flash :if={@verification_error} kind={:error} class="mb-3">
             {@verification_error}
           </.flash>
-          <div class="rounded border border-[var(--border)] overflow-hidden">
+          <div class="rounded border border-border overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3">
-              <p class="text-sm text-[var(--text-secondary)]">
+              <p class="text-sm text-body">
                 {verification_help_text(@form, @type)}
               </p>
               <div class="ml-4 shrink-0">
@@ -1490,21 +1477,21 @@ defmodule PortalWeb.Settings.Authentication do
             </div>
             <div
               :if={verified?(@form)}
-              class="flex items-center justify-between px-4 py-2.5 border-t border-[var(--border)] bg-[var(--surface-raised)]"
+              class="flex items-center justify-between px-4 py-2.5 border-t border-border bg-raised"
             >
               <div class="flex items-center gap-2 min-w-0">
-                <span class="text-xs text-[var(--text-tertiary)] shrink-0">Issuer</span>
-                <span class="text-xs font-mono text-[var(--text-primary)] truncate">
+                <span class="text-xs text-subtle shrink-0">Issuer</span>
+                <span class="text-xs font-mono text-heading truncate">
                   {get_field(@form.source, :issuer)}
                 </span>
               </div>
-              <button
+              <.button
                 type="button"
                 phx-click="reset_verification"
-                class="ml-4 shrink-0 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                size="xs"
               >
                 Reset
-              </button>
+              </.button>
             </div>
           </div>
         </div>
@@ -1525,7 +1512,7 @@ defmodule PortalWeb.Settings.Authentication do
     ~H"""
     <div
       :if={verified?(@form)}
-      class="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-100 px-2.5 py-1 rounded"
+      class="flex items-center gap-1.5 text-xs font-medium text-success bg-success-light px-2.5 py-1 rounded"
     >
       <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
     </div>
@@ -1596,7 +1583,7 @@ defmodule PortalWeb.Settings.Authentication do
     {label, classes} =
       case assigns.context do
         :clients_and_portal ->
-          {"All", "bg-[var(--brand-muted)] text-[var(--brand)]"}
+          {"All", "bg-brand-muted text-brand"}
 
         :clients_only ->
           {"Clients", "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"}
@@ -1605,7 +1592,7 @@ defmodule PortalWeb.Settings.Authentication do
           {"Portal", "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"}
 
         _ ->
-          {"—", "text-[var(--text-tertiary)]"}
+          {"—", "text-subtle"}
       end
 
     assigns = assign(assigns, label: label, classes: classes)

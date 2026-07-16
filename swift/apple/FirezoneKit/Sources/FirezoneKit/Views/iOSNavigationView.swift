@@ -24,7 +24,7 @@ import SwiftUI
     }
 
     var body: some View {
-      NavigationView {
+      NavigationStack {
         content
           .navigationBarTitleDisplayMode(.inline)
           .navigationBarItems(leading: authMenu, trailing: settingsButton)
@@ -44,7 +44,6 @@ import SwiftUI
       .sheet(isPresented: $isSettingsPresented) {
         SettingsView(store: store)
       }
-      .navigationViewStyle(StackNavigationViewStyle())
     }
 
     private var settingsButton: some View {

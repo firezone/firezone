@@ -21,6 +21,10 @@ impl<'a> TcpHeaderSliceMut<'a> {
         u16::from_be_bytes([self.slice[2], self.slice[3]])
     }
 
+    pub fn get_checksum(&self) -> u16 {
+        u16::from_be_bytes([self.slice[16], self.slice[17]])
+    }
+
     pub fn set_source_port(&mut self, src: u16) {
         // Safety: Slice it at least of length 20 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 0, src.to_be_bytes()) };

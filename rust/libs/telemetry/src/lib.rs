@@ -1,33 +1,30 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    fmt, mem,
-    net::{SocketAddr, ToSocketAddrs as _},
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context as _, Result, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
-    transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
+use socket_factory::{SocketFactory, TcpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
 pub mod otel;
 
 mod api_url;
+mod ingest;
 mod noop_push_metrics_exporter;
 mod posthog;
+mod sentry;
 mod sentry_instrument_provider;
+mod state;
+
+use state::SharedState;
 
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
@@ -46,6 +43,17 @@ pub fn maybe_hash_device_id(id: String) -> String {
     }
 }
 
+/// Drops the current telemetry ingest connections so they are re-established lazily.
+///
+/// Call this on network changes, alongside resetting connlib. Triggers a
+/// feature-flag re-evaluation so flags are refreshed over the new connection.
+pub fn reset_ingest() {
+    ingest::reset_socket_factory();
+    posthog::reset_client();
+    sentry::reset_client();
+    feature_flags::reevaluate_current();
+}
+
 pub struct Dsn {
     public_key: &'static str,
     project_id: u64,
@@ -55,8 +63,6 @@ pub struct Dsn {
 // Sentry docs say this does not need to be protected:
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
-
-const INGEST_HOST: &str = "sentry.firezone.dev";
 
 pub const ANDROID_DSN: Dsn = Dsn {
     public_key: "928a6ee1f6af9734100b8bc89b2dc87d",
@@ -91,8 +97,10 @@ impl fmt::Display for Dsn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "https://{}@{INGEST_HOST}/{}",
-            self.public_key, self.project_id
+            "https://{}@{}/{}",
+            self.public_key,
+            sentry::INGEST_HOST,
+            self.project_id
         )
     }
 }
@@ -164,199 +172,173 @@ impl fmt::Display for Env {
     }
 }
 
-pub struct Telemetry {
-    inner: Option<sentry::ClientInitGuard>,
-    transport: TransportFactory,
+/// The process-global telemetry state.
+static STATE: SharedState = SharedState::new();
+
+/// Configures the tunnel-bypassing socket factory for telemetry's ingest
+/// connections so they never loop through connlib. Call once at process start
+/// before [`start`].
+pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    ingest::configure(tcp);
 }
 
-impl Default for Telemetry {
-    fn default() -> Self {
-        Self::new()
+/// Starts (or re-points) the Sentry session for `env_or_api_url`.
+pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
+    if let Err(e) = try_start(env_or_api_url, release, dsn) {
+        tracing::error!("Failed to start telemetry: {e:#}");
     }
 }
 
-impl Telemetry {
-    pub fn new() -> Self {
-        Self {
-            inner: Default::default(),
-            transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
-                tracing::debug!("Failed to create telemetry transport factory: {e:#}");
+fn try_start(env_or_api_url: &str, release: &str, dsn: Dsn) -> Result<()> {
+    let environment = Env::parse(env_or_api_url);
 
-                TransportFactory::without_addresses()
-            }),
-        }
+    /// What [`start`] should do, decided while briefly holding the lock.
+    enum Plan {
+        NoOp,
+        Unofficial,
+        Start,
     }
 
-    pub fn disabled() -> Self {
-        Self {
-            inner: None,
-            transport: TransportFactory::without_addresses(),
-        }
+    // Phase 1 — under the lock: decide the transition and hand back the previous
+    // guard. Only plain state is touched here; no logging, no SDK calls.
+    let (plan, previous) = STATE
+        .try_write(|state| {
+            if state.is_active() && state.env() == Some(environment) {
+                return (Plan::NoOp, None);
+            }
+
+            let previous = state.take_guard();
+            if previous.is_some() {
+                state.clear_identity();
+            }
+
+            if matches!(
+                environment,
+                Env::OnPrem | Env::Localhost | Env::DockerCompose
+            ) {
+                state.set_env(None);
+
+                return (Plan::Unofficial, previous);
+            }
+
+            (Plan::Start, previous)
+        })
+        .context("Failed to plan telemetry start")?;
+
+    // Phase 2 — the lock is released, so logging (which re-enters the lock via
+    // the Sentry hooks) and dropping the previous guard (which flushes) is safe.
+    if previous.is_some() {
+        tracing::debug!("Stopping previous telemetry session");
+
+        drop(previous);
+        set_current_user(None);
     }
 
-    /// Starts a Sentry session.
-    pub fn start(&mut self, env_or_api_url: &str, release: &str, dsn: Dsn) {
-        let environment = Env::parse(env_or_api_url);
-
-        if self
-            .inner
-            .as_ref()
-            .and_then(|i| i.options().environment.as_ref())
-            .is_some_and(|env| env == environment.as_str())
-        {
+    match plan {
+        Plan::NoOp => {
             tracing::debug!(%environment, "Telemetry already initialised");
-
-            return;
-        }
-
-        // Stop any previous telemetry session.
-        if let Some(inner) = self.inner.take() {
-            tracing::debug!("Stopping previous telemetry session");
-
-            drop(inner);
-
-            set_current_user(None);
-        }
-
-        if matches!(
-            environment,
-            Env::OnPrem | Env::Localhost | Env::DockerCompose
-        ) {
-            tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
-            return;
-        }
-
-        tracing::info!(%environment, "Starting telemetry");
-
-        let client_options = sentry::ClientOptions {
-            environment: Some(Cow::Borrowed(environment.as_str())),
-            // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
-            release: Some(release.to_owned().into()),
-            max_breadcrumbs: 500,
-            before_send: Some({
-                let rate_limit = event_rate_limiter(Duration::from_secs(60 * 5));
-                Arc::new(move |event| {
-                    let event = rate_limit(event)?;
-                    let event = insert_feature_flags_into_event(event);
-
-                    Some(event)
-                })
-            }),
-            enable_logs: true,
-            enable_metrics: true,
-            before_send_log: Some(Arc::new(|log| {
-                let log = insert_user_account_slug_into_log(log);
-                let log = append_tracing_fields_to_message(log);
-
-                Some(log)
-            })),
-            before_send_metric: Some(Arc::new(|metric| {
-                let metric = insert_user_account_slug_into_metric(metric);
-                let metric = insert_feature_flags_into_metric(metric);
-
-                Some(metric)
-            })),
-            ..Default::default()
-        };
-        let inner = sentry::init((
-            dsn.to_string(),
-            sentry::ClientOptions {
-                transport: Some(Arc::new(self.transport.clone())),
-                ..client_options
-            },
-        ));
-        // Configure scope on the main hub so that all threads will get the tags.
-        let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
-        sentry::Hub::main().configure_scope(move |scope| {
-            if let Some(api_url) = api_url {
-                scope.set_tag("api_url", api_url);
-            }
-            let ctx = sentry::integrations::contexts::utils::device_context();
-            scope.set_context("device", ctx);
-            let ctx = sentry::integrations::contexts::utils::rust_context();
-            scope.set_context("rust", ctx);
-
-            if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
-                scope.set_context("os", ctx);
-            }
-        });
-        self.inner.replace(inner);
-    }
-
-    /// Flushes events to sentry.io and drops the guard
-    pub async fn stop(&mut self) {
-        if let Err(e) = self.end_session().await {
-            tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
-        }
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.inner.is_some()
-    }
-
-    async fn end_session(&mut self) -> Result<()> {
-        let Some(inner) = self.inner.take() else {
             return Ok(());
-        };
-        tracing::info!("Stopping telemetry");
-
-        // Sentry uses blocking IO for flushing ..
-        let task = tokio::task::spawn_blocking(move || {
-            if !inner.flush(Some(Duration::from_secs(1))) {
-                return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
-            };
-
-            tracing::debug!("Flushed telemetry");
-
-            Ok(())
-        });
-
-        tokio::time::timeout(Duration::from_secs(1), task)
-            .await
-            .context("Failed to end session within 1s")???;
-
-        Ok(())
-    }
-
-    pub fn set_account_slug(slug: String) {
-        update_user(|user| {
-            user.other.insert("account_slug".to_owned(), slug.into());
-        });
-    }
-
-    /// Attaches the Firezone ID to the active Sentry session.
-    pub async fn set_firezone_id(firezone_id: String) {
-        let new_user = compute_user(firezone_id);
-        update_user(|user| {
-            user.id = new_user.id;
-            user.other.extend(new_user.other);
-        });
-
-        // In case user and env are now available, re-eval feature-flags.
-        if let (Some(id), Some(env)) = (Self::current_user(), Self::current_env()) {
-            feature_flags::evaluate_now(id, env).await;
         }
+        Plan::Unofficial => {
+            tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
+            return Ok(());
+        }
+        Plan::Start => {}
     }
 
-    #[doc(hidden)] // Only public for testing.
-    pub fn current_env() -> Option<Env> {
-        let client = sentry::Hub::main().client()?;
-        let env = client.options().environment.as_deref()?;
-        let env = Env::from_str(env).ok()?;
+    let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
+    // Configure scope on the main hub so that all threads will get the tags.
+    let api_url = (environment != Env::Entrypoint).then(|| env_or_api_url.to_owned());
+    sentry::Hub::main().configure_scope(move |scope| {
+        if let Some(api_url) = api_url {
+            scope.set_tag("api_url", api_url);
+        }
+        let ctx = sentry::integrations::contexts::utils::device_context();
+        scope.set_context("device", ctx);
+        let ctx = sentry::integrations::contexts::utils::rust_context();
+        scope.set_context("rust", ctx);
 
-        Some(env)
-    }
+        if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
+            scope.set_context("os", ctx);
+        }
+    });
 
-    #[doc(hidden)] // Only public for testing.
-    pub fn current_user() -> Option<String> {
-        sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
-    }
+    // Phase 3 — publish the live client. Plain state mutation only, no logging.
+    STATE
+        .try_write(move |state| {
+            state.set_env(Some(environment));
+            state.set_guard(inner);
+        })
+        .context("Failed to activate telemetry")?;
 
-    #[doc(hidden)] // Only public for testing.
-    pub fn current_account_slug() -> Option<String> {
-        sentry::Hub::main()
-            .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
-    }
+    sentry::warmup_connection();
+    posthog::warmup_connection();
+
+    tracing::info!(%environment, "Started telemetry");
+
+    Ok(())
+}
+
+/// Flushes events to sentry.io and drops the guard. A no-op if not started.
+pub fn stop() {
+    let Ok(Some(inner)) = STATE.try_write(|state| state.take_guard()) else {
+        return;
+    };
+
+    // This blocks the current thread but the transport uses its own runtime so this is safe.
+    let flushed = inner.flush(Some(Duration::from_secs(1)));
+
+    tracing::info!(%flushed, "Stopped telemetry");
+}
+
+pub fn is_active() -> bool {
+    STATE.try_read(|state| state.is_active()).unwrap_or(false)
+}
+
+pub fn set_account_slug(slug: String) {
+    let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
+
+    update_user(|user| {
+        user.other.insert("account_slug".to_owned(), slug.into());
+    });
+}
+
+/// Attaches the Firezone ID to the active Sentry session.
+pub fn set_firezone_id(firezone_id: String) {
+    let new_user = compute_user(firezone_id);
+
+    let _ = STATE.try_write(|state| state.set_firezone_id(new_user.id.clone()));
+
+    update_user(|user| {
+        user.id = new_user.id;
+        user.other.extend(new_user.other);
+    });
+
+    // The user (and maybe env) may now be available, so re-eval feature flags on
+    // telemetry's internal ingest runtime.
+    feature_flags::reevaluate_current();
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_env() -> Option<Env> {
+    STATE.try_read(|state| state.env()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_user() -> Option<String> {
+    STATE.try_read(|state| state.firezone_id()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_account_slug() -> Option<String> {
+    STATE.try_read(|state| state.account_slug()).ok().flatten()
+}
+
+/// The identity feature flags are evaluated for: the current user and environment.
+///
+/// `None` unless telemetry is active and both are known.
+pub(crate) fn current_identity() -> Option<(String, Env)> {
+    STATE.try_read(|state| state.identity()).ok().flatten()
 }
 
 /// Computes the [`User`] scope based on the contents of `firezone_id`.
@@ -451,7 +433,7 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
 }
 
 fn insert_user_account_slug_into_log(mut log: Log) -> Log {
-    let Some(account_slug) = Telemetry::current_account_slug() else {
+    let Some(account_slug) = current_account_slug() else {
         return log;
     };
 
@@ -464,7 +446,7 @@ fn insert_user_account_slug_into_log(mut log: Log) -> Log {
 }
 
 fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
-    let Some(account_slug) = Telemetry::current_account_slug() else {
+    let Some(account_slug) = current_account_slug() else {
         return metric;
     };
 
@@ -513,52 +495,6 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
-}
-
-#[derive(Debug, Clone)]
-pub struct TransportFactory {
-    ingest_domain_addresses: Vec<SocketAddr>,
-}
-
-impl TransportFactory {
-    pub fn resolve_ingest_host() -> Result<Self> {
-        let resolved_addresses = (INGEST_HOST, 443u16)
-            .to_socket_addrs()
-            .with_context(|| format!("Failed to resolve {INGEST_HOST}"))?
-            .collect();
-
-        tracing::debug!(host = %INGEST_HOST, addresses = ?resolved_addresses, "Resolved ingest host IPs");
-
-        Ok(Self {
-            ingest_domain_addresses: resolved_addresses,
-        })
-    }
-
-    fn without_addresses() -> Self {
-        Self {
-            ingest_domain_addresses: Default::default(),
-        }
-    }
-}
-
-impl sentry::TransportFactory for TransportFactory {
-    fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
-        let mut builder = reqwest::ClientBuilder::new()
-            .http2_prior_knowledge()
-            .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_timeout(Duration::from_secs(1))
-            .http2_keep_alive_interval(Duration::from_secs(5)); // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
-
-        if !self.ingest_domain_addresses.is_empty() {
-            builder = builder.resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses);
-        } else {
-            tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host");
-        }
-
-        let client = builder.build().expect("Failed to build HTTP client");
-
-        Arc::new(ReqwestHttpTransport::with_client(options, client))
-    }
 }
 
 #[cfg(test)]

@@ -101,16 +101,17 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
    mise run tunnel
    ```
 
-   This runs `firezone-client-tunnel run-interactive`, which in a debug build serves
-   the Tunnel IPC pipe without pinning it to `LocalSystem`, so the unprivileged GUI
-   below can connect.
+   This runs `firezone-client-tunnel run-interactive --skip-peer-verification`, which in a
+   debug build serves the Tunnel IPC pipe without pinning it to `LocalSystem`, so the
+   unprivileged, non-installed GUI below can connect. Drop the flag to exercise the
+   pipe-owner check against an installed GUI.
 
 2. **GUI client** — from a normal (non-elevated) terminal. Connects to the Tunnel
    service above, skipping the pipe-owner check so it accepts the non-`LocalSystem` pipe:
 
    ```powershell
    mise run tauri-dev
-   # equivalent to: cargo tauri dev -- -- --skip-tunnel-pipe-owner-check
+   # equivalent to: cargo tauri dev -- -- --skip-peer-verification
 
    # You can call debug subcommands on the exe this way too, e.g.
    cargo tauri dev -- -- debug hostname
@@ -127,14 +128,14 @@ The app's config and logs will be stored at
 `C:\Users\$USER\AppData\Local\dev.firezone.client`.
 
 > Note: `pnpm dev` does **not** work for this flow. `dev.bat` hard-codes `tauri dev`
-> and forwards no arguments, so it can't pass `--skip-tunnel-pipe-owner-check`, and it
+> and forwards no arguments, so it can't pass `--skip-peer-verification`, and it
 > doesn't start an elevated Tunnel service.
 
 ### What this workflow can't test
 
-Running the GUI against a debug-build `run-interactive` Tunnel deliberately bypasses the named-pipe
-ownership check, so it does **not** exercise the production pipe-ownership security
-model (GUI ⇄ `LocalSystem` Tunnel service). It also doesn't cover MSI packaging, the
+Running the GUI against a debug-build `run-interactive --skip-peer-verification` Tunnel deliberately
+bypasses the named-pipe ownership check, so it does **not** exercise the production pipe-ownership
+security model (GUI ⇄ `LocalSystem` Tunnel service). It also doesn't cover MSI packaging, the
 bundled Windows service, sparse-package registration, or the installed app identity.
 
 To test installation end-to-end you need a real signed release MSI, which **cannot** be

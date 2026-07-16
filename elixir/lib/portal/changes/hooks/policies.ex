@@ -9,7 +9,7 @@ defmodule Portal.Changes.Hooks.Policies do
     policy = struct_from_params(Policy, data)
     change = %Change{lsn: lsn, op: :insert, struct: policy}
 
-    PubSub.Changes.broadcast(policy.account_id, change)
+    PubSub.Changes.broadcast(policy.account_id, :policies, change)
   end
 
   @impl true
@@ -53,13 +53,20 @@ defmodule Portal.Changes.Hooks.Policies do
     # This is a special case - we need to delete related policy_authorizations because connectivity has changed
     # The Gateway PID will receive policy_authorization deletion messages and process them to potentially reject
     # access. The client PID (if connected) will toggle the resource deleted/created.
+    #
+    # A flow_log_uploads_enabled flip is breaking too, but for a different
+    # reason: ingest tokens snapshot the flag at authorization time and cannot
+    # be revoked, so the only way to apply the new value is to expire the
+    # policy's authorizations and let clients re-create their flows with
+    # freshly minted tokens.
     if old_policy.conditions != policy.conditions or
          old_policy.group_id != policy.group_id or
-         old_policy.resource_id != policy.resource_id do
+         old_policy.resource_id != policy.resource_id or
+         old_policy.flow_log_uploads_enabled != policy.flow_log_uploads_enabled do
       Database.delete_policy_authorizations_for_policy(old_policy)
     end
 
-    PubSub.Changes.broadcast(policy.account_id, change)
+    PubSub.Changes.broadcast(policy.account_id, :policies, change)
   end
 
   @impl true
@@ -67,7 +74,7 @@ defmodule Portal.Changes.Hooks.Policies do
     policy = struct_from_params(Policy, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: policy}
 
-    PubSub.Changes.broadcast(policy.account_id, change)
+    PubSub.Changes.broadcast(policy.account_id, :policies, change)
   end
 
   defmodule Database do

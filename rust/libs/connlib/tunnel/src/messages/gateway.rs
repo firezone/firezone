@@ -1,6 +1,9 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{Filter, IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
+use crate::messages::{
+    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
+    SecretKey, SnownetCapabilities,
+};
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -10,6 +13,8 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
+
+pub use crate::messages::Authorization;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone)]
@@ -84,6 +89,7 @@ pub struct InitGateway {
     pub account_slug: Option<String>,
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
+    pub flow_logs: FlowLogsConfig,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -95,15 +101,6 @@ pub struct Config {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoveResource {
     pub id: ResourceId,
-}
-
-#[serde_as]
-#[derive(Debug, Deserialize, Clone)]
-pub struct Authorization {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    #[serde_as(as = "DurationSeconds<u64>")]
-    pub expires_at: Duration,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -123,7 +120,8 @@ pub enum IngressMessages {
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
-    AuthorizeFlow(AuthorizeFlow),
+    CreateAuthorization(CreateAuthorization),
+    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
 
@@ -134,51 +132,30 @@ pub struct Client {
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
-    #[serde(default)]
-    pub version: Option<String>,
-    #[serde(default)]
-    pub device_os_name: Option<String>,
-    #[serde(default)]
-    pub device_os_version: Option<String>,
-    #[serde(default)]
-    pub device_serial: Option<String>,
-    #[serde(default)]
-    pub device_uuid: Option<String>,
-    #[serde(default)]
-    pub identifier_for_vendor: Option<String>,
-    #[serde(default)]
-    pub firebase_installation_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct Subject {
-    #[serde(default)]
-    pub auth_provider_id: Option<String>,
-    #[serde(default)]
-    pub actor_name: Option<String>,
-    #[serde(default)]
-    pub actor_id: Option<String>,
-    #[serde(default)]
-    pub actor_email: Option<String>,
 }
 
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
-pub struct AuthorizeFlow {
+pub struct CreateAuthorization {
     #[serde(rename = "ref")]
     pub reference: String,
 
     pub resource: ResourceDescription,
     pub gateway_ice_credentials: IceCredentials,
     pub client: Client,
-    #[serde(default)]
-    pub subject: Subject,
     pub client_ice_credentials: IceCredentials,
 
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
+
+    #[serde(default)]
+    pub use_iceless: bool,
+
+    /// The responder-side ingest token for this flow's logs.
+    pub flow_logs_ingest_token: IngestToken,
 }
 
+/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct AccessAuthorizationExpiryUpdated {
@@ -215,11 +192,12 @@ pub struct ClientIceCandidates {
 pub enum EgressMessages {
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
-    FlowAuthorized {
+    AuthorizationCreated {
         #[serde(rename = "ref")]
         reference: String,
     },
     NoRelays {},
+    SetSnownetCapabilities(SnownetCapabilities),
 }
 
 #[cfg(test)]
@@ -334,11 +312,16 @@ mod tests {
 
     #[test]
     fn can_deserialize_init_message() {
-        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000}}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(message, IngressMessages::Init(_)));
+        let IngressMessages::Init(init) = message else {
+            panic!("expected Init");
+        };
+        assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
+        assert_eq!(init.flow_logs.upload_interval_secs, 60);
+        assert_eq!(init.flow_logs.upload_batch_size, 1000);
     }
 
     #[test]
@@ -381,19 +364,54 @@ mod tests {
         assert!(matches!(message, IngressMessages::RelaysPresence(_)));
     }
 
+    const CREATE_AUTHORIZATION: &str = r#"{"event":"create_authorization","ref":null,"topic":"gateway","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
+
     #[test]
-    fn can_deserialize_authorize_flow() {
-        let json = r#"{"event":"authorize_flow","ref":null,"topic":"gateway","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
+    fn can_deserialize_create_authorization() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = CREATE_AUTHORIZATION.replace(
+            r#""flow_id""#,
+            &format!(r#""flow_logs_ingest_token":"{token}","flow_id""#),
+        );
 
-        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
 
-        assert!(matches!(message, IngressMessages::AuthorizeFlow(_)));
+        let IngressMessages::CreateAuthorization(authorization) = message else {
+            panic!("expected CreateAuthorization");
+        };
+        assert!(!authorization.use_iceless);
+        assert_eq!(authorization.flow_logs_ingest_token.as_str(), token);
+    }
+
+    #[test]
+    fn create_authorization_requires_ingest_token() {
+        serde_json::from_str::<IngressMessages>(CREATE_AUTHORIZATION).unwrap_err();
+    }
+
+    #[test]
+    fn serialize_authorization_created() {
+        let message = EgressMessages::AuthorizationCreated {
+            reference: "signed-reference".to_owned(),
+        };
+        let expected_json =
+            r#"{"event":"authorization_created","payload":{"ref":"signed-reference"}}"#;
+
+        assert_eq!(serde_json::to_string(&message).unwrap(), expected_json);
     }
 
     #[test]
     fn serialize_no_relays_message() {
         let message = EgressMessages::NoRelays {};
         let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_set_snownet_capabilities_message() {
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
+        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

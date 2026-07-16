@@ -1,0 +1,174 @@
+use std::{
+    borrow::Cow,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
+
+use ::sentry::transports::{RateLimiter, TokioTransportThread};
+use bytes::Bytes;
+use http::{Method, Request, Response, StatusCode, header};
+
+use crate::ingest;
+
+// Re-export the Sentry SDK so the rest of the crate can reach it through this module.
+pub(crate) use ::sentry::*;
+
+pub(crate) const INGEST_HOST: &str = "sentry.firezone.dev";
+
+static CLIENT: LazyLock<ingest::Client> = LazyLock::new(|| ingest::Client::new(INGEST_HOST));
+
+/// Drops the current connection so the next request reconnects.
+pub(crate) fn reset_client() {
+    CLIENT.reset();
+}
+
+pub(crate) fn warmup_connection() {
+    ingest::RUNTIME.spawn(CLIENT.connect());
+}
+
+/// Builds the Sentry [`ClientOptions`] with our [`Factory`] transport and starts the SDK.
+pub(crate) fn init_sdk_client(
+    dsn: String,
+    environment: &'static str,
+    release: &str,
+) -> ClientInitGuard {
+    let guard = init((
+        dsn,
+        ClientOptions {
+            environment: Some(Cow::Borrowed(environment)),
+            // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
+            release: Some(release.to_owned().into()),
+            max_breadcrumbs: 500,
+            before_send: Some({
+                let rate_limit = crate::event_rate_limiter(Duration::from_secs(60 * 5));
+                Arc::new(move |event| {
+                    let event = rate_limit(event)?;
+                    let event = crate::insert_feature_flags_into_event(event);
+
+                    Some(event)
+                })
+            }),
+            enable_logs: true,
+            enable_metrics: true,
+            before_send_log: Some(Arc::new(|log| {
+                let log = crate::insert_user_account_slug_into_log(log);
+                let log = crate::append_tracing_fields_to_message(log);
+
+                Some(log)
+            })),
+            before_send_metric: Some(Arc::new(|metric| {
+                let metric = crate::insert_user_account_slug_into_metric(metric);
+                let metric = crate::insert_feature_flags_into_metric(metric);
+
+                Some(metric)
+            })),
+            transport: Some(Arc::new(Factory)),
+            ..Default::default()
+        },
+    ));
+
+    // `init` binds the client to the calling thread's hub, which coincides with
+    // `Hub::main()` only on the first thread that ever used Sentry. This crate
+    // reads and configures `Hub::main()` throughout, so bind the client there
+    // explicitly to keep this function thread-agnostic; mobile clients call it
+    // from arbitrary dispatcher threads.
+    Hub::main().bind_client(Hub::current().client());
+
+    guard
+}
+
+/// Creates [`SentryTransport`]s for the Sentry SDK.
+#[derive(Clone)]
+struct Factory;
+
+impl TransportFactory for Factory {
+    fn create_transport(&self, options: &ClientOptions) -> Arc<dyn Transport> {
+        Arc::new(SentryTransport::new(options))
+    }
+}
+
+/// A Sentry [`Transport`] that sends envelopes through our [`ingest::Client`].
+///
+/// Sending and rate-limiting are driven by sentry's own [`TokioTransportThread`],
+/// so the queueing, back-pressure and rate-limit handling are identical to the
+/// reqwest-based transport; only the HTTP send is swapped for our loop-free,
+/// self-healing [`ingest::Client`].
+struct SentryTransport {
+    thread: TokioTransportThread,
+}
+
+impl SentryTransport {
+    fn new(options: &ClientOptions) -> Self {
+        let dsn = options
+            .dsn
+            .as_ref()
+            .expect("Sentry DSN to be set when starting telemetry");
+        let auth = dsn.to_auth(Some(&options.user_agent)).to_string();
+        let url = dsn.envelope_api_url().to_string();
+
+        let thread = TokioTransportThread::new(move |envelope, mut rate_limiter| {
+            // The request is built outside the async block so that `url` and `auth`
+            // can be borrowed from the reused closure.
+            let request = build_request(&url, &auth, &envelope);
+
+            async move {
+                match request {
+                    Ok(request) => match CLIENT.send_request(request).await {
+                        Ok(response) => update_rate_limits(&mut rate_limiter, &response),
+                        Err(e) => tracing::debug!("Failed to send envelope to Sentry: {e:#}"),
+                    },
+                    Err(e) => tracing::debug!("Failed to build Sentry request: {e:#}"),
+                }
+
+                rate_limiter
+            }
+        });
+
+        Self { thread }
+    }
+}
+
+impl Transport for SentryTransport {
+    fn send_envelope(&self, envelope: Envelope) {
+        self.thread.send(envelope);
+    }
+
+    fn flush(&self, timeout: Duration) -> bool {
+        self.thread.flush(timeout)
+    }
+
+    fn shutdown(&self, timeout: Duration) -> bool {
+        self.flush(timeout)
+    }
+}
+
+fn build_request(url: &str, auth: &str, envelope: &Envelope) -> anyhow::Result<Request<Bytes>> {
+    let mut body = Vec::new();
+    envelope.to_writer(&mut body)?;
+
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(url)
+        .header("X-Sentry-Auth", auth)
+        .body(Bytes::from(body))?;
+
+    Ok(request)
+}
+
+fn update_rate_limits(rate_limiter: &mut RateLimiter, response: &Response<Bytes>) {
+    let headers = response.headers();
+
+    if let Some(value) = headers
+        .get("x-sentry-rate-limits")
+        .and_then(|value| value.to_str().ok())
+    {
+        rate_limiter.update_from_sentry_header(value);
+    } else if let Some(value) = headers
+        .get(header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+    {
+        rate_limiter.update_from_retry_after(value);
+    } else if response.status() == StatusCode::TOO_MANY_REQUESTS {
+        rate_limiter.update_from_429();
+    }
+}

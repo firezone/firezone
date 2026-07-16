@@ -33,7 +33,9 @@ for repo <- [
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api
+      Portal.Repo.Replica.Api,
+      Portal.Repo.Poller,
+      Portal.Repo.Replica.Poller
     ] do
   config :portal, repo,
     database: "firezone_test#{partition_suffix}",
@@ -67,21 +69,15 @@ config :portal, Oban,
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
 config :portal, Portal.Billing,
   enabled: true,
@@ -112,6 +108,33 @@ config :portal, Portal.Okta.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Splunk.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Datadog.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Datadog.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.NewRelic.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.NewRelic.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
+
+config :portal, Portal.Azure.ManagedIdentity,
+  client_id: "test-azure-client-id",
+  req_opts: [
+    plug: {Req.Test, Portal.Azure.ManagedIdentity},
+    retry: false
+  ]
+
 config :portal, Portal.Entra.APIClient,
   client_id: "test_client_id",
   client_secret: "test_client_secret",
@@ -124,17 +147,24 @@ config :portal, Portal.Entra.APIClient,
 
 config :portal, Portal.Workers.SyncErrorNotification, []
 
+config :portal, Portal.Workers.LogSinkErrorNotification, []
+
 config :portal, Portal.Telemetry, enabled: false
 
 config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
+config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
+  req_opts: [
+    plug: {Req.Test, Portal.ComponentVersions},
+    retry: false
+  ],
   versions: [
     apple: "1.0.0",
     android: "1.0.0",
@@ -200,6 +230,13 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# The ingestion endpoint defaults to a strict 1 req/s per IP; keep it effectively
+# disabled in general tests (which share localhost) to avoid cross-test 429s.
+# Dedicated rate-limit tests pass strict opts directly to the plug instead.
+config :portal, PortalAPI.Plugs.IngestionRateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
@@ -235,6 +272,9 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 ###############################
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
 config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
+
+# Disable HTTP retries so error-path OIDC tests don't back off and retry
+config :portal, OpenIDConnect, retry: false
 
 # Allow asserting on info logs and higher
 config :logger, level: :info

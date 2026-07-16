@@ -25,9 +25,9 @@ jobs:
     permissions:
       packages: write # push promoted Docker images to GHCR
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -63,7 +63,7 @@ jobs:
           echo "major_minor_version=$MAJOR_MINOR_VERSION" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Pull and push
         run: |
           set -xe
@@ -78,6 +78,42 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_minor_version }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
             $SOURCE_TAG
+
+  # Builds the Nix packages at the tagged commit, signs the closures and
+  # pushes them to the binary cache so users pinning the new release tag
+  # substitute instead of compiling from source.
+  resolve-nix-cache-sha:
+    if: >-
+      ${{
+        startsWith(inputs.release_name || github.event.release.name, 'gateway') ||
+        startsWith(inputs.release_name || github.event.release.name, 'headless-client') ||
+        startsWith(inputs.release_name || github.event.release.name, 'gui-client')
+      }}
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - id: resolve
+        env:
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -xe
+
+          sha=$(gh release view "$release_name" --json targetCommitish -q '.targetCommitish')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  publish-nix-cache:
+    needs: resolve-nix-cache-sha
+    uses: ./.github/workflows/_nix.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
+    with:
+      sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
+      push_to_cache: true
 
   # WINGET_TOKEN requirements (read this before debugging auth failures):
   #
@@ -110,7 +146,7 @@ jobs:
           - identifier: Firezone.Client.Headless
             tag_prefix: headless-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - id: get-version
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
@@ -126,7 +162,7 @@ jobs:
           release-notes-url: https://www.firezone.dev/changelog
           release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
 
-  create-publish-pr:
+  open-version-bump-pr:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -143,7 +179,7 @@ jobs:
           - tag_prefix: android-client
             component: android-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
@@ -200,15 +236,52 @@ jobs:
           git config --local commit.gpgsign true
 
           # Create the PR
-          scripts/create-publish-pr.sh ${{ matrix.component }} "$version"
+          scripts/open-version-bump-pr.sh ${{ matrix.component }} "$version"
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
-          # Token scoped to firezone/website (Contents: write + Pull requests:
-          # write), used to open the cross-repo changelog/version PR. If unset,
-          # create-publish-pr.sh falls back to GITHUB_TOKEN above.
-          FIREZONE_BOT_WEBSITE_TOKEN: ${{ secrets.FIREZONE_BOT_WEBSITE_TOKEN }}
+
+  # The website half of the version bump (changelog entry + displayed version
+  # markers) lives in firezone/website. Notify it of the publish; its
+  # open-version-bump-pr workflow runs that repo's scripts/bump-versions.sh
+  # and opens the PR there.
+  notify-website:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
+          - tag_prefix: gateway
+            component: gateway
+          - tag_prefix: gui-client
+            component: gui-client
+          - tag_prefix: headless-client
+            component: headless-client
+          - tag_prefix: macos-client
+            component: apple-client
+          - tag_prefix: android-client
+            component: android-client
+    steps:
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+        env:
+          # repository_dispatch on firezone/website requires this token to
+          # have Contents: write there.
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+        run: |
+          set -xeuo pipefail
+
+          version=${release_name#${{ matrix.tag_prefix }}-}
+
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/firezone/website/dispatches \
+            --raw-field "event_type=publish" \
+            --field "client_payload[component]=${{ matrix.component }}" \
+            --field "client_payload[version]=$version"
 
   create-sentry-release:
     name: create_${{ matrix.component }}_sentry_release
@@ -228,7 +301,7 @@ jobs:
           - component: android-client
             projects: android-client
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
@@ -240,6 +313,9 @@ jobs:
 
   promote-deb-packages:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage
     strategy:
       matrix:
         include:
@@ -248,11 +324,19 @@ jobs:
           - tag_prefix: gui-client
             deb_name: firezone-client-gui
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-azure-cli
+
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
 
       - name: Copy preview archive to import-stable
         if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
@@ -269,9 +353,62 @@ jobs:
             --source-container apt \
             --pattern "pool-preview/${{ matrix.deb_name }}_$version*" \
             --destination-path import-stable \
-            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+            --auth-mode login \
+            --account-name firezoneartifacts
 
   regenerate-apt-index:
     needs: promote-deb-packages
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/_apt.yml
+    secrets: inherit
+
+  # Only the GUI client ships as an `.rpm`, so unlike the `.deb` promotion this
+  # is not a matrix and the whole job is skipped for other releases (which also
+  # skips the dependent `regenerate-rpm-index`).
+  promote-rpm-packages:
+    if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for Azure Storage
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-azure-cli
+
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
+      - name: Copy preview archive to import-stable
+        run: |
+          set -e
+
+          # Extract version from release name
+          version=${{ inputs.release_name || github.event.release.name }}
+          version=${version#gui-client-}
+
+          # Copy `.rpm`s to `import-stable`
+          az storage blob copy start-batch \
+            --destination-container rpm \
+            --source-container rpm \
+            --pattern "preview/firezone-client-gui-$version-*" \
+            --destination-path import-stable \
+            --auth-mode login \
+            --account-name firezoneartifacts
+
+  regenerate-rpm-index:
+    needs: promote-rpm-packages
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_rpm.yml
     secrets: inherit

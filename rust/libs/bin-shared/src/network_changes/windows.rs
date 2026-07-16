@@ -66,6 +66,8 @@ use crate::DnsControlMethod;
 use anyhow::{Context as _, Result, anyhow};
 use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
+use std::ffi::c_void;
+use std::ops::Deref as _;
 use std::sync::Mutex;
 use std::thread;
 use tokio::sync::{
@@ -74,10 +76,16 @@ use tokio::sync::{
 };
 use windows::{
     Win32::{
+        Foundation::HANDLE,
+        NetworkManagement::IpHelper::{
+            CancelMibChangeNotify2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
+            MibAddInstance, MibDeleteInstance, NotifyUnicastIpAddressChange,
+        },
         Networking::NetworkListManager::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NLM_CONNECTIVITY,
             NLM_NETWORK_PROPERTY_CHANGE, NetworkListManager,
         },
+        Networking::WinSock::AF_UNSPEC,
         System::Com,
     },
     core::{GUID, Interface, Result as WinResult},
@@ -99,7 +107,13 @@ pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + D
     let worker = Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
         {
             let com = ComGuard::new()?;
-            let listener = Listener::new(&com, tx)?;
+            let listener = Listener::new(&com, tx.clone())?;
+            // The NLM `Listener` above only reports machine-level connectivity (internet
+            // up/down). It misses the case where the interface we egress on disappears while
+            // another interface keeps the machine online (e.g. unplugging Ethernet while on
+            // Wi-Fi). That event is exactly what invalidates our Windows source-IP cache, so we
+            // additionally listen for per-address changes here, feeding the same notification.
+            let _address_listener = AddressChangeListener::new(tx)?;
             stopper_rx.blocking_recv().ok();
             listener.close()?;
         }
@@ -107,6 +121,79 @@ pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + D
     })?;
 
     Ok(NetworkNotifier(worker_into_stream(worker).boxed()))
+}
+
+/// Notifies whenever a local unicast IP address is added or removed.
+///
+/// Registered via [`NotifyUnicastIpAddressChange`], this fires on the system thread-pool
+/// whenever an interface gains or loses an address — covering interface up/down events that
+/// the NLM connectivity [`Listener`] doesn't report.
+struct AddressChangeListener {
+    handle: HANDLE,
+
+    // The OS callback borrows this via a raw pointer, so it must not move and must outlive the
+    // registration. We box it and only drop it after `CancelMibChangeNotify2` returns (which
+    // blocks until any in-flight callback has finished).
+    _tx: Box<NotifySender>,
+}
+
+impl AddressChangeListener {
+    fn new(tx: NotifySender) -> Result<Self> {
+        let tx = Box::new(tx);
+        let tx_ptr: *const NotifySender = tx.deref();
+
+        let mut handle = HANDLE::default();
+
+        // SAFETY: `tx_ptr` points at the boxed `NotifySender`, which lives as long as `self` and
+        // is only dropped after we cancel the notification in `Drop`. `handle` is written by the
+        // call and used only to cancel the registration later.
+        unsafe {
+            NotifyUnicastIpAddressChange(
+                AF_UNSPEC,
+                Some(address_change_callback),
+                Some(tx_ptr as *const c_void),
+                false, // Don't fire an initial notification; we only care about subsequent changes.
+                &mut handle,
+            )
+        }
+        .ok()
+        .context("Failed to register for unicast IP address change notifications")?;
+
+        Ok(Self { handle, _tx: tx })
+    }
+}
+
+impl Drop for AddressChangeListener {
+    fn drop(&mut self) {
+        // SAFETY: `handle` was returned by `NotifyUnicastIpAddressChange`. This blocks until any
+        // running callback has returned, after which the boxed `NotifySender` is safe to drop.
+        if let Err(e) = unsafe { CancelMibChangeNotify2(self.handle) }.ok() {
+            tracing::warn!("Failed to cancel IP address change notifications: {e:#}");
+        }
+    }
+}
+
+/// Runs on a Windows-managed thread-pool thread, so keep it minimal: just wake the notifier.
+///
+/// This is a safe `extern "system" fn` (it coerces to the unsafe callback pointer the OS
+/// expects), keeping the only `unsafe` to the single pointer dereference below.
+extern "system" fn address_change_callback(
+    ctx: *const c_void,
+    _row: *const MIB_UNICASTIPADDRESS_ROW,
+    notification_type: MIB_NOTIFICATION_TYPE,
+) {
+    // Only react to addresses being added or removed (i.e. an interface coming up or going
+    // away). Parameter-only changes (e.g. address-lifetime updates on a DHCP renew) don't
+    // change which source IP we should use.
+    if notification_type != MibAddInstance && notification_type != MibDeleteInstance {
+        return;
+    }
+
+    // SAFETY: `ctx` is the pointer we passed to `NotifyUnicastIpAddressChange`: a valid
+    // `&NotifySender` for the lifetime of the registration (see `AddressChangeListener`).
+    let tx = unsafe { &*(ctx as *const NotifySender) };
+    // A failed send just means a notification is already queued or we're shutting down.
+    tx.notify().ok();
 }
 
 fn worker_into_stream(worker: Worker) -> impl Stream<Item = Result<()>> + Unpin + Send + 'static {

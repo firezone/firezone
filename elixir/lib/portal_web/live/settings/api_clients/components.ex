@@ -13,7 +13,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
         phx-debounce="300"
         required
       />
-      <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+      <p class="mt-2 text-xs text-subtle">
         Describe what this API token will be used for. This can be changed later if needed.
       </p>
     </div>
@@ -36,7 +36,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
   def api_token_reveal(assigns) do
     ~H"""
     <div class="flex flex-col gap-4">
-      <p class="text-sm font-semibold text-[var(--text-primary)]">Your API Token</p>
+      <p class="text-sm font-semibold text-heading">Your API Token</p>
 
       <.code_block
         id="code-api-token"
@@ -44,7 +44,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
         phx-no-format
       ><%= @encoded_token %></.code_block>
 
-      <div class="rounded border border-[var(--warning-border)] bg-[var(--warning-surface)] px-4 py-3 text-xs text-[var(--warning-text)]">
+      <div class="rounded border border-warning-light bg-warning-light px-4 py-3 text-xs text-warning">
         Store this token in a safe place. <strong>It won't be shown again.</strong>
       </div>
     </div>

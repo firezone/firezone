@@ -91,10 +91,8 @@ pub type SecretKey = SecretBox<Key>;
 
 #[cfg(test)]
 mod test {
-    use boringtun::x25519::{PublicKey, StaticSecret};
-    use rand::rngs::OsRng;
-
     use super::Key;
+    use boringtun::x25519::{PublicKey, StaticSecret};
 
     #[test]
     fn can_deserialize_public_key() {
@@ -105,7 +103,7 @@ mod test {
 
     #[test]
     fn can_serialize_from_private_key_and_back() {
-        let private_key = StaticSecret::random_from_rng(OsRng);
+        let private_key = StaticSecret::random_from_rng(&mut rand::rng());
         let expected_public_key = PublicKey::from(private_key.to_bytes());
         let public_key = Key(expected_public_key.to_bytes());
         let public_key_string = serde_json::to_string(&public_key).unwrap();

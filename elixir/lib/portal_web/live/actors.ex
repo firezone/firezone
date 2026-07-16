@@ -6,19 +6,29 @@ defmodule PortalWeb.Actors do
 
   alias Portal.Actor
   alias Portal.Authentication
-  alias Portal.Presence
+  alias Portal.Changes.Change
   alias Portal.ExternalIdentity
   alias Portal.PortalSession
   alias Portal.ClientToken
+  alias Portal.Presence
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
 
   import Ecto.Changeset
 
   require Logger
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :actors)
+    end
+
     socket =
       socket
       |> assign(page_title: "People")
+      |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
         portal_sessions_subscribed_actor_id: nil,
@@ -740,6 +750,37 @@ defmodule PortalWeb.Actors do
     end
   end
 
+  def handle_info(%Change{op: :insert, struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply,
+     update(socket, :actors_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  # User-actor updates are broadcast on the shared :actors topic but the table
+  # is not auto-refreshed here, so ignore them without warning.
+  def handle_info(%Change{struct: %Actor{type: type}}, socket)
+      when type in [:account_user, :account_admin_user] do
+    {:noreply, socket}
+  end
+
+  def handle_info(%Change{struct: %Actor{}} = message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_info(%Change{old_struct: %Actor{}} = message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
 
@@ -763,6 +804,8 @@ defmodule PortalWeb.Actors do
   def handle_info(:clear_welcome_email_sent, socket) do
     {:noreply, merge_state(socket, :actor_panel, welcome_email_sent: false)}
   end
+
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defp validate_role_change(changeset, actor, socket) do
     new_type = get_change(changeset, :type)
@@ -997,7 +1040,7 @@ defmodule PortalWeb.Actors do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-user-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-user-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>People</:title>
         <:description>
@@ -1011,6 +1054,15 @@ defmodule PortalWeb.Actors do
             New Person
           </.button>
         </:action>
+        <:stats>
+          <.async_result :let={count} assign={@actors_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1032,25 +1084,25 @@ defmodule PortalWeb.Actors do
             <div class="flex items-center gap-2.5">
               <.actor_type_icon_with_badge actor={actor} />
               <div>
-                <div class="font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
                 </div>
-                <div class="font-mono text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                <div class="font-mono text-[11px] text-subtle mt-0.5">
                   {actor.id}
                 </div>
               </div>
             </div>
           </:col>
           <:col :let={actor} field={{:actors, :email}} label="email" class="w-72">
-            <span class="text-[var(--text-secondary)] block truncate" title={actor.email}>
+            <span class="text-body block truncate" title={actor.email}>
               {actor.email || "-"}
             </span>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.status_badge status={if is_nil(actor.disabled_at), do: :active, else: :disabled} />
+            <.actor_status_badge disabled_at={actor.disabled_at} />
           </:col>
           <:empty>
-            <span class="text-sm text-[var(--text-tertiary)]">No people to display.</span>
+            <span class="text-sm text-subtle">No people to display.</span>
           </:empty>
         </.live_table>
       </div>
@@ -1260,6 +1312,13 @@ defmodule PortalWeb.Actors do
             actors.id
           )
       })
+    end
+
+    def count_actors(subject) do
+      from(a in Actor, as: :actors)
+      |> where([actors: a], a.type in [:account_user, :account_admin_user])
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
     end
 
     defp index_query do

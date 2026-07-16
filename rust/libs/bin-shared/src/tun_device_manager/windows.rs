@@ -6,6 +6,8 @@ use anyhow::{Context as _, Result};
 use ip_network::IpNetwork;
 use ip_packet::{IpPacket, IpPacketBuf};
 use logging::err_with_src;
+use opentelemetry::KeyValue;
+use opentelemetry::metrics::Histogram;
 use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
@@ -18,7 +20,6 @@ use std::{
     sync::Arc,
 };
 use telemetry::otel;
-use tokio::sync::mpsc;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
@@ -44,8 +45,6 @@ use wintun::Adapter;
 /// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
 /// where that is configured.
 const RING_BUFFER_SIZE: u32 = 0x10_0000;
-
-const QUEUE_SIZE: usize = 1000;
 
 pub struct TunDeviceManager {
     mtu: u32,
@@ -212,8 +211,8 @@ pub struct Tun {
 struct TunState {
     session: Arc<wintun::Session>,
 
-    outbound_tx: mpsc::Sender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
 }
 
 impl Drop for Tun {
@@ -301,20 +300,20 @@ impl Tun {
                 .start_session(capacity)
                 .context("Failed to start session")?,
         );
-        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE); // We want to be able to batch-receive from this.
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
 
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_receive(),
             ],
         ));
@@ -343,7 +342,7 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self
             .state
             .as_ref()
@@ -351,7 +350,7 @@ impl tun::Tun for Tun {
             .outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self
             .state
             .as_mut()
@@ -364,104 +363,169 @@ impl tun::Tun for Tun {
     }
 }
 
+/// How many times we at most try to re-write a packet if the WinTUN ring buffer is full.
+///
+/// This is the WinTUN twin of the `ENOBUFS` (UDP) and `ENOSPC` (TUN on MacOS / iOS) conditions:
+/// transient, clears off-thread, and not observable via a readiness signal. Kept in sync with
+/// the retry budgets of those paths.
+const MAX_RING_FULL_RETRIES: u32 = 24;
+
+/// Upper bound (as a power of two) for how many times we busy-spin between write retries.
+///
+/// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
+const SPIN_LIMIT: u32 = 6;
+
 // Moves packets from Internet towards the user
 fn start_send_thread(
-    mut packet_rx: mpsc::Receiver<IpPacket>,
+    mut packet_rx: tun::OutboundRx,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
-    // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
-    const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
-
-    /// How many attempts we make at passing the IP packet to WinTUN.
-    ///
-    /// 1000 attempts where we suspend for 100 microseconds results in a total wait of 100ms.
-    /// That delay will hopefully throttle the remote's congestion controller to stop sending us that many packets.
-    const MAX_ATTEMPTS: u32 = 1000 + SPIN_ATTEMPTS;
-    /// How many times we busy-loop before suspending the thread temporarily.
-    const SPIN_ATTEMPTS: u32 = 10;
+    let write_retry_histogram = otel_instruments::network_retries();
+    let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || 'next_packet: loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
-                tracing::debug!(
-                    "Stopping TUN send worker thread because the packet channel closed"
-                );
-                break 'next_packet;
-            };
+        .spawn(move || {
+            while let Some(mut batch) = packet_rx.blocking_recv() {
+                'next_packet: for packet in batch.drain() {
+                    let bytes = packet.packet();
 
-            let bytes = packet.packet();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                continue 'next_packet;
-            };
-
-            'next_attempt: for attempt in 0..MAX_ATTEMPTS {
-                let Some(session) = session.upgrade() else {
-                    tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
-                    );
-                    return;
-                };
-
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        #[cfg(debug_assertions)]
-                        tracing::trace!(target: "wire::dev::send", ?packet);
-                        session.send_packet(pkt);
-
-                        if attempt > 0 {
-                            tracing::trace!(%attempt, "Sent packet with delay");
-                        }
-
+                    let Ok(len) = bytes.len().try_into() else {
+                        tracing::warn!("Packet too large; length does not fit into u16");
                         continue 'next_packet;
-                    }
-                    Err(wintun::Error::Io(e))
-                        if e.raw_os_error()
-                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                    {
-                        if attempt == 0 {
-                            tracing::trace!("WinTUN ring buffer is full");
-                        }
+                    };
 
-                        if attempt < SPIN_ATTEMPTS {
-                            std::hint::spin_loop(); // Spin around and try again, as quickly as possible for minimum latency.
-                            continue 'next_attempt;
-                        }
+                    let mut attempt = 0;
 
-                        std::thread::sleep(Duration::from_micros(100));
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to allocate WinTUN packet: {e}");
-                        continue 'next_packet;
+                    loop {
+                        let Some(session) = session.upgrade() else {
+                            tracing::debug!(
+                                "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                            );
+                            return;
+                        };
+
+                        match session.allocate_send_packet(len) {
+                            Ok(mut pkt) => {
+                                pkt.bytes_mut().copy_from_slice(bytes);
+                                // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                                // space in the ring buffer.
+                                #[cfg(debug_assertions)]
+                                tracing::trace!(target: "wire::dev::send", ?packet);
+                                session.send_packet(pkt);
+
+                                record_write_retries(&write_retry_histogram, attempt);
+
+                                continue 'next_packet;
+                            }
+                            Err(e) if is_ring_full(&e) && attempt < MAX_RING_FULL_RETRIES => {
+                                if attempt == 0 {
+                                    tracing::trace!("WinTUN ring buffer is full");
+                                }
+
+                                spin_and_yield(attempt);
+
+                                attempt += 1;
+                            }
+                            Err(e) => {
+                                record_write_retries(&write_retry_histogram, attempt);
+                                dropped_packets_counter.add(1, &drop_attributes(&e));
+
+                                if is_ring_full(&e) {
+                                    // The ring buffer is still full after all retries; dropping is by design, like for any congested network device.
+                                    tracing::debug!("Failed to write to WinTUN ring buffer: {e}");
+                                } else {
+                                    tracing::warn!("Failed to allocate WinTUN packet: {e}");
+                                }
+
+                                continue 'next_packet;
+                            }
+                        }
                     }
                 }
             }
 
-            tracing::warn!(num_attempts = %MAX_ATTEMPTS, "Exhausted all attempts to pass IP packet to WinTUN");
+            tracing::debug!("Stopping TUN send worker thread because the packet channel closed");
         })
 }
 
+/// Whether the write failed because the WinTUN ring buffer is full.
+///
+/// Dropping in this case is expected back-pressure; any other error is a genuine failure.
+fn is_ring_full(e: &wintun::Error) -> bool {
+    // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
+    const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
+
+    matches!(e, wintun::Error::Io(io) if io.raw_os_error() == Some(ERROR_BUFFER_OVERFLOW))
+}
+
+/// Briefly back off after a full ring buffer before trying again.
+///
+/// We avoid [`std::thread::sleep`]: on Windows the timer resolution rounds sub-millisecond
+/// durations up to ~15ms, far longer than the microseconds the ring buffer needs to drain.
+/// Instead we busy-spin an escalating number of times and then yield the thread, letting the
+/// OS run whichever thread is draining the ring buffer.
+fn spin_and_yield(attempt: u32) {
+    for _ in 0..(1u32 << attempt.min(SPIN_LIMIT)) {
+        std::hint::spin_loop();
+    }
+
+    std::thread::yield_now();
+}
+
+/// Records how many times a single packet write had to be retried before it went through or was dropped.
+///
+/// Writes that succeed on the first try (the common case) are not recorded, keeping the hot path cheap.
+fn record_write_retries(histogram: &Histogram<u64>, attempt: u32) {
+    if attempt == 0 {
+        return;
+    }
+
+    histogram.record(attempt as u64, &metric_attributes());
+}
+
+fn metric_attributes() -> [KeyValue; 2] {
+    [
+        KeyValue::new("system.device", "tun"),
+        KeyValue::new("network.io.direction", "transmit"),
+    ]
+}
+
+/// Attributes for a dropped packet, including the OS error code so ring-full
+/// drops can be told apart from other write failures.
+fn drop_attributes(e: &wintun::Error) -> [KeyValue; 3] {
+    let error_code = if let wintun::Error::Io(io) = e {
+        io.raw_os_error().unwrap_or_default() as i64
+    } else {
+        0
+    };
+
+    [
+        KeyValue::new("system.device", "tun"),
+        KeyValue::new("network.io.direction", "transmit"),
+        KeyValue::new("error.code", error_code),
+    ]
+}
+
 fn start_recv_thread(
-    packet_tx: mpsc::Sender<IpPacket>,
+    packet_tx: tun::InboundTx,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("TUN recv".into())
         .spawn(move || {
-            loop {
-                let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
+            let mut batch = tun::PacketBatch::default();
+
+            'recv: loop {
+                let Some(session) = session.upgrade() else {
                     tracing::debug!(
                         "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
                     );
                     break;
                 };
 
-                let pkt = match receive_result {
+                // Block for the first packet of a batch.
+                let pkt = match session.receive_blocking() {
                     Ok(pkt) => pkt,
                     Err(wintun::Error::ShuttingDown) => {
                         tracing::debug!(
@@ -475,45 +539,97 @@ fn start_recv_thread(
                     }
                 };
 
-                let mut ip_packet_buf = IpPacketBuf::new();
+                if let Some(packet) = parse_packet(&pkt)
+                    && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
+                {
+                    break 'recv;
+                }
 
-                let src = pkt.bytes();
-                let dst = ip_packet_buf.buf();
+                // Drain whatever else is already in the ring buffer, so one channel item
+                // carries the whole burst.
+                loop {
+                    match session.try_receive() {
+                        Ok(Some(pkt)) => {
+                            if let Some(packet) = parse_packet(&pkt)
+                                && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
+                            {
+                                break 'recv;
+                            }
+                        }
+                        // Ring buffer is drained; hand off what we have.
+                        Ok(None) => break,
+                        // Any genuine error will surface via `receive_blocking` above.
+                        Err(_) => break,
+                    }
+                }
 
-                if src.len() > dst.len() {
-                    tracing::warn!(len = %src.len(), "Received too large packet");
+                if batch.is_empty() {
                     continue;
                 }
 
-                dst[..src.len()].copy_from_slice(src);
-
-                let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
-                    Ok(pkt) => pkt,
-                    Err(e) => {
-                        tracing::debug!("Failed to parse IP packet: {e:#}");
-                        continue;
-                    }
-                };
-
-                #[cfg(debug_assertions)]
-                tracing::trace!(target: "wire::dev::recv", ?pkt);
-
-                // Use `blocking_send` so that if connlib is behind by a few packets,
-                // Wintun will queue up new packets in its ring buffer while we
-                // wait for our MPSC channel to clear.
-                // Unfortunately we don't know if Wintun is dropping packets, since
-                // it doesn't expose a sequence number or anything.
-                match packet_tx.blocking_send(pkt) {
-                    Ok(()) => {}
-                    Err(_) => {
-                        tracing::debug!(
-                            "Stopping TUN recv worker thread because the packet channel closed"
-                        );
-                        break;
-                    }
-                };
+                if packet_tx.blocking_send(std::mem::take(&mut batch)).is_err() {
+                    tracing::debug!(
+                        "Stopping TUN recv worker thread because the packet channel closed"
+                    );
+                    break 'recv;
+                }
             }
         })
+}
+
+/// Appends the packet to the batch; if the batch is full, hands it off and starts a
+/// new one with the packet.
+///
+/// Uses `blocking_send` so that if connlib is behind by a few packets, Wintun will
+/// queue up new packets in its ring buffer while we wait for our MPSC channel to
+/// clear. Unfortunately we don't know if Wintun is dropping packets, since it
+/// doesn't expose a sequence number or anything.
+///
+/// Errors if the channel is closed.
+fn push_or_start_new_batch(
+    batch: &mut tun::PacketBatch,
+    packet: IpPacket,
+    packet_tx: &tun::InboundTx,
+) -> Result<(), ()> {
+    let Err(packet) = batch.try_push(packet) else {
+        return Ok(());
+    };
+
+    packet_tx
+        .blocking_send(std::mem::replace(
+            &mut *batch,
+            tun::PacketBatch::new(packet),
+        ))
+        .map_err(|_| {
+            tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
+        })
+}
+
+fn parse_packet(pkt: &wintun::Packet) -> Option<IpPacket> {
+    let mut ip_packet_buf = IpPacketBuf::new();
+
+    let src = pkt.bytes();
+    let dst = ip_packet_buf.buf();
+
+    if src.len() > dst.len() {
+        tracing::warn!(len = %src.len(), "Received too large packet");
+        return None;
+    }
+
+    dst[..src.len()].copy_from_slice(src);
+
+    let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
+        Ok(pkt) => pkt,
+        Err(e) => {
+            tracing::debug!("Failed to parse IP packet: {e:#}");
+            return None;
+        }
+    };
+
+    #[cfg(debug_assertions)]
+    tracing::trace!(target: "wire::dev::recv", ?pkt);
+
+    Some(pkt)
 }
 
 /// Sets MTU on the interface

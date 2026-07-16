@@ -18,13 +18,13 @@ defmodule PortalWeb.TableComponents do
     ~H"""
     <thead
       id={"#{@table_id}-header"}
-      class="bg-[var(--surface-raised)] border-b border-[var(--border-strong)]"
+      class="bg-raised border-b border-border-strong"
     >
       <tr>
         <th
           :for={col <- @columns}
           class={[
-            "px-4 py-3 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] whitespace-nowrap",
+            "px-4 py-3 text-[10px] font-semibold tracking-widest uppercase text-subtle whitespace-nowrap",
             Map.get(col, :class, "")
           ]}
         >
@@ -92,9 +92,9 @@ defmodule PortalWeb.TableComponents do
     <tr
       id={@id}
       class={[
-        "border-b border-[var(--border)] group transition-colors",
-        @selected && "border-l-4 border-l-[var(--brand)] bg-[var(--surface-raised)]",
-        not @selected && (@patch || @click) && "hover:cursor-pointer hover:bg-[var(--surface-raised)]",
+        "border-b border-border group transition-colors",
+        @selected && "border-l-4 border-l-brand bg-raised",
+        not @selected && (@patch || @click) && "hover:cursor-pointer hover:bg-raised",
         @selected && (@patch || @click) && "cursor-pointer"
       ]}
       phx-click={@click && "table_row_click"}
@@ -181,7 +181,7 @@ defmodule PortalWeb.TableComponents do
 
     ~H"""
     <div class="overflow-x-auto">
-      <table class={["w-full text-sm text-left text-[var(--text-secondary)]", @class]} id={@id}>
+      <table class={["w-full text-sm text-left text-body", @class]} id={@id}>
         <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
         <tbody
           id={"#{@id}-rows"}
@@ -251,11 +251,11 @@ defmodule PortalWeb.TableComponents do
       end
 
     ~H"""
-    <table class="w-full text-sm text-left text-[var(--text-secondary)]" id={@id}>
+    <table class="w-full text-sm text-left text-body" id={@id}>
       <.table_header table_id={@id} columns={@col} actions={@action} />
 
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
-        <tr class="bg-[var(--surface-raised)]">
+        <tr class="bg-raised">
           <td class="px-4 py-2" colspan={length(@col) + 1}>
             {render_slot(@group, group)}
           </td>
@@ -309,7 +309,7 @@ defmodule PortalWeb.TableComponents do
 
   def vertical_table(assigns) do
     ~H"""
-    <table class={["w-full text-sm text-left text-[var(--text-secondary)]", @class]} {@rest}>
+    <table class={["w-full text-sm text-left text-body", @class]} {@rest}>
       <tbody>
         {render_slot(@inner_block)}
       </tbody>
@@ -346,15 +346,15 @@ defmodule PortalWeb.TableComponents do
       <th
         scope="row"
         class={[
-          "text-right px-4 py-3 font-medium text-[var(--text-secondary)] whitespace-nowrap",
-          "bg-[var(--surface-raised)] w-1/5 border-b border-[var(--border)]",
+          "text-right px-4 py-3 font-medium text-body whitespace-nowrap",
+          "bg-raised w-1/5 border-b border-border",
           @label_class
         ]}
       >
         {render_slot(@label)}
       </th>
       <td class={[
-        "px-4 py-3 border-b border-[var(--border)] text-[var(--text-primary)]",
+        "px-4 py-3 border-b border-border text-heading",
         @value_class
       ]}>
         {render_slot(@value)}

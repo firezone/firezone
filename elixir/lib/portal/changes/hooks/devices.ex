@@ -5,7 +5,12 @@ defmodule Portal.Changes.Hooks.Devices do
   import Portal.SchemaHelpers
 
   @impl true
-  def on_insert(_lsn, _data), do: :ok
+  def on_insert(lsn, data) do
+    device = struct_from_params(Portal.Device, data)
+    change = %Change{lsn: lsn, op: :insert, struct: device}
+
+    PubSub.Changes.broadcast(device.account_id, :devices, change)
+  end
 
   @impl true
   def on_update(lsn, old_data, data) do
@@ -19,7 +24,7 @@ defmodule Portal.Changes.Hooks.Devices do
       Database.delete_policy_authorizations_for_device(device)
     end
 
-    PubSub.Changes.broadcast(device.account_id, change)
+    PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
 
   @impl true
@@ -27,7 +32,7 @@ defmodule Portal.Changes.Hooks.Devices do
     device = struct_from_params(Portal.Device, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: device}
 
-    PubSub.Changes.broadcast(device.account_id, change)
+    PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
 
   defmodule Database do

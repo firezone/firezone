@@ -6,10 +6,42 @@ use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, SOFTWARE, Server,
 };
-use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
+/// Deterministic RNG yielding an arithmetic sequence. Replaces the `StepRng`
+/// mock that was removed from `rand`'s public API in 0.10.
+#[derive(Clone, Debug)]
+struct StepRng(u64, u64);
+
+impl StepRng {
+    fn new(initial: u64, increment: u64) -> Self {
+        Self(initial, increment)
+    }
+}
+
+impl rand::TryRng for StepRng {
+    type Error = core::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        self.try_next_u64().map(|x| x as u32)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        let res = self.0;
+        self.0 = self.0.wrapping_add(self.1);
+        Ok(res)
+    }
+
+    fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+        for chunk in dst.chunks_mut(8) {
+            let bytes = self.try_next_u64()?.to_le_bytes();
+            chunk.copy_from_slice(&bytes[..chunk.len()]);
+        }
+        Ok(())
+    }
+}
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -40,6 +72,28 @@ fn can_answer_stun_request_from_ip4_address(
             binding_response(transaction_id, source),
         )],
     );
+}
+
+#[proptest]
+fn ignores_stun_request_from_port_0(
+    #[strategy(firezone_relay::proptest::transaction_id())] transaction_id: TransactionId,
+    source: Ipv4Addr,
+    public_relay_addr: Ipv4Addr,
+) {
+    let _guard = logging::test("debug");
+    let mut server = TestServer::new(public_relay_addr);
+
+    let request = Message::<Attribute>::new(MessageClass::Request, BINDING, transaction_id);
+    let bytes = MessageEncoder::new().encode_into_bytes(request).unwrap();
+
+    let maybe_forward = server.server.handle_client_input(
+        &bytes,
+        ClientSocket::new(SocketAddrV4::new(source, 0).into()),
+        Instant::now(),
+    );
+
+    assert_eq!(maybe_forward, None);
+    assert!(server.server.next_command().is_none());
 }
 
 #[proptest]
@@ -382,7 +436,7 @@ fn ping_pong_relay(
     #[strategy(firezone_relay::proptest::transaction_id())]
     channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    source: SocketAddrV4,
+    #[strategy(firezone_relay::proptest::source_v4())] source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     peer_to_client_ping: [u8; 32],
@@ -615,7 +669,7 @@ fn ping_pong_ip6_relay(
     channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
-    source: SocketAddrV6,
+    #[strategy(firezone_relay::proptest::source_v6())] source: SocketAddrV6,
     peer: SocketAddrV6,
     public_relay_ip4_addr: Ipv4Addr,
     public_relay_ip6_addr: Ipv6Addr,

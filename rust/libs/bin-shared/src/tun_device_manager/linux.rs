@@ -7,7 +7,6 @@ use futures::{
     future::{self, Either},
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
@@ -38,11 +37,18 @@ use std::{
 };
 use std::{net::IpAddr, time::Duration};
 use telemetry::otel;
-use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
+const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
+
+const TUN_F_CSUM: libc::c_uint = 0x01;
+const TUN_F_TSO4: libc::c_uint = 0x02;
+const TUN_F_TSO6: libc::c_uint = 0x04;
+const TUN_F_USO4: libc::c_uint = 0x20;
+const TUN_F_USO6: libc::c_uint = 0x40;
+
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 
@@ -677,36 +683,34 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
     link_state
 }
 
-const QUEUE_SIZE: usize = 10_000;
-
 pub struct Tun {
-    outbound_tx: mpsc::Sender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    outbound_tx: tun::OutboundTx,
+    inbound_rx: tun::InboundRx,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
 
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             outbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        tokio::spawn(otel_instruments::periodic_queue_length(
             inbound_tx.downgrade(),
             [
-                otel::attr::queue_item_ip_packet(),
+                otel::attr::queue_item_ip_packet_batch(),
                 otel::attr::network_io_direction_receive(),
             ],
         ));
 
-        let fd = Arc::new(open_tun()?);
+        let fd = open_tun()?;
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
@@ -715,7 +719,7 @@ impl Tun {
 
                 move || {
                     logging::unwrap_or_warn!(
-                        tun::unix::tun_send(fd, outbound_rx, write),
+                        tun::linux::tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
@@ -725,7 +729,7 @@ impl Tun {
             .name("TUN recv".to_owned())
             .spawn(move || {
                 logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::linux::tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
             })
@@ -738,7 +742,7 @@ impl Tun {
     }
 }
 
-fn open_tun() -> Result<OwnedFd> {
+fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
             let file = TUN_FILE.to_str()?;
@@ -758,20 +762,45 @@ fn open_tun() -> Result<OwnedFd> {
         .context("Failed to set flags on TUN device")?;
     }
 
+    // A successful `TUNSETOFFLOAD` is the kernel promising it handles these offloads on both the
+    // read (GRO) and write (GSO) side, so we use it directly as the capability probe rather than
+    // gating on a kernel version. It fails on kernels without UDP segmentation offload (added in
+    // Linux 6.2), where we run without offloads and exchange plain packets.
+    let offloads = try_enable_offloads(fd);
+
+    if !offloads {
+        tracing::info!(
+            "Kernel does not support TUN segmentation offloads; packets will not be coalesced"
+        );
+    }
+
     set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
 
     // Safety: We are not closing the FD.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
-    Ok(fd)
+    Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
+}
+
+/// Enables checksum and segmentation offloads on the TUN device, returning whether the kernel
+/// accepted them.
+///
+/// A successful `TUNSETOFFLOAD` is the kernel's promise that it handles these offloads on both the
+/// read (GRO) and write (GSO) side. They are all-or-nothing: if any is unsupported - UDP
+/// segmentation offload in particular needs Linux 6.2 - the ioctl fails and we run without them.
+fn try_enable_offloads(fd: RawFd) -> bool {
+    const OFFLOADS: libc::c_uint = TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6;
+
+    // Safety: The file descriptor is valid.
+    unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) >= 0 }
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &mpsc::Sender<IpPacket> {
+    fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }
 
-    fn receiver(&mut self) -> &mut mpsc::Receiver<IpPacket> {
+    fn receiver(&mut self) -> &mut tun::InboundRx {
         &mut self.inbound_rx
     }
 
@@ -819,26 +848,4 @@ fn create_tun_device() -> io::Result<()> {
     }
 
     Ok(())
-}
-
-/// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
-    }
-}
-
-/// Write the packet to the given file descriptor.
-fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
-    let buf = packet.packet();
-
-    // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
-        -1 => Err(io::Error::last_os_error()),
-        n => Ok(n as usize),
-    }
 }

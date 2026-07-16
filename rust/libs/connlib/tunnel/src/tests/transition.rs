@@ -18,6 +18,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     num::NonZeroU16,
+    time::Duration,
 };
 
 /// The possible transitions of the state machine.
@@ -96,6 +97,10 @@ pub(crate) enum Transition {
         client_id: ClientId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
+        /// How long the new sockets drop all packets after the roam.
+        dead_window: Duration,
+        /// How long after the dead window the client is still not reconnected to the portal.
+        portal_window: Duration,
     },
 
     /// Reconnect to the portal.
@@ -529,7 +534,7 @@ where
         )
 }
 
-fn non_dns_ports() -> impl Strategy<Value = u16> {
+pub(crate) fn non_dns_ports() -> impl Strategy<Value = u16> {
     any::<u16>().prop_filter(
         "avoid using port 53 for non-dns queries for simplicity",
         |p| *p != 53 && *p != 53535,
@@ -642,9 +647,19 @@ pub(crate) fn maybe_available_response_rtypes(
 pub(crate) fn roam_client(
     client_id: impl Strategy<Value = ClientId>,
 ) -> impl Strategy<Value = Transition> {
-    (any_ip_stack(), client_id).prop_map(|(ip_stack, client_id)| Transition::RoamClient {
+    (
+        any_ip_stack(),
         client_id,
-        ip4: ip_stack.as_v4().copied(),
-        ip6: ip_stack.as_v6().copied(),
-    })
+        (0u64..3000).prop_map(Duration::from_millis),
+        (0u64..3000).prop_map(Duration::from_millis),
+    )
+        .prop_map(
+            |(ip_stack, client_id, dead_window, portal_window)| Transition::RoamClient {
+                client_id,
+                ip4: ip_stack.as_v4().copied(),
+                ip6: ip_stack.as_v6().copied(),
+                dead_window,
+                portal_window,
+            },
+        )
 }

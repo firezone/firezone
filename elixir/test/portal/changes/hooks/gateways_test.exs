@@ -8,8 +8,16 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
   alias Portal.PubSub
 
   describe "insert/1" do
-    test "returns :ok" do
-      assert :ok == on_insert(0, %{})
+    test "broadcasts inserted gateway" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      :ok = PubSub.Changes.subscribe(account.id, :devices)
+
+      data = %{"id" => gateway.id, "type" => "gateway", "account_id" => account.id}
+
+      assert :ok == on_insert(0, data)
+      assert_receive %Change{op: :insert, struct: %Device{} = inserted_gateway, lsn: 0}
+      assert inserted_gateway.id == gateway.id
     end
   end
 
@@ -31,7 +39,7 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
       account = account_fixture()
       gateway = gateway_fixture(account: account)
 
-      :ok = PubSub.Changes.subscribe(account.id)
+      :ok = PubSub.Changes.subscribe(account.id, :devices)
 
       old_data = %{
         "id" => gateway.id,

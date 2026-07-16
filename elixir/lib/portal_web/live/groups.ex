@@ -2,6 +2,10 @@ defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  alias Portal.Changes.Change
+  alias Portal.Group
+  alias Portal.PubSub
+  alias Phoenix.LiveView.AsyncResult
   import PortalWeb.Groups.Components
 
   @member_page_size 10
@@ -16,9 +20,17 @@ defmodule PortalWeb.Groups do
     ]
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
+    if connected?(socket) do
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :groups)
+    end
+
     socket =
       socket
-      |> assign(page_title: "Groups", groups_with_policies_count: 0, selected_group: nil)
+      |> assign(page_title: "Groups", selected_group: nil)
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
+      |> assign_async(:groups_count, fn -> {:ok, %{groups_count: Database.count_groups(subject)}} end)
       |> assign(base_group_assigns(socket))
       |> assign_live_table("groups",
         query_module: Database,
@@ -87,6 +99,32 @@ defmodule PortalWeb.Groups do
      |> assign(selected_group: nil)
      |> assign(base_group_assigns(socket))}
   end
+
+  def handle_info(
+        %Change{op: :insert, struct: %Group{type: type, idp_id: idp_id, name: name}},
+        socket
+      )
+      when type != :managed or not is_nil(idp_id) or name != "Everyone" do
+    {:noreply,
+     update(socket, :groups_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(
+        %Change{op: :delete, old_struct: %Group{type: type, idp_id: idp_id, name: name}},
+        socket
+      )
+      when type != :managed or not is_nil(idp_id) or name != "Everyone" do
+    {:noreply,
+     update(socket, :groups_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)}
+  end
+
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_event(event, params, socket)
       when event in [
@@ -504,6 +542,11 @@ defmodule PortalWeb.Groups do
      end)}
   end
 
+  def handle_event("change_tod_timezone", params, socket) do
+    timezone = get_in(params, ["policy", "conditions", "current_utc_datetime", "timezone"])
+    {:noreply, merge_state(socket, :grant_conditions, timezone: timezone)}
+  end
+
   def handle_event("toggle_resource_access_actions", %{"resource_id" => id}, socket) do
     current = socket.assigns.group_resources.resource_access_actions_open_id
 
@@ -740,15 +783,11 @@ defmodule PortalWeb.Groups do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    filter = Keyword.get(list_opts, :filter, [])
-
     with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
       {:ok,
        assign(socket,
          groups: groups,
-         groups_metadata: metadata,
-         groups_with_policies_count:
-           Database.count_groups_with_policies(socket.assigns.subject, filter)
+         groups_metadata: metadata
        )}
     end
   end
@@ -758,7 +797,7 @@ defmodule PortalWeb.Groups do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-team-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-team-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Groups</:title>
         <:description>
@@ -774,17 +813,15 @@ defmodule PortalWeb.Groups do
             New Group
           </.button>
         </:action>
-        <:filters>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@groups_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            With policies {@groups_with_policies_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            No policies {@groups_metadata.count - @groups_with_policies_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@groups_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -802,38 +839,36 @@ defmodule PortalWeb.Groups do
         >
           <:col :let={row} field={{:groups, :name}} label="Name" class="w-full">
             <div class="flex items-center gap-3">
-              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-[var(--surface-raised)] border border-[var(--border)] shrink-0">
-                <.provider_icon type={provider_type_from_group(row)} class="w-4 h-4" />
-              </div>
+              <.provider_icon provider={provider_type_from_group(row)} size="md" variant="circle" />
               <div class="min-w-0">
-                <div class="flex items-center gap-1.5 font-medium text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">
+                <div class="flex items-center gap-1.5 font-medium text-heading group-hover:text-brand transition-colors">
                   <span class="truncate">{row.group.name}</span>
                   <span
                     :if={row.group.entity_type == :org_unit}
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)] shrink-0"
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-status-light text-subtle shrink-0"
                     title="Organizational Unit"
                   >
                     OU
                   </span>
                 </div>
-                <div class="text-xs text-[var(--text-tertiary)] truncate">
+                <div class="text-xs text-subtle truncate">
                   {directory_display_name(row)}
                 </div>
               </div>
             </div>
           </:col>
           <:col :let={row} field={{:member_counts, :count}} label="Members" class="w-40">
-            <div class="text-sm text-[var(--text-primary)] tabular-nums">
+            <div class="text-sm text-heading tabular-nums">
               <span class="font-medium">{row.member_count}</span>
-              <span class="text-xs text-[var(--text-tertiary)]">users</span>
+              <span class="text-xs text-subtle">users</span>
             </div>
           </:col>
           <:col :let={row} label="Resources" class="w-54">
             <span class={[
               "inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums",
               if((row.policy_count || 0) > 0,
-                do: "bg-[var(--brand-tertiary)] text-[var(--brand)]",
-                else: "bg-[var(--status-neutral-bg)] text-[var(--text-tertiary)]"
+                do: "bg-brand-subtle text-brand",
+                else: "bg-neutral-status-light text-subtle"
               )
             ]}>
               {row.policy_count || 0}
@@ -842,18 +877,18 @@ defmodule PortalWeb.Groups do
           <:action :let={_row}></:action>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-team-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-team-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No groups yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  No groups have been created yet.
+                <p class="text-sm font-medium text-heading">No groups yet</p>
+                <p class="text-xs text-subtle mt-0.5">
+                  Create a Group of Actors to use in Policies.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/groups/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
               </.link>
@@ -866,6 +901,7 @@ defmodule PortalWeb.Groups do
         group={@selected_group}
         query_params={@query_params}
         flash={@flash}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={@group_panel}
         form_state={@group_form}
         members_state={@group_members}
@@ -1290,6 +1326,12 @@ defmodule PortalWeb.Groups do
       |> hydrate_group_query()
     end
 
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
+
     defp base_group_query do
       from(groups in Portal.Group, as: :groups)
     end
@@ -1366,6 +1408,16 @@ defmodule PortalWeb.Groups do
     end
 
     # Inlined from Portal.Actors.list_groups
+    def count_groups(subject) do
+      from(g in Portal.Group, as: :groups)
+      |> where(
+        [groups: g],
+        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
+      )
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
+    end
+
     def list_groups(subject, opts \\ []) do
       {filter, opts} = Keyword.pop(opts, :filter, [])
       {order_by, opts} = Keyword.pop(opts, :order_by, [])
@@ -1433,35 +1485,6 @@ defmodule PortalWeb.Groups do
       group_ids
       |> Enum.map(&Map.get(groups_by_id, &1))
       |> Enum.reject(&is_nil/1)
-    end
-
-    def count_groups_with_policies(subject, filter \\ []) do
-      query =
-        from(g in Portal.Group, as: :groups)
-        |> join(:inner, [groups: g], p in Portal.Policy,
-          on: p.group_id == g.id and is_nil(p.disabled_at),
-          as: :policies
-        )
-        |> where(
-          [groups: g],
-          not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-        )
-        |> select([groups: g], count(g.id, :distinct))
-
-      query =
-        case Filter.filter(query, __MODULE__, filter) do
-          {:ok, filtered} -> filtered
-          _ -> query
-        end
-
-      query
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        count -> count
-      end
     end
 
     def count_total_members(subject) do
@@ -1686,12 +1709,13 @@ defmodule PortalWeb.Groups do
 
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[group_id resource_id]a)
+        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
+        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()
@@ -1831,4 +1855,5 @@ defmodule PortalWeb.Groups do
       |> Safe.update()
     end
   end
+
 end

@@ -239,16 +239,6 @@ defmodule Portal.CryptoTest do
       end
     end
 
-    test "raises an error when secret is not a binary" do
-      assert_raise FunctionClauseError, fn ->
-        hash(:argon2, 1)
-      end
-
-      assert_raise FunctionClauseError, fn ->
-        hash(:sha256, 1)
-      end
-    end
-
     test "argon2 hash returns valid argon2 hash string" do
       hash = hash(:argon2, "password123")
       assert String.starts_with?(hash, "$argon2")

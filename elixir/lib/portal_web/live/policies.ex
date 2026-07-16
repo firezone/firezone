@@ -7,11 +7,13 @@ defmodule PortalWeb.Policies do
       map_condition_params: 2,
       maybe_drop_unsupported_conditions: 2,
       policy_panel: 1,
+      policy_status_badge: 1,
       resource_type_badge_class: 1,
       condition_short_label: 1
     ]
 
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
+  alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
@@ -19,14 +21,18 @@ defmodule PortalWeb.Policies do
   import Portal.Changeset
 
   def mount(_params, _session, socket) do
+    subject = socket.assigns.subject
+
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :policies)
     end
 
     socket =
       socket
       |> assign(stale: false)
       |> assign(page_title: "Policies")
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
+      |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
       |> assign(selected_policy: nil, policy_providers: [])
       |> assign(
         policy_authorizations: [],
@@ -204,7 +210,7 @@ defmodule PortalWeb.Policies do
     <div class="relative flex flex-col h-full overflow-hidden">
       <.page_header>
         <:icon>
-          <.icon name="ri-shield-line" class="w-16 h-16 text-[var(--brand)]" />
+          <.icon name="ri-shield-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Policies</:title>
         <:description>
@@ -216,18 +222,15 @@ defmodule PortalWeb.Policies do
             New Policy
           </.button>
         </:action>
-        <:filters>
-          <% conditions_count = Enum.count(@policies, fn p -> length(p.conditions) > 0 end) %>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-emphasis)] bg-[var(--surface-raised)] text-[var(--text-primary)] font-medium">
-            All {@policies_metadata.count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            With conditions {conditions_count}
-          </span>
-          <span class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-secondary)]">
-            No conditions {length(@policies) - conditions_count}
-          </span>
-        </:filters>
+        <:stats>
+          <.async_result :let={count} assign={@policies_count}>
+            <:loading><.badge type="primary">Loading...</.badge></:loading>
+            <.dual_badge type="primary">
+              <:left>{count}</:left>
+              <:right>Total</:right>
+            </.dual_badge>
+          </.async_result>
+        </:stats>
       </.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -261,35 +264,33 @@ defmodule PortalWeb.Policies do
             </.link>
           </:notice>
           <:col :let={policy} label="Policy">
-            <div class="font-medium transition-colors text-[var(--text-primary)] group-hover:text-[var(--brand)]">
+            <div class="font-medium transition-colors text-heading group-hover:text-brand">
               <%= if policy.group do %>
                 {policy.group.name} — {policy.resource.name}
               <% else %>
                 <span class="text-amber-600">(Group deleted)</span> — {policy.resource.name}
               <% end %>
             </div>
-            <div class="font-mono text-[10px] text-[var(--text-tertiary)] mt-0.5">
+            <div class="font-mono text-[10px] text-subtle mt-0.5">
               {policy.id}
             </div>
           </:col>
           <:col :let={policy} label="Status" class="w-32">
-            <.status_badge status={if is_nil(policy.disabled_at), do: :active, else: :disabled} />
+            <.policy_status_badge disabled_at={policy.disabled_at} />
           </:col>
           <:col :let={policy} label="Group" class="w-36 lg:w-72">
             <%= if policy.group do %>
               <div class="flex items-center gap-2">
-                <div class="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--icon-bg)] border border-[var(--border)] shrink-0">
-                  <.provider_icon type={provider_type_from_group(policy.group)} class="w-3 h-3" />
-                </div>
+                <.provider_icon provider={provider_type_from_group(policy.group)} size="xs" variant="circle" />
                 <.link
                   navigate={~p"/#{@account}/groups/#{policy.group}"}
-                  class="text-sm text-[var(--text-secondary)] truncate hover:text-[var(--text-primary)] transition-colors"
+                  class="text-sm text-body truncate hover:text-heading transition-colors"
                 >
                   {policy.group.name}
                 </.link>
               </div>
             <% else %>
-              <span class="text-xs text-[var(--text-muted)] italic">Group deleted</span>
+              <span class="text-xs text-muted italic">Group deleted</span>
             <% end %>
           </:col>
           <:col :let={policy} label="Resource" class="w-36 lg:w-72">
@@ -299,7 +300,7 @@ defmodule PortalWeb.Policies do
               </span>
               <.link
                 navigate={~p"/#{@account}/resources/#{policy.resource_id}"}
-                class="text-sm text-[var(--text-secondary)] truncate hover:text-[var(--text-primary)] transition-colors"
+                class="text-sm text-body truncate hover:text-heading transition-colors"
               >
                 {policy.resource.name}
               </.link>
@@ -307,34 +308,34 @@ defmodule PortalWeb.Policies do
           </:col>
           <:col :let={policy} label="Conditions" class="w-28 lg:w-72">
             <%= if length(policy.conditions) > 0 do %>
-              <span class="lg:hidden text-xs text-[var(--text-secondary)]">
+              <span class="lg:hidden text-xs text-body">
                 {length(policy.conditions)} condition{if length(policy.conditions) != 1, do: "s"}
               </span>
               <div class="hidden lg:flex items-center gap-1.5 flex-wrap">
                 <%= for condition <- policy.conditions do %>
-                  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--surface-raised)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border">
                     {condition_short_label(condition.property)}
                   </span>
                 <% end %>
               </div>
             <% else %>
-              <span class="text-xs text-[var(--text-muted)]">—</span>
+              <span class="text-xs text-muted">—</span>
             <% end %>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-shield-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-shield-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No policies yet</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  Create a policy to grant actors access to resources.
+                <p class="text-sm font-medium text-heading">No policies yet</p>
+                <p class="text-xs text-subtle mt-0.5">
+                  Create a Policy to grant Groups access to Resources.
                 </p>
               </div>
               <.link
                 patch={~p"/#{@account}/policies/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Policy
               </.link>
@@ -348,6 +349,7 @@ defmodule PortalWeb.Policies do
         policy={@selected_policy}
         providers={@policy_providers}
         subject={@subject}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
         confirm_state={policy_confirm_state(assigns)}
@@ -637,6 +639,7 @@ defmodule PortalWeb.Policies do
       changeset =
         change_policy(policy, params)
         |> validate_internet_resource_allowed(socket.assigns.subject)
+        |> Policy.disable_flow_log_uploads_for_internet_resource(socket.assigns.subject)
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -798,6 +801,11 @@ defmodule PortalWeb.Policies do
      end)}
   end
 
+  def handle_event("change_tod_timezone", params, socket) do
+    timezone = get_in(params, ["policy", "conditions", "current_utc_datetime", "timezone"])
+    {:noreply, merge_state(socket, :policy_conditions, timezone: timezone)}
+  end
+
   def handle_event("change_auth_provider_operator", %{"operator" => op}, socket) do
     {:noreply, merge_state(socket, :policy_conditions, auth_provider_operator: op)}
   end
@@ -810,11 +818,31 @@ defmodule PortalWeb.Policies do
     {:noreply, merge_state(socket, :policy_conditions, auth_provider_values: updated)}
   end
 
-  def handle_info(%Change{old_struct: %Portal.Policy{}} = change, socket) do
+  def handle_info(%Change{op: :insert, struct: %Policy{}} = change, socket) do
+    {:noreply,
+     socket
+     |> update(:policies_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Policy{}} = change, socket) do
+    {:noreply,
+     socket
+     |> update(:policies_count, fn
+       %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
+       ar -> ar
+     end)
+     |> mark_stale_if_unreflected(change)}
+  end
+
+  def handle_info(%Change{old_struct: %Policy{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
-  def handle_info(%Change{struct: %Portal.Policy{}} = change, socket) do
+  def handle_info(%Change{struct: %Policy{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
@@ -838,7 +866,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -849,12 +877,13 @@ defmodule PortalWeb.Policies do
     attrs
     |> new_policy(subject)
     |> validate_internet_resource_allowed(subject)
+    |> Policy.disable_flow_log_uploads_for_internet_resource(subject)
     |> Database.insert_policy(subject)
   end
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -1043,6 +1072,12 @@ defmodule PortalWeb.Policies do
     alias Portal.Device
     alias Portal.Authentication
 
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
+
     def get_site(id, subject) do
       from(s in Site, as: :sites)
       |> where([sites: s], s.id == ^id)
@@ -1217,6 +1252,12 @@ defmodule PortalWeb.Policies do
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
       end)
+    end
+
+    def count_policies(subject) do
+      from(p in Policy, as: :policies)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.aggregate(:count)
     end
 
     def list_policies(subject, opts \\ []) do

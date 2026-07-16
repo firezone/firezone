@@ -8,29 +8,23 @@ defmodule PortalAPI.Schemas.Membership do
     OpenApiSpex.schema(%{
       title: "Membership",
       description: "Membership",
-      type: :array,
-      items: %Schema{
-        type: :object,
-        properties: %{
-          id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
-          name: %Schema{type: :string, description: "Actor Name"},
-          type: %Schema{type: :string, description: "Actor Type"}
-        }
+      type: :object,
+      properties: %{
+        id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
+        name: %Schema{type: :string, description: "Actor Name"},
+        type: %Schema{type: :string, description: "Actor Type"}
       },
-      example: [
-        %{
-          "id" => "7cb89288-1fb3-433e-a522-2d087e45988d",
-          "name" => "John Doe",
-          "type" => "account_user"
-        }
-      ]
+      example: %{
+        "id" => "7cb89288-1fb3-433e-a522-2d087e45988d",
+        "name" => "John Doe",
+        "type" => "account_user"
+      }
     })
   end
 
   defmodule PatchRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Membership
 
     OpenApiSpex.schema(%{
       title: "MembershipPatchRequest",
@@ -65,11 +59,7 @@ defmodule PortalAPI.Schemas.Membership do
 
   defmodule PutRequest do
     require OpenApiSpex
-    alias Ecto.Adapter.Schema
-    alias Ecto.Adapter.Schema
-    alias Ecto.Adapter.Schema
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Membership
 
     OpenApiSpex.schema(%{
       title: "MembershipPutRequest",
@@ -100,6 +90,7 @@ defmodule PortalAPI.Schemas.Membership do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Membership
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "MembershipListResponse",
@@ -111,7 +102,7 @@ defmodule PortalAPI.Schemas.Membership do
           type: :array,
           items: Membership.Schema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

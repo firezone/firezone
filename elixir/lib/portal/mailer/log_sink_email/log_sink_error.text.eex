@@ -1,0 +1,39 @@
+Log Sink Delivery Error!
+
+Log delivery to your "<%= @sink.name %>" <%= @type %> log sink has stopped: it
+encountered an unrecoverable error and has been disabled.
+
+Below is the last delivery error message:
+
+<%= @sink.error_message || "No error message available" %>
+
+Log sink details:
+  Account: <%= @account.name %>
+  Account ID: <%= @account.id %>
+  Log Sink Name: <%= @sink.name %>
+  Log Sink ID: <%= @sink.id %>
+  Type: <%= @type %>
+  Destination: <%= @destination %>
+  Log Streams: <%= @streams %>
+  Events Delivered: <%= @delivered %>
+  Last Successful Delivery: <%= @last_delivered_at || "Never" %>
+  Error Occurred At: <%= @sink.errored_at || "Unknown" %>
+
+How to fix it:
+
+  1. <%= @provider_hint %>
+
+  2. Edit and Save the log sink in your Firezone settings to re-enable it:
+     <%= @settings_url %>
+
+     Delivery resumes from where it left off; no events are skipped while the
+     sink is disabled.
+
+  3. Re-enable promptly: logs continue to accumulate while the sink is
+     disabled, but logs that age out of your retention window before delivery
+     resumes cannot be recovered.
+
+If the problem persists, please reach out to Firezone support via Slack or email.
+
+Thanks,
+The Firezone Team

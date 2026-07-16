@@ -38,6 +38,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // on mach_msg when idle, causing false positive reports.
     Telemetry.start(enableAppHangTracking: false)
 
+    startTelemetry()
+
     super.init()
 
     // Log version information immediately on startup
@@ -49,6 +51,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
     migrateFirezoneId()
+  }
+
+  deinit {
+    stopTelemetry()
   }
 
   override func startTunnel(
@@ -315,9 +321,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       sendChunk(tunnelLogArchive)
 
     case .idle:
-      guard let logFolderURL = SharedAccess.logFolderURL,
-        let cacheFolderURL = SharedAccess.cacheFolderURL,
-        let connlibLogFolderURL = SharedAccess.connlibLogFolderURL
+      guard let logFolderURL = SharedAccess.logFolderURL
       else {
         completionHandler(nil)
 
@@ -326,18 +330,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       let tunnelLogArchive = TunnelLogArchive(source: logFolderURL)
 
-      let latestSymlink = connlibLogFolderURL.appendingPathComponent("latest")
-      let tempSymlink = cacheFolderURL.appendingPathComponent(
-        "latest")
-
       do {
-        // Move the `latest` symlink out of the way before creating the archive.
-        // Apple's implementation of zip appears to not be able to handle symlinks well
-        _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
-        defer {
-          _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
-        }
-
         try tunnelLogArchive.archive()
       } catch {
         Log.error(error)

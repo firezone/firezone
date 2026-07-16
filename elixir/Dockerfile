@@ -1,4 +1,8 @@
-FROM hexpm/elixir:1.20.0-erlang-29.0.1-alpine-3.23.4 AS compiler
+ARG ELIXIR_VERSION="1.20.2"
+ARG ERLANG_VERSION="29.0.3"
+ARG ALPINE_VERSION="3.23.5"
+
+FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS compiler
 
 ENV LANG=C.UTF-8
 
@@ -6,7 +10,7 @@ WORKDIR /app
 
 # Pull alpine package patches that landed after the hexpm/elixir base image
 # was published, then install build deps:
-#   - git: required for git-sourced mix deps (openid_connect, opentelemetry_*_experimental)
+#   - git: required for git-sourced mix deps (opentelemetry_*_experimental)
 #   - build-base: required for argon2_elixir's C NIF (provides gcc + make)
 #   - nodejs/npm: required to install pnpm, which installs assets/package.json deps
 RUN apk --no-cache update \
@@ -70,7 +74,7 @@ RUN mix release ${APPLICATION_NAME}
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
 
-FROM alpine:3.23.4 AS runtime
+FROM alpine:${ALPINE_VERSION} AS runtime
 
 ENV LANG=C.UTF-8
 
@@ -106,9 +110,6 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 # Only copy the final release from the build stage
 ARG MIX_ENV="prod"
 COPY --from=builder --chown=1001:0 /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
-
-# Allow tzdata to write IANA timezone updates at runtime
-RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
 
 USER default
 

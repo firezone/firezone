@@ -11,6 +11,20 @@
 
 $ErrorActionPreference = "Stop"
 
+function Assert-ValidSignature {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Write-Error "Expected signed file not found: $Path"
+        exit 1
+    }
+    $sig = Get-AuthenticodeSignature -LiteralPath $Path
+    Write-Output ("    {0}: {1}" -f (Split-Path -Leaf $Path), $sig.Status)
+    if ($sig.Status -ne "Valid") {
+        Write-Error "Authenticode verification failed for ${Path}: $($sig.Status) - $($sig.StatusMessage)"
+        exit 1
+    }
+}
+
 if (-not $env:BINARY_DEST_PATH) {
     Write-Error "BINARY_DEST_PATH not set"
     exit 1
@@ -18,6 +32,9 @@ if (-not $env:BINARY_DEST_PATH) {
 
 $msi = "$($env:BINARY_DEST_PATH).msi"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Write-Output "==> Verifying the MSI's Authenticode signature..."
+Assert-ValidSignature $msi
 
 Write-Output "==> Installing $msi..."
 $msiproc = Start-Process -FilePath "msiexec.exe" `
@@ -27,6 +44,12 @@ if ($msiproc.ExitCode -ne 0) {
     Write-Error "msiexec exited with $($msiproc.ExitCode)"
     exit 1
 }
+
+Write-Output "==> Verifying Authenticode signatures on the installed binaries..."
+$installDir = "C:\Program Files\Firezone"
+Assert-ValidSignature "$installDir\Firezone.exe"
+Assert-ValidSignature "$installDir\firezone-client-tunnel.exe"
+Assert-ValidSignature "$installDir\register-sparse.exe"
 
 Write-Output "==> Checking the tunnel service is running..."
 $null = sc.exe query FirezoneClientTunnelService | Select-String "RUNNING"

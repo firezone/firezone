@@ -10,7 +10,7 @@
   `Return="check"` makes a non-zero exit from `register-sparse` fail
   the install transaction. The `LaunchCondition` below guarantees we
   only ever reach the CA on a Windows build that actually supports
-  external-location sparse-MSIX packages (Win10 21H2 / build 19044).
+  external-location sparse-MSIX packages (Win10 2004 / build 19041).
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
@@ -29,7 +29,7 @@
     </Property>
 
     <!--
-      Refuse install on anything older than Win10 21H2. The MSIX
+      Refuse install on anything older than Win10 2004. The MSIX
       sparse-package subsystem (`AddPackageByUriAsync` with
       `ExternalLocationUri`) ships there; on earlier builds
       registration silently no-ops and the tunnel pipe DACL grants
@@ -39,8 +39,8 @@
       are pure-digit strings so MSI evaluates as integer comparison
       and the check stays correct on future builds with more digits.
     -->
-    <Condition Message="Firezone requires Windows 10 version 21H2 (build 19044) or later.">
-      <![CDATA[Installed OR WIN_BUILD >= "19044"]]>
+    <Condition Message="Firezone requires Windows 10 version 2004 (build 19041) or later.">
+      <![CDATA[Installed OR WIN_BUILD >= "19041"]]>
     </Condition>
 
     <DirectoryRef Id="INSTALLDIR">

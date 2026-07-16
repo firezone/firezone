@@ -55,7 +55,7 @@ pub(crate) fn show_notification(title: String, body: String) -> Result<Notificat
 
         tracing::debug!(%title, %body, "Showing notification");
 
-        notification.on_close(|| {});
+        notification.wait_for_action_async(|_| {}).await;
     });
 
     Ok(NotificationHandle { on_click: rx })

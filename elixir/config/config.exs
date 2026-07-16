@@ -33,6 +33,8 @@ config :portal, generators: [binary_id: true]
 config :portal, sql_sandbox: false
 config :portal, replica_repo: Portal.Repo.Replica
 
+config :portal, flow_logs_upload_batch_size: 1000
+
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
 
@@ -47,7 +49,7 @@ config :portal, Portal.Repo,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
   migration_lock: :pg_advisory_lock,
-  start_apps_before_migration: [:ssl, :logger_json],
+  start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
 
 config :portal, Portal.Repo.Replica,
@@ -61,10 +63,11 @@ config :portal, Portal.Repo.Replica,
   queue_interval: 1000,
   parameters: [application_name: "replica"]
 
-# Isolated primary connection pools (web/api)
+# Isolated primary connection pools (web/api/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Web, "web"},
-      {Portal.Repo.Api, "api"}
+      {Portal.Repo.Api, "api"},
+      {Portal.Repo.Poller, "poller"}
     ] do
   config :portal, repo,
     hostname: "localhost",
@@ -78,10 +81,11 @@ for {repo, app_name} <- [
     parameters: [application_name: app_name]
 end
 
-# Isolated replica connection pools (web/api)
+# Isolated replica connection pools (web/api/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Replica.Web, "replica-web"},
-      {Portal.Repo.Replica.Api, "replica-api"}
+      {Portal.Repo.Replica.Api, "replica-api"},
+      {Portal.Repo.Replica.Poller, "replica-poller"}
     ] do
   config :portal, repo,
     hostname: "localhost",
@@ -95,22 +99,14 @@ for {repo, app_name} <- [
     parameters: [application_name: app_name]
 end
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
+  repo: Portal.Repo.Poller,
   replication_slot_name: "change_logs_slot",
   publication_name: "change_logs_publication",
   region: "",
   enabled: true,
-  connection_opts: [
-    hostname: "localhost",
-    port: 5432,
-    ssl: false,
-    parameters: [application_name: "change_logs"],
-    username: "postgres",
-    database: "firezone_dev",
-    password: "postgres"
-  ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Portal.ChangeLogs.ReplicationConnection`
+  #   1. Make appropriate changes to `Portal.ChangeLogs.Consumer`
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
@@ -129,16 +125,15 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     google_directories
     devices
     sites
-    client_sessions
-    gateway_sessions
     gateway_tokens
     policies
     resources
     static_device_pool_members
     client_tokens
     one_time_passcodes
-    portal_sessions
     api_tokens
+    trust_anchors
+    trust_anchor_certificates
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.
@@ -147,33 +142,26 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
   # We almost never want to bypass changelog inserts
   error_threshold: :timer.hours(30 * 24),
 
-  # Flush change logs data at least every 30 seconds
-  flush_interval: :timer.seconds(30),
+  # The audit trail tolerates more latency in exchange for fewer poll queries
+  poll_interval: :timer.seconds(30),
+  batch_size: 500
 
-  # We want to flush at most 500 change logs at a time
-  flush_buffer_size: 500
-
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
+  # Changes only broadcasts, so it reads from the regional replica to keep
+  # decoding load off the primary
+  repo: Portal.Repo.Replica.Poller,
   replication_slot_name: "changes_slot",
   publication_name: "changes_publication",
   region: "",
   enabled: true,
-  connection_opts: [
-    hostname: "localhost",
-    port: 5432,
-    ssl: false,
-    parameters: [application_name: "changes"],
-    username: "postgres",
-    database: "firezone_dev",
-    password: "postgres"
-  ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Portal.Changes.ReplicationConnection`
+  #   1. Make appropriate changes to `Portal.Changes.Consumer`
   #   2. Add an appropriate `Portal.Changes.Hooks` module
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
     actors
+    groups
     memberships
     devices
     external_identities
@@ -202,9 +190,9 @@ config :portal, Portal.Changes.ReplicationConnection,
   # Allow up to 30 minutes of lag before bypassing hooks
   error_threshold: :timer.minutes(30),
 
-  # Disable flush
-  flush_interval: 0,
-  flush_buffer_size: 0
+  # Changes power cache invalidation; balance broadcast latency against poll query volume
+  poll_interval: :timer.seconds(5),
+  batch_size: 500
 
 config :portal, Portal.Tokens,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
@@ -221,19 +209,39 @@ config :portal, Portal.Health,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
+config :portal, Portal.Azure.ManagedIdentity,
+  endpoint: "http://169.254.169.254",
+  client_id: nil,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient
+  ]
+
 config :portal, Portal.Entra.APIClient,
   client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
   client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
-  # 15 minutes in milliseconds
-  req_opts: [receive_timeout: 900_000]
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
 
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
   token_endpoint: "https://oauth2.googleapis.com/token",
-  req_opts: [receive_timeout: 60_000]
+  req_opts: [
+    # 1 minute
+    receive_timeout: 60_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
 
 config :portal, Portal.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console
@@ -250,6 +258,12 @@ config :portal, Portal.Okta.AuthProvider,
 
 # 15 minutes in milliseconds
 config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
+
+config :portal, Portal.Splunk.APIClient, req_opts: []
+
+config :portal, Portal.Datadog.APIClient, req_opts: []
+
+config :portal, Portal.NewRelic.APIClient, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -295,6 +309,8 @@ config :portal, Portal.ComponentVersions,
     headless: "1.5.7"
   ]
 
+config :portal, Portal.ClockDriftAlarm, enabled: true
+
 config :portal, Portal.Cluster,
   adapter: nil,
   adapter_config: []
@@ -305,7 +321,8 @@ config :portal, :enabled_features,
   sign_up: true,
   policy_conditions: true,
   rest_api: true,
-  internet_resource: true
+  internet_resource: true,
+  log_sinks: true
 
 config :portal, sign_up_whitelisted_domains: []
 
@@ -359,6 +376,10 @@ config :portal,
 config :portal,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
+
+config :portal,
+  flow_logs_api_url: "https://flow-api.firezone.dev/",
+  flow_logs_upload_interval_secs: 60
 
 config :portal, country_code_blocklist: []
 
@@ -429,6 +450,12 @@ config :portal, PortalAPI.Sockets.RateLimit,
   refill_rate: 1,
   capacity: 1
 
+# Flow-log ingestion: 1 request per second per source IP, no burst. Each request
+# batches up to 10k records, so one per second is ample for reporters.
+config :portal, PortalAPI.Plugs.IngestionRateLimit,
+  refill_rate: 1,
+  capacity: 1
+
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
@@ -440,11 +467,10 @@ config :portal, PortalWeb.RateLimit,
 config :portal,
   http_client_ssl_opts: []
 
-config :openid_connect,
-  finch_transport_opts: []
-
 config :mime, :types, %{
-  "application/xml" => ["xml"]
+  "application/xml" => ["xml"],
+  "application/x-pem-file" => ["pem"],
+  "application/x-x509-ca-cert" => ["crt", "cer", "der"]
 }
 
 config :opentelemetry,
@@ -484,7 +510,8 @@ config :esbuild,
       "--target=es2022",
       "--outdir=../priv/static/assets",
       "--external:/fonts/*",
-      "--external:/images/*"
+      "--external:/images/*",
+      "--define:__DEV__=#{Mix.env() == :dev}"
     ],
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => System.get_env("MIX_DEPS_PATH", Path.expand("../deps", __DIR__))}

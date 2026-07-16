@@ -65,7 +65,7 @@ public final class Store: ObservableObject {
   // running pass loops until the latest target is durable.
   private var syncInFlight = false
   private var syncPending = false
-  private var vpnConfigurationManager: VPNConfigurationManager?
+  @Published private(set) var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
   private let tunnelManagerFactory: TunnelProviderManagerFactory
 

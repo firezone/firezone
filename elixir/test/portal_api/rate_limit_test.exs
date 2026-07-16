@@ -42,7 +42,8 @@ defmodule PortalAPI.RateLimitTest do
 
       # Second request immediately after finds no tokens available
       resp_conn = call_api(conn, actor)
-      assert %{"error" => %{"reason" => "Too Many Requests"}} = json_response(resp_conn, 429)
+      assert %{"type" => "about:blank", "status" => 429, "title" => "Too Many Requests"} =
+               json_response(resp_conn, 429)
 
       [retry_after] = get_resp_header(resp_conn, "retry-after")
       assert String.to_integer(retry_after) >= 1

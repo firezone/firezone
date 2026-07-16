@@ -12,6 +12,7 @@
     "core:app:default",
     "core:resources:default",
     "core:menu:default",
-    "core:tray:default"
+    "core:tray:default",
+    "opener:default"
   ]
 }

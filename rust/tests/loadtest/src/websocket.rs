@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -14,6 +14,12 @@ use url::Url;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REPLY_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_PAYLOAD_SIZE: usize = u16::MAX as usize; // Big enough to definitely spread across multiple IP packets but also small to not consume too many resources.
+
+/// Default number of concurrent connections.
+const DEFAULT_CONCURRENT: usize = 10;
+
+/// Default connection hold duration.
+const DEFAULT_HOLD_DURATION: Duration = Duration::from_secs(30);
 
 /// Configuration for WebSocket load testing.
 #[derive(Debug, Clone)]
@@ -38,46 +44,59 @@ pub struct Args {
     #[arg(short = 'p', long, default_value = "9001")]
     port: u16,
 
-    /// WebSocket URL (ws:// or wss://) - required in client mode
+    /// WebSocket URL (ws:// or wss://). Overrides the config's `[websocket]` addresses.
     #[arg(long, value_name = "URL")]
     url: Option<Url>,
 
     /// Number of concurrent connections to establish
-    #[arg(short = 'c', long, default_value = "10")]
-    concurrent: usize,
+    #[arg(short = 'c', long)]
+    concurrent: Option<usize>,
 
     /// How long to hold each connection open (e.g., 30s, 5m)
-    #[arg(short = 'd', long, default_value = "30s", value_parser = crate::cli::parse_duration)]
-    duration: Duration,
+    #[arg(short = 'd', long, value_parser = crate::cli::parse_duration)]
+    duration: Option<Duration>,
 
     /// How long to at most wait between messages. Zero means we won't send any messages.
     #[arg(long, value_parser = crate::cli::parse_duration)]
     max_echo_interval: Option<Duration>,
 }
 
-/// Run WebSocket test with manual CLI args.
-pub async fn run_with_cli_args(args: Args) -> anyhow::Result<()> {
+/// Build a [`TestConfig`] from CLI args, filling unspecified values from `base`.
+pub fn merge(args: Args, base: Option<TestConfig>) -> Result<TestConfig> {
+    let base = base.as_ref();
+
+    let url = args
+        .url
+        .or_else(|| base.map(|b| b.url.clone()))
+        .context("--url is required (or add [websocket] to the config)")?;
+    let concurrent = args
+        .concurrent
+        .or_else(|| base.map(|b| b.concurrent))
+        .unwrap_or(DEFAULT_CONCURRENT);
+    let hold_duration = args
+        .duration
+        .or_else(|| base.map(|b| b.hold_duration))
+        .unwrap_or(DEFAULT_HOLD_DURATION);
+    let max_echo_interval = args
+        .max_echo_interval
+        .or_else(|| base.map(|b| b.max_echo_interval))
+        .unwrap_or(Duration::ZERO);
+
+    Ok(TestConfig {
+        url,
+        concurrent,
+        hold_duration,
+        max_echo_interval,
+    })
+}
+
+/// Run WebSocket test from CLI args merged over an optional config base.
+pub async fn run_with_args(args: Args, base: Option<TestConfig>, seed: u64) -> Result<()> {
     if args.server {
-        // Server mode
-        let config = WebsocketServerConfig { port: args.port };
-        run_server(config).await?;
-    } else {
-        // Client mode
-        let url = args.url.ok_or_else(|| {
-            anyhow::anyhow!("--url is required in client mode (or use --server for server mode)")
-        })?;
-
-        let config = TestConfig {
-            url,
-            concurrent: args.concurrent,
-            hold_duration: args.duration,
-            max_echo_interval: args.max_echo_interval.unwrap_or_default(),
-        };
-
-        run(config, 0).await?;
+        return run_server(WebsocketServerConfig { port: args.port }).await;
     }
 
-    Ok(())
+    run_with_config(merge(args, base)?, seed).await
 }
 
 /// Run WebSocket test from resolved config.
@@ -153,7 +172,7 @@ async fn run_echo_loop(
     let hold_start = Instant::now();
 
     while hold_start.elapsed() < config.hold_duration {
-        let payload_size = rng.gen_range(0..MAX_PAYLOAD_SIZE);
+        let payload_size = rng.random_range(0..MAX_PAYLOAD_SIZE);
         let mut buffer = vec![0u8; payload_size];
         rng.fill_bytes(&mut buffer);
 
@@ -180,7 +199,7 @@ async fn run_echo_loop(
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
         }
 
-        let interval = rng.gen_range(Duration::ZERO..config.max_echo_interval);
+        let interval = rng.random_range(Duration::ZERO..config.max_echo_interval);
 
         tracing::trace!("Next message in {interval:?}");
 

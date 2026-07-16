@@ -86,8 +86,8 @@ pub mod attr {
         KeyValue::new("error.type", value)
     }
 
-    pub fn queue_item_ip_packet() -> KeyValue {
-        KeyValue::new("queue.item", "ip-packet")
+    pub fn queue_item_ip_packet_batch() -> KeyValue {
+        KeyValue::new("queue.item", "ip-packet-batch")
     }
 
     pub fn queue_item_gro_batch() -> KeyValue {
@@ -498,101 +498,6 @@ mod normalize_tests {
             normalize("Traffic to/from this resource IP is not allowed: 10.0.0.1"),
             "Traffic to/from this resource IP is not allowed: {ip}"
         );
-    }
-}
-
-pub mod metrics {
-    use std::{ops::ControlFlow, time::Duration};
-
-    use opentelemetry::{
-        KeyValue,
-        metrics::{Counter, Gauge},
-    };
-
-    use crate::otel::QueueLength;
-
-    pub fn network_packet_dropped() -> Counter<u64> {
-        opentelemetry::global::meter("connlib")
-            .u64_counter("network.packet.dropped")
-            .with_description("Count of packets that are dropped or discarded")
-            .with_unit("{packet}")
-            .build()
-    }
-
-    pub fn tunnel_errors() -> Counter<u64> {
-        opentelemetry::global::meter("connlib")
-            .u64_counter("tunnel.error")
-            .with_description("Number of errors encountered while processing a packet batch.")
-            .with_unit("{error}")
-            .build()
-    }
-
-    pub fn portal_connection_hiccups() -> Counter<u64> {
-        opentelemetry::global::meter("connlib")
-            .u64_counter("portal.connection.hiccup")
-            .with_description("Number of portal connection hiccups by cause.")
-            .with_unit("{hiccup}")
-            .build()
-    }
-
-    pub fn connection_count() -> Gauge<u64> {
-        opentelemetry::global::meter("connlib")
-            .u64_gauge("tunnel.connection.count")
-            .with_description("Number of connections by the network path in use.")
-            .with_unit("{connection}")
-            .build()
-    }
-
-    pub async fn periodic_system_queue_length<const N: usize>(
-        queue: impl QueueLength,
-        attributes: [KeyValue; N],
-    ) {
-        let gauge = opentelemetry::global::meter("connlib")
-            .u64_gauge("system.queue.length")
-            .with_description("The length of a queue.")
-            .build();
-
-        periodic_gauge(
-            gauge,
-            |gauge| {
-                let len = match queue.queue_length() {
-                    Some(len) => len,
-                    None => return ControlFlow::Break(()),
-                };
-
-                gauge.record(len, &attributes);
-
-                ControlFlow::Continue(())
-            },
-            Duration::from_secs(1),
-        )
-        .await;
-    }
-
-    pub async fn periodic_gauge<T>(
-        gauge: Gauge<T>,
-        callback: impl Fn(&Gauge<T>) -> ControlFlow<(), ()>,
-        interval: Duration,
-    ) {
-        while callback(&gauge).is_continue() {
-            tokio::time::sleep(interval).await;
-        }
-    }
-}
-
-pub trait QueueLength: Send + Sync + 'static {
-    fn queue_length(&self) -> Option<u64>;
-}
-
-impl<T> QueueLength for tokio::sync::mpsc::WeakSender<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn queue_length(&self) -> Option<u64> {
-        let sender = self.upgrade()?;
-        let len = sender.max_capacity() - sender.capacity();
-
-        Some(len as u64)
     }
 }
 

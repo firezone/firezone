@@ -25,8 +25,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
-    "border-[var(--border)] bg-[var(--surface)]",
-    "hover:bg-[var(--surface-raised)] hover:border-[var(--border-emphasis)]"
+    "border-border bg-surface",
+    "hover:bg-raised hover:border-border-emphasis"
   ]
 
   @common_fields ~w[name is_disabled disabled_reason is_verified error_message]a
@@ -43,10 +43,14 @@ defmodule PortalWeb.Settings.DirectorySync do
   @programmatic_fields ~w[is_verified private_key_jwk kid tenant_id domain]a
 
   def mount(_params, _session, socket) do
-    socket = assign(socket, page_title: "Directory Sync")
+    socket =
+      assign(socket,
+        page_title: "Directory Sync",
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+      )
 
     if connected?(socket) do
-      :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id)
+      :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
     end
 
     {:ok, init(socket, new: true)}
@@ -393,14 +397,18 @@ defmodule PortalWeb.Settings.DirectorySync do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>
         <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+          <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold text-[var(--text-primary)]">Directories</h2>
-              <span class="text-xs text-[var(--text-tertiary)] tabular-nums">
+              <h2 class="text-xs font-semibold text-heading">Directories</h2>
+              <span class="text-xs text-subtle tabular-nums">
                 {length(@directories)}
               </span>
             </div>
@@ -408,7 +416,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               <.docs_action path="/directory-sync" />
               <.link
                 patch={~p"/#{@account}/settings/directory_sync/new"}
-                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add
               </.link>
@@ -417,35 +425,35 @@ defmodule PortalWeb.Settings.DirectorySync do
 
           <div class="flex-1 overflow-auto">
             <%= if Enum.empty?(@directories) do %>
-              <div class="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-tertiary)]">
+              <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
                 <p class="text-sm">No directories configured.</p>
                 <.link
                   patch={~p"/#{@account}/settings/directory_sync/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                 >
                   <.icon name="ri-add-line" class="w-3 h-3" /> Add a directory
                 </.link>
               </div>
             <% else %>
               <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-[var(--surface-raised)]">
-                  <tr class="border-b border-[var(--border-strong)]">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-64">
+                <thead class="sticky top-0 z-10 bg-raised">
+                  <tr class="border-b border-border-strong">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
                       Directory
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                       Status
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-48">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
                       Tenant
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                       Identities
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                       Groups
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-40">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
                       Last Synced
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
@@ -472,7 +480,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           id="add-directory-panel"
           class={[
             "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-            "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+            "bg-elevated border-l border-border-strong",
             "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
             "transition-transform duration-200 ease-in-out",
             (@live_action in [:select_type, :new] && "translate-x-0") || "translate-x-full"
@@ -482,18 +490,12 @@ defmodule PortalWeb.Settings.DirectorySync do
         >
           <!-- Select Directory Type -->
           <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-              <h2 class="text-sm font-semibold text-[var(--text-primary)]">Select Directory Type</h2>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 class="text-sm font-semibold text-heading">Select Directory Type</h2>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <p class="mb-4 text-xs text-[var(--text-tertiary)]">
+              <p class="mb-4 text-xs text-subtle">
                 Select a directory type to add:
               </p>
               <ul class="flex flex-col gap-2">
@@ -503,10 +505,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="google" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">Google</span>
+                      <.provider_icon provider="google" size="xl" />
+                      <span class="text-sm font-medium text-heading">Google</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Sync users and groups from Google Workspace.
                     </span>
                   </.link>
@@ -517,10 +519,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="entra" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">Entra</span>
+                      <.provider_icon provider="entra" size="xl" />
+                      <span class="text-sm font-medium text-heading">Entra</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Sync users and groups from Microsoft Entra ID.
                     </span>
                   </.link>
@@ -531,10 +533,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon type="okta" class="w-7 h-7 shrink-0" />
-                      <span class="text-sm font-medium text-[var(--text-primary)]">Okta</span>
+                      <.provider_icon provider="okta" size="xl" />
+                      <span class="text-sm font-medium text-heading">Okta</span>
                     </span>
-                    <span class="text-xs text-[var(--text-secondary)]">
+                    <span class="text-xs text-body">
                       Sync users and groups from Okta.
                     </span>
                   </.link>
@@ -548,30 +550,24 @@ defmodule PortalWeb.Settings.DirectorySync do
             :if={@live_action == :new and assigns[:form] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <div class="flex items-center gap-2">
                 <.link
                   patch={~p"/#{@account}/settings/directory_sync/new"}
-                  class="flex items-center justify-center w-6 h-6 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                  class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                   title="Back"
                 >
                   <.icon name="ri-arrow-left-line" class="w-4 h-4" />
                 </.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
-                  <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+                  <.provider_icon provider={@type} size="md" />
+                  <h2 class="text-sm font-semibold text-heading">
                     Add {titleize(@type)} Directory
                   </h2>
                   <.docs_action path={"/directory-sync/#{@type}"} />
                 </div>
               </div>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.directory_form
@@ -583,21 +579,13 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
-              <button
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-sm rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-              >
+            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <.button phx-click="close_panel">
                 Cancel
-              </button>
-              <button
-                form="directory-form"
-                type="submit"
-                disabled={not @form.source.valid?}
-                class="px-3 py-1.5 text-sm rounded bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              </.button>
+              <.button form="directory-form" type="submit" style="primary" disabled={not @form.source.valid?}>
                 Create
-              </button>
+              </.button>
             </div>
           </div>
         </div>
@@ -607,7 +595,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           id="edit-directory-panel"
           class={[
             "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
-            "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+            "bg-elevated border-l border-border-strong",
             "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
             "transition-transform duration-200 ease-in-out",
             (@live_action == :edit && assigns[:form] != nil && "translate-x-0") || "translate-x-full"
@@ -619,21 +607,15 @@ defmodule PortalWeb.Settings.DirectorySync do
             :if={@live_action == :edit and assigns[:form] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+            <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <div class="flex items-center gap-2">
-                <.provider_icon type={@type} class="w-5 h-5 shrink-0" />
-                <h2 class="text-sm font-semibold text-[var(--text-primary)]">
+                <.provider_icon provider={@type} size="md" />
+                <h2 class="text-sm font-semibold text-heading">
                   Edit {assigns[:directory_name]}
                 </h2>
                 <.docs_action path={"/directory-sync/#{@type}"} />
               </div>
-              <button
-                phx-click="close_panel"
-                class="flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
-                title="Close (Esc)"
-              >
-                <.icon name="ri-close-line" class="w-4 h-4" />
-              </button>
+              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
@@ -652,31 +634,28 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-[var(--border)]">
-              <button
-                phx-click="close_panel"
-                class="px-3 py-1.5 text-sm rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
-              >
+            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <.button phx-click="close_panel">
                 Cancel
-              </button>
-              <button
+              </.button>
+              <.button
                 form="directory-form"
                 type="submit"
+                style="primary"
                 disabled={
                   not @form.source.valid? or Enum.empty?(@form.source.changes) or not verified?(@form)
                 }
-                class="px-3 py-1.5 text-sm rounded bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Save
-              </button>
+              </.button>
             </div>
           </div>
         </div>
       <% else %>
         <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+          <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold text-[var(--text-primary)]">Directories</h2>
+              <h2 class="text-xs font-semibold text-heading">Directories</h2>
             </div>
             <div class="flex items-center gap-2">
               <.docs_action path="/directory-sync" />
@@ -686,39 +665,39 @@ defmodule PortalWeb.Settings.DirectorySync do
           <div class="flex-1 overflow-hidden relative">
             <div class="blur-xs pointer-events-none select-none opacity-60">
               <table class="w-full text-sm border-collapse">
-                <thead class="bg-[var(--surface-raised)]">
-                  <tr class="border-b border-[var(--border-strong)]">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-64">
+                <thead class="bg-raised">
+                  <tr class="border-b border-border-strong">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
                       Directory
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                       Status
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-48">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
                       Tenant
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                       Identities
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-28">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                       Groups
                     </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] w-40">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
                       Last Synced
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr class="border-b border-[var(--border)]">
+                  <tr class="border-b border-border">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon type="google" class="w-6 h-6 shrink-0" />
+                        <.provider_icon provider="google" size="lg" />
                         <div class="min-w-0">
-                          <span class="text-sm font-medium text-[var(--text-primary)]">
+                          <span class="text-sm font-medium text-heading">
                             Google Workspace
                           </span>
-                          <span class="block text-xs text-[var(--text-tertiary)] font-mono">
+                          <span class="block text-xs text-subtle font-mono">
                             acme.com
                           </span>
                         </div>
@@ -730,22 +709,22 @@ defmodule PortalWeb.Settings.DirectorySync do
                       </span>
                     </td>
                     <td class="px-6 py-3 w-48">
-                      <span class="text-sm text-[var(--text-secondary)] font-mono">acme.com</span>
+                      <span class="text-sm text-body font-mono">acme.com</span>
                     </td>
-                    <td class="px-6 py-3 w-28 text-sm text-[var(--text-primary)] tabular-nums">42</td>
-                    <td class="px-6 py-3 w-28 text-sm text-[var(--text-primary)] tabular-nums">8</td>
-                    <td class="px-6 py-3 w-40 text-xs text-[var(--text-secondary)]">2 hours ago</td>
+                    <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">42</td>
+                    <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">8</td>
+                    <td class="px-6 py-3 w-40 text-xs text-body">2 hours ago</td>
                     <td class="px-6 py-3 w-14"></td>
                   </tr>
-                  <tr class="border-b border-[var(--border)]">
+                  <tr class="border-b border-border">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon type="entra" class="w-6 h-6 shrink-0" />
+                        <.provider_icon provider="entra" size="lg" />
                         <div class="min-w-0">
-                          <span class="text-sm font-medium text-[var(--text-primary)]">
+                          <span class="text-sm font-medium text-heading">
                             Microsoft Entra
                           </span>
-                          <span class="block text-xs text-[var(--text-tertiary)] font-mono">
+                          <span class="block text-xs text-subtle font-mono">
                             contoso.onmicrosoft.com
                           </span>
                         </div>
@@ -757,15 +736,15 @@ defmodule PortalWeb.Settings.DirectorySync do
                       </span>
                     </td>
                     <td class="px-6 py-3 w-48">
-                      <span class="text-sm text-[var(--text-secondary)] font-mono truncate block">
+                      <span class="text-sm text-body font-mono truncate block">
                         contoso.onmicrosoft.com
                       </span>
                     </td>
-                    <td class="px-6 py-3 w-28 text-sm text-[var(--text-primary)] tabular-nums">
+                    <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
                       128
                     </td>
-                    <td class="px-6 py-3 w-28 text-sm text-[var(--text-primary)] tabular-nums">15</td>
-                    <td class="px-6 py-3 w-40 text-xs text-[var(--text-secondary)]">1 hour ago</td>
+                    <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">15</td>
+                    <td class="px-6 py-3 w-40 text-xs text-body">1 hour ago</td>
                     <td class="px-6 py-3 w-14"></td>
                   </tr>
                 </tbody>
@@ -773,10 +752,10 @@ defmodule PortalWeb.Settings.DirectorySync do
             </div>
 
             <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
-              <div class="flex flex-col items-center gap-3 bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg shadow-lg px-8 py-6 text-[var(--text-tertiary)]">
+              <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
                 <.icon name="ri-loop-left-line" class="w-8 h-8" />
                 <div class="flex flex-col items-center gap-1 text-center">
-                  <p class="text-sm font-medium text-[var(--text-primary)]">
+                  <p class="text-sm font-medium text-heading">
                     Automate User & Group Management
                   </p>
                   <p class="text-xs">
@@ -812,21 +791,21 @@ defmodule PortalWeb.Settings.DirectorySync do
     assigns = assign(assigns, is_legacy: is_legacy, toggle_disabled: toggle_disabled)
 
     ~H"""
-    <tr class="border-b border-[var(--border)] hover:bg-[var(--surface-raised)]">
+    <tr class="border-b border-border hover:bg-raised">
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon type={@type} class="w-6 h-6 shrink-0" />
+          <.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span
-                class="text-sm font-medium text-[var(--text-primary)] truncate"
+                class="text-sm font-medium text-heading truncate"
                 title={@directory.name}
               >
                 {@directory.name}
               </span>
               <.badge :if={@is_legacy} type="warning">LEGACY</.badge>
             </div>
-            <span class="text-xs text-[var(--text-tertiary)] font-mono">{@directory.id}</span>
+            <span class="text-xs text-subtle font-mono">{@directory.id}</span>
           </div>
         </div>
       </td>
@@ -834,11 +813,11 @@ defmodule PortalWeb.Settings.DirectorySync do
         <.directory_status_badge directory={@directory} />
       </td>
       <td class="px-6 py-3 w-48">
-        <span class="text-sm text-[var(--text-secondary)] font-mono truncate block">
+        <span class="text-sm text-body font-mono truncate block">
           {directory_identifier(@type, @directory) || "—"}
         </span>
       </td>
-      <td class="px-6 py-3 w-28 text-sm text-[var(--text-primary)] tabular-nums">
+      <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
         <.link
           navigate={~p"/#{@account}/actors?actors_filter[directory_id]=#{@directory.id}"}
           class="hover:underline"
@@ -846,7 +825,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           {@directory.actors_count}
         </.link>
       </td>
-      <td class="px-6 py-3 w-28 text-sm text-[var(--text-primary)] tabular-nums">
+      <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
         <.link
           navigate={~p"/#{@account}/groups?groups_filter[directory_id]=#{@directory.id}"}
           class="hover:underline"
@@ -857,25 +836,25 @@ defmodule PortalWeb.Settings.DirectorySync do
       <td class="px-6 py-3 w-40">
         <%= case @most_recent_job do %>
           <% %{state: "executing"} = job -> %>
-            <span class="flex items-center gap-1.5 text-xs text-[var(--brand)]">
+            <span class="flex items-center gap-1.5 text-xs text-brand">
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 animate-spin" />
               syncing ({format_duration(job.elapsed_seconds)})
             </span>
           <% %{state: state} when state in ["available", "scheduled"] -> %>
-            <span class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
+            <span class="flex items-center gap-1.5 text-xs text-subtle">
               <.icon name="ri-time-line" class="w-3.5 h-3.5" /> queued
             </span>
           <% %{state: "completed"} = job -> %>
-            <span class="text-xs text-[var(--text-secondary)]">
+            <span class="text-xs text-body">
               <.relative_datetime datetime={job.completed_at} />
             </span>
           <% _ -> %>
             <%= if @directory.synced_at do %>
-              <span class="text-xs text-[var(--text-secondary)]">
+              <span class="text-xs text-body">
                 <.relative_datetime datetime={@directory.synced_at} />
               </span>
             <% else %>
-              <span class="text-xs text-[var(--text-tertiary)]">Never</span>
+              <span class="text-xs text-subtle">Never</span>
             <% end %>
         <% end %>
       </td>
@@ -889,7 +868,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             <.link
               patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)]"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
               <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
             </.link>
@@ -899,16 +878,16 @@ defmodule PortalWeb.Settings.DirectorySync do
               phx-value-id={@directory.id}
               phx-value-type={@type}
               disabled={@directory.is_disabled or @directory.has_active_job}
-              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
             </button>
-            <div class="my-1 border-t border-[var(--border)]"></div>
+            <div class="my-1 border-t border-border"></div>
             <.button_with_confirmation
               id={"toggle-directory-#{@directory.id}"}
               on_confirm="toggle_directory"
               on_confirm_id={@directory.id}
-              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--text-secondary)] border-0 bg-transparent"
+              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body border-0 bg-transparent"
             >
               <.icon
                 name={
@@ -937,12 +916,12 @@ defmodule PortalWeb.Settings.DirectorySync do
               </:dialog_confirm_button>
               <:dialog_cancel_button>Cancel</:dialog_cancel_button>
             </.button_with_confirmation>
-            <div class="my-1 border-t border-[var(--border)]"></div>
+            <div class="my-1 border-t border-border"></div>
             <.button_with_confirmation
               id={"delete-directory-#{@directory.id}"}
               on_confirm="delete_directory"
               on_confirm_id={@directory.id}
-              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-[var(--surface-raised)] transition-colors text-[var(--status-error)] border-0 bg-transparent"
+              class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error border-0 bg-transparent"
             >
               <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
               <:dialog_title>Delete Directory</:dialog_title>
@@ -969,7 +948,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           Error
         </span>
       <% @directory.is_disabled -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--text-tertiary)]">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
           Disabled
         </span>
       <% @directory.errored_at -> %>
@@ -981,7 +960,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           Active
         </span>
       <% true -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--text-tertiary)]">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
           Unverified
         </span>
     <% end %>
@@ -1012,14 +991,14 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     ~H"""
     <div>
-      <p class="text-[var(--text-secondary)]">
+      <p class="text-body">
         Are you sure you want to delete <strong>{@directory.name}</strong>?
       </p>
       <%= if @total > 0 do %>
-        <p class="mt-3 text-[var(--text-secondary)]">
+        <p class="mt-3 text-body">
           This will permanently delete:
         </p>
-        <ul class="list-disc list-inside mt-2 text-[var(--text-secondary)] space-y-1">
+        <ul class="list-disc list-inside mt-2 text-body space-y-1">
           <li :if={@stats.actors > 0}>
             <strong>{@stats.actors}</strong> {ngettext("actor", "actors", @stats.actors)}
           </li>
@@ -1038,7 +1017,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           </li>
         </ul>
       <% else %>
-        <p class="mt-2 text-[var(--text-secondary)]">This action cannot be undone.</p>
+        <p class="mt-2 text-body">This action cannot be undone.</p>
       <% end %>
     </div>
     """
@@ -1063,9 +1042,9 @@ defmodule PortalWeb.Settings.DirectorySync do
         <div>
           <label
             for={@form[:name].id}
-            class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            class="block text-xs font-medium text-body mb-1.5"
           >
-            Name <span class="text-[var(--status-error)]">*</span>
+            Name <span class="text-error">*</span>
           </label>
           <.input
             field={@form[:name]}
@@ -1075,13 +1054,13 @@ defmodule PortalWeb.Settings.DirectorySync do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+          <p class="mt-1 text-xs text-subtle">
             Enter a name to identify this directory.
           </p>
         </div>
 
         <fieldset :if={@type == "entra"}>
-          <legend class="block text-xs font-medium text-[var(--text-secondary)] mb-3">
+          <legend class="block text-xs font-medium text-body mb-3">
             Group sync mode
           </legend>
           <% sync_all_groups = get_field(@form.source, :sync_all_groups) %>
@@ -1089,8 +1068,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             <label class={[
               "flex flex-col p-3 border rounded cursor-pointer transition-all",
               if(sync_all_groups == false,
-                do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                do: "border-brand bg-raised",
+                else: "border-border hover:border-border-emphasis"
               )
             ]}>
               <input
@@ -1100,10 +1079,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                 checked={sync_all_groups == false}
                 class="sr-only"
               />
-              <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+              <span class="text-sm font-semibold text-heading mb-1">
                 Assigned groups only
               </span>
-              <span class="text-xs text-[var(--text-secondary)]">
+              <span class="text-xs text-body">
                 Only groups assigned to the
                 <code class="text-xs"><strong>Firezone Authentication</strong></code>
                 managed application will be synced. Requires Entra ID P1/P2 or higher.
@@ -1114,8 +1093,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             <label class={[
               "flex flex-col p-3 border rounded cursor-pointer transition-all",
               if(sync_all_groups == true,
-                do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                do: "border-brand bg-raised",
+                else: "border-border hover:border-border-emphasis"
               )
             ]}>
               <input
@@ -1125,10 +1104,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                 checked={sync_all_groups == true}
                 class="sr-only"
               />
-              <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+              <span class="text-sm font-semibold text-heading mb-1">
                 All groups
               </span>
-              <span class="text-xs text-[var(--text-secondary)]">
+              <span class="text-xs text-body">
                 All groups from your directory will be synced. Use this for Entra ID Free or to sync all groups without managing assignments.
               </span>
             </label>
@@ -1154,9 +1133,9 @@ defmodule PortalWeb.Settings.DirectorySync do
         <div :if={@type == "google"}>
           <label
             for={@form[:impersonation_email].id}
-            class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            class="block text-xs font-medium text-body mb-1.5"
           >
-            Impersonation Email <span class="text-[var(--status-error)]">*</span>
+            Impersonation Email <span class="text-error">*</span>
           </label>
           <.input
             field={@form[:impersonation_email]}
@@ -1166,13 +1145,13 @@ defmodule PortalWeb.Settings.DirectorySync do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+          <p class="mt-1 text-xs text-subtle">
             Enter the admin email address to impersonate for directory sync.
           </p>
         </div>
 
         <fieldset :if={@type == "google"}>
-          <legend class="block text-xs font-medium text-[var(--text-secondary)] mb-3">
+          <legend class="block text-xs font-medium text-body mb-3">
             Group sync mode
           </legend>
           <% group_sync_mode = get_field(@form.source, :group_sync_mode) %>
@@ -1180,8 +1159,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             <label class={[
               "flex flex-col p-3 border rounded cursor-pointer transition-all",
               if(group_sync_mode == :all,
-                do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                do: "border-brand bg-raised",
+                else: "border-border hover:border-border-emphasis"
               )
             ]}>
               <input
@@ -1191,10 +1170,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                 checked={group_sync_mode == :all}
                 class="sr-only"
               />
-              <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+              <span class="text-sm font-semibold text-heading mb-1">
                 All groups
               </span>
-              <span class="text-xs text-[var(--text-secondary)]">
+              <span class="text-xs text-body">
                 All groups from your directory will be synced.
                 <strong class="block mt-1">Default.</strong>
               </span>
@@ -1203,8 +1182,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             <label class={[
               "flex flex-col p-3 border rounded cursor-pointer transition-all",
               if(group_sync_mode == :filtered,
-                do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                do: "border-brand bg-raised",
+                else: "border-border hover:border-border-emphasis"
               )
             ]}>
               <input
@@ -1214,10 +1193,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                 checked={group_sync_mode == :filtered}
                 class="sr-only"
               />
-              <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+              <span class="text-sm font-semibold text-heading mb-1">
                 Filtered groups
               </span>
-              <span class="text-xs text-[var(--text-secondary)]">
+              <span class="text-xs text-body">
                 Only groups whose name starts with
                 <code class="text-xs"><strong>[firezone-sync]</strong></code>
                 or email starts with <code class="text-xs"><strong>firezone-sync</strong></code>
@@ -1228,8 +1207,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             <label class={[
               "flex flex-col p-3 border rounded cursor-pointer transition-all",
               if(group_sync_mode == :disabled,
-                do: "border-[var(--brand)] bg-[var(--surface-raised)]",
-                else: "border-[var(--border)] hover:border-[var(--border-emphasis)]"
+                do: "border-brand bg-raised",
+                else: "border-border hover:border-border-emphasis"
               )
             ]}>
               <input
@@ -1239,10 +1218,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                 checked={group_sync_mode == :disabled}
                 class="sr-only"
               />
-              <span class="text-sm font-semibold text-[var(--text-primary)] mb-1">
+              <span class="text-sm font-semibold text-heading mb-1">
                 Disabled
               </span>
-              <span class="text-xs text-[var(--text-secondary)]">
+              <span class="text-xs text-body">
                 No groups will be synced from your directory.
               </span>
             </label>
@@ -1257,13 +1236,13 @@ defmodule PortalWeb.Settings.DirectorySync do
               name={@form[:orgunit_sync_enabled].name}
               value="true"
               checked={get_field(@form.source, :orgunit_sync_enabled)}
-              class="w-4 h-4 text-[var(--brand)] border-[var(--border)] rounded"
+              class="w-4 h-4 text-brand border-border rounded"
             />
-            <span class="text-sm font-medium text-[var(--text-primary)]">
+            <span class="text-sm font-medium text-heading">
               Sync Organization Units
             </span>
           </label>
-          <p class="mt-1 ml-7 text-xs text-[var(--text-tertiary)]">
+          <p class="mt-1 ml-7 text-xs text-subtle">
             Sync Google Workspace organizational units as groups. <strong>Note:</strong>
             When enabled, all org units and active users will be synced.
           </p>
@@ -1272,9 +1251,9 @@ defmodule PortalWeb.Settings.DirectorySync do
         <div :if={@type == "okta"}>
           <label
             for={@form[:okta_domain].id}
-            class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            class="block text-xs font-medium text-body mb-1.5"
           >
-            Okta Domain <span class="text-[var(--status-error)]">*</span>
+            Okta Domain <span class="text-error">*</span>
           </label>
           <.input
             field={@form[:okta_domain]}
@@ -1284,7 +1263,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+          <p class="mt-1 text-xs text-subtle">
             Enter your fully-qualified Okta organization domain (e.g., example.okta.com).
           </p>
         </div>
@@ -1292,9 +1271,9 @@ defmodule PortalWeb.Settings.DirectorySync do
         <div :if={@type == "okta"}>
           <label
             for={@form[:client_id].id}
-            class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+            class="block text-xs font-medium text-body mb-1.5"
           >
-            Client ID <span class="text-[var(--status-error)]">*</span>
+            Client ID <span class="text-error">*</span>
           </label>
           <.input
             field={@form[:client_id]}
@@ -1304,19 +1283,19 @@ defmodule PortalWeb.Settings.DirectorySync do
             data-1p-ignore
             required
           />
-          <p class="mt-1 text-xs text-[var(--text-tertiary)]">
+          <p class="mt-1 text-xs text-subtle">
             Enter the Client ID from your Okta application settings.
           </p>
         </div>
 
         <div
           :if={@type == "okta"}
-          class="p-4 border border-[var(--border)] bg-[var(--surface-raised)] rounded"
+          class="p-4 border border-border bg-raised rounded"
         >
           <div class="flex items-center justify-between mb-4">
             <div class="flex-1">
-              <h3 class="text-sm font-semibold text-[var(--text-primary)]">Public Key (JWK)</h3>
-              <p class="mt-1 text-xs text-[var(--text-secondary)]">
+              <h3 class="text-sm font-semibold text-heading">Public Key (JWK)</h3>
+              <p class="mt-1 text-xs text-body">
                 Generate a keypair and copy the public key to your Okta application settings.
               </p>
             </div>
@@ -1344,12 +1323,12 @@ defmodule PortalWeb.Settings.DirectorySync do
                   {JSON.encode!(@public_jwk)}
                 </.code_block>
               </div>
-              <p class="mt-2 text-xs text-[var(--text-tertiary)]">
+              <p class="mt-2 text-xs text-subtle">
                 Copy this public key and add it to your Okta application's JWKS configuration.
               </p>
             </div>
           <% else %>
-            <p class="text-sm text-[var(--text-tertiary)] italic">
+            <p class="text-sm text-subtle italic">
               No keypair generated yet. Click "Generate Keypair" to create one.
             </p>
           <% end %>
@@ -1357,15 +1336,15 @@ defmodule PortalWeb.Settings.DirectorySync do
 
         <div
           :if={@type in ["google", "entra", "okta"]}
-          class="p-4 border border-[var(--border)] bg-[var(--surface-raised)] rounded"
+          class="p-4 border border-border bg-raised rounded"
         >
           <.flash :if={@verification_error} kind={:error}>
             {@verification_error}
           </.flash>
           <div class="flex items-center justify-between">
             <div class="flex-1">
-              <h3 class="text-sm font-semibold text-[var(--text-primary)]">Directory Verification</h3>
-              <p class="mt-1 text-xs text-[var(--text-secondary)]">
+              <h3 class="text-sm font-semibold text-heading">Directory Verification</h3>
+              <p class="mt-1 text-xs text-body">
                 {verification_help_text(@form, @type)}
               </p>
             </div>
@@ -1379,7 +1358,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             </div>
           </div>
 
-          <div class="mt-4 pt-4 border-t border-[var(--border)] space-y-3">
+          <div class="mt-4 pt-4 border-t border-border space-y-3">
             <.verification_fields_status type={@type} form={@form} />
             <.reset_verification_button form={@form} />
           </div>
@@ -1463,11 +1442,11 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     ~H"""
     <div class="flex justify-between items-center">
-      <label class="text-xs font-medium text-[var(--text-secondary)]">
+      <label class="text-xs font-medium text-body">
         {Phoenix.Naming.humanize(@field)}
       </label>
       <div class="text-right">
-        <p class="text-xs font-semibold text-[var(--text-primary)]">
+        <p class="text-xs font-semibold text-heading">
           {verification_field_display(@form.source, @field)}
         </p>
       </div>
@@ -1489,7 +1468,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       <button
         type="button"
         phx-click="reset_verification"
-        class="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline"
+        class="text-xs text-body hover:text-heading underline"
         title="Reset verification to reverify credentials"
       >
         Reset verification

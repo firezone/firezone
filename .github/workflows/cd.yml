@@ -83,6 +83,17 @@ jobs:
       contents: read
       id-token: write # OIDC auth for Azure Storage uploads
 
+  # Builds the Nix packages and keeps the binary cache warm so PR CI and
+  # release-time pushes are mostly cache hits.
+  nix:
+    uses: ./.github/workflows/_nix.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth for the Azure binary cache upload
+    with:
+      push_to_cache: true
+
   notify:
     needs: [data-plane-prod-images, control-plane-images, loadtest-binaries]
     runs-on: ubuntu-24.04

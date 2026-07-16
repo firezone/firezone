@@ -7,18 +7,16 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 bufferpool = { workspace = true }
-bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+otel-instruments = { workspace = true }
 quinn-udp = { workspace = true }
-socket2 = { workspace = true }
-tokio = { workspace = true, features = ["net", "rt"] }
+smallvec = { workspace = true, features = ["const_generics"] }
+socket2 = { workspace = true, features = ["all"] }
+tokio = { workspace = true, features = ["net", "rt", "time"] }
 tracing = { workspace = true }
-
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-libc = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 libc = { workspace = true }
@@ -26,5 +24,13 @@ libc = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }
 
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libc = { workspace = true }
+parking_lot = { workspace = true }
+
 [dev-dependencies]
+bufferpool = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
+gat-lending-iterator = { workspace = true }
+ip-packet = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }

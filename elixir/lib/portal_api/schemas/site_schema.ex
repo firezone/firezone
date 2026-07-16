@@ -21,17 +21,49 @@ defmodule PortalAPI.Schemas.Site do
     })
   end
 
-  defmodule Request do
+  defmodule CreateRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias PortalAPI.Schemas.Site
 
     OpenApiSpex.schema(%{
-      title: "SiteRequest",
+      title: "SiteCreateRequest",
       description: "POST body for creating a Site",
       type: :object,
       properties: %{
-        site: Site.Schema
+        site: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{type: :string, description: "Site Name"}
+          },
+          required: [:name]
+        }
+      },
+      required: [:site],
+      example: %{
+        "site" => %{
+          "name" => "vpc-us-east"
+        }
+      }
+    })
+  end
+
+  defmodule UpdateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "SiteUpdateRequest",
+      description:
+        "PATCH/PUT body for updating a Site. All fields are optional; omitted fields keep " <>
+          "their current value.",
+      type: :object,
+      properties: %{
+        site: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{type: :string, description: "Site Name"}
+          }
+        }
       },
       required: [:site],
       example: %{
@@ -67,6 +99,7 @@ defmodule PortalAPI.Schemas.Site do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Site
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "SiteListResponse",
@@ -78,7 +111,7 @@ defmodule PortalAPI.Schemas.Site do
           type: :array,
           items: Site.Schema
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

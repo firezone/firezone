@@ -1,11 +1,14 @@
 use anyhow::{Context as _, ErrorExt, Result};
 use bin_shared::{TunDeviceManager, signals};
 use dns_types::DomainName;
-use telemetry::{Telemetry, analytics};
+use telemetry::analytics;
 
+use clock::Clock;
 use hickory_resolver::TokioResolver;
+use hickory_resolver::lookup::Lookup;
+use hickory_resolver::proto::rr::RecordType;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::future::{self, Future, poll_fn};
 use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
@@ -15,11 +18,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
 use tokio::sync::mpsc;
-use tunnel::messages::RelaysPresence;
 use tunnel::messages::gateway::{
-    AccessAuthorizationExpiryUpdated, Authorization, ClientIceCandidates, ClientsIceCandidates,
-    EgressMessages, IngressMessages, InitGateway, RejectAccess,
+    Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
+    InitGateway, RejectAccess,
 };
+use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
@@ -32,10 +35,17 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Eventloop {
+    clock: Clock,
     // Tunnel is `Option` because we need to take ownership on shutdown.
     tunnel: Option<GatewayTunnel>,
     tun_device_manager: TunDeviceManager,
     resolver: TokioResolver,
+
+    /// Flow-log spool root.
+    flow_logs_dir: std::path::PathBuf,
+
+    /// The `--flow-logs` flag.
+    local_flow_logs: bool,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -49,6 +59,7 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
 enum PortalCommand {
@@ -58,10 +69,13 @@ enum PortalCommand {
 
 impl Eventloop {
     pub(crate) fn new(
+        clock: Clock,
         tunnel: GatewayTunnel,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         resolver: TokioResolver,
+        flow_logs_dir: std::path::PathBuf,
+        local_flow_logs: bool,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -75,15 +89,19 @@ impl Eventloop {
         ));
 
         Ok(Self {
+            clock,
             tunnel: Some(tunnel),
             tun_device_manager,
             resolver,
+            flow_logs_dir,
+            local_flow_logs,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
             ),
             logged_permission_denied: false,
-            tunnel_errors: telemetry::otel::metrics::tunnel_errors(),
+            tunnel_errors: otel_instruments::tunnel_errors(),
+            dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -135,17 +153,13 @@ impl Eventloop {
             )),
             CombinedEvent::Portal(Some(Err(e))) => Err(e).context("Failed to login to portal"),
             CombinedEvent::DomainResolved((result, req)) => {
+                let now = self.clock.now();
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     tracing::debug!("Ignoring DNS resolution result during shutdown");
 
                     return Ok(ControlFlow::Continue(()));
                 };
-
-                if let Err(e) =
-                    tunnel
-                        .state_mut()
-                        .handle_domain_resolved(req, result, Instant::now())
-                {
+                if let Err(e) = tunnel.state_mut().handle_domain_resolved(req, result, now) {
                     tracing::warn!("Failed to set DNS resource NAT: {e:#}");
                 };
 
@@ -176,7 +190,8 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
         }
 
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx)) {
+        let now = self.clock.now();
+        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
@@ -188,6 +203,7 @@ impl Eventloop {
     }
 
     async fn shut_down_tunnel(&mut self) -> Result<()> {
+        let now = self.clock.now();
         let Some(tunnel) = self.tunnel.take() else {
             tracing::debug!("Tunnel has already been shut down");
 
@@ -195,7 +211,7 @@ impl Eventloop {
         };
 
         tunnel
-            .shut_down()
+            .shut_down(now)
             .await
             .context("Failed to shutdown tunnel")?;
 
@@ -239,6 +255,12 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            tunnel::GatewayEvent::NoRelays => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -280,24 +302,34 @@ impl Eventloop {
     }
 
     async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
+        let now = self.clock.now();
         let Some(tunnel) = self.tunnel.as_mut() else {
             tracing::debug!(?msg, "Ignoring portal message during shutdown");
 
             return Ok(());
         };
-
         match msg {
-            IngressMessages::AuthorizeFlow(msg) => {
-                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
+            IngressMessages::CreateAuthorization(msg) => {
+                let token = &msg.flow_logs_ingest_token;
+
+                if token.claims().uploads_enabled
+                    && let Err(e) =
+                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                {
+                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                }
+
+                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
                     msg.client,
-                    msg.subject,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
-                    Instant::now(),
+                    msg.use_iceless,
+                    now,
+                    msg.flow_logs_ingest_token,
                 ) {
-                    tracing::debug!("Failed to authorise flow: No TURN servers available");
+                    tracing::debug!("Failed to create authorization: No TURN servers available");
 
                     self.portal_cmd_tx
                         .send(PortalCommand::Send(EgressMessages::NoRelays {}))
@@ -308,7 +340,7 @@ impl Eventloop {
                 };
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::FlowAuthorized {
+                    .send(PortalCommand::Send(EgressMessages::AuthorizationCreated {
                         reference: msg.reference,
                     }))
                     .await?;
@@ -320,7 +352,7 @@ impl Eventloop {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .add_ice_candidate(client_id, candidate, Instant::now());
+                        .add_ice_candidate(client_id, candidate, now);
                 }
             }
             IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
@@ -330,7 +362,7 @@ impl Eventloop {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .remove_ice_candidate(client_id, candidate, Instant::now());
+                        .remove_ice_candidate(client_id, candidate, now);
                 }
             }
             IngressMessages::RejectAccess(RejectAccess {
@@ -339,7 +371,7 @@ impl Eventloop {
             }) => {
                 tunnel
                     .state_mut()
-                    .remove_access(&client_id, &resource_id, Instant::now());
+                    .remove_access(&client_id, &resource_id, now);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
@@ -347,7 +379,7 @@ impl Eventloop {
             }) => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
                 tunnel::turn(&connected),
-                Instant::now(),
+                now,
             ),
             IngressMessages::Init(InitGateway {
                 interface,
@@ -355,34 +387,38 @@ impl Eventloop {
                 account_slug,
                 relays,
                 authorizations,
+                flow_logs,
             }) => {
                 if let Some(account_slug) = account_slug {
-                    Telemetry::set_account_slug(account_slug.clone());
+                    telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
-                tunnel.state_mut().update_relays(
-                    BTreeSet::default(),
-                    tunnel::turn(&relays),
-                    Instant::now(),
-                );
+                tunnel
+                    .state_mut()
+                    .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
+
+                if let Err(e) = flow_log_upload::configure_uploads(
+                    &self.flow_logs_dir,
+                    &flow_logs.api_url,
+                    flow_logs.upload_interval_secs,
+                    flow_logs.upload_batch_size,
+                ) {
+                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                }
+
+                tunnel
+                    .state_mut()
+                    .update_relays(BTreeSet::default(), tunnel::turn(&relays), now);
                 tunnel.state_mut().update_tun_device(IpConfig {
                     v4: interface.ipv4,
                     v6: interface.ipv6,
                 });
                 tunnel
                     .state_mut()
-                    .retain_authorizations(authorizations.iter().fold(
-                        BTreeMap::new(),
-                        |mut authorizations, next| {
-                            authorizations
-                                .entry(next.client_id)
-                                .or_default()
-                                .insert(next.resource_id);
-
-                            authorizations
-                        },
+                    .retain_authorizations(messages::group_authorizations_by_client(
+                        &authorizations,
                     ));
                 for Authorization {
                     client_id: cid,
@@ -390,12 +426,10 @@ impl Eventloop {
                     expires_at,
                 } in authorizations
                 {
-                    if let Err(e) = tunnel.state_mut().update_access_authorization_expiry(
-                        cid,
-                        rid,
-                        expires_at,
-                        Instant::now(),
-                    ) {
+                    if let Err(e) = tunnel
+                        .state_mut()
+                        .update_access_authorization_expiry(cid, rid, expires_at, now)
+                    {
                         tracing::debug!(%cid, %rid, "Failed to update access authorization: {e:#}");
                     }
                 }
@@ -450,22 +484,8 @@ impl Eventloop {
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
             }
-            IngressMessages::AccessAuthorizationExpiryUpdated(
-                AccessAuthorizationExpiryUpdated {
-                    client_id: cid,
-                    resource_id: rid,
-                    expires_at,
-                },
-            ) => {
-                if let Err(e) = tunnel.state_mut().update_access_authorization_expiry(
-                    cid,
-                    rid,
-                    expires_at,
-                    Instant::now(),
-                ) {
-                    tracing::debug!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
-                };
-            }
+            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
+            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
         }
 
         Ok(())
@@ -476,31 +496,43 @@ impl Eventloop {
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
         let resolver = self.resolver.clone();
+        let dns_lookup_duration = self.dns_lookup_duration.clone();
 
         async move {
-            let ipv4_lookup = resolver.ipv4_lookup(domain.to_string());
-            let ipv6_lookup = resolver.ipv6_lookup(domain.to_string());
+            // Resolve `A` and `AAAA` as two independent lookups so that each is
+            // recorded with its own query-type and response-code attributes.
+            let ipv4 = resolve_record(&resolver, &dns_lookup_duration, &domain, RecordType::A);
+            let ipv6 = resolve_record(&resolver, &dns_lookup_duration, &domain, RecordType::AAAA);
 
-            let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
-                (Ok(ipv4), Ok(ipv6)) => lookup_to_ips(&ipv4).chain(lookup_to_ips(&ipv6)).collect(),
-                (Ok(ipv4), Err(e)) => {
-                    tracing::debug!(%domain, "AAAA lookup failed: {e}");
+            let (ipv4, ipv6) = futures::future::join(ipv4, ipv6).await;
 
-                    lookup_to_ips(&ipv4).collect()
-                }
-                (Err(e), Ok(ipv6)) => {
-                    tracing::debug!(%domain, "A lookup failed: {e}");
+            Ok(ipv4.into_iter().chain(ipv6).collect())
+        }
+    }
+}
 
-                    lookup_to_ips(&ipv6).collect()
-                }
-                (Err(e1), Err(e2)) => {
-                    tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
+/// Performs a single recursive DNS lookup against the upstream resolver, recording
+/// its duration with `dns.question.type` and `dns.response.code` attributes.
+async fn resolve_record(
+    resolver: &TokioResolver,
+    dns_lookup_duration: &opentelemetry::metrics::Histogram<f64>,
+    domain: &DomainName,
+    record_type: RecordType,
+) -> Vec<IpAddr> {
+    let started_at = Instant::now();
+    let result = resolver.lookup(domain.to_string(), record_type).await;
 
-                    vec![]
-                }
-            };
+    dns_lookup_duration.record(
+        started_at.elapsed().as_secs_f64(),
+        &crate::otel::attr::dns_lookup(record_type, &result),
+    );
 
-            Ok(ips)
+    match result {
+        Ok(lookup) => lookup_to_ips(&lookup).collect(),
+        Err(e) => {
+            tracing::debug!(%domain, %record_type, "DNS lookup failed: {e}");
+
+            Vec::new()
         }
     }
 }
@@ -518,7 +550,7 @@ async fn phoenix_channel_event_loop(
     let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
     portal.connect(ips, Duration::ZERO, public_key.clone());
 
-    let hiccups = telemetry::otel::metrics::portal_connection_hiccups();
+    let hiccups = otel_instruments::portal_connection_hiccups();
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -551,7 +583,14 @@ async fn phoenix_channel_event_loop(
                 let ips = resolve_portal_host_ips(&resolver, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
-            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::Connected), _)) => {
+                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                ) {
+                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
+                }
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
@@ -576,7 +615,7 @@ async fn phoenix_channel_event_loop(
     }
 }
 
-fn lookup_to_ips(lookup: &hickory_resolver::lookup::Lookup) -> impl Iterator<Item = IpAddr> + '_ {
+fn lookup_to_ips(lookup: &Lookup) -> impl Iterator<Item = IpAddr> + '_ {
     lookup
         .answers()
         .iter()

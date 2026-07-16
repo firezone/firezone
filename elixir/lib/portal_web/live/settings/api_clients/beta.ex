@@ -24,7 +24,7 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
           socket,
           page_title: "API Clients",
           requested: Portal.Account.rest_api_access_requested?(socket.assigns.account),
-          api_url: Portal.Config.get_env(:portal, :api_external_url)
+          trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
         )
 
       {:ok, socket}
@@ -34,12 +34,16 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+        <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
-            <h2 class="text-xs font-semibold text-[var(--text-primary)]">API Tokens</h2>
+            <h2 class="text-xs font-semibold text-heading">API Tokens</h2>
           </div>
           <div class="flex items-center gap-2">
             <.docs_action path="/reference/rest-api" />
@@ -47,28 +51,23 @@ defmodule PortalWeb.Settings.ApiClients.Beta do
         </div>
 
         <div class="flex-1 overflow-auto flex flex-col items-center justify-center">
-          <div class="flex flex-col items-center gap-3 text-[var(--text-tertiary)]">
+          <div class="flex flex-col items-center gap-3 text-subtle">
             <.icon name="ri-lock-line" class="w-8 h-8" />
             <div class="flex flex-col items-center gap-1 text-center">
-              <p class="text-sm font-medium text-[var(--text-primary)]">REST API is in closed beta</p>
+              <p class="text-sm font-medium text-heading">REST API is in closed beta</p>
               <p class="text-xs">
-                API Tokens are used to manage Firezone via the <.link
-                  navigate={"#{@api_url}/swaggerui"}
-                  class="text-[var(--brand)] hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >REST API</.link>.
+                API Tokens are used to manage Firezone via the <.website_link path="/kb/reference/rest-api">REST API</.website_link>.
               </p>
             </div>
-            <button
+            <.button
               :if={@requested == false}
               id="beta-request"
               phx-click="request_access"
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-emphasis)] bg-[var(--surface)] transition-colors"
+              size="sm"
             >
               Request access
-            </button>
-            <p :if={@requested == true} class="text-xs text-[var(--text-tertiary)]">
+            </.button>
+            <p :if={@requested == true} class="text-xs text-subtle">
               Access request submitted.
             </p>
           </div>

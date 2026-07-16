@@ -17,17 +17,21 @@ defmodule Portal.Mocks.FirezoneWebsite do
 
     {"portal":"90a15941f258e768a031e5db3d8aed1127793ef2","apple":"1.5.10","android":"1.5.7","gui":"1.5.8","headless":"1.5.4","gateway":"1.4.18"}
   """
-  def mock_versions_endpoint(bypass, versions \\ %{}) do
-    versions_path = "/api/releases"
+  def mock_versions_endpoint(versions \\ %{}) do
     test_pid = self()
 
-    Bypass.stub(bypass, "GET", versions_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
+    Req.Test.stub(Portal.ComponentVersions, fn conn ->
+      send(test_pid, {:req_request, conn})
 
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, JSON.encode!(versions))
+      case {conn.method, conn.request_path} do
+        {"GET", "/api/releases"} ->
+          Req.Test.json(conn, versions)
+
+        {method, path} ->
+          conn
+          |> Plug.Conn.put_status(404)
+          |> Req.Test.json(%{"error" => "No mock expectation for #{method} #{path}"})
+      end
     end)
   end
 end

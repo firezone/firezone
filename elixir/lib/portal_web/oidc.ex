@@ -10,13 +10,20 @@ defmodule PortalWeb.OIDC do
 
   require Logger
 
+  # Workaround for an OTP `ssl` bug: the TLS 1.3 client aborts the handshake
+  # against servers that send their middlebox-compatibility ChangeCipherSpec
+  # after the ServerHello on a HelloRetryRequest. Disabling middlebox mode skips
+  # the faulty assertion in `tls_client_connection_1_3`. Remove once the upstream
+  # fix ships. Provider env config may override `req_opts` (e.g. `Req.Test` in tests).
+  @discovery_req_opts [connect_options: [transport_opts: [middlebox_comp_mode: false]]]
+
   @doc """
   Builds OpenIDConnect configuration for a provider.
   Supports Google, Okta, Entra, and generic OIDC providers.
   """
   def config_for_provider(%Google.AuthProvider{}) do
     config = Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
-    config = Enum.into(config, %{redirect_uri: callback_url()})
+    config = Enum.into(config, %{redirect_uri: callback_url(), req_opts: @discovery_req_opts})
     {:ok, config}
   end
 
@@ -32,7 +39,8 @@ defmodule PortalWeb.OIDC do
         redirect_uri: callback_url(),
         client_id: provider.client_id,
         client_secret: provider.client_secret,
-        discovery_document_uri: discovery_document_uri
+        discovery_document_uri: discovery_document_uri,
+        req_opts: @discovery_req_opts
       })
 
     {:ok, config}
@@ -47,7 +55,8 @@ defmodule PortalWeb.OIDC do
     config =
       Enum.into(config, %{
         redirect_uri: callback_url(),
-        discovery_document_uri: discovery_document_uri
+        discovery_document_uri: discovery_document_uri,
+        req_opts: @discovery_req_opts
       })
 
     {:ok, config}
@@ -63,7 +72,8 @@ defmodule PortalWeb.OIDC do
         client_secret: provider.client_secret,
         discovery_document_uri: provider.discovery_document_uri,
         response_type: "code",
-        scope: "openid email profile"
+        scope: "openid email profile",
+        req_opts: @discovery_req_opts
       })
 
     {:ok, config}

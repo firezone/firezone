@@ -13,7 +13,7 @@ defmodule Portal.Changes.Hooks.SitesTest do
     test "broadcasts updated site" do
       account_id = "00000000-0000-0000-0000-000000000000"
 
-      :ok = PubSub.Changes.subscribe(account_id)
+      :ok = PubSub.Changes.subscribe(account_id, :sites)
 
       old_data = %{
         "id" => "00000000-0000-0000-0000-000000000001",

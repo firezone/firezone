@@ -32,6 +32,7 @@ use crate::messages::{
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, otel, packet_kind};
@@ -51,7 +52,7 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use ringbuffer::RingBuffer;
 use secrecy::ExposeSecret as _;
-use snownet::{NoTurnServers, Node, RelaySocket, Transmit};
+use snownet::{NoTurnServers, Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque, hash_map};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -119,6 +120,9 @@ pub struct ClientState {
     /// Tracks pending access to other devices.
     pending_device_access: PendingDeviceAccessRequests,
 
+    /// Packets buffered per peer while its connection is still being established.
+    pending_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+
     dns_resource_nat: DnsResourceNat,
     /// Resources we have requested access to and the path that authorises
     /// our traffic to each.
@@ -171,7 +175,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: VecDeque<Transmit>,
+    buffered_transmits: snownet::TransmitBuffer,
 
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
@@ -213,11 +217,12 @@ impl ClientState {
             dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             pending_device_access: Default::default(),
+            pending_packets: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
             connected_pool_clients: Default::default(),
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
-            dns_lookup_duration: otel::metrics::dns_lookup_duration(),
+            dns_lookup_duration: otel_instruments::dns_lookup_duration(),
         }
     }
 
@@ -246,9 +251,9 @@ impl ClientState {
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers. The tunnel IPv4 is
-    /// taken from the live connection state; static-pool resources are joined in
-    /// only to label which pool(s) each device belongs to.
+    /// Builds the list of currently-connected device peers. The name and tunnel
+    /// IPs are taken from the live connection state; static-pool resources are
+    /// joined in only to label which pool(s) each device belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
@@ -262,25 +267,16 @@ impl ClientState {
                     );
                     return None;
                 };
-                let tunneled_ipv4 = peer.tun_ipv4();
+                let tun_ipv4 = peer.tun_ipv4();
+                let tun_ipv6 = peer.tun_ipv6();
+                let name = peer.remote_name().to_owned();
 
-                let mut pool_names = Vec::new();
-                for pool in &pools {
-                    if let Some(device) = pool.devices.iter().find(|d| d.id == *client_id) {
-                        if device.ipv4.network_address() != tunneled_ipv4 {
-                            tracing::debug!(
-                                %client_id,
-                                pool = %pool.name,
-                                pool_ipv4 = %device.ipv4.network_address(),
-                                %tunneled_ipv4,
-                                "Pool-provided IPv4 disagrees with the connection's tunnel IPv4"
-                            );
-                        }
-                        pool_names.push(pool.name.clone());
-                    }
-                }
-
-                pool_names.sort();
+                let pool_names = pools
+                    .iter()
+                    .filter(|pool| pool.devices.iter().any(|d| d.id == *client_id))
+                    .map(|pool| pool.name.clone())
+                    .sorted()
+                    .collect_vec();
 
                 if pool_names.is_empty() {
                     tracing::debug!(
@@ -291,7 +287,9 @@ impl ClientState {
 
                 Some(ConnectedDeviceView {
                     id: *client_id,
-                    tunneled_ipv4,
+                    name,
+                    tun_ipv4,
+                    tun_ipv6,
                     pools: pool_names,
                 })
             })
@@ -309,15 +307,9 @@ impl ClientState {
     }
 
     fn resource_list_snapshot(&self) -> ResourceList {
-        let connected_devices = if feature_flags::show_connected_devices() {
-            self.connected_devices()
-        } else {
-            Vec::new()
-        };
-
         ResourceList {
             resources: self.resources(),
-            connected_devices,
+            connected_devices: self.connected_devices(),
         }
     }
 
@@ -534,13 +526,14 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
+        provider: &mut impl snownet::BufferProvider,
+    ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
         if packet.destination().is_multicast() {
-            return Ok(None);
+            return Ok(());
         }
 
         let tun_config = self
@@ -558,11 +551,24 @@ impl ClientState {
         );
 
         let non_dns_packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return Ok(None),
+            ControlFlow::Break(()) => return Ok(()),
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        self.encapsulate(non_dns_packet, now)
+        let Some((pid, packet)) = self.prepare_outbound(non_dns_packet, now)? else {
+            return Ok(());
+        };
+
+        encapsulate_or_buffer(
+            packet,
+            pid,
+            now,
+            &mut self.node,
+            provider,
+            &mut self.pending_packets,
+        )?;
+
+        Ok(())
     }
 
     /// Handles UDP packets received on the network interface.
@@ -605,12 +611,13 @@ impl ClientState {
                     let buffered_packets = self.dns_resource_nat.on_domain_status(gid, res);
 
                     for packet in buffered_packets {
-                        encapsulate_and_buffer(
+                        encapsulate_and_queue(
                             packet,
                             ClientOrGatewayId::Gateway(gid),
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
+                            &mut self.pending_packets,
                         );
                     }
                 }
@@ -643,12 +650,13 @@ impl ClientState {
                 let packet = match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered(reply) => {
-                        encapsulate_and_buffer(
+                        encapsulate_and_queue(
                             reply,
                             ClientOrGatewayId::Client(cid),
                             now,
                             &mut self.node,
                             &mut self.buffered_transmits,
+                            &mut self.pending_packets,
                         );
                         return Ok(None);
                     }
@@ -767,7 +775,39 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Result<Option<snownet::Transmit>> {
+    /// Flush all packets buffered for `pid` now that its connection is established.
+    fn flush_pending_packets(&mut self, pid: ClientOrGatewayId, now: Instant) {
+        let Some(buffer) = self.pending_packets.remove(&pid) else {
+            return;
+        };
+
+        tracing::debug!(%pid, num_buffered = %buffer.len(), "Flushing buffered packets");
+
+        for packet in buffer {
+            encapsulate_and_queue(
+                packet,
+                pid,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+                &mut self.pending_packets,
+            );
+        }
+    }
+
+    /// Route an outbound IP packet and apply any DNS resource NAT, yielding the
+    /// connection it should be encapsulated through.
+    ///
+    /// ## Returns
+    ///
+    /// - `Ok(Some(...))` if the packet is ready to be encapsulated
+    /// - `Ok(None)` if the packet was consumed (buffered for flow setup, replied to, etc.)
+    /// - `Err(...)` if the packet is unroutable
+    fn prepare_outbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Result<Option<(ClientOrGatewayId, IpPacket)>> {
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;
 
@@ -796,16 +836,7 @@ impl ClientState {
             }
         }
 
-        let transmit = match self.node.encapsulate(pid, &packet, now) {
-            Ok(Some(transmit)) => transmit,
-            Ok(None) => return Ok(None),
-            Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-                return Err(e.context(UnroutablePacket::not_connected(&packet)));
-            }
-            Err(e) => return Err(e),
-        };
-
-        Ok(Some(transmit))
+        Ok(Some((pid, packet)))
     }
 
     /// Decide which connection a packet should be encapsulated through.
@@ -845,6 +876,11 @@ impl ClientState {
             .matches(dst, Ok(dst_proto))
             .cloned()
         {
+            if !filter_allows(&entry.filter, dst_proto) {
+                self.reply_with_icmp_prohibited(packet);
+                return Ok(None);
+            }
+
             // Whether we are already authorized to send packets to this peer.
             let already_authorised = self
                 .authorized_resources
@@ -871,6 +907,11 @@ impl ClientState {
         let resource = self
             .get_resource_by_destination(dst, dst_proto)
             .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
+
+        if !self.resource_filter_allows(resource, dst_proto) {
+            self.reply_with_icmp_prohibited(packet);
+            return Ok(None);
+        }
 
         if let Some(gid) = self
             .authorized_resources
@@ -917,6 +958,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
+        use_iceless: bool,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -938,6 +980,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
+            use_iceless,
             now,
         ) {
             Ok(()) => {}
@@ -972,14 +1015,16 @@ impl ClientState {
                     peer.allow_ip_for_resource(address, rid);
                 }
 
-                // For CIDR and Internet resources, we can directly queue the buffered packets.
+                // Send the buffered packets, or buffer them again if the connection is not yet
+                // established.
                 for packet in buffered_resource_packets {
-                    encapsulate_and_buffer(
+                    encapsulate_and_queue(
                         packet,
                         ClientOrGatewayId::Gateway(gid),
                         now,
                         &mut self.node,
                         &mut self.buffered_transmits,
+                        &mut self.pending_packets,
                     );
                 }
             }
@@ -1017,6 +1062,8 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
+        use_iceless: bool,
+        client_name: String,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
@@ -1033,6 +1080,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
+            use_iceless,
             now,
         )?;
 
@@ -1043,7 +1091,14 @@ impl ClientState {
             (auth.resource_id, auth.filters, expires_at)
         });
 
-        let peer = self.clients.upsert(cid, || ClientOnClient::new(client_tun));
+        let peer = self
+            .clients
+            .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
+
+        if peer.remote_name() != client_name {
+            tracing::debug!(%cid, name = %client_name, "Updated client peer name");
+            peer.set_remote_name(client_name);
+        }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
@@ -1077,12 +1132,13 @@ impl ClientState {
 
             for packet in pending_client_access.into_buffered_packets() {
                 peer.record_outbound(&packet, now);
-                encapsulate_and_buffer(
+                encapsulate_and_queue(
                     packet,
                     ClientOrGatewayId::Client(cid),
                     now,
                     &mut self.node,
                     &mut self.buffered_transmits,
+                    &mut self.pending_packets,
                 );
             }
         }
@@ -1108,22 +1164,6 @@ impl ClientState {
             return;
         };
         peer.remove_resource(&resource_id);
-    }
-
-    /// Update the recorded expiry for an active authorization.
-    pub fn handle_client_device_access_authorization_expiry_updated(
-        &mut self,
-        cid: ClientId,
-        resource_id: ResourceId,
-        expires_at: Duration,
-        now: Instant,
-    ) {
-        let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
-        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
-            tracing::debug!(%cid, "Unknown peer for expiry update");
-            return;
-        };
-        peer.update_resource_expiry(resource_id, new_expiry, now);
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -1288,6 +1328,8 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_gateway))]
     fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId, now: Instant) {
+        self.pending_packets
+            .remove(&ClientOrGatewayId::Gateway(*disconnected_gateway));
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown, now);
         self.gateways.remove(disconnected_gateway);
         for _ in self
@@ -1299,6 +1341,8 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(client = %disconnected_client))]
     fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
+        self.pending_packets
+            .remove(&ClientOrGatewayId::Client(*disconnected_client));
         self.clients.remove(disconnected_client);
         if self.connected_pool_clients.remove(disconnected_client) {
             self.resource_list.update(self.resource_list_snapshot());
@@ -1555,16 +1599,25 @@ impl ClientState {
                 .or_else(|| self.udp_dns_client.poll_outbound())
             {
                 // All packets from the DNS clients _should_ go through the tunnel.
-                let transmit = match self.encapsulate(packet, now) {
-                    Ok(Some(transmit)) => transmit,
-                    Ok(None) => continue,
+                let maybe_outbound = match self.prepare_outbound(packet, now) {
+                    Ok(maybe_outbound) => maybe_outbound,
                     Err(e) => {
                         tracing::debug!("{e:#}");
                         continue;
                     }
                 };
+                let Some((pid, packet)) = maybe_outbound else {
+                    continue;
+                };
 
-                self.buffered_transmits.push_back(transmit);
+                encapsulate_and_queue(
+                    packet,
+                    pid,
+                    now,
+                    &mut self.node,
+                    &mut self.buffered_transmits,
+                    &mut self.pending_packets,
+                );
                 continue;
             }
 
@@ -1636,12 +1689,13 @@ impl ClientState {
         while let Some((gid, domain, rid, packet)) = self.dns_resource_nat.poll_packet() {
             tracing::debug!(%gid, %domain, %rid, "Setting up DNS resource NAT");
 
-            encapsulate_and_buffer(
+            encapsulate_and_queue(
                 packet,
                 ClientOrGatewayId::Gateway(gid),
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
+                &mut self.pending_packets,
             );
         }
     }
@@ -1977,12 +2031,17 @@ impl ClientState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Gateway(id)) => {
+                    self.flush_pending_packets(ClientOrGatewayId::Gateway(id), now);
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online, now);
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
+                    self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
                     if self.connected_pool_clients.insert(id) {
                         self.resource_list.update(self.resource_list_snapshot());
                     }
+                }
+                snownet::Event::NoRelays => {
+                    self.buffered_events.push_back(ClientEvent::NoRelays);
                 }
             }
         }
@@ -2117,11 +2176,7 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
         tracing::info!("Resetting network state ({reason})");
 
-        self.node.reset(now); // Clear all network connections.
-        self.gateways.clear(); // Clear all state associated with Gateways.
-        self.clients.clear(); // Clear all state associated with Clients.
-
-        self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
+        self.node.reset(now);
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
@@ -2131,7 +2186,7 @@ impl ClientState {
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
-            .pop_front()
+            .poll_transmit()
             .or_else(|| self.node.poll_transmit())
     }
 
@@ -2461,6 +2516,24 @@ impl ClientState {
         self.pending_flows
             .on_not_connected_resource(resource, trigger, &self.resources_by_id, now);
     }
+
+    /// Whether the resource's traffic filters permit a packet with the given protocol.
+    fn resource_filter_allows(&self, resource: ResourceId, protocol: Protocol) -> bool {
+        let Some(resource) = self.resources_by_id.get(&resource) else {
+            return false;
+        };
+
+        filter_allows(&FilterEngine::new(resource.filters()), protocol)
+    }
+
+    /// Generate an ICMP "administratively prohibited" error for `packet` and
+    /// buffer it for delivery back to the TUN device.
+    fn reply_with_icmp_prohibited(&mut self, packet: IpPacket) {
+        match ip_packet::make::icmp_dest_unreachable_prohibited(&packet) {
+            Ok(reply) => self.buffered_packets.push_back(reply),
+            Err(e) => tracing::debug!("Failed to create ICMP prohibited error: {e:#}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -2555,23 +2628,77 @@ fn is_llmnr(dst: IpAddr) -> bool {
     }
 }
 
-fn encapsulate_and_buffer(
+/// Whether `filter` permits a packet with the given protocol.
+///
+/// In tests, a malicious client can be configured to ignore its own filters,
+/// keeping the remote peer's filtering path (Gateway or target Client) exercised.
+fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
+    if filter.apply(Ok(protocol)).is_ok() {
+        return true;
+    }
+
+    #[cfg(test)]
+    if crate::malicious_behaviour::ignore_resource_filter() {
+        tracing::debug!("Malicious client: ignoring resource filter");
+        return true;
+    }
+
+    false
+}
+
+/// Encapsulate `packet` for `pid` directly into `provider`, or buffer it if the connection is
+/// still being established.
+fn encapsulate_or_buffer(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
-) {
-    let Some(transmit) = node
-        .encapsulate(pid, &packet, now)
-        .inspect_err(|e| tracing::debug!(%pid, "Failed to encapsulate: {e}"))
-        .ok()
-        .flatten()
-    else {
-        return;
-    };
+    provider: &mut impl snownet::BufferProvider,
+    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+) -> Result<()> {
+    const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    buffered_transmits.push_back(transmit);
+    if let Some(buffer) = pending_packets.get_mut(&pid) {
+        buffer.push(packet);
+        return Ok(());
+    }
+
+    match node.encapsulate(pid, &packet, now, provider) {
+        Ok(_) => Ok(()),
+        Err(e) if e.any_is::<snownet::StillConnecting>() => {
+            pending_packets
+                .entry(pid)
+                .or_insert_with(|| {
+                    UniquePacketBuffer::with_capacity_power_of_2(
+                        CONNECTION_BUFFER_CAPACITY_POW_2,
+                        "pending-connection",
+                    )
+                })
+                .push(packet);
+            Ok(())
+        }
+        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
+            Err(e.context(UnroutablePacket::not_connected(&packet)))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
+/// log) any error instead of returning it.
+fn encapsulate_and_queue(
+    packet: IpPacket,
+    pid: ClientOrGatewayId,
+    now: Instant,
+    node: &mut Node<ClientOrGatewayId, RelayId>,
+    buffered_transmits: &mut snownet::TransmitBuffer,
+    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+) {
+    if let Err(e) =
+        encapsulate_or_buffer(packet, pid, now, node, buffered_transmits, pending_packets)
+    {
+        tracing::debug!(%pid, "Failed to encapsulate: {e:#}");
+    }
 }
 
 fn gateway_by_resource_mut<'p>(
@@ -2676,7 +2803,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now())
+                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -2694,7 +2821,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now())
+                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"

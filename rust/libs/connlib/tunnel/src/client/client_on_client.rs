@@ -23,6 +23,7 @@ use std::time::Instant;
 /// isn't the return traffic of packets that we have sent.
 pub(crate) struct ClientOnClient {
     remote_tun: IpConfig,
+    remote_name: String,
     /// Inbound resources authorising the remote peer to send packets to us.
     ///
     /// When this map is empty, no inbound traffic from this peer is admitted
@@ -50,9 +51,10 @@ pub(crate) enum InboundResult {
 }
 
 impl ClientOnClient {
-    pub(crate) fn new(remote_tun: IpConfig) -> ClientOnClient {
+    pub(crate) fn new(remote_tun: IpConfig, remote_name: String) -> ClientOnClient {
         ClientOnClient {
             remote_tun,
+            remote_name,
             resources: ExpiringMap::default(),
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
@@ -62,6 +64,14 @@ impl ClientOnClient {
 
     pub(crate) fn remote_tun(&self) -> IpConfig {
         self.remote_tun
+    }
+
+    pub(crate) fn remote_name(&self) -> &str {
+        &self.remote_name
+    }
+
+    pub(crate) fn set_remote_name(&mut self, name: String) {
+        self.remote_name = name;
     }
 
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
@@ -101,21 +111,6 @@ impl ClientOnClient {
         self.recompute_inbound_filter();
     }
 
-    /// Update the recorded expiry for an active resource.
-    pub(crate) fn update_resource_expiry(
-        &mut self,
-        resource_id: ResourceId,
-        new_expiry: Instant,
-        now: Instant,
-    ) {
-        let expires_in = new_expiry.saturating_duration_since(now);
-        if !self.resources.update_expiry(&resource_id, now, expires_in) {
-            tracing::debug!(%resource_id, "Unknown resource");
-            return;
-        }
-        tracing::info!(%resource_id, ?expires_in, "Updated peer authorization expiry");
-    }
-
     /// Drop a previously-active resource.
     pub(crate) fn remove_resource(&mut self, resource_id: &ResourceId) {
         let Some(_entry) = self.resources.remove(resource_id) else {
@@ -150,7 +145,7 @@ impl ClientOnClient {
 
     /// Record an outbound packet so subsequent inbound replies are admitted.
     pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
-        self.conn_track.record_outbound(packet, now);
+        self.conn_track.handle_outbound(packet, now);
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
