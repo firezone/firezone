@@ -17,7 +17,10 @@ use std::any::Any;
 use std::pin::Pin;
 use tokio::io::Interest;
 
+mod buffer_sizes;
 mod pool;
+
+pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
 
 use pool::{OwnedSocket, Socket, SocketPool};
 
@@ -25,17 +28,6 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn bind(&self, local: SocketAddr) -> io::Result<S>;
     fn reset(&self);
 }
-
-/// On Apple platforms, UDP sockets never buffer data in the send buffer: datagrams are
-/// handed straight to the interface and `SO_SNDBUF` only acts as a cap on the maximum
-/// datagram size. A large send buffer is therefore pointless (and cannot cause
-/// bufferbloat either); 64 KiB comfortably covers the largest datagram we ever send.
-#[cfg(apple)]
-pub const SEND_BUFFER_SIZE: usize = 64 * 1024;
-#[cfg(not(apple))]
-pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
-pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
-const ONE_MB: usize = 1024 * 1024;
 
 /// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
 #[cfg(any(apple, target_os = "windows"))]
@@ -833,29 +825,6 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let timeout = std::time::Duration::from_millis(10);
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
-
-/// A compile-time upper bound on the runtime `gro_segments()`: the largest number of datagrams the
-/// kernel will coalesce into a single receive buffer via generic receive offload (GRO).
-///
-/// Only Linux / Android enable `UDP_GRO` (up to `UDP_GRO_CNT_MAX` = 64); every other platform receives
-/// one datagram per buffer. Runtime `gro_segments()` never exceeds this, so it bounds the worst case.
-pub const MAX_GRO_SEGMENTS: usize = cfg_select! {
-    target_os = "linux" => { 64 }
-    target_os = "android" => { 64 }
-    _ => { 1 }
-};
-
-/// Worst-case heap that a single received batch ([`DatagramSegmentIter`]) pins.
-///
-/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata. Each buffer
-/// is sized to hold a full GRO batch - up to [`MAX_GRO_SEGMENTS`] coalesced datagrams of at most
-/// [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android a single buffer is 64x the size of the
-/// datagram it might actually carry. That factor dominates this figure on GRO-capable platforms.
-pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramSegmentIter>()
-    + quinn_udp::BATCH_SIZE
-        * (ip_packet::MAX_FZ_PAYLOAD * MAX_GRO_SEGMENTS
-            + size_of::<Buffer<Vec<u8>>>()
-            + size_of::<quinn_udp::RecvMeta>());
 
 /// The pools backing a batched receive: scratch space for the datagrams themselves
 /// plus containers for the buffers and metas that make up one batch.

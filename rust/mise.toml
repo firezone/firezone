@@ -120,8 +120,8 @@ run = """
 set -u
 
 echo "Applying kernel sysctls ..."
-sudo sysctl -w net.core.wmem_max=16777216         # 16 MB
-sudo sysctl -w net.core.rmem_max=134217728        # 128 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
+sudo sysctl -w net.core.wmem_max=2097152          # 2 MB, caps connlib's UDP sndbuf
+sudo sysctl -w net.core.rmem_max=16777216         # 16 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
 sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
 sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
 
