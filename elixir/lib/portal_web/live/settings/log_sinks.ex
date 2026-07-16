@@ -1861,6 +1861,8 @@ defmodule PortalWeb.Settings.LogSinks do
         _ -> "my-firezone-logs"
       end
 
+    resource = s3_put_object_resource(bucket, get_field(form.source, :key_prefix))
+
     """
     {
       "Version": "2012-10-17",
@@ -1868,12 +1870,21 @@ defmodule PortalWeb.Settings.LogSinks do
         {
           "Effect": "Allow",
           "Action": "s3:PutObject",
-          "Resource": "arn:aws:s3:::#{bucket}/*"
+          "Resource": "#{resource}"
         }
       ]
     }\
     """
   end
+
+  defp s3_put_object_resource(bucket, prefix) when is_binary(prefix) do
+    case prefix |> String.trim() |> String.trim("/") do
+      "" -> "arn:aws:s3:::#{bucket}/*"
+      prefix -> "arn:aws:s3:::#{bucket}/#{prefix}/*"
+    end
+  end
+
+  defp s3_put_object_resource(bucket, _prefix), do: "arn:aws:s3:::#{bucket}/*"
 
   @s3_cli_snippet ~S"""
   BUCKET="my-firezone-logs"
