@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
