@@ -517,6 +517,8 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       assert html =~ "aws iam create-role"
       assert html =~ "arn:aws:iam::123456789012:root"
+      assert html =~ "acme-logs"
+      assert html =~ "$BUCKET/firezone/logs/*"
 
       html =
         lv
@@ -525,6 +527,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       assert html =~ "aws_iam_role_policy"
       assert html =~ "arn:aws:iam::123456789012:root"
+      assert html =~ "firezone_logs.arn}/firezone/logs/*"
     end
 
     test "creates an Amazon S3 log sink with a generated external id", %{
