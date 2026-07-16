@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{Metadata, level_filters::LevelFilter};
 use tracing_subscriber::filter::Targets;
 
-use crate::{Env, posthog};
+use crate::{Env, ingest, posthog};
 
 pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
@@ -74,10 +74,6 @@ pub fn metrics_reservoir_size() -> usize {
     FEATURE_FLAGS.metrics_reservoir_size()
 }
 
-pub fn show_connected_devices() -> bool {
-    FEATURE_FLAGS.show_connected_devices()
-}
-
 /// The current value of every feature flag, by name.
 pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -87,7 +83,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         stream_logs,
         icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
-        show_connected_devices,
     } = &*FEATURE_FLAGS;
 
     [
@@ -105,10 +100,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
         ),
         ("stream_metrics", stream_metrics.read().enabled),
-        (
-            "show_connected_devices",
-            show_connected_devices.load(Ordering::Relaxed),
-        ),
     ]
 }
 
@@ -135,33 +126,34 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     tracing::debug!(%env, flags = ?FEATURE_FLAGS, "Evaluated feature-flags");
 }
 
-pub(crate) fn reevaluate(user_id: String, env: &str) {
-    let Ok(env) = env.parse() else {
+/// Re-evaluates feature flags using the current telemetry user and environment.
+///
+/// Does nothing until telemetry is active and both are known. Lets us refresh
+/// flags promptly when the network situation changes instead of waiting for the
+/// next periodic re-evaluation.
+pub(crate) fn reevaluate_current() {
+    let Some((user_id, env)) = crate::current_identity() else {
         return;
     };
 
-    posthog::RUNTIME.spawn(evaluate_now(user_id, env));
+    ingest::RUNTIME.spawn(evaluate_now(user_id, env));
 }
 
 pub(crate) async fn reeval_timer() {
     loop {
         tokio::time::sleep(RE_EVAL_DURATION).await;
 
-        let Some(client) = sentry::Hub::main().client() else {
-            continue;
-        };
+        reevaluate_current();
+    }
+}
 
-        let Some(env) = client.options().environment.as_ref() else {
-            continue; // Nothing to do if we don't have an environment set.
-        };
+/// Re-evaluates feature flags whenever the tunnel-bypass resolver is swapped:
+/// flags may have been unfetchable while (working) resolvers were missing.
+pub(crate) async fn reeval_on_resolver_change() {
+    let mut changes = tunnel_bypass_resolver::changes();
 
-        let Some(user_id) =
-            sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
-        else {
-            continue; // Nothing to do if we don't have a user-id set.
-        };
-
-        reevaluate(user_id, env);
+    while changes.changed().await.is_ok() {
+        reevaluate_current();
     }
 }
 
@@ -171,26 +163,28 @@ async fn decide(
 ) -> Result<(FeatureFlagsResponse, FeatureFlagPayloadsResponse)> {
     let distinct_id = crate::maybe_hash_device_id(maybe_legacy_id);
 
-    let response = posthog::CLIENT
-        .as_ref()?
-        .post(format!("https://{}/decide?v=3", posthog::INGEST_HOST))
-        .json(&DecideRequest {
+    let response = posthog::post_json(
+        "/decide?v=3",
+        &DecideRequest {
             api_key,
             distinct_id,
-        })
-        .send()
-        .await
-        .context("Failed to send POST request")?;
+        },
+    )
+    .await
+    .context("Failed to send POST request")?;
 
     let status = response.status();
-    let body = response.text().await.unwrap_or_default();
+    let body = response.into_body();
 
     if !status.is_success() {
-        bail!("Failed to get feature flags; status={status}, body={body}")
+        bail!(
+            "Failed to get feature flags; status={status}, body={}",
+            String::from_utf8_lossy(&body)
+        )
     }
 
-    let decide_response =
-        serde_json::from_str::<DecideResponse>(&body).context("Failed to deserialize response")?;
+    let decide_response = serde_json::from_slice::<DecideResponse>(&body)
+        .context("Failed to deserialize response")?;
 
     Ok((
         decide_response.feature_flags,
@@ -224,8 +218,6 @@ struct FeatureFlagsResponse {
     icmp_error_unreachable_prohibited_create_new_flow: bool,
     #[serde(default)]
     stream_metrics: bool,
-    #[serde(default)]
-    show_connected_devices: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -244,7 +236,6 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: RwLock<StreamMetrics>,
-    show_connected_devices: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -262,7 +253,6 @@ impl FeatureFlags {
             stream_logs,
             icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
-            show_connected_devices,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -275,8 +265,6 @@ impl FeatureFlags {
                 icmp_error_unreachable_prohibited_create_new_flow,
                 Ordering::Relaxed,
             );
-        self.show_connected_devices
-            .store(show_connected_devices, Ordering::Relaxed);
 
         *self.stream_metrics.write() = StreamMetrics {
             enabled: stream_metrics,
@@ -317,10 +305,6 @@ impl FeatureFlags {
     fn metrics_reservoir_size(&self) -> usize {
         self.stream_metrics.read().reservoir_size
     }
-
-    fn show_connected_devices(&self) -> bool {
-        self.show_connected_devices.load(Ordering::Relaxed)
-    }
 }
 
 fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
@@ -339,7 +323,6 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.icmp_error_unreachable_prohibited_create_new_flow,
         ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
-        show_connected_devices: env_or("FZFF_SHOW_CONNECTED_DEVICES", flags.show_connected_devices),
     }
 }
 

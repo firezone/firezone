@@ -174,7 +174,7 @@ defmodule PortalWeb.SignUp do
       </div>
     </div>
 
-    <.form for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
+    <.form id="sign-up-form" for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
       <.input
         field={@form[:email]}
         type="email"

@@ -2,7 +2,6 @@
 
 use bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
 use bufferpool::BufferPool;
-use bytes::BytesMut;
 use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
 use ip_packet::Ecn;
@@ -22,7 +21,7 @@ async fn no_packet_loops_udp() {
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
-    let bufferpool = BufferPool::<BytesMut>::new(0, "test");
+    let bufferpool = BufferPool::<Vec<u8>>::new(0, "test");
 
     let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let _tun = device_manager.make_tun().unwrap();

@@ -97,11 +97,15 @@ public struct AppView: View {
       switch (store.vpnStatus, store.decision) {
       case (nil, _), (_, nil):
         ProgressView()
-      case (.invalid, _):
+      case (.invalid, _) where store.vpnConfigurationManager == nil:
         GrantVPNView()
       case (_, .notDetermined):
         GrantNotificationsView()
-      case (.disconnected, _):
+      case (.disconnected, _), (.invalid, _):
+        // A freshly installed configuration reports `.invalid` until the system
+        // finishes registering it. The `.invalid` + no-manager case is handled
+        // above, so reaching here means the configuration is installed and the
+        // user just needs to sign in (which enables it and settles the status).
         IOSNavigationView {
           WelcomeView()
         }
@@ -117,7 +121,9 @@ public struct AppView: View {
           ProgressView()
           Text("Getting things ready... this should only take a few seconds.")
         }
-      case (.needsInstall, _), (_, .invalid):
+      case (.needsInstall, _):
+        GrantVPNView()
+      case (_, .invalid) where store.vpnConfigurationManager == nil:
         GrantVPNView()
       default:
         FirstTimeView()

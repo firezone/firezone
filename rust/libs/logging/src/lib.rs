@@ -41,14 +41,19 @@ pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 pub use tracing_macros::trace_dbg as dbg;
 
-/// Registers a global subscriber with stdout logging and `additional_layer`
-pub fn setup_global_subscriber<L>(
+/// Registers a global subscriber with stdout logging and `additional_layer`.
+///
+/// `unfiltered_layer` bypasses the `directives`-based filter and is expected to
+/// bring its own (e.g. flow-log spooling).
+pub fn setup_global_subscriber<L, U>(
     directives: String,
     additional_layer: L,
+    unfiltered_layer: U,
     stdout_json: bool,
 ) -> Result<FilterReloadHandle>
 where
-    L: Layer<Registry> + Send + Sync,
+    L: Layer<Registry> + Send + Sync + 'static,
+    U: Layer<Registry> + Send + Sync + 'static,
 {
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!("Failed to init terminal colors: {error}");
@@ -60,7 +65,10 @@ where
         try_filter(&directives).context("Failed to parse directives")?;
 
     let subscriber = Registry::default()
-        .with(additional_layer.with_filter(filter1))
+        .with(vec![
+            additional_layer.with_filter(filter1).boxed(),
+            unfiltered_layer.boxed(),
+        ])
         .with(sentry_layer())
         .with(match stdout_json {
             true => fmt::layer()

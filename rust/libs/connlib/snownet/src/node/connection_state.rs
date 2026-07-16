@@ -5,11 +5,10 @@ use std::{
 };
 
 use ip_packet::IpPacket;
-use is::IceAgent;
-use is::IceConnectionState;
 use ringbuffer::AllocRingBuffer;
 
 use crate::IceConfig;
+use crate::agent::Agent;
 
 #[derive(Debug)]
 pub(crate) enum ConnectionState {
@@ -20,11 +19,6 @@ pub(crate) enum ConnectionState {
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
         wg_buffer: AllocRingBuffer<Vec<u8>>,
-
-        /// Packets we are told to send whilst we are still running ICE.
-        ///
-        /// These need to be encrypted and sent once the tunnel is established.
-        ip_buffer: AllocRingBuffer<IpPacket>,
     },
     /// A socket has been nominated.
     Connected {
@@ -43,8 +37,8 @@ pub(crate) enum ConnectionState {
 }
 
 impl ConnectionState {
-    pub(crate) fn poll_timeout(&self, agent: &IceAgent) -> Option<(Instant, &'static str)> {
-        if agent.state() != IceConnectionState::Connected {
+    pub(crate) fn poll_timeout(&self, agent: &Agent) -> Option<(Instant, &'static str)> {
+        if !agent.is_negotiation_complete() {
             return None;
         }
 
@@ -60,7 +54,7 @@ impl ConnectionState {
 
     pub(crate) fn handle_timeout(
         &mut self,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         idle_ice_config: IceConfig,
         now: Instant,
     ) {
@@ -76,7 +70,7 @@ impl ConnectionState {
             return;
         }
 
-        if agent.state() != IceConnectionState::Connected {
+        if !agent.is_negotiation_complete() {
             return;
         }
 
@@ -88,7 +82,7 @@ impl ConnectionState {
     pub(crate) fn on_upsert<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         now: Instant,
     ) where
@@ -109,7 +103,7 @@ impl ConnectionState {
     pub(crate) fn on_candidate<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         now: Instant,
     ) where
@@ -137,7 +131,7 @@ impl ConnectionState {
     pub(crate) fn on_outgoing<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         packet: &IpPacket,
         now: Instant,
@@ -166,7 +160,7 @@ impl ConnectionState {
     pub(crate) fn on_incoming<TId>(
         &mut self,
         cid: TId,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         packet: &IpPacket,
         now: Instant,
@@ -195,19 +189,19 @@ impl ConnectionState {
     fn transition_to_idle(
         &mut self,
         peer_socket: PeerSocket,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         idle_ice_config: IceConfig,
     ) {
         tracing::debug!("Connection is idle");
         *self = Self::Idle { peer_socket };
-        idle_ice_config.apply(agent);
+        agent.apply_ice_config(idle_ice_config);
     }
 
     fn transition_to_connected<TId>(
         &mut self,
         cid: TId,
         peer_socket: PeerSocket,
-        agent: &mut IceAgent,
+        agent: &mut Agent,
         default_ice_config: IceConfig,
         trigger: impl tracing::Value,
         now: Instant,
@@ -219,7 +213,7 @@ impl ConnectionState {
             peer_socket,
             last_activity: now,
         };
-        default_ice_config.apply(agent);
+        agent.apply_ice_config(default_ice_config);
     }
 
     pub(crate) fn has_nominated_socket(&self) -> bool {
@@ -274,10 +268,6 @@ pub(crate) enum PeerSocket {
 }
 
 impl PeerSocket {
-    pub(crate) fn send_from_relay(&self) -> bool {
-        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
-    }
-
     pub(crate) fn fmt<RId>(&self, relay: RId) -> String
     where
         RId: fmt::Display,

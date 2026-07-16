@@ -68,7 +68,7 @@ defmodule PortalAPI.GroupController do
       {"Group Attributes", "application/json", PortalAPI.Schemas.Group.CreateRequest,
        required: true},
     responses:
-      [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
+      [created: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,

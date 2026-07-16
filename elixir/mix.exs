@@ -20,6 +20,7 @@ defmodule Portal.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r"^test/fixtures/"],
       listeners: listeners(),
       docs: [
         logo: "assets/static/images/logo.svg",
@@ -68,7 +69,6 @@ defmodule Portal.MixProject do
     [
       # Ecto / Database
       {:postgrex, "~> 0.20"},
-      {:decimal, "~> 3.0"},
       {:ecto_sql, "~> 3.7"},
       {:ecto_psql_extras, "~> 0.8"},
       {:phoenix_ecto, "~> 4.4"},
@@ -89,8 +89,6 @@ defmodule Portal.MixProject do
       # Auth
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
-      {:openid_connect,
-       github: "firezone/openid_connect", ref: "a38b96eb63bef690328ad2fd08202b8ffe36460f"},
       {:argon2_elixir, "~> 4.0"},
 
       # Background jobs
@@ -101,11 +99,9 @@ defmodule Portal.MixProject do
       {:libcluster, "~> 3.3"},
       {:tz, "~> 0.28"},
       {:tz_extra, "~> 0.45"},
-      {:sizeable, "~> 1.0"},
 
       # Email
       {:gen_smtp, "~> 1.0"},
-      {:multipart, "~> 0.6.0"},
       {:swoosh, "~> 1.26.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
@@ -148,13 +144,12 @@ defmodule Portal.MixProject do
       # https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/428
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
       {:sentry, "~> 13.1"},
-      {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
-      {:req, "~> 0.5.15"},
+      {:req, "~> 0.6.2"},
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.4.1", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.5.1", runtime: Mix.env() == :dev},
       {:remixicons,
        github: "Remix-Design/RemixIcon",
        sparse: "icons",
@@ -164,7 +159,6 @@ defmodule Portal.MixProject do
        depth: 1},
 
       # Test deps
-      {:bypass, "~> 2.1", only: :test},
       {:floki, "~> 0.38.0", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},

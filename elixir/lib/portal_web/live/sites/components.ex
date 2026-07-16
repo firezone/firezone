@@ -23,7 +23,7 @@ defmodule PortalWeb.Sites.Components do
           <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
         </div>
         <div class="flex-1 overflow-y-auto px-5 py-4">
-          <.form for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
+          <.form id="new-site-form" for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
             <div class="space-y-4">
               <.input
                 label="Name"
@@ -63,7 +63,6 @@ defmodule PortalWeb.Sites.Components do
   attr :account, :any, required: true
   attr :resources_counts, :map, required: true
   attr :policies_counts, :map, required: true
-  attr :gateway_counts, :map, required: true
   attr :panel, :map, required: true
   attr :deploy_state, :map, required: true
   attr :resource_form_state, :map, required: true
@@ -97,13 +96,9 @@ defmodule PortalWeb.Sites.Components do
 
     assigns =
       if assigns.site do
-        assigns
-        |> assign(:total_count, Map.get(assigns.gateway_counts, assigns.site.id, 0))
-        |> assign(:status, site_status(assigns.gateways, assigns.site.health_threshold))
+        assign(assigns, :status, site_status(assigns.gateways, assigns.site.health_threshold))
       else
-        assigns
-        |> assign(:total_count, 0)
-        |> assign(:status, :offline)
+        assign(assigns, :status, :offline)
       end
 
     ~H"""
@@ -132,7 +127,6 @@ defmodule PortalWeb.Sites.Components do
           panel={@panel}
           gateways={@gateways}
           resources={@resources}
-          gateway_counts={@gateway_counts}
           resources_counts={@resources_counts}
         />
 
@@ -193,7 +187,6 @@ defmodule PortalWeb.Sites.Components do
   attr :panel, :map, required: true
   attr :gateways, :list, required: true
   attr :resources, :list, required: true
-  attr :gateway_counts, :map, required: true
   attr :resources_counts, :map, required: true
 
   def site_overview_view(assigns) do
@@ -206,16 +199,25 @@ defmodule PortalWeb.Sites.Components do
           site={@site}
           tab={@tab}
           show_all_gateways={@show_all_gateways}
-          total_count={Map.get(@gateway_counts, @site.id, 0)}
+          total_count={@total_gateway_count}
           resource_count={length(@resources)}
+          gateway_tokens={@gateway_tokens}
+          confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
         />
 
         <.site_gateways_tab
           :if={@tab == :gateways}
           site={@site}
           gateways={@gateways}
-          gateway_counts={@gateway_counts}
+          total_gateway_count={@total_gateway_count}
+          gateway_tokens={@gateway_tokens}
           expanded_gateway_id={@expanded_gateway_id}
+          confirm_delete_gateway_id={@confirm_delete_gateway_id}
+          confirm_rotate_gateway_id={@confirm_rotate_gateway_id}
+          rename_gateway_id={@rename_gateway_id}
+          gateway_actions_open_id={@gateway_actions_open_id}
+          rotated_gateway_token={@rotated_gateway_token}
+          device_tokens={@device_tokens}
         />
 
         <.site_resources_tab
@@ -223,6 +225,15 @@ defmodule PortalWeb.Sites.Components do
           site={@site}
           account={@account}
           resources={@resources}
+        />
+
+        <.site_tokens_tab
+          :if={@tab == :tokens}
+          site={@site}
+          gateway_tokens={@gateway_tokens}
+          legacy_token_connections={@legacy_token_connections}
+          confirm_revoke_token_id={@confirm_revoke_token_id}
+          confirm_revoke_all_tokens={@confirm_revoke_all_tokens}
         />
       </div>
 
@@ -236,6 +247,8 @@ defmodule PortalWeb.Sites.Components do
   attr :show_all_gateways, :boolean, required: true
   attr :total_count, :integer, required: true
   attr :resource_count, :integer, required: true
+  attr :gateway_tokens, :list, required: true
+  attr :confirm_revoke_all_tokens, :boolean, required: true
 
   def site_panel_tabs(assigns) do
     ~H"""
@@ -286,6 +299,26 @@ defmodule PortalWeb.Sites.Components do
           {@resource_count}
         </span>
       </button>
+      <button
+        :if={@gateway_tokens != []}
+        phx-click="switch_panel_tab"
+        phx-value-tab="tokens"
+        class={[
+          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+          if(@tab == :tokens,
+            do: "border-brand text-brand",
+            else: "border-transparent text-body hover:text-heading hover:border-border-strong"
+          )
+        ]}
+      >
+        Legacy tokens
+        <span class={[
+          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
+          if(@tab == :tokens, do: "bg-brand-muted text-brand", else: "bg-raised text-subtle")
+        ]}>
+          {length(@gateway_tokens)}
+        </span>
+      </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
         <.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
           <.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
@@ -311,6 +344,27 @@ defmodule PortalWeb.Sites.Components do
         >
           Online only
         </.button>
+        <.button
+          :if={@tab == :tokens and @gateway_tokens != [] and not @confirm_revoke_all_tokens}
+          type="button"
+          style="danger"
+          size="xs"
+          phx-click="confirm_revoke_all_tokens"
+        >
+          <.icon name="ri-delete-bin-line" class="w-3 h-3" /> Revoke all tokens
+        </.button>
+        <div
+          :if={@tab == :tokens and @confirm_revoke_all_tokens}
+          class="flex items-center gap-2"
+        >
+          <span class="text-xs text-error">Revoke all tokens?</span>
+          <.button type="button" phx-click="cancel_revoke_all_tokens" size="xs">
+            Cancel
+          </.button>
+          <.button type="button" phx-click="revoke_all_gateway_tokens" style="danger" size="xs">
+            Revoke all
+          </.button>
+        </div>
       </div>
     </div>
     """
@@ -318,20 +372,45 @@ defmodule PortalWeb.Sites.Components do
 
   attr :site, :any, required: true
   attr :gateways, :list, required: true
-  attr :gateway_counts, :map, required: true
+  attr :total_gateway_count, :integer, required: true
+  attr :gateway_tokens, :list, default: []
   attr :expanded_gateway_id, :string, default: nil
+  attr :confirm_delete_gateway_id, :string, default: nil
+  attr :confirm_rotate_gateway_id, :string, default: nil
+  attr :rename_gateway_id, :string, default: nil
+  attr :gateway_actions_open_id, :string, default: nil
+  attr :rotated_gateway_token, :map, default: nil
+  attr :device_tokens, :map, default: %{}
 
   def site_gateways_tab(assigns) do
+    assigns =
+      assign(assigns, :legacy_token_ids, MapSet.new(assigns.gateway_tokens, & &1.id))
     ~H"""
     <div class="flex-1 overflow-y-auto">
       <ul>
         <li
           :for={gateway <- @gateways}
-          phx-click="toggle_gateway_expand"
-          phx-value-id={gateway.id}
-          class="border-b border-border hover:bg-raised cursor-pointer transition-colors group"
+          class={[
+            "border-b border-border transition-colors",
+            if(@confirm_delete_gateway_id == gateway.id,
+              do: "bg-error-light",
+              else: ""
+            )
+          ]}
         >
-          <div class="flex items-center gap-3 px-5 py-3">
+          <% action = token_action(@device_tokens, gateway, @legacy_token_ids) %>
+          <% reveal? = @rotated_gateway_token && @rotated_gateway_token.gateway_id == gateway.id %>
+          <%!-- Normal clickable row --%>
+          <div
+            :if={@confirm_delete_gateway_id != gateway.id}
+            phx-click="toggle_gateway_expand"
+            phx-value-id={gateway.id}
+            class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-raised transition-colors group"
+          >
+            <.ping_icon
+              color={if gateway.online?, do: "success", else: "danger"}
+              title={if gateway.online?, do: "Online", else: "Offline"}
+            />
             <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
               <svg
                 class="w-3.5 h-3.5 text-subtle"
@@ -347,35 +426,112 @@ defmodule PortalWeb.Sites.Components do
               </svg>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="font-mono text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
-                {gateway.name}
-              </p>
-              <p
-                :if={gateway.latest_session}
-                class="font-mono text-xs text-subtle mt-0.5"
-              >
+              <div class="flex items-center gap-2">
+                <p class="font-mono text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
+                  {gateway.name}
+                </p>
+                <.badge
+                  :if={legacy_connected?(gateway, @legacy_token_ids)}
+                  type="warning"
+                  size="xs"
+                  title="This gateway last connected with a legacy site token"
+                >
+                  legacy token
+                </.badge>
+              </div>
+              <p :if={gateway.latest_session} class="font-mono text-xs text-subtle mt-0.5">
                 {gateway.latest_session.remote_ip}
               </p>
             </div>
-            <span :if={gateway.online?} class="inline-flex items-center gap-1.5 shrink-0">
-              <span class="relative flex items-center justify-center w-1.5 h-1.5">
-                <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-success">
-                </span>
-                <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-success">
-                </span>
-              </span>
-            </span>
-            <span :if={not gateway.online?} class="inline-flex items-center gap-1.5 shrink-0">
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-neutral-status">
-              </span>
-            </span>
+            <.actions_dropdown
+              open={@gateway_actions_open_id == gateway.id}
+              close_event="close_gateway_actions"
+              phx-click="toggle_gateway_actions"
+              phx-value-id={gateway.id}
+              title="More actions"
+            >
+              <button
+                type="button"
+                phx-click="rename_gateway"
+                phx-value-id={gateway.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+              >
+                <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Rename gateway
+              </button>
+              <button
+                :if={!reveal?}
+                type="button"
+                phx-click="rotate_gateway_token"
+                phx-value-id={gateway.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+              >
+                <.icon name={token_action_icon(action)} class="w-3.5 h-3.5 shrink-0" />
+                {token_action_label(action)}
+              </button>
+              <button
+                type="button"
+                phx-click="delete_gateway"
+                phx-value-id={gateway.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
+              >
+                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete gateway
+              </button>
+            </.actions_dropdown>
             <.icon
-              name="ri-arrow-right-s-line"
-              class={"w-4 h-4 text-subtle transition-transform shrink-0#{if @expanded_gateway_id == gateway.id, do: " rotate-90", else: ""}"}
+              name={
+                if @expanded_gateway_id == gateway.id,
+                  do: "ri-arrow-up-s-line",
+                  else: "ri-arrow-down-s-line"
+              }
+              class="w-4 h-4 text-subtle shrink-0"
             />
           </div>
+          <%!-- Confirm delete row --%>
           <div
-            :if={@expanded_gateway_id == gateway.id}
+            :if={@confirm_delete_gateway_id == gateway.id}
+            class="flex items-center gap-3 px-5 py-3"
+          >
+            <.ping_icon
+              color={if gateway.online?, do: "success", else: "danger"}
+              title={if gateway.online?, do: "Online", else: "Offline"}
+            />
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+              <svg
+                class="w-3.5 h-3.5 text-subtle"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <rect x="1.5" y="4" width="13" height="8" rx="1" />
+                <circle cx="4" cy="8" r="0.75" fill="currentColor" stroke="none" />
+                <circle cx="6.5" cy="8" r="0.75" fill="currentColor" stroke="none" />
+                <path d="M10 8h3.5" />
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-mono text-sm font-medium text-heading truncate">{gateway.name}</p>
+              <p :if={gateway.latest_session} class="font-mono text-xs text-subtle mt-0.5">
+                {gateway.latest_session.remote_ip}
+              </p>
+            </div>
+            <span class="text-xs text-error shrink-0">Delete this gateway?</span>
+            <.button type="button" phx-click="cancel_delete_gateway" size="xs">
+              Cancel
+            </.button>
+            <.button
+              type="button"
+              style="danger"
+              size="xs"
+              phx-click="confirm_delete_gateway"
+              phx-value-id={gateway.id}
+            >
+              Delete
+            </.button>
+          </div>
+          <%!-- Expanded details --%>
+          <div
+            :if={@expanded_gateway_id == gateway.id and @confirm_delete_gateway_id != gateway.id}
             class="px-5 pb-3 pt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5"
           >
             <span class="text-xs text-subtle">Last started</span>
@@ -406,11 +562,151 @@ defmodule PortalWeb.Sites.Components do
             <span class="font-mono text-xs text-heading">
               {gateway.ipv6}
             </span>
+            <span class="text-xs text-subtle">Token</span>
+            <span class="text-xs text-heading">
+              {gateway_token_status(gateway, Map.get(@device_tokens, gateway.id), @legacy_token_ids)}
+            </span>
+          </div>
+          <%!-- Token rotation controls --%>
+          <div
+            :if={@expanded_gateway_id == gateway.id and @confirm_delete_gateway_id != gateway.id}
+            class="px-5 pb-3 space-y-2"
+          >
+            <div
+              :if={reveal?}
+              id={"gateway-token-reveal-#{gateway.id}"}
+              phx-hook="CopyClipboard"
+              class="rounded-md border-2 border-brand bg-brand-muted p-4 space-y-3"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="ri-key-2-line" class="w-4 h-4 text-brand" />
+                <span class="text-xs font-semibold text-brand">New gateway token</span>
+              </div>
+              <p class="text-xs text-body">
+                Copy it now - it won't be shown again.
+                <span :if={rotation_pending?(@device_tokens, gateway.id)}>
+                  The expiring token keeps working until this gateway connects with the
+                  replacement, or 4 hours pass.
+                </span>
+                <span :if={legacy_connected?(gateway, @legacy_token_ids)}>
+                  The legacy site token keeps working until you revoke it from the Legacy tokens tab.
+                </span>
+                <span :if={@rotated_gateway_token.replaced_unused}>
+                  The previous token was never used and has been replaced - it no longer works.
+                </span>
+              </p>
+              <code
+                id={"gateway-token-reveal-#{gateway.id}-code"}
+                class="block w-full rounded border border-border-strong bg-surface p-2 font-mono text-xs text-heading break-all"
+                phx-no-format
+              >{@rotated_gateway_token.encoded}</code>
+              <div class="flex items-center gap-2">
+                <.button
+                  type="button"
+                  size="xs"
+                  style="primary"
+                  data-copy-to-clipboard-target={"gateway-token-reveal-#{gateway.id}-code"}
+                >
+                  <span
+                    id={"gateway-token-reveal-#{gateway.id}-default-message"}
+                    class="inline-flex items-center gap-1.5"
+                  >
+                    <.icon name="ri-clipboard-line" class="w-3.5 h-3.5" /> Copy token
+                  </span>
+                  <span
+                    id={"gateway-token-reveal-#{gateway.id}-success-message"}
+                    class="hidden items-center gap-1.5"
+                  >
+                    <.icon name="ri-check-line" class="w-3.5 h-3.5" /> Copied
+                  </span>
+                </.button>
+                <.button type="button" size="xs" phx-click="dismiss_rotated_gateway_token">
+                  Done
+                </.button>
+              </div>
+            </div>
+            <form
+              :if={@rename_gateway_id == gateway.id}
+              phx-submit="save_gateway_name"
+              class="rounded border border-border-strong bg-raised p-3 space-y-3"
+            >
+              <label
+                for={"rename-gateway-#{gateway.id}"}
+                class="block text-xs font-medium text-heading"
+              >
+                Rename gateway
+              </label>
+              <input
+                id={"rename-gateway-#{gateway.id}"}
+                type="text"
+                name="name"
+                value={gateway.name}
+                maxlength="255"
+                required
+                autocomplete="off"
+                class="block w-full rounded border border-border-strong bg-transparent px-2 py-1.5 font-mono text-xs text-heading"
+              />
+              <div class="flex items-center gap-2">
+                <.button type="button" size="xs" phx-click="cancel_rename_gateway">
+                  Cancel
+                </.button>
+                <.button type="submit" size="xs">
+                  Save
+                </.button>
+              </div>
+            </form>
+            <div
+              :if={@confirm_rotate_gateway_id == gateway.id}
+              class="rounded border border-border-strong bg-raised p-3 space-y-3"
+            >
+              <p :if={action == :rotate} class="text-xs text-body">
+                <span class="font-medium">Rotate this gateway's token?</span><br />
+                <% active_state = active_token_state(@device_tokens, gateway) %>
+                <span :if={active_state == :in_use}>
+                  The current token keeps working until the gateway connects with the new token,
+                  or 4 hours pass - whichever comes first.
+                </span>
+                <span :if={active_state == :never_used}>
+                  This gateway has never connected with its current token,
+                  so it will be replaced immediately.
+                </span>
+                <span :if={active_state == :none}>
+                  This issues a new gateway token.
+                </span>
+              </p>
+              <p :if={action == :upgrade} class="text-xs text-body">
+                <span class="font-medium">Upgrade this gateway to its own token?</span><br />
+                This issues a gateway token that only this gateway can use, replacing its
+                legacy site token.
+                <span :if={has_gateway_token?(@device_tokens, gateway.id)}>
+                  The unused gateway token from the earlier upgrade will be replaced.
+                </span>
+                The legacy site token keeps working until you revoke it
+                from the Legacy tokens tab.
+              </p>
+              <p :if={action == :generate} class="text-xs text-body">
+                <span class="font-medium">Generate a gateway token?</span><br />
+                This issues a gateway token that only this gateway can use.
+              </p>
+              <div class="flex items-center gap-2">
+                <.button type="button" size="xs" phx-click="cancel_rotate_gateway_token">
+                  Cancel
+                </.button>
+                <.button
+                  type="button"
+                  size="xs"
+                  phx-click="confirm_rotate_gateway_token"
+                  phx-value-id={gateway.id}
+                >
+                  {token_action_confirm_label(action)}
+                </.button>
+              </div>
+            </div>
           </div>
         </li>
       </ul>
       <div
-        :if={@gateways == [] and Map.get(@gateway_counts, @site.id, 0) == 0}
+        :if={@gateways == [] and @total_gateway_count == 0}
         class="flex flex-col items-center justify-center gap-3 py-16"
       >
         <p class="text-sm text-subtle">No gateways deployed to this site.</p>
@@ -422,7 +718,7 @@ defmodule PortalWeb.Sites.Components do
         </button>
       </div>
       <div
-        :if={@gateways == [] and Map.get(@gateway_counts, @site.id, 0) > 0}
+        :if={@gateways == [] and @total_gateway_count > 0}
         class="flex items-center justify-center py-16"
       >
         <p class="text-sm text-subtle">
@@ -468,6 +764,209 @@ defmodule PortalWeb.Sites.Components do
       </div>
     </div>
     """
+  end
+
+  attr :site, :any, required: true
+  attr :gateway_tokens, :list, required: true
+  attr :legacy_token_connections, :map, default: %{}
+  attr :confirm_revoke_token_id, :string, default: nil
+  attr :confirm_revoke_all_tokens, :boolean, required: true
+
+  def site_tokens_tab(assigns) do
+    ~H"""
+    <div class="flex-1 overflow-y-auto">
+      <ul>
+        <li
+          :for={token <- @gateway_tokens}
+          class={[
+            "border-b border-border px-5 py-3 transition-colors",
+            if(@confirm_revoke_token_id == token.id, do: "bg-error-light", else: "")
+          ]}
+        >
+          <div class="flex items-center gap-3">
+            <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
+              <.icon name="ri-key-line" class="w-3.5 h-3.5 text-subtle" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-mono text-xs text-body truncate">{token.id}</p>
+              <p class="text-[10px] text-subtle mt-0.5">
+                Created <.relative_datetime datetime={token.inserted_at} popover={false} />
+              </p>
+            </div>
+            <.legacy_token_usage_badge count={Map.get(@legacy_token_connections, token.id, 0)} />
+            <.icon_button
+              :if={@confirm_revoke_token_id != token.id}
+              icon="ri-delete-bin-line"
+              title="Revoke token"
+              phx-click="revoke_gateway_token"
+              phx-value-id={token.id}
+              class="text-subtle hover:text-error shrink-0"
+            />
+            <div :if={@confirm_revoke_token_id == token.id} class="flex items-center gap-2 shrink-0">
+              <span class="text-xs text-error">Revoke this token?</span>
+              <.button type="button" phx-click="cancel_revoke_gateway_token" size="xs">
+                Cancel
+              </.button>
+              <.button
+                type="button"
+                style="danger"
+                size="xs"
+                phx-click="confirm_revoke_gateway_token"
+                phx-value-id={token.id}
+              >
+                Revoke
+              </.button>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :count, :integer, required: true
+
+  defp legacy_token_usage_badge(assigns) do
+    ~H"""
+    <span
+      :if={@count == 0}
+      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-raised text-subtle"
+      title="No gateways are currently connected with this token"
+    >
+      unused
+    </span>
+    <span
+      :if={@count > 0}
+      class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-muted text-brand"
+      title="Gateways currently connected with this token"
+    >
+      {@count} connected
+    </span>
+    """
+  end
+
+  defp has_gateway_token?(device_tokens, gateway_id) do
+    Map.get(device_tokens, gateway_id, []) != []
+  end
+
+  defp rotation_pending?(device_tokens, gateway_id) do
+    device_tokens |> Map.get(gateway_id, []) |> Enum.any?(& &1.rotated_at)
+  end
+
+  # Whether the gateway's active single-owner token is actually in use.
+  # latest_session is a proxy for the server-side "ever referenced by a
+  # session" check that decides between grace-period rotation and outright
+  # replacement - it matches exactly for never-connected gateways.
+  defp active_token_state(device_tokens, gateway) do
+    active =
+      device_tokens
+      |> Map.get(gateway.id, [])
+      |> Enum.find(&is_nil(&1.rotated_at))
+
+    cond do
+      is_nil(active) -> :none
+      gateway.latest_session && gateway.latest_session.gateway_token_id == active.id -> :in_use
+      true -> :never_used
+    end
+  end
+
+  defp legacy_connected?(gateway, legacy_token_ids) do
+    gateway.latest_session != nil and
+      MapSet.member?(legacy_token_ids, gateway.latest_session.gateway_token_id)
+  end
+
+  # A gateway still connected with a legacy token is mid-upgrade even if a
+  # single-owner token was already minted for it - the upgrade only "sticks"
+  # once the gateway reconnects with its own token.
+  defp token_action(device_tokens, gateway, legacy_token_ids) do
+    cond do
+      legacy_connected?(gateway, legacy_token_ids) -> :upgrade
+      has_gateway_token?(device_tokens, gateway.id) -> :rotate
+      true -> :generate
+    end
+  end
+
+  defp token_action_icon(:rotate), do: "ri-refresh-line"
+  defp token_action_icon(:upgrade), do: "ri-arrow-up-circle-line"
+  defp token_action_icon(:generate), do: "ri-key-line"
+
+  defp token_action_label(:rotate), do: "Rotate token"
+  defp token_action_label(:upgrade), do: "Upgrade token"
+  defp token_action_label(:generate), do: "Generate token"
+
+  defp token_action_confirm_label(:rotate), do: "Rotate"
+  defp token_action_confirm_label(:upgrade), do: "Upgrade"
+  defp token_action_confirm_label(:generate), do: "Generate"
+
+  # Leads with what the gateway is connected with (or last connected with,
+  # when offline), then notes an unused gateway token when one exists.
+  defp gateway_token_status(gateway, tokens, legacy_token_ids) do
+    tokens = tokens || []
+    active = Enum.find(tokens, &is_nil(&1.rotated_at))
+    rotated = Enum.find(tokens, & &1.rotated_at)
+
+    live_token_status(gateway, active, rotated) ||
+      session_token_status(gateway, active, rotated, legacy_token_ids)
+  end
+
+  # For online gateways the live PG registry is authoritative: sessions are
+  # written through an async queue, so the latest session can lag a reconnect
+  # by several seconds (and token deletion cascades the old ones away).
+  defp live_token_status(%{online?: false}, _active, _rotated), do: nil
+
+  defp live_token_status(_gateway, active, rotated) do
+    cond do
+      active != nil and live_connection?(active) ->
+        "Connected with gateway token"
+
+      rotated != nil and live_connection?(rotated) ->
+        expiring_status("Connected with", active)
+
+      true ->
+        nil
+    end
+  end
+
+  defp session_token_status(gateway, active, rotated, legacy_token_ids) do
+    session = gateway.latest_session
+    verb = if gateway.online?, do: "Connected with", else: "Last connected with"
+
+    cond do
+      is_nil(session) and active ->
+        "Never connected - Gateway token provisioned"
+
+      is_nil(session) ->
+        "Never connected - No token provisioned"
+
+      active && session.gateway_token_id == active.id ->
+        "#{verb} gateway token"
+
+      rotated && session.gateway_token_id == rotated.id ->
+        expiring_status(verb, active)
+
+      MapSet.member?(legacy_token_ids, session.gateway_token_id) ->
+        with_unused_token_note("#{verb} legacy site token", active)
+
+      true ->
+        with_unused_token_note("#{verb} revoked token", active)
+    end
+  end
+
+  # Gateway channels join the PG group under their token id at registration
+  defp live_connection?(token), do: Portal.PG.members(token.id) != []
+
+  defp expiring_status(verb, nil) do
+    "#{verb} expiring gateway token - No replacement provisioned"
+  end
+
+  defp expiring_status(verb, _active) do
+    "#{verb} expiring gateway token - Replacement provisioned, but never used"
+  end
+
+  defp with_unused_token_note(status, nil), do: status
+
+  defp with_unused_token_note(status, _active) do
+    status <> " - Gateway token provisioned, but never used"
   end
 
   attr :site, :any, required: true
@@ -861,6 +1360,7 @@ defmodule PortalWeb.Sites.Components do
       <.site_add_resource_header />
       <.form
         :if={@resource_form}
+        id="site-add-resource-form"
         for={@resource_form}
         phx-submit="resource_submit"
         phx-change="resource_change"
@@ -1116,13 +1616,13 @@ defmodule PortalWeb.Sites.Components do
       <p class="mt-1.5 text-xs text-body leading-snug">
         {case "#{@resource_form[:ip_stack].value}" do
           "ipv4_only" ->
-            "Resolves only A records — clients connect over IPv4."
+            "Resolves only A records - clients connect over IPv4."
 
           "ipv6_only" ->
-            "Resolves only AAAA records — clients connect over IPv6."
+            "Resolves only AAAA records - clients connect over IPv6."
 
           _ ->
-            "Resolves A and AAAA records — clients connect over IPv4 or IPv6, whichever is available."
+            "Resolves A and AAAA records - clients connect over IPv4 or IPv6, whichever is available."
         end}
       </p>
     </div>
@@ -1208,7 +1708,7 @@ defmodule PortalWeb.Sites.Components do
   def resource_filters_empty_state(assigns) do
     ~H"""
     <div class="flex items-center justify-center rounded border border-dashed border-border px-4 py-5 text-xs text-subtle">
-      No restrictions — all traffic is permitted
+      No restrictions - all traffic is permitted
     </div>
     """
   end
@@ -1276,6 +1776,7 @@ defmodule PortalWeb.Sites.Components do
       </div>
       <.form
         :if={@form}
+        id="site-edit-form"
         for={@form}
         phx-submit="submit_site_edit_form"
         phx-change="change_site_edit_form"
@@ -1366,7 +1867,6 @@ defmodule PortalWeb.Sites.Components do
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
-      "--env FIREZONE_NAME=$(hostname)",
       "--env RUST_LOG=info",
       "#{Portal.Config.fetch_env!(:portal, :docker_registry)}/gateway:1"
     ]

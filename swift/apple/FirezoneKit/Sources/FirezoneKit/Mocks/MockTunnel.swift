@@ -170,7 +170,9 @@
       return (0..<22).map { index in
         ConnectedDevice(
           id: "client-\(index + 1)",
+          name: "Demo Device \(index + 1)",
           tunIPv4: "100.96.0.\(index + 1)",
+          tunIPv6: "fd00:2021:1111::\(String(index + 1, radix: 16))",
           pools: poolPatterns[index % poolPatterns.count]
         )
       }

@@ -87,6 +87,7 @@ impl LoginUrl<PublicKeyParam> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "client",
+            Some("v2"),
             Some(external_id),
             Some(device_name),
             None,
@@ -122,6 +123,7 @@ impl LoginUrl<PublicKeyParam> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "gateway",
+            Some("v2"),
             Some(external_id),
             Some(device_name),
             None,
@@ -152,6 +154,7 @@ impl LoginUrl<NoParams> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "relay",
+            None,
             None,
             device_name,
             Some(listen_port),
@@ -239,6 +242,7 @@ fn get_host_name() -> Option<String> {
 fn get_websocket_path<E>(
     mut api_url: Url,
     mode: &str,
+    api_version: Option<&str>,
     external_id: Option<String>,
     name: Option<String>,
     port: Option<u16>,
@@ -255,6 +259,9 @@ fn get_websocket_path<E>(
 
         paths.pop_if_empty();
         paths.push(mode);
+        if let Some(api_version) = api_version {
+            paths.push(api_version);
+        }
         paths.push("websocket");
     }
 
@@ -324,5 +331,50 @@ mod tests {
         let base_url = login_url.base_url();
 
         assert_eq!(base_url, "wss://api.firez.one/")
+    }
+
+    #[test]
+    fn client_uses_v2_endpoint() {
+        let login_url = LoginUrl::client(
+            "wss://api.firez.one",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            login_url.to_url(PublicKeyParam([0; 32])).path(),
+            "/client/v2/websocket"
+        )
+    }
+
+    #[test]
+    fn gateway_uses_v2_endpoint() {
+        let login_url = LoginUrl::gateway(
+            "wss://api.firez.one",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+        )
+        .unwrap();
+
+        assert_eq!(
+            login_url.to_url(PublicKeyParam([0; 32])).path(),
+            "/gateway/v2/websocket"
+        )
+    }
+
+    #[test]
+    fn relay_keeps_unversioned_endpoint() {
+        let login_url = LoginUrl::relay(
+            "wss://api.firez.one",
+            Some("some-name".to_owned()),
+            3478,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(login_url.to_url(NoParams).path(), "/relay/websocket")
     }
 }

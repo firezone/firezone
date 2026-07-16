@@ -41,10 +41,13 @@ defmodule PortalWeb.Resources do
       |> assign(stale: false)
       |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
+      |> assign(flow_logs_feature_enabled?: Database.flow_logs_feature_enabled?())
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
         selected_resource_pool_member_ids: [],
+        selected_resource_pool_clients: [],
+        clients_expanded_id: nil,
         online_client_ids: MapSet.new(),
         selected_groups: [],
         policy_authorizations: [],
@@ -76,7 +79,7 @@ defmodule PortalWeb.Resources do
 
       resource ->
         page = parse_page(params)
-        tab = parse_show_tab(params)
+        tab = parse_show_tab(params, resource)
 
         groups = Database.list_groups_for_resource(resource, socket.assigns.subject)
 
@@ -85,9 +88,8 @@ defmodule PortalWeb.Resources do
 
         filter_site = filter_site_from_params(params, socket.assigns.subject)
 
-        pool_member_ids =
-          Database.pool_member_ids_for_resources([resource], socket.assigns.subject)
-          |> Map.get(resource.id, [])
+        pool_clients = Database.list_pool_members(resource, socket.assigns.subject)
+        pool_member_ids = Enum.map(pool_clients, & &1.id)
 
         {:noreply,
          socket
@@ -95,6 +97,8 @@ defmodule PortalWeb.Resources do
            filter_site: filter_site,
            selected_resource: resource,
            selected_resource_pool_member_ids: pool_member_ids,
+           selected_resource_pool_clients: pool_clients,
+           clients_expanded_id: nil,
            selected_groups: groups,
            policy_authorizations: policy_authorizations,
            policy_authorizations_page: page,
@@ -292,12 +296,23 @@ defmodule PortalWeb.Resources do
     end
   end
 
-  defp parse_show_tab(params) do
-    case Map.get(params, "tab", "groups") do
-      tab when tab in ~w[groups authorizations] -> String.to_existing_atom(tab)
-      _ -> :groups
+  defp parse_show_tab(params, resource) do
+    default = if device_pool?(resource), do: "clients", else: "groups"
+
+    case Map.get(params, "tab", default) do
+      "clients" ->
+        if device_pool?(resource), do: :clients, else: :groups
+
+      tab when tab in ~w[groups authorizations] ->
+        String.to_existing_atom(tab)
+
+      _ ->
+        String.to_existing_atom(default)
     end
   end
+
+  defp device_pool?(%{type: :static_device_pool}), do: true
+  defp device_pool?(_), do: false
 
   defp redirect_to_resources_index(socket, message) do
     {:noreply,
@@ -581,7 +596,10 @@ defmodule PortalWeb.Resources do
           <.resource_details_panel
             account={@account}
             resource={@selected_resource}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             pool_member_ids={@selected_resource_pool_member_ids}
+            pool_clients={@selected_resource_pool_clients}
+            clients_expanded_id={@clients_expanded_id}
             online_client_ids={@online_client_ids}
             presence_tick={@presence_tick}
             groups={@selected_groups}
@@ -664,6 +682,13 @@ defmodule PortalWeb.Resources do
       if socket.assigns.policy_authorizations_expanded_id == id, do: nil, else: id
 
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
+  end
+
+  def handle_event("toggle_pool_client_row", %{"id" => id}, socket) do
+    expanded =
+      if socket.assigns.clients_expanded_id == id, do: nil, else: id
+
+    {:noreply, assign(socket, clients_expanded_id: expanded)}
   end
 
   def handle_event("change_resource_form", %{"resource" => attrs} = payload, socket) do
@@ -1396,6 +1421,7 @@ defmodule PortalWeb.Resources do
     alias Portal.ClientToken
     alias Portal.Actor
     alias Portal.Device
+    alias Portal.ClientSession
     alias Portal.Site
     alias Portal.Group
     alias Portal.Directory
@@ -1404,6 +1430,12 @@ defmodule PortalWeb.Resources do
     defdelegate client_to_client_enabled?(account), to: Components.Database
     defdelegate get_client(client_id, subject), to: Components.Database
     defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
+
+    def flow_logs_feature_enabled? do
+      from(f in Portal.Features, where: f.feature == :flow_logs and f.enabled == true)
+      |> Safe.unscoped(:replica)
+      |> Safe.exists?()
+    end
 
     def all_sites(subject) do
       from(s in Site, as: :sites)
@@ -1513,18 +1545,60 @@ defmodule PortalWeb.Resources do
           ids -> ids
         end
 
-      from(c in Portal.Device, as: :devices)
+      from(c in Device, as: :devices)
+      |> join(
+        :left_lateral,
+        [devices: d],
+        s in subquery(
+          from(s in ClientSession,
+            where: s.device_id == parent_as(:devices).id,
+            where: s.account_id == parent_as(:devices).account_id,
+            order_by: [desc: s.inserted_at],
+            limit: 1
+          )
+        ),
+        on: true,
+        as: :latest_session
+      )
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^client_ids)
+      |> select_merge([latest_session: s], %{
+        latest_session_inserted_at: s.inserted_at,
+        latest_session_version: s.version,
+        latest_session_user_agent: s.user_agent
+      })
+      |> preload(:actor)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
       |> case do
-        {:error, _} -> []
-        clients -> Portal.Presence.Clients.preload_clients_presence(clients)
+        {:error, _} ->
+          []
+
+        clients ->
+          clients
+          |> build_latest_sessions()
+          |> Portal.Presence.Clients.preload_clients_presence()
       end
     end
 
     def list_pool_members(_resource, _subject), do: []
+
+    defp build_latest_sessions(clients) do
+      Enum.map(clients, fn client ->
+        if client.latest_session_inserted_at do
+          %{
+            client
+            | latest_session: %ClientSession{
+                version: client.latest_session_version,
+                inserted_at: client.latest_session_inserted_at,
+                user_agent: client.latest_session_user_agent
+              }
+          }
+        else
+          client
+        end
+      end)
+    end
 
     def get_resource(id, subject) do
       from(r in Resource, as: :resources)
@@ -1708,12 +1782,13 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
+        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()

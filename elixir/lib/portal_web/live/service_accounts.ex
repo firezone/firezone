@@ -26,6 +26,7 @@ defmodule PortalWeb.ServiceAccounts do
     socket =
       socket
       |> assign(page_title: "Service Accounts")
+      |> assign(stale: false)
       |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
@@ -131,7 +132,7 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event(event, params, socket)
-      when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
+      when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, %{assigns: %{actor_panel: %{creating_actor: true}}} = socket) do
@@ -562,21 +563,35 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
-  def handle_info(%Change{op: :insert, struct: %Actor{type: :service_account}}, socket) do
+  def handle_info(%Change{op: :insert, struct: %Actor{type: :service_account}} = change, socket) do
     {:noreply,
-     update(socket, :actors_count, fn
+     socket
+     |> update(:actors_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
        ar -> ar
-     end)}
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{op: :delete, old_struct: %Actor{type: :service_account}}, socket) do
+  def handle_info(%Change{op: :delete, old_struct: %Actor{type: :service_account}} = change, socket) do
     {:noreply,
-     update(socket, :actors_count, fn
+     socket
+     |> update(:actors_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
        ar -> ar
-     end)}
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
+
+  def handle_info(%Change{struct: %Actor{type: :service_account}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
+  end
+
+  def handle_info(%Change{struct: %Actor{}} = message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  def handle_info(%Change{old_struct: %Actor{}} = message, socket),
+    do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
     actor = socket.assigns.selected_actor
@@ -647,6 +662,7 @@ defmodule PortalWeb.ServiceAccounts do
           filter={@filter_form_by_table_id["actors"]}
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
+          stale={@stale}
           class="flex-1 min-h-0"
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
@@ -750,6 +766,14 @@ defmodule PortalWeb.ServiceAccounts do
 
   defp merge_state(socket, key, updates) do
     update(socket, key, &Map.merge(&1, Map.new(updates)))
+  end
+
+  defp mark_stale_if_unreflected(socket, change) do
+    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.actors, change) do
+      socket
+    else
+      assign(socket, stale: true)
+    end
   end
 
   defp default_token_expiration do

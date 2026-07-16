@@ -31,7 +31,7 @@ public enum ResourceList: Sendable {
   }
 }
 
-public struct Resource: Codable, Identifiable, Equatable, Sendable {
+public struct Resource: Codable, Identifiable, Hashable, Sendable {
   public let id: String
   public var name: String
   public var address: String?

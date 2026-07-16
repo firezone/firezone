@@ -1,8 +1,9 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Authentication
-  alias Portal.{Device, GatewaySession, PG, Version}
+  alias Portal.{Device, GatewaySession, PG, SessionLog, Version}
   alias Portal.Repo.Batch
+  alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
@@ -52,10 +53,8 @@ defmodule PortalAPI.Gateway.Socket do
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
-         {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
-         changeset = insert_changeset(site, attrs),
-         {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
+         :ok <- ensure_gateway_not_connected(gateway) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       session = build_session(gateway, gateway_token.id, public_key, context, version)
@@ -96,6 +95,70 @@ defmodule PortalAPI.Gateway.Socket do
         error
     end
   end
+
+  # First-wins: a gateway that appears connected must disconnect before a
+  # replacement is allowed. Cross-node registration races are resolved by the
+  # channel's connection-claim protocol after join.
+  defp ensure_gateway_not_connected(gateway) do
+    case PG.members(gateway.id) do
+      [] -> :ok
+      _pids -> {:error, :conflict}
+    end
+  end
+
+  # Multi-owner (site) token: gateways are identified by their reported
+  # firezone_id and created on the fly
+  defp resolve_gateway(%Portal.GatewayToken{device_id: nil} = gateway_token, attrs) do
+    with {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
+         changeset = insert_changeset(site, attrs),
+         {:ok, _} <- apply_action(changeset, :validate),
+         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+      {:ok, site, gateway}
+    end
+  end
+
+  # Single-owner token: the token identifies the gateway directly; the
+  # reported firezone_id is kept in sync as a telemetry hint
+  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, attrs) do
+    with {:ok, gateway} <-
+           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id),
+         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
+      {:ok, gateway.site, gateway}
+    end
+  end
+
+  # Identity comes from the token, so the stored firezone_id is only a
+  # telemetry hint: keep it in sync with whatever the gateway currently
+  # reports (a rebuilt host generates a fresh one)
+  defp maybe_put_firezone_id(%Device{firezone_id: reported} = gateway, %{
+         "firezone_id" => reported
+       }) do
+    {:ok, gateway}
+  end
+
+  defp maybe_put_firezone_id(%Device{} = gateway, %{"firezone_id" => reported})
+       when is_binary(reported) and reported != "" do
+    changeset =
+      gateway
+      |> cast(%{firezone_id: reported}, [:firezone_id])
+      |> Device.changeset()
+      |> unique_constraint(:firezone_id, name: :devices_account_id_site_id_firezone_id_index)
+
+    case Database.update_gateway(changeset) do
+      {:ok, gateway} ->
+        {:ok, gateway}
+
+      {:error, changeset} ->
+        # The telemetry hint is best-effort; never block the connection on it
+        Logger.info("Failed to persist reported gateway firezone_id",
+          error: {:error, changeset}
+        )
+
+        {:ok, gateway}
+    end
+  end
+
+  defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
 
   defp insert_changeset(site, attrs) do
     insert_fields = ~w[firezone_id name]a
@@ -143,13 +206,21 @@ defmodule PortalAPI.Gateway.Socket do
         }
       )
 
+    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+
     for {attrs, _metadata} <- failed do
       dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
         PG.deliver(attrs.device_id, :disconnect)
       end)
     end
 
-    dispatch_gateway_session_confirmed(entries, failed)
+    # Durability is confirmed only once both the session and its log have
+    # landed: a session whose log write fails is left unconfirmed so its
+    # durability timer fires and the gateway reconnects to retry both. This
+    # keeps the session log fail-closed without a transaction (which is
+    # incompatible with Batch.insert_all's rescue-and-repartition retry).
+    log_failed_ids = insert_session_logs(entries, failed_ids)
+    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_ids, log_failed_ids))
 
     if failed != [] do
       Logger.info(
@@ -160,15 +231,61 @@ defmodule PortalAPI.Gateway.Socket do
     inserted
   end
 
-  defp dispatch_gateway_session_confirmed(entries, failed) do
-    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
-
+  defp dispatch_gateway_session_confirmed(entries, failed_ids) do
     for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
       dispatch_queue_callback("gateway session", :on_confirmed, attrs, fn ->
         PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
       end)
     end
   end
+
+  # Session logs ride the same flushed batch that persists the sessions, so a
+  # reconnect storm collapses into one bulk insert here rather than a write per
+  # connect. Only durable sessions are logged. Gateways authenticate with a
+  # token and have no actor, so the subject snapshot is the gateway identity
+  # and its connection context. The connect-time timestamp rides the queue
+  # entry's metadata rather than the session row's flush-time inserted_at. Each
+  # log entry carries its session id so the caller can learn which sessions'
+  # logs failed and withhold their durability confirmation.
+  defp insert_session_logs(entries, failed_ids) do
+    log_entries =
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+        {session_log_attrs(attrs, metadata), attrs[:id]}
+      end
+
+    {_inserted, failed} =
+      Batch.insert_all(SessionLog, log_entries,
+        label: "gateway session log",
+        fk_partitions: %{
+          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+        }
+      )
+
+    MapSet.new(failed, fn {_log_attrs, session_id} -> session_id end)
+  end
+
+  defp session_log_attrs(attrs, %{timestamp: timestamp}) do
+    %{
+      account_id: attrs.account_id,
+      log_id: LogId.build_session_log(),
+      timestamp: timestamp,
+      context: :gateway,
+      subject: %{
+        gateway_id: attrs[:device_id],
+        token_id: attrs[:gateway_token_id],
+        ip: format_ip(attrs[:remote_ip]),
+        ip_region: attrs[:remote_ip_location_region],
+        ip_city: attrs[:remote_ip_location_city],
+        ip_lat: attrs[:remote_ip_location_lat],
+        ip_lon: attrs[:remote_ip_location_lon],
+        user_agent: attrs[:user_agent]
+      }
+    }
+  end
+
+  defp format_ip(nil), do: nil
+  defp format_ip(%Postgrex.INET{address: address}), do: to_string(:inet.ntoa(address))
+  defp format_ip(address) when is_tuple(address), do: to_string(:inet.ntoa(address))
 
   defp dispatch_queue_callback(label, callback, attrs, fun) do
     fun.()
@@ -236,6 +353,33 @@ defmodule PortalAPI.Gateway.Socket do
 
     alias Portal.Safe
     alias Portal.Site
+
+    # Connect hot path: the site rides along in the same query. Gateways
+    # always have a site (device_type_gateway_fields check constraint), so
+    # the inner join cannot drop rows.
+    def fetch_gateway(account_id, id) do
+      result =
+        from(d in Device,
+          where: d.account_id == ^account_id,
+          where: d.id == ^id,
+          where: d.type == :gateway,
+          join: s in assoc(d, :site),
+          preload: [site: s]
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
+
+      case result do
+        nil -> {:error, :not_found}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    def update_gateway(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
 
     def fetch_site(account_id, id) do
       result =

@@ -316,14 +316,18 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_identity"
                     phx-value-id={identity.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Delete identity"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                    name="ri-arrow-down-s-line"
+                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                  />
+                  <.icon
+                    name="ri-arrow-up-s-line"
+                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -495,14 +499,18 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_token"
                     phx-value-id={token.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Revoke session"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                    name="ri-arrow-down-s-line"
+                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                  />
+                  <.icon
+                    name="ri-arrow-up-s-line"
+                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -579,14 +587,18 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_session"
                     phx-value-id={session.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Revoke session"
                   >
                     <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
                   <.icon
-                    name="ri-arrow-right-s-line"
-                    class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                    name="ri-arrow-down-s-line"
+                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                  />
+                  <.icon
+                    name="ri-arrow-up-s-line"
+                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -662,7 +674,7 @@ defmodule PortalWeb.Actors.Components do
 
         <div :if={is_nil(@created_token) and @adding_token} class="px-5 py-4 space-y-4">
           <p class="text-sm font-medium text-heading">New Token</p>
-          <form phx-change="validate_token" phx-submit="create_token" class="space-y-4">
+          <form id="create-token-form" phx-change="validate_token" phx-submit="create_token" class="space-y-4">
             <div>
               <label class="block text-xs font-medium text-body mb-1.5">
                 Token expiration
@@ -757,14 +769,18 @@ defmodule PortalWeb.Actors.Components do
                       type="button"
                       phx-click="confirm_delete_token"
                       phx-value-id={token.id}
-                      class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                      class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                       title="Delete token"
                     >
                       <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                     </button>
                     <.icon
-                      name="ri-arrow-right-s-line"
-                      class="w-4 h-4 text-muted transition-transform group-open/details:rotate-90"
+                      name="ri-arrow-down-s-line"
+                      class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    />
+                    <.icon
+                      name="ri-arrow-up-s-line"
+                      class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
                     />
                   </div>
                 </summary>
@@ -1002,6 +1018,7 @@ defmodule PortalWeb.Actors.Components do
 
     ~H"""
     <.form
+      id="actor-edit-form"
       for={@form}
       phx-change="validate"
       phx-submit="save"
@@ -1224,6 +1241,7 @@ defmodule PortalWeb.Actors.Components do
 
       <.form
         :if={@new_actor_type == :user and @form}
+        id="create-user-form"
         for={@form}
         phx-change="validate"
         phx-submit="create_user"
@@ -1335,6 +1353,7 @@ defmodule PortalWeb.Actors.Components do
 
       <.form
         :if={@new_actor_type == :service_account and @form}
+        id="create-service-account-form"
         for={@form}
         phx-change="validate"
         phx-submit="create_service_account"

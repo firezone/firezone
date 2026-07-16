@@ -11,7 +11,6 @@ use std::{
 };
 
 use anyhow::Result;
-use bufferpool::BufferPool;
 
 use crate::DatagramSegmentIter;
 
@@ -32,7 +31,8 @@ impl SocketPool {
         &self,
         _src: Option<IpAddr>,
         _dst: SocketAddr,
-        _buffer_pool: &BufferPool<Vec<u8>>,
+        _datagrams: usize,
+        _recv_buffers: &crate::RecvBuffers,
     ) -> Arc<OwnedSocket> {
         self.wildcard.clone()
     }

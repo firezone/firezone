@@ -2539,6 +2539,247 @@ defmodule Portal.Entra.SyncTest do
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
 
+    test "identity upsert recycles stale identity when user is recreated with a new idp_id" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, email: "recreated@example.com")
+
+      # Identity left behind by the user's previous (now deleted) Entra object.
+      stale_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: issuer,
+          idp_id: "old-object-id",
+          email: "recreated@example.com",
+          synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+        )
+
+      # The user is recreated in Entra: same UPN/email, brand new object id.
+      assert {:ok, %{upserted_identities: 1}} =
+               Database.batch_upsert_identities(
+                 account.id,
+                 issuer,
+                 directory.id,
+                 DateTime.utc_now(),
+                 [
+                   %{
+                     idp_id: "new-object-id",
+                     email: "recreated@example.com",
+                     name: "Recreated User",
+                     given_name: "Recreated",
+                     family_name: "User",
+                     preferred_username: "recreated@example.com",
+                     profile: nil
+                   }
+                 ]
+               )
+
+      identities =
+        from(ei in ExternalIdentity,
+          where: ei.account_id == ^account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      # The stale row is recycled in place rather than duplicated.
+      assert [identity] = identities
+      assert identity.id == stale_identity.id
+      assert identity.idp_id == "new-object-id"
+      assert identity.directory_id == directory.id
+    end
+
+    test "recycled identity keeps a fresh sync state when seen twice in one run" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, email: "recreated@example.com")
+
+      stale_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: issuer,
+          idp_id: "old-object-id",
+          email: "recreated@example.com",
+          synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+        )
+
+      synced_at = DateTime.utc_now()
+
+      attrs = [
+        %{
+          idp_id: "new-object-id",
+          email: "recreated@example.com",
+          name: "Recreated User",
+          given_name: "Recreated",
+          family_name: "User",
+          preferred_username: "recreated@example.com",
+          profile: nil
+        }
+      ]
+
+      # The same recreated user can appear in two batches of one sync run
+      # (e.g. direct assignment and group membership). The first call recycles
+      # the row; the second must still advance its sync state to the run's
+      # watermark so the later cleanup pass does not delete it.
+      assert {:ok, _} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, synced_at, attrs)
+
+      assert {:ok, _} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, synced_at, attrs)
+
+      sync_state =
+        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: stale_identity.id)
+
+      assert DateTime.compare(sync_state.synced_at, synced_at) == :eq
+    end
+
+    test "identity upsert attaches the directory to an actor's pre-existing OIDC identity" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+      actor = Portal.ActorFixtures.actor_fixture(account: account, email: "oidc@example.com")
+
+      # Identity created by an OIDC sign-in: same issuer, no directory yet.
+      auth_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          issuer: issuer,
+          idp_id: "subject-1",
+          email: "oidc@example.com"
+        )
+
+      assert auth_identity.directory_id == nil
+
+      assert {:ok, %{upserted_identities: 1}} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, DateTime.utc_now(), [
+                 %{
+                   idp_id: "subject-1",
+                   email: "oidc@example.com",
+                   name: "OIDC User",
+                   given_name: "OIDC",
+                   family_name: "User",
+                   preferred_username: "oidc@example.com",
+                   profile: nil
+                 }
+               ])
+
+      identities =
+        from(ei in ExternalIdentity,
+          where: ei.account_id == ^account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      # The pre-existing identity is reused and gains the directory, not duplicated.
+      assert [identity] = identities
+      assert identity.id == auth_identity.id
+      assert identity.directory_id == directory.id
+    end
+
+    test "identity upsert errors when one batch maps two idp_ids to the same actor" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      issuer = "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+      actor = Portal.ActorFixtures.actor_fixture(account: account, email: "swap@example.com")
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: issuer,
+        idp_id: "old-object-id",
+        email: "swap@example.com",
+        synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+      )
+
+      # The IdP reports two distinct objects sharing one email in a single batch:
+      # the old object (email changed) and a new object that took the old email.
+      # Both resolve to the same actor and directory slot, which cannot be
+      # represented, so we let it surface as an error rather than corrupt state.
+      assert {:error, %Postgrex.Error{postgres: %{code: :cardinality_violation}}} =
+               Database.batch_upsert_identities(account.id, issuer, directory.id, DateTime.utc_now(), [
+                 %{
+                   idp_id: "old-object-id",
+                   email: "renamed@example.com",
+                   name: "Old",
+                   given_name: "Old",
+                   family_name: "User",
+                   preferred_username: "renamed@example.com",
+                   profile: nil
+                 },
+                 %{
+                   idp_id: "new-object-id",
+                   email: "swap@example.com",
+                   name: "New",
+                   given_name: "New",
+                   family_name: "User",
+                   preferred_username: "swap@example.com",
+                   profile: nil
+                 }
+               ])
+    end
+
+    test "identity upsert updates issuer when a directory is reverified against a new tenant" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      actor = Portal.ActorFixtures.actor_fixture(account: account, email: "moved@example.com")
+
+      # Identity recorded under the directory's previous Entra tenant/issuer.
+      stale_identity =
+        Portal.IdentityFixtures.identity_fixture(
+          account: account,
+          actor: actor,
+          directory: base_directory,
+          issuer: "https://login.microsoftonline.com/old-tenant/v2.0",
+          idp_id: "entra-user",
+          email: "moved@example.com",
+          synced_at: DateTime.add(DateTime.utc_now(), -86_400, :second)
+        )
+
+      # The directory is reverified onto a new tenant, so the sync runs with a
+      # new issuer for the same Entra object id.
+      assert {:ok, %{upserted_identities: 1}} =
+               Database.batch_upsert_identities(
+                 account.id,
+                 "https://login.microsoftonline.com/new-tenant/v2.0",
+                 directory.id,
+                 DateTime.utc_now(),
+                 [
+                   %{
+                     idp_id: "entra-user",
+                     email: "moved@example.com",
+                     name: "Moved User",
+                     given_name: "Moved",
+                     family_name: "User",
+                     preferred_username: "moved@example.com",
+                     profile: nil
+                   }
+                 ]
+               )
+
+      identities =
+        from(ei in ExternalIdentity,
+          where: ei.account_id == ^account.id and ei.actor_id == ^actor.id
+        )
+        |> Repo.all()
+
+      assert [identity] = identities
+      assert identity.id == stale_identity.id
+      assert identity.issuer == "https://login.microsoftonline.com/new-tenant/v2.0"
+    end
+
     test "group upsert rejects stale synced_at and accepts fresh" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account)

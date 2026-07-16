@@ -15,7 +15,6 @@ bimap = { workspace = true }
 bootstrap-dns-client = { workspace = true }
 boringtun = { workspace = true }
 bufferpool = { workspace = true }
-bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug", "from", "display"] }
@@ -23,6 +22,7 @@ divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
+flow-tracker = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }

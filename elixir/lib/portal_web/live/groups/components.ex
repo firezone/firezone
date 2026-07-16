@@ -5,13 +5,15 @@ defmodule PortalWeb.Groups.Components do
     only: [
       grant_condition_card: 1,
       available_conditions: 1,
-      condition_type_label: 1
+      condition_type_label: 1,
+      flow_log_uploads_toggle: 1
     ]
 
   attr :account, :any, required: true
   attr :group, :any, default: nil
   attr :flash, :map, required: true
   attr :query_params, :map, default: %{}
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel, :map, required: true
   attr :form_state, :map, required: true
   attr :members_state, :map, required: true
@@ -57,6 +59,7 @@ defmodule PortalWeb.Groups.Components do
         account={@account}
         group={@group}
         flash={@flash}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel={@panel}
         members_state={@members_state}
         resources_state={@resources_state}
@@ -235,6 +238,7 @@ defmodule PortalWeb.Groups.Components do
   attr :account, :any, required: true
   attr :group, :any, required: true
   attr :flash, :map, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel, :map, required: true
   attr :members_state, :map, required: true
   attr :resources_state, :map, required: true
@@ -276,6 +280,7 @@ defmodule PortalWeb.Groups.Components do
           <.group_resources_tab
             :if={@tab == :resources}
             account={@account}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             resources_state={@resources_state}
             conditions_state={@conditions_state}
           />
@@ -392,7 +397,7 @@ defmodule PortalWeb.Groups.Components do
         </.button>
       </div>
       <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
-        <form phx-change="filter_show_members">
+        <form id="filter-members-form" phx-change="filter_show_members">
           <div class="relative">
             <.icon
               name="ri-search-line"
@@ -492,6 +497,7 @@ defmodule PortalWeb.Groups.Components do
   end
 
   attr :account, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :resources_state, :map, required: true
   attr :conditions_state, :map, required: true
 
@@ -505,6 +511,7 @@ defmodule PortalWeb.Groups.Components do
     <div class="flex-1 flex flex-col overflow-hidden">
       <.group_grant_resource_form
         :if={@tab_view == :grant_form}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         resources_state={@resources_state}
         conditions_state={@conditions_state}
       />
@@ -520,6 +527,7 @@ defmodule PortalWeb.Groups.Components do
     """
   end
 
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :resources_state, :map, required: true
   attr :conditions_state, :map, required: true
 
@@ -752,6 +760,9 @@ defmodule PortalWeb.Groups.Components do
                 conditions_state={@conditions_state}
               />
             </div>
+          </div>
+          <div :if={@flow_logs_feature_enabled?} class="border-t border-border pt-4">
+            <.flow_log_uploads_toggle form={@grant_resource_form} />
           </div>
         </div>
       </div>

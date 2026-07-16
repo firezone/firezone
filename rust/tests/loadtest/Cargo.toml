@@ -15,7 +15,6 @@ axum = { workspace = true, features = ["http1", "tokio", "ws"] }
 backoff = { workspace = true }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }
-bytes = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 gat-lending-iterator = { workspace = true }

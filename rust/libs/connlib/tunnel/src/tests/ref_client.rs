@@ -125,6 +125,11 @@ pub struct RefClient {
 
     #[debug(skip)]
     connection_resets: Vec<Instant>,
+
+    /// Per Gateway, the instants at which this client sent a packet on that
+    /// connection.
+    #[debug(skip)]
+    gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
 }
 
 impl RefClient {
@@ -251,6 +256,11 @@ impl RefClient {
 
     pub(crate) fn reset_connections(&mut self, now: Instant) {
         self.connection_resets.push(now);
+
+        // A reset tears the connection down; a subsequent packet re-establishes it
+        // (buffered, then sent) rather than hitting a dead WireGuard session, so the
+        // idle history that drives the re-key tolerance must start fresh.
+        self.gateway_send_times.clear();
 
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
@@ -411,6 +421,7 @@ impl RefClient {
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
+        now: Instant,
     ) {
         self.on_packet(
             dst.clone(),
@@ -422,6 +433,7 @@ impl RefClient {
             gateway_by_resource,
             gateway_by_ip,
             client_by_ip,
+            now,
         );
     }
 
@@ -434,6 +446,7 @@ impl RefClient {
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
+        now: Instant,
     ) {
         self.on_packet(
             dst.clone(),
@@ -445,6 +458,7 @@ impl RefClient {
             gateway_by_resource,
             gateway_by_ip,
             client_by_ip,
+            now,
         );
     }
 
@@ -460,6 +474,7 @@ impl RefClient {
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
+        now: Instant,
     ) {
         // Peer destination: try device-pool routing (client-to-client) first,
         // then fall back to gateway routing.
@@ -512,9 +527,7 @@ impl RefClient {
 
             tracing::Span::current().record("resource", tracing::field::display(resource));
 
-            if !self.connected_resources().contains(&resource)
-                && !self.resource_filter_allows(resource, proto)
-            {
+            if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 return;
             }
@@ -538,6 +551,11 @@ impl RefClient {
             .entry(gateway)
             .or_default()
             .insert(payload, packet_id);
+
+        self.gateway_send_times
+            .entry(gateway)
+            .or_default()
+            .insert(now);
     }
 
     pub(crate) fn on_connect_tcp(
@@ -655,9 +673,7 @@ impl RefClient {
                 DnsTransport::Tcp => Protocol::Tcp(53),
             };
 
-            if !self.connected_resources().contains(&resource)
-                && !self.resource_filter_allows(resource, proto)
-            {
+            if !self.resource_filter_allows(resource, proto) {
                 tracing::debug!("Resource filter does not allow protocol, dropping");
                 return;
             }
@@ -1144,6 +1160,18 @@ impl RefClient {
             .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
     }
 
+    pub(crate) fn last_packet_sent_to_gateway_before(
+        &self,
+        gateway: GatewayId,
+        at: Instant,
+    ) -> Option<Instant> {
+        self.gateway_send_times
+            .get(&gateway)?
+            .range(..at)
+            .next_back()
+            .copied()
+    }
+
     /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
     pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
         let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?
@@ -1345,6 +1373,7 @@ fn ref_client(
                     routes: Default::default(),
                     site_status: Default::default(),
                     connection_resets: Default::default(),
+                    gateway_send_times: Default::default(),
                 }
             },
         )

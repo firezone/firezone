@@ -24,8 +24,30 @@ impl<'a> Ipv4HeaderSliceMut<'a> {
         Self { slice }
     }
 
+    pub fn get_checksum(&self) -> u16 {
+        u16::from_be_bytes([self.slice[10], self.slice[11]])
+    }
+
+    pub fn get_source(&self) -> [u8; 4] {
+        [
+            self.slice[12],
+            self.slice[13],
+            self.slice[14],
+            self.slice[15],
+        ]
+    }
+
+    pub fn get_destination(&self) -> [u8; 4] {
+        [
+            self.slice[16],
+            self.slice[17],
+            self.slice[18],
+            self.slice[19],
+        ]
+    }
+
     pub fn set_checksum(&mut self, checksum: u16) {
-        // Safety: Slice it at least of length 40 as checked in the ctor.
+        // Safety: Slice it at least of length 20 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 10, checksum.to_be_bytes()) };
     }
 

@@ -10,6 +10,7 @@ defmodule PortalWeb.Settings.DNS do
       socket
       |> assign(page_title: "DNS")
       |> assign(dns_account: account)
+      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
 
     {:ok, socket}
   end
@@ -34,7 +35,11 @@ defmodule PortalWeb.Settings.DNS do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
@@ -375,7 +380,7 @@ defmodule PortalWeb.Settings.DNS do
                 />
 
                 <.button
-                  :if={length(dns_form[:addresses].value || []) < 8}
+                  :if={Enum.count(dns_form[:addresses].value || []) < 8}
                   type="button"
                   name="account[config][clients_upstream_dns][addresses_sort][]"
                   value="new"
@@ -386,7 +391,7 @@ defmodule PortalWeb.Settings.DNS do
                   Add Resolver
                 </.button>
                 <p
-                  :if={length(dns_form[:addresses].value || []) >= 8}
+                  :if={Enum.count(dns_form[:addresses].value || []) >= 8}
                   class="text-xs text-subtle"
                 >
                   Maximum of 8 upstream resolvers reached.

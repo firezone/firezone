@@ -2,7 +2,7 @@
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s. The first two UDP socket writes will fail as checksum offload is disabled.
+# Download 10MB at a max rate of 1MB/s.
 # Budget: 10s for the download + 5s pre-roam wait + ~7s reconnect overhead + buffer.
 client sh -c \
     "curl \
@@ -24,9 +24,6 @@ docker network connect firezone_client-1-internal firezone-client-1-1 --ip 172.3
 # Add static route to internet subnet via router; they get removed when the network interface disappears
 client ip -4 route add 203.0.113.0/24 via 172.30.0.254
 client ip -6 route add 203:0:113::/64 via 172:30:0::254
-
-# Disable checksum offload again to calculate checksums in software so that checksum verification passes
-client ethtool -K eth0 tx off
 
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"

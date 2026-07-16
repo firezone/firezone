@@ -122,7 +122,7 @@ defmodule Portal.Config do
       * takes it from process dictionary of a last process in $callers stack;
 
     This function is especially useful when some options (eg. request endpoint) needs to be overridden
-    in test environment (eg. to send those requests to Bypass).
+    in test environment (eg. to send those requests to Req.Test).
     """
     def fetch_env!(app, key) do
       application_env = Application.fetch_env!(app, key)

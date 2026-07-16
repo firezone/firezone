@@ -16,6 +16,19 @@ impl<'a> Icmpv4HeaderSliceMut<'a> {
         Ok(Self { slice })
     }
 
+    pub fn get_checksum(&self) -> u16 {
+        u16::from_be_bytes([self.slice[2], self.slice[3]])
+    }
+
+    pub fn get_identifier(&self) -> u16 {
+        debug_assert!(
+            self.is_echo_request_or_reply(),
+            "ICMP identifier only exists for echo requests and replies"
+        );
+
+        u16::from_be_bytes([self.slice[4], self.slice[5]])
+    }
+
     pub fn set_checksum(&mut self, checksum: u16) {
         // Safety: Slice is at least of length 8 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 2, checksum.to_be_bytes()) };
@@ -41,7 +54,7 @@ impl<'a> Icmpv4HeaderSliceMut<'a> {
         unsafe { write_to_offset_unchecked(self.slice, 6, seq.to_be_bytes()) };
     }
 
-    fn is_echo_request_or_reply(&self) -> bool {
+    pub fn is_echo_request_or_reply(&self) -> bool {
         let ty = self.slice[0];
 
         ty == TYPE_ECHO_REPLY || ty == TYPE_ECHO_REQUEST

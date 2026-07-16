@@ -42,6 +42,9 @@ defmodule PortalAPI.Sockets do
   def handle_error(conn, :unauthenticated),
     do: ProblemDetails.send(conn, 403, "Forbidden")
 
+  def handle_error(conn, :conflict),
+    do: ProblemDetails.send(conn, 409, "A gateway with this ID is already connected")
+
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
     ProblemDetails.send(conn, 400, changeset_error_detail(changeset))

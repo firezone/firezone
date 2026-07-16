@@ -12,44 +12,14 @@ defmodule Portal.Changes.Hooks.Actors do
   end
 
   @impl true
+  def on_update(lsn, old_data, data) do
+    :ok = handle_update_side_effects(old_data, data)
 
-  # Delete api_tokens, client_tokens, and portal_sessions when an actor is disabled
-  def on_update(
-        _lsn,
-        %{
-          "disabled_at" => nil,
-          "account_id" => account_id,
-          "id" => actor_id
-        },
-        %{"disabled_at" => disabled_at}
-      )
-      when not is_nil(disabled_at) do
-    Database.delete_client_tokens_for_actor(account_id, actor_id)
-    Database.delete_portal_sessions_for_actor(account_id, actor_id)
-
-    :ok
+    old_actor = struct_from_params(Portal.Actor, old_data)
+    actor = struct_from_params(Portal.Actor, data)
+    change = %Change{lsn: lsn, op: :update, old_struct: old_actor, struct: actor}
+    PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
-
-  # Delete portal_sessions when an active account_admin_user is changed to account_user
-  def on_update(
-        _lsn,
-        %{
-          "disabled_at" => nil,
-          "type" => "account_admin_user"
-        },
-        %{
-          "disabled_at" => nil,
-          "type" => "account_user",
-          "account_id" => account_id,
-          "id" => actor_id
-        }
-      ) do
-    Database.delete_portal_sessions_for_actor(account_id, actor_id)
-
-    :ok
-  end
-
-  def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true
   def on_delete(lsn, old_data) do
@@ -57,6 +27,42 @@ defmodule Portal.Changes.Hooks.Actors do
     change = %Change{lsn: lsn, op: :delete, old_struct: actor}
     PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
+
+  # Delete api_tokens, client_tokens, and portal_sessions when an actor is disabled
+  defp handle_update_side_effects(
+         %{
+           "disabled_at" => nil,
+           "account_id" => account_id,
+           "id" => actor_id
+         },
+         %{"disabled_at" => disabled_at}
+       )
+       when not is_nil(disabled_at) do
+    Database.delete_client_tokens_for_actor(account_id, actor_id)
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
+
+    :ok
+  end
+
+  # Delete portal_sessions when an active account_admin_user is changed to account_user
+  defp handle_update_side_effects(
+         %{
+           "disabled_at" => nil,
+           "type" => "account_admin_user"
+         },
+         %{
+           "disabled_at" => nil,
+           "type" => "account_user",
+           "account_id" => account_id,
+           "id" => actor_id
+         }
+       ) do
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
+
+    :ok
+  end
+
+  defp handle_update_side_effects(_old_data, _new_data), do: :ok
 
   defmodule Database do
     alias Portal.ClientToken

@@ -33,3 +33,5 @@ gha-creds-*.json
 
 # Ignore build data for sourcekit-lsp (Swift code)
 buildServer.json
+
+erl_crash.dump

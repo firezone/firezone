@@ -450,17 +450,6 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "track_authorized_device_ipv4/2" do
-    test "appends the IPv4 to the cache's authorized set" do
-      cache = %Cache{authorized_device_ipv4s: MapSet.new()}
-      ipv4 = %Postgrex.INET{address: {10, 0, 0, 5}}
-
-      cache = Cache.track_authorized_device_ipv4(cache, ipv4)
-
-      assert MapSet.member?(cache.authorized_device_ipv4s, {10, 0, 0, 5})
-    end
-  end
-
   describe "add_policy/5 no-op paths" do
     setup do
       account = account_fixture()
@@ -507,8 +496,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       policy = %Portal.Policy{
@@ -615,8 +603,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       target = client_fixture(account: account)
@@ -640,8 +627,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       device = %Portal.Device{
@@ -667,8 +653,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}}
       }
 
       device = %Portal.Device{
@@ -750,8 +735,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [%{cacheable_pool | devices: []}],
         pool_members: %{},
-        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}}
       }
 
       member = %Portal.StaticDevicePoolMember{
@@ -790,8 +774,7 @@ defmodule Portal.Cache.ClientTest do
         device_addresses: %{
           did_a => {target_a.ipv4.address, target_a.ipv6.address},
           did_b => {target_b.ipv4.address, target_b.ipv6.address}
-        },
-        authorized_device_ipv4s: MapSet.new()
+        }
       }
 
       member = %Portal.StaticDevicePoolMember{
@@ -847,8 +830,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [cacheable_resource],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       log =
@@ -886,8 +868,7 @@ defmodule Portal.Cache.ClientTest do
         device_addresses: %{
           did_a => {target_a.ipv4.address, target_a.ipv6.address},
           did_b => {target_b.ipv4.address, target_b.ipv6.address}
-        },
-        authorized_device_ipv4s: MapSet.new()
+        }
       }
 
       member = %Portal.StaticDevicePoolMember{
@@ -960,8 +941,7 @@ defmodule Portal.Cache.ClientTest do
         # device_addresses. When we remove did_a and refresh, render_pool_devices has
         # to skip did_b via the :error branch.
         pool_members: %{rid_bytes => MapSet.new([did_a, did_b])},
-        device_addresses: %{did_a => {target_a.ipv4.address, target_a.ipv6.address}},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{did_a => {target_a.ipv4.address, target_a.ipv6.address}}
       }
 
       member = %Portal.StaticDevicePoolMember{
@@ -1047,8 +1027,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [%{cacheable_pool | devices: []}],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       member = %Portal.StaticDevicePoolMember{

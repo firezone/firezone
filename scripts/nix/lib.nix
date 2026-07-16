@@ -42,10 +42,10 @@ rec {
     gateway = "1.5.2";
 
     # mark:current-headless-version
-    headless = "1.5.9";
+    headless = "1.5.10";
 
     # mark:current-gui-version
-    gui = "1.5.14";
+    gui = "1.5.15";
   };
 
   meta = {

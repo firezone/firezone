@@ -15,6 +15,14 @@ impl<'a> Ipv6HeaderSliceMut<'a> {
         Ok(Self { slice })
     }
 
+    pub fn get_source(&self) -> [u8; 16] {
+        self.slice[8..24].try_into().expect("slice is 16 bytes")
+    }
+
+    pub fn get_destination(&self) -> [u8; 16] {
+        self.slice[24..40].try_into().expect("slice is 16 bytes")
+    }
+
     pub fn set_source(&mut self, src: [u8; 16]) {
         // Safety: Slice it at least of length 40 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 8, src) };

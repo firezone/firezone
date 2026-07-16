@@ -64,13 +64,93 @@ run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
 description = "Run the GUI client in dev against a dev tunnel service"
 dir = "gui-client"
 raw = true
-run = "cargo tauri dev -- -- --skip-tunnel-pipe-owner-check"
+run = "cargo tauri dev -- -- --skip-peer-verification"
 
 [tasks.tunnel]
-description = "Run the Tunnel service interactively for local GUI dev. In debug builds `run-interactive` skips the LocalSystem pipe-owner check; must be run from an elevated (Administrator) shell."
+description = "Run the Tunnel service interactively for local GUI dev. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build; must be run from an elevated shell (Administrator on Windows, root on Unix)."
 dir = "gui-client"
 raw = true
-run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive"
+run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive --skip-peer-verification"
+
+# =============================================================================
+# Profiling
+# =============================================================================
+
+[tasks.record-perf-client-gateway]
+description = "Capture perf data from a locally running headless-client and gateway."
+raw = true
+run = """
+set -u
+
+# Capture every client/gateway process (comma-separated for `perf -p`). Idle ones (e.g. an
+# unused `client-2`) contribute ~no samples, so this avoids guessing which container ran the test.
+client=$(pgrep -x firezone-headle | paste -sd, -)
+gateway=$(pgrep -x firezone-gatewa | paste -sd, -)
+[ -n "$client" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }
+
+freq="${PERF_FREQ:-10000}"
+me="$(id -u):$(id -g)"
+statpids="$client"; [ -n "$gateway" ] && statpids="$client,$gateway"
+
+echo "Recording: client $client${gateway:+, gateway $gateway}"
+echo ">>> run your iperf, then press Ctrl-C to stop <<<"
+
+# Survive Ctrl-C so the EXIT trap can chown; the perf children get the same
+# SIGINT and flush their own files.
+trap : INT
+trap 'for f in perf-client.data perf-gateway.data perf-sched.data perf-stat.txt; do [ -f "$f" ] && sudo chown "$me" "$f" 2>/dev/null; done' EXIT
+
+sudo -v # cache credentials so the background recorders do not each prompt
+
+# Per-process cycles profiles carry the CPU id (--sample-cpu) for migration analysis.
+sudo perf record -F "$freq" --call-graph fp --sample-cpu -o perf-client.data -p "$client" &
+[ -n "$gateway" ] && sudo perf record -F "$freq" --call-graph fp --sample-cpu -o perf-gateway.data -p "$gateway" &
+sudo perf sched record -o perf-sched.data &
+sudo perf stat -p "$statpids" -e task-clock,cycles,instructions,cpu-migrations,context-switches,cache-references,cache-misses -o perf-stat.txt &
+
+wait # blocks until Ctrl-C fires the INT trap
+wait # reap the recorders once they have flushed
+echo "Done: perf-client.data${gateway:+ perf-gateway.data} perf-sched.data perf-stat.txt"
+"""
+
+[tasks.setup-perf-env]
+description = "Apply the kernel sysctls for connlib perf benchmarking (larger socket + backlog buffers)."
+raw = true
+run = """
+set -u
+
+echo "Applying kernel sysctls ..."
+sudo sysctl -w net.core.wmem_max=2097152          # 2 MB, caps connlib's UDP sndbuf
+sudo sysctl -w net.core.rmem_max=16777216         # 16 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
+sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
+sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
+
+echo "Done (persists until reboot)."
+"""
+
+[tasks.pin-cpu]
+description = "Pin every CPU core to a fixed frequency (GHz, default 2.5) so boost + thermal throttling stop confounding perf runs."
+usage = 'arg "ghz" default="2.5"'
+raw = true
+run = """
+set -u
+
+ghz="${usage_ghz:-2.5}"
+khz=$(awk -v g="$ghz" 'BEGIN{printf "%d", g*1000000}')
+
+echo "Pinning all CPUs to ${ghz} GHz (${khz} kHz)..."
+# Order-safe: drop the floor, set the ceiling, then raise the floor — works whether
+# we are raising or lowering from the current setting. Capping scaling_max disables boost.
+for p in /sys/devices/system/cpu/cpu*/cpufreq; do
+  cat "$p/cpuinfo_min_freq" | sudo tee "$p/scaling_min_freq" >/dev/null
+  echo "$khz" | sudo tee "$p/scaling_max_freq" >/dev/null
+  echo "$khz" | sudo tee "$p/scaling_min_freq" >/dev/null
+done
+
+echo "Pinned (persists until reboot). Verify the EFFECTIVE clock under load; the chip can"
+echo "still throttle below the floor: cycles / task-clock from perf stat, or:"
+echo "  grep MHz /proc/cpuinfo | sort -u"
+"""
 
 # =============================================================================
 # Composite tasks

@@ -489,6 +489,12 @@ defmodule Portal.Okta.ReqDPoP do
     end
   end
 
+  # Finch has a race which can cause cold pool checkout to fail on first request with :pool_not_available
+  defp retry(_req, %Req.HTTPError{reason: reason})
+       when reason in [:pool_not_available, :unprocessed] do
+    true
+  end
+
   # Handle all other response errors as non-retry-able
   # Example: %Req.TransportError{}, %Req.HTTPError{}, etc...
   defp retry(_req, _), do: false

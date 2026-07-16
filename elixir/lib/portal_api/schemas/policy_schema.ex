@@ -82,6 +82,13 @@ defmodule PortalAPI.Schemas.Policy do
         group_id: %Schema{type: :string, format: :uuid, description: "Group ID"},
         resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description", nullable: true},
+        flow_log_uploads_enabled: %Schema{
+          type: :boolean,
+          description:
+            "Whether flow logs are reported for connections authorized by this Policy. " <>
+              "Defaults to true. Always false for Internet Resource policies.",
+          default: true
+        },
         conditions: %Schema{
           type: :array,
           description: "Conditions that must be satisfied for the Policy to grant access",
@@ -93,6 +100,7 @@ defmodule PortalAPI.Schemas.Policy do
         "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
         "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
         "description" => "Policy to allow something",
+        "flow_log_uploads_enabled" => true,
         "conditions" => [
           %{
             "property" => "remote_ip_location_region",
@@ -119,6 +127,12 @@ defmodule PortalAPI.Schemas.Policy do
         group_id: %Schema{type: :string, format: :uuid, description: "Group ID"},
         resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description", nullable: true},
+        flow_log_uploads_enabled: %Schema{
+          type: :boolean,
+          description:
+            "Whether flow logs are reported for connections authorized by this Policy. " <>
+              "Always false for Internet Resource policies."
+        },
         conditions: %Schema{
           type: :array,
           description: "Conditions that must be satisfied for the Policy to grant access",
@@ -159,18 +173,23 @@ defmodule PortalAPI.Schemas.Policy do
         },
         resource_id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
         description: %Schema{type: :string, description: "Policy Description", nullable: true},
+        flow_log_uploads_enabled: %Schema{
+          type: :boolean,
+          description: "Whether flow logs are reported for connections authorized by this Policy"
+        },
         conditions: %Schema{
           type: :array,
           description: "Conditions that must be satisfied for the Policy to grant access",
           items: Policy.Condition
         }
       },
-      required: [:id, :group_id, :resource_id, :description, :conditions],
+      required: [:id, :group_id, :resource_id, :description, :flow_log_uploads_enabled, :conditions],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
         "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
         "description" => "Policy to allow something",
+        "flow_log_uploads_enabled" => true,
         "conditions" => [
           %{
             "property" => "remote_ip_location_region",
@@ -258,6 +277,7 @@ defmodule PortalAPI.Schemas.Policy do
           "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
           "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
           "description" => "Policy to allow something",
+          "flow_log_uploads_enabled" => true,
           "conditions" => [
             %{
               "property" => "remote_ip_location_region",
@@ -274,6 +294,7 @@ defmodule PortalAPI.Schemas.Policy do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "PolicyListResponse",
@@ -281,7 +302,7 @@ defmodule PortalAPI.Schemas.Policy do
       type: :object,
       properties: %{
         data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
-        metadata: %Schema{description: "Pagination metadata", type: :object}
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [
@@ -290,6 +311,7 @@ defmodule PortalAPI.Schemas.Policy do
             "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
             "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
             "description" => "Policy to allow something",
+            "flow_log_uploads_enabled" => true,
             "conditions" => [
               %{
                 "property" => "remote_ip_location_region",
@@ -303,6 +325,7 @@ defmodule PortalAPI.Schemas.Policy do
             "resource_id" => "9876bd25-0f6c-48fb-a9fd-196ba9be86e5",
             "group_id" => "343385a2-5437-4c66-8744-1332421ff736",
             "description" => "Policy to allow something else",
+            "flow_log_uploads_enabled" => false,
             "conditions" => []
           }
         ],

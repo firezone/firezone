@@ -8,7 +8,7 @@ use std::{
 use bufferpool::BufferPool;
 use is::Candidate;
 use itertools::Itertools as _;
-use rand::{Rng, seq::IteratorRandom as _};
+use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -23,12 +23,31 @@ pub(crate) struct Allocations<RId> {
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
 
     buffer_pool: BufferPool<Vec<u8>>,
+
+    rng: StdRng,
 }
 
 impl<RId> Allocations<RId>
 where
     RId: Ord + fmt::Display + Copy,
 {
+    pub(crate) fn new(rng: &mut impl Rng) -> Self {
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+
+        Self {
+            inner: BTreeMap::default(),
+            previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
+            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
+            rng: StdRng::from_seed(seed),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test() -> Self {
+        Self::new(&mut StdRng::seed_from_u64(0))
+    }
+
     pub(crate) fn clear(&mut self) {
         for (_, allocation) in std::mem::take(&mut self.inner) {
             self.previous_relays_by_ip
@@ -111,6 +130,9 @@ where
     ) -> UpsertResult {
         match self.inner.entry(rid) {
             Entry::Vacant(v) => {
+                let mut seed = [0u8; 32];
+                self.rng.fill_bytes(&mut seed);
+
                 v.insert(Allocation::new(
                     server,
                     username,
@@ -118,6 +140,7 @@ where
                     realm,
                     now,
                     self.buffer_pool.clone(),
+                    seed,
                 ));
 
                 UpsertResult::Added
@@ -131,6 +154,9 @@ where
                     return UpsertResult::Skipped;
                 }
 
+                let mut seed = [0u8; 32];
+                self.rng.fill_bytes(&mut seed);
+
                 let previous = o.insert(Allocation::new(
                     server,
                     username,
@@ -138,6 +164,7 @@ where
                     realm,
                     now,
                     self.buffer_pool.clone(),
+                    seed,
                 ));
 
                 self.previous_relays_by_ip
@@ -148,30 +175,30 @@ where
         }
     }
 
-    /// Sample an allocation for a new connection, biased towards low RTT.
+    /// Sample a relay for a new connection, biased towards low RTT.
     ///
     /// We compute an inclusion threshold from the observed RTT distribution
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
     /// or below it. Allocations without an RTT measurement are skipped: we
     /// don't know whether they are healthy yet.
-    pub(crate) fn sample(&self, rng: &mut impl Rng) -> Option<(RId, &Allocation)> {
+    pub(crate) fn sample(&mut self) -> Option<RId> {
         let candidates = self
             .inner
             .iter()
-            .filter_map(|(id, a)| Some((*id, a, a.rtt()?)))
+            .filter_map(|(id, a)| Some((*id, a.rtt()?)))
             .collect::<SmallVec<[_; 8]>>();
 
         let rtts = candidates
             .iter()
-            .map(|(_, _, rtt)| *rtt)
+            .map(|(_, rtt)| *rtt)
             .collect::<SmallVec<[_; 8]>>();
         let threshold = inclusion_threshold(&rtts)?;
 
         candidates
             .iter()
-            .filter(|(_, _, rtt)| *rtt <= threshold)
-            .choose(rng)
-            .map(|(id, a, _)| (*id, *a))
+            .filter(|(_, rtt)| *rtt <= threshold)
+            .choose(&mut self.rng)
+            .map(|(id, _)| *id)
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -202,11 +229,9 @@ where
     }
 
     /// Performs garbage-collection across all our allocations.
-    ///
-    /// Handling the resulting iterator is zero-cost if we end up not making any changes
-    /// because we will simply end up returning an empty iterator.
-    pub(crate) fn gc(&mut self) -> impl Iterator<Item = RId> + use<RId> {
-        self.inner
+    pub(crate) fn gc(&mut self) -> Gc<RId> {
+        let removed = self
+            .inner
             .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
@@ -219,8 +244,12 @@ where
                 None => false,
             })
             .map(|(rid, _)| rid)
-            .collect::<SmallVec<[_; 2]>>() // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
-            .into_iter()
+            .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+
+        Gc {
+            removed_last: !removed.is_empty() && self.inner.is_empty(),
+            removed,
+        }
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -311,27 +340,23 @@ pub(crate) enum UpsertResult {
     Replaced(Allocation),
 }
 
-impl<RId> Default for Allocations<RId> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-            previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries,
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
-        }
-    }
+/// The outcome of [`Allocations::gc`].
+pub(crate) struct Gc<RId> {
+    /// The removed allocations.
+    pub(crate) removed: SmallVec<[RId; 2]>,
+    /// Whether we removed the last remaining allocation.
+    pub(crate) removed_last: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
 
-    use rand::SeedableRng as _;
-
     use super::*;
 
     #[test]
     fn manual_remove_remembers_address() {
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -351,7 +376,7 @@ mod tests {
 
     #[test]
     fn clear_remembers_address() {
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -371,7 +396,7 @@ mod tests {
 
     #[test]
     fn replace_by_address_remembers_address() {
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
             RelaySocket::from(SERVER_V4),
@@ -394,6 +419,67 @@ mod tests {
             allocations.get_mut_by_server(SERVER_V4),
             MutAllocationRef::Disconnected
         ));
+    }
+
+    #[test]
+    fn gc_reports_removal_of_last_allocation() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        fail_allocations(&mut allocations, now);
+        let gc = allocations.gc();
+
+        assert_eq!(gc.removed.as_slice(), &[1]);
+        assert!(gc.removed_last);
+    }
+
+    #[test]
+    fn gc_does_not_report_last_removal_if_allocations_remain() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        let now = fail_allocations(&mut allocations, now);
+        allocations.upsert(
+            2,
+            RelaySocket::from(SERVER2_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+        let gc = allocations.gc();
+
+        assert_eq!(gc.removed.as_slice(), &[1]);
+        assert!(!gc.removed_last);
+    }
+
+    /// Advances time without ever answering the relays, failing all current allocations.
+    fn fail_allocations(allocations: &mut Allocations<u64>, mut now: Instant) -> Instant {
+        for _ in 0..60 {
+            now += Duration::from_secs(1);
+            allocations.handle_timeout(now);
+
+            while allocations.poll_transmit().is_some() {}
+            while allocations.poll_event().is_some() {}
+        }
+
+        now
     }
 
     #[test]
@@ -449,7 +535,7 @@ mod tests {
     #[test]
     fn sample_excludes_outlier_relay_among_many_fast_ones() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
 
         for (rid, port, rtt_ms) in [
             (1u32, 11111u16, 30),
@@ -471,11 +557,8 @@ mod tests {
                 .unwrap()
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
         for _ in 0..1000 {
-            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            let rid = allocations.sample().unwrap();
             assert_ne!(rid, 5, "outlier relay must not be selected");
         }
     }
@@ -483,7 +566,7 @@ mod tests {
     #[test]
     fn sample_distributes_load_across_similar_rtt_relays() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
 
         // 1ms apart: both relays should be picked roughly equally (uniform within bucket).
         for (rid, port, rtt_ms) in [(1u32, 11111u16, 30), (2, 22222, 31)] {
@@ -500,12 +583,10 @@ mod tests {
                 .unwrap()
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let mut counts = [0u32; 2];
 
         for _ in 0..10_000 {
-            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            let rid = allocations.sample().unwrap();
             counts[(rid - 1) as usize] += 1;
         }
 
@@ -519,7 +600,7 @@ mod tests {
     #[test]
     fn sample_excludes_n2_relay_when_much_slower() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
 
         // 30ms vs 200ms with n=2 ⇒ 200ms is 6.7x the leader, well outside 1.5x.
         for (rid, port, rtt_ms) in [(1u32, 11111u16, 30), (2, 22222, 200)] {
@@ -536,11 +617,8 @@ mod tests {
                 .unwrap()
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
         for _ in 0..100 {
-            let (rid, _) = allocations.sample(&mut rng).unwrap();
+            let rid = allocations.sample().unwrap();
             assert_eq!(rid, 1);
         }
     }
@@ -548,7 +626,7 @@ mod tests {
     #[test]
     fn sample_falls_back_to_only_remaining_relay_even_if_high_rtt() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
 
         allocations.upsert(
             1,
@@ -562,17 +640,14 @@ mod tests {
             .get_mut_by_id(&1)
             .unwrap()
             .set_rtt(Duration::from_millis(500));
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
-        let (rid, _) = allocations.sample(&mut rng).unwrap();
+        let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }
 
     #[test]
     fn sample_excludes_allocations_without_rtt() {
         let now = Instant::now();
-        let mut allocations = Allocations::default();
+        let mut allocations = Allocations::for_test();
 
         allocations.upsert(
             1,
@@ -582,11 +657,8 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
         assert_eq!(allocations.get_by_id(&1).unwrap().rtt(), None);
-        assert!(allocations.sample(&mut rng).is_none());
+        assert!(allocations.sample().is_none());
     }
 
     const SERVER_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111));

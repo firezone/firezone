@@ -467,4 +467,68 @@ defmodule Portal.Replication.DecoderTest do
       assert Decoder.decode_message(message) == expected
     end
   end
+
+  describe "decode_value/1" do
+    test "decodes a bytea hex literal into raw binary" do
+      column = %{type: "bytea", name: "psk_base"}
+
+      assert Decoder.decode_value({"\\x48656c6c6f", column}) == {"psk_base", "Hello"}
+    end
+
+    test "decodes a bytea literal with uppercase hex" do
+      column = %{type: "bytea", name: "ingest_signing_key"}
+
+      assert Decoder.decode_value({"\\xDEADBEEF", column}) ==
+               {"ingest_signing_key", <<0xDE, 0xAD, 0xBE, 0xEF>>}
+    end
+
+    test "decodes an empty bytea to an empty binary" do
+      column = %{type: "bytea", name: "psk_base"}
+
+      assert Decoder.decode_value({"\\x", column}) == {"psk_base", ""}
+    end
+
+    test "passes a non-hex bytea value through as-is" do
+      column = %{type: "bytea", name: "psk_base"}
+
+      assert Decoder.decode_value({"\\xzz", column}) == {"psk_base", "\\xzz"}
+    end
+
+    test "leaves a null bytea untouched" do
+      column = %{type: "bytea", name: "psk_base"}
+
+      assert Decoder.decode_value({nil, column}) == {"psk_base", nil}
+    end
+
+    test "leaves an unchanged-toast bytea untouched" do
+      column = %{type: "bytea", name: "psk_base"}
+
+      assert Decoder.decode_value({:unchanged_toast, column}) == {"psk_base", :unchanged_toast}
+    end
+
+    test "still decodes jsonb" do
+      column = %{type: "jsonb", name: "config"}
+
+      assert Decoder.decode_value({~s({"a":1}), column}) == {"config", %{"a" => 1}}
+    end
+
+    test "decodes bool t/f into booleans" do
+      column = %{type: "bool", name: "flow_log_uploads_enabled"}
+
+      assert Decoder.decode_value({"t", column}) == {"flow_log_uploads_enabled", true}
+      assert Decoder.decode_value({"f", column}) == {"flow_log_uploads_enabled", false}
+    end
+
+    test "leaves a null bool untouched" do
+      column = %{type: "bool", name: "flow_log_uploads_enabled"}
+
+      assert Decoder.decode_value({nil, column}) == {"flow_log_uploads_enabled", nil}
+    end
+
+    test "passes other types through unchanged" do
+      column = %{type: "text", name: "name"}
+
+      assert Decoder.decode_value({"prod-db", column}) == {"name", "prod-db"}
+    end
+  end
 end

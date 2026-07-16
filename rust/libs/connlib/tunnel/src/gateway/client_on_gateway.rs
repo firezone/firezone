@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::IpAddr;
 use std::time::Instant;
 
@@ -12,10 +12,9 @@ use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
-use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
-use crate::messages::Filter;
 use crate::messages::gateway::ResourceDescription;
+use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
@@ -27,7 +26,11 @@ pub struct ClientOnGateway {
     client_tun: IpConfig,
     gateway_tun: IpConfig,
 
-    flow_properties: flow_tracker::ClientProperties,
+    /// The portal's per-flow ingest token for each authorized resource.
+    ///
+    /// Recorded into a flow when it is created so the flow log can be attributed
+    /// and ingested. Has the same lifetime as the resource authorization.
+    ingest_tokens: HashMap<ResourceId, IngestToken>,
 
     resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
@@ -50,13 +53,12 @@ impl ClientOnGateway {
         id: ClientId,
         client_tun: IpConfig,
         gateway_tun: IpConfig,
-        flow_properties: flow_tracker::ClientProperties,
     ) -> ClientOnGateway {
         ClientOnGateway {
             id,
             client_tun,
             gateway_tun,
-            flow_properties,
+            ingest_tokens: HashMap::default(),
             resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
@@ -155,6 +157,7 @@ impl ClientOnGateway {
         while let Some(expiring_map::Event::EntryExpired { key, .. }) = self.resources.poll_event()
         {
             tracing::info!(%cid, rid = %key, "Access to resource expired");
+            self.ingest_tokens.remove(&key);
             any_expired = true;
         }
 
@@ -165,6 +168,7 @@ impl ClientOnGateway {
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.resources.remove(resource);
+        self.ingest_tokens.remove(resource);
         self.recalculate_filters();
     }
 
@@ -193,6 +197,11 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    /// Records the portal's per-flow ingest token for an authorized resource.
+    pub(crate) fn set_ingest_token(&mut self, rid: ResourceId, token: IngestToken) {
+        self.ingest_tokens.insert(rid, token);
+    }
+
     // Note: we only allow updating filters and names
     // but names updates have no effect on the gateway
     pub(crate) fn update_resource(&mut self, new_description: &ResourceDescription) {
@@ -211,10 +220,7 @@ impl ClientOnGateway {
         new_expiry: Instant,
         now: Instant,
     ) {
-        // A past `new_expiry` collapses to a zero TTL, evicting the
-        // entry on the next `handle_timeout` call.
-        let ttl = new_expiry.saturating_duration_since(now);
-        if !self.resources.update_expiry(&rid, now, ttl) {
+        if !self.resources.update_expiry_at(&rid, new_expiry, now) {
             tracing::debug!(%rid, "Unknown resource");
         }
     }
@@ -225,6 +231,7 @@ impl ClientOnGateway {
             .extract_if(|rid, _| !authorization.contains(rid))
         {
             tracing::info!(%rid, "Revoking resource authorization");
+            self.ingest_tokens.remove(&rid);
         }
 
         self.recalculate_filters();
@@ -353,7 +360,7 @@ impl ClientOnGateway {
             .classify_resource(packet.source(), packet.source_protocol())
             .with_context(|| UnroutablePacket::not_allowed(&packet))?;
 
-        flow_tracker::inbound_tun::record_resource(rid);
+        flow_tracker::record_resource(rid);
 
         Ok(packet)
     }
@@ -401,7 +408,7 @@ impl ClientOnGateway {
             ));
         }
 
-        flow_tracker::inbound_wg::record_domain(state.domain.clone());
+        flow_tracker::record_domain(state.domain.clone());
 
         let (source_protocol, real_ip) =
             self.nat_table
@@ -410,7 +417,6 @@ impl ClientOnGateway {
         packet
             .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
-        packet.update_checksum();
 
         Ok(TranslateOutboundResult::Send(packet))
     }
@@ -444,7 +450,6 @@ impl ClientOnGateway {
         packet
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
-        packet.update_checksum();
 
         Ok(packet)
     }
@@ -463,17 +468,12 @@ impl ClientOnGateway {
 
         let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
-        let Some(entry) = self.resources.get(&rid) else {
+        if !self.resources.contains_key(&rid) {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
             return Ok(());
-        };
-        let resource = &entry.value;
-
-        flow_tracker::inbound_wg::record_resource(
-            rid,
-            resource.name(),
-            resource.address(packet.destination()),
-        );
+        }
+        flow_tracker::record_resource(rid);
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
 
         Ok(())
     }
@@ -518,10 +518,6 @@ impl ClientOnGateway {
         self.id
     }
 
-    pub fn client_flow_properties(&self) -> flow_tracker::ClientProperties {
-        self.flow_properties.clone()
-    }
-
     pub fn client_tun(&self) -> IpConfig {
         self.client_tun
     }
@@ -530,12 +526,10 @@ impl ClientOnGateway {
 #[derive(Debug)]
 enum ResourceOnGateway {
     Cidr {
-        name: String,
         network: IpNetwork,
         filters: Vec<Filter>,
     },
     Dns {
-        name: String,
         address: String,
         domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
         filters: Vec<Filter>,
@@ -547,13 +541,11 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                name: r.name,
                 domains: BTreeMap::default(),
                 filters: r.filters,
                 address: r.address,
             },
             ResourceDescription::Cidr(r) => ResourceOnGateway::Cidr {
-                name: r.name,
                 network: r.address,
                 filters: r.filters,
             },
@@ -613,25 +605,6 @@ impl ResourceOnGateway {
 
     fn is_internet_resource(&self) -> bool {
         matches!(self, ResourceOnGateway::Internet)
-    }
-
-    fn name(&self) -> String {
-        match self {
-            ResourceOnGateway::Cidr { name, .. } => name.clone(),
-            ResourceOnGateway::Dns { name, .. } => name.clone(),
-            ResourceOnGateway::Internet => "Internet".to_owned(),
-        }
-    }
-
-    fn address(&self, dst: IpAddr) -> String {
-        match self {
-            ResourceOnGateway::Cidr { network, .. } => network.to_string(),
-            ResourceOnGateway::Dns { address, .. } => address.clone(),
-            ResourceOnGateway::Internet => match dst {
-                IpAddr::V4(_) => "0.0.0.0/0".to_owned(),
-                IpAddr::V6(_) => "::/0".to_owned(),
-            },
-        }
     }
 }
 
@@ -696,12 +669,7 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         let now = Instant::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -787,12 +755,7 @@ mod tests {
 
     #[test]
     fn re_adding_resource_with_past_expiry_clears_it_on_next_handle_timeout() {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         let now = Instant::now();
 
         peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
@@ -812,12 +775,7 @@ mod tests {
 
     #[test]
     fn allows_packets_for_and_from_gateway_tun_ip() {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         let request = ip_packet::make::tcp_packet(
             client_tun_ipv4(),
@@ -848,12 +806,7 @@ mod tests {
 
     #[test]
     fn dns_and_cidr_filters_dot_mix() {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(bar_cidr_resource(), None, Instant::now());
         peer.setup_nat(
@@ -919,12 +872,7 @@ mod tests {
 
     #[test]
     fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
         peer.setup_nat(
@@ -976,12 +924,7 @@ mod tests {
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
         let _guard = logging::test("trace");
 
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1049,12 +992,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1143,12 +1081,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(baz_dns_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1200,12 +1133,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1253,12 +1181,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(foo_dns_resource2(), None, Instant::now());
@@ -1327,12 +1250,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_tun(),
-            gateway_tun(),
-            flow_tracker::ClientProperties::default(),
-        );
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
             &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
@@ -1562,7 +1480,6 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
-            flow_tracker::ClientProperties::default(),
         );
         for (resource, _, _) in &resources {
             peer.add_resource(resource.clone(), None, Instant::now());
@@ -1616,7 +1533,6 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
-            flow_tracker::ClientProperties::default(),
         );
 
         for ((filters, _), resource_id) in std::iter::zip(&protocol_config, resources_ids) {
@@ -1676,7 +1592,6 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
-            flow_tracker::ClientProperties::default(),
         );
         let packet = match protocol {
             Protocol::Tcp { dport } => {
@@ -1735,7 +1650,6 @@ mod proptests {
                 v6: client_v6,
             },
             gateway_tun(),
-            flow_tracker::ClientProperties::default(),
         );
 
         let packet_allowed = match protocol_allowed {

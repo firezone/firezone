@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::anyhow;
 use bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use clap::Parser as _;
@@ -26,7 +29,12 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Cmd::Install => service::install(),
         Cmd::Run => service::run(cli.log_dir, cli.dns_control),
-        Cmd::RunInteractive => service::run_interactive(cli.dns_control),
+        #[cfg(debug_assertions)]
+        Cmd::RunInteractive {
+            skip_peer_verification,
+        } => service::run_interactive(cli.dns_control, skip_peer_verification),
+        #[cfg(not(debug_assertions))]
+        Cmd::RunInteractive {} => service::run_interactive(cli.dns_control, false),
         Cmd::RunSmokeTest => service::run_smoke_test(),
     }
 }
@@ -68,7 +76,15 @@ enum Cmd {
     Run,
     /// Run the Tunnel service in an interactive terminal instead of as a
     /// background service. Used for local development and debugging.
-    RunInteractive,
+    RunInteractive {
+        /// Skip verifying the identity of the connecting GUI (its installed
+        /// path on Linux, the pipe owner on Windows), so the interactive tunnel
+        /// service can be paired with a non-installed GUI build. Only exists in
+        /// debug builds, so release binaries can't disable the check.
+        #[cfg(debug_assertions)]
+        #[arg(long)]
+        skip_peer_verification: bool,
+    },
     RunSmokeTest,
 }
 
@@ -87,7 +103,7 @@ mod tests {
         let actual =
             Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-interactive"])
                 .unwrap();
-        assert!(matches!(actual.command, Cmd::RunInteractive));
+        assert!(matches!(actual.command, Cmd::RunInteractive { .. }));
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();

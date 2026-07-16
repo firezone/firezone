@@ -11,27 +11,39 @@
 //!   Unconnected sockets suffer silent head-drops in the AQM instead.
 //! - The route (and thus `so_pktheadroom`) is cached at connect time.
 //!
-//! We therefore connect a socket per `(source, destination)` pair on first send, all bound
-//! to the same local port as the unconnected catch-all socket. The kernel delivers inbound
-//! datagrams with an exact 4-tuple match to the connected socket in preference to the
-//! wildcard one. The catch-all remains as the wildcard receiver (ICE peer-reflexive
-//! traffic, NAT rebinds) and as the fallback when connecting fails.
+//! We therefore connect a socket per `(source, destination)` pair, all bound to the same
+//! local port as the unconnected catch-all socket. The kernel delivers inbound datagrams
+//! with an exact 4-tuple match to the connected socket in preference to the wildcard one.
+//! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
+//! rebinds) and as the fallback when connecting fails.
+//!
+//! Only pairs with real traffic get a flow socket, decided by two gates:
+//!
+//! - A single transmit carrying at least [`PROMOTE_BATCH_SIZE`] datagrams. Batching is
+//!   what `sendmsg_x` accelerates, and a batch that large only forms when the event loop
+//!   coalesces a queue's worth of same-destination datagrams in one cycle — i.e. exactly
+//!   when traffic is dense enough to benefit.
+//! - Sustaining [`PROMOTE_PACKETS_PER_SECOND`] across transmits. Paced senders (e.g.
+//!   constant-bitrate media) may never coalesce a batch yet still need the flow
+//!   advisories only a connected socket gets.
+//!
+//! Everything else — probes, keepalives, sparse control traffic — is served correctly by
+//! the catch-all socket and would otherwise thrash the bounded cache.
 
 use std::{
     collections::{BTreeMap, VecDeque},
-    io::{self, IoSliceMut},
+    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, Waker},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
-use bufferpool::BufferPool;
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::DatagramSegmentIter;
+use crate::{DatagramSegmentIter, RecvBuffers};
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -39,9 +51,28 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// so this is effectively the per-family cap.
 ///
 /// Apple devices only ever run Clients, so the steady-state working set is tiny:
-/// the connected gateway(s) and possibly a relay. The cap mainly bounds the burst
-/// of short-lived sockets during ICE connectivity checks.
-const MAX_FLOW_SOCKETS: usize = if cfg!(target_os = "ios") { 8 } else { 16 };
+/// the data-bearing gateway path(s) and the relays.
+const MAX_FLOW_SOCKETS: usize = 16;
+
+/// Datagrams a single transmit must carry for its pair to earn a flow socket.
+///
+/// Production batch-size percentiles inform this bound: incidental coalescence
+/// (interactive traffic, control chatter) keeps p95 below ~12 datagrams per transmit,
+/// while bulk transfers pin p99 at the send path's batch limit of 32. Half that limit
+/// clears the incidental band and is hit within moments by anything genuinely bulk.
+const PROMOTE_BATCH_SIZE: usize = 16;
+
+/// Datagrams a pair must send within [`RATE_WINDOW`] to earn a flow socket without batching.
+///
+/// This promotes paced senders whose transmits never coalesce, so their congestion shows
+/// up as flow advisories instead of silent AQM drops. Path probing cannot trip it: a
+/// probed pair peaks at ~5 packets within a second (the initial burst) and then idles at
+/// 1 packet per second, a 5x margin to this bound. Real paced traffic clears it easily —
+/// a single VoIP stream alone sends 33-50 packets per second.
+const PROMOTE_PACKETS_PER_SECOND: usize = 25;
+
+/// The window over which [`PROMOTE_PACKETS_PER_SECOND`] is measured.
+const RATE_WINDOW: Duration = Duration::from_secs(1);
 
 type Key = (Option<IpAddr>, SocketAddr);
 
@@ -54,10 +85,13 @@ pub(crate) struct SocketPool {
     /// The local address flow sockets bind to; they share the wildcard socket's port.
     local: SocketAddr,
     inner: Mutex<Inner>,
+    evictions: opentelemetry::metrics::Counter<u64>,
 }
 
 struct Inner {
     flows: BTreeMap<Key, Flow>,
+    /// Send rates of pairs that have not (yet) earned a flow socket.
+    rates: RateGate,
     /// Latched off the first time connecting a flow socket fails.
     ///
     /// A failure means the environment (e.g. the iOS Network Extension sandbox) doesn't permit
@@ -100,25 +134,29 @@ impl SocketPool {
             local,
             inner: Mutex::new(Inner {
                 flows: BTreeMap::new(),
+                rates: RateGate::default(),
                 flow_sockets_supported: true,
                 buffer_sizes: None,
                 drained: VecDeque::new(),
                 recv_waker: None,
                 round_robin: 0,
             }),
+            evictions: otel_instruments::flow_socket_evictions(),
         }
     }
 
-    /// Picks the socket to send a datagram for `(src, dst)` on.
+    /// Picks the socket to send a transmit of `datagrams` datagrams for `(src, dst)` on.
     ///
-    /// Connects (or reuses) a flow socket; on failure it falls back to the catch-all socket.
+    /// Reuses (or connects) a flow socket; pairs below the promotion threshold and
+    /// connect failures fall back to the catch-all socket.
     pub(crate) fn get_send_socket(
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
-        buffer_pool: &BufferPool<Vec<u8>>,
+        datagrams: usize,
+        recv_buffers: &RecvBuffers,
     ) -> Arc<OwnedSocket> {
-        self.get_or_connect(src, dst, buffer_pool)
+        self.get_or_connect(src, dst, datagrams, recv_buffers)
             .unwrap_or_else(|| self.wildcard.clone())
     }
 
@@ -182,14 +220,17 @@ impl SocketPool {
         }
     }
 
-    /// Returns the flow socket for the given `(src, dst)` pair, connecting a new one if needed.
+    /// Returns the flow socket for the given `(src, dst)` pair, connecting a new one once
+    /// the pair proves it sends big batches.
     ///
-    /// Returns `None` if connecting fails (or has failed before); see `Inner::flow_sockets_supported`.
+    /// Returns `None` for pairs below the promotion threshold and when connecting fails
+    /// (or has failed before); see `Inner::flow_sockets_supported`.
     fn get_or_connect(
         &self,
         src: Option<IpAddr>,
         dst: SocketAddr,
-        pool: &BufferPool<Vec<u8>>,
+        datagrams: usize,
+        recv_buffers: &RecvBuffers,
     ) -> Option<Arc<OwnedSocket>> {
         let key = (src, dst);
         let mut inner = self.lock();
@@ -202,13 +243,19 @@ impl SocketPool {
             return None;
         }
 
+        if datagrams < PROMOTE_BATCH_SIZE && !inner.rates.record(key, datagrams, Instant::now()) {
+            return None;
+        }
+
         if inner.flows.len() >= MAX_FLOW_SOCKETS {
-            evict_one(&mut inner, self.local.port(), pool);
+            evict_one(&mut inner, self.local.port(), recv_buffers, &self.evictions);
         }
 
         match connect(self.local, src, dst, inner.buffer_sizes) {
             Ok(socket) => {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
+
+                inner.rates.forget(&key);
 
                 let socket = Arc::new(socket);
                 inner.flows.insert(
@@ -276,8 +323,64 @@ impl Flow {
     }
 }
 
+/// Per-pair datagram counters over a fixed [`RATE_WINDOW`].
+///
+/// A tumbling window rather than a sliding one: counts reset when a window expires. That
+/// can at worst double the time to promotion (traffic split across two windows), which is
+/// fine — the gate only needs to separate sustained senders from probing, not be precise.
+#[derive(Default)]
+struct RateGate {
+    counters: BTreeMap<Key, RateCounter>,
+}
+
+struct RateCounter {
+    window_start: Instant,
+    datagrams: usize,
+}
+
+impl RateGate {
+    /// Records a transmit of `datagrams` for a pair; returns whether the pair crossed
+    /// [`PROMOTE_PACKETS_PER_SECOND`] within the current window and thus earned a flow socket.
+    fn record(&mut self, key: Key, datagrams: usize, now: Instant) -> bool {
+        // Pairs that stop sending (probed dead ends) leave counters behind; prune expired
+        // ones before growing the map so it stays bounded by concurrently-active pairs.
+        if self.counters.len() >= MAX_FLOW_SOCKETS * 4 && !self.counters.contains_key(&key) {
+            self.counters
+                .retain(|_, counter| now.duration_since(counter.window_start) < RATE_WINDOW);
+        }
+
+        let counter = self.counters.entry(key).or_insert(RateCounter {
+            window_start: now,
+            datagrams: 0,
+        });
+
+        if now.duration_since(counter.window_start) >= RATE_WINDOW {
+            counter.window_start = now;
+            counter.datagrams = 0;
+        }
+
+        counter.datagrams += datagrams;
+
+        if counter.datagrams >= PROMOTE_PACKETS_PER_SECOND {
+            self.counters.remove(&key);
+            return true;
+        }
+
+        false
+    }
+
+    fn forget(&mut self, key: &Key) {
+        self.counters.remove(key);
+    }
+}
+
 /// Evicts the flow socket that is least likely to still be useful.
-fn evict_one(inner: &mut Inner, port: u16, pool: &BufferPool<Vec<u8>>) {
+fn evict_one(
+    inner: &mut Inner,
+    port: u16,
+    recv_buffers: &RecvBuffers,
+    evictions: &opentelemetry::metrics::Counter<u64>,
+) {
     let Some(key) = inner
         .flows
         .iter()
@@ -295,7 +398,9 @@ fn evict_one(inner: &mut Inner, port: u16, pool: &BufferPool<Vec<u8>>) {
         return;
     };
 
-    drain(&victim, port, pool, &mut inner.drained);
+    evictions.add(1, &[]);
+
+    drain(&victim, port, recv_buffers, &mut inner.drained);
 
     if !inner.drained.is_empty()
         && let Some(waker) = inner.recv_waker.take()
@@ -327,25 +432,29 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
 fn drain(
     victim: &Flow,
     port: u16,
-    pool: &BufferPool<Vec<u8>>,
+    recv_buffers: &RecvBuffers,
     out: &mut VecDeque<DatagramSegmentIter>,
 ) {
     let socket = victim.socket.as_socket();
 
     loop {
-        let mut bufs = std::array::from_fn(|_| pool.pull());
-        let mut metas = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
+        let mut batch = recv_buffers.pull_batch();
 
         let len = {
-            let mut io_bufs = bufs.each_mut().map(|b| IoSliceMut::new(b));
+            let (mut io_bufs, metas) = batch.recv_slices();
 
-            match socket.recv(&mut io_bufs, &mut metas) {
+            match socket.recv(&mut io_bufs, metas) {
                 Ok(len) => len,
                 Err(_) => break, // Typically `WouldBlock`: the socket is dry.
             }
         };
 
-        out.push_back(DatagramSegmentIter::new(bufs, metas, port, len));
+        out.push_back(DatagramSegmentIter::new(
+            batch.buffers,
+            batch.metas,
+            port,
+            len,
+        ));
     }
 }
 
@@ -365,6 +474,7 @@ fn connect(
 
     if dst.is_ipv6() {
         socket.set_only_v6(true)?;
+        crate::prefer_stable_ipv6_source(&socket);
     }
 
     // Share the local port with the (unconnected) catch-all socket.
@@ -394,7 +504,7 @@ fn connect(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::net::Ipv4Addr;
 
     use super::*;
 
@@ -421,5 +531,66 @@ mod tests {
         let later = earlier + Duration::from_secs(60);
 
         assert!(eviction_rank(Some(earlier), earlier) < eviction_rank(Some(later), earlier));
+    }
+
+    const KEY: Key = (None, SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234));
+
+    #[test]
+    fn paced_sender_promotes_within_a_window() {
+        let mut gate = RateGate::default();
+        let start = Instant::now();
+
+        // 20ms pacing, one datagram per transmit: 50 packets/s.
+        let promoted = (0..PROMOTE_PACKETS_PER_SECOND)
+            .any(|i| gate.record(KEY, 1, start + Duration::from_millis(20 * i as u64)));
+
+        assert!(promoted);
+    }
+
+    #[test]
+    fn probe_cadence_never_promotes() {
+        let mut gate = RateGate::default();
+        let start = Instant::now();
+
+        // The initial probe burst: 4 packets within the first second ...
+        for gap in [0, 200, 500, 1000] {
+            assert!(!gate.record(KEY, 1, start + Duration::from_millis(gap)));
+        }
+
+        // ... then one probe per second, forever.
+        for i in 2..120 {
+            assert!(!gate.record(KEY, 1, start + Duration::from_secs(i)));
+        }
+    }
+
+    #[test]
+    fn expired_window_forgets_earlier_transmits() {
+        let mut gate = RateGate::default();
+        let start = Instant::now();
+
+        for _ in 0..PROMOTE_PACKETS_PER_SECOND - 1 {
+            assert!(!gate.record(KEY, 1, start));
+        }
+
+        // Just under the threshold again, but in a fresh window: no promotion.
+        let later = start + RATE_WINDOW;
+        for _ in 0..PROMOTE_PACKETS_PER_SECOND - 1 {
+            assert!(!gate.record(KEY, 1, later));
+        }
+    }
+
+    #[test]
+    fn stale_counters_are_pruned() {
+        let mut gate = RateGate::default();
+        let start = Instant::now();
+
+        for port in 0..MAX_FLOW_SOCKETS as u16 * 4 {
+            let key = (None, SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
+            gate.record(key, 1, start);
+        }
+
+        gate.record(KEY, 1, start + RATE_WINDOW);
+
+        assert_eq!(gate.counters.len(), 1);
     }
 }

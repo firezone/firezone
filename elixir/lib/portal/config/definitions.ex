@@ -122,6 +122,23 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The external URL the REST API will be accessible at.
+
+  Advertised as the server URL in the OpenAPI spec and SwaggerUI, and used to
+  permanent-redirect REST API requests that arrive on any other host. If not
+  set, it falls back to `api_external_url`.
+  """
+
+  defconfig(:rest_api_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   The API rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:api_refill_rate, :integer, default: 10)
@@ -140,6 +157,43 @@ defmodule Portal.Config.Definitions do
   The API socket rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
   """
   defconfig(:api_socket_capacity, :integer, default: 1)
+
+  @doc """
+  The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
+  """
+  defconfig(:api_ingestion_refill_rate, :integer, default: 1)
+
+  @doc """
+  The flow-log ingestion rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
+  """
+  defconfig(:api_ingestion_capacity, :integer, default: 1)
+
+  @doc """
+  How often, in seconds, clients and gateways upload batched flow logs to the ingest API.
+
+  The trade-off is request load on the API against how quickly flow logs become visible.
+  Set to `0` to disable flow log uploads entirely.
+  """
+  defconfig(:flow_logs_upload_interval_secs, :integer, default: 60)
+
+  @doc """
+  Maximum number of flow log records clients and gateways send per upload request.
+
+  Capped at 10,000 (the ingest API's per-request limit) by the data plane.
+  """
+  defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
+
+  @doc """
+  The base URL clients and gateways POST flow logs to.
+  """
+  defconfig(:flow_logs_api_url, :string,
+    default: "https://flow-api.firezone.dev/",
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
 
   @doc """
   The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
@@ -309,6 +363,21 @@ defmodule Portal.Config.Definitions do
   Password that will be used to access the PostgreSQL database.
   """
   defconfig(:database_password, :string, default: nil, sensitive: true)
+
+  @doc """
+  Authenticate database connections using Microsoft Entra instead of a password.
+
+  When enabled, DATABASE_PASSWORD is ignored and every connection attempt uses
+  a Microsoft Entra access token fetched from the Azure Instance Metadata
+  Service for the managed identity selected by AZURE_CLIENT_ID.
+  """
+  defconfig(:database_entra_auth, :boolean, default: false)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity used to fetch Microsoft
+  Entra access tokens when DATABASE_ENTRA_AUTH is enabled.
+  """
+  defconfig(:azure_client_id, :string, default: nil)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.

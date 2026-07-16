@@ -154,6 +154,7 @@ defmodule PortalWeb.Policies.Components do
   attr :policy, :any, default: nil
   attr :providers, :list, default: []
   attr :subject, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
   attr :confirm_state, :map, required: true
@@ -203,6 +204,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel_form={@panel.panel_form}
         panel_selected_resource={@panel.panel_selected_resource}
         panel_active_conditions={@conditions_state.panel_active_conditions}
@@ -216,6 +218,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         panel_form={@panel.panel_form}
         panel_selected_resource={@panel.panel_selected_resource}
         panel_active_conditions={@conditions_state.panel_active_conditions}
@@ -229,6 +232,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         tab={@panel.panel_tab}
         confirm_disable_policy={@confirm_state.confirm_disable_policy}
         confirm_delete_policy={@confirm_state.confirm_delete_policy}
@@ -244,6 +248,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
@@ -256,6 +261,7 @@ defmodule PortalWeb.Policies.Components do
     <div class="flex flex-col h-full overflow-hidden">
       <.policy_form_header mode={@mode} />
       <.form
+        id="policy-form"
         for={@panel_form}
         phx-submit="submit_policy_form"
         phx-change="change_policy_form"
@@ -266,6 +272,7 @@ defmodule PortalWeb.Policies.Components do
           mode={@mode}
           subject={@subject}
           providers={@providers}
+          flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
           panel_form={@panel_form}
           panel_selected_resource={@panel_selected_resource}
           panel_active_conditions={@panel_active_conditions}
@@ -297,6 +304,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
@@ -307,7 +315,13 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
       <.policy_form_error panel_form={@panel_form} />
-      <.policy_fields mode={@mode} panel_form={@panel_form} subject={@subject} />
+      <.policy_fields
+        mode={@mode}
+        panel_form={@panel_form}
+        panel_selected_resource={@panel_selected_resource}
+        subject={@subject}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+      />
       <.policy_conditions_section
         account={@account}
         mode={@mode}
@@ -339,7 +353,9 @@ defmodule PortalWeb.Policies.Components do
 
   attr :mode, :atom, required: true
   attr :panel_form, :any, default: nil
+  attr :panel_selected_resource, :any, default: nil
   attr :subject, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
 
   def policy_fields(assigns) do
     ~H"""
@@ -347,6 +363,11 @@ defmodule PortalWeb.Policies.Components do
       <.policy_group_field mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_resource_field mode={@mode} panel_form={@panel_form} subject={@subject} />
       <.policy_description_field panel_form={@panel_form} />
+      <.policy_flow_log_uploads_field
+        panel_form={@panel_form}
+        panel_selected_resource={@panel_selected_resource}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+      />
     </fieldset>
     """
   end
@@ -467,6 +488,76 @@ defmodule PortalWeb.Policies.Components do
     />
     """
   end
+
+  attr :panel_form, :any, default: nil
+  attr :panel_selected_resource, :any, default: nil
+  attr :flow_logs_feature_enabled?, :boolean, required: true
+
+  def policy_flow_log_uploads_field(assigns) do
+    ~H"""
+    <div :if={@flow_logs_feature_enabled? and not internet_resource?(@panel_selected_resource)}>
+      <.flow_log_uploads_toggle form={@panel_form} />
+      <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
+        Changing this setting expires all active connections created by this Policy;
+        users may experience a few seconds of interrupted connectivity.
+      </p>
+    </div>
+    <p
+      :if={@flow_logs_feature_enabled? and internet_resource?(@panel_selected_resource)}
+      class="text-xs text-subtle"
+    >
+      Flow log uploads are not available for the Internet Resource.
+    </p>
+    """
+  end
+
+  # Warn only when flipping the flag on an existing policy: the flip expires
+  # the policy's active authorizations so fresh ingest tokens get minted.
+  defp flow_log_uploads_changed?(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
+    not is_nil(changeset.data.id) and Map.has_key?(changeset.changes, :flow_log_uploads_enabled)
+  end
+
+  defp flow_log_uploads_changed?(_form), do: false
+
+  @doc """
+  The flow-log reporting toggle shared by every form that creates or edits a
+  policy. On by default (uploads default to on); posts the schema field
+  directly. Callers gate it behind the `flow_logs` feature flag, which each
+  LiveView checks once at mount.
+  """
+  attr :form, :any, required: true
+
+  def flow_log_uploads_toggle(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between py-1">
+      <div>
+        <p class="text-sm font-medium text-body">Flow log reporting</p>
+        <p class="text-[11px] text-subtle">
+          Report flow logs for connections created by this Policy
+        </p>
+      </div>
+      <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
+      <.toggle
+        id={@form[:flow_log_uploads_enabled].id}
+        name={@form[:flow_log_uploads_enabled].name}
+        value="true"
+        checked={flow_log_uploads_checked?(@form)}
+      />
+    </div>
+    """
+  end
+
+  # A map-backed form (the grant panels before first submit) has no value for
+  # the field; absent means the schema default, which is enabled.
+  defp flow_log_uploads_checked?(form) do
+    case form[:flow_log_uploads_enabled].value do
+      nil -> true
+      value -> Phoenix.HTML.Form.normalize_value("checkbox", value)
+    end
+  end
+
+  defp internet_resource?(%{type: :internet}), do: true
+  defp internet_resource?(_resource), do: false
 
   attr :mode, :atom, required: true
   attr :account, :any, required: true
@@ -627,6 +718,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
@@ -643,6 +735,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         tab={@tab}
         confirm_disable_policy={@confirm_disable_policy}
         confirm_delete_policy={@confirm_delete_policy}
@@ -658,6 +751,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
@@ -721,6 +815,7 @@ defmodule PortalWeb.Policies.Components do
       </div>
       <.policy_sidebar
         policy={@policy}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
         confirm_disable_policy={@confirm_disable_policy}
         confirm_delete_policy={@confirm_delete_policy}
       />
@@ -1073,13 +1168,17 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :policy, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
 
   def policy_sidebar(assigns) do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
-      <.policy_details_section policy={@policy} />
+      <.policy_details_section
+        policy={@policy}
+        flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
+      />
       <div class="border-t border-border"></div>
       <.policy_actions_section
         policy={@policy}
@@ -1092,6 +1191,7 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :policy, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
 
   def policy_details_section(assigns) do
     ~H"""
@@ -1110,6 +1210,12 @@ defmodule PortalWeb.Policies.Components do
           <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
           <dd class="text-xs text-body">
             <.relative_datetime datetime={@policy.inserted_at} />
+          </dd>
+        </div>
+        <div :if={@flow_logs_feature_enabled?}>
+          <dt class="text-[10px] text-subtle mb-0.5">Flow log reporting</dt>
+          <dd class="text-xs text-body">
+            {if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}
           </dd>
         </div>
         <div :if={@policy.description}>

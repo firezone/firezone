@@ -3,6 +3,23 @@ defmodule PortalWeb.NavigationComponents do
   use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
+  defmodule Database do
+    import Ecto.Query, only: [from: 2]
+    alias Portal.{Features, Safe}
+
+    def trust_anchors_feature_enabled? do
+      query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
+      Safe.unscoped(query, :replica) |> Safe.exists?()
+    end
+  end
+
+  @doc """
+  Returns whether the global `trust_anchors` feature flag is enabled. Callers
+  should compute this once in `mount/3` and pass it to `settings_nav/1` as the
+  `trust_anchors_enabled?` assign, rather than calling this on every render.
+  """
+  def trust_anchors_enabled?, do: Database.trust_anchors_feature_enabled?()
+
   @doc """
   Renders the top navigation bar.
   """
@@ -10,7 +27,7 @@ defmodule PortalWeb.NavigationComponents do
 
   def topbar(assigns) do
     ~H"""
-    <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-20">
+    <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
       <div class="flex items-center gap-2 text-sm text-body"></div>
       <div class="flex items-center gap-3">
         <a
@@ -129,7 +146,7 @@ defmodule PortalWeb.NavigationComponents do
     </ul>
     <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
       <li>
-        <form action={~p"/#{@subject.account}/sign_out"} method="post">
+        <form id="sign-out-form" action={~p"/#{@subject.account}/sign_out"} method="post">
           <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button
             type="submit"
@@ -268,6 +285,27 @@ defmodule PortalWeb.NavigationComponents do
             </.sidebar_item>
           </ul>
         </div>
+
+        <%!-- Audit --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+          >
+            Audit
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/change_logs"}
+              match="/#{@account.slug}/logs"
+              icon="ri-file-list-3-line"
+              badge="NEW"
+            >
+              Logs
+            </.sidebar_item>
+          </ul>
+        </div>
       </nav>
 
       <%!-- Settings --%>
@@ -327,9 +365,11 @@ defmodule PortalWeb.NavigationComponents do
   attr :navigate, :string, required: true
   slot :inner_block, required: true
   attr :current_path, :string, required: true
+  attr :badge, :string, default: nil
+  attr :match, :string, default: nil, doc: "Prefix used for the active-state check; defaults to navigate. Set to a shared parent when one sidebar item covers multiple sibling routes."
 
   def sidebar_item(assigns) do
-    active? = sidebar_item_active?(assigns.current_path, assigns.navigate)
+    active? = sidebar_item_active?(assigns.current_path, assigns.match || assigns.navigate)
     assigns = assign(assigns, :active?, active?)
 
     ~H"""
@@ -347,9 +387,16 @@ defmodule PortalWeb.NavigationComponents do
         <.icon name={@icon} class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
-          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
         >
           {render_slot(@inner_block)}
+        </span>
+        <span
+          :if={@badge}
+          data-sidebar-badge
+          class="ml-auto px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+        >
+          {@badge}
         </span>
       </.link>
     </li>
@@ -362,6 +409,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
+  attr :trust_anchors_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
@@ -449,6 +497,14 @@ defmodule PortalWeb.NavigationComponents do
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}
+          navigate={~p"/#{@account}/settings/log_sinks"}
+          tab_path="settings/log_sinks"
+          icon="ri-upload-cloud-2-fill"
+        >
+          Log Sinks
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
           navigate={~p"/#{@account}/settings/dns"}
           tab_path="settings/dns"
           icon="ri-global-fill"
@@ -462,6 +518,15 @@ defmodule PortalWeb.NavigationComponents do
           icon="ri-code-s-slash-fill"
         >
           REST API
+        </.settings_tab>
+        <.settings_tab
+          :if={@trust_anchors_enabled?}
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/trust_anchors"}
+          tab_path="settings/trust_anchors"
+          icon="ri-shield-check-fill"
+        >
+          Trust Anchors
         </.settings_tab>
       </div>
     </div>
@@ -497,6 +562,101 @@ defmodule PortalWeb.NavigationComponents do
   defp settings_tab_active?(current_path, tab_path) do
     [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
     String.starts_with?(current_subpath, tab_path)
+  end
+
+  @doc """
+  Renders the Logs page header and tab strip.
+  Shared across the four log LiveViews so they read as one destination.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+
+  def logs_nav(assigns) do
+    ~H"""
+    <div class="flex flex-col bg-surface shrink-0">
+      <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
+        <div class="flex items-start gap-5">
+          <div class="hidden md:block shrink-0 mt-0.5">
+            <.icon name="ri-file-list-3-line" class="w-16 h-16 text-brand" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div class="min-w-0">
+                <h1 class="text-base font-semibold text-heading">Logs</h1>
+                <p class="hidden md:block mt-0.5 text-sm text-body">
+                  Structured, immutable records of every configuration change, session, connection, and API call in your account.
+                </p>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <.docs_action path="/administer/logs" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex overflow-x-auto overflow-y-hidden border-b border-border px-6 shrink-0 bg-surface">
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/change_logs"}
+          tab_path="logs/change_logs"
+          icon="ri-history-line"
+        >
+          Change Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/session_logs"}
+          tab_path="logs/session_logs"
+          icon="ri-login-circle-line"
+        >
+          Session Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/flow_logs"}
+          tab_path="logs/flow_logs"
+          icon="ri-exchange-line"
+        >
+          Flow Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/api_request_logs"}
+          tab_path="logs/api_request_logs"
+          icon="ri-terminal-box-line"
+        >
+          API Request Logs
+        </.logs_tab>
+      </div>
+    </div>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
+  attr :tab_path, :string, required: true
+  attr :icon, :string, required: true
+  slot :inner_block, required: true
+
+  defp logs_tab(assigns) do
+    active? = settings_tab_active?(assigns.current_path, assigns.tab_path)
+    assigns = assign(assigns, :active?, active?)
+
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+        @active? && "border-brand text-brand",
+        not @active? &&
+          "border-transparent text-body hover:text-heading hover:border-border-strong"
+      ]}
+    >
+      <.icon name={@icon} class="w-4 h-4 shrink-0" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
   end
 
   defp format_member_since(nil), do: "—"

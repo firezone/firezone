@@ -31,26 +31,53 @@ fun ConnectedDeviceDetailsSheet(
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             SectionLabel("Connected Device")
 
-            DetailRow(label = "Tunnel IPv4:") {
-                Text(
-                    text = device.tunIpv4,
-                    fontFamily = FontFamily.Monospace,
-                    modifier =
-                        Modifier.clickable {
-                            ClipboardUtils.copyToClipboard(context, "Tunnel IPv4", device.tunIpv4)
-                        },
-                )
+            DetailRow(label = "Tunnel IPs:") {
+                Column {
+                    Text(
+                        text = device.tunIpv4,
+                        fontFamily = FontFamily.Monospace,
+                        modifier =
+                            Modifier.clickable {
+                                ClipboardUtils.copyToClipboard(
+                                    context,
+                                    "Tunnel IPv4",
+                                    device.tunIpv4,
+                                )
+                            },
+                    )
+                    Text(
+                        text = device.tunIpv6,
+                        fontFamily = FontFamily.Monospace,
+                        modifier =
+                            Modifier.clickable {
+                                ClipboardUtils.copyToClipboard(
+                                    context,
+                                    "Tunnel IPv6",
+                                    device.tunIpv6,
+                                )
+                            },
+                    )
+                }
             }
 
-            DetailRow(label = "Client ID:") {
-                Text(
-                    text = device.id,
-                    fontFamily = FontFamily.Monospace,
-                    modifier =
-                        Modifier.clickable {
-                            ClipboardUtils.copyToClipboard(context, "Client ID", device.id)
-                        },
-                )
+            DetailRow(label = "Client Details:") {
+                Column {
+                    Text(
+                        text = device.id,
+                        fontFamily = FontFamily.Monospace,
+                        modifier =
+                            Modifier.clickable {
+                                ClipboardUtils.copyToClipboard(context, "Client ID", device.id)
+                            },
+                    )
+                    Text(
+                        text = device.name,
+                        modifier =
+                            Modifier.clickable {
+                                ClipboardUtils.copyToClipboard(context, "Client Name", device.name)
+                            },
+                    )
+                }
             }
 
             if (device.pools.isNotEmpty()) {

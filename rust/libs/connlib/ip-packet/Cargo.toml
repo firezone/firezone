@@ -17,12 +17,18 @@ arbitrary = { workspace = true, optional = true, features = ["derive"] }
 bufferpool = { workspace = true }
 etherparse = { workspace = true, features = ["std"] }
 etherparse-ext = { workspace = true }
+incremental-inet-checksum = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+divan = { workspace = true }
 test-strategy = { workspace = true }
+
+[[bench]]
+name = "parse"
+harness = false
 
 [lints]
 workspace = true

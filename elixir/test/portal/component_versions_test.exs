@@ -4,13 +4,8 @@ defmodule Portal.ComponentVersionsTest do
   alias Portal.ComponentVersions
   alias Portal.Mocks.FirezoneWebsite
 
-  setup do
-    bypass = Bypass.open()
-    %{bypass: bypass}
-  end
-
   describe "fetch_versions/0" do
-    test "fetches versions from url", %{bypass: bypass} do
+    test "fetches versions from url" do
       versions = %{
         apple: "1.1.1",
         android: "1.1.1",
@@ -19,13 +14,13 @@ defmodule Portal.ComponentVersionsTest do
         headless: "1.1.1"
       }
 
-      FirezoneWebsite.mock_versions_endpoint(bypass, versions)
+      FirezoneWebsite.mock_versions_endpoint(versions)
 
       new_config =
         Portal.Config.get_env(:portal, ComponentVersions)
         |> Keyword.merge(
           fetch_from_url: true,
-          firezone_releases_url: "http://localhost:#{bypass.port}/api/releases"
+          firezone_releases_url: "https://www.firezone.dev/api/releases"
         )
 
       Portal.Config.put_env_override(ComponentVersions, new_config)

@@ -9,7 +9,7 @@ use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
 use is::Candidate;
 use logging::err_with_src;
-use rand::random;
+use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
@@ -37,6 +37,8 @@ use stun_codec::{
     rfc8656::attributes::AdditionalAddressFamily,
 };
 use tracing::{Span, field};
+
+use self::request::MessagePrototype;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 const REQUEST_MAX_ELAPSED: Duration = Duration::from_secs(8);
@@ -102,6 +104,8 @@ pub struct Allocation {
     rtt: Option<Duration>,
 
     buffer_pool: BufferPool<Vec<u8>>,
+
+    rng: StdRng,
 }
 
 #[derive(derive_more::Debug, Clone, Copy)]
@@ -226,6 +230,7 @@ impl Allocation {
         realm: Realm,
         now: Instant,
         buffer_pool: BufferPool<Vec<u8>>,
+        seed: [u8; 32],
     ) -> Self {
         let mut allocation = Self {
             server,
@@ -253,6 +258,7 @@ impl Allocation {
             explicit_failure: Default::default(),
             rtt: None,
             buffer_pool,
+            rng: StdRng::from_seed(seed),
         };
 
         allocation.send_binding_requests(now);
@@ -304,7 +310,7 @@ impl Allocation {
         let backoff = backoff::new(now, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
 
         self.authenticate_and_queue(
-            make_refresh_request(self.software.clone()),
+            MessagePrototype::refresh(self.software.clone()),
             Some(backoff),
             now,
         );
@@ -421,7 +427,11 @@ impl Allocation {
                     "Request failed, re-authenticating"
                 );
 
-                self.authenticate_and_queue(original_request, None, now);
+                self.authenticate_and_queue(
+                    MessagePrototype::from_request(&original_request),
+                    None,
+                    now,
+                );
 
                 return true;
             }
@@ -435,7 +445,7 @@ impl Allocation {
                         // AllocationMismatch during allocate means we already have an allocation.
                         // Delete it.
                         self.authenticate_and_queue(
-                            make_delete_allocation_request(self.software.clone()),
+                            MessagePrototype::delete_allocation(self.software.clone()),
                             None,
                             now,
                         );
@@ -446,7 +456,7 @@ impl Allocation {
                         // AllocationMismatch for refresh means we don't have an allocation.
                         // Make one.
                         self.authenticate_and_queue(
-                            make_allocate_request(self.software.clone()),
+                            MessagePrototype::allocate(self.software.clone()),
                             None,
                             now,
                         );
@@ -457,7 +467,7 @@ impl Allocation {
                         // AllocationMismatch for channel-bind means we don't have an allocation.
                         // Make one.
                         self.authenticate_and_queue(
-                            make_allocate_request(self.software.clone()),
+                            MessagePrototype::allocate(self.software.clone()),
                             None,
                             now,
                         );
@@ -580,13 +590,13 @@ impl Allocation {
 
                 if self.has_allocation() {
                     self.authenticate_and_queue(
-                        make_refresh_request(self.software.clone()),
+                        MessagePrototype::refresh(self.software.clone()),
                         None,
                         now,
                     );
                 } else {
                     self.authenticate_and_queue(
-                        make_allocate_request(self.software.clone()),
+                        MessagePrototype::allocate(self.software.clone()),
                         None,
                         now,
                     );
@@ -643,7 +653,7 @@ impl Allocation {
                 // Make a new one.
                 if lifetime.lifetime().is_zero() {
                     self.authenticate_and_queue(
-                        make_allocate_request(self.software.clone()),
+                        MessagePrototype::allocate(self.software.clone()),
                         None,
                         now,
                     );
@@ -725,7 +735,8 @@ impl Allocation {
         {
             tracing::debug!("Sending STUN binding as keep-alive");
 
-            self.queue(addr, make_binding_request(self.software.clone()), None, now);
+            let request = MessagePrototype::binding(self.software.clone()).seal(&mut self.rng);
+            self.queue(addr, request, None, now);
         }
 
         while let Some(timed_out_request) = self
@@ -748,7 +759,11 @@ impl Allocation {
             let needs_auth = method != BINDING;
 
             let queued = if needs_auth {
-                self.authenticate_and_queue(request, Some(backoff), now)
+                self.authenticate_and_queue(
+                    MessagePrototype::from_request(&request),
+                    Some(backoff),
+                    now,
+                )
             } else {
                 self.queue(dst, request, Some(backoff), now)
             };
@@ -774,7 +789,11 @@ impl Allocation {
             && !self.refresh_in_flight()
         {
             tracing::debug!("Allocation is due for a refresh");
-            self.authenticate_and_queue(make_refresh_request(self.software.clone()), None, now);
+            self.authenticate_and_queue(
+                MessagePrototype::refresh(self.software.clone()),
+                None,
+                now,
+            );
         }
 
         let channel_refresh_messages = self
@@ -785,7 +804,9 @@ impl Allocation {
             .inspect(|(number, peer)| {
                 tracing::debug!(%number, %peer, "Channel is due for a refresh");
             })
-            .map(|(number, peer)| make_channel_bind_request(peer, number, self.software.clone()))
+            .map(|(number, peer)| {
+                MessagePrototype::channel_bind(peer, number, self.software.clone())
+            })
             .collect::<SmallVec<[_; 16]>>();
 
         for message in channel_refresh_messages {
@@ -871,7 +892,7 @@ impl Allocation {
         tracing::debug!(number = %channel, "Binding new channel");
 
         self.authenticate_and_queue(
-            make_channel_bind_request(peer, channel, self.software.clone()),
+            MessagePrototype::channel_bind(peer, channel, self.software.clone()),
             None,
             now,
         );
@@ -895,6 +916,8 @@ impl Allocation {
         let channel_number = match connected_channel_to_peer.or(inflight_channel_to_peer) {
             Some(cn) => cn,
             None => {
+                tracing::debug!(%peer, "Dropping packet; no channel bound to peer yet");
+
                 self.bind_channel(peer, now);
 
                 return None;
@@ -941,6 +964,11 @@ impl Allocation {
 
     pub fn received_any_response(&self) -> bool {
         self.active_socket.is_some()
+    }
+
+    /// The relay socket we are currently sending to, if one has been selected.
+    pub fn active_socket(&self) -> Option<SocketAddr> {
+        Some(self.active_socket.as_ref()?.addr)
     }
 
     pub fn has_credentials(&self) -> bool {
@@ -1110,34 +1138,28 @@ impl Allocation {
         tracing::debug!(relay_socket = ?self.server, "Sending BINDING requests to pick active socket");
 
         if let Some(v4) = self.server.as_v4() {
-            self.queue(
-                (*v4).into(),
-                make_binding_request(self.software.clone()),
-                None,
-                now,
-            );
+            let dst: SocketAddr = (*v4).into();
+            let request = MessagePrototype::binding(self.software.clone()).seal(&mut self.rng);
+            self.queue(dst, request, None, now);
         }
         if let Some(v6) = self.server.as_v6() {
-            self.queue(
-                (*v6).into(),
-                make_binding_request(self.software.clone()),
-                None,
-                now,
-            );
+            let dst: SocketAddr = (*v6).into();
+            let request = MessagePrototype::binding(self.software.clone()).seal(&mut self.rng);
+            self.queue(dst, request, None, now);
         }
     }
 
     /// Returns: Whether we actually queued a message.
     fn authenticate_and_queue(
         &mut self,
-        message: Message<Attribute>,
+        request: MessagePrototype,
         backoff: Option<ExponentialBackoff>,
         now: Instant,
     ) -> bool {
         let Some(active_socket) = self.active_socket else {
             tracing::debug!(
                 "Unable to queue {} because we haven't nominated a socket yet",
-                message.method()
+                request.method()
             );
             return false;
         };
@@ -1145,12 +1167,12 @@ impl Allocation {
         let Some(credentials) = &self.credentials else {
             tracing::debug!(
                 "Unable to queue {} because we don't have credentials",
-                message.method()
+                request.method()
             );
             return false;
         };
 
-        let authenticated_message = authenticate(message, credentials);
+        let authenticated_message = request.authenticate(&mut self.rng, credentials);
         self.queue(active_socket.addr, authenticated_message, backoff, now)
     }
 
@@ -1246,40 +1268,6 @@ impl ActiveSocket {
     }
 }
 
-fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
-    let attributes = message
-        .attributes()
-        .filter(|a| !matches!(a, Attribute::Nonce(_)))
-        .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
-        .filter(|a| !matches!(a, Attribute::Realm(_)))
-        .filter(|a| !matches!(a, Attribute::Username(_)))
-        .cloned()
-        .chain([
-            Attribute::Username(credentials.username.clone()),
-            Attribute::Realm(credentials.realm.clone()),
-        ])
-        .chain(credentials.nonce.clone().map(Attribute::Nonce));
-
-    let transaction_id = TransactionId::new(random());
-    let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
-
-    for attribute in attributes {
-        message.add_attribute(attribute.to_owned());
-    }
-
-    let message_integrity = MessageIntegrity::new_long_term_credential(
-        &message,
-        &credentials.username,
-        &credentials.realm,
-        &credentials.password,
-    )
-    .expect("signing never fails");
-
-    message.add_attribute(message_integrity);
-
-    message
-}
-
 /// Updates the current candidate to the new one if it differs.
 ///
 /// Returns whether the candidate got updated.
@@ -1307,65 +1295,146 @@ fn update_candidate(
     }
 }
 
-fn make_binding_request(software: Software) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::Request, BINDING, TransactionId::new(random()));
-    message.add_attribute(software);
+/// Construction of the STUN/TURN requests this module sends.
+///
+/// Every request is built as a [`MessagePrototype`] that does **not** carry a
+/// transaction ID. The only ways to turn it into a sendable [`Message`] are
+/// [`MessagePrototype::seal`] (unauthenticated `BINDING` requests) and
+/// [`MessagePrototype::authenticate`] (all other, authenticated requests). Both
+/// sample a fresh transaction ID, making it impossible to (re-)send a request
+/// without one.
+mod request {
+    use super::*;
+    use rand::Rng;
+    use stun_codec::Method;
 
-    message
-}
+    pub(super) struct MessagePrototype {
+        method: Method,
+        attributes: Vec<Attribute>,
+    }
 
-fn make_allocate_request(software: Software) -> Message<Attribute> {
-    let mut message = Message::new(
-        MessageClass::Request,
-        ALLOCATE,
-        TransactionId::new(random()),
-    );
+    impl MessagePrototype {
+        fn new(method: Method, attributes: Vec<Attribute>) -> Self {
+            Self { method, attributes }
+        }
 
-    message.add_attribute(RequestedTransport::new(17));
-    message.add_attribute(AdditionalAddressFamily::new(
-        stun_codec::rfc8656::attributes::AddressFamily::V6,
-    ));
-    message.add_attribute(software);
+        pub(super) fn binding(software: Software) -> Self {
+            Self::new(BINDING, vec![software.into()])
+        }
 
-    message
-}
+        pub(super) fn allocate(software: Software) -> Self {
+            Self::new(ALLOCATE, transport_attributes(software))
+        }
 
-/// To delete an allocation, we need to refresh it with a lifetime of 0.
-fn make_delete_allocation_request(software: Software) -> Message<Attribute> {
-    let mut refresh = make_refresh_request(software);
-    refresh.add_attribute(Lifetime::from_u32(0));
+        pub(super) fn refresh(software: Software) -> Self {
+            Self::new(REFRESH, transport_attributes(software))
+        }
 
-    refresh
-}
+        /// To delete an allocation, we refresh it with a lifetime of 0.
+        pub(super) fn delete_allocation(software: Software) -> Self {
+            let mut prototype = Self::refresh(software);
+            prototype.attributes.push(Lifetime::from_u32(0).into());
 
-fn make_refresh_request(software: Software) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::Request, REFRESH, TransactionId::new(random()));
+            prototype
+        }
 
-    message.add_attribute(RequestedTransport::new(17));
-    message.add_attribute(AdditionalAddressFamily::new(
-        stun_codec::rfc8656::attributes::AddressFamily::V6,
-    ));
-    message.add_attribute(software);
+        pub(super) fn channel_bind(target: SocketAddr, channel: u16, software: Software) -> Self {
+            Self::new(
+                CHANNEL_BIND,
+                vec![
+                    XorPeerAddress::new(target).into(),
+                    // Panic is fine here, because we control the channel number within this module.
+                    ChannelNumber::new(channel)
+                        .expect("channel number out of range")
+                        .into(),
+                    software.into(),
+                ],
+            )
+        }
 
-    message
-}
+        /// Reconstruct a prototype from a previously-sent request so it can be
+        /// re-authenticated, dropping any stale authentication attributes.
+        pub(super) fn from_request(message: &Message<Attribute>) -> Self {
+            let attributes = message
+                .attributes()
+                .filter(|a| !is_authentication_attribute(a))
+                .cloned()
+                .collect();
 
-fn make_channel_bind_request(
-    target: SocketAddr,
-    channel: u16,
-    software: Software,
-) -> Message<Attribute> {
-    let mut message = Message::new(
-        MessageClass::Request,
-        CHANNEL_BIND,
-        TransactionId::new(random()),
-    );
+            Self::new(message.method(), attributes)
+        }
 
-    message.add_attribute(XorPeerAddress::new(target));
-    message.add_attribute(ChannelNumber::new(channel).expect("channel number out of range")); // Panic is fine here, because we control the channel number within this module.
-    message.add_attribute(software);
+        pub(super) fn method(&self) -> Method {
+            self.method
+        }
 
-    message
+        /// Finalise an unauthenticated request (i.e. a `BINDING` request).
+        pub(super) fn seal(self, rng: &mut impl Rng) -> Message<Attribute> {
+            let mut message =
+                Message::new(MessageClass::Request, self.method, new_transaction_id(rng));
+
+            for attribute in self.attributes {
+                message.add_attribute(attribute);
+            }
+
+            message
+        }
+
+        /// Finalise an authenticated request by attaching a long-term credential.
+        pub(super) fn authenticate(
+            self,
+            rng: &mut impl Rng,
+            credentials: &Credentials,
+        ) -> Message<Attribute> {
+            let mut message =
+                Message::new(MessageClass::Request, self.method, new_transaction_id(rng));
+
+            for attribute in self.attributes {
+                message.add_attribute(attribute);
+            }
+            message.add_attribute(Attribute::Username(credentials.username.clone()));
+            message.add_attribute(Attribute::Realm(credentials.realm.clone()));
+            if let Some(nonce) = credentials.nonce.clone() {
+                message.add_attribute(Attribute::Nonce(nonce));
+            }
+
+            let message_integrity = MessageIntegrity::new_long_term_credential(
+                &message,
+                &credentials.username,
+                &credentials.realm,
+                &credentials.password,
+            )
+            .expect("signing never fails");
+            message.add_attribute(message_integrity);
+
+            message
+        }
+    }
+
+    fn transport_attributes(software: Software) -> Vec<Attribute> {
+        vec![
+            RequestedTransport::new(17).into(),
+            AdditionalAddressFamily::new(stun_codec::rfc8656::attributes::AddressFamily::V6).into(),
+            software.into(),
+        ]
+    }
+
+    fn new_transaction_id(rng: &mut impl Rng) -> TransactionId {
+        let mut bytes = [0u8; 12];
+        rng.fill_bytes(&mut bytes);
+
+        TransactionId::new(bytes)
+    }
+
+    fn is_authentication_attribute(attribute: &Attribute) -> bool {
+        matches!(
+            attribute,
+            Attribute::Nonce(_)
+                | Attribute::MessageIntegrity(_)
+                | Attribute::Realm(_)
+                | Attribute::Username(_)
+        )
+    }
 }
 
 fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
@@ -2997,6 +3066,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
                 BufferPool::new(500, "test"),
+                [0; 32],
             )
         }
 
@@ -3011,6 +3081,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
                 BufferPool::new(500, "test"),
+                [1; 32],
             )
         }
 

@@ -31,16 +31,19 @@ config :portal, Portal.Repo.Web, db_opts
 config :portal, Portal.Repo.Api, db_opts
 config :portal, Portal.Repo.Replica.Web, db_opts
 config :portal, Portal.Repo.Replica.Api, db_opts
+config :portal, Portal.Repo.Poller, db_opts
+config :portal, Portal.Repo.Replica.Poller, db_opts
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+# Poll fast locally so live updates and change logs appear without a wait
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: db_opts[:database] <> "_clog_slot",
   publication_name: db_opts[:database] <> "_clog_pub",
-  connection_opts: db_opts
+  poll_interval: :timer.seconds(1)
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: db_opts[:database] <> "_changes_slot",
   publication_name: db_opts[:database] <> "_changes_pub",
-  connection_opts: db_opts
+  poll_interval: 250
 
 config :portal, outbound_email_adapter_configured?: true
 
@@ -76,6 +79,9 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Entra.Scheduler},
        {worker_dev_schedule, Portal.Google.Scheduler},
        {worker_dev_schedule, Portal.Okta.Scheduler},
+       {worker_dev_schedule, Portal.Splunk.Scheduler},
+       {worker_dev_schedule, Portal.Datadog.Scheduler},
+       {worker_dev_schedule, Portal.NewRelic.Scheduler},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
@@ -88,13 +94,16 @@ config :portal, Oban,
         args: %{provider: "entra", frequency: "weekly"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "weekly"}},
+       {worker_dev_schedule, Portal.Workers.LogSinkErrorNotification},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPolicyAuthorizations},
        {worker_dev_schedule, Portal.Workers.CheckAccountLimits},
        {worker_dev_schedule, Portal.Workers.OutdatedGateways},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
+       {worker_dev_schedule, Portal.Workers.DeleteRotatedGatewayTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
+       {worker_dev_schedule, Portal.Workers.PartitionFlowLogs},
        {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
      ]}
   ],
@@ -106,6 +115,12 @@ config :portal, Oban,
     google_sync: 5,
     okta_scheduler: 1,
     okta_sync: 5,
+    splunk_scheduler: 1,
+    splunk_sync: 5,
+    datadog_scheduler: 1,
+    datadog_sync: 5,
+    newrelic_scheduler: 1,
+    newrelic_sync: 5,
     sync_error_notifications: 1,
     outbound_emails: 1
   ],
@@ -114,6 +129,16 @@ config :portal, Oban,
 
 config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
+
+# Splunk Cloud trial stacks serve HEC (port 8088) with a certificate from
+# Splunk's own CA, which no public trust store contains. Skip verification in
+# dev only so trial stacks are testable; prod verifies.
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    connect_options: [
+      transport_opts: [verify: :verify_none]
+    ]
+  ]
 
 ###############################
 ##### PortalWeb Endpoint ######
@@ -243,3 +268,18 @@ config :portal, Portal.Mailer.Secondary, adapter: Swoosh.Adapters.Local
 
 config :sentry,
   environment_name: :dev
+
+config :portal, Portal.Telemetry, metrics_debug: false
+
+if otlp_endpoint = System.get_env("OTLP_ENDPOINT") do
+  config :opentelemetry_experimental,
+    readers: [
+      %{
+        module: :otel_metric_reader,
+        config: %{
+          export_interval_ms: 30_000,
+          exporter: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
+        }
+      }
+    ]
+end

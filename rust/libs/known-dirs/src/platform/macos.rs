@@ -22,6 +22,13 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(PathBuf::from("/Library/Logs").join(BUNDLE_ID))
 }
 
+/// Spool directory for flow logs
+///
+/// `None` on macOS: the Swift app owns spooling and passes its directory over FFI.
+pub fn flow_logs() -> Option<PathBuf> {
+    None
+}
+
 /// User-specific logs directory
 pub fn logs() -> Option<PathBuf> {
     Some(

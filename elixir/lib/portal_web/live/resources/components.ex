@@ -5,7 +5,15 @@ defmodule PortalWeb.Resources.Components do
     only: [
       grant_condition_card: 1,
       available_conditions: 1,
-      condition_type_label: 1
+      condition_type_label: 1,
+      flow_log_uploads_toggle: 1
+    ]
+
+  import PortalWeb.Clients.Components,
+    only: [
+      client_status_badge: 1,
+      client_verified_badge: 1,
+      client_os: 1
     ]
 
   alias __MODULE__.Database
@@ -963,6 +971,7 @@ defmodule PortalWeb.Resources.Components do
         </div>
       </div>
       <.form
+        id="resource-form"
         for={@resource_form}
         phx-submit="submit_resource_form"
         phx-change="change_resource_form"
@@ -1017,7 +1026,10 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :pool_member_ids, :list, default: []
+  attr :pool_clients, :list, default: []
+  attr :clients_expanded_id, :string, default: nil
   attr :online_client_ids, :any, default: %MapSet{}
   attr :presence_tick, :integer, default: 0
   attr :groups, :list, default: []
@@ -1074,9 +1086,19 @@ defmodule PortalWeb.Resources.Components do
       <div class="flex flex-1 min-h-0 divide-x divide-border">
         <div class="flex-1 flex flex-col overflow-hidden">
           <.resource_tabs
+            resource={@resource}
             tab={@tab}
             groups_count={length(@groups)}
+            clients_count={length(@pool_clients)}
             panel_view={@panel_view}
+          />
+          <.resource_clients_tab
+            :if={@tab == :clients}
+            account={@account}
+            clients={@pool_clients}
+            online_client_ids={@online_client_ids}
+            presence_tick={@presence_tick}
+            expanded_id={@clients_expanded_id}
           />
           <.resource_access_list
             :if={@tab == :groups && @panel_view == :list}
@@ -1088,6 +1110,7 @@ defmodule PortalWeb.Resources.Components do
             :if={@tab == :groups && @panel_view == :grant_form}
             account={@account}
             resource={@resource}
+            flow_logs_feature_enabled?={@flow_logs_feature_enabled?}
             grant_state={@grant_state}
           />
           <.resource_policy_authorizations_tab
@@ -1111,8 +1134,10 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  attr :resource, :any, required: true
   attr :tab, :atom, required: true
   attr :groups_count, :integer, default: 0
+  attr :clients_count, :integer, default: 0
   attr :panel_view, :atom, required: true
 
   def resource_tabs(assigns) do
@@ -1121,6 +1146,31 @@ defmodule PortalWeb.Resources.Components do
       role="tablist"
       class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
     >
+      <button
+        :if={@resource.type == :static_device_pool}
+        role="tab"
+        aria-selected={@tab == :clients}
+        phx-click="switch_resource_tab"
+        phx-value-tab="clients"
+        class={[
+          "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+          if(@tab == :clients,
+            do: "border-brand text-brand",
+            else: "border-transparent text-body hover:text-heading"
+          )
+        ]}
+      >
+        Pool Members
+        <span class={[
+          "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
+          if(@tab == :clients,
+            do: "bg-brand-muted text-brand",
+            else: "bg-raised text-subtle"
+          )
+        ]}>
+          {@clients_count}
+        </span>
+      </button>
       <button
         role="tab"
         aria-selected={@tab == :groups}
@@ -1164,6 +1214,126 @@ defmodule PortalWeb.Resources.Components do
         <.button phx-click="open_grant_form" size="xs" icon="ri-add-line">
           Grant access
         </.button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :clients, :list, default: []
+  attr :online_client_ids, :any, default: %MapSet{}
+  attr :presence_tick, :integer, default: 0
+  attr :expanded_id, :string, default: nil
+
+  def resource_clients_tab(assigns) do
+    ~H"""
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div
+        :if={@clients == []}
+        class="flex flex-col items-center justify-center h-full gap-2 text-subtle"
+      >
+        <.icon name="ri-computer-line" class="w-8 h-8" />
+        <p class="text-sm">No clients in this pool</p>
+      </div>
+      <div :if={@clients != []} class="flex-1 overflow-y-auto">
+        <table class="w-full text-xs">
+          <thead class="sticky top-0 bg-surface z-10">
+            <tr class="border-b border-border text-subtle">
+              <th class="text-left px-4 py-2 font-medium">Name</th>
+              <th class="text-left px-4 py-2 font-medium">Owner</th>
+              <th class="text-left px-4 py-2 font-medium">Tunnel IPv4</th>
+              <th class="text-left px-4 py-2 font-medium">Status</th>
+              <th class="w-6"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for client <- @clients do %>
+              <tr
+                phx-click="toggle_pool_client_row"
+                phx-keydown="toggle_pool_client_row"
+                phx-key="Enter"
+                phx-value-id={client.id}
+                tabindex="0"
+                class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
+              >
+                <td class="px-4 py-2 text-heading">
+                  <div class="flex items-center gap-1.5">
+                    <span class="truncate">{client.name}</span>
+                    <.client_verified_badge client={client} />
+                  </div>
+                </td>
+                <td class="px-4 py-2 text-body">
+                  {if client.actor, do: client.actor.name, else: "—"}
+                </td>
+                <td class="px-4 py-2 text-subtle font-mono">
+                  {client.ipv4}
+                </td>
+                <td class="px-4 py-2">
+                  <.client_status_badge online?={MapSet.member?(@online_client_ids, client.id)} />
+                </td>
+                <td class="px-4 py-2 text-subtle">
+                  <.icon
+                    name={
+                      if @expanded_id == client.id,
+                        do: "ri-arrow-up-s-line",
+                        else: "ri-arrow-down-s-line"
+                    }
+                    class="w-4 h-4"
+                  />
+                </td>
+              </tr>
+              <tr :if={@expanded_id == client.id} class="border-b border-border bg-raised">
+                <td colspan="5" class="px-4 py-3">
+                  <div class="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
+                    <div :if={client.actor}>
+                      <p class="text-subtle font-medium mb-1">Owner</p>
+                      <.link
+                        navigate={~p"/#{@account}/actors/#{client.actor.id}"}
+                        class="text-brand hover:underline"
+                      >
+                        {client.actor.name}
+                      </.link>
+                      <p :if={client.actor.email} class="text-subtle mt-0.5">
+                        {client.actor.email}
+                      </p>
+                    </div>
+                    <div :if={client.latest_session}>
+                      <p class="text-subtle font-medium mb-1">Operating System</p>
+                      <.client_os client={client} />
+                    </div>
+                    <div>
+                      <p class="text-subtle font-medium mb-1">Tunnel IPv4</p>
+                      <p class="text-heading font-mono">{client.ipv4}</p>
+                    </div>
+                    <div>
+                      <p class="text-subtle font-medium mb-1">Tunnel IPv6</p>
+                      <p class="text-heading font-mono break-all">{client.ipv6}</p>
+                    </div>
+                    <div :if={client.latest_session}>
+                      <p class="text-subtle font-medium mb-1">Last Seen</p>
+                      <p class="text-heading">
+                        <.relative_datetime datetime={client.latest_session.inserted_at} />
+                      </p>
+                    </div>
+                    <div :if={client.device_serial}>
+                      <p class="text-subtle font-medium mb-1">Serial Number</p>
+                      <p class="text-heading font-mono">{client.device_serial}</p>
+                    </div>
+                    <div>
+                      <p class="text-subtle font-medium mb-1">Client</p>
+                      <.link
+                        navigate={~p"/#{@account}/clients/#{client.id}"}
+                        class="text-brand hover:underline font-mono break-all"
+                      >
+                        {client.id}
+                      </.link>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
       </div>
     </div>
     """
@@ -1296,6 +1466,7 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
+  attr :flow_logs_feature_enabled?, :boolean, required: true
   attr :grant_state, :map, required: true
 
   def resource_grant_form(assigns) do
@@ -1525,6 +1696,12 @@ defmodule PortalWeb.Resources.Components do
                 />
               </div>
             <% end %>
+          </div>
+          <div
+            :if={@resource.type != :internet and @flow_logs_feature_enabled?}
+            class="border-t border-border pt-4"
+          >
+            <.flow_log_uploads_toggle form={@grant_form} />
           </div>
         </div>
       </div>
@@ -1980,6 +2157,7 @@ defmodule PortalWeb.Resources.Components do
 
     def search_clients(search_term, subject, selected_clients) do
       selected_ids = Enum.map(selected_clients, & &1.id)
+      online_ids = Portal.Presence.Clients.online_client_ids(subject.account.id)
       pattern = "%#{search_term}%"
 
       query =
@@ -1988,6 +2166,7 @@ defmodule PortalWeb.Resources.Components do
         |> join(:inner, [clients: c], a in assoc(c, :actor), as: :actors)
         |> where([clients: c], c.id not in ^selected_ids)
         |> where(^client_search_filter(pattern))
+        |> order_by([clients: c], desc: c.id in ^online_ids)
         |> limit(10)
 
       case query |> Safe.scoped(subject, :replica) |> Safe.all() do
@@ -1995,9 +2174,7 @@ defmodule PortalWeb.Resources.Components do
           []
 
         clients ->
-          clients
-          |> Portal.Presence.Clients.preload_clients_presence()
-          |> Enum.sort_by(&if &1.online?, do: 0, else: 1)
+          Enum.map(clients, &%{&1 | online?: &1.id in online_ids})
       end
     end
 

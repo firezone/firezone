@@ -76,35 +76,36 @@ jobs:
       HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
       HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-scripts
       - name: Pull all images once
         # Pulls every registry image in the compose project (resolving `extends`,
-        # anchors and env interpolation). Services that are only built locally
-        # (the routers) have no `image:` and are skipped, so we additionally pull
-        # their base image (see `scripts/router/Dockerfile`) to let the test jobs
-        # build the routers without reaching out to Docker Hub.
+        # anchors and env interpolation). The build-only `*-router` services have
+        # no `image:` and are skipped here; they are built once in the next step.
         run: |
           retry docker compose pull
-          retry docker pull alpine:3.23
+      - name: Build the router images once
+        # The `*-router` services are built once here and shipped in the images
+        # archive so the downstream test-matrix jobs load them via `docker load`
+        # instead of each running `docker build` + `apk add` against the Alpine
+        # CDN, which was a recurring source of flaky failures.
+        run: retry docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
       - name: Save pulled images as a single archive
         run: |
           set -xe
 
-          # Save exactly the images that were pulled (i.e. are present locally) so
-          # that the auto-generated names of build-only services are excluded.
+          # Save the compose project's images that are present locally: the pulled
+          # registry images plus the `*-router` images built in the previous step.
+          # The `docker image inspect` filter drops any build-only service that
+          # wasn't built.
           images=$(docker compose config --images | sort -u | while read -r image; do
             if docker image inspect "$image" > /dev/null 2>&1; then
               echo "$image"
             fi
           done)
-
-          # Also archive the routers' base image so the build-only `*-router`
-          # services can be built offline in the test jobs.
-          images="$images alpine:3.23"
 
           echo "Saving images:"
           echo "$images"
@@ -163,7 +164,7 @@ jobs:
             script: systemd/dns-systemd-resolved
           - script: tcp-dns
           - script: download-concurrent
-            min_gateway_version: 1.4.18
+            min_gateway_version: 1.5.3
           - name: download-double-symmetric-nat
             script: download
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
@@ -172,17 +173,35 @@ jobs:
             rust_log: debug,flow_logs=trace
             single_relay: true # Force single relay
             min_gateway_version: 1.4.18
+          - name: download-double-symmetric-nat-iceless
+            script: download
+            # Setting both client and gateway to random masquerade will force relay-relay candidate pair
+            client_masquerade: random
+            gateway_masquerade: random
+            rust_log: debug,flow_logs=trace,path_agent=trace
+            single_relay: true # Force single relay
+            iceless: true
+            min_gateway_version: 1.4.18
           - name: download-ipv4-only
             script: download
             gateway_disable_ipv6: 1
             min_gateway_version: 1.4.19
           - script: download-packet-loss
             rust_log: debug
+          - name: download-packet-loss-iceless
+            script: download-packet-loss
+            rust_log: debug,path_agent=trace
+            iceless: true
           - script: download-roaming-network
             min_gateway_version: 1.4.18
             rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
+          - name: download-roaming-network-iceless
+            script: download-roaming-network
+            min_gateway_version: 1.4.18
+            iceless: true
+            rust_log: debug,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-docker
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -215,11 +234,19 @@ jobs:
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       - name: Seed database
+        env:
+          FEATURE_ICELESS_ENABLED: ${{ matrix.test.iceless && 'true' || 'false' }}
         run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Start docker compose in the background
         if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run if version checks succeed or are skipped
         run: |
           set -xe
+
+          # Integration tests exercise realistic per-hop network latency; perf and
+          # load runs leave these unset so the routers add no netem.
+          export EDGE_ROUTER_LATENCY_MS=10
+          export RELAY_ROUTER_LATENCY_MS=30
+          export PORTAL_ROUTER_LATENCY_MS=50
 
           if [[ -n "${{ matrix.test.rust_log }}" ]]; then
             export RUST_LOG="${{ matrix.test.rust_log }}"
@@ -237,7 +264,8 @@ jobs:
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
           fi
 
-          docker compose build client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router
+          # The `*-router` images are pre-built in the `collect-images` job and
+          # loaded from the images archive above, so they are not built here.
 
           # Start one-by-one to avoid variability in service startup order
           # Retries are used because network I/O is flaky in GitHub Actions runners
@@ -260,12 +288,6 @@ jobs:
           fi
 
           sleep 3 # Let everything settle for a bit
-
-      - name: Disable checksum offloading
-        run: |
-          # Force checksum calculation on the host since some tests run on the host
-          sudo ethtool -K eth0 tx off
-          sudo ethtool -K docker0 tx off
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
         if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run the script if version checks succeed or are skipped

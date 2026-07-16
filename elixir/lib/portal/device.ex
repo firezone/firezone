@@ -14,7 +14,8 @@ defmodule Portal.Device do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           type: :client | :gateway,
-          firezone_id: String.t(),
+          # nil for pre-created gateways until they first connect and report one
+          firezone_id: String.t() | nil,
           name: String.t(),
           psk_base: binary(),
           ipv4: Postgrex.INET.t(),
@@ -67,6 +68,10 @@ defmodule Portal.Device do
       references: :id
 
     has_many :gateway_sessions, Portal.GatewaySession,
+      foreign_key: :device_id,
+      references: :id
+
+    has_many :gateway_tokens, Portal.GatewayToken,
       foreign_key: :device_id,
       references: :id
 

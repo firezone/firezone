@@ -7,6 +7,27 @@ if config_env() == :prod do
   ##### Portal ##################
   ###############################
 
+  config :portal, Portal.Azure.ManagedIdentity,
+    client_id: env_var_to_config!(:azure_client_id)
+
+  if env_var_to_config!(:database_entra_auth) && !env_var_to_config(:azure_client_id) do
+    raise "AZURE_CLIENT_ID must be set when DATABASE_ENTRA_AUTH is enabled"
+  end
+
+  # With Entra auth the "password" is a short-lived Entra access token for the
+  # VM's managed identity, fetched before every connect attempt.
+  database_password_opts =
+    cond do
+      env_var_to_config!(:database_entra_auth) ->
+        [{:configure, {Portal.Azure.ManagedIdentity, :put_database_token, []}}]
+
+      env_var_to_config(:database_password) ->
+        [{:password, env_var_to_config!(:database_password)}]
+
+      true ->
+        []
+    end
+
   config :portal,
          Portal.Repo,
          [
@@ -23,10 +44,7 @@ if config_env() == :prod do
              do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
              else: []
            ) ++
-           if(env_var_to_config(:database_password),
-             do: [{:password, env_var_to_config!(:database_password)}],
-             else: []
-           ) ++
+           database_password_opts ++
            if(env_var_to_config(:database_socket_dir),
              do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
              else: [{:hostname, env_var_to_config!(:database_host)}]
@@ -48,10 +66,7 @@ if config_env() == :prod do
              do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
              else: []
            ) ++
-           if(env_var_to_config(:database_password),
-             do: [{:password, env_var_to_config!(:database_password)}],
-             else: []
-           ) ++
+           database_password_opts ++
            if(env_var_to_config(:database_socket_dir),
              do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
              else: [{:hostname, env_var_to_config!(:database_host_replica)}]
@@ -71,10 +86,7 @@ if config_env() == :prod do
         do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
         else: []
       ) ++
-      if(env_var_to_config(:database_password),
-        do: [{:password, env_var_to_config!(:database_password)}],
-        else: []
-      ) ++
+      database_password_opts ++
       if(env_var_to_config(:database_socket_dir),
         do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
         else: [{:hostname, env_var_to_config!(:database_host)}]
@@ -94,10 +106,7 @@ if config_env() == :prod do
         do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
         else: []
       ) ++
-      if(env_var_to_config(:database_password),
-        do: [{:password, env_var_to_config!(:database_password)}],
-        else: []
-      ) ++
+      database_password_opts ++
       if(env_var_to_config(:database_socket_dir),
         do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
         else: [{:hostname, env_var_to_config!(:database_host_replica)}]
@@ -131,56 +140,33 @@ if config_env() == :prod do
            ] ++ replica_pool_base_opts
   end
 
-  config :portal, Portal.ChangeLogs.ReplicationConnection,
+  # Isolated poller connection pools, sized for the two slot pollers: poll
+  # cycles hold a connection for as long as a cycle runs, which must not
+  # starve the shared pools
+  config :portal,
+         Portal.Repo.Poller,
+         [
+           {:pool_size, 2},
+           {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
+         ] ++ primary_pool_base_opts
+
+  config :portal,
+         Portal.Repo.Replica.Poller,
+         [
+           {:pool_size, 2},
+           {:parameters, Keyword.merge(database_parameters, application_name: "replica-poller")}
+         ] ++ replica_pool_base_opts
+
+  config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
-    publication_name: env_var_to_config!(:database_change_logs_publication_name),
-    connection_opts:
-      [
-        port: env_var_to_config!(:database_port),
-        ssl: env_var_to_config!(:database_ssl),
-        parameters: env_var_to_config!(:database_parameters),
-        username: env_var_to_config!(:database_user),
-        database: env_var_to_config!(:database_name)
-      ] ++
-        if(env_var_to_config!(:database_socket_options) != [],
-          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
-          else: []
-        ) ++
-        if(env_var_to_config(:database_password),
-          do: [{:password, env_var_to_config!(:database_password)}],
-          else: []
-        ) ++
-        if(env_var_to_config(:database_socket_dir),
-          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
-        )
+    publication_name: env_var_to_config!(:database_change_logs_publication_name)
 
-  config :portal, Portal.Changes.ReplicationConnection,
+  config :portal, Portal.Changes.Consumer,
     enabled: env_var_to_config!(:changes_replication_enabled),
     region: env_var_to_config!(:region),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
-    publication_name: env_var_to_config!(:database_changes_publication_name),
-    connection_opts:
-      [
-        port: env_var_to_config!(:database_port),
-        ssl: env_var_to_config!(:database_ssl),
-        parameters: env_var_to_config!(:database_parameters),
-        username: env_var_to_config!(:database_user),
-        database: env_var_to_config!(:database_name)
-      ] ++
-        if(env_var_to_config!(:database_socket_options) != [],
-          do: [{:socket_options, env_var_to_config!(:database_socket_options)}],
-          else: []
-        ) ++
-        if(env_var_to_config(:database_password),
-          do: [{:password, env_var_to_config!(:database_password)}],
-          else: []
-        ) ++
-        if(env_var_to_config(:database_socket_dir),
-          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-          else: [{:hostname, env_var_to_config!(:database_host_replica)}]
-        )
+    publication_name: env_var_to_config!(:database_changes_publication_name)
 
   config :portal, Portal.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
@@ -260,6 +246,10 @@ if config_env() == :prod do
     external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
     private_clients: env_var_to_config!(:phoenix_private_clients)
 
+  config :portal,
+    flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
+    flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
+
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   oban_crontab = [
@@ -274,6 +264,11 @@ if config_env() == :prod do
 
     # Schedule Okta directory sync every 2 hours
     {"40 */2 * * *", Portal.Okta.Scheduler},
+
+    # Schedule log sink deliveries every minute
+    {"* * * * *", Portal.Splunk.Scheduler},
+    {"* * * * *", Portal.Datadog.Scheduler},
+    {"* * * * *", Portal.NewRelic.Scheduler},
 
     # Directory sync error notifications - daily check for low error count
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
@@ -299,6 +294,9 @@ if config_env() == :prod do
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "okta", frequency: "weekly"}},
 
+    # Log sink delivery error notifications
+    {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
+
     # Check account limits every 30 minutes
     {"*/30 * * * *", Portal.Workers.CheckAccountLimits},
 
@@ -314,6 +312,9 @@ if config_env() == :prod do
     # Delete expired API tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
 
+    # Delete rotated gateway tokens past their grace period every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteRotatedGatewayTokens},
+
     # Delete expired one-time passcodes every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredOneTimePasscodes},
 
@@ -322,6 +323,15 @@ if config_env() == :prod do
 
     # Delete old change_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
+
+    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
+    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
+
+    # Delete old session_logs every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
+
+    # Delete old api_request_logs every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteOldAPIRequestLogs},
 
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
@@ -342,6 +352,12 @@ if config_env() == :prod do
       google_sync: 5,
       okta_scheduler: 1,
       okta_sync: 5,
+      splunk_scheduler: 1,
+      splunk_sync: 5,
+      datadog_scheduler: 1,
+      datadog_sync: 5,
+      newrelic_scheduler: 1,
+      newrelic_sync: 5,
       sync_error_notifications: 1,
       outbound_emails: 1
     ],
@@ -425,8 +441,13 @@ if config_env() == :prod do
       refill_rate: env_var_to_config!(:api_socket_refill_rate),
       capacity: env_var_to_config!(:api_socket_capacity)
 
+    config :portal, PortalAPI.Plugs.IngestionRateLimit,
+      refill_rate: env_var_to_config!(:api_ingestion_refill_rate),
+      capacity: env_var_to_config!(:api_ingestion_capacity)
+
     config :portal,
-      api_external_url: api_external_url
+      api_external_url: api_external_url,
+      rest_api_url: env_var_to_config!(:rest_api_url) || api_external_url
   end
 
   ###############################
@@ -522,9 +543,6 @@ if config_env() == :prod do
   config :portal,
     http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
-  config :openid_connect,
-    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
-
   config :portal,
          Portal.Mailer,
          [
@@ -550,10 +568,10 @@ if config_env() == :prod do
          env_var_to_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
        environment_name when environment_name in [:staging, :production] <-
-         (case api_external_url_host do
-            "api.firezone.dev" -> :production
-            "api.firez.one" -> :staging
-            _ -> :unknown
+         (cond do
+            String.contains?(api_external_url_host, "firezone.dev") -> :production
+            String.contains?(api_external_url_host, "firez.one") -> :staging
+            true -> :unknown
           end) do
     config :sentry,
       environment_name: environment_name,

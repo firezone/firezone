@@ -255,7 +255,7 @@ windows_service::define_windows_service!(run_service_ffi, run_service);
 fn run_service(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
-    let (_handle, log_filter_reloader) =
+    let (_handle, log_filter_reloader, _flow_log_guard) =
         crate::logging::setup_tunnel(None).expect("Should be able to set up logging");
 
     tracing::info!(?arguments, "run_service");

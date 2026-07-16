@@ -20,6 +20,7 @@ defmodule PortalWeb.Clients do
       socket
       |> assign(page_title: "Clients")
       |> assign(selected_client: nil)
+      |> assign(stale: false)
       |> assign_async(:clients_count, fn -> {:ok, %{clients_count: Database.count_clients(subject)}} end)
       |> assign(
         policy_authorizations: [],
@@ -135,6 +136,7 @@ defmodule PortalWeb.Clients do
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <.live_table
+          stale={@stale}
           id="clients"
           rows={@clients}
           row_id={&"client-#{&1.id}"}
@@ -301,7 +303,7 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_event(event, params, socket)
-      when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
+      when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
@@ -494,21 +496,32 @@ defmodule PortalWeb.Clients do
      |> push_patch(to: ~p"/#{socket.assigns.account}/clients?#{socket.assigns.query_params}")}
   end
 
-  def handle_info(%Change{op: :insert, struct: %Device{type: :client}}, socket) do
+  def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
     {:noreply,
-     update(socket, :clients_count, fn
+     socket
+     |> update(:clients_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, ar.result + 1)
        ar -> ar
-     end)}
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}}, socket) do
+  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}} = change, socket) do
     {:noreply,
-     update(socket, :clients_count, fn
+     socket
+     |> update(:clients_count, fn
        %AsyncResult{ok?: true} = ar -> AsyncResult.ok(ar, max(ar.result - 1, 0))
        ar -> ar
-     end)}
+     end)
+     |> mark_stale_if_unreflected(change)}
   end
+
+  def handle_info(%Change{struct: %Device{type: :client}} = change, socket) do
+    {:noreply, mark_stale_if_unreflected(socket, change)}
+  end
+
+  def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
+  def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
@@ -525,6 +538,14 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  defp mark_stale_if_unreflected(socket, change) do
+    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.clients, change) do
+      socket
+    else
+      assign(socket, stale: true)
+    end
+  end
 
   defmodule Database do
     import Ecto.Changeset

@@ -1117,6 +1117,26 @@ defmodule PortalWeb.CoreComponents do
     |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
   end
 
+  defp assign_last_seen_fields(%{schema: %Portal.SessionLog{subject: subject}} = assigns) do
+    subject = subject || %{}
+
+    assigns
+    |> assign(:display_remote_ip, subject["ip"])
+    |> assign(:display_remote_ip_location_city, subject["ip_city"])
+    |> assign(:display_remote_ip_location_region, subject["ip_region"])
+    |> assign(:display_remote_ip_location_lat, subject["ip_lat"])
+    |> assign(:display_remote_ip_location_lon, subject["ip_lon"])
+  end
+
+  defp assign_last_seen_fields(%{schema: %Portal.APIRequestLog{} = s} = assigns) do
+    assigns
+    |> assign(:display_remote_ip, s.ip)
+    |> assign(:display_remote_ip_location_city, s.ip_city)
+    |> assign(:display_remote_ip_location_region, s.ip_region)
+    |> assign(:display_remote_ip_location_lat, s.ip_lat)
+    |> assign(:display_remote_ip_location_lon, s.ip_lon)
+  end
+
   defp assign_last_seen_fields(%{schema: s} = assigns) do
     assigns
     |> assign(:display_remote_ip, s.last_seen_remote_ip)
@@ -1319,10 +1339,19 @@ defmodule PortalWeb.CoreComponents do
   attr :rest, :global
 
   def provider_icon(assigns) do
+    icon_spec = provider_icon_spec(assigns.provider)
+
+    icon_class =
+      if icon_spec[:wide] do
+        provider_icon_wide_size(assigns.size)
+      else
+        provider_icon_size(assigns.size)
+      end
+
     assigns =
       assigns
-      |> assign(:icon_spec, provider_icon_spec(assigns.provider))
-      |> assign(:icon_class, provider_icon_size(assigns.size))
+      |> assign(:icon_spec, icon_spec)
+      |> assign(:icon_class, icon_class)
       |> assign(:wrapper_class, provider_icon_variant(assigns.variant, assigns.size))
 
     ~H"""
@@ -1412,6 +1441,34 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("splunk") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-splunk.svg",
+      dark_src: ~p"/images/logo-splunk-dark.svg",
+      alt: "Splunk",
+      wide: true
+    }
+  end
+
+  defp provider_icon_spec("datadog") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-datadog.svg",
+      dark_src: ~p"/images/logo-datadog-dark.svg",
+      alt: "Datadog"
+    }
+  end
+
+  defp provider_icon_spec("newrelic") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-newrelic.svg",
+      dark_src: ~p"/images/logo-newrelic-dark.svg",
+      alt: "New Relic"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,
@@ -1424,6 +1481,13 @@ defmodule PortalWeb.CoreComponents do
   defp provider_icon_size("md"), do: "size-5"
   defp provider_icon_size("lg"), do: "size-6"
   defp provider_icon_size("xl"), do: "size-8"
+
+  # Wordmark-shaped logos (e.g. Splunk) letterbox to nothing in a square box.
+  defp provider_icon_wide_size("xs"), do: "h-3 w-6"
+  defp provider_icon_wide_size("sm"), do: "h-4 w-8"
+  defp provider_icon_wide_size("md"), do: "h-5 w-10"
+  defp provider_icon_wide_size("lg"), do: "h-6 w-12"
+  defp provider_icon_wide_size("xl"), do: "h-8 w-16"
 
   defp provider_icon_variant("plain", _size), do: nil
 

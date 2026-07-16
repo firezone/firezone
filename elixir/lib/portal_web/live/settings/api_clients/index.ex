@@ -76,11 +76,11 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       socket =
         socket
         |> assign(page_title: "API Tokens")
-        |> assign(api_url: Portal.Config.get_env(:portal, :api_external_url))
         |> assign(actors_with_tokens: actors_with_tokens)
         |> assign(selected_actor: nil)
         |> assign(form: nil, encoded_token: nil)
         |> assign(pending_confirm: nil, open_actor_actions_id: nil)
+        |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
 
       {:ok, socket}
     else
@@ -139,7 +139,11 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <.settings_nav account={@account} current_path={@current_path} />
+      <.settings_nav
+        account={@account}
+        current_path={@current_path}
+        trust_anchors_enabled?={@trust_anchors_enabled?}
+      />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">

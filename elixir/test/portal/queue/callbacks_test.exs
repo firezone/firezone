@@ -1,6 +1,7 @@
 defmodule Portal.Queue.CallbacksTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
@@ -11,7 +12,7 @@ defmodule Portal.Queue.CallbacksTest do
   import Portal.SiteFixtures
   import Portal.TokenFixtures
 
-  alias Portal.{ClientSession, GatewaySession, PG, PolicyAuthorization}
+  alias Portal.{ClientSession, GatewaySession, PG, PolicyAuthorization, SessionLog}
 
   describe "client session queue callback" do
     test "inserts client sessions and confirms durability" do
@@ -38,9 +39,56 @@ defmodule Portal.Queue.CallbacksTest do
 
       on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
 
-      assert 1 = on_flush.([{attrs, nil}])
+      timestamp = DateTime.utc_now()
+      subject = %{"actor_id" => actor.id, "actor_email" => actor.email}
+      metadata = %{subject: subject, timestamp: timestamp}
+
+      assert 1 = on_flush.([{attrs, metadata}])
       assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
       assert_receive {:confirm_session_durability, ^session_id}
+
+      assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
+      assert session_log.context == :client
+      assert session_log.timestamp == timestamp
+      assert session_log.subject["actor_id"] == actor.id
+      assert session_log.subject["actor_email"] == actor.email
+      assert session_log.subject["device_id"] == client.id
+      assert session_log.subject["token_id"] == token.id
+    end
+
+    test "does not confirm durability when the session log write fails" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      session_id = Ecto.UUID.generate()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        id: session_id,
+        account_id: account.id,
+        device_id: client.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        remote_ip_location_region: "US",
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      # A NUL byte in the subject fails only the session_log insert (jsonb
+      # rejects it), not the session row. The session lands but, because its log
+      # did not, its durability is left unconfirmed so the timer can retry.
+      metadata = %{subject: %{"actor_name" => "bad\0name"}, timestamp: DateTime.utc_now()}
+
+      assert 1 = on_flush.([{attrs, metadata}])
+      assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
+      assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
+      refute_receive {:confirm_session_durability, ^session_id}
     end
   end
 
@@ -69,9 +117,17 @@ defmodule Portal.Queue.CallbacksTest do
 
       on_flush = Keyword.fetch!(PortalAPI.Gateway.Socket.gateway_session_queue_opts(), :on_flush)
 
-      assert 1 = on_flush.([{attrs, nil}])
+      timestamp = DateTime.utc_now()
+
+      assert 1 = on_flush.([{attrs, %{timestamp: timestamp}}])
       assert Repo.get_by(GatewaySession, id: session_id, account_id: account.id)
       assert_receive {:confirm_session_durability, ^session_id}
+
+      assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
+      assert session_log.context == :gateway
+      assert session_log.timestamp == timestamp
+      assert session_log.subject["gateway_id"] == gateway.id
+      assert session_log.subject["token_id"] == token.id
     end
   end
 

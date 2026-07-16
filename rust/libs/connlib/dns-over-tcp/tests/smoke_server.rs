@@ -103,12 +103,23 @@ impl Eventloop {
 
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
-            // Send all outbound DNS packets
+            // Send all outbound DNS packets as one batch.
+            let mut batch = tun::PacketBatch::default();
+
             while let Some(packet) = self.dns_server.poll_outbound() {
+                if let Err(packet) = batch.try_push(packet) {
+                    self.tun
+                        .sender()
+                        .try_send(std::mem::replace(&mut batch, tun::PacketBatch::new(packet)))
+                        .expect("channels should be able to buffer all batches in this test");
+                }
+            }
+
+            if !batch.is_empty() {
                 self.tun
                     .sender()
-                    .try_send(packet)
-                    .expect("channels should be able to buffer all packets we send in this test")
+                    .try_send(batch)
+                    .expect("channels should be able to buffer all batches in this test");
             }
 
             // Handle DNS queries and generate responses
@@ -122,11 +133,13 @@ impl Eventloop {
                     .unwrap();
             }
 
-            let ip_packet = ready!(self.tun.receiver().poll_recv(cx)).unwrap();
+            let mut packets = ready!(self.tun.receiver().poll_recv(cx)).unwrap();
 
-            if self.dns_server.accepts(&ip_packet) {
-                self.dns_server.handle_inbound(ip_packet);
-                self.dns_server.handle_timeout(Instant::now());
+            for ip_packet in packets.drain() {
+                if self.dns_server.accepts(&ip_packet) {
+                    self.dns_server.handle_inbound(ip_packet);
+                    self.dns_server.handle_timeout(Instant::now());
+                }
             }
         }
     }

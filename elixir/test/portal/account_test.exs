@@ -59,6 +59,28 @@ defmodule Portal.AccountTest do
     end
   end
 
+  describe "iceless_enabled?/1" do
+    test "returns true when the account feature flag is set" do
+      account = %Account{features: %Portal.Accounts.Features{iceless: true}}
+      assert Account.iceless_enabled?(account)
+    end
+
+    test "returns false when the account feature flag is disabled" do
+      account = %Account{features: %Portal.Accounts.Features{iceless: false}}
+      refute Account.iceless_enabled?(account)
+    end
+
+    test "returns false when the account feature flag is unset" do
+      account = %Account{features: %Portal.Accounts.Features{}}
+      refute Account.iceless_enabled?(account)
+    end
+
+    test "returns false when the account has no features" do
+      account = %Account{features: nil}
+      refute Account.iceless_enabled?(account)
+    end
+  end
+
   describe "changeset/1 key validations" do
     test "rejects key with wrong length" do
       changeset = build_changeset(%{key: "abc"})

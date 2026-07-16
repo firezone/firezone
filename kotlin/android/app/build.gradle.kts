@@ -10,7 +10,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "8.6.0"
+    id("com.diffplug.spotless") version "8.8.0"
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
     id("com.google.devtools.ksp")
@@ -45,7 +45,7 @@ android {
     }
 
     namespace = "dev.firezone.android"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "28.2.13676358" // Must be a version preinstalled on the CI runner (see setup-android)
 
     defaultConfig {
@@ -55,7 +55,7 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.12"
+        versionName = "1.5.13"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -178,13 +178,12 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.18.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.2.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // AndroidX
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
@@ -193,40 +192,39 @@ dependencies {
     implementation("com.google.android.material:material:1.14.0")
 
     // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-extensions:2.2.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.11.0")
 
     // Navigation
     implementation("androidx.navigation:navigation-fragment-ktx:2.9.7")
     implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.59.2")
+    implementation("com.google.dagger:hilt-android:2.60.1")
     implementation("androidx.browser:browser:1.10.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
-    ksp("androidx.hilt:hilt-compiler:1.3.0")
-    ksp("com.google.dagger:hilt-android-compiler:2.59.2")
+    ksp("androidx.hilt:hilt-compiler:1.4.0")
+    ksp("com.google.dagger:hilt-android-compiler:2.60.1")
     // Instrumented Tests
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.59.2")
-    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.59.2")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Unit Tests
-    testImplementation("com.google.dagger:hilt-android-testing:2.59.2")
+    testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:5.3.2")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.4.0")
 
     // Moshi
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
@@ -244,7 +242,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.9")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.14.1"))
+    implementation(platform("com.google.firebase:firebase-bom:34.15.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -253,7 +251,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
 
     // UniFFI
-    implementation("net.java.dev.jna:jna:5.19.0@aar")
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
     // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
@@ -261,10 +259,10 @@ dependencies {
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.43.1")
+    implementation("io.sentry:sentry-android:8.47.0")
 
     // Compose
-    val composeBom = platform("androidx.compose:compose-bom:2026.05.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.compose.ui:ui")
@@ -272,9 +270,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     // Immutable collections give Compose stable (skippable) parameter types.
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.1")
 
     // Slack's Compose lint checks. Lint check JARs are versioned to the lint API
     // (`lint = AGP + 23`), so AGP 9.2 (lint 32.2) needs 1.4.3, which is built against it

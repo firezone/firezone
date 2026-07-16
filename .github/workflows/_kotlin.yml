@@ -16,7 +16,7 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-android
       - name: Check formatting
         run: ./gradlew spotlessCheck
@@ -37,9 +37,9 @@ jobs:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
-      RELEASE_NAME: android-client-1.5.12
+      RELEASE_NAME: android-client-1.5.13
     steps:
-      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7.3.1
+      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -72,7 +72,7 @@ jobs:
             build-command: "./gradlew assembleRelease"
             output-path: app/build/outputs/apk/release/app-release.apk
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
@@ -110,7 +110,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
-          RELEASE_NAME: android-client-1.5.12
+          RELEASE_NAME: android-client-1.5.13
         run: |
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
@@ -173,7 +173,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: build-debug
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-android
       - name: Build debug APK
         run: |

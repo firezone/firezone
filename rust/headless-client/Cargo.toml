@@ -1,7 +1,7 @@
 [package]
 name = "firezone-headless-client"
 # mark:next-headless-version
-version = "1.5.10"
+version = "1.5.11"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]
 license = { workspace = true }
@@ -13,12 +13,15 @@ backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
 client-shared = { workspace = true }
+flow-log-upload = { workspace = true }
+flow-log-writer = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
+mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
@@ -33,9 +36,11 @@ telemetry = { workspace = true }
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
 tokio = { workspace = true, features = ["macros", "signal", "process", "time", "fs", "rt"] }
 tracing = { workspace = true }
+tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
 
