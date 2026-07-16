@@ -7,6 +7,7 @@ version: 2
 
 multi-ecosystem-groups:
   tauri:
+    target-branch: main
     schedule:
       interval: weekly
 
@@ -318,7 +319,6 @@ updates:
 
   # Tauri group
   - package-ecosystem: npm
-    target-branch: main
     directory: rust/gui-client/
     schedule:
       interval: weekly
@@ -326,7 +326,6 @@ updates:
     patterns:
       - "@tauri-apps/*"
   - package-ecosystem: cargo
-    target-branch: main
     directory: rust/
     schedule:
       interval: weekly
