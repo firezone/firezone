@@ -853,6 +853,10 @@ impl ClientState {
             return Ok(Some((ClientOrGatewayId::Gateway(gid), packet)));
         }
 
+        // Reply to an inbound flow from a peer whose IP is NOT in our
+        // routing table — we are a one-way *target* (the initiator
+        // installed the inbound resource on us, but our routing_table
+        // entry for them is absent).
         if let Some((cid, peer)) = self.clients.peer_by_ip_mut(dst)
             && peer.is_known_flow(&packet)
         {
