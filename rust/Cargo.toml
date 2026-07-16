@@ -130,7 +130,7 @@ incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
-is = "0.9.0"
+is = "0.10.0"
 itertools = "0.14.0"
 jni = "0.22.4"
 keyring-core = "1.0.0"
