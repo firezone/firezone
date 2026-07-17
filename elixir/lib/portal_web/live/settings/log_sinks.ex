@@ -1020,21 +1020,34 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "sentinel"} class="p-3 rounded border border-border bg-raised">
-          <p class="text-xs font-medium text-heading mb-2">Setup</p>
-          <p class="text-xs text-subtle mb-3">
-            Enter your Microsoft Entra tenant ID below, then have a tenant administrator open
-            <button
+          <p class="text-xs font-medium text-heading mb-3">Setup</p>
+
+          <div class="mb-4 p-3 rounded border border-border bg-surface">
+            <p class="text-xs font-medium text-heading mb-1.5">1. Grant admin consent</p>
+            <p class="text-xs text-subtle mb-3">
+              Enter your Microsoft Entra tenant ID below, then have a tenant administrator grant
+              consent. This adds the <strong>Firezone Sentinel Log Ingestion</strong> application
+              to your tenant so you can assign it a role in the next step. It requests no API
+              permissions and cannot read your directory or data. It only becomes a service
+              principal you grant the Monitoring Metrics Publisher role to on a single data
+              collection rule.
+            </p>
+            <.button
               type="button"
+              style="primary"
+              icon="ri-external-link-line"
               id="sentinel-consent-link"
               phx-click="sentinel_admin_consent"
               phx-hook="OpenURL"
-              class="underline hover:text-heading"
             >
-              this admin consent link
-            </button>
-            to add the <strong>Firezone Sentinel Log Ingestion</strong> application to your
-            tenant. The application requests no API permissions. Then create the ingestion
-            resources in your Azure subscription:
+              Grant admin consent
+            </.button>
+          </div>
+
+          <p class="text-xs font-medium text-heading mb-1.5">2. Create the ingestion resources</p>
+          <p class="text-xs text-subtle mb-3">
+            Create a data collection endpoint, a custom table, and a data collection rule, then
+            grant the Firezone application the Monitoring Metrics Publisher role on the rule.
           </p>
           <div class="flex border-b border-border mb-3" role="tablist">
             <button
