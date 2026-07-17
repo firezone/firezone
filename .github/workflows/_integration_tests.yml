@@ -200,6 +200,9 @@ jobs:
             min_gateway_version: 1.4.18
             iceless: true
             rust_log: debug,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
+          - name: idle-iceless
+            script: idle
+            iceless: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-docker
