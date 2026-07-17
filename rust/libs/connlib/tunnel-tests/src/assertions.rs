@@ -755,17 +755,9 @@ impl<S> PanicOnErrorEvents<S> {
 
 impl<S> Drop for PanicOnErrorEvents<S> {
     fn drop(&mut self) {
-        // TODO(main): temporarily disabled. The structured fuzzer explores
-        // deeper scenarios than the proptests did and surfaces reference-model
-        // mismatches (e.g. "❌ Unexpected UDP replies on client", "❌ Unexpected
-        // UDP request source") that need fixing on `main` first. Until then we
-        // must not abort the fuzz run on ERROR events, so the fuzzer can build a
-        // coverage corpus and CI can gate on `tunnel-proto` coverage. The
-        // assertions still emit under `RUST_LOG` for triage. Re-enable once the
-        // underlying mismatches are fixed on `main`.
-        // if self.has_seen_error.load(Ordering::SeqCst) {
-        //     panic!("Testcase {} failed", self.index);
-        // }
+        if self.has_seen_error.load(Ordering::SeqCst) {
+            panic!("Testcase {} failed", self.index);
+        }
     }
 }
 
