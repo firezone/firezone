@@ -357,6 +357,11 @@ impl ClientState {
     ) {
         tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
+        self.pending_authorizations
+            .extract_device_authorizations(|_, addr| {
+                ipv4.map(IpAddr::V4) == Some(addr) || ipv6.map(IpAddr::V6) == Some(addr)
+            });
+
         // The protocol is irrelevant: each member device has exactly one routing-table entry
         // per address, so the lookup always resolves to that entry regardless of the dummy.
         let entry = ipv4
@@ -376,7 +381,6 @@ impl ClientState {
             return;
         };
 
-        self.pending_authorizations.remove(entry.client_id);
         // TODO: Update resource list with offline client.
 
         let Some(_) = self.clients.remove(&entry.client_id) else {
@@ -888,7 +892,6 @@ impl ClientState {
 
             // Not yet authorized: Buffer + send request.
             self.pending_authorizations.on_not_authorized_device(
-                entry.client_id,
                 entry.resource_id,
                 dst,
                 packet,
@@ -1065,7 +1068,9 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
 
-        let pending_authorization = self.pending_authorizations.remove(cid);
+        let pending_authorizations = self
+            .pending_authorizations
+            .extract_device_authorizations(|_, addr| client_tun.is_ip(addr));
 
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
@@ -1102,27 +1107,25 @@ impl ClientState {
             peer.add_resource(resource_id, filters, expires_at, now);
         }
 
-        if let Some(pending_authorization) = pending_authorization {
-            // We initiated this connection — record each (resource, peer) pair
-            // as authorised so future sends in the same direction skip
-            // `pending_authorizations` and route directly via the peer.
-            for resource_id in pending_authorization.resource_ids() {
-                match self
-                    .authorized_resources
-                    .entry(resource_id)
-                    .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
-                {
-                    AccessPath::Direct(set) => {
-                        set.insert(cid);
-                    }
-                    AccessPath::Gateway(_) => {
-                        tracing::warn!(
-                            %resource_id,
-                            "Static device pool clobbering existing gateway authorisation"
-                        );
-                        self.authorized_resources
-                            .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
-                    }
+        // We initiated this connection — record each (resource, peer) pair
+        // as authorised so future sends in the same direction skip
+        // `pending_authorizations` and route directly via the peer.
+        for (resource_id, pending_authorization) in pending_authorizations {
+            match self
+                .authorized_resources
+                .entry(resource_id)
+                .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
+            {
+                AccessPath::Direct(set) => {
+                    set.insert(cid);
+                }
+                AccessPath::Gateway(_) => {
+                    tracing::warn!(
+                        %resource_id,
+                        "Static device pool clobbering existing gateway authorisation"
+                    );
+                    self.authorized_resources
+                        .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
                 }
             }
 
@@ -2384,13 +2387,19 @@ impl ClientState {
                 .remove(old_member.ipv6.into(), |e| {
                     e.client_id == *cid && e.resource_id == pool_id
                 });
+            self.pending_authorizations
+                .extract_device_authorizations(|pool, addr| {
+                    pool == pool_id
+                        && match addr {
+                            IpAddr::V4(a) => old_member.ipv4.contains(a),
+                            IpAddr::V6(a) => old_member.ipv6.contains(a),
+                        }
+                });
 
             // If the member is no longer in the pool, drop any active
             // connection so traffic doesn't keep flowing to a revoked device —
             // but only if no other pool still authorises it.
             if new_member.is_none() && !self.is_client_in_other_static_device_pool(*cid, pool_id) {
-                self.pending_authorizations.remove(*cid);
-
                 if let hash_map::Entry::Occupied(mut entry) =
                     self.authorized_resources.entry(pool_id)
                     && let AccessPath::Direct(set) = entry.get_mut()

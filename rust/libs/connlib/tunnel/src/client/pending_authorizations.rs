@@ -1,10 +1,10 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::ResourceId;
 use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
@@ -18,27 +18,21 @@ use crate::{
 /// authorization is granted.
 #[derive(Default)]
 pub struct PendingAuthorizations {
-    inner: HashMap<AuthorizationTarget, PendingAuthorization>,
+    inner: BTreeMap<AuthorizationTarget, PendingAuthorization>,
 
     authorization_requests: VecDeque<AuthorizationRequest>,
 }
 
 /// What we are requesting authorization for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AuthorizationTarget {
     Resource(ResourceId),
-    Device(ClientId),
+    Device { pool: ResourceId, addr: IpAddr },
 }
 
 impl From<ResourceId> for AuthorizationTarget {
     fn from(v: ResourceId) -> Self {
         Self::Resource(v)
-    }
-}
-
-impl From<ClientId> for AuthorizationTarget {
-    fn from(v: ClientId) -> Self {
-        Self::Device(v)
     }
 }
 
@@ -72,13 +66,12 @@ impl PendingAuthorizations {
             return;
         }
 
-        self.upsert(AuthorizationTarget::Resource(rid), rid, None, trigger, now);
+        self.upsert(AuthorizationTarget::Resource(rid), trigger, now);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%client_id, %resource_id, %ip))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %ip))]
     pub fn on_not_authorized_device(
         &mut self,
-        client_id: ClientId,
         resource_id: ResourceId,
         ip: IpAddr,
         trigger: impl Into<Trigger>,
@@ -98,9 +91,10 @@ impl PendingAuthorizations {
         }
 
         self.upsert(
-            AuthorizationTarget::Device(client_id),
-            resource_id,
-            Some(ip),
+            AuthorizationTarget::Device {
+                pool: resource_id,
+                addr: ip,
+            },
             trigger,
             now,
         );
@@ -113,50 +107,64 @@ impl PendingAuthorizations {
         self.inner.remove(&target.into())
     }
 
+    /// Removes and returns every device entry whose (pool, address) matches the predicate.
+    pub fn extract_device_authorizations(
+        &mut self,
+        mut f: impl FnMut(ResourceId, IpAddr) -> bool,
+    ) -> Vec<(ResourceId, PendingAuthorization)> {
+        self.inner
+            .extract_if(.., |target, _| match target {
+                AuthorizationTarget::Resource(_) => false,
+                AuthorizationTarget::Device { pool, addr } => f(*pool, *addr),
+            })
+            .filter_map(|(target, pending)| match target {
+                AuthorizationTarget::Device { pool, .. } => Some((pool, pending)),
+                AuthorizationTarget::Resource(_) => None,
+            })
+            .collect()
+    }
+
     pub fn poll_authorization_requests(&mut self) -> Option<AuthorizationRequest> {
         self.authorization_requests.pop_front()
     }
 
-    fn upsert(
-        &mut self,
-        target: AuthorizationTarget,
-        resource_id: ResourceId,
-        ip: Option<IpAddr>,
-        trigger: Trigger,
-        now: Instant,
-    ) {
+    fn upsert(&mut self, target: AuthorizationTarget, trigger: Trigger, now: Instant) {
         let trigger_name = trigger.name();
 
-        let pending = self
-            .inner
-            .entry(target)
-            .or_insert_with(PendingAuthorization::new);
+        let pending = self.inner.entry(target).or_insert_with(|| {
+            // Insert with a negative time to ensure we instantly send a request.
+            PendingAuthorization::new(now - Duration::from_secs(10))
+        });
 
         pending.push(trigger);
 
-        if let Some(last_request_sent_at) = pending.requested_resources.get(&resource_id) {
-            let time_since_last_request = now.duration_since(*last_request_sent_at);
+        let time_since_last_request = now.duration_since(pending.last_request_sent_at);
 
-            if time_since_last_request < Duration::from_secs(2) {
-                tracing::trace!(?time_since_last_request, "Skipping authorization request");
-                return;
-            }
+        if time_since_last_request < Duration::from_secs(2) {
+            tracing::trace!(?time_since_last_request, "Skipping authorization request");
+            return;
         }
 
         tracing::debug!(trigger = %trigger_name, "Requesting authorization");
 
-        pending.requested_resources.insert(resource_id, now);
-        self.authorization_requests
-            .push_back(AuthorizationRequest { resource_id, ip });
+        pending.last_request_sent_at = now;
+
+        let request = match target {
+            AuthorizationTarget::Resource(rid) => AuthorizationRequest {
+                resource_id: rid,
+                ip: None,
+            },
+            AuthorizationTarget::Device { pool, addr } => AuthorizationRequest {
+                resource_id: pool,
+                ip: Some(addr),
+            },
+        };
+        self.authorization_requests.push_back(request);
     }
 }
 
 pub struct PendingAuthorization {
-    /// When we last requested authorization, per resource that triggered a request.
-    ///
-    /// A device can be reachable through several resources with different
-    /// filters, so we must track (and eventually authorize) every one of them.
-    requested_resources: BTreeMap<ResourceId, Instant>,
+    last_request_sent_at: Instant,
     resource_packets: UniquePacketBuffer,
     dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
@@ -169,9 +177,9 @@ impl PendingAuthorization {
     /// Thus, we may receive a fair few packets before we can send them.
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    fn new() -> Self {
+    fn new(now: Instant) -> Self {
         Self {
-            requested_resources: BTreeMap::new(),
+            last_request_sent_at: now,
             resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
                 "pending-authorization",
@@ -188,10 +196,6 @@ impl PendingAuthorization {
             }
             Trigger::IcmpDestinationUnreachableProhibited => {}
         }
-    }
-
-    pub fn resource_ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
-        self.requested_resources.keys().copied()
     }
 
     pub fn into_buffered_packets(self) -> (UniquePacketBuffer, AllocRingBuffer<DnsQueryForSite>) {
@@ -388,19 +392,11 @@ mod tests {
     fn skips_device_authorization_request_if_sent_within_last_two_seconds() {
         let mut pending_authorizations = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let cid = client_foo();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
         let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
 
-        pending_authorizations.on_not_authorized_device(
-            cid,
-            rid,
-            ip,
-            udp_trigger(1),
-            &resources,
-            now,
-        );
+        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
         assert!(
             pending_authorizations
                 .poll_authorization_requests()
@@ -409,14 +405,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        pending_authorizations.on_not_authorized_device(
-            cid,
-            rid,
-            ip,
-            udp_trigger(2),
-            &resources,
-            now,
-        );
+        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
         assert!(
             pending_authorizations
                 .poll_authorization_requests()
@@ -428,19 +417,11 @@ mod tests {
     fn sends_new_device_request_after_two_seconds() {
         let mut pending_authorizations = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let cid = client_foo();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
         let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
 
-        pending_authorizations.on_not_authorized_device(
-            cid,
-            rid,
-            ip,
-            udp_trigger(1),
-            &resources,
-            now,
-        );
+        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
         assert!(
             pending_authorizations
                 .poll_authorization_requests()
@@ -449,14 +430,7 @@ mod tests {
 
         now += Duration::from_secs(3);
 
-        pending_authorizations.on_not_authorized_device(
-            cid,
-            rid,
-            ip,
-            udp_trigger(2),
-            &resources,
-            now,
-        );
+        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
         assert!(
             pending_authorizations
                 .poll_authorization_requests()
@@ -470,15 +444,12 @@ mod tests {
 
         let mut pending_authorizations = PendingAuthorizations::default();
         let now = Instant::now();
-        let cid_foo = client_foo();
-        let cid_bar = client_bar();
         let rid = ipv4_localhost_resource().id();
         let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
         let ip_foo = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
         let ip_bar = IpAddr::from(Ipv4Addr::new(100, 64, 0, 200));
 
         pending_authorizations.on_not_authorized_device(
-            cid_foo,
             rid,
             ip_foo,
             udp_trigger(1),
@@ -490,7 +461,6 @@ mod tests {
             .unwrap();
         assert_eq!(request.ip, Some(ip_foo));
         pending_authorizations.on_not_authorized_device(
-            cid_bar,
             rid,
             ip_bar,
             udp_trigger(2),
@@ -504,10 +474,9 @@ mod tests {
     }
 
     #[test]
-    fn entry_tracks_every_requested_resource() {
+    fn same_address_in_two_pools_is_requested_per_pool() {
         let mut pending_authorizations = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let cid = client_foo();
         let rid_one = ipv4_localhost_resource().id();
         let rid_two = ipv6_localhost_resource().id();
         let resources = BTreeMap::from([
@@ -517,7 +486,6 @@ mod tests {
         let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
 
         pending_authorizations.on_not_authorized_device(
-            cid,
             rid_one,
             ip,
             udp_trigger(1),
@@ -530,12 +498,10 @@ mod tests {
                 .is_some()
         );
 
-        // Within the per-resource throttle window: a request for a different
-        // resource must still go out immediately.
+        // The other pool's throttle window must not suppress this request.
         now += Duration::from_millis(500);
 
         pending_authorizations.on_not_authorized_device(
-            cid,
             rid_two,
             ip,
             udp_trigger(2),
@@ -548,11 +514,31 @@ mod tests {
                 .is_some()
         );
 
-        let entry = pending_authorizations.remove(cid).unwrap();
-        assert_eq!(
-            entry.resource_ids().collect::<Vec<_>>(),
-            vec![rid_one, rid_two]
-        );
+        for pool in [rid_one, rid_two] {
+            assert!(
+                pending_authorizations
+                    .remove(AuthorizationTarget::Device { pool, addr: ip })
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn extract_device_authorizations_leaves_resource_entries() {
+        let mut pending_authorizations = PendingAuthorizations::default();
+        let now = Instant::now();
+        let rid = ipv4_localhost_resource().id();
+        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
+        let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
+
+        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
+
+        let extracted = pending_authorizations.extract_device_authorizations(|_, _| true);
+        assert_eq!(extracted.len(), 1);
+        assert_eq!(extracted[0].0, rid);
+
+        assert!(pending_authorizations.remove(rid).is_some());
     }
 
     fn udp_trigger(payload: u8) -> IpPacket {
@@ -571,14 +557,6 @@ mod tests {
             resource_id,
             ip: None,
         }
-    }
-
-    fn client_foo() -> ClientId {
-        ClientId::from_u128(1)
-    }
-
-    fn client_bar() -> ClientId {
-        ClientId::from_u128(2)
     }
 
     fn ipv4_localhost_resource() -> Resource {
