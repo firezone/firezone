@@ -29,7 +29,7 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
-/// How many times we at most try to re-send a packet if we encounter ENOBUFS on MacOS / iOS or 10055 on Windows.
+/// How many consecutive times we at most retry after ENOBUFS on MacOS / iOS or 10055 on Windows.
 #[cfg(any(apple, target_os = "windows"))]
 const MAX_ENOBUFS_RETRIES: u32 = 24;
 
@@ -492,14 +492,14 @@ impl PerfUdpSocket {
         let mut attempt = 0;
 
         while offset < total {
-            // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
-            // the remaining data needs to be re-split into smaller batches.
+            // Recompute every iteration: `quinn-udp` can disable GSO and consume only the first
+            // segment, so the remaining data then needs to be split into single-datagram sends.
             let chunk_size = self.calculate_chunk_size(socket.state, segment_size, dst)?;
 
             let end = std::cmp::min(offset + chunk_size, total);
             let contents = &transmit.contents[offset..end];
 
-            let chunk = Transmit {
+            let mut chunk = Transmit {
                 destination: dst,
                 ecn: transmit.ecn,
                 contents,
@@ -508,7 +508,7 @@ impl PerfUdpSocket {
             };
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %(contents.len() / segment_size), %segment_size, connected = %socket.connected);
+            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %chunk.datagram_count(), %segment_size, connected = %socket.connected);
 
             let result = if socket.connected {
                 // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
@@ -528,12 +528,25 @@ impl PerfUdpSocket {
             };
 
             match result {
-                Ok(()) => {
-                    self.record_send_batch_size(contents.len() / segment_size);
-                    self.record_send_retries(attempt);
+                Ok(sent) => {
+                    let attempted = chunk.datagram_count();
+                    anyhow::ensure!(
+                        sent > 0 && sent <= attempted,
+                        "quinn-udp accepted {sent} datagrams from a {attempted}-datagram batch"
+                    );
 
-                    offset = end;
-                    attempt = 0; // Each batch gets its own retry budget.
+                    let previous_len = chunk.contents.len();
+                    let sent_bytes = if sent == attempted {
+                        previous_len
+                    } else {
+                        chunk.advance(sent);
+                        previous_len - chunk.contents.len()
+                    };
+                    offset += sent_bytes;
+
+                    self.record_send_batch_size(sent.into());
+                    self.record_send_retries(attempt);
+                    attempt = 0; // Any forward progress restores the retry budget.
                 }
                 // Connected sockets get a write-readiness wakeup from the kernel's flow advisory
                 // once the interface queue drains, so we park until then.
@@ -585,7 +598,7 @@ impl PerfUdpSocket {
         );
     }
 
-    /// Records how many times a single batch had to be retried before it went through or was dropped.
+    /// Records how many consecutive retries occurred before the next send progress or drop.
     ///
     /// Batches that succeed on the first try (the common case) are not recorded, keeping the hot path cheap.
     fn record_send_retries(&self, attempt: u32) {
@@ -769,13 +782,6 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
         return false;
     };
 
-    // On Linux / Android, `EIO` or `EINVAL` means `quinn-udp` just disabled GSO; we retry
-    // once to re-send the data split into smaller batches.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    if (raw_os_error == libc::EIO || raw_os_error == libc::EINVAL) && attempt < 1 {
-        return true;
-    }
-
     // On MacOS / iOS, the kernel returns `ENOBUFS` when the interface queue fills up.
     #[cfg(apple)]
     if raw_os_error == libc::ENOBUFS && attempt < MAX_ENOBUFS_RETRIES {
@@ -788,6 +794,7 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
         return true;
     }
 
+    let _ = (raw_os_error, attempt);
     false
 }
 
@@ -1170,11 +1177,11 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn retries_gso_errors_once() {
+    fn leaves_gso_fallback_to_quinn_udp() {
         for raw in [libc::EIO, libc::EINVAL] {
             let err = io::Error::from_raw_os_error(raw);
 
-            assert!(should_retry(&err, 0));
+            assert!(!should_retry(&err, 0));
             assert!(!should_retry(&err, 1));
         }
     }
