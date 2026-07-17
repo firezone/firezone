@@ -13,31 +13,55 @@ defmodule Portal.Entra.APIClient do
   """
   def get_access_token(tenant_id) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    client_id = config[:client_id]
-    client_secret = config[:client_secret]
-    token_base_url = config[:token_base_url]
-    token_endpoint = "#{token_base_url}/#{tenant_id}/oauth2/v2.0/token"
+    token_endpoint = "#{config[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
 
-    # Request access token to read what our app is set up to do (.default scope)
-    scope = "https://graph.microsoft.com/.default"
+    with {:ok, credential} <- client_credential(config) do
+      # Request access token to read what our app is set up to do (.default scope)
+      payload =
+        %{
+          "client_id" => config[:client_id],
+          "scope" => "https://graph.microsoft.com/.default",
+          "grant_type" => "client_credentials"
+        }
+        |> Map.merge(credential)
+        |> URI.encode_query()
 
-    payload =
-      URI.encode_query(%{
-        "client_id" => client_id,
-        "client_secret" => client_secret,
-        "scope" => scope,
-        "grant_type" => "client_credentials"
-      })
+      req_opts = fetch_config(:req_opts) || []
 
-    req_opts = fetch_config(:req_opts) || []
+      Req.post(
+        token_endpoint,
+        [
+          headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+          body: payload
+        ] ++ req_opts
+      )
+    end
+  end
 
-    Req.post(
-      token_endpoint,
-      [
-        headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
-        body: payload
-      ] ++ req_opts
-    )
+  # Production authenticates the app with workload identity federation: the
+  # portal's managed identity mints a token-exchange assertion, so no secret is
+  # stored. A configured client secret (dev and test, which have no managed
+  # identity) uses the secret directly.
+  defp client_credential(config) do
+    case config[:client_secret] do
+      secret when is_binary(secret) and secret != "" ->
+        {:ok, %{"client_secret" => secret}}
+
+      _ ->
+        federated_credential()
+    end
+  end
+
+  defp federated_credential do
+    assertion = Portal.Azure.ManagedIdentity.access_token!("api://AzureADTokenExchange")
+
+    {:ok,
+     %{
+       "client_assertion_type" => "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+       "client_assertion" => assertion
+     }}
+  rescue
+    exception -> {:error, exception}
   end
 
   @doc """
