@@ -111,7 +111,7 @@ defmodule PortalWeb.CoreComponents do
     <div id={@id} class="relative" phx-hook="CopyClipboard">
       <div id={"#{@id}-nested"} class={[~w[
         text-sm text-left text-neutral-50
-        inline-flex items-center
+        flex items-center max-w-full
         space-x-4 p-4 pl-6
         bg-neutral-800
         overflow-x-auto
@@ -1521,6 +1521,14 @@ defmodule PortalWeb.CoreComponents do
       type: :image,
       src: ~p"/images/logo-sentinel.svg",
       alt: "Microsoft Sentinel"
+    }
+  end
+
+  defp provider_icon_spec("s3") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-s3.svg",
+      alt: "Amazon S3"
     }
   end
 

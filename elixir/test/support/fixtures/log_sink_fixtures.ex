@@ -260,6 +260,69 @@ defmodule Portal.LogSinkFixtures do
     sentinel_log_sink
   end
 
+  def valid_s3_log_sink_attrs(attrs \\ %{}) do
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    Enum.into(attrs, %{
+      name: "Amazon S3 #{unique_num}",
+      bucket: "firezone-logs-#{unique_num}",
+      region: "us-east-1",
+      role_arn: "arn:aws:iam::123456789012:role/firezone-logs-#{unique_num}",
+      external_id: Ecto.UUID.generate(),
+      enabled_streams: ~w[change session api_request flow]a,
+      retroactive: false
+    })
+  end
+
+  def s3_log_sink_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    account = Map.get(attrs, :account) || account_fixture()
+
+    {:ok, log_sink} =
+      %Portal.LogSink{
+        id: Ecto.UUID.generate(),
+        account_id: account.id
+      }
+      |> Ecto.Changeset.cast(%{type: :s3}, [:type])
+      |> Portal.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    s3_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Enum.into(%{
+        id: log_sink.id,
+        account_id: account.id
+      })
+      |> valid_s3_log_sink_attrs()
+
+    {:ok, s3_log_sink} =
+      %Portal.S3.LogSink{}
+      |> Ecto.Changeset.cast(s3_attrs, [
+        :id,
+        :account_id,
+        :name,
+        :bucket,
+        :region,
+        :role_arn,
+        :key_prefix,
+        :external_id,
+        :enabled_streams,
+        :retroactive,
+        :errored_at,
+        :error_message,
+        :error_email_count,
+        :last_error_email_at,
+        :is_disabled,
+        :disabled_reason
+      ])
+      |> Portal.S3.LogSink.changeset()
+      |> Portal.Repo.insert()
+
+    s3_log_sink
+  end
+
   def splunk_log_sink_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 

@@ -13,7 +13,11 @@ defmodule Portal.LogSinks.Adapter do
   An error return feeds the same error path as a failed delivery.
   """
   @callback prepare(sink :: struct()) ::
-              :ok | {:error, {:status, Req.Response.t()} | {:transport, Exception.t()}}
+              :ok
+              | {:error,
+                 {:status, Req.Response.t()}
+                 | {:transport, Exception.t()}
+                 | {:config, String.t()}}
 
   @doc """
   Optional destination-side self-healing after an event is rejected and its
@@ -35,6 +39,17 @@ defmodule Portal.LogSinks.Adapter do
 
   @optional_callbacks prepare: 1, recover_undeliverable: 2, rejection_origin: 2
 
+  @typedoc """
+  Metadata for one delivered batch: the stream it came from, the seq range it
+  covers, and the first event's timestamp (unix seconds).
+  """
+  @type batch_meta :: %{
+          stream: atom(),
+          first_seq: pos_integer(),
+          last_seq: pos_integer(),
+          first_time: number()
+        }
+
   @doc "Envelope and JSON-encode one rendered event."
   @callback encode_event(sink :: struct(), stream :: atom(), {number(), map()}) :: binary()
 
@@ -44,6 +59,16 @@ defmodule Portal.LogSinks.Adapter do
   @doc "POST one batch body to the destination."
   @callback post_batch(sink :: struct(), body :: binary()) ::
               {:ok, Req.Response.t()} | {:error, Exception.t()}
+
+  @doc """
+  Like `post_batch/2`, but also receives the batch metadata, for destinations
+  whose write target depends on the batch (e.g. object store keys). Adapters
+  implement exactly one of the two.
+  """
+  @callback post_batch(sink :: struct(), body :: binary(), meta :: batch_meta()) ::
+              {:ok, Req.Response.t()} | {:error, Exception.t()}
+
+  @optional_callbacks post_batch: 2, post_batch: 3
 
   @doc """
   Read a response: `:accepted` advances the cursor, `:payload_too_large`

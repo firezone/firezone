@@ -134,6 +134,12 @@ config :portal, Portal.ChangeLogs.Consumer,
     api_tokens
     trust_anchors
     trust_anchor_certificates
+    splunk_log_sinks
+    datadog_log_sinks
+    newrelic_log_sinks
+    elastic_log_sinks
+    sentinel_log_sinks
+    s3_log_sinks
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.
@@ -272,6 +278,13 @@ config :portal, Portal.Sentinel.APIClient,
   client_secret: System.get_env("SENTINEL_SYNC_CLIENT_SECRET"),
   token_base_url: "https://login.microsoftonline.com",
   req_opts: []
+
+config :portal, Portal.S3.APIClient,
+  req_opts: [],
+  access_key_id: nil,
+  secret_access_key: nil,
+  session_token: nil,
+  aws_account_id: System.get_env("LOG_SINKS_AWS_ACCOUNT_ID", "000000000000")
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure

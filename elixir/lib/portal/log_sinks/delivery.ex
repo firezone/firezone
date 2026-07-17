@@ -106,8 +106,8 @@ defmodule Portal.LogSinks.Delivery do
   defp deliver_batch(sink, adapter, cursor, rows, budget) do
     encoded =
       Enum.flat_map(rows, fn row ->
-        for event <- render_event(cursor.stream, row, cursor.cursor) do
-          {row.seq, adapter.encode_event(sink, cursor.stream, event)}
+        for {time, _} = event <- render_event(cursor.stream, row, cursor.cursor) do
+          {row.seq, time, adapter.encode_event(sink, cursor.stream, event)}
         end
       end)
 
@@ -127,10 +127,10 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp deliver_chunk(sink, adapter, cursor, chunk) do
-    body = adapter.join_batch(Enum.map(chunk, fn {_seq, json} -> json end))
-    max_seq = chunk |> Enum.map(fn {seq, _json} -> seq end) |> Enum.max()
+    body = adapter.join_batch(Enum.map(chunk, fn {_seq, _time, json} -> json end))
+    max_seq = chunk |> Enum.map(fn {seq, _time, _json} -> seq end) |> Enum.max()
 
-    case adapter.post_batch(sink, body) do
+    case post_batch(sink, adapter, cursor, chunk, body) do
       {:ok, %Req.Response{} = response} ->
         case adapter.interpret(sink, response) do
           :accepted ->
@@ -154,6 +154,22 @@ defmodule Portal.LogSinks.Delivery do
     end
   end
 
+  defp post_batch(sink, adapter, cursor, chunk, body) do
+    if Code.ensure_loaded?(adapter) and function_exported?(adapter, :post_batch, 3) do
+      [{first_seq, first_time, _json} | _] = chunk
+      {last_seq, _time, _json} = List.last(chunk)
+
+      adapter.post_batch(sink, body, %{
+        stream: cursor.stream,
+        first_seq: first_seq,
+        last_seq: last_seq,
+        first_time: first_time
+      })
+    else
+      adapter.post_batch(sink, body)
+    end
+  end
+
   # A single event the destination rejects is never skipped: the cursor parks
   # on it until delivery can resume with nothing lost. A rejection our own
   # rendering caused (the default) pages us with the exact request and
@@ -163,7 +179,7 @@ defmodule Portal.LogSinks.Delivery do
   # configuration only the admin can fix becomes an ordinary transient sink
   # error instead: 24 hours of grace, then the sink disables and
   # notification emails go out.
-  defp handle_rejected_chunk(sink, adapter, cursor, [{seq, json}] = _chunk, response, reason) do
+  defp handle_rejected_chunk(sink, adapter, cursor, [{seq, _time, json}] = _chunk, response, reason) do
     case rejection_origin(sink, adapter, response) do
       :customer ->
         {:error, {:retriable, response}}
@@ -223,11 +239,11 @@ defmodule Portal.LogSinks.Delivery do
   # chunks could otherwise lose the trailing half of the pair.
   defp chunk_by_bytes(encoded, max_bytes) do
     encoded
-    |> Enum.chunk_by(fn {seq, _json} -> seq end)
+    |> Enum.chunk_by(fn {seq, _time, _json} -> seq end)
     |> Enum.chunk_while(
       {[], 0},
       fn group, {acc, bytes} ->
-        size = group |> Enum.map(fn {_seq, json} -> byte_size(json) + 1 end) |> Enum.sum()
+        size = group |> Enum.map(fn {_seq, _time, json} -> byte_size(json) + 1 end) |> Enum.sum()
 
         cond do
           acc == [] -> {:cont, {[group], size}}
@@ -299,6 +315,7 @@ defmodule Portal.LogSinks.Delivery do
   end
 
   defp classify({:status, _response}), do: :client_error
+  defp classify({:config, _message}), do: :client_error
   defp classify({:retriable, _response}), do: :transient
   defp classify({:transport, _exception}), do: :transient
   defp classify(:cursor_conflict), do: :transient
@@ -310,6 +327,8 @@ defmodule Portal.LogSinks.Delivery do
   defp format_error(adapter, {:retriable, %Req.Response{} = response}) do
     adapter.format_status_error(response)
   end
+
+  defp format_error(_adapter, {:config, message}), do: message
 
   defp format_error(_adapter, {:transport, exception}) do
     Portal.DirectorySync.ErrorHandler.format_transport_error(exception)

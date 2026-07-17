@@ -257,6 +257,11 @@ if config_env() == :prod do
     flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
     flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
 
+  config :portal, Portal.S3.APIClient,
+    access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),
+    secret_access_key: env_var_to_config!(:log_sinks_aws_secret_access_key),
+    aws_account_id: env_var_to_config!(:log_sinks_aws_account_id)
+
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   oban_crontab = [
@@ -278,6 +283,7 @@ if config_env() == :prod do
     {"* * * * *", Portal.NewRelic.Scheduler},
     {"* * * * *", Portal.Elastic.Scheduler},
     {"* * * * *", Portal.Sentinel.Scheduler},
+    {"* * * * *", Portal.S3.Scheduler},
 
     # Directory sync error notifications - daily check for low error count
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
@@ -371,6 +377,8 @@ if config_env() == :prod do
       elastic_sync: 5,
       sentinel_scheduler: 1,
       sentinel_sync: 5,
+      s3_scheduler: 1,
+      s3_sync: 5,
       sync_error_notifications: 1,
       outbound_emails: 1
     ],

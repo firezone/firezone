@@ -5,6 +5,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Elastic
   alias Portal.NewRelic
   alias Portal.Sentinel
+  alias Portal.S3
   alias Portal.Splunk
   alias __MODULE__.Database
 
@@ -17,7 +18,8 @@ defmodule PortalWeb.Settings.LogSinks do
     "datadog" => Datadog.LogSink,
     "newrelic" => NewRelic.LogSink,
     "elastic" => Elastic.LogSink,
-    "sentinel" => Sentinel.LogSink
+    "sentinel" => Sentinel.LogSink,
+    "s3" => S3.LogSink
   }
 
   @types Map.keys(@modules)
@@ -48,7 +50,8 @@ defmodule PortalWeb.Settings.LogSinks do
     Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
     NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
     Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a,
-    Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a
+    Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a,
+    S3.LogSink => @common_fields ++ ~w[bucket region role_arn key_prefix]a
   }
 
   @newrelic_region_options [
@@ -63,6 +66,7 @@ defmodule PortalWeb.Settings.LogSinks do
       assign(socket,
         page_title: "Log Sinks",
         sentinel_setup_tab: "portal",
+        s3_setup_tab: "console",
         trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
       )
 
@@ -73,7 +77,7 @@ defmodule PortalWeb.Settings.LogSinks do
   def handle_params(%{"type" => type}, _url, %{assigns: %{live_action: :new}} = socket)
       when type in @types do
     schema = Map.get(@modules, type)
-    changeset = changeset(struct(schema), %{})
+    changeset = schema |> new_sink() |> changeset(%{})
 
     {:noreply,
      assign(socket,
@@ -128,6 +132,11 @@ defmodule PortalWeb.Settings.LogSinks do
   def handle_event("sentinel_setup_tab", %{"tab" => tab}, socket)
       when tab in ~w[portal cli terraform] do
     {:noreply, assign(socket, sentinel_setup_tab: tab)}
+  end
+
+  def handle_event("s3_setup_tab", %{"tab" => tab}, socket)
+      when tab in ~w[console cli terraform] do
+    {:noreply, assign(socket, s3_setup_tab: tab)}
   end
 
   def handle_event("sentinel_admin_consent", _params, socket) do
@@ -431,6 +440,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                   </.link>
                 </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/s3/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="s3" size="xl" />
+                      <span class="text-sm font-medium text-heading">Amazon S3</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Archive logs to an Amazon S3 bucket as NDJSON objects.
+                    </span>
+                  </.link>
+                </li>
               </ul>
             </div>
           </div>
@@ -460,7 +483,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -509,7 +532,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
                 {@sink.error_message}
               </.flash>
-              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -519,7 +542,7 @@ defmodule PortalWeb.Settings.LogSinks do
                 form="log-sink-form"
                 type="submit"
                 style="primary"
-                disabled={not @form.source.valid? or Enum.empty?(@form.source.changes)}
+                disabled={not @form.source.valid?}
               >
                 Save
               </.button>
@@ -806,6 +829,7 @@ defmodule PortalWeb.Settings.LogSinks do
   attr :live_action, :atom, required: true
   attr :account, :any, required: true
   attr :sentinel_setup_tab, :string, required: true
+  attr :s3_setup_tab, :string, required: true
 
   defp sink_form(assigns) do
     ~H"""
@@ -1051,18 +1075,19 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
           <div class="flex border-b border-border mb-3" role="tablist">
             <button
-              :for={{tab, label} <- [{"portal", "Azure Portal"}, {"cli", "Azure CLI"}, {"terraform", "Terraform"}]}
+              :for={{tab, label, icon} <- [{"portal", "Azure Portal", "ri-window-line"}, {"cli", "Azure CLI", "ri-terminal-line"}, {"terraform", "Terraform", "ri-stack-line"}]}
               type="button"
               role="tab"
               phx-click="sentinel_setup_tab"
               phx-value-tab={tab}
               class={[
-                "px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+                "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
                 @sentinel_setup_tab == tab && "border-brand text-brand",
                 @sentinel_setup_tab != tab &&
                   "border-transparent text-body hover:text-heading hover:border-border-strong"
               ]}
             >
+              <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
               {label}
             </button>
           </div>
@@ -1214,6 +1239,153 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "s3"} class="p-3 rounded border border-border bg-raised">
+          <p class="text-xs font-medium text-heading mb-2">Setup</p>
+          <p class="text-xs text-subtle mb-3">
+            Firezone assumes an IAM role in your AWS account to write log objects. The
+            trust policy and snippets below are pinned to this sink's External ID, so
+            complete setup and save without leaving this page:
+          </p>
+          <div class="flex border-b border-border mb-3" role="tablist">
+            <button
+              :for={{tab, label, icon} <- [{"console", "AWS Console", "ri-window-line"}, {"cli", "AWS CLI", "ri-terminal-line"}, {"terraform", "Terraform", "ri-stack-line"}]}
+              type="button"
+              role="tab"
+              phx-click="s3_setup_tab"
+              phx-value-tab={tab}
+              class={[
+                "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+                @s3_setup_tab == tab && "border-brand text-brand",
+                @s3_setup_tab != tab &&
+                  "border-transparent text-body hover:text-heading hover:border-border-strong"
+              ]}
+            >
+              <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+              {label}
+            </button>
+          </div>
+          <ol
+            :if={@s3_setup_tab == "console"}
+            class="list-decimal ml-4 space-y-1.5 text-xs text-subtle"
+          >
+            <li>
+              In the S3 console, create a bucket (or pick an existing one) and note its
+              region.
+            </li>
+            <li>
+              In IAM under <strong>Roles</strong>, choose
+              <strong>Create role &rarr; Custom trust policy</strong> and paste:
+              <pre class="mt-2 mb-1 p-3 rounded border border-border bg-surface text-xs text-body overflow-x-auto"><code>{trust_policy_json(@form)}</code></pre>
+              Continue without adding permissions and give the role a name, e.g.
+              <code class="text-xs">firezone-logs</code>.
+            </li>
+            <li>
+              On the new role, choose
+              <strong>Add permissions &rarr; Create inline policy &rarr; JSON</strong>
+              and paste:
+              <pre class="mt-2 mb-1 p-3 rounded border border-border bg-surface text-xs text-body overflow-x-auto"><code>{s3_permission_policy_json(@form)}</code></pre>
+            </li>
+            <li>
+              Fill in the fields below: the bucket name, its region, and the role's ARN
+              (shown at the top of the role's page).
+            </li>
+          </ol>
+          <div :if={@s3_setup_tab == "cli"}>
+            <p class="text-xs text-subtle mb-2">
+              Set the variables, then run the script with the AWS CLI logged into your
+              account. It prints the Role ARN for the field below.
+            </p>
+            <.code_block id="s3-setup-cli" class="rounded text-xs">{s3_cli_snippet(@form)}</.code_block>
+          </div>
+          <div :if={@s3_setup_tab == "terraform"}>
+            <p class="text-xs text-subtle mb-2">
+              Requires the aws provider; the bucket is created in the provider's region.
+              The output is the Role ARN for the field below.
+            </p>
+            <.code_block id="s3-setup-terraform" class="rounded text-xs">{s3_terraform_snippet(@form)}</.code_block>
+          </div>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:bucket].id} class="block text-xs font-medium text-body mb-1.5">
+            Bucket <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:bucket]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The name of the S3 bucket to write log objects to.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:region].id} class="block text-xs font-medium text-body mb-1.5">
+            Region <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:region]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The AWS region the bucket is in, e.g. <code class="text-xs">us-east-1</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:role_arn].id} class="block text-xs font-medium text-body mb-1.5">
+            Role ARN <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:role_arn]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The IAM role in your AWS account that Firezone assumes to write objects,
+            e.g. <code class="text-xs">arn:aws:iam::123456789012:role/firezone-logs</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <label for={@form[:key_prefix].id} class="block text-xs font-medium text-body mb-1.5">
+            Key Prefix
+          </label>
+          <.input
+            field={@form[:key_prefix]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Optional. A prefix added to every object key, e.g.
+            <code class="text-xs">firezone/logs</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "s3"}>
+          <span class="block text-xs font-medium text-body mb-1.5">External ID</span>
+          <p class="text-sm font-mono text-heading">
+            {get_field(@form.source, :external_id)}
+          </p>
+          <p class="mt-1 text-xs text-subtle">
+            Generated by Firezone and pinned to this sink. The role's trust policy must
+            require it via <code class="text-xs">sts:ExternalId</code>.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1310,6 +1482,7 @@ defmodule PortalWeb.Settings.LogSinks do
         NewRelic.LogSink -> :newrelic
         Elastic.LogSink -> :elastic
         Sentinel.LogSink -> :sentinel
+        S3.LogSink -> :s3
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1335,6 +1508,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%NewRelic.LogSink{}), do: NewRelic.Sync
   defp sync_module(%Elastic.LogSink{}), do: Elastic.Sync
   defp sync_module(%Sentinel.LogSink{}), do: Sentinel.Sync
+  defp sync_module(%S3.LogSink{}), do: S3.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1408,6 +1582,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("newrelic"), do: "New Relic"
   defp titleize("elastic"), do: "Elastic"
   defp titleize("sentinel"), do: "Microsoft Sentinel"
+  defp titleize("s3"), do: "Amazon S3"
 
   defp sink_type(sink) do
     case sink.__struct__ do
@@ -1416,6 +1591,7 @@ defmodule PortalWeb.Settings.LogSinks do
       NewRelic.LogSink -> "newrelic"
       Elastic.LogSink -> "elastic"
       Sentinel.LogSink -> "sentinel"
+      S3.LogSink -> "s3"
     end
   end
 
@@ -1449,6 +1625,13 @@ defmodule PortalWeb.Settings.LogSinks do
     end
   end
 
+  defp sink_destination(%S3.LogSink{} = sink) do
+    case sink.key_prefix do
+      nil -> "s3://#{sink.bucket}"
+      prefix -> "s3://#{sink.bucket}/#{prefix}"
+    end
+  end
+
   defp sentinel_admin_consent_url(form, account) do
     tenant =
       case get_field(form.source, :tenant_id) do
@@ -1478,13 +1661,21 @@ defmodule PortalWeb.Settings.LogSinks do
   WORKSPACE_ID=$(az monitor log-analytics workspace show \
     -g "$RG" -n "$WORKSPACE" --query id -o tsv)
 
-  az monitor log-analytics workspace table create \
-    -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
-    --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic
+  if ! az monitor log-analytics workspace table show \
+       -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL > /dev/null 2>&1; then
+    az monitor log-analytics workspace table create \
+      -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
+      --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic \
+      --output none
+  fi
 
-  DCE_ID=$(az monitor data-collection endpoint create \
-    -g "$RG" -n firezone-logs -l "$LOCATION" \
-    --public-network-access Enabled --query id -o tsv)
+  DCE_ID=$(az monitor data-collection endpoint show \
+    -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
+  if [ -z "$DCE_ID" ]; then
+    DCE_ID=$(az monitor data-collection endpoint create \
+      -g "$RG" -n firezone-logs -l "$LOCATION" \
+      --public-network-access Enabled --query id -o tsv)
+  fi
 
   cat > firezone-dcr.json <<EOF
   {
@@ -1518,20 +1709,29 @@ defmodule PortalWeb.Settings.LogSinks do
   }
   EOF
 
-  DCR_ID=$(az monitor data-collection rule create \
-    -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+  DCR_ID=$(az monitor data-collection rule show \
+    -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
+  if [ -z "$DCR_ID" ]; then
+    DCR_ID=$(az monitor data-collection rule create \
+      -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+  fi
 
   SP_ID=$(az ad sp show --id FIREZONE_CLIENT_ID --query id -o tsv)
 
-  az role assignment create --assignee-object-id "$SP_ID" \
-    --assignee-principal-type ServicePrincipal \
-    --role "Monitoring Metrics Publisher" --scope "$DCR_ID"
+  if ! az role assignment list --assignee "$SP_ID" --scope "$DCR_ID" \
+       --role "Monitoring Metrics Publisher" --query "[0].id" -o tsv 2>/dev/null | grep -q .; then
+    az role assignment create --assignee-object-id "$SP_ID" \
+      --assignee-principal-type ServicePrincipal \
+      --role "Monitoring Metrics Publisher" --scope "$DCR_ID" \
+      --output none
+  fi
 
-  echo "Ingestion endpoint: $(az monitor data-collection endpoint show \
+  echo "Enter these in the Firezone form:"
+  echo "  Ingestion Endpoint: $(az monitor data-collection endpoint show \
     -g "$RG" -n firezone-logs --query logsIngestion.endpoint -o tsv)"
-  echo "DCR immutable ID: $(az monitor data-collection rule show \
+  echo "  DCR Immutable ID:   $(az monitor data-collection rule show \
     -g "$RG" -n firezone-logs --query immutableId -o tsv)"
-  echo "Stream name: Custom-FirezoneLogs_CL"
+  echo "  Stream Name:        Custom-FirezoneLogs_CL"
   """
 
   @sentinel_terraform_snippet ~S"""
@@ -1646,6 +1846,174 @@ defmodule PortalWeb.Settings.LogSinks do
     String.replace(@sentinel_terraform_snippet, "FIREZONE_CLIENT_ID", sentinel_client_id())
   end
 
+  defp new_sink(S3.LogSink), do: %S3.LogSink{external_id: Ecto.UUID.generate()}
+  defp new_sink(schema), do: struct(schema)
+
+  defp trust_policy_json(form) do
+    external_id = get_field(form.source, :external_id)
+    aws_account_id = S3.APIClient.aws_account_id()
+
+    """
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "AWS": "arn:aws:iam::#{aws_account_id}:root" },
+          "Action": "sts:AssumeRole",
+          "Condition": { "StringEquals": { "sts:ExternalId": "#{external_id}" } }
+        }
+      ]
+    }\
+    """
+  end
+
+  defp s3_permission_policy_json(form) do
+    bucket =
+      case get_field(form.source, :bucket) do
+        bucket when is_binary(bucket) and bucket != "" -> bucket
+        _ -> "my-firezone-logs"
+      end
+
+    resource =
+      "arn:aws:s3:::#{bucket}/#{s3_objects_pattern(get_field(form.source, :key_prefix))}"
+
+    """
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": "s3:PutObject",
+          "Resource": "#{resource}"
+        }
+      ]
+    }\
+    """
+  end
+
+  defp s3_objects_pattern(prefix) when is_binary(prefix) do
+    case prefix |> String.trim() |> String.trim("/") do
+      "" -> "*"
+      prefix -> "#{prefix}/*"
+    end
+  end
+
+  defp s3_objects_pattern(_prefix), do: "*"
+
+  @s3_cli_snippet ~S"""
+  BUCKET="SINK_BUCKET"
+  REGION="us-east-1"
+  ROLE="firezone-logs"
+
+  if ! aws s3api head-bucket --bucket "$BUCKET" > /dev/null 2>&1; then
+    if [ "$REGION" = "us-east-1" ]; then
+      aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" > /dev/null
+    else
+      aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
+        --create-bucket-configuration LocationConstraint="$REGION" > /dev/null
+    fi
+  fi
+
+  cat > firezone-trust.json <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::FIREZONE_AWS_ACCOUNT_ID:root" },
+        "Action": "sts:AssumeRole",
+        "Condition": { "StringEquals": { "sts:ExternalId": "SINK_EXTERNAL_ID" } }
+      }
+    ]
+  }
+  EOF
+
+  if aws iam get-role --role-name "$ROLE" > /dev/null 2>&1; then
+    aws iam update-assume-role-policy --role-name "$ROLE" \
+      --policy-document file://firezone-trust.json
+  else
+    aws iam create-role --role-name "$ROLE" \
+      --assume-role-policy-document file://firezone-trust.json > /dev/null
+  fi
+
+  aws iam put-role-policy --role-name "$ROLE" --policy-name put-objects \
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:PutObject\",\"Resource\":\"arn:aws:s3:::$BUCKET/SINK_OBJECTS_PATTERN\"}]}"
+
+  echo "Enter these in the Firezone form:"
+  echo "  Bucket:   $BUCKET"
+  echo "  Region:   $REGION"
+  echo "  Role ARN: $(aws iam get-role --role-name "$ROLE" --query Role.Arn --output text)"
+  """
+
+  @s3_terraform_snippet ~S"""
+  locals {
+    bucket = "SINK_BUCKET"
+  }
+
+  resource "aws_s3_bucket" "firezone_logs" {
+    bucket = local.bucket
+  }
+
+  resource "aws_iam_role" "firezone_logs" {
+    name = "firezone-logs"
+
+    assume_role_policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect    = "Allow"
+          Principal = { AWS = "arn:aws:iam::FIREZONE_AWS_ACCOUNT_ID:root" }
+          Action    = "sts:AssumeRole"
+          Condition = { StringEquals = { "sts:ExternalId" = "SINK_EXTERNAL_ID" } }
+        }
+      ]
+    })
+  }
+
+  resource "aws_iam_role_policy" "firezone_logs_put" {
+    name = "put-objects"
+    role = aws_iam_role.firezone_logs.id
+
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect   = "Allow"
+          Action   = "s3:PutObject"
+          Resource = "${aws_s3_bucket.firezone_logs.arn}/SINK_OBJECTS_PATTERN"
+        }
+      ]
+    })
+  }
+
+  output "role_arn" {
+    value = aws_iam_role.firezone_logs.arn
+  }
+  """
+
+  defp s3_cli_snippet(form) do
+    prefill_s3_snippet(@s3_cli_snippet, form)
+  end
+
+  defp s3_terraform_snippet(form) do
+    prefill_s3_snippet(@s3_terraform_snippet, form)
+  end
+
+  defp prefill_s3_snippet(snippet, form) do
+    bucket =
+      case get_field(form.source, :bucket) do
+        bucket when is_binary(bucket) and bucket != "" -> bucket
+        _ -> "my-firezone-logs"
+      end
+
+    snippet
+    |> String.replace("FIREZONE_AWS_ACCOUNT_ID", S3.APIClient.aws_account_id())
+    |> String.replace("SINK_EXTERNAL_ID", get_field(form.source, :external_id) || "")
+    |> String.replace("SINK_BUCKET", bucket)
+    |> String.replace("SINK_OBJECTS_PATTERN", s3_objects_pattern(get_field(form.source, :key_prefix)))
+  end
+
   defp delivered_count(sink) do
     case sink.delivery_stats do
       %{delivered: delivered} when is_integer(delivered) -> delivered
@@ -1695,6 +2063,7 @@ defmodule PortalWeb.Settings.LogSinks do
     alias Portal.Datadog
     alias Portal.Elastic
     alias Portal.NewRelic
+    alias Portal.S3
     alias Portal.Safe
     alias Portal.Sentinel
     alias Portal.Splunk
@@ -1705,7 +2074,8 @@ defmodule PortalWeb.Settings.LogSinks do
         Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        S3.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

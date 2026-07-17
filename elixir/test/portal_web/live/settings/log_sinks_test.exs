@@ -488,6 +488,139 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert Repo.all(Portal.Sentinel.LogSink) == []
     end
 
+    test "renders the S3 setup tabs with prefilled snippets", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/s3/new")
+
+      assert html =~ "Custom trust policy"
+      assert html =~ "s3:PutObject"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{bucket: "acme-logs", key_prefix: "firezone/logs"}
+        )
+        |> render_change()
+
+      assert html =~ "arn:aws:s3:::acme-logs/firezone/logs/*"
+
+      html =
+        lv
+        |> element("button[phx-value-tab=cli]")
+        |> render_click()
+
+      assert html =~ "aws iam create-role"
+      assert html =~ "arn:aws:iam::123456789012:root"
+      assert html =~ "acme-logs"
+      assert html =~ "$BUCKET/firezone/logs/*"
+
+      html =
+        lv
+        |> element("button[phx-value-tab=terraform]")
+        |> render_click()
+
+      assert html =~ "aws_iam_role_policy"
+      assert html =~ "arn:aws:iam::123456789012:root"
+      assert html =~ "firezone_logs.arn}/firezone/logs/*"
+    end
+
+    test "creates an Amazon S3 log sink with a generated external id", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/s3/new")
+
+      assert html =~ "sts:ExternalId"
+      assert html =~ "sts:AssumeRole"
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{
+            name: "SOC S3",
+            bucket: "acme-firezone-logs",
+            region: "us-west-2",
+            role_arn: "arn:aws:iam::123456789012:role/firezone-logs",
+            key_prefix: "/firezone/logs/",
+            enabled_streams: ["", "session"]
+          }
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      assert sink = Repo.get_by(Portal.S3.LogSink, account_id: account.id)
+      assert sink.name == "SOC S3"
+      assert sink.bucket == "acme-firezone-logs"
+      assert sink.region == "us-west-2"
+      assert sink.role_arn == "arn:aws:iam::123456789012:role/firezone-logs"
+      assert sink.key_prefix == "firezone/logs"
+      assert sink.external_id
+      assert html =~ sink.external_id
+      assert sink.enabled_streams == [:session]
+
+      assert base = Repo.get_by(Portal.LogSink, account_id: account.id, id: sink.id)
+      assert base.type == :s3
+    end
+
+    test "rejects an invalid role ARN", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/s3/new")
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{
+            name: "SOC S3",
+            bucket: "acme-firezone-logs",
+            region: "us-west-2",
+            role_arn: "arn:aws:iam::123:user/not-a-role"
+          }
+        )
+        |> render_change()
+
+      assert html =~ "must be an IAM role ARN"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{role_arn: "arn:aws-us-gov:iam::123456789012:role/firezone-logs"}
+        )
+        |> render_change()
+
+      assert html =~ "must be an IAM role ARN"
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{bucket: "logs.example.com"})
+        |> render_change()
+
+      assert html =~ "must be a valid S3 bucket name"
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{key_prefix: "firezone/*"})
+        |> render_change()
+
+      assert html =~ "may contain only letters, numbers, dots, underscores"
+      assert Repo.all(Portal.S3.LogSink) == []
+    end
+
     test "renders validation errors for an invalid HEC URL", %{
       conn: conn,
       account: account,
@@ -597,7 +730,30 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.hec_token == sink.hec_token
     end
 
-    test "editing a sink disabled by a delivery error re-enables it", %{
+    test "editing an Amazon S3 sink keeps its external id", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = s3_log_sink_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/s3/#{sink.id}/edit")
+
+      assert html =~ sink.external_id
+
+      form = form(lv, "#log-sink-form", log_sink: %{name: "Renamed S3 Sink"})
+      render_change(form)
+      render_submit(form)
+
+      updated = Repo.get_by!(Portal.S3.LogSink, account_id: account.id, id: sink.id)
+      assert updated.name == "Renamed S3 Sink"
+      assert updated.external_id == sink.external_id
+    end
+
+    test "saving a sink disabled by a delivery error unchanged re-enables it", %{
       conn: conn,
       account: account,
       actor: actor
@@ -616,15 +772,18 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
 
-      form = form(lv, "#log-sink-form", log_sink: %{hec_token: "fixed-token"})
-      render_change(form)
-      render_submit(form)
+      refute has_element?(lv, "button[type=submit][disabled]")
+
+      lv
+      |> form("#log-sink-form")
+      |> render_submit()
 
       updated = reload_sink(sink)
       refute updated.is_disabled
       refute updated.disabled_reason
       refute updated.error_message
       refute updated.errored_at
+      assert updated.hec_token == sink.hec_token
     end
   end
 
