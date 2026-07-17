@@ -89,6 +89,7 @@ defmodule Portal.Sentinel.LogSink do
       message: "must start with Custom- followed by the stream name"
     )
     |> validate_uri(:ingestion_endpoint, schemes: ~w[https], block_private_ips: true)
+    |> validate_ingestion_host()
     |> assoc_constraint(:account)
     |> assoc_constraint(:log_sink)
     |> unique_constraint(:name,
@@ -101,6 +102,33 @@ defmodule Portal.Sentinel.LogSink do
     url
     |> String.trim()
     |> String.trim_trailing("/")
+  end
+
+  # Each delivery mints a bearer token from Firezone's shared Entra credentials
+  # scoped to Azure Monitor, so the endpoint must be an Azure Monitor ingestion
+  # host: a stray URL would receive that token.
+  defp validate_ingestion_host(changeset) do
+    validate_change(changeset, :ingestion_endpoint, fn :ingestion_endpoint, value ->
+      case ingestion_host_error(value) do
+        nil -> []
+        error -> [ingestion_endpoint: error]
+      end
+    end)
+  end
+
+  defp ingestion_host_error(value) do
+    case URI.new(value) do
+      {:ok, %URI{host: host}} when is_binary(host) -> azure_host_error(host)
+      _ -> nil
+    end
+  end
+
+  defp azure_host_error(host) do
+    if String.ends_with?(String.downcase(host), ".ingest.monitor.azure.com") do
+      nil
+    else
+      "must be an Azure Monitor endpoint ending in .ingest.monitor.azure.com"
+    end
   end
 
 end

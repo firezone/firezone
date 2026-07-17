@@ -476,6 +476,15 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> render_change()
 
       assert html =~ "must look like dcr-"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{ingestion_endpoint: "https://attacker.example.com"}
+        )
+        |> render_change()
+
+      assert html =~ "must be an Azure Monitor endpoint"
       assert Repo.all(Portal.Sentinel.LogSink) == []
     end
 

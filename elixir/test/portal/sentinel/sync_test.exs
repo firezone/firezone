@@ -122,6 +122,67 @@ defmodule Portal.Sentinel.SyncTest do
       assert sink.error_message =~ "Monitoring Metrics Publisher"
     end
 
+    test "an invalid stream 400 is a customer-facing transient error", %{account: account} do
+      sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      log = session_log_fixture(account: account)
+
+      stub_ingest_status(400, %{
+        "error" => %{
+          "code" => "InvalidStream",
+          "message" => "The stream Custom-Wrong_CL was not configured in the data collection rule."
+        }
+      })
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+        end)
+
+      refute log_output =~ "cannot be delivered"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+      assert cursor.cursor < log.seq
+
+      sink = reload_sink(sink)
+      refute sink.is_disabled
+      assert sink.errored_at
+      assert sink.error_message =~ "was not configured in the data collection rule"
+      assert sink.error_message =~ "stream name and DCR immutable ID"
+    end
+
+    test "a malformed-request 400 parks the stream without alarming the customer", %{
+      account: account
+    } do
+      sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      log = session_log_fixture(account: account)
+
+      stub_ingest_status(400, %{
+        "error" => %{
+          "code" => "InvalidContentLength",
+          "message" => "Content-Length must be greater than zero."
+        }
+      })
+
+      log_output =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+        end)
+
+      assert log_output =~ "Log sink event cannot be delivered, halting stream"
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 0
+      assert cursor.cursor < log.seq
+
+      sink = reload_sink(sink)
+      refute sink.is_disabled
+      refute sink.errored_at
+      refute sink.error_message
+    end
+
     test "a 429 is transient", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})

@@ -72,7 +72,21 @@ defmodule Portal.Sentinel.APIClient do
   @impl true
   def interpret(_sink, %Req.Response{status: status}) when status in 200..299, do: :accepted
   def interpret(_sink, %Req.Response{status: 413}), do: :payload_too_large
-  def interpret(_sink, %Req.Response{status: 400}), do: :malformed_payload
+
+  # A 400 is either the request we build (our bug: isolate the event, park the
+  # stream, and page us without alarming the customer) or the customer's DCR
+  # and stream configuration (only they can fix it, so surface it as an
+  # ordinary transient sink error that notifies after 24 hours). The whole
+  # batch shares the one 400, so the customer case is not a poison event to
+  # bisect down to.
+  def interpret(_sink, %Req.Response{status: 400} = response) do
+    if internal_request_error?(response) do
+      :malformed_payload
+    else
+      :retriable
+    end
+  end
+
   def interpret(_sink, %Req.Response{}), do: :failed
 
   @impl true
@@ -100,6 +114,20 @@ defmodule Portal.Sentinel.APIClient do
       "data collection rule; role assignments can take up to 30 minutes to propagate."
   end
 
+  # Only the customer configuration path reaches here for a 400: our own
+  # request errors park via handle_rejected_chunk and never format a message.
+  def format_status_error(%Req.Response{status: 400, body: body}) do
+    prefix =
+      case azure_error_message(body) do
+        nil -> "Azure Monitor returned HTTP 400."
+        message -> "Azure Monitor returned HTTP 400: #{message}."
+      end
+
+    prefix <>
+      " Check that the stream name and DCR immutable ID match your data collection rule, " <>
+      "and that the stream is declared under the rule's stream declarations."
+  end
+
   def format_status_error(%Req.Response{status: status, body: body}) do
     case azure_error_message(body) do
       nil -> "Azure Monitor returned HTTP #{status}"
@@ -113,6 +141,24 @@ defmodule Portal.Sentinel.APIClient do
 
   defp azure_error_message(%{"error" => error}) when is_binary(error), do: error
   defp azure_error_message(_body), do: nil
+
+  # 400s about the request we construct (an empty body, a wrong api-version).
+  # Everything else Azure reports at 400 is DCR or stream configuration, which
+  # only the customer can fix. Unknown codes default to the customer so a
+  # config error never parks silently.
+  @internal_request_error_codes ~w[
+    InvalidContentLength
+    ContentDeserializationError
+    InvalidApiVersion
+    MissingApiVersionParameter
+  ]
+
+  defp internal_request_error?(%Req.Response{body: body}) do
+    azure_error_code(body) in @internal_request_error_codes
+  end
+
+  defp azure_error_code(%{"error" => %{"code" => code}}) when is_binary(code), do: code
+  defp azure_error_code(_body), do: nil
 
   defp fetch_access_token(sink) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)

@@ -204,7 +204,7 @@ defmodule Portal.LogSinkFixtures do
     Enum.into(attrs, %{
       name: "Microsoft Sentinel #{unique_num}",
       tenant_id: Ecto.UUID.generate(),
-      ingestion_endpoint: "https://dce#{unique_num}.eastus-1.ingest.monitor.azure.example",
+      ingestion_endpoint: "https://dce#{unique_num}.eastus-1.ingest.monitor.azure.com",
       dcr_immutable_id: "dcr-#{String.replace(Ecto.UUID.generate(), "-", "")}",
       stream_name: "Custom-FirezoneLogs_CL",
       enabled_streams: ~w[change session api_request flow]a,
