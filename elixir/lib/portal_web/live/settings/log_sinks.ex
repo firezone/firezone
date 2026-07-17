@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Datadog
   alias Portal.Elastic
   alias Portal.NewRelic
+  alias Portal.Sentinel
   alias Portal.Splunk
   alias __MODULE__.Database
 
@@ -15,7 +16,8 @@ defmodule PortalWeb.Settings.LogSinks do
     "splunk" => Splunk.LogSink,
     "datadog" => Datadog.LogSink,
     "newrelic" => NewRelic.LogSink,
-    "elastic" => Elastic.LogSink
+    "elastic" => Elastic.LogSink,
+    "sentinel" => Sentinel.LogSink
   }
 
   @types Map.keys(@modules)
@@ -45,7 +47,8 @@ defmodule PortalWeb.Settings.LogSinks do
     Splunk.LogSink => @common_fields ++ ~w[collector_url hec_token index]a,
     Datadog.LogSink => @common_fields ++ ~w[site api_key tags]a,
     NewRelic.LogSink => @common_fields ++ ~w[region license_key]a,
-    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a
+    Elastic.LogSink => @common_fields ++ ~w[endpoint_url api_key data_stream]a,
+    Sentinel.LogSink => @common_fields ++ ~w[tenant_id ingestion_endpoint dcr_immutable_id stream_name]a
   }
 
   @newrelic_region_options [
@@ -59,6 +62,7 @@ defmodule PortalWeb.Settings.LogSinks do
     socket =
       assign(socket,
         page_title: "Log Sinks",
+        sentinel_setup_tab: "portal",
         trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
       )
 
@@ -119,6 +123,16 @@ defmodule PortalWeb.Settings.LogSinks do
 
   def handle_event("handle_keydown", _params, socket) do
     {:noreply, socket}
+  end
+
+  def handle_event("sentinel_setup_tab", %{"tab" => tab}, socket)
+      when tab in ~w[portal cli terraform] do
+    {:noreply, assign(socket, sentinel_setup_tab: tab)}
+  end
+
+  def handle_event("sentinel_admin_consent", _params, socket) do
+    url = sentinel_admin_consent_url(socket.assigns.form, socket.assigns.account)
+    {:noreply, push_event(socket, "open_url", %{url: url})}
   end
 
   def handle_event("validate", %{"log_sink" => attrs}, socket) do
@@ -403,6 +417,20 @@ defmodule PortalWeb.Settings.LogSinks do
                     </span>
                   </.link>
                 </li>
+                <li>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/sentinel/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <.provider_icon provider="sentinel" size="xl" />
+                      <span class="text-sm font-medium text-heading">Microsoft Sentinel</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Stream logs to Microsoft Sentinel via the Azure Monitor Logs Ingestion API.
+                    </span>
+                  </.link>
+                </li>
               </ul>
             </div>
           </div>
@@ -432,7 +460,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.sink_form form={@form} type={@type} live_action={@live_action} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -481,7 +509,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
                 {@sink.error_message}
               </.flash>
-              <.sink_form form={@form} type={@type} live_action={@live_action} />
+              <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} />
             </div>
             <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <.button phx-click="close_panel">
@@ -776,6 +804,8 @@ defmodule PortalWeb.Settings.LogSinks do
   attr :form, :any, required: true
   attr :type, :string, required: true
   attr :live_action, :atom, required: true
+  attr :account, :any, required: true
+  attr :sentinel_setup_tab, :string, required: true
 
   defp sink_form(assigns) do
     ~H"""
@@ -989,6 +1019,201 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </div>
 
+        <div :if={@type == "sentinel"} class="p-3 rounded border border-border bg-raised">
+          <p class="text-xs font-medium text-heading mb-3">Setup</p>
+
+          <div class="mb-4 p-3 rounded border border-border bg-surface">
+            <p class="text-xs font-medium text-heading mb-1.5">1. Grant admin consent</p>
+            <p class="text-xs text-subtle mb-3">
+              Enter your Microsoft Entra tenant ID below, then have a tenant administrator grant
+              consent. This adds the <strong>Firezone Sentinel Log Ingestion</strong> application
+              to your tenant so you can assign it a role in the next step. It requests no API
+              permissions and cannot read your directory or data. It only becomes a service
+              principal you grant the Monitoring Metrics Publisher role to on a single data
+              collection rule.
+            </p>
+            <.button
+              type="button"
+              style="primary"
+              icon="ri-external-link-line"
+              id="sentinel-consent-link"
+              phx-click="sentinel_admin_consent"
+              phx-hook="OpenURL"
+            >
+              Grant admin consent
+            </.button>
+          </div>
+
+          <p class="text-xs font-medium text-heading mb-1.5">2. Create the ingestion resources</p>
+          <p class="text-xs text-subtle mb-3">
+            Create a data collection endpoint, a custom table, and a data collection rule, then
+            grant the Firezone application the Monitoring Metrics Publisher role on the rule.
+          </p>
+          <div class="flex border-b border-border mb-3" role="tablist">
+            <button
+              :for={{tab, label} <- [{"portal", "Azure Portal"}, {"cli", "Azure CLI"}, {"terraform", "Terraform"}]}
+              type="button"
+              role="tab"
+              phx-click="sentinel_setup_tab"
+              phx-value-tab={tab}
+              class={[
+                "px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+                @sentinel_setup_tab == tab && "border-brand text-brand",
+                @sentinel_setup_tab != tab &&
+                  "border-transparent text-body hover:text-heading hover:border-border-strong"
+              ]}
+            >
+              {label}
+            </button>
+          </div>
+          <ol
+            :if={@sentinel_setup_tab == "portal"}
+            class="list-decimal ml-4 space-y-1.5 text-xs text-subtle"
+          >
+            <li>
+              You need a Log Analytics workspace: use the one Microsoft Sentinel is enabled
+              on. If you don't have one yet, search for
+              <strong>Log Analytics workspaces</strong> in the Azure portal and create one,
+              then search for <strong>Microsoft Sentinel</strong>, choose
+              <strong>Create</strong>, and add it to that workspace.
+            </li>
+            <li>
+              Search for <strong>Data collection endpoints</strong> in the Azure portal and
+              create one in the same region as your workspace. Firezone delivers logs to
+              this endpoint.
+            </li>
+            <li>
+              Open your workspace and go to <strong>Settings &rarr; Tables</strong>. Choose
+              <strong>Create &rarr; New custom log (DCR-based)</strong>. Name the table
+              <code class="text-xs">FirezoneLogs</code>, choose
+              <strong>Create a new data collection rule</strong> and give it a name (e.g.
+              <code class="text-xs">firezone-logs</code>), and select the data collection
+              endpoint from the previous step. On the
+              <strong>Schema and transformation</strong> step, upload
+              <a
+                href={~p"/downloads/firezone-sentinel-sample.json"}
+                download
+                class="underline hover:text-heading"
+              >
+                this sample file
+              </a>
+              and keep the default transformation, then create the table.
+            </li>
+            <li>
+              Search for <strong>Data collection rules</strong>, open the rule you just
+              created, and go to <strong>Access control (IAM)</strong>. Choose
+              <strong>Add &rarr; Add role assignment</strong>, select the
+              <strong>Monitoring Metrics Publisher</strong> role, then under
+              <strong>Members</strong> choose <strong>User, group, or service principal</strong>
+              and select the <strong>Firezone Sentinel Log Ingestion</strong> application
+              (created by the admin consent above). Review and assign. The assignment can
+              take up to 30 minutes to take effect.
+            </li>
+            <li>
+              Fill in the fields below. Each field's hint says where to find its value in
+              the Azure portal; if you followed these steps, the stream name is
+              <code class="text-xs">Custom-FirezoneLogs_CL</code>.
+            </li>
+          </ol>
+          <div :if={@sentinel_setup_tab == "cli"}>
+            <p class="text-xs text-subtle mb-2">
+              Assumes an existing Log Analytics workspace. Set the variables for your
+              environment, then run the script with the Azure CLI logged into your
+              subscription. It prints the values for the fields below.
+            </p>
+            <.code_block id="sentinel-setup-cli" class="rounded text-xs">{sentinel_cli_snippet()}</.code_block>
+          </div>
+          <div :if={@sentinel_setup_tab == "terraform"}>
+            <p class="text-xs text-subtle mb-2">
+              Assumes an existing Log Analytics workspace and requires the azurerm, azuread,
+              and azapi providers. The outputs are the values for the fields below.
+            </p>
+            <.code_block id="sentinel-setup-terraform" class="rounded text-xs">{sentinel_terraform_snippet()}</.code_block>
+          </div>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label for={@form[:tenant_id].id} class="block text-xs font-medium text-body mb-1.5">
+            Tenant ID <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:tenant_id]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            Your Microsoft Entra directory (tenant) ID, e.g.
+            <code class="text-xs">00000000-0000-0000-0000-000000000000</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label
+            for={@form[:ingestion_endpoint].id}
+            class="block text-xs font-medium text-body mb-1.5"
+          >
+            Ingestion Endpoint <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:ingestion_endpoint]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The <strong>Logs Ingestion</strong> URI shown on your data collection endpoint's
+            Overview page, e.g.
+            <code class="text-xs">https://my-dce-abcd.eastus-1.ingest.monitor.azure.com</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label
+            for={@form[:dcr_immutable_id].id}
+            class="block text-xs font-medium text-body mb-1.5"
+          >
+            DCR Immutable ID <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:dcr_immutable_id]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The <strong>Immutable Id</strong> shown on the data collection rule's Overview
+            page (also in its <strong>JSON View</strong>), e.g.
+            <code class="text-xs">dcr-0123456789abcdef0123456789abcdef</code>.
+          </p>
+        </div>
+
+        <div :if={@type == "sentinel"}>
+          <label for={@form[:stream_name].id} class="block text-xs font-medium text-body mb-1.5">
+            Stream Name <span class="text-error">*</span>
+          </label>
+          <.input
+            field={@form[:stream_name]}
+            type="text"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-subtle">
+            The DCR's input stream, listed in its <strong>JSON View</strong> under
+            <code class="text-xs">streamDeclarations</code>. The Azure portal wizard names it
+            <code class="text-xs">Custom-&lt;table&gt;_CL</code>, e.g.
+            <code class="text-xs">Custom-FirezoneLogs_CL</code>.
+          </p>
+        </div>
+
         <fieldset>
           <legend class="block text-xs font-medium text-body mb-3">
             Log streams
@@ -1084,6 +1309,7 @@ defmodule PortalWeb.Settings.LogSinks do
         Datadog.LogSink -> :datadog
         NewRelic.LogSink -> :newrelic
         Elastic.LogSink -> :elastic
+        Sentinel.LogSink -> :sentinel
       end
 
     log_sink_id = Ecto.UUID.generate()
@@ -1108,6 +1334,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp sync_module(%Datadog.LogSink{}), do: Datadog.Sync
   defp sync_module(%NewRelic.LogSink{}), do: NewRelic.Sync
   defp sync_module(%Elastic.LogSink{}), do: Elastic.Sync
+  defp sync_module(%Sentinel.LogSink{}), do: Sentinel.Sync
 
   defp maybe_clear_sync_error(changeset, sink) do
     if sink.disabled_reason == "Sync error" do
@@ -1180,6 +1407,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp titleize("datadog"), do: "Datadog"
   defp titleize("newrelic"), do: "New Relic"
   defp titleize("elastic"), do: "Elastic"
+  defp titleize("sentinel"), do: "Microsoft Sentinel"
 
   defp sink_type(sink) do
     case sink.__struct__ do
@@ -1187,6 +1415,7 @@ defmodule PortalWeb.Settings.LogSinks do
       Datadog.LogSink -> "datadog"
       NewRelic.LogSink -> "newrelic"
       Elastic.LogSink -> "elastic"
+      Sentinel.LogSink -> "sentinel"
     end
   end
 
@@ -1211,6 +1440,210 @@ defmodule PortalWeb.Settings.LogSinks do
       {:ok, %URI{host: host}} when is_binary(host) -> host
       _ -> sink.endpoint_url
     end
+  end
+
+  defp sink_destination(%Sentinel.LogSink{} = sink) do
+    case URI.new(sink.ingestion_endpoint || "") do
+      {:ok, %URI{host: host}} when is_binary(host) -> host
+      _ -> sink.ingestion_endpoint
+    end
+  end
+
+  defp sentinel_admin_consent_url(form, account) do
+    tenant =
+      case get_field(form.source, :tenant_id) do
+        tenant when is_binary(tenant) and tenant != "" -> String.trim(tenant)
+        _ -> "organizations"
+      end
+
+    "https://login.microsoftonline.com/#{tenant}/adminconsent?" <>
+      URI.encode_query(%{
+        "client_id" => sentinel_client_id(),
+        "redirect_uri" => url(~p"/auth/sentinel/consent"),
+        "state" => Phoenix.Param.to_param(account)
+      })
+  end
+
+  defp sentinel_client_id do
+    Portal.Config.fetch_env!(:portal, Portal.Sentinel.APIClient)
+    |> Keyword.get(:client_id)
+    |> Kernel.||("<firezone-application-client-id>")
+  end
+
+  @sentinel_cli_snippet ~S"""
+  RG="my-resource-group"
+  WORKSPACE="my-workspace"
+  LOCATION="eastus"
+
+  WORKSPACE_ID=$(az monitor log-analytics workspace show \
+    -g "$RG" -n "$WORKSPACE" --query id -o tsv)
+
+  az monitor log-analytics workspace table create \
+    -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
+    --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic
+
+  DCE_ID=$(az monitor data-collection endpoint create \
+    -g "$RG" -n firezone-logs -l "$LOCATION" \
+    --public-network-access Enabled --query id -o tsv)
+
+  cat > firezone-dcr.json <<EOF
+  {
+    "location": "$LOCATION",
+    "properties": {
+      "dataCollectionEndpointId": "$DCE_ID",
+      "streamDeclarations": {
+        "Custom-FirezoneLogs_CL": {
+          "columns": [
+            { "name": "TimeGenerated", "type": "datetime" },
+            { "name": "Message", "type": "string" },
+            { "name": "Stream", "type": "string" },
+            { "name": "Firezone", "type": "dynamic" }
+          ]
+        }
+      },
+      "destinations": {
+        "logAnalytics": [
+          { "workspaceResourceId": "$WORKSPACE_ID", "name": "firezone" }
+        ]
+      },
+      "dataFlows": [
+        {
+          "streams": ["Custom-FirezoneLogs_CL"],
+          "destinations": ["firezone"],
+          "transformKql": "source",
+          "outputStream": "Custom-FirezoneLogs_CL"
+        }
+      ]
+    }
+  }
+  EOF
+
+  DCR_ID=$(az monitor data-collection rule create \
+    -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+
+  SP_ID=$(az ad sp show --id FIREZONE_CLIENT_ID --query id -o tsv)
+
+  az role assignment create --assignee-object-id "$SP_ID" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Monitoring Metrics Publisher" --scope "$DCR_ID"
+
+  echo "Ingestion endpoint: $(az monitor data-collection endpoint show \
+    -g "$RG" -n firezone-logs --query logsIngestion.endpoint -o tsv)"
+  echo "DCR immutable ID: $(az monitor data-collection rule show \
+    -g "$RG" -n firezone-logs --query immutableId -o tsv)"
+  echo "Stream name: Custom-FirezoneLogs_CL"
+  """
+
+  @sentinel_terraform_snippet ~S"""
+  locals {
+    resource_group = "my-resource-group"
+    workspace_name = "my-workspace"
+    location       = "eastus"
+  }
+
+  data "azurerm_log_analytics_workspace" "this" {
+    name                = local.workspace_name
+    resource_group_name = local.resource_group
+  }
+
+  resource "azurerm_monitor_data_collection_endpoint" "firezone" {
+    name                = "firezone-logs"
+    resource_group_name = local.resource_group
+    location            = local.location
+  }
+
+  resource "azapi_resource" "firezone_table" {
+    type      = "Microsoft.OperationalInsights/workspaces/tables@2022-10-01"
+    name      = "FirezoneLogs_CL"
+    parent_id = data.azurerm_log_analytics_workspace.this.id
+
+    body = jsonencode({
+      properties = {
+        schema = {
+          name = "FirezoneLogs_CL"
+          columns = [
+            { name = "TimeGenerated", type = "datetime" },
+            { name = "Message", type = "string" },
+            { name = "Stream", type = "string" },
+            { name = "Firezone", type = "dynamic" }
+          ]
+        }
+      }
+    })
+  }
+
+  resource "azurerm_monitor_data_collection_rule" "firezone" {
+    name                        = "firezone-logs"
+    resource_group_name         = local.resource_group
+    location                    = local.location
+    data_collection_endpoint_id = azurerm_monitor_data_collection_endpoint.firezone.id
+
+    destinations {
+      log_analytics {
+        workspace_resource_id = data.azurerm_log_analytics_workspace.this.id
+        name                  = "firezone"
+      }
+    }
+
+    data_flow {
+      streams       = ["Custom-FirezoneLogs_CL"]
+      destinations  = ["firezone"]
+      transform_kql = "source"
+      output_stream = "Custom-FirezoneLogs_CL"
+    }
+
+    stream_declaration {
+      stream_name = "Custom-FirezoneLogs_CL"
+
+      column {
+        name = "TimeGenerated"
+        type = "datetime"
+      }
+
+      column {
+        name = "Message"
+        type = "string"
+      }
+
+      column {
+        name = "Stream"
+        type = "string"
+      }
+
+      column {
+        name = "Firezone"
+        type = "dynamic"
+      }
+    }
+
+    depends_on = [azapi_resource.firezone_table]
+  }
+
+  data "azuread_service_principal" "firezone" {
+    client_id = "FIREZONE_CLIENT_ID"
+  }
+
+  resource "azurerm_role_assignment" "firezone_ingest" {
+    scope                = azurerm_monitor_data_collection_rule.firezone.id
+    role_definition_name = "Monitoring Metrics Publisher"
+    principal_id         = data.azuread_service_principal.firezone.object_id
+  }
+
+  output "ingestion_endpoint" {
+    value = azurerm_monitor_data_collection_endpoint.firezone.logs_ingestion_endpoint
+  }
+
+  output "dcr_immutable_id" {
+    value = azurerm_monitor_data_collection_rule.firezone.immutable_id
+  }
+  """
+
+  defp sentinel_cli_snippet do
+    String.replace(@sentinel_cli_snippet, "FIREZONE_CLIENT_ID", sentinel_client_id())
+  end
+
+  defp sentinel_terraform_snippet do
+    String.replace(@sentinel_terraform_snippet, "FIREZONE_CLIENT_ID", sentinel_client_id())
   end
 
   defp delivered_count(sink) do
@@ -1263,6 +1696,7 @@ defmodule PortalWeb.Settings.LogSinks do
     alias Portal.Elastic
     alias Portal.NewRelic
     alias Portal.Safe
+    alias Portal.Sentinel
     alias Portal.Splunk
 
     def list_all_sinks(subject, repo \\ :replica) do
@@ -1270,7 +1704,8 @@ defmodule PortalWeb.Settings.LogSinks do
         Splunk.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         Datadog.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
         NewRelic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
-        Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
+        Elastic.LogSink |> Safe.scoped(subject, repo) |> Safe.all(),
+        Sentinel.LogSink |> Safe.scoped(subject, repo) |> Safe.all()
       ]
       |> List.flatten()
       |> Enum.sort_by(& &1.name)

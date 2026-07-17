@@ -32,6 +32,7 @@ defmodule Portal.Config.Definitions do
   alias Portal.Types
 
   @entra_sync_client_id ""
+  @sentinel_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
   @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
 
@@ -712,6 +713,12 @@ defmodule Portal.Config.Definitions do
   defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
 
   # Okta uses a per-tenant client_id/secret
+
+  ##############################################
+  ## Microsoft Sentinel log sinks
+  ##############################################
+
+  defconfig(:sentinel_sync_client_id, :string, default: @sentinel_sync_client_id)
 
   ##############################################
   ## Health

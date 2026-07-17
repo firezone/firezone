@@ -29,7 +29,8 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     Portal.Splunk.LogSink,
     Portal.Datadog.LogSink,
     Portal.NewRelic.LogSink,
-    Portal.Elastic.LogSink
+    Portal.Elastic.LogSink,
+    Portal.Sentinel.LogSink
   ]
 
   @impl Oban.Worker

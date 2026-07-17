@@ -1,0 +1,148 @@
+[
+  {
+    "TimeGenerated": "2026-07-15T20:00:00.000Z",
+    "Message": "firezone change 1a7f3c9e02b4d6885f01a2c3",
+    "Stream": "change",
+    "Firezone": {
+      "type": "change",
+      "log_id": "1a7f3c9e02b4d6885f01a2c3",
+      "timestamp": "2026-07-15T20:00:00.000000Z",
+      "object": "policies",
+      "operation": "update",
+      "before": {
+        "id": "3f2b8a10-6c4d-4e8f-9a1b-2c3d4e5f6a7b",
+        "name": "Engineering full access",
+        "description": "Legacy"
+      },
+      "after": {
+        "id": "3f2b8a10-6c4d-4e8f-9a1b-2c3d4e5f6a7b",
+        "name": "Engineering read-only",
+        "description": "Legacy"
+      },
+      "subject": {
+        "actor_id": "9d8c7b6a-5f4e-3d2c-1b0a-9f8e7d6c5b4a",
+        "email": "admin@example.com",
+        "ip": "203.0.113.10"
+      }
+    }
+  },
+  {
+    "TimeGenerated": "2026-07-15T20:01:00.000Z",
+    "Message": "firezone session 2b8e4d0f13c5e7996a12b3d4",
+    "Stream": "session",
+    "Firezone": {
+      "type": "session",
+      "log_id": "2b8e4d0f13c5e7996a12b3d4",
+      "timestamp": "2026-07-15T20:01:00.000000Z",
+      "context": {
+        "remote_ip": "203.0.113.20",
+        "user_agent": "Mozilla/5.0"
+      },
+      "subject": {
+        "actor_id": "9d8c7b6a-5f4e-3d2c-1b0a-9f8e7d6c5b4a",
+        "email": "admin@example.com",
+        "device_id": "4c9d5e1a24d6f8aa7b23c4e5"
+      }
+    }
+  },
+  {
+    "TimeGenerated": "2026-07-15T20:02:00.000Z",
+    "Message": "firezone api_request 3c9f5e2b35e7f9bb8c34d5e6",
+    "Stream": "api_request",
+    "Firezone": {
+      "type": "api_request",
+      "log_id": "3c9f5e2b35e7f9bb8c34d5e6",
+      "timestamp": "2026-07-15T20:02:00.000000Z",
+      "actor_id": "9d8c7b6a-5f4e-3d2c-1b0a-9f8e7d6c5b4a",
+      "api_token_id": "5e0a6f3c46f8aacc9d45e6f7",
+      "method": "GET",
+      "path": "/v1/resources",
+      "content_length": 0,
+      "request_id": "F5vXQ8mJk3nRtY2w",
+      "user_agent": "terraform-provider-firezone/1.0.0",
+      "ip": "198.51.100.7",
+      "ip_region": "CA",
+      "ip_city": "Toronto"
+    }
+  },
+  {
+    "TimeGenerated": "2026-07-15T20:03:00.000Z",
+    "Message": "firezone flow 4d0a6f3c57a9abdd0e56f7a8-s",
+    "Stream": "flow",
+    "Firezone": {
+      "type": "flow",
+      "log_id": "4d0a6f3c57a9abdd0e56f7a8-s",
+      "timestamp": "2026-07-15T20:03:00.000000Z",
+      "flow_start": "2026-07-15T20:03:00.000000Z",
+      "flow_end": null,
+      "last_packet": null,
+      "device_id": "4c9d5e1a24d6f8aa7b23c4e5",
+      "role": "client",
+      "policy_authorization_id": "6f1b7a4d-8e9c-4a2b-b3c4-d5e6f7a8b9c0",
+      "policy_id": "3f2b8a10-6c4d-4e8f-9a1b-2c3d4e5f6a7b",
+      "resource_id": "7a2c8b5e-9f0d-4b3c-c4d5-e6f7a8b9c0d1",
+      "resource_name": "Staging DB",
+      "resource_address": "10.0.0.99",
+      "actor_id": "9d8c7b6a-5f4e-3d2c-1b0a-9f8e7d6c5b4a",
+      "actor_email": "admin@example.com",
+      "actor_name": "Sam",
+      "client_version": "1.5.2",
+      "device_os_name": "macOS",
+      "device_os_version": "15.5",
+      "protocol": "tcp",
+      "inner_src_ip": "100.64.0.2",
+      "inner_src_port": 54211,
+      "inner_dst_ip": "100.96.0.9",
+      "inner_dst_port": 5432,
+      "outer_src_ip": "203.0.113.30",
+      "outer_src_port": 41822,
+      "outer_dst_ip": "198.51.100.44",
+      "outer_dst_port": 51820,
+      "domain": null,
+      "rx_packets": null,
+      "tx_packets": null,
+      "rx_bytes": null,
+      "tx_bytes": null
+    }
+  },
+  {
+    "TimeGenerated": "2026-07-15T20:08:30.000Z",
+    "Message": "firezone flow 4d0a6f3c57a9abdd0e56f7a8-e",
+    "Stream": "flow",
+    "Firezone": {
+      "type": "flow",
+      "log_id": "4d0a6f3c57a9abdd0e56f7a8-e",
+      "timestamp": "2026-07-15T20:08:30.000000Z",
+      "flow_start": "2026-07-15T20:03:00.000000Z",
+      "flow_end": "2026-07-15T20:08:30.000000Z",
+      "last_packet": "2026-07-15T20:08:29.000000Z",
+      "device_id": "4c9d5e1a24d6f8aa7b23c4e5",
+      "role": "client",
+      "policy_authorization_id": "6f1b7a4d-8e9c-4a2b-b3c4-d5e6f7a8b9c0",
+      "policy_id": "3f2b8a10-6c4d-4e8f-9a1b-2c3d4e5f6a7b",
+      "resource_id": "7a2c8b5e-9f0d-4b3c-c4d5-e6f7a8b9c0d1",
+      "resource_name": "Staging DB",
+      "resource_address": "10.0.0.99",
+      "actor_id": "9d8c7b6a-5f4e-3d2c-1b0a-9f8e7d6c5b4a",
+      "actor_email": "admin@example.com",
+      "actor_name": "Sam",
+      "client_version": "1.5.2",
+      "device_os_name": "macOS",
+      "device_os_version": "15.5",
+      "protocol": "tcp",
+      "inner_src_ip": "100.64.0.2",
+      "inner_src_port": 54211,
+      "inner_dst_ip": "100.96.0.9",
+      "inner_dst_port": 5432,
+      "outer_src_ip": "203.0.113.30",
+      "outer_src_port": 41822,
+      "outer_dst_ip": "198.51.100.44",
+      "outer_dst_port": 51820,
+      "domain": null,
+      "rx_packets": 18422,
+      "tx_packets": 9211,
+      "rx_bytes": 24871234,
+      "tx_bytes": 1247821
+    }
+  }
+]

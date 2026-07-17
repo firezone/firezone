@@ -89,6 +89,7 @@ defmodule PortalWeb.Router do
     pipe_through :public
 
     get "/oidc/callback", OIDCController, :callback
+    get "/sentinel/consent", SentinelConsentController, :callback
   end
 
   scope "/verification", PortalWeb do

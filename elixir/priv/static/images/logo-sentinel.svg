@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <defs>
+    <linearGradient id="fz-sentinel-shield" x1="9" y1="1" x2="9" y2="17" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5ea0ef"/>
+      <stop offset="1" stop-color="#0f5aa4"/>
+    </linearGradient>
+  </defs>
+  <path d="M9 1l6.75 2.25v5.06c0 3.94-2.88 7.63-6.75 8.69C5.13 15.94 2.25 12.25 2.25 8.31V3.25L9 1z" fill="url(#fz-sentinel-shield)"/>
+  <path d="M9 3.1l4.78 1.6v3.61c0 2.79-2.04 5.4-4.78 6.15-2.74-.75-4.78-3.36-4.78-6.15V4.7L9 3.1z" fill="#c3f1ff" opacity=".3"/>
+  <circle cx="9" cy="7.9" r="2" fill="#fff"/>
+  <path d="M9 10.4c-1.8 0-3.3 1.1-3.8 2.7.9 1.1 2.2 1.9 3.8 2.4 1.6-.5 2.9-1.3 3.8-2.4-.5-1.6-2-2.7-3.8-2.7z" fill="#fff"/>
+</svg>
