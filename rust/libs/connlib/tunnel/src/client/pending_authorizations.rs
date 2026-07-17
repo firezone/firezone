@@ -288,41 +288,39 @@ mod tests {
 
     #[test]
     fn skips_authorization_request_if_sent_within_last_two_seconds() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let rid = ipv4_localhost_resource().id();
-        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
+        let (rid, resources) = single_resource();
 
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
         assert_eq!(
-            pending_authorizations.poll_authorization_requests(),
+            pending.poll_authorization_requests(),
             Some(resource_request(rid))
         );
 
         now += Duration::from_secs(1);
 
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(2), &resources, now);
-        assert_eq!(pending_authorizations.poll_authorization_requests(), None);
+        pending.on_not_authorized_resource(rid, udp_trigger(2), &resources, now);
+        assert_eq!(pending.poll_authorization_requests(), None);
     }
 
     #[test]
     fn sends_new_request_after_two_seconds() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let rid = ipv4_localhost_resource().id();
-        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
+        let (rid, resources) = single_resource();
 
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
         assert_eq!(
-            pending_authorizations.poll_authorization_requests(),
+            pending.poll_authorization_requests(),
             Some(resource_request(rid))
         );
 
         now += Duration::from_secs(3);
 
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(rid, udp_trigger(2), &resources, now);
         assert_eq!(
-            pending_authorizations.poll_authorization_requests(),
+            pending.poll_authorization_requests(),
             Some(resource_request(rid))
         );
     }
@@ -331,44 +329,39 @@ mod tests {
     fn sends_request_for_same_site_in_parallel() {
         let _guard = logging::test("trace");
 
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let now = Instant::now();
-        let rid1 = ipv4_localhost_resource().id();
-        let rid2 = ipv6_localhost_resource().id();
-        let resources = BTreeMap::from([
-            (rid1, ipv4_localhost_resource()),
-            (rid2, ipv6_localhost_resource()),
-        ]);
+        let (rid1, rid2, resources) = two_resources();
 
-        pending_authorizations.on_not_authorized_resource(rid1, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(rid1, udp_trigger(1), &resources, now);
         assert_eq!(
-            pending_authorizations.poll_authorization_requests(),
+            pending.poll_authorization_requests(),
             Some(resource_request(rid1))
         );
-        pending_authorizations.on_not_authorized_resource(rid2, udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(rid2, udp_trigger(2), &resources, now);
         assert_eq!(
-            pending_authorizations.poll_authorization_requests(),
+            pending.poll_authorization_requests(),
             Some(resource_request(rid2))
         );
     }
 
     #[test]
     fn drops_packet_when_resource_filter_does_not_allow_protocol() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let now = Instant::now();
         let resource = icmp_only_localhost_resource();
         let rid = resource.id();
         let resources = BTreeMap::from([(rid, resource)]);
 
         // The trigger is a UDP packet, but the resource only permits ICMP.
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
 
-        assert_eq!(pending_authorizations.poll_authorization_requests(), None);
+        assert_eq!(pending.poll_authorization_requests(), None);
     }
 
     #[test]
     fn malicious_client_can_ignore_resource_filter() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let now = Instant::now();
         let resource = icmp_only_localhost_resource();
         let rid = resource.id();
@@ -380,143 +373,83 @@ mod tests {
         .guard();
 
         // The trigger is a UDP packet that the resource's filter would normally reject.
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
 
         assert_eq!(
-            pending_authorizations.poll_authorization_requests(),
+            pending.poll_authorization_requests(),
             Some(resource_request(rid))
         );
     }
 
     #[test]
     fn skips_device_authorization_request_if_sent_within_last_two_seconds() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let rid = ipv4_localhost_resource().id();
-        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
-        let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
+        let (rid, resources) = single_resource();
+        let ip = device_ip();
 
-        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
-        assert!(
-            pending_authorizations
-                .poll_authorization_requests()
-                .is_some()
-        );
+        pending.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
+        assert!(pending.poll_authorization_requests().is_some());
 
         now += Duration::from_secs(1);
 
-        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
-        assert!(
-            pending_authorizations
-                .poll_authorization_requests()
-                .is_none()
-        );
+        pending.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
+        assert!(pending.poll_authorization_requests().is_none());
     }
 
     #[test]
     fn sends_new_device_request_after_two_seconds() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let rid = ipv4_localhost_resource().id();
-        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
-        let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
+        let (rid, resources) = single_resource();
+        let ip = device_ip();
 
-        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
-        assert!(
-            pending_authorizations
-                .poll_authorization_requests()
-                .is_some()
-        );
+        pending.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
+        assert!(pending.poll_authorization_requests().is_some());
 
         now += Duration::from_secs(3);
 
-        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
-        assert!(
-            pending_authorizations
-                .poll_authorization_requests()
-                .is_some()
-        );
+        pending.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
+        assert!(pending.poll_authorization_requests().is_some());
     }
 
     #[test]
     fn sends_request_for_different_devices_in_parallel() {
         let _guard = logging::test("trace");
 
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let now = Instant::now();
-        let rid = ipv4_localhost_resource().id();
-        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
-        let ip_foo = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
-        let ip_bar = IpAddr::from(Ipv4Addr::new(100, 64, 0, 200));
+        let (rid, resources) = single_resource();
+        let ip_foo = device_ip();
+        let ip_bar = other_device_ip();
 
-        pending_authorizations.on_not_authorized_device(
-            rid,
-            ip_foo,
-            udp_trigger(1),
-            &resources,
-            now,
-        );
-        let request = pending_authorizations
-            .poll_authorization_requests()
-            .unwrap();
+        pending.on_not_authorized_device(rid, ip_foo, udp_trigger(1), &resources, now);
+        let request = pending.poll_authorization_requests().unwrap();
         assert_eq!(request.ip, Some(ip_foo));
-        pending_authorizations.on_not_authorized_device(
-            rid,
-            ip_bar,
-            udp_trigger(2),
-            &resources,
-            now,
-        );
-        let request = pending_authorizations
-            .poll_authorization_requests()
-            .unwrap();
+        pending.on_not_authorized_device(rid, ip_bar, udp_trigger(2), &resources, now);
+        let request = pending.poll_authorization_requests().unwrap();
         assert_eq!(request.ip, Some(ip_bar));
     }
 
     #[test]
     fn same_address_in_two_pools_is_requested_per_pool() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let rid_one = ipv4_localhost_resource().id();
-        let rid_two = ipv6_localhost_resource().id();
-        let resources = BTreeMap::from([
-            (rid_one, ipv4_localhost_resource()),
-            (rid_two, ipv6_localhost_resource()),
-        ]);
-        let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
+        let (rid_one, rid_two, resources) = two_resources();
+        let ip = device_ip();
 
-        pending_authorizations.on_not_authorized_device(
-            rid_one,
-            ip,
-            udp_trigger(1),
-            &resources,
-            now,
-        );
-        assert!(
-            pending_authorizations
-                .poll_authorization_requests()
-                .is_some()
-        );
+        pending.on_not_authorized_device(rid_one, ip, udp_trigger(1), &resources, now);
+        assert!(pending.poll_authorization_requests().is_some());
 
         // The other pool's throttle window must not suppress this request.
         now += Duration::from_millis(500);
 
-        pending_authorizations.on_not_authorized_device(
-            rid_two,
-            ip,
-            udp_trigger(2),
-            &resources,
-            now,
-        );
-        assert!(
-            pending_authorizations
-                .poll_authorization_requests()
-                .is_some()
-        );
+        pending.on_not_authorized_device(rid_two, ip, udp_trigger(2), &resources, now);
+        assert!(pending.poll_authorization_requests().is_some());
 
         for pool in [rid_one, rid_two] {
             assert!(
-                pending_authorizations
+                pending
                     .remove(AuthorizationTarget::Device { pool, addr: ip })
                     .is_some()
             );
@@ -525,20 +458,46 @@ mod tests {
 
     #[test]
     fn extract_device_authorizations_leaves_resource_entries() {
-        let mut pending_authorizations = PendingAuthorizations::default();
+        let mut pending = PendingAuthorizations::default();
         let now = Instant::now();
-        let rid = ipv4_localhost_resource().id();
-        let resources = BTreeMap::from([(rid, ipv4_localhost_resource())]);
-        let ip = IpAddr::from(Ipv4Addr::new(100, 64, 0, 100));
+        let (rid, resources) = single_resource();
+        let ip = device_ip();
 
-        pending_authorizations.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
-        pending_authorizations.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
 
-        let extracted = pending_authorizations.extract_device_authorizations(|_, _| true);
+        let extracted = pending.extract_device_authorizations(|_, _| true);
         assert_eq!(extracted.len(), 1);
         assert_eq!(extracted[0].0, rid);
 
-        assert!(pending_authorizations.remove(rid).is_some());
+        assert!(pending.remove(rid).is_some());
+    }
+
+    fn single_resource() -> (ResourceId, BTreeMap<ResourceId, Resource>) {
+        let resource = ipv4_localhost_resource();
+        let rid = resource.id();
+
+        (rid, BTreeMap::from([(rid, resource)]))
+    }
+
+    fn two_resources() -> (ResourceId, ResourceId, BTreeMap<ResourceId, Resource>) {
+        let one = ipv4_localhost_resource();
+        let two = ipv6_localhost_resource();
+        let (rid_one, rid_two) = (one.id(), two.id());
+
+        (
+            rid_one,
+            rid_two,
+            BTreeMap::from([(rid_one, one), (rid_two, two)]),
+        )
+    }
+
+    fn device_ip() -> IpAddr {
+        IpAddr::from(Ipv4Addr::new(100, 64, 0, 100))
+    }
+
+    fn other_device_ip() -> IpAddr {
+        IpAddr::from(Ipv4Addr::new(100, 64, 0, 200))
     }
 
     fn udp_trigger(payload: u8) -> IpPacket {

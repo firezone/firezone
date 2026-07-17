@@ -261,7 +261,7 @@ mod tests {
     fn peer_opened_flow_is_re_filtered_after_revocation() {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
-        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        let mut peer = peer();
         peer.add_resource(rid, udp_port(80), None, now);
 
         assert!(is_send(
@@ -270,16 +270,15 @@ mod tests {
 
         peer.remove_resource(&rid);
 
-        assert!(matches!(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap(),
-            InboundResult::Filtered(_)
+        assert!(is_filtered(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
     }
 
     #[test]
     fn our_reply_admitted_for_flow_we_opened_without_authorization() {
         let now = Instant::now();
-        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
         peer.record_outbound(&outbound, now);
@@ -292,7 +291,7 @@ mod tests {
     fn authorization_expires_and_is_enforced() {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
-        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        let mut peer = peer();
         peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(60)), now);
 
         assert!(is_send(
@@ -304,9 +303,8 @@ mod tests {
         peer.handle_timeout(later);
 
         assert_eq!(peer.poll_timeout(), None);
-        assert!(matches!(
-            peer.ensure_allowed_inbound(udp_to(80), later).unwrap(),
-            InboundResult::Filtered(_)
+        assert!(is_filtered(
+            peer.ensure_allowed_inbound(udp_to(80), later).unwrap()
         ));
     }
 
@@ -315,7 +313,7 @@ mod tests {
         let now = Instant::now();
         let keep = ResourceId::from_u128(1);
         let drop = ResourceId::from_u128(2);
-        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        let mut peer = peer();
         peer.add_resource(keep, udp_port(80), None, now);
         peer.add_resource(drop, udp_port(90), None, now);
 
@@ -331,9 +329,8 @@ mod tests {
         assert!(is_send(
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
-        assert!(matches!(
-            peer.ensure_allowed_inbound(udp_to(90), now).unwrap(),
-            InboundResult::Filtered(_)
+        assert!(is_filtered(
+            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
         ));
     }
 
@@ -341,16 +338,19 @@ mod tests {
     fn update_resource_expiry_in_the_past_evicts_on_timeout() {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
-        let mut peer = ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned());
+        let mut peer = peer();
         peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(600)), now);
 
         peer.update_resource_expiry(rid, now, now);
         peer.handle_timeout(now);
 
-        assert!(matches!(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap(),
-            InboundResult::Filtered(_)
+        assert!(is_filtered(
+            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
+    }
+
+    fn peer() -> ClientOnClient {
+        ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned())
     }
 
     fn peer_tun() -> IpConfig {
@@ -381,5 +381,9 @@ mod tests {
 
     fn is_send(result: InboundResult) -> bool {
         matches!(result, InboundResult::Send(_))
+    }
+
+    fn is_filtered(result: InboundResult) -> bool {
+        matches!(result, InboundResult::Filtered(_))
     }
 }
