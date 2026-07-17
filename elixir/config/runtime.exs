@@ -578,7 +578,6 @@ if config_env() == :prod do
           end) do
     config :sentry,
       environment_name: environment_name,
-      dsn:
-        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
+      dsn: env_var_to_config!(:sentry_dsn)
   end
 end

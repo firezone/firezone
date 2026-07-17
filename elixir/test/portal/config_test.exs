@@ -183,6 +183,25 @@ defmodule Portal.ConfigTest do
   end
 
   describe "env_var_to_config!/1" do
+    test "returns nil for a missing or blank Sentry DSN" do
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{"SENTRY_DSN" => ""}) ==
+               nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{
+               "SENTRY_DSN" => "  \n"
+             }) == nil
+    end
+
+    test "returns the configured Sentry DSN" do
+      dsn = "https://public-key@example.com/1"
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{
+               "SENTRY_DSN" => dsn
+             }) == dsn
+    end
+
     test "returns config value" do
       assert env_var_to_config!(Test, :optional_generated) ==
                %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}
