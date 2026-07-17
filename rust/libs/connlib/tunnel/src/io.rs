@@ -27,7 +27,6 @@ use std::{
     task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
-use tracing::Level;
 use tun::Tun;
 
 const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
@@ -462,12 +461,8 @@ impl Io {
             return;
         };
 
-        let wakeup_in = tracing::event_enabled!(Level::TRACE)
-            .then_some(wakeup_in)
-            .map(tracing::field::debug);
-
         if self.timeout.deadline() != timeout {
-            tracing::trace!(wakeup_in, %reason);
+            tracing::trace!(?wakeup_in, %reason);
 
             self.timeout.reset(timeout);
         }
