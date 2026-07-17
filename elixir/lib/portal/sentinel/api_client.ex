@@ -73,6 +73,11 @@ defmodule Portal.Sentinel.APIClient do
   def interpret(_sink, %Req.Response{status: status}) when status in 200..299, do: :accepted
   def interpret(_sink, %Req.Response{status: 413}), do: :payload_too_large
 
+  # A 403 is usually the Monitoring Metrics Publisher role still propagating,
+  # which can take up to 30 minutes, so treat it as transient rather than
+  # disabling the sink on the first failed run after the role is granted.
+  def interpret(_sink, %Req.Response{status: 403}), do: :retriable
+
   # A 400 is either the request we build (our bug: isolate the event, park the
   # stream, and page us without alarming the customer) or the customer's DCR
   # and stream configuration (only they can fix it, so surface it as an

@@ -101,7 +101,7 @@ defmodule Portal.Sentinel.SyncTest do
       assert sink.error_message =~ "admin consent"
     end
 
-    test "a 403 disables the sink immediately and names the required role", %{account: account} do
+    test "a 403 is transient while the role propagates and names it", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
       session_log_fixture(account: account)
@@ -116,8 +116,8 @@ defmodule Portal.Sentinel.SyncTest do
       assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
 
       sink = reload_sink(sink)
-      assert sink.is_disabled
-      assert sink.disabled_reason == "Sync error"
+      refute sink.is_disabled
+      assert sink.errored_at
       assert sink.error_message =~ "Azure Monitor returned HTTP 403"
       assert sink.error_message =~ "Monitoring Metrics Publisher"
     end
