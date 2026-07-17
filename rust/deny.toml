@@ -282,7 +282,6 @@ skip = [
     "object",
     "png",
     "proc-macro-crate",
-    "quick-xml",
     "rand",
     "rand_core",
     "rustix",
