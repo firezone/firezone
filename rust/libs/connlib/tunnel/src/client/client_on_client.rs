@@ -233,8 +233,12 @@ impl ClientOnClient {
         let src = packet.source();
         let dst = packet.destination();
         anyhow::ensure!(
-            self.remote_tun.is_ip(src) && self.local_tun.is_ip(dst),
-            "Dropping spoofed inbound packet from peer (src {src}, dst {dst})"
+            self.remote_tun.is_ip(src),
+            "Dropping inbound packet with spoofed source (src {src})"
+        );
+        anyhow::ensure!(
+            self.local_tun.is_ip(dst),
+            "Dropping inbound packet not addressed to us (dst {dst})"
         );
 
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
