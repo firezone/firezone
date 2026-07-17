@@ -567,9 +567,6 @@ if config_env() == :prod do
 
   # Sentry
 
-  config :sentry,
-    dsn: env_var_to_config!(:sentry_dsn)
-
   with api_external_url when not is_nil(api_external_url) <-
          env_var_to_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
@@ -580,6 +577,7 @@ if config_env() == :prod do
             true -> :unknown
           end) do
     config :sentry,
-      environment_name: environment_name
+      environment_name: environment_name,
+      dsn: env_var_to_config!(:sentry_dsn)
   end
 end
