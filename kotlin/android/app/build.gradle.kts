@@ -167,7 +167,6 @@ android {
                 "ComposeParameterOrder",
                 "ComposePreviewNaming",
                 "ComposePreviewPublic",
-                "ComposeRememberMissing",
                 "ComposeUnstableCollections",
                 "ComposeUnstableReceiver",
                 "ComposeViewModelForwarding",
@@ -276,11 +275,11 @@ dependencies {
     // Immutable collections give Compose stable (skippable) parameter types.
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
 
-    // Slack's Compose lint checks. Lint check JARs are versioned to the lint API
-    // (`lint = AGP + 23`), so AGP 9.2 (lint 32.2) needs 1.4.3, which is built against it
-    // (1.4.2 targeted lint 31.7 for AGP 8.13). We stay on 1.4.3 rather than 1.5.0: 1.5.0
-    // rewrote ComposeViewModelForwarding to flag forwarding inside nested blocks, which
-    // false-positives on our @Immutable ResourceViewModel (a UI model, not a real ViewModel).
+    // Slack's Compose lint checks. Lint check JARs are built against a lint API major
+    // version (`lint = AGP + 23`): AGP 9.3 is lint 32.x, and 1.5.2 is built against lint
+    // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
+    // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
+    // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
     lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.2")
 }
 

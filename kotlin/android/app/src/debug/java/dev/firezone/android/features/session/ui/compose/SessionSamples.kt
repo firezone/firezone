@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.core.data.ResourceState
-import dev.firezone.android.features.session.ui.ResourceViewModel
+import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
@@ -60,7 +60,7 @@ internal val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
         ConnectedDevice(id = "client-${index + 1}", tunIpv4 = "100.96.0.${index + 1}", pools = pools)
     }.toImmutableList()
 
-internal val sampleResources: ImmutableList<ResourceViewModel> =
+internal val sampleResources: ImmutableList<ResourceUiModel> =
     listOf(
         Resource(
             type = ResourceType.Internet,
@@ -89,4 +89,4 @@ internal val sampleResources: ImmutableList<ResourceViewModel> =
             name = "Prod network",
             status = StatusEnum.ONLINE,
         ),
-    ).map { ResourceViewModel(it, ResourceState.ENABLED) }.toImmutableList()
+    ).map { ResourceUiModel(it, ResourceState.ENABLED) }.toImmutableList()

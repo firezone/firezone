@@ -30,14 +30,14 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.utils.ClipboardUtils
-import dev.firezone.android.features.session.ui.ResourceViewModel
+import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.StatusEnum
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResourceDetailsSheet(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     isFavorite: Boolean,
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
@@ -62,7 +62,7 @@ fun ResourceDetailsSheet(
 
 @Composable
 private fun InternetResourceDetails(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     onToggleInternet: () -> Unit,
 ) {
     Column {
@@ -81,7 +81,7 @@ private fun InternetResourceDetails(
 
 @Composable
 private fun NonInternetResourceDetails(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     isFavorite: Boolean,
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
