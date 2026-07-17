@@ -89,9 +89,9 @@ class SessionActivity : AppCompatActivity() {
                         resourcesState
                             .map { resource ->
                                 if (resource.isInternetResource()) {
-                                    ResourceViewModel(resource, internetState)
+                                    ResourceUiModel(resource, internetState)
                                 } else {
-                                    ResourceViewModel(resource, ResourceState.ENABLED)
+                                    ResourceUiModel(resource, ResourceState.ENABLED)
                                 }
                             }.toImmutableList()
                     }

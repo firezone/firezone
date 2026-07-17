@@ -11,7 +11,7 @@ import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 
 @Immutable
-class ResourceViewModel(
+class ResourceUiModel(
     resource: Resource,
     resourceState: ResourceState,
 ) {
@@ -41,4 +41,4 @@ fun internetResourceDisplayName(
     state: ResourceState,
 ): String = "${state.stateSymbol()} ${resource.name}"
 
-fun ResourceViewModel.isInternetResource(): Boolean = this.type == ResourceType.Internet
+fun ResourceUiModel.isInternetResource(): Boolean = this.type == ResourceType.Internet
