@@ -167,16 +167,49 @@ defmodule Portal.Sentinel.APIClient do
 
   defp fetch_access_token(sink) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
+
+    with {:ok, credential} <- client_credential(config) do
+      request_token(sink, config, credential)
+    end
+  end
+
+  # Production authenticates the app with workload identity federation: the
+  # portal's managed identity mints a token-exchange assertion, so no secret is
+  # stored. A configured client secret (dev and test, which have no managed
+  # identity) uses the secret directly.
+  defp client_credential(config) do
+    case config[:client_secret] do
+      secret when is_binary(secret) and secret != "" ->
+        {:ok, %{"client_secret" => secret}}
+
+      _ ->
+        try do
+          assertion = Portal.Azure.ManagedIdentity.access_token!("api://AzureADTokenExchange")
+
+          {:ok,
+           %{
+             "client_assertion_type" =>
+               "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+             "client_assertion" => assertion
+           }}
+        rescue
+          exception -> {:error, {:transport, exception}}
+        end
+    end
+  end
+
+  defp request_token(sink, config, credential) do
     token_endpoint = "#{config[:token_base_url]}/#{sink.tenant_id}/oauth2/v2.0/token"
 
     payload =
-      URI.encode_query(%{
+      %{
         "client_id" => config[:client_id],
-        "client_secret" => config[:client_secret],
         # Double slash per Microsoft's samples: audience "https://monitor.azure.com/" + "/.default".
         "scope" => "https://monitor.azure.com//.default",
         "grant_type" => "client_credentials"
-      })
+      }
+      |> Map.merge(credential)
+      |> URI.encode_query()
 
     result =
       Req.post(

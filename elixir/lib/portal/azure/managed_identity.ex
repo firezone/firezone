@@ -44,7 +44,7 @@ defmodule Portal.Azure.ManagedIdentity do
   def database_access_token! do
     case GenServer.whereis(__MODULE__) do
       nil ->
-        %{token: token} = fetch_token!()
+        %{token: token} = fetch_token!(@database_resource)
         token
 
       server ->
@@ -53,6 +53,17 @@ defmodule Portal.Azure.ManagedIdentity do
           {:error, exception} -> raise exception
         end
     end
+  end
+
+  @doc """
+  Fetches an uncached Entra token for an arbitrary resource audience, used by
+  callers other than the database connection (e.g. a token-exchange assertion
+  for workload identity federation, `api://AzureADTokenExchange`). Raises on an
+  IMDS error.
+  """
+  def access_token!(resource) when is_binary(resource) do
+    %{token: token} = fetch_token!(resource)
+    token
   end
 
   @impl true
@@ -66,7 +77,7 @@ defmodule Portal.Azure.ManagedIdentity do
       {:reply, {:ok, state.token}, state}
     else
       try do
-        state = fetch_token!()
+        state = fetch_token!(@database_resource)
         {:reply, {:ok, state.token}, state}
       rescue
         # Reply with the error instead of crashing so that an IMDS outage
@@ -77,7 +88,7 @@ defmodule Portal.Azure.ManagedIdentity do
     end
   end
 
-  defp fetch_token! do
+  defp fetch_token!(resource) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     req_opts = config[:req_opts] || []
 
@@ -88,7 +99,7 @@ defmodule Portal.Azure.ManagedIdentity do
           headers: [{"Metadata", "true"}],
           params: [
             "api-version": "2018-02-01",
-            resource: @database_resource,
+            resource: resource,
             client_id: config[:client_id]
           ]
         ] ++ req_opts

@@ -191,9 +191,11 @@ if config_env() == :prod do
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
+  # No client secret: production authenticates the app with workload identity
+  # federation, minting a token-exchange assertion from the portal's managed
+  # identity (Portal.Azure.ManagedIdentity).
   config :portal, Portal.Sentinel.APIClient,
     client_id: env_var_to_config!(:sentinel_sync_client_id),
-    client_secret: env_var_to_config!(:sentinel_sync_client_secret),
     token_base_url: "https://login.microsoftonline.com"
 
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"

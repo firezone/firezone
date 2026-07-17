@@ -719,7 +719,6 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   defconfig(:sentinel_sync_client_id, :string, default: @sentinel_sync_client_id)
-  defconfig(:sentinel_sync_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
   ## Health

@@ -122,6 +122,35 @@ defmodule Portal.Sentinel.SyncTest do
       assert sink.error_message =~ "Monitoring Metrics Publisher"
     end
 
+    test "authenticates with a managed-identity assertion when no secret is set", %{
+      account: account
+    } do
+      Portal.Config.put_env_override(:portal, Sentinel.APIClient, client_secret: nil)
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "mi-federation-assertion",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      session_log_fixture(account: account)
+      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+
+      assert_receive {:token, _conn, params}
+      assert params["client_assertion"] == "mi-federation-assertion"
+
+      assert params["client_assertion_type"] ==
+               "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+      refute params["client_secret"]
+
+      assert_receive {:ingest, _conn, [_event]}
+      refute reload_sink(sink).errored_at
+    end
+
     test "an invalid stream 400 is a customer-facing transient error", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
