@@ -119,7 +119,8 @@ defmodule Portal.Sentinel.SyncTest do
       refute sink.is_disabled
       assert sink.errored_at
       assert sink.error_message =~ "Azure Monitor returned HTTP 403"
-      assert sink.error_message =~ "Monitoring Metrics Publisher"
+      assert sink.error_message =~ "Firezone Sentinel Log Ingestion service principal"
+      refute sink.error_message =~ ".."
     end
 
     test "authenticates with a managed-identity assertion when no secret is set", %{
@@ -179,6 +180,7 @@ defmodule Portal.Sentinel.SyncTest do
       assert sink.errored_at
       assert sink.error_message =~ "was not configured in the data collection rule"
       assert sink.error_message =~ "stream name and DCR immutable ID"
+      refute sink.error_message =~ ".."
     end
 
     test "a malformed-request 400 parks the stream without alarming the customer", %{

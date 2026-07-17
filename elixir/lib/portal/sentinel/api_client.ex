@@ -114,9 +114,12 @@ defmodule Portal.Sentinel.APIClient do
 
   def format_status_error(%Req.Response{status: status, body: body})
       when status in [401, 403] do
-    "Azure Monitor returned HTTP #{status}: #{azure_error_message(body) || "access denied"}. " <>
-      "Grant the Firezone service principal the Monitoring Metrics Publisher role on the " <>
-      "data collection rule; role assignments can take up to 30 minutes to propagate."
+    detail = strip_trailing_period(azure_error_message(body) || "access denied")
+
+    "Azure Monitor returned HTTP #{status}: #{detail}. " <>
+      "Grant the Firezone Sentinel Log Ingestion service principal the Monitoring Metrics " <>
+      "Publisher role on the data collection rule; role assignments can take up to 30 minutes " <>
+      "to propagate."
   end
 
   # Only the customer configuration path reaches here for a 400: our own
@@ -124,12 +127,12 @@ defmodule Portal.Sentinel.APIClient do
   def format_status_error(%Req.Response{status: 400, body: body}) do
     prefix =
       case azure_error_message(body) do
-        nil -> "Azure Monitor returned HTTP 400."
-        message -> "Azure Monitor returned HTTP 400: #{message}."
+        nil -> "Azure Monitor returned HTTP 400"
+        message -> "Azure Monitor returned HTTP 400: #{strip_trailing_period(message)}"
       end
 
     prefix <>
-      " Check that the stream name and DCR immutable ID match your data collection rule, " <>
+      ". Check that the stream name and DCR immutable ID match your data collection rule, " <>
       "and that the stream is declared under the rule's stream declarations."
   end
 
@@ -146,6 +149,12 @@ defmodule Portal.Sentinel.APIClient do
 
   defp azure_error_message(%{"error" => error}) when is_binary(error), do: error
   defp azure_error_message(_body), do: nil
+
+  # Azure error messages usually end in a period; drop it so appending our own
+  # sentence does not leave a double period.
+  defp strip_trailing_period(message) do
+    message |> String.trim() |> String.trim_trailing(".")
+  end
 
   # 400s about the request we construct (an empty body, a wrong api-version).
   # Everything else Azure reports at 400 is DCR or stream configuration, which
