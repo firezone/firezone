@@ -1847,9 +1847,9 @@ dependencies = [
 
 [[package]]
 name = "dimpl"
-version = "0.6.2"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7afb6878ee6941d3ee770bd8a391c0c083ee2102a7e8e91a730fb722ef1e46b9"
+checksum = "ba6aa42b0c64c3e5311a2afad224b32db1ee129d21c63daaaf8ea747b846cdbc"
 dependencies = [
  "arrayvec",
  "log",
@@ -3897,9 +3897,9 @@ dependencies = [
 
 [[package]]
 name = "is"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "840878b6e30d40e5bda1a7116100f1a18b7bdb91814513b87be80bbfb5d41879"
+checksum = "5cff4e962dd367e3b1c478f67c24a35e7120ec767090cb61305b855db9a529c4"
 dependencies = [
  "crc",
  "hmac 0.12.1",
@@ -4291,7 +4291,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.3",
 ]
 
 [[package]]
@@ -4844,7 +4844,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 1.3.1",
+ "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
  "syn 2.0.118",
@@ -7018,9 +7018,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m-proto"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02836118cf7384413d7e8beb8b9ab56a4007d1b6514c11df35150a2e7aef8f1a"
+checksum = "c99c3d805532aebd04585ba54e97e958c382759fb8f52256e289a49233f7e05b"
 dependencies = [
  "base64ct",
  "dimpl",
