@@ -1661,14 +1661,21 @@ defmodule PortalWeb.Settings.LogSinks do
   WORKSPACE_ID=$(az monitor log-analytics workspace show \
     -g "$RG" -n "$WORKSPACE" --query id -o tsv)
 
-  az monitor log-analytics workspace table create \
-    -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
-    --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic \
-    --output none
+  if ! az monitor log-analytics workspace table show \
+       -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL > /dev/null 2>&1; then
+    az monitor log-analytics workspace table create \
+      -g "$RG" --workspace-name "$WORKSPACE" -n FirezoneLogs_CL \
+      --columns TimeGenerated=datetime Message=string Stream=string Firezone=dynamic \
+      --output none
+  fi
 
-  DCE_ID=$(az monitor data-collection endpoint create \
-    -g "$RG" -n firezone-logs -l "$LOCATION" \
-    --public-network-access Enabled --query id -o tsv)
+  DCE_ID=$(az monitor data-collection endpoint show \
+    -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
+  if [ -z "$DCE_ID" ]; then
+    DCE_ID=$(az monitor data-collection endpoint create \
+      -g "$RG" -n firezone-logs -l "$LOCATION" \
+      --public-network-access Enabled --query id -o tsv)
+  fi
 
   cat > firezone-dcr.json <<EOF
   {
@@ -1702,15 +1709,22 @@ defmodule PortalWeb.Settings.LogSinks do
   }
   EOF
 
-  DCR_ID=$(az monitor data-collection rule create \
-    -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+  DCR_ID=$(az monitor data-collection rule show \
+    -g "$RG" -n firezone-logs --query id -o tsv 2>/dev/null)
+  if [ -z "$DCR_ID" ]; then
+    DCR_ID=$(az monitor data-collection rule create \
+      -g "$RG" -n firezone-logs --rule-file firezone-dcr.json --query id -o tsv)
+  fi
 
   SP_ID=$(az ad sp show --id FIREZONE_CLIENT_ID --query id -o tsv)
 
-  az role assignment create --assignee-object-id "$SP_ID" \
-    --assignee-principal-type ServicePrincipal \
-    --role "Monitoring Metrics Publisher" --scope "$DCR_ID" \
-    --output none
+  if ! az role assignment list --assignee "$SP_ID" --scope "$DCR_ID" \
+       --role "Monitoring Metrics Publisher" --query "[0].id" -o tsv 2>/dev/null | grep -q .; then
+    az role assignment create --assignee-object-id "$SP_ID" \
+      --assignee-principal-type ServicePrincipal \
+      --role "Monitoring Metrics Publisher" --scope "$DCR_ID" \
+      --output none
+  fi
 
   echo "Enter these in the Firezone form:"
   echo "  Ingestion Endpoint: $(az monitor data-collection endpoint show \
