@@ -160,17 +160,44 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        fuzz-target: [ip_packet]
+        fuzz-target: [ip_packet, tunnel]
+        include:
+          - fuzz-target: tunnel
+            libfuzzer-args: "-max_len=8192 -len_control=0"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
+      - uses: ./.github/actions/free-disk-space
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120
+      - name: Fuzz ${{ matrix.fuzz-target }}
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120 ${{ matrix.libfuzzer-args }}
+      # On a crash, replay the offending input through the just-built binary
+      # with tracing on, so the failing scenario (one line per applied
+      # transition plus the `❌` mismatch) lands directly in this job's log
+      # rather than only in the uploaded artifact. `cargo fuzz run` propagates
+      # `RUST_LOG` too, but invoking the binary directly avoids a redundant
+      # cargo rebuild-check.
+      - name: Replay crashing input with tracing
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifacts=(tests/fuzz/artifacts/${{ matrix.fuzz-target }}/{crash,timeout,oom,leak,slow-unit}-*)
+          if [ ${#artifacts[@]} -eq 0 ]; then
+            echo "No crash artifact was written; nothing to replay."
+            exit 0
+          fi
+          bin=target/x86_64-unknown-linux-gnu/release/${{ matrix.fuzz-target }}
+          for f in "${artifacts[@]}"; do
+            echo "::group::Scenario for $(basename "$f")"
+            RUST_LOG=debug "$bin" "$f" || true
+            echo "::endgroup::"
+          done
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
