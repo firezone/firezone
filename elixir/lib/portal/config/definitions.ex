@@ -729,6 +729,25 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
+  DSN used to report errors to Sentry.
+
+  Sentry reporting is disabled when this is unset or blank.
+  """
+  defconfig(:sentry_dsn, :string,
+    default: nil,
+    dump: fn
+      dsn when is_binary(dsn) ->
+        case String.trim(dsn) do
+          "" -> nil
+          dsn -> dsn
+        end
+
+      dsn ->
+        dsn
+    end
+  )
+
+  @doc """
   Enable or disable the Firezone telemetry collection.
   """
   defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)

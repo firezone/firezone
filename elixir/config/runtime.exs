@@ -567,6 +567,9 @@ if config_env() == :prod do
 
   # Sentry
 
+  config :sentry,
+    dsn: env_var_to_config!(:sentry_dsn)
+
   with api_external_url when not is_nil(api_external_url) <-
          env_var_to_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
@@ -577,8 +580,6 @@ if config_env() == :prod do
             true -> :unknown
           end) do
     config :sentry,
-      environment_name: environment_name,
-      dsn:
-        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
+      environment_name: environment_name
   end
 end
