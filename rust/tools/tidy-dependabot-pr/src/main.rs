@@ -77,14 +77,12 @@ fn main() -> ExitCode {
 /// Reduces a grouped update's body to just its per-dependency `Updates` lines,
 /// or returns an empty string for a single-dependency update.
 ///
-/// A grouped update lists each member on its own `Updates `dep` from X to Y`
-/// line; a single-dependency update never does and needs no body at all, since
-/// the PR title already says everything.
+/// A grouped update lists each member on its own ``Updates `dep` from X to Y``
+/// line; a single-dependency update has none, so the filter naturally yields an
+/// empty body (the PR title already says everything). Selecting lines this way
+/// keeps it robust to anything Dependabot prepends, such as its "is rebasing"
+/// banner on a grouped PR.
 fn tidy_body(body: &str) -> String {
-    let first = body.lines().next().unwrap_or_default();
-    if !is_grouped(first) {
-        return String::new();
-    }
     body.lines()
         .filter(|line| line.starts_with("Updates "))
         .collect::<Vec<_>>()
@@ -93,14 +91,18 @@ fn tidy_body(body: &str) -> String {
 
 /// Shortens an over-long grouped-update title to `<prefix>: bump the <group> group`.
 ///
-/// Titles such as `build(deps): bump the foo group across 1 directory with 3
-/// updates` (and the single-in-group variant) are reduced to `build(deps): bump
-/// the foo group`, keeping whatever conventional-commit prefix Dependabot chose.
-/// Returns `None` for a non-grouped title, or if the result still wouldn't fit
-/// our 64-character limit.
+/// Handles both `build(deps): bump the foo group across 1 directory with 3
+/// updates` and the multi-ecosystem form `Bump the "foo" group with 1 update
+/// across multiple ecosystems`, which carries no conventional-commit prefix. The
+/// existing prefix is kept when there is one; otherwise we default to
+/// `build(deps)`. Returns `None` for a non-grouped title, or if the result still
+/// wouldn't fit our 64-character limit.
 fn tidy_title(title: &str) -> Option<String> {
     let group = group_name(title)?;
-    let prefix = title.split_once(':')?.0;
+    let prefix = match title.split_once(':') {
+        Some((prefix, _)) if !prefix.contains(' ') => prefix,
+        _ => "build(deps)",
+    };
     let candidate = format!("{prefix}: bump the {group} group");
     (candidate != title && candidate.len() <= 64).then_some(candidate)
 }
@@ -108,36 +110,46 @@ fn tidy_title(title: &str) -> Option<String> {
 /// Extracts the release notes, changelog and commit list into a comment body,
 /// or returns `None` when there is nothing worth keeping.
 ///
-/// Those sections are everything above Dependabot's footer, which always starts
-/// with the compatibility-score badge or the auto-merge markers. A comment is
-/// only produced when that content actually contains a collapsible `<details>`.
+/// Those sections are everything above Dependabot's footer, minus its transient
+/// "is rebasing" banner. The footer starts at the compatibility badge, the
+/// auto-merge markers, or the "Dependabot will resolve" line (a multi-ecosystem
+/// PR has only the last of these). A comment is only produced when that content
+/// actually contains a collapsible `<details>`.
 fn details_comment(body: &str) -> Option<String> {
+    let mut in_rebase_banner = false;
     let notes = body
         .lines()
         .take_while(|line| {
             !line.starts_with("[![Dependabot compatibility score]")
                 && !line.starts_with("[//]: # (dependabot-automerge-start)")
+                && !line.starts_with("Dependabot will resolve")
+        })
+        .filter(|line| {
+            if line.starts_with("[//]: # (dependabot-start)") {
+                in_rebase_banner = true;
+            }
+            let keep = !in_rebase_banner;
+            if line.starts_with("[//]: # (dependabot-end)") {
+                in_rebase_banner = false;
+            }
+            keep
         })
         .collect::<Vec<_>>()
         .join("\n");
 
     notes
         .contains("<details>")
-        .then(|| format!("{MARKER}\n\n{}", notes.trim_end()))
-}
-
-/// Returns whether a Dependabot body's first line describes a grouped update.
-fn is_grouped(first_line: &str) -> bool {
-    first_line.starts_with("Bumps the ") && first_line.contains(" group")
+        .then(|| format!("{MARKER}\n\n{}", notes.trim()))
 }
 
 /// Extracts the group name from a `... the <name> group ...` phrase.
 ///
-/// Works on both a PR title and a body's first line. Returns `None` if there is
-/// no such single-token group reference.
+/// Works on both a PR title and a body's first line, and unwraps the quotes
+/// Dependabot puts around multi-ecosystem group names (`the "foo" group`).
+/// Returns `None` if there is no such single-token group reference.
 fn group_name(text: &str) -> Option<&str> {
     let before_group = text.split_once(" group")?.0;
-    let name = before_group.rsplit_once(" the ")?.1;
+    let name = before_group.rsplit_once(" the ")?.1.trim_matches('"');
     (!name.is_empty() && !name.contains(' ')).then_some(name)
 }
 
@@ -191,6 +203,38 @@ Dependabot will resolve any conflicts with this PR as long as you don't alter it
 [//]: # (dependabot-automerge-start)
 [//]: # (dependabot-automerge-end)"#;
 
+    // A multi-ecosystem group PR body captured mid-rebase (see #14178): prefixed
+    // with Dependabot's "is rebasing" banner, with no compatibility badge or
+    // auto-merge marker. (The quoted group name appears in the title, exercised
+    // by the tidy_title tests.)
+    const MULTI_ECOSYSTEM: &str = r#"[//]: # (dependabot-start)
+⚠️  **Dependabot is rebasing this PR** ⚠️
+
+Rebasing might not happen immediately, so don't worry if this takes some time.
+
+---
+
+[//]: # (dependabot-end)
+
+Bumps the tauri group in /rust with 2 updates: [tauri](https://github.com/tauri-apps/tauri) and [tauri-winrt-notification](https://github.com/tauri-apps/winrt-notification).
+
+Updates `tauri` from 2.11.4 to 2.11.5
+<details>
+<summary>Commits</summary>
+<ul><li>7cd7136 apply version updates</li></ul>
+</details>
+<br />
+
+Updates `tauri-winrt-notification` from 0.7.2 to 0.8.0
+<details>
+<summary>Commits</summary>
+<ul><li>4dc872e publish new versions</li></ul>
+</details>
+<br />
+
+
+Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself."#;
+
     #[test]
     fn single_update_clears_the_body() {
         assert_eq!(tidy_body(SINGLE), "");
@@ -234,6 +278,46 @@ Dependabot will resolve any conflicts with this PR as long as you don't alter it
     #[test]
     fn is_idempotent_on_an_already_short_title() {
         assert_eq!(tidy_title("build(deps): bump the rust-crypto group"), None);
+    }
+
+    #[test]
+    fn shortens_a_multi_ecosystem_title_without_a_prefix() {
+        assert_eq!(
+            tidy_title("Bump the \"tauri\" group with 1 update across multiple ecosystems")
+                .as_deref(),
+            Some("build(deps): bump the tauri group"),
+        );
+    }
+
+    #[test]
+    fn shortens_a_prefixed_multi_ecosystem_title() {
+        assert_eq!(
+            tidy_title(
+                "build(deps): Bump the \"tauri\" group with 1 update across multiple ecosystems"
+            )
+            .as_deref(),
+            Some("build(deps): bump the tauri group"),
+        );
+    }
+
+    #[test]
+    fn grouped_body_survives_a_rebase_banner() {
+        assert_eq!(
+            tidy_body(MULTI_ECOSYSTEM),
+            "Updates `tauri` from 2.11.4 to 2.11.5\n\
+             Updates `tauri-winrt-notification` from 0.7.2 to 0.8.0"
+        );
+    }
+
+    #[test]
+    fn comment_drops_the_rebase_banner_and_multi_ecosystem_footer() {
+        let comment = details_comment(MULTI_ECOSYSTEM).expect("has release notes");
+        assert!(comment.starts_with(MARKER));
+        assert!(!comment.contains("is rebasing"));
+        assert!(!comment.contains("dependabot-start"));
+        assert!(!comment.contains("Dependabot will resolve"));
+        assert!(comment.contains("Updates `tauri`"));
+        assert!(comment.contains("<details>"));
     }
 
     #[test]
