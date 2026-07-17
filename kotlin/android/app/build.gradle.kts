@@ -278,7 +278,7 @@ dependencies {
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.2")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.3")
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
