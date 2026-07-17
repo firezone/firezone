@@ -1,11 +1,12 @@
 //! Network change detection for Linux via DBus / NetworkManager
 
 use crate::DnsControlMethod;
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt as _, stream};
-use std::{collections::HashMap, pin::Pin, time::Duration};
-use tokio::time::MissedTickBehavior;
+use inotify::{Inotify, WatchMask};
+use std::ffi::OsStr;
+use std::{collections::HashMap, pin::Pin};
 
 /// Listens for changes of system-wide DNS resolvers
 ///
@@ -19,8 +20,8 @@ pub async fn new_dns_notifier(
 ) -> Result<impl Stream<Item = Result<()>> + Unpin> {
     let stream = match method {
         DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => {
-            interval_stream(Duration::from_secs(5))
-                .inspect(|_| tracing::debug!("DNS change poller ticked"))
+            resolv_conf_change_stream()?
+                .inspect(|_| tracing::debug!("`/etc/resolv.conf` changed"))
                 .map(|_| Ok(()))
                 .boxed()
         }
@@ -117,15 +118,37 @@ fn primary_connection_changed(body: &zbus::message::Body) -> bool {
         || invalidated.iter().any(|k| k == "PrimaryConnection")
 }
 
-fn interval_stream(interval: Duration) -> impl Stream<Item = ()> + Unpin {
-    let mut interval = tokio::time::interval(interval);
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+/// Yields whenever `/etc/resolv.conf` changes.
+///
+/// `/etc/resolv.conf` is typically replaced atomically (write-and-rename),
+/// which would invalidate an inotify watch on the file itself, so we watch its
+/// parent directory for events naming `resolv.conf` instead.
+fn resolv_conf_change_stream() -> Result<impl Stream<Item = ()>> {
+    let inotify = Inotify::init().context("Failed to initialise inotify")?;
 
-    stream::unfold(interval, |mut interval| async move {
-        interval.tick().await;
-        Some(((), interval))
-    })
-    .boxed()
+    inotify
+        .watches()
+        .add(
+            "/etc",
+            WatchMask::CREATE | WatchMask::MODIFY | WatchMask::MOVED_TO,
+        )
+        .context("Failed to watch `/etc` for `resolv.conf` changes")?;
+
+    let stream = inotify
+        .into_event_stream([0u8; 512])
+        .context("Failed to create inotify event stream")?
+        .filter_map(|event| {
+            std::future::ready(match event {
+                Ok(event) if event.name.as_deref() == Some(OsStr::new("resolv.conf")) => Some(()),
+                Ok(_) => None,
+                Err(error) => {
+                    tracing::warn!("inotify error while watching `/etc/resolv.conf`: {error}");
+                    None
+                }
+            })
+        });
+
+    Ok(stream)
 }
 
 async fn dbus_stream(
