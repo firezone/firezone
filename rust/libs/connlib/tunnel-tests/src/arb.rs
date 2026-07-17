@@ -118,6 +118,9 @@ struct Gen<'a, 'u> {
 
     // Monotonic key counter.
     next_key: u32,
+
+    // Monotonic payload counter (packet identity; see `fresh_payload`).
+    next_payload: u64,
 }
 
 impl<'a, 'u> Gen<'a, 'u> {
@@ -146,6 +149,7 @@ impl<'a, 'u> Gen<'a, 'u> {
             next_relay: 0,
             next_resource: 0,
             next_key: 0,
+            next_payload: 0,
         }
     }
 
@@ -230,6 +234,21 @@ impl<'a, 'u> Gen<'a, 'u> {
         bytes[0..4].copy_from_slice(&n.to_be_bytes());
         let _ = self.u.fill_buffer(&mut bytes[4..]);
         PrivateKey(bytes)
+    }
+
+    /// A packet payload that is unique within a scenario. Like
+    /// [`fresh_private_key`](Self::fresh_private_key) a monotonic counter takes
+    /// the high bits and the rest carries entropy. It reads the same eight bytes
+    /// as a bare `u64`, so the positional decoding of later transitions — and
+    /// thus the committed corpus — is unchanged. The reference model identifies
+    /// every packet solely by this value to match a client's send against the
+    /// gateway's receive; two packets sharing one would alias in that map, so
+    /// two clients drawing the same `u64` must not collide.
+    fn fresh_payload(&mut self) -> u64 {
+        let n = self.next_payload;
+        self.next_payload += 1;
+        let entropy = self.u64();
+        ((n & 0xFF_FFFF) << 40) | (entropy & 0xFF_FFFF_FFFF)
     }
 
     fn latency(&mut self, max: u64) -> Duration {
@@ -1985,7 +2004,7 @@ fn arb_icmp_packet(g: &mut Gen, client_id: ClientId, src: IpAddr, dst: DstSpec) 
     let seq = g.u16();
     let identifier = g.u16();
     let resolved_ip = g.u32();
-    let payload = g.u64();
+    let payload = g.fresh_payload();
     Transition::SendIcmpPacket {
         client_id,
         src,
@@ -2005,7 +2024,7 @@ fn arb_udp_packet(
 ) -> Transition {
     let sport = g.u16();
     let resolved_ip = g.u32();
-    let payload = g.u64();
+    let payload = g.fresh_payload();
     Transition::SendUdpPacket {
         client_id,
         src,
