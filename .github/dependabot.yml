@@ -10,6 +10,11 @@ multi-ecosystem-groups:
     target-branch: main
     schedule:
       interval: weekly
+    # Multi-ecosystem groups don't inherit Dependabot's conventional-commit
+    # auto-detection, so set the prefix explicitly to match our other updates.
+    commit-message:
+      prefix: build
+      include: scope
 
 updates:
   # Keep version update jobs on the active codebase while the legacy branch exists.
