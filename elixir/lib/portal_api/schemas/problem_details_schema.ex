@@ -4,6 +4,17 @@ defmodule PortalAPI.Schemas.ProblemDetails do
 
   @content_type "application/problem+json"
 
+  @response_details %{
+    bad_request: "The request could not be processed.",
+    unauthorized: "Authentication credentials were missing or invalid.",
+    forbidden: "You do not have permission to perform this action.",
+    not_found: "The requested resource could not be found.",
+    conflict: "An active token already exists for this gateway. Rotate it or delete it first.",
+    unprocessable_entity: "The request body failed validation.",
+    too_many_requests:
+      "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
+  }
+
   OpenApiSpex.schema(%{
     title: "ProblemDetails",
     description: "RFC 9457 (Problem Details for HTTP APIs) error response.",
@@ -81,24 +92,28 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     Enum.map(codes, fn code -> {code, response_for(code)} end)
   end
 
-  defp response_for(:bad_request),
-    do: {"Bad Request", @content_type, __MODULE__}
+  defp response_for(code) do
+    status = Plug.Conn.Status.code(code)
+    title = Plug.Conn.Status.reason_phrase(status)
+    detail = Map.fetch!(@response_details, code)
 
-  defp response_for(:unauthorized),
-    do: {"Unauthorized", @content_type, __MODULE__}
+    example = %{
+      "type" => "about:blank",
+      "title" => title,
+      "status" => status,
+      "detail" => detail
+    }
 
-  defp response_for(:forbidden),
-    do: {"Forbidden", @content_type, __MODULE__}
+    example =
+      if code == :unprocessable_entity do
+        Map.put(example, "validation_errors", %{"name" => ["can't be blank"]})
+      else
+        example
+      end
 
-  defp response_for(:not_found),
-    do: {"Not Found", @content_type, __MODULE__}
+    {title, @content_type, response_schema(code), example: example}
+  end
 
-  defp response_for(:conflict),
-    do: {"Conflict", @content_type, __MODULE__}
-
-  defp response_for(:unprocessable_entity),
-    do: {"Unprocessable Content", @content_type, ValidationError}
-
-  defp response_for(:too_many_requests),
-    do: {"Too Many Requests", @content_type, __MODULE__}
+  defp response_schema(:unprocessable_entity), do: ValidationError
+  defp response_schema(_code), do: __MODULE__
 end
