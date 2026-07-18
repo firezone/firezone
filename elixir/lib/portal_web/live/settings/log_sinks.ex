@@ -62,15 +62,22 @@ defmodule PortalWeb.Settings.LogSinks do
   ]
 
   def mount(_params, _session, socket) do
-    socket =
-      assign(socket,
-        page_title: "Log Sinks",
-        sentinel_setup_tab: "portal",
-        s3_setup_tab: "console",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
-      )
+    log_sinks_enabled? = PortalWeb.NavigationComponents.log_sinks_enabled?()
 
-    {:ok, init(socket, new: true)}
+    if log_sinks_enabled? do
+      socket =
+        assign(socket,
+          page_title: "Log Sinks",
+          sentinel_setup_tab: "portal",
+          s3_setup_tab: "console",
+          trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
+          log_sinks_enabled?: log_sinks_enabled?
+        )
+
+      {:ok, init(socket, new: true)}
+    else
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/account")}
+    end
   end
 
   # New Log Sink
@@ -274,6 +281,7 @@ defmodule PortalWeb.Settings.LogSinks do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
+        log_sinks_enabled?={@log_sinks_enabled?}
       />
 
       <%= if Portal.Account.log_sinks_enabled?(@account) do %>

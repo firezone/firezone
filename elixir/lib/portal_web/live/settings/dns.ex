@@ -11,6 +11,7 @@ defmodule PortalWeb.Settings.DNS do
       |> assign(page_title: "DNS")
       |> assign(dns_account: account)
       |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
+      |> assign(log_sinks_enabled?: PortalWeb.NavigationComponents.log_sinks_enabled?())
 
     {:ok, socket}
   end
@@ -39,6 +40,7 @@ defmodule PortalWeb.Settings.DNS do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
+        log_sinks_enabled?={@log_sinks_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

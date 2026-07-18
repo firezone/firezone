@@ -45,6 +45,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         |> assign(form: nil, input_mode: :paste)
         |> assign(confirm_delete?: false)
         |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
+        |> assign(log_sinks_enabled?: PortalWeb.NavigationComponents.log_sinks_enabled?())
         |> allow_upload(:cert_file,
           accept: ~w(.pem .crt .cer .der .txt),
           max_entries: @max_upload_entries,
@@ -111,6 +112,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
+        log_sinks_enabled?={@log_sinks_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
