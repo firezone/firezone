@@ -6,6 +6,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.LogSinkFixtures
+  import Portal.FeaturesFixtures
 
   alias Portal.LogSinkCursor
   alias Portal.Splunk
@@ -13,6 +14,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
   setup do
     account = account_fixture(features: %{log_sinks: true})
     actor = admin_actor_fixture(account: account)
+    enable_feature(:log_sinks)
     %{account: account, actor: actor}
   end
 
@@ -41,6 +43,21 @@ defmodule PortalWeb.Settings.LogSinksTest do
   end
 
   describe "index" do
+    test "redirects to account settings when log_sinks feature is disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      disable_feature(:log_sinks)
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/settings/log_sinks")
+
+      assert to == ~p"/#{account}/settings/account"
+    end
+
     test "renders empty state when no log sinks exist", %{
       conn: conn,
       account: account,

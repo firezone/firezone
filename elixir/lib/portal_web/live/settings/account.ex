@@ -25,7 +25,8 @@ defmodule PortalWeb.Settings.Account do
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
         sites_count: Database.count_groups_for_account(subject),
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
+        log_sinks_enabled?: PortalWeb.NavigationComponents.log_sinks_enabled?()
       )
 
     {:ok, socket}
@@ -38,6 +39,7 @@ defmodule PortalWeb.Settings.Account do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
+        log_sinks_enabled?={@log_sinks_enabled?}
       >
         <:actions>
           <.button phx-click="open_edit_account" size="xs">

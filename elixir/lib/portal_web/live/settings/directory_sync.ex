@@ -46,7 +46,8 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket =
       assign(socket,
         page_title: "Directory Sync",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
+        log_sinks_enabled?: PortalWeb.NavigationComponents.log_sinks_enabled?()
       )
 
     if connected?(socket) do
@@ -401,6 +402,7 @@ defmodule PortalWeb.Settings.DirectorySync do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
+        log_sinks_enabled?={@log_sinks_enabled?}
       />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>
