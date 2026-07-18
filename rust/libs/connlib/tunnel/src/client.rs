@@ -357,6 +357,13 @@ impl ClientState {
     ) {
         tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
+        for _ in self
+            .pending_authorizations
+            .remove_device_authorizations(|_, addr| {
+                ipv4.map(IpAddr::V4) == Some(addr) || ipv6.map(IpAddr::V6) == Some(addr)
+            })
+        {}
+
         // The protocol is irrelevant: each member device has exactly one routing-table entry
         // per address, so the lookup always resolves to that entry regardless of the dummy.
         let entry = ipv4
@@ -376,7 +383,6 @@ impl ClientState {
             return;
         };
 
-        self.pending_authorizations.remove(entry.client_id);
         // TODO: Update resource list with offline client.
 
         let Some(_) = self.clients.remove(&entry.client_id) else {
@@ -813,7 +819,7 @@ impl ClientState {
         if let ClientOrGatewayId::Client(cid) = pid
             && let Some(peer) = self.clients.peer_by_id_mut(&cid)
         {
-            peer.record_outbound(&packet, now);
+            peer.handle_outbound(&packet, now);
         }
 
         if let Some((rid, domain)) = self
@@ -888,7 +894,6 @@ impl ClientState {
 
             // Not yet authorized: Buffer + send request.
             self.pending_authorizations.on_not_authorized_device(
-                entry.client_id,
                 entry.resource_id,
                 dst,
                 packet,
@@ -1065,8 +1070,6 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
 
-        let pending_authorization = self.pending_authorizations.remove(cid);
-
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
@@ -1087,9 +1090,9 @@ impl ClientState {
             (auth.resource_id, auth.filters, expires_at)
         });
 
-        let peer = self
-            .clients
-            .upsert(cid, || ClientOnClient::new(client_tun, client_name.clone()));
+        let peer = self.clients.upsert(cid, || {
+            ClientOnClient::new(cid, client_tun, client_name.clone())
+        });
 
         if peer.remote_name() != client_name {
             tracing::debug!(%cid, name = %client_name, "Updated client peer name");
@@ -1102,12 +1105,13 @@ impl ClientState {
             peer.add_resource(resource_id, filters, expires_at, now);
         }
 
-        if let Some(pending_authorization) = pending_authorization {
-            // We initiated this connection — record the (resource, peer) pair
-            // as authorised so future sends in the same direction skip
-            // `pending_authorizations` and route directly via the peer.
-            let resource_id = pending_authorization.resource_id();
-
+        // We initiated this connection — record each (resource, peer) pair
+        // as authorised so future sends in the same direction skip
+        // `pending_authorizations` and route directly via the peer.
+        for (resource_id, pending_authorization) in self
+            .pending_authorizations
+            .remove_device_authorizations(|_, addr| client_tun.is_ip(addr))
+        {
             match self
                 .authorized_resources
                 .entry(resource_id)
@@ -1129,7 +1133,7 @@ impl ClientState {
             let (buffered_packets, _) = pending_authorization.into_buffered_packets();
 
             for packet in buffered_packets {
-                peer.record_outbound(&packet, now);
+                peer.handle_outbound(&packet, now);
                 encapsulate_and_queue(
                     packet,
                     ClientOrGatewayId::Client(cid),
@@ -1162,6 +1166,35 @@ impl ClientState {
             return;
         };
         peer.remove_resource(&resource_id);
+    }
+
+    /// Resyncs inbound client-to-client authorizations from the portal's `init`.
+    pub fn retain_authorizations(
+        &mut self,
+        authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    ) {
+        let no_authorizations = BTreeSet::new();
+
+        for peer in self.clients.iter_mut() {
+            let retain = authorizations.get(&peer.id()).unwrap_or(&no_authorizations);
+            peer.retain_authorizations(retain);
+        }
+    }
+
+    /// Updates the expiry of an existing inbound authorization from `init`.
+    pub fn update_access_authorization_expiry(
+        &mut self,
+        cid: ClientId,
+        resource_id: ResourceId,
+        expires_at: Duration,
+        now: Instant,
+    ) {
+        let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
+            return;
+        };
+
+        let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
+        peer.update_resource_expiry(resource_id, new_expiry, now);
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -1529,6 +1562,13 @@ impl ClientState {
                 self.device_stub_resolver
                     .poll_timeout()
                     .map(|instant| (instant, "Device stub resolver")),
+            )
+            .chain(
+                self.clients
+                    .iter_mut()
+                    .filter_map(|peer| peer.poll_timeout())
+                    .min()
+                    .map(|instant| (instant, "Client peer authorization expiry")),
             )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
@@ -2348,13 +2388,17 @@ impl ClientState {
                 .remove(old_member.ipv6.into(), |e| {
                     e.client_id == *cid && e.resource_id == pool_id
                 });
+            for _ in self
+                .pending_authorizations
+                .remove_device_authorizations(|pool, addr| {
+                    pool == pool_id && old_member.contains(addr)
+                })
+            {}
 
             // If the member is no longer in the pool, drop any active
             // connection so traffic doesn't keep flowing to a revoked device —
             // but only if no other pool still authorises it.
             if new_member.is_none() && !self.is_client_in_other_static_device_pool(*cid, pool_id) {
-                self.pending_authorizations.remove(*cid);
-
                 if let hash_map::Entry::Occupied(mut entry) =
                     self.authorized_resources.entry(pool_id)
                     && let AccessPath::Direct(set) = entry.get_mut()
