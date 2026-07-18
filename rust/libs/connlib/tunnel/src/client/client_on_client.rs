@@ -179,8 +179,8 @@ impl ClientOnClient {
         self.inbound_filter = FilterEngine::new(&combined);
     }
 
-    /// Records an outbound packet of a flow we opened.
-    pub(crate) fn record_outbound(&mut self, packet: &IpPacket, now: Instant) {
+    /// Handles an outbound packet we sent to this peer.
+    pub(crate) fn handle_outbound(&mut self, packet: &IpPacket, now: Instant) {
         self.conn_track.handle_outbound(packet, now);
     }
 
@@ -281,7 +281,7 @@ mod tests {
         let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
-        peer.record_outbound(&outbound, now);
+        peer.handle_outbound(&outbound, now);
 
         let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
         assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));

@@ -8,7 +8,7 @@ use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 pub use crate::messages::Authorization;
@@ -77,6 +77,16 @@ pub struct DevicePoolMember {
     pub id: ClientId,
     pub ipv4: Ipv4Network,
     pub ipv6: Ipv6Network,
+}
+
+impl DevicePoolMember {
+    /// Returns `true` if `ip` belongs to this member.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ip) => self.ipv4.contains(ip),
+            IpAddr::V6(ip) => self.ipv6.contains(ip),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

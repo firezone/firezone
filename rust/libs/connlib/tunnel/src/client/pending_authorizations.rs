@@ -108,12 +108,14 @@ impl PendingAuthorizations {
     }
 
     /// Removes and returns every device entry whose (pool, address) matches the predicate.
-    pub fn extract_device_authorizations(
-        &mut self,
-        mut f: impl FnMut(ResourceId, IpAddr) -> bool,
-    ) -> Vec<(ResourceId, PendingAuthorization)> {
+    ///
+    /// The iterator must be consumed for the entries to be removed.
+    pub fn remove_device_authorizations<'a>(
+        &'a mut self,
+        mut f: impl FnMut(ResourceId, IpAddr) -> bool + 'a,
+    ) -> impl Iterator<Item = (ResourceId, PendingAuthorization)> + 'a {
         self.inner
-            .extract_if(.., |target, _| match target {
+            .extract_if(.., move |target, _| match target {
                 AuthorizationTarget::Resource(_) => false,
                 AuthorizationTarget::Device { pool, addr } => f(*pool, *addr),
             })
@@ -121,7 +123,6 @@ impl PendingAuthorizations {
                 AuthorizationTarget::Device { pool, .. } => Some((pool, pending)),
                 AuthorizationTarget::Resource(_) => None,
             })
-            .collect()
     }
 
     pub fn poll_authorization_requests(&mut self) -> Option<AuthorizationRequest> {
@@ -439,38 +440,53 @@ mod tests {
         let ip = device_ip();
 
         pending.on_not_authorized_device(rid_one, ip, udp_trigger(1), &resources, now);
-        assert!(pending.poll_authorization_requests().is_some());
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(device_request(rid_one, ip))
+        );
 
         // The other pool's throttle window must not suppress this request.
         now += Duration::from_millis(500);
 
         pending.on_not_authorized_device(rid_two, ip, udp_trigger(2), &resources, now);
-        assert!(pending.poll_authorization_requests().is_some());
-
-        for pool in [rid_one, rid_two] {
-            assert!(
-                pending
-                    .remove(AuthorizationTarget::Device { pool, addr: ip })
-                    .is_some()
-            );
-        }
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(device_request(rid_two, ip))
+        );
     }
 
     #[test]
-    fn extract_device_authorizations_leaves_resource_entries() {
+    fn remove_device_authorizations_leaves_resource_entries() {
         let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
+        let mut now = Instant::now();
         let (rid, resources) = single_resource();
         let ip = device_ip();
 
         pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
         pending.on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now);
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(resource_request(rid))
+        );
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(device_request(rid, ip))
+        );
 
-        let extracted = pending.extract_device_authorizations(|_, _| true);
-        assert_eq!(extracted.len(), 1);
-        assert_eq!(extracted[0].0, rid);
+        assert_eq!(pending.remove_device_authorizations(|_, _| true).count(), 1);
 
-        assert!(pending.remove(rid).is_some());
+        now += Duration::from_millis(500);
+
+        // The resource entry survived: within its throttle window, no new request.
+        pending.on_not_authorized_resource(rid, udp_trigger(3), &resources, now);
+        assert_eq!(pending.poll_authorization_requests(), None);
+
+        // The device entry was removed: a new trigger requests again immediately.
+        pending.on_not_authorized_device(rid, ip, udp_trigger(4), &resources, now);
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(device_request(rid, ip))
+        );
     }
 
     fn single_resource() -> (ResourceId, BTreeMap<ResourceId, Resource>) {
@@ -490,6 +506,13 @@ mod tests {
             rid_two,
             BTreeMap::from([(rid_one, one), (rid_two, two)]),
         )
+    }
+
+    fn device_request(resource_id: ResourceId, ip: IpAddr) -> AuthorizationRequest {
+        AuthorizationRequest {
+            resource_id,
+            ip: Some(ip),
+        }
     }
 
     fn device_ip() -> IpAddr {
