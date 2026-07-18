@@ -92,7 +92,12 @@ defmodule OpenIDConnect.Document do
     collector = body_collector(@document_max_byte_size)
     options = Keyword.merge([into: collector, retry: retry_option()], req_opts)
 
-    case Req.get(uri, options) do
+    result =
+      options
+      |> Req.new()
+      |> Req.get(url: uri)
+
+    case result do
       {:ok, %{body: {:error, :body_too_large}}} ->
         {:error, :discovery_document_is_too_large}
 

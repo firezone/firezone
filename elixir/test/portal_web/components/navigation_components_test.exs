@@ -53,7 +53,7 @@ defmodule PortalWeb.NavigationComponentsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      refute html =~ "Log Sinks"
+      refute html =~ ~s(href="/#{account.slug}/settings/log_sinks")
     end
 
     test "shown when log_sinks feature is enabled", %{
@@ -68,7 +68,7 @@ defmodule PortalWeb.NavigationComponentsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert html =~ "Log Sinks"
+      assert html =~ ~s(href="/#{account.slug}/settings/log_sinks")
     end
   end
 

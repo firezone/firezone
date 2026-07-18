@@ -144,7 +144,8 @@ defmodule Portal.Okta.APIClient do
       [base_url: client.base_url]
       |> Keyword.merge(req_opts())
 
-    Req.new(req_opts)
+    req_opts
+    |> Req.new()
     |> Req.merge(url: "/oauth2/v1/introspect")
     |> Req.Request.put_header("content-type", "application/x-www-form-urlencoded")
     |> Req.post(form: form_data)
@@ -274,7 +275,8 @@ defmodule Portal.Okta.APIClient do
       [base_url: client.base_url]
       |> Keyword.merge(req_opts())
 
-    Req.new(req_opts)
+    req_opts
+    |> Req.new()
     |> ReqDPoP.attach(
       sign_fun: &dpop_sign(&1, client.private_key, client.kid),
       access_token: access_token,
