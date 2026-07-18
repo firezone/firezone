@@ -13,6 +13,7 @@ defmodule Portal.OpsTest do
   import Portal.TokenFixtures
   import Portal.ObanJobFixtures
 
+  alias Portal.Mocks.Stripe
   alias Portal.Workers.DeleteAccount
 
   describe "count_presences/0" do
@@ -38,6 +39,50 @@ defmodule Portal.OpsTest do
       assert {"presences:test_clients", 2} in result
       assert {"presences:test_gateways", 1} in result
       assert {"presences:test_relays", 1} in result
+    end
+  end
+
+  describe "sync_pricing_plans/0" do
+    test "applies current Stripe product features and limits to accounts" do
+      account =
+        account_fixture(%{
+          metadata: %{stripe: %{customer_id: "cus_sync123"}}
+        })
+
+      refute account.features.log_sinks
+
+      customer =
+        Stripe.build_customer(id: "cus_sync123", metadata: %{"account_id" => account.id})
+
+      product =
+        Stripe.build_product(
+          id: "prod_test_enterprise",
+          name: "Enterprise",
+          metadata: Stripe.enterprise_metadata(%{"log_sinks" => true})
+        )
+
+      price = Stripe.build_price(product: "prod_test_enterprise")
+
+      subscription =
+        Stripe.build_subscription(
+          customer: "cus_sync123",
+          items: [[price: price, quantity: 42]]
+        )
+
+      subscriptions = %{"object" => "list", "has_more" => false, "data" => [subscription]}
+
+      Stripe.stub(
+        [{"GET", "/v1/subscriptions", 200, subscriptions}] ++
+          Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert :ok = sync_pricing_plans()
+
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.features.log_sinks
+      assert account.features.idp_sync
+      assert account.metadata.stripe.product_name == "Enterprise"
     end
   end
 
