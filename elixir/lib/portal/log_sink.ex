@@ -8,7 +8,7 @@ defmodule Portal.LogSink do
   schema "log_sinks" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[splunk datadog newrelic elastic sentinel s3 qradar]a
+    field :type, Ecto.Enum, values: ~w[splunk datadog newrelic elastic sentinel s3 qradar http]a
 
     has_one :splunk_log_sink, Portal.Splunk.LogSink,
       references: :id,
@@ -35,6 +35,10 @@ defmodule Portal.LogSink do
       foreign_key: :id
 
     has_one :qradar_log_sink, Portal.QRadar.LogSink,
+      references: :id,
+      foreign_key: :id
+
+    has_one :http_log_sink, Portal.HTTP.LogSink,
       references: :id,
       foreign_key: :id
 
