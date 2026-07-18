@@ -31,7 +31,8 @@ defmodule Portal.Workers.LogSinkErrorNotification do
     Portal.NewRelic.LogSink,
     Portal.Elastic.LogSink,
     Portal.Sentinel.LogSink,
-    Portal.S3.LogSink
+    Portal.S3.LogSink,
+    Portal.QRadar.LogSink
   ]
 
   @impl Oban.Worker

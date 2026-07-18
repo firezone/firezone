@@ -49,7 +49,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       tables: tables
     } do
       for table <- ~w[splunk_log_sinks datadog_log_sinks newrelic_log_sinks elastic_log_sinks
-                      sentinel_log_sinks s3_log_sinks] do
+                      sentinel_log_sinks s3_log_sinks qradar_log_sinks] do
         assert table in tables
       end
 
