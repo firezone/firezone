@@ -50,7 +50,8 @@ config :portal, outbound_email_adapter_configured?: true
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.ComponentVersions,
-  firezone_releases_url: "http://localhost:3000/api/releases"
+  firezone_releases_url: "http://localhost:3000/api/releases",
+  req_opts: [allow_private_ips: true]
 
 config :portal, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",

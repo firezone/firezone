@@ -13,6 +13,18 @@ defmodule Portal.Okta.DirectoryTest do
   end
 
   describe "changeset/1 basic validations" do
+    test "rejects private IP addresses used as the Okta API host" do
+      changeset = build_changeset(%{okta_domain: "169.254.169.254"})
+
+      assert "must not be a private or reserved IP address" in errors_on(changeset).okta_domain
+    end
+
+    test "rejects invalid Okta API hosts" do
+      changeset = build_changeset(%{okta_domain: "not a valid host"})
+
+      assert "not a valid host is not a valid FQDN" in errors_on(changeset).okta_domain
+    end
+
     test "inserts okta_domain at maximum length" do
       dir = okta_directory_fixture(okta_domain: String.duplicate("a", 255))
       assert String.length(dir.okta_domain) == 255

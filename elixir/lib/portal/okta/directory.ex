@@ -1,6 +1,7 @@
 defmodule Portal.Okta.Directory do
   use Ecto.Schema
   import Ecto.Changeset
+  import Portal.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -60,6 +61,8 @@ defmodule Portal.Okta.Directory do
       :is_verified
     ])
     |> validate_length(:okta_domain, min: 1, max: 255)
+    |> validate_fqdn(:okta_domain)
+    |> validate_public_host(:okta_domain)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)

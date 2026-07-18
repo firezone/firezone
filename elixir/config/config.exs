@@ -30,6 +30,9 @@ end
 config :portal, ecto_repos: [Portal.Repo]
 config :portal, generators: [binary_id: true]
 
+config :req,
+  default_options: [plugins: [Portal.Req.SSRFProtection]]
+
 config :portal, sql_sandbox: false
 config :portal, replica_repo: Portal.Repo.Replica
 

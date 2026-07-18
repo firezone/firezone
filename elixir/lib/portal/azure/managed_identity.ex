@@ -90,19 +90,20 @@ defmodule Portal.Azure.ManagedIdentity do
 
   defp fetch_token!(resource) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    req_opts = config[:req_opts] || []
+    req_opts =
+      (config[:req_opts] || [])
+      |> Keyword.put(:allow_private_ips, true)
+      |> Keyword.put(:headers, [{"Metadata", "true"}])
+      |> Keyword.put(:params, [
+        "api-version": "2018-02-01",
+        resource: resource,
+        client_id: config[:client_id]
+      ])
 
     response =
       Req.get!(
         "#{config[:endpoint]}/metadata/identity/oauth2/token",
-        [
-          headers: [{"Metadata", "true"}],
-          params: [
-            "api-version": "2018-02-01",
-            resource: resource,
-            client_id: config[:client_id]
-          ]
-        ] ++ req_opts
+        req_opts
       )
 
     %Req.Response{status: 200, body: %{"access_token" => token, "expires_on" => expires_on}} =
