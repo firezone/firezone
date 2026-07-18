@@ -97,6 +97,8 @@ defmodule Portal.S3.LogSink do
     )
   end
 
+  defp normalize_key_prefix(nil), do: nil
+
   defp normalize_key_prefix(prefix) do
     normalized = prefix |> String.trim() |> String.trim("/")
 

@@ -61,10 +61,10 @@ defmodule Portal.Sentinel.LogSink do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> update_change(:tenant_id, &String.trim/1)
+    |> update_change(:tenant_id, &trim_change/1)
     |> update_change(:ingestion_endpoint, &normalize_ingestion_endpoint/1)
-    |> update_change(:dcr_immutable_id, &String.trim/1)
-    |> update_change(:stream_name, &String.trim/1)
+    |> update_change(:dcr_immutable_id, &trim_change/1)
+    |> update_change(:stream_name, &trim_change/1)
     |> validate_required([
       :name,
       :tenant_id,
@@ -98,11 +98,16 @@ defmodule Portal.Sentinel.LogSink do
     )
   end
 
+  defp normalize_ingestion_endpoint(nil), do: nil
+
   defp normalize_ingestion_endpoint(url) do
     url
     |> String.trim()
     |> String.trim_trailing("/")
   end
+
+  defp trim_change(nil), do: nil
+  defp trim_change(value), do: String.trim(value)
 
   # Each delivery mints a bearer token from Firezone's shared Entra credentials
   # scoped to Azure Monitor, so the endpoint must be an Azure Monitor ingestion
