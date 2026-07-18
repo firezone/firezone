@@ -48,8 +48,13 @@ defmodule Portal.Ops do
     {:ok, subscriptions} = Portal.Billing.list_all_subscriptions()
 
     Enum.each(subscriptions, fn subscription ->
+      # id/created satisfy the ProcessedEvents checks; created=now also makes
+      # stale webhook events delivered after the sync get skipped as :old_event
       %{
+        "id" => "evt_sync_" <> Ecto.UUID.generate(),
         "object" => "event",
+        "created" => System.os_time(:second),
+        "livemode" => Map.get(subscription, "livemode", false),
         "data" => %{
           "object" => subscription
         },
