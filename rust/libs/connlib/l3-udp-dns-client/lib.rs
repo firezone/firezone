@@ -198,7 +198,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         };
         let server = pending.server;
         let query_id = pending.message.id();
-        let timed_out = pending.timed_out;
 
         // Ignore a response that doesn't match the query we sent on this port.
         if let Ok(response) = result.as_ref()
@@ -208,18 +207,22 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         }
 
-        // The query already timed out and we responded then. Drop the late response, but keep the
-        // query so that any further late responses are dropped as well.
+        // A query only ever receives a single response, so remove it now that one has arrived.
+        let PendingQuery {
+            message,
+            local,
+            timed_out,
+            ..
+        } = self
+            .pending_queries_by_local_port
+            .remove(&local_port)
+            .expect("to still be present");
+
+        // If the query already timed out, we surfaced its result back then; don't surface another.
         if timed_out {
             tracing::debug!(%server, %query_id, %source, "Dropping late response to timed-out DNS query");
             return;
         }
-
-        // A response to a query we are still waiting for.
-        let PendingQuery { message, local, .. } = self
-            .pending_queries_by_local_port
-            .remove(&local_port)
-            .expect("to still be present");
 
         self.query_results.push_back(QueryResult {
             query: message,
@@ -240,13 +243,21 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.time_out_queries(|pending| now >= pending.expires_at);
+    }
+
+    /// Times out every tracked query for which `should_time_out` returns `true`, surfacing a
+    /// timeout result for each.
+    ///
+    /// Timed-out queries are kept around (rather than removed) so that a late response can still be
+    /// matched and dropped instead of being forwarded to the TUN device. How many we retain is
+    /// bounded by [`MAX_TIMED_OUT_QUERIES`].
+    fn time_out_queries(&mut self, should_time_out: impl Fn(&PendingQuery) -> bool) {
         for (port, pending) in self.pending_queries_by_local_port.iter_mut() {
-            if pending.timed_out || now < pending.expires_at {
+            if pending.timed_out || !should_time_out(pending) {
                 continue;
             }
 
-            // Mark the query as timed out but keep it around, so we can match (and drop) a late
-            // response instead of forwarding it to the TUN device.
             pending.timed_out = true;
             self.timed_out_ports.push_back(*port);
             self.query_results.push_back(QueryResult {
@@ -276,20 +287,9 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn reset(&mut self) {
         tracing::debug!("Resetting state");
 
-        // Timed-out queries already produced their result, so only the still-pending ones need to
-        // be aborted.
-        let aborted_pending_queries = std::mem::take(&mut self.pending_queries_by_local_port)
-            .into_values()
-            .filter(|pending_query| !pending_query.timed_out)
-            .map(|pending_query| QueryResult {
-                query: pending_query.message,
-                local: pending_query.local,
-                server: pending_query.server,
-                result: Err(anyhow!("Timeout")),
-            });
-
-        self.query_results.extend(aborted_pending_queries);
-        self.timed_out_ports.clear();
+        // Abort every pending query, but keep them around (marked as timed out) so that late
+        // responses are still matched and dropped rather than forwarded to the TUN device.
+        self.time_out_queries(|_| true);
     }
 
     fn sample_new_unique_port(&mut self) -> Result<u16> {
@@ -474,6 +474,27 @@ mod tests {
         assert!(client.accepts(&late_response));
 
         // ... but consumes it without surfacing a result or leaking it to the TUN device.
+        client.handle_inbound(late_response);
+        assert!(client.poll_query_result().is_none());
+    }
+
+    #[test]
+    fn late_response_after_reset_is_dropped() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone(), now).unwrap();
+
+        // Resetting aborts the query but keeps it around to recognise a late response.
+        client.reset();
+        assert!(client.poll_query_result().unwrap().result.is_err());
+        assert!(client.poll_query_result().is_none());
+
+        let late_response = dns_response_packet(server, local, &query);
+        assert!(client.accepts(&late_response));
+
         client.handle_inbound(late_response);
         assert!(client.poll_query_result().is_none());
     }
