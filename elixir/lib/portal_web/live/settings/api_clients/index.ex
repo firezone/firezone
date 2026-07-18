@@ -81,7 +81,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         |> assign(form: nil, encoded_token: nil)
         |> assign(pending_confirm: nil, open_actor_actions_id: nil)
         |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
-        |> assign(log_sinks_enabled?: PortalWeb.NavigationComponents.log_sinks_enabled?())
 
       {:ok, socket}
     else
@@ -144,7 +143,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
-        log_sinks_enabled?={@log_sinks_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

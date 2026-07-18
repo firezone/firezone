@@ -11,11 +11,6 @@ defmodule PortalWeb.NavigationComponents do
       query = from(f in Features, where: f.feature == :trust_anchors and f.enabled == true)
       Safe.unscoped(query, :replica) |> Safe.exists?()
     end
-
-    def log_sinks_feature_enabled? do
-      query = from(f in Features, where: f.feature == :log_sinks and f.enabled == true)
-      Safe.unscoped(query, :replica) |> Safe.exists?()
-    end
   end
 
   @doc """
@@ -24,13 +19,6 @@ defmodule PortalWeb.NavigationComponents do
   `trust_anchors_enabled?` assign, rather than calling this on every render.
   """
   def trust_anchors_enabled?, do: Database.trust_anchors_feature_enabled?()
-
-  @doc """
-  Returns whether the global `log_sinks` feature flag is enabled. Callers
-  should compute this once in `mount/3` and pass it to `settings_nav/1` as the
-  `log_sinks_enabled?` assign, rather than calling this on every render.
-  """
-  def log_sinks_enabled?, do: Database.log_sinks_feature_enabled?()
 
   @doc """
   Renders the top navigation bar.
@@ -422,7 +410,6 @@ defmodule PortalWeb.NavigationComponents do
   attr :account, :any, required: true
   attr :current_path, :string, required: true
   attr :trust_anchors_enabled?, :boolean, default: false
-  attr :log_sinks_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
@@ -509,7 +496,6 @@ defmodule PortalWeb.NavigationComponents do
           Directory Sync
         </.settings_tab>
         <.settings_tab
-          :if={@log_sinks_enabled?}
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/log_sinks"}
           tab_path="settings/log_sinks"
@@ -600,6 +586,12 @@ defmodule PortalWeb.NavigationComponents do
                 <h1 class="text-base font-semibold text-heading">Logs</h1>
                 <p class="hidden md:block mt-0.5 text-sm text-body">
                   Structured, immutable records of every configuration change, session, connection, and API call in your account.
+                </p>
+                <p class="hidden md:block mt-1 text-sm text-body">
+                  Stream logs to external destinations using
+                  <.link navigate={~p"/#{@account}/settings/log_sinks"} class={link_style()}>
+                    log sinks <.icon name="ri-arrow-right-line" class="w-3.5 h-3.5 inline" />
+                  </.link>
                 </p>
               </div>
               <div class="shrink-0 flex items-center gap-2">

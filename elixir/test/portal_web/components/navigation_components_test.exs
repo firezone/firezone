@@ -40,38 +40,6 @@ defmodule PortalWeb.NavigationComponentsTest do
     end
   end
 
-  describe "settings_nav log sinks tab" do
-    test "hidden when log_sinks feature is disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      disable_feature(:log_sinks)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/account")
-
-      refute html =~ ~s(href="/#{account.slug}/settings/log_sinks")
-    end
-
-    test "shown when log_sinks feature is enabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_feature(:log_sinks)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/account")
-
-      assert html =~ ~s(href="/#{account.slug}/settings/log_sinks")
-    end
-  end
-
   describe "settings_nav trust anchors tab" do
     test "hidden when trust_anchors feature is disabled", %{
       conn: conn,

@@ -5,7 +5,7 @@ defmodule Portal.Features do
   @primary_key false
 
   schema "features" do
-    field :feature, Ecto.Enum, values: [:client_to_client, :trust_anchors, :flow_logs, :log_sinks]
+    field :feature, Ecto.Enum, values: [:client_to_client, :trust_anchors, :flow_logs]
     field :enabled, :boolean, default: false
   end
 end

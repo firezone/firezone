@@ -51,8 +51,7 @@ defmodule PortalWeb.Settings.Authentication do
     socket =
       assign(socket,
         page_title: "Authentication",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
-        log_sinks_enabled?: PortalWeb.NavigationComponents.log_sinks_enabled?()
+        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?()
       )
 
     if connected?(socket) do
@@ -574,7 +573,6 @@ defmodule PortalWeb.Settings.Authentication do
         account={@account}
         current_path={@current_path}
         trust_anchors_enabled?={@trust_anchors_enabled?}
-        log_sinks_enabled?={@log_sinks_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
