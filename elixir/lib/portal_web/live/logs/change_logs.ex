@@ -176,6 +176,9 @@ defmodule PortalWeb.Logs.ChangeLogs do
               </div>
             </div>
           </:empty>
+          <:footer>
+            <.log_sinks_notice account={@account} />
+          </:footer>
         </.live_table>
       </div>
 

@@ -8,6 +8,7 @@ defmodule PortalWeb.Logs.Components do
   block are defined once.
   """
   use Phoenix.Component
+  use PortalWeb, :verified_routes
   alias PortalWeb.Clients
   alias PortalWeb.CoreComponents
 
@@ -367,6 +368,24 @@ defmodule PortalWeb.Logs.Components do
 
     ~H"""
     <CoreComponents.icon name={@icon_name} title={@user_agent || "Client"} class={@class} />
+    """
+  end
+
+  @doc """
+  Centered notice for the paginator bar linking to log sink settings.
+  """
+  attr :account, :any, required: true
+
+  def log_sinks_notice(assigns) do
+    ~H"""
+    <span class="hidden lg:inline-flex items-center gap-1.5 whitespace-nowrap">
+      <CoreComponents.icon name="ri-information-line" class="w-3.5 h-3.5 shrink-0" />
+      <span>
+        Log streaming to SIEMs and other destinations can be configured in
+        <.link navigate={~p"/#{@account}/settings/log_sinks"} class={CoreComponents.link_style()}>
+          log sinks</.link>.
+      </span>
+    </span>
     """
   end
 

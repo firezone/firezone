@@ -49,6 +49,8 @@ defmodule PortalWeb.LiveTable do
     attr :type, :string, doc: "the type of notice: info, warning, danger"
   end
 
+  slot :footer, doc: "content rendered centered in the paginator bar"
+
   def live_table(assigns) do
     ~H"""
     <div class={["flex flex-col", @class]}>
@@ -120,7 +122,7 @@ defmodule PortalWeb.LiveTable do
           </div>
         </div>
       </div>
-      <.paginator id={@id} metadata={@metadata} rows_count={Enum.count(@rows)} />
+      <.paginator id={@id} metadata={@metadata} rows_count={Enum.count(@rows)} footer={@footer} />
     </div>
     """
   end
@@ -594,6 +596,9 @@ defmodule PortalWeb.LiveTable do
     last_row = min(assigns.metadata.offset + assigns.rows_count, assigns.metadata.count)
 
     assigns =
+      assign_new(assigns, :footer, fn -> [] end)
+
+    assigns =
       assign(assigns,
         first_row: first_row,
         last_row: last_row,
@@ -605,9 +610,9 @@ defmodule PortalWeb.LiveTable do
     ~H"""
     <div
       :if={@rows_count > 0}
-      class="shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-border bg-raised text-xs text-subtle"
+      class="shrink-0 flex items-center justify-between gap-4 px-6 py-2.5 border-t border-border bg-raised text-xs text-subtle"
     >
-      <div class="flex items-center gap-4">
+      <div class="flex-1 flex items-center gap-4">
         <.form
           id={"#{@id}-pagination"}
           for={%{}}
@@ -667,7 +672,8 @@ defmodule PortalWeb.LiveTable do
           </button>
         </div>
       </div>
-      <span>
+      {render_slot(@footer)}
+      <span class="flex-1 text-right">
         Showing <span class="font-medium tabular-nums text-heading mx-1">{@first_row}</span>&mdash;<span class="font-medium tabular-nums text-heading mx-1">{@last_row}</span>
         of <span class="font-medium tabular-nums text-heading mx-1">{@metadata.count}</span>
       </span>
