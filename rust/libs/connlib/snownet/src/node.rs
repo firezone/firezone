@@ -94,8 +94,6 @@ pub struct Node<TId, RId> {
 
     buffered_transmits: TransmitBuffer,
 
-    next_rate_limiter_reset: Option<Instant>,
-
     allocations: Allocations<RId>,
 
     connections: Connections<TId, RId>,
@@ -201,7 +199,6 @@ where
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: TransmitBuffer::default(),
-            next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
             allocations,
             inflight_stun_requests: Default::default(),
@@ -610,10 +607,6 @@ where
         iter::empty()
             .chain(self.connections.poll_timeout())
             .chain(self.allocations.poll_timeout())
-            .chain(
-                self.next_rate_limiter_reset
-                    .map(|instant| (instant, "rate limiter reset")),
-            )
             .min_by_key(|(instant, _)| *instant)
     }
 
@@ -661,18 +654,6 @@ where
         for (kind, count) in PeerSocket::KINDS.into_iter().zip(connections_by_path) {
             self.connection_count
                 .record(count, &[telemetry::otel::attr::connection_socket(kind)]);
-        }
-
-        if self.connections.all_idle() {
-            // If all connections are idle, there is no point in resetting the rate limiter.
-            self.next_rate_limiter_reset = None;
-        } else {
-            let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
-
-            if now >= next_reset {
-                self.rate_limiter.reset_count_at(now);
-                self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
-            }
         }
 
         let gc = self.allocations.gc();
@@ -2158,10 +2139,6 @@ where
 
     fn is_failed(&self) -> bool {
         matches!(self.state, ConnectionState::Failed)
-    }
-
-    fn is_idle(&self) -> bool {
-        matches!(self.state, ConnectionState::Idle { .. })
     }
 
     fn migrate_relay<TId>(

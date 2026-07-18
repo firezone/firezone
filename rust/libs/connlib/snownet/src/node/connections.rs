@@ -305,10 +305,6 @@ where
         self.established.keys().copied()
     }
 
-    pub(crate) fn all_idle(&self) -> bool {
-        self.established.values().all(|c| c.is_idle())
-    }
-
     pub(crate) fn all_iceless(&self) -> bool {
         !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
