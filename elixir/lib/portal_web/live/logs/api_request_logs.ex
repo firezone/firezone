@@ -173,6 +173,9 @@ defmodule PortalWeb.Logs.APIRequestLogs do
               </div>
             </div>
           </:empty>
+          <:footer>
+            <.log_sinks_notice account={@account} />
+          </:footer>
         </.live_table>
       </div>
 

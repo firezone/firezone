@@ -587,12 +587,6 @@ defmodule PortalWeb.NavigationComponents do
                 <p class="hidden md:block mt-0.5 text-sm text-body">
                   Structured, immutable records of every configuration change, session, connection, and API call in your account.
                 </p>
-                <p class="hidden md:block mt-1 text-sm text-body">
-                  Stream logs to external destinations using
-                  <.link navigate={~p"/#{@account}/settings/log_sinks"} class={link_style()}>
-                    log sinks <.icon name="ri-arrow-right-line" class="w-3.5 h-3.5 inline" />
-                  </.link>
-                </p>
               </div>
               <div class="shrink-0 flex items-center gap-2">
                 <.docs_action path="/administer/logs" />
