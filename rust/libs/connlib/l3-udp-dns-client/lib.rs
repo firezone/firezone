@@ -6,20 +6,36 @@ use std::{
         hash_map::{Entry, OccupiedEntry},
     },
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::NonZeroUsize,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use ip_packet::{FailedPacket, IpPacket, Layer4Protocol};
+use lru::LruCache;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How many timed-out queries we remember in order to match (and drop) late responses.
+///
+/// A response that arrives after we already gave up on its query is no longer tracked by
+/// [`Client::pending_queries_by_local_port`] and would otherwise be forwarded to the TUN device
+/// as an unsolicited packet. Remembering a bounded number of timed-out queries lets us recognise
+/// these late responses and drop them instead. The set never expires entries on its own and only
+/// evicts the least-recently-used one once full, keeping the memory footprint tiny.
+const MAX_TIMED_OUT_QUERIES: NonZeroUsize = NonZeroUsize::new(128).expect("128 > 0");
 
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
     pending_queries_by_local_port: HashMap<u16, PendingQuery>,
+    /// Queries we already timed out, keyed by their local port.
+    ///
+    /// Retained so a late response can still be matched to the query it belongs to and dropped
+    /// instead of being forwarded to the TUN device. See [`MAX_TIMED_OUT_QUERIES`].
+    timed_out_queries: LruCache<u16, TimedOutQuery>,
 
     scheduled_queries: VecDeque<IpPacket>,
     query_results: VecDeque<QueryResult>,
@@ -32,6 +48,12 @@ struct PendingQuery {
     expires_at: Instant,
     server: SocketAddr,
     local: SocketAddr,
+}
+
+/// A query we stopped waiting for after it timed out.
+struct TimedOutQuery {
+    server: SocketAddr,
+    query_id: u16,
 }
 
 #[derive(Debug)]
@@ -52,6 +74,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             source_ips: None,
             rng: StdRng::from_seed(seed),
             pending_queries_by_local_port: Default::default(),
+            timed_out_queries: LruCache::new(MAX_TIMED_OUT_QUERIES),
             scheduled_queries: Default::default(),
             query_results: Default::default(),
         }
@@ -136,8 +159,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return false;
         };
 
-        self.pending_queries_by_local_port
-            .contains_key(&udp.destination_port())
+        let local_port = udp.destination_port();
+
+        // Accept responses to pending queries as well as late responses to queries we already
+        // timed out. The latter are consumed and dropped by `handle_inbound` so they don't leak
+        // to the TUN device.
+        self.pending_queries_by_local_port.contains_key(&local_port)
+            || self.timed_out_queries.contains(&local_port)
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
@@ -186,6 +214,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .pending_queries_by_local_port
             .remove(&udp.destination_port())
         else {
+            // Not a pending query. It may be a late response to a query we already timed out.
+            // `accepts` only hands us packets destined for one of our queries, so drop it here
+            // instead of forwarding it to the TUN device.
+            if let Some(timed_out) = self.timed_out_queries.peek(&udp.destination_port()) {
+                tracing::debug!(server = %timed_out.server, query_id = %timed_out.query_id, %source, "Dropping late response to timed-out DNS query");
+            }
+
             return;
         };
 
@@ -209,7 +244,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         for (
-            _,
+            local_port,
             PendingQuery {
                 message,
                 server,
@@ -220,6 +255,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .pending_queries_by_local_port
             .extract_if(|_, pending_query| now >= pending_query.expires_at)
         {
+            // Remember the query so we can still match (and drop) a late response to it.
+            self.timed_out_queries.put(
+                local_port,
+                TimedOutQuery {
+                    server,
+                    query_id: message.id(),
+                },
+            );
+
             self.query_results.push_back(QueryResult {
                 query: message,
                 local,
@@ -395,6 +439,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn matching_response_to_pending_query_is_returned() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone(), now).unwrap();
+        let response = dns_response_packet(server, local, &query);
+
+        assert!(client.accepts(&response));
+        client.handle_inbound(response);
+
+        let result = client.poll_query_result().unwrap();
+        assert_eq!(result.query.id(), query.id());
+        assert_eq!(result.local, local);
+        assert_eq!(result.server, server);
+        assert!(result.result.is_ok());
+    }
+
+    #[test]
+    fn late_response_to_timed_out_query_is_dropped() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone(), now).unwrap();
+
+        // The query times out before any response arrives.
+        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
+        assert!(client.poll_query_result().unwrap().result.is_err());
+        assert!(client.poll_query_result().is_none());
+
+        // A late response finally arrives for the query we already gave up on.
+        let late_response = dns_response_packet(server, local, &query);
+
+        // The client still recognises the packet as one of its own ...
+        assert!(client.accepts(&late_response));
+
+        // ... but consumes it without surfacing a result or leaking it to the TUN device.
+        client.handle_inbound(late_response);
+        assert!(client.poll_query_result().is_none());
+    }
+
+    #[test]
+    fn only_a_bounded_number_of_timed_out_queries_is_remembered() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+
+        // Time out one more query than we are willing to remember.
+        let locals = (0..MAX_TIMED_OUT_QUERIES.get() + 1)
+            .map(|_| client.send_query(server, create_test_query(), now).unwrap())
+            .collect::<Vec<_>>();
+        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
+
+        // Exactly `MAX_TIMED_OUT_QUERIES` of the late responses are still recognised; the excess
+        // one was evicted. We deliberately don't care which one leaks, only that the set is bounded.
+        let recognised = locals
+            .iter()
+            .filter(|local| {
+                client.accepts(&dns_response_packet(server, **local, &create_test_query()))
+            })
+            .count();
+        assert_eq!(recognised, MAX_TIMED_OUT_QUERIES.get());
+    }
+
     fn create_test_client() -> Client {
         let seed = [0u8; 32];
         let mut client = Client::new(seed);
@@ -406,5 +518,22 @@ mod tests {
         use std::str::FromStr;
         let domain = dns_types::DomainName::from_str("example.com").unwrap();
         dns_types::Query::new(domain, dns_types::RecordType::A)
+    }
+
+    fn dns_response_packet(
+        server: SocketAddr,
+        local: SocketAddr,
+        query: &dns_types::Query,
+    ) -> IpPacket {
+        let response = dns_types::Response::no_error(query).into_bytes(512);
+
+        ip_packet::make::udp_packet(
+            server.ip(),
+            local.ip(),
+            server.port(),
+            local.port(),
+            &response,
+        )
+        .unwrap()
     }
 }
