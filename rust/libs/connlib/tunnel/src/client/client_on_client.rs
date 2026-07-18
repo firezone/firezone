@@ -291,6 +291,7 @@ mod tests {
             &[],
         )
         .unwrap();
+
         assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
     }
 
@@ -308,6 +309,7 @@ mod tests {
             &[],
         )
         .unwrap();
+
         assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
     }
 
