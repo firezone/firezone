@@ -83,6 +83,8 @@ defmodule Portal.Splunk.LogSink do
 
   # People paste the full endpoint from the Splunk docs; the client appends
   # the collector path itself, so strip it down to the base URL.
+  defp normalize_collector_url(nil), do: nil
+
   defp normalize_collector_url(url) do
     url
     |> String.trim()
