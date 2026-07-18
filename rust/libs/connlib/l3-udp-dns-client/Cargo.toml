@@ -11,7 +11,6 @@ path = "lib.rs"
 anyhow = { workspace = true }
 dns-types = { workspace = true }
 ip-packet = { workspace = true }
-lru = { workspace = true }
 rand = { workspace = true }
 tracing = { workspace = true }
 

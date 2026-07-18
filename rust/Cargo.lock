@@ -4187,7 +4187,6 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "ip-packet",
- "lru",
  "rand 0.10.2",
  "tracing",
 ]
