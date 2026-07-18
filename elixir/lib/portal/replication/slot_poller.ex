@@ -12,22 +12,24 @@ defmodule Portal.Replication.SlotPoller do
   Every poll cycle runs while holding a session advisory lock on the primary
   keyed by slot and region, so exactly one process in the cluster consumes
   each slot with the database as the authority — no process-group
-  coordination. Advisory locks are unavailable on standbys, so the lock
-  always lives on the primary even when the slot being polled is on a
-  replica. The cycle deliberately runs outside any wrapping transaction:
+  coordination. Advisory locks are per-server state, so the lock always
+  lives on the primary to give every candidate the same authority even when
+  the slot being polled is on a replica.
+  The cycle deliberately runs outside any wrapping transaction:
   consumer callbacks run arbitrary side effects whose inner transactions may
   legitimately roll back, which would poison an enclosing transaction. Within
   the cycle the poller:
 
-    1. Captures the polled server's current WAL position, then peeks a batch
-       of pgoutput messages with `pg_logical_slot_peek_binary_changes`.
+    1. Captures the polled server's flushed (primary) or replayed (standby)
+       WAL position, then peeks a batch of pgoutput messages with
+       `pg_logical_slot_peek_binary_changes`.
     2. Decodes each message and dispatches it to the consumer callbacks.
     3. Calls `c:flush/1`, which persists or broadcasts the batch's effects.
     4. Advances the slot to the last peeked LSN, or, for an empty batch, to
        the WAL position captured in step 1 so an idle publication does not
-       retain WAL. Capturing before the peek makes the idle advance safe: a
-       change committed after the capture is unaffected, and one committed
-       before it would have appeared in the peek.
+       retain WAL. The peek decodes at least up to the captured position, so
+       capturing before the peek makes the idle advance safe: anything the
+       advance could skip over would have appeared in the peek.
 
   Advancing the slot is WAL garbage collection, not the acknowledgement: the
   slot never moves before the batch's effects are committed, so a crash
@@ -39,8 +41,10 @@ defmodule Portal.Replication.SlotPoller do
   Setup creates the publication and slot when missing and syncs the
   publication's tables. It re-runs whenever a poll cycle fails because the
   slot or publication no longer exists (Azure Postgres upgrades drop
-  replication slots), recreating them without a restart; WAL written between
-  the drop and the recreation is lost.
+  replication slots) or because the slot was invalidated (WAL retention
+  limits, idle slot timeouts, or a recovery conflict on a standby), dropping
+  an invalidated slot and recreating both without a restart; WAL written
+  between the drop or invalidation and the recreation is lost.
   """
 
   use GenServer
@@ -187,20 +191,31 @@ defmodule Portal.Replication.SlotPoller do
   end
 
   defp handle_poll_error(state, error, stacktrace) do
-    if missing_replication_object?(state.config, error) do
-      Logger.warning(
-        "#{inspect(state.consumer)}: replication slot or publication is missing, re-running setup",
-        reason: inspect(error)
-      )
+    cond do
+      missing_replication_object?(state.config, error) ->
+        Logger.warning(
+          "#{inspect(state.consumer)}: replication slot or publication is missing, re-running setup",
+          reason: inspect(error)
+        )
 
-      {state, :resetup}
-    else
-      Logger.error("#{inspect(state.consumer)}: replication poll cycle failed",
-        reason: inspect(error),
-        stacktrace: Exception.format_stacktrace(stacktrace)
-      )
+        {state, :resetup}
 
-      {state, true}
+      invalidated_slot?(state.config, error) ->
+        Logger.error(
+          "#{inspect(state.consumer)}: replication slot was invalidated, dropping it and re-running setup; WAL since the invalidation is lost",
+          reason: inspect(error)
+        )
+
+        drop_slot(state.config)
+        {state, :resetup}
+
+      true ->
+        Logger.error("#{inspect(state.consumer)}: replication poll cycle failed",
+          reason: inspect(error),
+          stacktrace: Exception.format_stacktrace(stacktrace)
+        )
+
+        {state, true}
     end
   end
 
@@ -217,6 +232,19 @@ defmodule Portal.Replication.SlotPoller do
   end
 
   defp missing_replication_object?(_config, _error), do: false
+
+  # Postgres invalidates a slot without dropping it (WAL removed under
+  # max_slot_wal_keep_size, idle_replication_slot_timeout, or a recovery
+  # conflict on a standby); peek and advance then raise 55000 naming the
+  # slot, forever, so it must be dropped and recreated. Other 55000s (e.g.
+  # "recovery is in progress") never name the slot.
+  defp invalidated_slot?(config, %Postgrex.Error{
+         postgres: %{code: :object_not_in_prerequisite_state, message: message}
+       }) do
+    String.contains?(message, ~s("#{config.slot_name}"))
+  end
+
+  defp invalidated_slot?(_config, _error), do: false
 
   defp run_cycle(state) do
     now_lsn = current_wal_lsn(state.config)
@@ -368,9 +396,14 @@ defmodule Portal.Replication.SlotPoller do
     if exists == [] do
       Logger.info("Creating replication slot #{config.slot_name}")
 
-      config.repo.query!("SELECT pg_create_logical_replication_slot($1, 'pgoutput')", [
-        config.slot_name
-      ])
+      # On a standby, creation waits for a running_xacts record from the
+      # primary, which can take longer than the default 15s query timeout
+      # when the primary is quiet
+      config.repo.query!(
+        "SELECT pg_create_logical_replication_slot($1, 'pgoutput')",
+        [config.slot_name],
+        timeout: :timer.minutes(1)
+      )
     end
 
     :ok
@@ -396,12 +429,22 @@ defmodule Portal.Replication.SlotPoller do
     rows
   end
 
-  # pg_last_wal_replay_lsn is non-NULL only on a standby; pg_current_wal_lsn
-  # raises during recovery, which COALESCE's lazy evaluation avoids.
+  # The peek decodes at most up to the flush (primary) or replay (standby)
+  # position, so the idle advance must target the same position.
+  # pg_current_wal_lsn is the write pointer, which can lead the flush pointer
+  # and skip a written-but-unflushed commit, and pg_last_wal_replay_lsn is
+  # not a standby signal: it stays non-NULL, frozen at the recovery end
+  # point, on a primary that was promoted or crash-recovered. CASE's lazy
+  # evaluation keeps pg_current_wal_flush_lsn from raising during recovery.
   defp current_wal_lsn(config) do
     %{rows: [[lsn]]} =
       config.repo.query!(
-        "SELECT (COALESCE(pg_last_wal_replay_lsn(), pg_current_wal_lsn()) - '0/0'::pg_lsn)::bigint",
+        """
+        SELECT ((CASE WHEN pg_is_in_recovery()
+                      THEN pg_last_wal_replay_lsn()
+                      ELSE pg_current_wal_flush_lsn()
+                 END) - '0/0'::pg_lsn)::bigint
+        """,
         []
       )
 
@@ -422,6 +465,23 @@ defmodule Portal.Replication.SlotPoller do
     )
 
     :ok
+  end
+
+  # Runs on the resetup path, so a failed drop (e.g. the slot is still active
+  # for another session) is logged and retried when the next poll cycle
+  # raises the invalidation error again.
+  defp drop_slot(config) do
+    case config.repo.query("SELECT pg_drop_replication_slot($1)", [config.slot_name]) do
+      {:ok, _} ->
+        :ok
+
+      {:error, error} ->
+        Logger.warning("Failed to drop invalidated replication slot #{config.slot_name}",
+          reason: inspect(error)
+        )
+
+        :ok
+    end
   end
 
   defp lock_key(config) do
@@ -456,9 +516,10 @@ defmodule Portal.Replication.SlotPoller do
     Runs `fun` while holding the session advisory lock for `key` on a
     connection checked out from the dedicated `Portal.Repo.Poller` primary
     pool, or returns nil without calling it when another session holds the
-    lock. Advisory locks are unavailable on standbys, so the lock lives on
-    the primary even when the slot being polled is on a replica; the
-    dedicated pool keeps the cycle-long checkout from starving shared pools.
+    lock. Advisory locks are per-server state, so the lock lives on the
+    primary to give every candidate the same authority even when the slot
+    being polled is on a replica; the dedicated pool keeps the cycle-long
+    checkout from starving shared pools.
 
     Deliberately not a transaction: `fun` runs consumer side effects (hooks,
     inserts) whose own inner transactions may roll back, which would poison
