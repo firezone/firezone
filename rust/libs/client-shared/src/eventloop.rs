@@ -21,7 +21,7 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
     Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
-    ClientDeviceAccessDenied, ClientIceCandidates, ClientRejectAccess,
+    ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
     DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
     GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
     ResourceFiltersUpdated,
@@ -701,6 +701,26 @@ impl Eventloop {
                 tunnel
                     .state_mut()
                     .handle_client_device_access_denied(ipv4, ipv6, reason, now);
+            }
+            IngressMessages::ClientIceCandidateError(ClientIceCandidateError {
+                client_id,
+                reason,
+            }) => {
+                tracing::debug!(%client_id, ?reason, "ICE candidates could not be delivered to peer");
+
+                match reason {
+                    FailReason::Offline => {
+                        tunnel.state_mut().set_device_offline(client_id, now);
+                    }
+                    FailReason::NotFound
+                    | FailReason::VersionMismatch
+                    | FailReason::Forbidden
+                    | FailReason::Disabled
+                    | FailReason::AmbiguousAddress
+                    | FailReason::MissingAddress
+                    | FailReason::InvalidAddress
+                    | FailReason::Unknown => {}
+                }
             }
             IngressMessages::DevicePoolDomainResolved(DevicePoolDomainResolved {
                 resource_id,

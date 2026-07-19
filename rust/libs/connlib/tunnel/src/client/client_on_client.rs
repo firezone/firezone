@@ -24,6 +24,7 @@ use std::time::Instant;
 /// isn't the return traffic of packets that we have sent.
 pub(crate) struct ClientOnClient {
     id: ClientId,
+    local_tun: IpConfig,
     remote_tun: IpConfig,
     remote_name: String,
     /// Inbound resources authorising the remote peer to send packets to us.
@@ -53,9 +54,15 @@ pub(crate) enum InboundResult {
 }
 
 impl ClientOnClient {
-    pub(crate) fn new(id: ClientId, remote_tun: IpConfig, remote_name: String) -> ClientOnClient {
+    pub(crate) fn new(
+        id: ClientId,
+        local_tun: IpConfig,
+        remote_tun: IpConfig,
+        remote_name: String,
+    ) -> ClientOnClient {
         ClientOnClient {
             id,
+            local_tun,
             remote_tun,
             remote_name,
             resources: ExpiringMap::default(),
@@ -223,10 +230,23 @@ impl ClientOnClient {
         packet: IpPacket,
         now: Instant,
     ) -> Result<InboundResult> {
-        // ICMP errors are always allowed through so unreachable / TTL-exceeded
-        // notifications can reach the application even if the inbound filter
-        // would otherwise drop them.
+        let src = packet.source();
+        let dst = packet.destination();
+        anyhow::ensure!(
+            self.remote_tun.is_ip(src),
+            "Dropping inbound packet with spoofed source (src {src})"
+        );
+        anyhow::ensure!(
+            self.local_tun.is_ip(dst),
+            "Dropping inbound packet not addressed to us (dst {dst})"
+        );
+
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
+            anyhow::ensure!(
+                self.conn_track.is_known_flow(&packet),
+                "Dropping ICMP error from peer referencing an unknown flow"
+            );
+
             return Ok(InboundResult::Send(packet));
         }
 
@@ -256,6 +276,65 @@ mod tests {
     use std::collections::BTreeSet;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
+
+    #[test]
+    fn spoofed_source_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+        peer.add_resource(ResourceId::from_u128(1), vec![], None, now);
+
+        let spoofed = make::udp_packet(
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
+            our_v4(),
+            40000,
+            80,
+            &[],
+        )
+        .unwrap();
+
+        assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
+    }
+
+    #[test]
+    fn spoofed_destination_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+        peer.add_resource(ResourceId::from_u128(1), vec![], None, now);
+
+        let spoofed = make::udp_packet(
+            peer_v4(),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
+            40000,
+            80,
+            &[],
+        )
+        .unwrap();
+
+        assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
+    }
+
+    #[test]
+    fn icmp_error_for_known_flow_is_forwarded() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        peer.handle_outbound(&outbound, now);
+        let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
+
+        assert!(is_send(peer.ensure_allowed_inbound(icmp, now).unwrap()));
+    }
+
+    #[test]
+    fn icmp_error_for_unknown_flow_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        let icmp = make::icmp_dest_unreachable_prohibited(&stray).unwrap();
+
+        assert!(peer.ensure_allowed_inbound(icmp, now).is_err());
+    }
 
     #[test]
     fn peer_opened_flow_is_re_filtered_after_revocation() {
@@ -350,13 +429,25 @@ mod tests {
     }
 
     fn peer() -> ClientOnClient {
-        ClientOnClient::new(ClientId::from_u128(1), peer_tun(), "peer".to_owned())
+        ClientOnClient::new(
+            ClientId::from_u128(1),
+            local_tun(),
+            peer_tun(),
+            "peer".to_owned(),
+        )
     }
 
     fn peer_tun() -> IpConfig {
         IpConfig {
             v4: Ipv4Addr::new(100, 64, 0, 2),
             v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2),
+        }
+    }
+
+    fn local_tun() -> IpConfig {
+        IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 1),
+            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 1),
         }
     }
 

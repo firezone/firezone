@@ -309,6 +309,11 @@ impl ClientState {
     }
 
     fn resource_status(&self, resource: &Resource) -> ResourceStatus {
+        // `all()` over an empty site set is vacuously true.
+        if resource.sites().is_empty() {
+            return ResourceStatus::Unknown;
+        }
+
         if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
@@ -394,6 +399,34 @@ impl ClientState {
             p2p_control::goodbye(),
             now,
         );
+    }
+
+    /// Abandons the pending authorizations and any connection to an offline device.
+    pub fn set_device_offline(&mut self, cid: ClientId, now: Instant) {
+        let memberships = self
+            .static_device_pools()
+            .flat_map(|pool| {
+                let pool_id = pool.id;
+                pool.devices
+                    .iter()
+                    .filter(|d| d.id == cid)
+                    .map(move |d| (pool_id, d.clone()))
+            })
+            .collect::<Vec<_>>();
+
+        for _ in self
+            .pending_authorizations
+            .remove_device_authorizations(|pool, addr| {
+                memberships
+                    .iter()
+                    .any(|(pool_id, member)| *pool_id == pool && member.contains(addr))
+            })
+        {}
+
+        if self.clients.remove(&cid).is_some() {
+            self.node
+                .close_connection(ClientOrGatewayId::Client(cid), p2p_control::goodbye(), now);
+        }
     }
 
     pub fn handle_device_pool_domain_resolved(
@@ -1070,6 +1103,12 @@ impl ClientState {
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
 
+        let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {
+            tracing::debug!("Ignoring device access authorization: no TUN configuration");
+
+            return Ok(());
+        };
+
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
@@ -1091,7 +1130,7 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || {
-            ClientOnClient::new(cid, client_tun, client_name.clone())
+            ClientOnClient::new(cid, local_tun, client_tun, client_name.clone())
         });
 
         if peer.remote_name() != client_name {
@@ -1254,11 +1293,14 @@ impl ClientState {
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_authorizations.remove(resource);
-        let Some(AccessPath::Gateway(disconnected_gateway)) =
-            self.authorized_resources.remove(&resource)
-        else {
-            return;
+
+        // A pool's `Direct` authorizations must survive a single member's failure.
+        let disconnected_gateway = match self.authorized_resources.get(&resource) {
+            Some(AccessPath::Gateway(gid)) => *gid,
+            Some(AccessPath::Direct(_)) | None => return,
         };
+
+        self.authorized_resources.remove(&resource);
         self.cleanup_connected_gateway(&disconnected_gateway, now);
     }
 
@@ -2494,6 +2536,14 @@ impl ClientState {
             return;
         };
 
+        let pool_members: Vec<ClientId> = match resource {
+            Resource::StaticDevicePool(p) => p.devices.iter().map(|d| d.id).collect(),
+            Resource::Dns(_)
+            | Resource::Cidr(_)
+            | Resource::Internet(_)
+            | Resource::DynamicDevicePool(_) => Vec::new(),
+        };
+
         match resource {
             Resource::Dns(_) => self.resource_stub_resolver.remove_resource(id),
             Resource::Cidr(_) => {}
@@ -2509,6 +2559,25 @@ impl ClientState {
         tracing::info!(%name, address, sites, "Deactivating resource");
 
         self.pending_authorizations.remove(id);
+
+        for _ in self
+            .pending_authorizations
+            .remove_device_authorizations(|pool, _| pool == id)
+        {}
+
+        for cid in pool_members {
+            if self.is_client_in_other_static_device_pool(cid, id) {
+                continue;
+            }
+
+            if self.clients.remove(&cid).is_some() {
+                self.node.close_connection(
+                    ClientOrGatewayId::Client(cid),
+                    p2p_control::goodbye(),
+                    now,
+                );
+            }
+        }
 
         let Some((_, peer)) =
             gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)

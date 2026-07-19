@@ -270,6 +270,13 @@ pub struct ClientDeviceAccessDenied {
     pub reason: FailReason,
 }
 
+/// Sent by the portal when our ICE candidates could not be delivered to a target peer.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientIceCandidateError {
+    pub client_id: ClientId,
+    pub reason: FailReason,
+}
+
 /// Portal's response when a dynamic device pool domain is resolved.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DevicePoolDomainResolved {
@@ -344,6 +351,7 @@ pub enum IngressMessages {
 
     ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized),
     ClientDeviceAccessDenied(ClientDeviceAccessDenied),
+    ClientIceCandidateError(ClientIceCandidateError),
 
     DevicePoolDomainResolved(DevicePoolDomainResolved),
     DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
@@ -978,6 +986,23 @@ mod tests {
             resolved.ipv6,
             "fd00:2021:1111::42".parse::<Ipv6Addr>().unwrap()
         );
+    }
+
+    #[test]
+    fn can_deserialize_client_ice_candidate_error() {
+        let json = serde_json::json!({
+            "event": "client_ice_candidate_error",
+            "payload": {
+                "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                "reason": "offline"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::ClientIceCandidateError(error) = msg else {
+            panic!("expected ClientIceCandidateError")
+        };
+        assert!(matches!(error.reason, FailReason::Offline));
     }
 
     #[test]
