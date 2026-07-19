@@ -1532,6 +1532,22 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("qradar") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-qradar.svg",
+      alt: "IBM QRadar",
+      wide: true
+    }
+  end
+
+  defp provider_icon_spec("http") do
+    %{
+      type: :icon,
+      name: "ri-webhook-line"
+    }
+  end
+
   defp provider_icon_spec(_unknown) do
     %{
       type: :icon,

@@ -12,10 +12,10 @@ defmodule Portal.Replication.SlotPollerTest do
     @behaviour Portal.Replication.SlotPoller
 
     @impl true
-    def init_state(_config) do
+    def init_state(config) do
       test_pid = Portal.Config.get_env(:portal, :slot_poller_test_pid)
       send(test_pid, :init_state)
-      %{test_pid: test_pid}
+      %{test_pid: test_pid, slot: config.slot_name}
     end
 
     @impl true
@@ -41,6 +41,26 @@ defmodule Portal.Replication.SlotPollerTest do
       # that is not the slot or the publication
       if data && data["val"] == "undefined-object" do
         Portal.Repo.query!("SELECT NULL::nonexistent_type", [])
+      end
+
+      # Simulates the 55000 Postgres raises when peeking an invalidated slot
+      if data && data["val"] == "invalidated" do
+        raise %Postgrex.Error{
+          postgres: %{
+            code: :object_not_in_prerequisite_state,
+            message: ~s(can no longer access replication slot "#{state.slot}")
+          }
+        }
+      end
+
+      # Simulates an unrelated 55000 that does not name the slot
+      if data && data["val"] == "prerequisite-state" do
+        raise %Postgrex.Error{
+          postgres: %{
+            code: :object_not_in_prerequisite_state,
+            message: "recovery is in progress"
+          }
+        }
       end
 
       state
@@ -273,6 +293,91 @@ defmodule Portal.Replication.SlotPollerTest do
     # The failed cycle replays through the ordinary error path
     assert_receive {:write, _, :insert, ^table, nil, %{"id" => "8"}}, 5000
     assert_receive {:write, _, :insert, ^table, nil, %{"id" => "8"}}, 5000
+    refute_receive :init_state, 500
+  end
+
+  test "advances an idle slot past WAL from outside the publication", %{
+    aux: aux,
+    slot: slot,
+    table: table
+  } do
+    start_poller!()
+    assert_receive :init_state, 5000
+
+    # Unpublished-table WAL never shows up in a peek, so only the idle
+    # (empty-batch) advance can move the slot past it
+    Postgrex.query!(aux, "CREATE TABLE #{table}_idle (id int)", [])
+    Postgrex.query!(aux, "INSERT INTO #{table}_idle VALUES (1)", [])
+
+    on_exit(fn ->
+      {:ok, cleanup} = Postgrex.start_link(aux_config())
+      Postgrex.query(cleanup, "DROP TABLE IF EXISTS #{table}_idle", [])
+      GenServer.stop(cleanup)
+    end)
+
+    %{rows: [[target]]} =
+      Postgrex.query!(aux, "SELECT (pg_current_wal_flush_lsn() - '0/0'::pg_lsn)::bigint", [])
+
+    wait_for(fn ->
+      %{rows: [[confirmed]]} =
+        Postgrex.query!(
+          aux,
+          "SELECT (confirmed_flush_lsn - '0/0'::pg_lsn)::bigint FROM pg_replication_slots WHERE slot_name = $1",
+          [slot]
+        )
+
+      assert confirmed >= target
+    end)
+  end
+
+  test "drops and recreates the slot after it was invalidated", %{
+    aux: aux,
+    slot: slot,
+    table: table
+  } do
+    start_poller!()
+    assert_receive :init_state, 5000
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (9, 'invalidated')", [])
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "9"}}, 5000
+
+    # Setup re-ran: the slot was dropped and recreated past the poisoned
+    # batch, so it does not replay. Recreation can take a while to find its
+    # consistent point under concurrent test transactions.
+    wait_for(
+      fn ->
+        %{rows: rows} =
+          Postgrex.query!(
+            aux,
+            "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1 AND confirmed_flush_lsn IS NOT NULL",
+            [slot]
+          )
+
+        assert rows == [[1]]
+      end,
+      30
+    )
+
+    assert_receive :init_state, 5000
+    refute_receive {:write, _, :insert, ^table, nil, %{"id" => "9"}}, 500
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (10, 'after-invalidation')", [])
+
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "10"}}, 5000
+  end
+
+  test "unrelated object_not_in_prerequisite_state errors replay instead of re-running setup", %{
+    aux: aux,
+    table: table
+  } do
+    start_poller!()
+    assert_receive :init_state, 5000
+
+    Postgrex.query!(aux, "INSERT INTO #{table} (id, val) VALUES (11, 'prerequisite-state')", [])
+
+    # The failed cycle replays through the ordinary error path
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "11"}}, 5000
+    assert_receive {:write, _, :insert, ^table, nil, %{"id" => "11"}}, 5000
     refute_receive :init_state, 500
   end
 

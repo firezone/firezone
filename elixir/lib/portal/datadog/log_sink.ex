@@ -92,6 +92,8 @@ defmodule Portal.Datadog.LogSink do
     )
   end
 
+  defp normalize_tags(nil), do: nil
+
   defp normalize_tags(tags) do
     normalized =
       tags

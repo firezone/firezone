@@ -30,6 +30,9 @@ end
 config :portal, ecto_repos: [Portal.Repo]
 config :portal, generators: [binary_id: true]
 
+config :req,
+  default_options: [plugins: [Portal.Req.SSRFProtection]]
+
 config :portal, sql_sandbox: false
 config :portal, replica_repo: Portal.Repo.Replica
 
@@ -140,6 +143,8 @@ config :portal, Portal.ChangeLogs.Consumer,
     elastic_log_sinks
     sentinel_log_sinks
     s3_log_sinks
+    qradar_log_sinks
+    http_log_sinks
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.
@@ -285,6 +290,9 @@ config :portal, Portal.S3.APIClient,
   secret_access_key: nil,
   session_token: nil,
   aws_account_id: System.get_env("LOG_SINKS_AWS_ACCOUNT_ID", "000000000000")
+
+config :portal, Portal.QRadar.APIClient, req_opts: []
+config :portal, Portal.HTTP.APIClient, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure

@@ -134,6 +134,7 @@ defmodule PortalWeb.Settings.Account do
               label="Policy Conditions"
               enabled={feature_enabled?(@account, :policy_conditions)}
             />
+            <.feature_row label="Log Sinks" enabled={feature_enabled?(@account, :log_sinks)} />
           </div>
 
           <%!-- Actions (pending deletion, self-initiated, not locked) --%>

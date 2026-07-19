@@ -284,6 +284,8 @@ if config_env() == :prod do
     {"* * * * *", Portal.Elastic.Scheduler},
     {"* * * * *", Portal.Sentinel.Scheduler},
     {"* * * * *", Portal.S3.Scheduler},
+    {"* * * * *", Portal.QRadar.Scheduler},
+    {"* * * * *", Portal.HTTP.Scheduler},
 
     # Directory sync error notifications - daily check for low error count
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
@@ -379,6 +381,10 @@ if config_env() == :prod do
       sentinel_sync: 5,
       s3_scheduler: 1,
       s3_sync: 5,
+      qradar_scheduler: 1,
+      qradar_sync: 5,
+      http_scheduler: 1,
+      http_sync: 5,
       sync_error_notifications: 1,
       outbound_emails: 1
     ],

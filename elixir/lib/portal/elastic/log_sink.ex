@@ -86,6 +86,8 @@ defmodule Portal.Elastic.LogSink do
     )
   end
 
+  defp normalize_endpoint_url(nil), do: nil
+
   defp normalize_endpoint_url(url) do
     url
     |> String.trim()

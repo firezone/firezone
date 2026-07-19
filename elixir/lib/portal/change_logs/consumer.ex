@@ -49,7 +49,9 @@ defmodule Portal.ChangeLogs.Consumer do
     "newrelic_log_sinks" => Portal.NewRelic.LogSink,
     "elastic_log_sinks" => Portal.Elastic.LogSink,
     "sentinel_log_sinks" => Portal.Sentinel.LogSink,
-    "s3_log_sinks" => Portal.S3.LogSink
+    "s3_log_sinks" => Portal.S3.LogSink,
+    "qradar_log_sinks" => Portal.QRadar.LogSink,
+    "http_log_sinks" => Portal.HTTP.LogSink
   }
 
   @impl true

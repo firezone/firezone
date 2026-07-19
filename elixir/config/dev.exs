@@ -50,7 +50,8 @@ config :portal, outbound_email_adapter_configured?: true
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.ComponentVersions,
-  firezone_releases_url: "http://localhost:3000/api/releases"
+  firezone_releases_url: "http://localhost:3000/api/releases",
+  req_opts: [allow_private_ips: true]
 
 config :portal, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
@@ -85,6 +86,8 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Elastic.Scheduler},
        {worker_dev_schedule, Portal.Sentinel.Scheduler},
        {worker_dev_schedule, Portal.S3.Scheduler},
+       {worker_dev_schedule, Portal.QRadar.Scheduler},
+       {worker_dev_schedule, Portal.HTTP.Scheduler},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
@@ -130,6 +133,10 @@ config :portal, Oban,
     sentinel_sync: 5,
     s3_scheduler: 1,
     s3_sync: 5,
+    qradar_scheduler: 1,
+    qradar_sync: 5,
+    http_scheduler: 1,
+    http_sync: 5,
     sync_error_notifications: 1,
     outbound_emails: 1
   ],

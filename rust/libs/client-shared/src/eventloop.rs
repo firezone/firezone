@@ -20,7 +20,7 @@ use std::{future, iter, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
-    AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
+    Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
     ClientDeviceAccessDenied, ClientIceCandidates, ClientRejectAccess,
     DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
     GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
@@ -469,6 +469,7 @@ impl Eventloop {
                 interface,
                 resources,
                 relays,
+                authorizations,
                 flow_logs,
             }) => {
                 tracing::info!(
@@ -494,6 +495,23 @@ impl Eventloop {
                 state.update_interface_config(interface);
                 state.set_resources(resources, now);
                 state.update_relays(BTreeSet::default(), tunnel::turn(&relays), now);
+
+                state.retain_authorizations(tunnel::messages::group_authorizations_by_client(
+                    &authorizations,
+                ));
+                for Authorization {
+                    client_id,
+                    resource_id,
+                    expires_at,
+                } in authorizations
+                {
+                    state.update_access_authorization_expiry(
+                        client_id,
+                        resource_id,
+                        expires_at,
+                        now,
+                    );
+                }
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 tunnel.state_mut().add_resource(resource, now);
@@ -616,7 +634,7 @@ impl Eventloop {
                 ice_role,
                 use_iceless,
                 resource,
-                authorization_expires_at,
+                expires_at,
                 flow_logs_ingest_token,
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
@@ -627,7 +645,7 @@ impl Eventloop {
                 let authorization = resource.map(|resource| ResourceAuthorization {
                     resource_id: resource.id,
                     filters: resource.filters,
-                    expires_at: authorization_expires_at,
+                    expires_at,
                 });
 
                 match tunnel.state_mut().handle_client_device_access_authorized(

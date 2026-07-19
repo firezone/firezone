@@ -8,8 +8,10 @@ use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
+
+pub use crate::messages::Authorization;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -77,6 +79,16 @@ pub struct DevicePoolMember {
     pub ipv6: Ipv6Network,
 }
 
+impl DevicePoolMember {
+    /// Returns `true` if `ip` belongs to this member.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ip) => self.ipv4.contains(ip),
+            IpAddr::V6(ip) => self.ipv6.contains(ip),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDynamicDevicePool {
     pub id: ResourceId,
@@ -119,6 +131,10 @@ pub struct InitClient {
     pub resources: Vec<ResourceDescription>,
     #[serde(default)]
     pub relays: Vec<Relay>,
+    /// Currently-valid inbound client-to-client authorizations, used to
+    /// resync on (re)connect.
+    #[serde(default)]
+    pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
 }
 
@@ -182,7 +198,7 @@ pub struct ClientDeviceAccessAuthorized {
     /// never expires or on the initiating side.
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     #[serde(default)]
-    pub authorization_expires_at: Option<Duration>,
+    pub expires_at: Option<Duration>,
 
     /// This device's ingest token: the initiator token on the initiating side,
     /// the responder token on the receiving side.
@@ -570,7 +586,7 @@ mod tests {
     fn client_device_access_authorized_carries_ingest_token() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"client_device_access_authorized","ref":null,"topic":"client","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlling","flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"client_device_access_authorized","ref":null,"topic":"client","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlled","resource":{{"id":"733e8d14-c18d-4931-af30-3639fa09c0c0","filters":[]}},"expires_at":1729813989,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -579,6 +595,14 @@ mod tests {
             panic!("expected ClientDeviceAccessAuthorized");
         };
         assert_eq!(authorized.flow_logs_ingest_token.as_str(), token);
+        assert_eq!(authorized.expires_at, Some(Duration::from_secs(1729813989)));
+        assert_eq!(
+            authorized.resource,
+            Some(AuthorizedResource {
+                id: "733e8d14-c18d-4931-af30-3639fa09c0c0".parse().unwrap(),
+                filters: vec![],
+            })
+        );
     }
 
     #[test]

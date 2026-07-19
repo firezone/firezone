@@ -198,12 +198,14 @@ defmodule OpenIDConnect do
       %{client_id: config.client_id, client_secret: config.client_secret}
       |> Map.merge(params)
 
+    request =
+      req_opts
+      |> Keyword.merge(form: form_params, retry: retry_option())
+      |> Req.new()
+
     with {:ok, document} <- Document.fetch_document(discovery_document_uri, req_opts),
          {:ok, %{status: status, body: body}} when status in 200..299 <-
-           Req.post(
-             document.token_endpoint,
-             Keyword.merge([form: form_params, retry: retry_option()], req_opts)
-           ) do
+           Req.post(request, url: document.token_endpoint) do
       {:ok, decode_body(body)}
     else
       {:ok, %{status: status, body: body}} -> {:error, {status, decode_body(body)}}
@@ -399,13 +401,15 @@ defmodule OpenIDConnect do
 
     headers = [{"Authorization", "Bearer #{access_token}"}]
 
+    request =
+      req_opts
+      |> Keyword.merge(headers: headers, retry: retry_option())
+      |> Req.new()
+
     with {:ok, document} <- Document.fetch_document(discovery_document_uri, req_opts),
          true <- not is_nil(document.userinfo_endpoint),
          {:ok, %{status: status, body: body}} when status in 200..299 <-
-           Req.get(
-             document.userinfo_endpoint,
-             Keyword.merge([headers: headers, retry: retry_option()], req_opts)
-           ) do
+           Req.get(request, url: document.userinfo_endpoint) do
       {:ok, decode_body(body)}
     else
       {:ok, %{status: status, body: body}} -> {:error, {status, decode_body(body)}}
