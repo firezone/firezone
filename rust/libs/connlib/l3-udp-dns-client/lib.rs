@@ -2,8 +2,8 @@
 
 use std::{
     collections::{
-        HashMap, VecDeque,
-        hash_map::{Entry, OccupiedEntry},
+        BTreeMap, VecDeque,
+        btree_map::{Entry, OccupiedEntry},
     },
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -15,11 +15,14 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How many DNS queries we track at once, in-flight and timed-out ones combined.
+const MAX_PENDING_QUERIES: usize = 1024;
+
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
-    pending_queries_by_local_port: HashMap<u16, PendingQuery>,
+    pending_queries_by_local_port: BTreeMap<u16, PendingQuery>,
 
     scheduled_queries: VecDeque<IpPacket>,
     query_results: VecDeque<QueryResult>,
@@ -32,7 +35,14 @@ struct PendingQuery {
     expires_at: Instant,
     server: SocketAddr,
     local: SocketAddr,
+    timed_out: bool,
 }
+
+// Excludes the heap-allocated query bytes, which are small and bounded by the DNS message size.
+const _: () = assert!(
+    size_of::<PendingQuery>() * MAX_PENDING_QUERIES <= 256 * 1024,
+    "tracked DNS queries must not exceed 256 KiB"
+);
 
 #[derive(Debug)]
 pub struct QueryResult {
@@ -72,6 +82,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         message: dns_types::Query,
         now: Instant,
     ) -> Result<SocketAddr> {
+        self.make_room_for_new_query()?;
+
         let local_port = self.sample_new_unique_port()?;
 
         let (ipv4_source, ipv6_source) = self
@@ -91,6 +103,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 expires_at: now + TIMEOUT,
                 server,
                 local: local_socket,
+                timed_out: false,
             },
         );
 
@@ -148,6 +161,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         {
             let pending_query = entry.remove();
 
+            if pending_query.timed_out {
+                return;
+            }
+
             self.query_results.push_back(QueryResult {
                 query: pending_query.message,
                 local: pending_query.local,
@@ -181,6 +198,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             message,
             server,
             local,
+            timed_out,
             ..
         }) = self
             .pending_queries_by_local_port
@@ -188,6 +206,11 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         else {
             return;
         };
+
+        if timed_out {
+            tracing::debug!(%server, %source, query_id = %message.id(), "Dropping late response to timed-out DNS query");
+            return;
+        }
 
         self.query_results.push_back(QueryResult {
             query: message,
@@ -208,34 +231,25 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        for (
-            _,
-            PendingQuery {
-                message,
-                server,
-                local,
-                ..
-            },
-        ) in self
-            .pending_queries_by_local_port
-            .extract_if(|_, pending_query| now >= pending_query.expires_at)
-        {
+        for pending in self.pending_queries_by_local_port.values_mut() {
+            if pending.timed_out || now < pending.expires_at {
+                continue;
+            }
+
+            pending.timed_out = true;
             self.query_results.push_back(QueryResult {
-                query: message,
-                local,
-                server,
+                query: pending.message.clone(),
+                local: pending.local,
+                server: pending.server,
                 result: Err(anyhow!("Timeout")),
             });
         }
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "We don't care about the ordering of the Iterator here."
-    )]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         self.pending_queries_by_local_port
             .values()
+            .filter(|p| !p.timed_out)
             .map(|p| p.expires_at)
             .min()
     }
@@ -243,17 +257,40 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn reset(&mut self) {
         tracing::debug!("Resetting state");
 
-        let aborted_pending_queries =
-            self.pending_queries_by_local_port
-                .drain()
-                .map(|(_, pending_query)| QueryResult {
-                    query: pending_query.message,
-                    local: pending_query.local,
-                    server: pending_query.server,
-                    result: Err(anyhow!("Timeout")),
-                });
+        for pending in self.pending_queries_by_local_port.values_mut() {
+            if pending.timed_out {
+                continue;
+            }
 
-        self.query_results.extend(aborted_pending_queries);
+            pending.timed_out = true;
+            self.query_results.push_back(QueryResult {
+                query: pending.message.clone(),
+                local: pending.local,
+                server: pending.server,
+                result: Err(anyhow!("Timeout")),
+            });
+        }
+    }
+
+    fn make_room_for_new_query(&mut self) -> Result<()> {
+        if self.pending_queries_by_local_port.len() < MAX_PENDING_QUERIES {
+            return Ok(());
+        }
+
+        let oldest_timed_out = self
+            .pending_queries_by_local_port
+            .iter()
+            .filter(|(_, query)| query.timed_out)
+            .min_by_key(|(_, query)| query.expires_at)
+            .map(|(port, _)| *port);
+
+        let Some(port) = oldest_timed_out else {
+            bail!("Too many concurrent DNS queries")
+        };
+
+        self.pending_queries_by_local_port.remove(&port);
+
+        Ok(())
     }
 
     fn sample_new_unique_port(&mut self) -> Result<u16> {
@@ -395,6 +432,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn late_response_to_timed_out_query_is_dropped() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        let local = client.send_query(server, query.clone(), now).unwrap();
+        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
+        assert!(client.poll_query_result().unwrap().result.is_err());
+
+        // A late response to a query we already timed out is still recognised, but dropped.
+        let late_response = dns_response_packet(server, local, &query);
+        assert!(client.accepts(&late_response));
+        client.handle_inbound(late_response);
+        assert!(client.poll_query_result().is_none());
+    }
+
     fn create_test_client() -> Client {
         let seed = [0u8; 32];
         let mut client = Client::new(seed);
@@ -406,5 +461,22 @@ mod tests {
         use std::str::FromStr;
         let domain = dns_types::DomainName::from_str("example.com").unwrap();
         dns_types::Query::new(domain, dns_types::RecordType::A)
+    }
+
+    fn dns_response_packet(
+        server: SocketAddr,
+        local: SocketAddr,
+        query: &dns_types::Query,
+    ) -> IpPacket {
+        let response = dns_types::Response::no_error(query).into_bytes(512);
+
+        ip_packet::make::udp_packet(
+            server.ip(),
+            local.ip(),
+            server.port(),
+            local.port(),
+            &response,
+        )
+        .unwrap()
     }
 }
