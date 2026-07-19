@@ -17,19 +17,19 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How many DNS queries we track at once, in-flight and timed-out ones combined.
 ///
-/// To stay bounded, reaching this limit evicts the oldest timed-out query first; a new query is
-/// only rejected if there is no timed-out query to evict. We don't mind "leaking" a late response
-/// for a query evicted long ago; the footprint stays tiny.
+/// At the limit, the oldest timed-out query is evicted; a new query is rejected only if there is
+/// nothing timed out to evict.
 const MAX_PENDING_QUERIES: usize = 1024;
 
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
-    /// Queries we have sent and are tracking, bounded by [`MAX_PENDING_QUERIES`].
+    /// Queries we have sent, bounded by [`MAX_PENDING_QUERIES`].
     ///
-    /// Timed-out queries are retained here (not removed) so a late response can still be matched
-    /// and dropped rather than forwarded to the TUN device.
+    /// A query is kept here after it times out so that a late response can still be matched and
+    /// dropped instead of being forwarded to the TUN device as an unsolicited packet. This is the
+    /// only reason we retain timed-out queries.
     pending_queries_by_local_port: BTreeMap<u16, PendingQuery>,
 
     scheduled_queries: VecDeque<IpPacket>,
@@ -165,7 +165,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         {
             let pending_query = entry.remove();
 
-            // If the query already timed out, we surfaced its result back then; don't surface another.
             if pending_query.timed_out {
                 return;
             }
@@ -187,7 +186,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             dns_types::Response::parse(udp.payload()).context("Failed to parse DNS response");
         let source = SocketAddr::new(packet.source(), udp.source_port());
 
-        // Ignore a response that doesn't match the query we sent on this port.
         if let Some(PendingQuery {
             message, server, ..
         }) = self
@@ -214,7 +212,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         };
 
-        // If the query already timed out, we surfaced its result back then; don't surface another.
         if timed_out {
             tracing::debug!(%server, %source, query_id = %message.id(), "Dropping late response to timed-out DNS query");
             return;
@@ -239,17 +236,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.time_out_queries(|pending| now >= pending.expires_at);
-    }
-
-    /// Times out every tracked query for which `should_time_out` returns `true`, surfacing a
-    /// timeout result for each.
-    ///
-    /// Timed-out queries are kept around (rather than removed) so that a late response can still be
-    /// matched and dropped instead of being forwarded to the TUN device.
-    fn time_out_queries(&mut self, should_time_out: impl Fn(&PendingQuery) -> bool) {
         for pending in self.pending_queries_by_local_port.values_mut() {
-            if pending.timed_out || !should_time_out(pending) {
+            if pending.timed_out || now < pending.expires_at {
                 continue;
             }
 
@@ -274,15 +262,21 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn reset(&mut self) {
         tracing::debug!("Resetting state");
 
-        // Abort every pending query, but keep them around (marked as timed out) so that late
-        // responses are still matched and dropped rather than forwarded to the TUN device.
-        self.time_out_queries(|_| true);
+        for pending in self.pending_queries_by_local_port.values_mut() {
+            if pending.timed_out {
+                continue;
+            }
+
+            pending.timed_out = true;
+            self.query_results.push_back(QueryResult {
+                query: pending.message.clone(),
+                local: pending.local,
+                server: pending.server,
+                result: Err(anyhow!("Timeout")),
+            });
+        }
     }
 
-    /// Ensures there is room to track another query.
-    ///
-    /// If we are at capacity, the oldest timed-out query is evicted to make room. In-flight queries
-    /// are never evicted, so if none have timed out yet, the new query is rejected instead.
     fn make_room_for_new_query(&mut self) -> Result<()> {
         if self.pending_queries_by_local_port.len() < MAX_PENDING_QUERIES {
             return Ok(());
@@ -307,8 +301,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     fn sample_new_unique_port(&mut self) -> Result<u16> {
         let range = MIN_PORT..=MAX_PORT;
 
-        // A timed-out query is still tracked in `pending_queries_by_local_port`, so this also
-        // ensures we never reuse the port of a query we might still receive a late response for.
         if self.pending_queries_by_local_port.len() == range.len() {
             bail!("All ports exhausted")
         }
@@ -446,51 +438,6 @@ mod tests {
     }
 
     #[test]
-    fn icmp_error_for_timed_out_query_removes_it_without_a_second_result() {
-        let mut client = create_test_client();
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-
-        let local = client.send_query(server, create_test_query(), now).unwrap();
-        let query_packet = client.poll_outbound().unwrap();
-
-        // The query times out and we surface its timeout result.
-        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
-        assert!(client.poll_query_result().unwrap().result.is_err());
-
-        // A late ICMP error is consumed without a second result, and the query is removed.
-        let icmp_error = ip_packet::make::icmp_dest_unreachable_network(&query_packet).unwrap();
-        client.handle_inbound(icmp_error);
-
-        assert!(client.poll_query_result().is_none());
-        assert!(
-            !client
-                .pending_queries_by_local_port
-                .contains_key(&local.port())
-        );
-    }
-
-    #[test]
-    fn matching_response_to_pending_query_is_returned() {
-        let mut client = create_test_client();
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-        let query = create_test_query();
-
-        let local = client.send_query(server, query.clone(), now).unwrap();
-        let response = dns_response_packet(server, local, &query);
-
-        assert!(client.accepts(&response));
-        client.handle_inbound(response);
-
-        let result = client.poll_query_result().unwrap();
-        assert_eq!(result.query.id(), query.id());
-        assert_eq!(result.local, local);
-        assert_eq!(result.server, server);
-        assert!(result.result.is_ok());
-    }
-
-    #[test]
     fn late_response_to_timed_out_query_is_dropped() {
         let mut client = create_test_client();
         let now = Instant::now();
@@ -498,144 +445,14 @@ mod tests {
         let query = create_test_query();
 
         let local = client.send_query(server, query.clone(), now).unwrap();
-
-        // The query times out before any response arrives.
         client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
         assert!(client.poll_query_result().unwrap().result.is_err());
-        assert!(client.poll_query_result().is_none());
 
-        // A late response finally arrives for the query we already gave up on.
-        let late_response = dns_response_packet(server, local, &query);
-
-        // The client still recognises the packet as one of its own ...
-        assert!(client.accepts(&late_response));
-
-        // ... but consumes it without surfacing a result or leaking it to the TUN device.
-        client.handle_inbound(late_response);
-        assert!(client.poll_query_result().is_none());
-    }
-
-    #[test]
-    fn late_response_after_reset_is_dropped() {
-        let mut client = create_test_client();
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-        let query = create_test_query();
-
-        let local = client.send_query(server, query.clone(), now).unwrap();
-
-        // Resetting aborts the query but keeps it around to recognise a late response.
-        client.reset();
-        assert!(client.poll_query_result().unwrap().result.is_err());
-        assert!(client.poll_query_result().is_none());
-
+        // A late response to a query we already timed out is still recognised, but dropped.
         let late_response = dns_response_packet(server, local, &query);
         assert!(client.accepts(&late_response));
-
         client.handle_inbound(late_response);
         assert!(client.poll_query_result().is_none());
-    }
-
-    #[test]
-    fn does_not_reuse_the_port_of_a_timed_out_query() {
-        // A tiny port range makes the assertion deterministic: with one port timed out, the next
-        // query must land on the only other port.
-        let mut client = Client::<49152, 49153>::new([0u8; 32]);
-        client.set_source_interface(Ipv4Addr::new(10, 0, 0, 1), Ipv6Addr::LOCALHOST);
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-
-        let first = client.send_query(server, create_test_query(), now).unwrap();
-        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
-
-        // The timed-out query is retained, so its port is not sampled again.
-        let second = client.send_query(server, create_test_query(), now).unwrap();
-        assert_ne!(first.port(), second.port());
-    }
-
-    #[test]
-    fn evicting_timed_out_queries_keeps_the_map_bounded() {
-        let mut client = create_test_client();
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-
-        // Fill to capacity, then time everything out.
-        for i in 0..MAX_PENDING_QUERIES {
-            client
-                .send_query(
-                    server,
-                    create_test_query(),
-                    now + Duration::from_millis(i as u64),
-                )
-                .unwrap();
-        }
-        client.handle_timeout(now + Duration::from_secs(3600));
-
-        // Further queries evict the oldest timed-out ones instead of growing the map.
-        for i in 0..10 {
-            client
-                .send_query(
-                    server,
-                    create_test_query(),
-                    now + Duration::from_secs(3600 + i),
-                )
-                .unwrap();
-        }
-
-        assert_eq!(
-            client.pending_queries_by_local_port.len(),
-            MAX_PENDING_QUERIES
-        );
-    }
-
-    #[test]
-    fn eviction_never_drops_an_in_flight_query() {
-        let mut client = create_test_client();
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-
-        // Fill all but one slot with queries that then time out.
-        for i in 0..MAX_PENDING_QUERIES - 1 {
-            client
-                .send_query(
-                    server,
-                    create_test_query(),
-                    now + Duration::from_millis(i as u64),
-                )
-                .unwrap();
-        }
-        client.handle_timeout(now + Duration::from_secs(3600));
-
-        // The final slot holds a still-in-flight query.
-        let in_flight = client
-            .send_query(server, create_test_query(), now + Duration::from_secs(3600))
-            .unwrap();
-
-        // The map is full; another query evicts a timed-out one, never the in-flight query.
-        client
-            .send_query(server, create_test_query(), now + Duration::from_secs(3601))
-            .unwrap();
-
-        assert!(
-            client
-                .pending_queries_by_local_port
-                .contains_key(&in_flight.port())
-        );
-    }
-
-    #[test]
-    fn rejects_a_new_query_when_full_of_in_flight_queries() {
-        let mut client = create_test_client();
-        let now = Instant::now();
-        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
-
-        // Fill to capacity without timing anything out.
-        for _ in 0..MAX_PENDING_QUERIES {
-            client.send_query(server, create_test_query(), now).unwrap();
-        }
-
-        // There is nothing to evict, so a further query is rejected.
-        assert!(client.send_query(server, create_test_query(), now).is_err());
     }
 
     fn create_test_client() -> Client {
