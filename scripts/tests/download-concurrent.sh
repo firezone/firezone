@@ -5,6 +5,8 @@ source "./scripts/tests/lib.sh"
 domains=(download.httpbin alias.httpbin alias2.httpbin)
 sizes=(5000000 7000000 9000000)
 
+client sh -c "apk add --update --no-cache bind-tools" # The compat tests run using the production image which doesn't have `dig`.
+
 # Resolve all domains before restricting the port range: the range also applies to
 # the UDP sockets used for DNS lookups, so concurrent lookups would race for the
 # single available port and the loser fails with "Could not resolve host".
