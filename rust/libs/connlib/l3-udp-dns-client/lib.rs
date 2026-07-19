@@ -16,20 +16,12 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How many DNS queries we track at once, in-flight and timed-out ones combined.
-///
-/// At the limit, the oldest timed-out query is evicted; a new query is rejected only if there is
-/// nothing timed out to evict.
 const MAX_PENDING_QUERIES: usize = 1024;
 
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
-    /// Queries we have sent, bounded by [`MAX_PENDING_QUERIES`].
-    ///
-    /// A query is kept here after it times out so that a late response can still be matched and
-    /// dropped instead of being forwarded to the TUN device as an unsolicited packet. This is the
-    /// only reason we retain timed-out queries.
     pending_queries_by_local_port: BTreeMap<u16, PendingQuery>,
 
     scheduled_queries: VecDeque<IpPacket>,
@@ -43,7 +35,6 @@ struct PendingQuery {
     expires_at: Instant,
     server: SocketAddr,
     local: SocketAddr,
-    /// Whether the query already timed out and we surfaced its timeout result.
     timed_out: bool,
 }
 
@@ -123,8 +114,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
     /// Checks whether this client can handle the given packet.
     ///
-    /// Only UDP packets for queries we are tracking (still pending or already timed out) are
-    /// accepted.
+    /// Only UDP packets for pending DNS queries are accepted.
     pub fn accepts(&mut self, packet: &IpPacket) -> bool {
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             #[cfg(debug_assertions)]
@@ -198,7 +188,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         }
 
-        // A query only ever receives a single response, so remove it now that one has arrived.
         let Some(PendingQuery {
             message,
             server,
