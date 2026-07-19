@@ -38,6 +38,12 @@ struct PendingQuery {
     timed_out: bool,
 }
 
+// Excludes the heap-allocated query bytes, which are small and bounded by the DNS message size.
+const _: () = assert!(
+    size_of::<PendingQuery>() * MAX_PENDING_QUERIES <= 256 * 1024,
+    "tracked DNS queries must not exceed 256 KiB"
+);
+
 #[derive(Debug)]
 pub struct QueryResult {
     pub query: dns_types::Query,
