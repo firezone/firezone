@@ -5,7 +5,10 @@ source "./scripts/tests/lib.sh"
 client apk add --no-cache --update iproute2
 client tc qdisc add dev eth0 root netem loss 20%
 
-client sh -c "curl --fail --output download.file http://download.httpbin/bytes?num=10000000" &
+# Abort only if the transfer stalls, never on a fixed deadline: 20% loss makes
+# the download legitimately slow and bursty. The window is lenient (avg < 10
+# KiB/s for 30s) so deep TCP retransmit backoff isn't mistaken for a hang.
+client sh -c "curl --fail --speed-limit 10240 --speed-time 30 --output download.file http://download.httpbin/bytes?num=10000000" &
 
 DOWNLOAD_PID=$!
 

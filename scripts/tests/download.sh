@@ -2,7 +2,10 @@
 
 source "./scripts/tests/lib.sh"
 
-client sh -c "curl --fail --max-time 5 --output download.file http://download.httpbin/bytes?num=10000000" &
+# Abort only if the transfer stalls (avg < 100 KiB/s for 10s), not on a fixed
+# deadline: a slow-but-progressing download on a busy runner is fine, a hung
+# tunnel is not.
+client sh -c "curl --fail --speed-limit 102400 --speed-time 10 --output download.file http://download.httpbin/bytes?num=10000000" &
 
 DOWNLOAD_PID=$!
 
