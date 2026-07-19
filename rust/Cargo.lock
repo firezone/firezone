@@ -5786,14 +5786,14 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.6.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#8acb578f10b02986050bc600e629f56f40162266"
+version = "0.6.1"
+source = "git+https://github.com/thomaseizinger/quinn?rev=770b8c9c61aa9a6aa2ba2bbf4ef70e51275f5a4b#770b8c9c61aa9a6aa2ba2bbf4ef70e51275f5a4b"
 dependencies = [
  "cfg_aliases",
  "libc",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
