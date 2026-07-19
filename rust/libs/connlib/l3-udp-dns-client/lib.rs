@@ -17,11 +17,9 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How many DNS queries we track at once, in-flight and timed-out ones combined.
 ///
-/// Instead of removing a query when it times out, we keep it around so that a response arriving
-/// after we already gave up can still be matched to it and dropped, rather than being forwarded to
-/// the TUN device as an unsolicited packet. To stay bounded, reaching this limit evicts the oldest
-/// timed-out query first; a new query is only rejected if there is no timed-out query to evict. We
-/// don't mind "leaking" a late response for a query evicted long ago; the footprint stays tiny.
+/// To stay bounded, reaching this limit evicts the oldest timed-out query first; a new query is
+/// only rejected if there is no timed-out query to evict. We don't mind "leaking" a late response
+/// for a query evicted long ago; the footprint stays tiny.
 const MAX_PENDING_QUERIES: usize = 1024;
 
 /// A sans-io DNS-over-UDP client.
@@ -46,8 +44,6 @@ struct PendingQuery {
     server: SocketAddr,
     local: SocketAddr,
     /// Whether the query already timed out and we surfaced its timeout result.
-    ///
-    /// Such a query is kept around only to recognise and drop a late response.
     timed_out: bool,
 }
 
@@ -167,12 +163,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         if let Ok(Some((failed_packet, icmp_error))) = packet.icmp_error()
             && let Some(entry) = self.entry_for_failed_packet(&failed_packet)
         {
-            // We already answered this query on timeout; drop the ICMP error.
-            if entry.get().timed_out {
+            let pending_query = entry.remove();
+
+            // If the query already timed out, we surfaced its result back then; don't surface another.
+            if pending_query.timed_out {
                 return;
             }
 
-            let pending_query = entry.remove();
             self.query_results.push_back(QueryResult {
                 query: pending_query.message,
                 local: pending_query.local,
@@ -189,36 +186,37 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         let result =
             dns_types::Response::parse(udp.payload()).context("Failed to parse DNS response");
         let source = SocketAddr::new(packet.source(), udp.source_port());
-        let local_port = udp.destination_port();
-
-        let Some(pending) = self.pending_queries_by_local_port.get(&local_port) else {
-            return;
-        };
-        let server = pending.server;
-        let query_id = pending.message.id();
 
         // Ignore a response that doesn't match the query we sent on this port.
-        if let Ok(response) = result.as_ref()
-            && (response.id() != query_id || source != server)
+        if let Some(PendingQuery {
+            message, server, ..
+        }) = self
+            .pending_queries_by_local_port
+            .get(&udp.destination_port())
+            && let Ok(response) = result.as_ref()
+            && (response.id() != message.id() || source != *server)
         {
-            tracing::debug!(%server, %source, %query_id, response_id = %response.id(), "Response from server does not match query ID or original destination");
+            tracing::debug!(%server, %source, query_id = %message.id(), response_id = %response.id(), "Response from server does not match query ID or original destination");
             return;
         }
 
         // A query only ever receives a single response, so remove it now that one has arrived.
-        let PendingQuery {
+        let Some(PendingQuery {
             message,
+            server,
             local,
             timed_out,
             ..
-        } = self
+        }) = self
             .pending_queries_by_local_port
-            .remove(&local_port)
-            .expect("to still be present");
+            .remove(&udp.destination_port())
+        else {
+            return;
+        };
 
         // If the query already timed out, we surfaced its result back then; don't surface another.
         if timed_out {
-            tracing::debug!(%server, %query_id, %source, "Dropping late response to timed-out DNS query");
+            tracing::debug!(%server, %source, query_id = %message.id(), "Dropping late response to timed-out DNS query");
             return;
         }
 
@@ -444,6 +442,31 @@ mod tests {
         assert_eq!(
             query_result.result.unwrap_err().to_string(),
             "Received ICMP error for DNS query: Destination is unreachable (code: 0)"
+        );
+    }
+
+    #[test]
+    fn icmp_error_for_timed_out_query_removes_it_without_a_second_result() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+
+        let local = client.send_query(server, create_test_query(), now).unwrap();
+        let query_packet = client.poll_outbound().unwrap();
+
+        // The query times out and we surface its timeout result.
+        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
+        assert!(client.poll_query_result().unwrap().result.is_err());
+
+        // A late ICMP error is consumed without a second result, and the query is removed.
+        let icmp_error = ip_packet::make::icmp_dest_unreachable_network(&query_packet).unwrap();
+        client.handle_inbound(icmp_error);
+
+        assert!(client.poll_query_result().is_none());
+        assert!(
+            !client
+                .pending_queries_by_local_port
+                .contains_key(&local.port())
         );
     }
 
