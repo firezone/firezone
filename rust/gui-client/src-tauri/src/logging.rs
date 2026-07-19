@@ -290,13 +290,21 @@ pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
 
     // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
     spawn_blocking(move || {
-        let f = fs::File::create(&temp_path).context("Failed to create zip file")?;
+        let f = fs::File::create(&temp_path)
+            .with_context(|| format!("Failed to create zip file `{}`", temp_path.display()))?;
         let mut zip = zip::ZipWriter::new(f);
         for log_path in log_paths().context("Can't compute log paths")? {
-            add_dir_to_zip(&mut zip, &log_path.src, &stem.join(log_path.dst))?;
+            add_dir_to_zip(&mut zip, &log_path.src, &stem.join(log_path.dst))
+                .with_context(|| format!("Failed to add `{}` to zip", log_path.src.display()))?;
         }
         zip.finish().context("Failed to finish zip file")?;
-        fs::rename(&temp_path, &path)?;
+        fs::rename(&temp_path, &path).with_context(|| {
+            format!(
+                "Failed to move `{}` to `{}`",
+                temp_path.display(),
+                path.display()
+            )
+        })?;
         Ok::<_, anyhow::Error>(())
     })
     .await
@@ -323,11 +331,14 @@ fn add_dir_to_zip(
                 return Ok(());
             }
             // But any other error like permissions errors, should bubble.
-            return Err(error.into());
+            return Err(error)
+                .with_context(|| format!("Failed to read log directory `{}`", src_dir.display()));
         }
     };
     for entry in dir {
-        let entry = entry.context("Got bad entry from `read_dir`")?;
+        let entry =
+            entry.with_context(|| format!("Failed to read an entry in `{}`", src_dir.display()))?;
+        let src = entry.path();
         let Some(path) = dst_stem
             .join(entry.file_name())
             .to_str()
@@ -335,10 +346,20 @@ fn add_dir_to_zip(
         else {
             bail!("log filename isn't valid Unicode")
         };
+        // Open before creating the zip entry: a log file we cannot open (e.g. a dangling
+        // `latest` symlink left behind by log rotation) is skipped rather than aborting
+        // the export or leaving an empty entry in the archive.
+        let mut f = match fs::File::open(&src) {
+            Ok(f) => f,
+            Err(error) => {
+                tracing::debug!(path = %src.display(), "Skipping log file that could not be opened: {error}");
+                continue;
+            }
+        };
         zip.start_file(path, options)
-            .context("`ZipWriter::start_file` failed")?;
-        let mut f = fs::File::open(entry.path()).context("Failed to open log file")?;
-        io::copy(&mut f, zip).context("Failed to copy log file into zip")?;
+            .with_context(|| format!("Failed to start zip entry for `{}`", src.display()))?;
+        io::copy(&mut f, zip)
+            .with_context(|| format!("Failed to copy `{}` into zip", src.display()))?;
     }
     Ok(())
 }
