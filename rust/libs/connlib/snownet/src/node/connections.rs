@@ -305,10 +305,6 @@ where
         self.established.keys().copied()
     }
 
-    pub(crate) fn all_idle(&self) -> bool {
-        self.established.values().all(|c| c.is_idle())
-    }
-
     pub(crate) fn all_iceless(&self) -> bool {
         !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
@@ -669,7 +665,6 @@ mod tests {
                 Duration::ZERO,
             ),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
-            next_wg_timer_update: Instant::now(),
             last_proactive_handshake_sent_at: None,
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
