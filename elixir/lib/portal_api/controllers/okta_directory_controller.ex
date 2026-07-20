@@ -2,6 +2,7 @@ defmodule PortalAPI.OktaDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Pagination
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -10,20 +11,33 @@ defmodule PortalAPI.OktaDirectoryController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Okta Directories",
+    parameters: [
+      limit: [
+        in: :query,
+        description: "Limit Okta Directories returned",
+        type: :integer,
+        example: 10
+      ],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+    ],
     responses:
       [
         ok:
-          {"Okta Directory Response", "application/json",
-           PortalAPI.Schemas.OktaDirectory.ListResponse}
+          {"Okta Directory Response", "application/json", PortalAPI.Schemas.OktaDirectory.ListResponse}
       ] ++
         ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def index(conn, _params) do
-    directories = Database.list_directories(conn.assigns.subject)
-    render(conn, :index, directories: directories)
+  def index(conn, params) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, directories, metadata} <-
+           Database.list_directories(conn.assigns.subject, list_opts) do
+      render(conn, :index, directories: directories, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
+    end
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -64,10 +78,17 @@ defmodule PortalAPI.OktaDirectoryController do
     import Ecto.Query
     alias Portal.{Okta, Safe}
 
-    def list_directories(subject) do
-      from(d in Okta.Directory, as: :directories, order_by: [desc: d.inserted_at])
+    def list_directories(subject, opts \\ []) do
+      from(d in Okta.Directory, as: :directories)
       |> Safe.scoped(subject)
-      |> Safe.all()
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:directories, :desc, :inserted_at},
+        {:directories, :desc, :id}
+      ]
     end
 
     def fetch_directory(id, subject) do

@@ -32,6 +32,41 @@ defmodule PortalAPI.OIDCAuthProviderControllerTest do
                item["id"] == provider.id and item["email_verification_method"] == "none"
              end)
     end
+
+    test "returns paginated metadata and respects limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for _ <- 1..3, do: oidc_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", limit: "2")
+
+      assert %{
+               "data" => data,
+               "metadata" => %{"count" => count, "limit" => limit, "next_page" => next_page}
+             } = json_response(conn, 200)
+
+      assert limit == 2
+      assert count == 3
+      assert length(data) == 2
+      refute is_nil(next_page)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/oidc_auth_providers", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
+    end
   end
 
   describe "show/2" do

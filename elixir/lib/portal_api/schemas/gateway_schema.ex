@@ -94,6 +94,127 @@ defmodule PortalAPI.Schemas.Gateway do
     })
   end
 
+  defmodule CreateSchema do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "GatewayCreate",
+      description: "Create schema for a single Gateway",
+      type: :object,
+      properties: %{
+        name: %Schema{
+          type: :string,
+          description: "Gateway Name. Randomly generated when omitted."
+        }
+      },
+      example: %{
+        "name" => "vpc-us-east"
+      }
+    })
+  end
+
+  defmodule CreateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.Gateway
+
+    OpenApiSpex.schema(%{
+      title: "GatewayCreateRequest",
+      description: "Request body for provisioning a Gateway",
+      type: :object,
+      properties: %{
+        gateway: Gateway.CreateSchema
+      },
+      example: %{
+        "gateway" => %{
+          "name" => "vpc-us-east"
+        }
+      }
+    })
+  end
+
+  defmodule ProvisionResponse do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.Gateway
+
+    OpenApiSpex.schema(%{
+      title: "GatewayProvisionResponse",
+      description: """
+      Response schema for a newly provisioned Gateway. Includes the \
+      one-time token secret - it is not shown again.
+      """,
+      type: :object,
+      properties: %{
+        data: %Schema{
+          allOf: [
+            Gateway.Schema,
+            %Schema{
+              type: :object,
+              properties: %{
+                token: %Schema{type: :string, description: "One-time Gateway token secret"}
+              },
+              required: [:token]
+            }
+          ]
+        }
+      },
+      example: %{
+        "data" => %{
+          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "name" => "vpc-us-east",
+          "ipv4" => nil,
+          "ipv6" => nil,
+          "online" => false,
+          "token" => "eyJhbGc..."
+        }
+      }
+    })
+  end
+
+  defmodule UpdateSchema do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "GatewayUpdate",
+      description: "Update schema for a single Gateway",
+      type: :object,
+      properties: %{
+        name: %Schema{
+          type: :string,
+          description: "Gateway Name"
+        }
+      },
+      required: [:name],
+      example: %{
+        "name" => "vpc-us-east"
+      }
+    })
+  end
+
+  defmodule UpdateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+    alias PortalAPI.Schemas.Gateway
+
+    OpenApiSpex.schema(%{
+      title: "GatewayUpdateRequest",
+      description: "Request body for updating a Gateway",
+      type: :object,
+      properties: %{
+        gateway: Gateway.UpdateSchema
+      },
+      required: [:gateway],
+      example: %{
+        "gateway" => %{
+          "name" => "vpc-us-east"
+        }
+      }
+    })
+  end
+
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema

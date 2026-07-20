@@ -19,6 +19,13 @@ defmodule PortalAPI.GatewayJSON do
     %{data: data(gateway)}
   end
 
+  @doc """
+  Renders a newly provisioned Gateway along with its one-time token secret.
+  """
+  def provisioned(%{gateway: gateway, encoded_token: encoded_token}) do
+    %{data: Map.put(data(gateway), :token, encoded_token)}
+  end
+
   defp data(%Device{} = device) do
     %{
       id: device.id,

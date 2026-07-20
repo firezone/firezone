@@ -143,7 +143,7 @@ defmodule Portal.Device do
     changeset
     |> trim_change(~w[name firezone_id hostname]a)
     |> normalize_hostname()
-    |> validate_required([:type, :name, :firezone_id])
+    |> validate_required([:type, :name])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:firezone_id, max: 255)
@@ -185,7 +185,7 @@ defmodule Portal.Device do
     case get_field(changeset, :type) do
       :client ->
         changeset
-        |> validate_required([:actor_id])
+        |> validate_required([:actor_id, :firezone_id])
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)

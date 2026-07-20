@@ -2,10 +2,11 @@ defmodule PortalAPI.Pagination do
   alias LoggerJSON.Formatter.Metadata
   alias Portal.Repo.Paginator.Metadata
 
+  @spec params_to_list_opts(map()) :: {:ok, keyword()} | {:error, :bad_request, reason: String.t()}
   def params_to_list_opts(params) do
-    [
-      page: params_to_page(params)
-    ]
+    with {:ok, page} <- params_to_page(params) do
+      {:ok, [page: page]}
+    end
   end
 
   def metadata(%Metadata{} = metadata) do
@@ -18,18 +19,29 @@ defmodule PortalAPI.Pagination do
   end
 
   defp params_to_page(%{"limit" => limit, "page_cursor" => cursor}) do
-    [cursor: cursor, limit: String.to_integer(limit)]
+    with {:ok, limit} <- parse_limit(limit) do
+      {:ok, [cursor: cursor, limit: limit]}
+    end
   end
 
   defp params_to_page(%{"limit" => limit}) do
-    [limit: String.to_integer(limit)]
+    with {:ok, limit} <- parse_limit(limit) do
+      {:ok, [limit: limit]}
+    end
   end
 
   defp params_to_page(%{"page_cursor" => cursor}) do
-    [cursor: cursor]
+    {:ok, [cursor: cursor]}
   end
 
   defp params_to_page(_params) do
-    []
+    {:ok, []}
+  end
+
+  defp parse_limit(limit) when is_binary(limit) do
+    case Integer.parse(limit) do
+      {int, ""} -> {:ok, int}
+      _ -> {:error, :bad_request, reason: "limit must be an integer"}
+    end
   end
 end

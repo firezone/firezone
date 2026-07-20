@@ -32,8 +32,7 @@ defmodule Portal.Repo.Filter do
   @type datetime_type :: :date | :time | :datetime
   @type binary_type ::
           :string
-          | {:string,
-             :email | :phone_number | :uuid | :websearch | :websearch_wide | :protocol_port | :select}
+          | {:string, :email | :phone_number | :uuid | :uuid_or_blank | :websearch | :websearch_wide | :protocol_port | :select}
   @type range_type :: {:range, numeric_type() | datetime_type()}
   @type type ::
           :boolean
@@ -248,7 +247,21 @@ defmodule Portal.Repo.Filter do
   defp value_type_valid?({:string, :websearch_wide}, value), do: is_binary(value)
   defp value_type_valid?({:string, :protocol_port}, value), do: is_binary(value)
   defp value_type_valid?({:string, :select}, value), do: is_binary(value)
-  defp value_type_valid?({:string, :uuid}, value), do: is_binary(value)
+  defp value_type_valid?({:string, :uuid}, value) when is_binary(value) do
+    match?({:ok, _}, Ecto.UUID.cast(value))
+  end
+
+  defp value_type_valid?({:string, :uuid}, _value), do: false
+
+  # Some filters accept "" as a sentinel for "field is null" (a query param
+  # can't represent null directly) - see e.g. GroupController's directory_id.
+  defp value_type_valid?({:string, :uuid_or_blank}, ""), do: true
+
+  defp value_type_valid?({:string, :uuid_or_blank}, value) when is_binary(value) do
+    match?({:ok, _}, Ecto.UUID.cast(value))
+  end
+
+  defp value_type_valid?({:string, :uuid_or_blank}, _value), do: false
   defp value_type_valid?(:string, value), do: is_binary(value)
   defp value_type_valid?(:boolean, value), do: is_boolean(value)
   defp value_type_valid?(:integer, value), do: is_integer(value)

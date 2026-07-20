@@ -96,6 +96,92 @@ defmodule PortalAPI.ActorControllerTest do
 
       assert MapSet.subset?(data_ids, actor_ids)
     end
+
+    test "returns error for a non-integer limit", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors", limit: "abc")
+
+      assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
+    end
+
+    test "the /v1 route returns the same body as the legacy route", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      actor_fixture(account: account)
+
+      legacy_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors")
+
+      v1_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/v1/actors")
+
+      assert json_response(legacy_conn, 200) == json_response(v1_conn, 200)
+      assert get_resp_header(legacy_conn, "deprecation") == ["true"]
+      assert get_resp_header(v1_conn, "deprecation") == []
+    end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
+      target = actor_fixture(account: account, name: "alice", type: :account_user)
+      _other = actor_fixture(account: account, name: "bob", type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors", name: "alice")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == target.id
+    end
+
+    test "filters by exact email match", %{conn: conn, account: account, actor: actor} do
+      target = actor_fixture(account: account, email: "alice@example.com", type: :account_user)
+      _other = actor_fixture(account: account, email: "bob@example.com", type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors", email: "alice@example.com")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == target.id
+    end
+
+    test "filters by type", %{conn: conn, account: account, actor: actor} do
+      target = actor_fixture(account: account, type: :service_account)
+      _other = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors", type: "service_account")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == target.id
+    end
+
+    test "rejects an invalid type filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors", type: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
   end
 
   describe "show/2" do
@@ -787,6 +873,109 @@ defmodule PortalAPI.ActorControllerTest do
              }
 
       refute Repo.get_by(Actor, id: actor.id, account_id: actor.account_id)
+    end
+  end
+
+  describe "disable/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      actor = actor_fixture(account: account)
+      conn = post(conn, "/actors/#{actor.id}/disable")
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "disables an actor", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      # Client token / portal session revocation on disable is driven by an
+      # async replication consumer (Portal.Changes.Hooks.Actors.on_update/3)
+      # that doesn't fire on a Repo.update inside the test sandbox - see
+      # test/portal/changes/hooks/actors_test.exs for that behavior.
+      actor = actor_fixture(account: account, type: :service_account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/disable")
+
+      assert %{"data" => %{"id" => id, "disabled_at" => disabled_at}} = json_response(conn, 200)
+      assert id == actor.id
+      refute is_nil(disabled_at)
+    end
+
+    test "disabling an already-disabled actor is idempotent", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = disabled_actor_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/disable")
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 200)
+      assert id == actor.id
+    end
+
+    test "returns forbidden when actor attempts to disable itself", %{
+      conn: conn,
+      actor: api_actor
+    } do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{api_actor.id}/disable")
+
+      assert %{"type" => "about:blank", "status" => 403} = json_response(conn, 403)
+    end
+
+    test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{Ecto.UUID.generate()}/disable")
+
+      assert json_response(conn, 404)
+    end
+  end
+
+  describe "enable/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      actor = disabled_actor_fixture(account: account)
+      conn = post(conn, "/actors/#{actor.id}/enable")
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "enables a disabled actor", %{conn: conn, account: account, actor: api_actor} do
+      actor = disabled_actor_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/enable")
+
+      assert %{"data" => %{"id" => id, "disabled_at" => nil}} = json_response(conn, 200)
+      assert id == actor.id
+    end
+
+    test "returns not found for unknown id", %{conn: conn, actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{Ecto.UUID.generate()}/enable")
+
+      assert json_response(conn, 404)
     end
   end
 

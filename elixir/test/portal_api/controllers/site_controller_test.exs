@@ -124,6 +124,60 @@ defmodule PortalAPI.SiteControllerTest do
 
       assert MapSet.subset?(data_ids, site_ids)
     end
+
+    test "the /v1 route returns the same body as the legacy route", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site_fixture(account: account)
+
+      legacy_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites")
+
+      v1_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/v1/sites")
+
+      assert json_response(legacy_conn, 200) == json_response(v1_conn, 200)
+      assert get_resp_header(legacy_conn, "deprecation") == ["true"]
+      assert get_resp_header(v1_conn, "deprecation") == []
+    end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "vpc-us-east")
+      _other = site_fixture(account: account, name: "vpc-us-west")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites", name: "vpc-us-east")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == site.id
+    end
+
+    test "returns an empty list when no site matches the name filter", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site_fixture(account: account, name: "vpc-us-east")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites", name: "does-not-exist")
+
+      assert %{"data" => []} = json_response(conn, 200)
+    end
   end
 
   describe "show/2" do

@@ -3,6 +3,7 @@ defmodule PortalAPI.ActorController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Billing
   alias __MODULE__.Database
@@ -15,7 +16,17 @@ defmodule PortalAPI.ActorController do
     summary: "List Actors",
     parameters: [
       limit: [in: :query, description: "Limit Users returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      name: [in: :query, description: "Filter to Actors with this exact name", type: :string],
+      email: [in: :query, description: "Filter to Actors with this exact email", type: :string],
+      type: [
+        in: :query,
+        description:
+          "Filter to Actors of this type: account_user, account_admin_user, " <>
+            "service_account, or api_client.",
+        type: :string,
+        example: "service_account"
+      ]
     ],
     responses:
       [ok: {"ActorsResponse", "application/json", PortalAPI.Schemas.Actor.ListResponse}] ++
@@ -25,13 +36,20 @@ defmodule PortalAPI.ActorController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
+         {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp coerce_filters(params) do
+    []
+    |> Filters.maybe_append(:name, params["name"])
+    |> Filters.maybe_append(:email, params["email"])
+    |> Filters.maybe_append(:type, params["type"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -240,6 +258,83 @@ defmodule PortalAPI.ActorController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :disable,
+    summary: "Disable an Actor",
+    description: """
+    Disables the Actor, immediately revoking all of its active Client tokens \
+    and portal sessions.
+    """,
+    parameters: [
+      actor_id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
+
+  @spec disable(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def disable(conn, %{"actor_id" => id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, actor} <- Database.fetch_actor(id, subject),
+         :ok <- ensure_not_self(actor, subject),
+         {:ok, actor} <- Database.set_disabled_at(actor, DateTime.utc_now(), subject) do
+      render(conn, :show, actor: actor)
+    else
+      {:error, :self_operation} ->
+        Error.handle(conn, {:error, :forbidden, reason: "You cannot disable yourself"})
+
+      error ->
+        Error.handle(conn, error)
+    end
+  end
+
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :enable,
+    summary: "Enable an Actor",
+    parameters: [
+      actor_id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses:
+      [ok: {"ActorResponse", "application/json", PortalAPI.Schemas.Actor.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
+
+  @spec enable(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def enable(conn, %{"actor_id" => id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, actor} <- Database.fetch_actor(id, subject),
+         {:ok, actor} <- Database.set_disabled_at(actor, nil, subject) do
+      render(conn, :show, actor: actor)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  defp ensure_not_self(actor, subject) do
+    if actor.id == subject.actor.id, do: {:error, :self_operation}, else: :ok
+  end
+
   defp create_actor_changeset(account, attrs) do
     %Portal.Actor{account_id: account.id}
     |> cast(attrs, [:name, :email, :type, :allow_email_otp_sign_in])
@@ -265,6 +360,65 @@ defmodule PortalAPI.ActorController do
       from(a in Portal.Actor, as: :actors)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: :string,
+          fun: &filter_by_name/2
+        },
+        %Portal.Repo.Filter{
+          name: :email,
+          title: "Email",
+          type: :string,
+          fun: &filter_by_email/2
+        },
+        %Portal.Repo.Filter{
+          name: :type,
+          title: "Type",
+          type: {:string, :select},
+          values: [
+            {"Account User", "account_user"},
+            {"Account Admin User", "account_admin_user"},
+            {"Service Account", "service_account"},
+            {"API Client", "api_client"}
+          ],
+          fun: &filter_by_type/2
+        }
+      ]
+    end
+
+    defp filter_by_name(queryable, name) do
+      dynamic = dynamic([actors: a], a.name == ^name)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_email(queryable, email) do
+      dynamic = dynamic([actors: a], a.email == ^email)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_type(queryable, "account_user") do
+      dynamic = dynamic([actors: a], a.type == :account_user)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_type(queryable, "account_admin_user") do
+      dynamic = dynamic([actors: a], a.type == :account_admin_user)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_type(queryable, "service_account") do
+      dynamic = dynamic([actors: a], a.type == :service_account)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_type(queryable, "api_client") do
+      dynamic = dynamic([actors: a], a.type == :api_client)
+      {queryable, dynamic}
     end
 
     def cursor_fields do
@@ -303,6 +457,14 @@ defmodule PortalAPI.ActorController do
       actor
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+
+    def set_disabled_at(actor, disabled_at, subject) do
+      actor
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.put_change(:disabled_at, disabled_at)
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
 
     defp update_actor_changeset(changeset, subject) do

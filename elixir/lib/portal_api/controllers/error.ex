@@ -33,6 +33,22 @@ defmodule PortalAPI.Error do
     ProblemDetails.send(conn, 400, "Invalid page cursor")
   end
 
+  def handle(conn, {:error, {:unknown_filter, name: name}}) do
+    ProblemDetails.send(conn, 400, "Unknown filter: #{name}")
+  end
+
+  def handle(conn, {:error, {:invalid_type, type: type, value: value}}) do
+    ProblemDetails.send(
+      conn,
+      400,
+      "Invalid value #{inspect(value)} for filter of type #{inspect(type)}"
+    )
+  end
+
+  def handle(conn, {:error, {:invalid_value, values: _values, value: value}}) do
+    ProblemDetails.send(conn, 400, "Invalid filter value: #{inspect(value)}")
+  end
+
   def handle(conn, {:error, :forbidden}) do
     ProblemDetails.send(conn, 403, "You do not have permission to perform this action.")
   end
