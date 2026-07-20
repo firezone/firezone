@@ -98,6 +98,157 @@ defmodule PortalAPI.ResourceControllerTest do
 
       assert MapSet.subset?(data_ids, resource_ids)
     end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, name: "postgres-prod")
+      _other = resource_fixture(account: account, name: "postgres-staging")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", name: "postgres-prod")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, type: :dns, address: "app.example.com")
+      _other = resource_fixture(account: account, type: :cidr)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "dns")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type cidr", %{conn: conn, account: account, actor: actor} do
+      resource = cidr_resource_fixture(account: account)
+      _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "cidr")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type ip", %{conn: conn, account: account, actor: actor} do
+      resource = ip_resource_fixture(account: account)
+      _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "ip")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type static_device_pool", %{conn: conn, account: account, actor: actor} do
+      resource = static_device_pool_resource_fixture(account: account)
+      _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "static_device_pool")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by site_id", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site, type: :ip, address: "10.0.0.5")
+      _other = resource_fixture(account: account, type: :ip, address: "10.0.0.6")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", site_id: site.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by exact address match", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, type: :ip, address: "10.0.0.10")
+      _other = resource_fixture(account: account, type: :ip, address: "10.0.0.11")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", address: "10.0.0.10")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by ip_stack", %{conn: conn, account: account, actor: actor} do
+      resource =
+        resource_fixture(account: account, type: :dns, address: "app.example.com", ip_stack: :dual)
+
+      _other =
+        resource_fixture(
+          account: account,
+          type: :dns,
+          address: "other.example.com",
+          ip_stack: :ipv4_only
+        )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", ip_stack: "dual")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "rejects an invalid type filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects an invalid ip_stack filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", ip_stack: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed site_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", site_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
   end
 
   describe "show/2" do

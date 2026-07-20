@@ -294,6 +294,26 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
                json_response(conn, 401)
     end
+
+    test "returns not found when the token belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      other_site = site_fixture(%{account: account})
+      token = gateway_token_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/sites/#{site.id}/gateway_tokens/#{token.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+
+      assert Repo.get_by(GatewayToken, id: token.id, account_id: token.account_id)
+    end
   end
 
   describe "delete_all/2" do

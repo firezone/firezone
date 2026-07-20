@@ -75,6 +75,7 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.EntraAuthProvider
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "EntraAuthProviderListResponse",
@@ -85,7 +86,8 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
           description: "Entra Auth Provider details",
           type: :array,
           items: EntraAuthProvider.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

@@ -85,6 +85,78 @@ defmodule PortalAPI.GroupControllerTest do
       assert MapSet.subset?(data_ids, group_ids)
     end
 
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, name: "Engineering")
+      _other = group_fixture(account: account, name: "Sales")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", name: "Engineering")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == group.id
+    end
+
+    test "filters by directory_id, disambiguating a native Group from a synced Group with the same name",
+         %{conn: conn, account: account, actor: actor} do
+      native = group_fixture(account: account, name: "Engineering")
+      synced = synced_group_fixture(account: account, name: "Engineering")
+
+      native_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", name: "Engineering", directory_id: "")
+
+      assert %{"data" => [data]} = json_response(native_conn, 200)
+      assert data["id"] == native.id
+
+      synced_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", name: "Engineering", directory_id: synced.directory_id)
+
+      assert %{"data" => [data]} = json_response(synced_conn, 200)
+      assert data["id"] == synced.id
+    end
+
+    test "filters by entity_type", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, entity_type: :group)
+      _org_unit = group_fixture(account: account, entity_type: :org_unit)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", entity_type: "group")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == group.id
+    end
+
+    test "rejects an invalid entity_type filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", entity_type: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed directory_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", directory_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
     test "returns unauthorized when actor cannot read groups", %{conn: conn, account: account} do
       service_account = actor_fixture(type: :service_account, account: account)
 

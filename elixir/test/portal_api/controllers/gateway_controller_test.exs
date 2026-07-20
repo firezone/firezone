@@ -19,6 +19,94 @@ defmodule PortalAPI.GatewayControllerTest do
     }
   end
 
+  describe "create/2" do
+    test "returns error when not authorized", %{conn: conn, site: site} do
+      conn = post(conn, "/sites/#{site.id}/gateways")
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "provisions a gateway with an explicit name", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "edge-nyc-1"})
+
+      assert %{
+               "data" => %{
+                 "id" => id,
+                 "name" => "edge-nyc-1",
+                 "online" => false,
+                 "token" => token
+               }
+             } = json_response(conn, 201)
+
+      refute is_nil(id)
+      refute is_nil(token)
+
+      assert [{"location", location}] =
+               Enum.filter(conn.resp_headers, fn {k, _} -> k == "location" end)
+
+      assert location == "/sites/#{site.id}/gateways/#{id}"
+    end
+
+    test "provisions a gateway with an auto-generated name when omitted", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways")
+
+      assert %{"data" => %{"name" => name}} = json_response(conn, 201)
+      refute is_nil(name)
+      refute name == ""
+    end
+
+    test "a provisioned gateway can subsequently be fetched and shows offline", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "edge-nyc-1"})
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 201)
+
+      show_conn =
+        conn
+        |> recycle()
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{id}")
+
+      assert %{"data" => %{"id" => ^id, "name" => "edge-nyc-1", "online" => false}} =
+               json_response(show_conn, 200)
+    end
+
+    test "returns not found for a non-existent site", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{Ecto.UUID.generate()}/gateways")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+  end
+
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, site: site} do
       conn = get(conn, "/sites/#{site.id}/gateways")
@@ -124,6 +212,52 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
                json_response(conn, 400)
     end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site, name: "gw-us-east-1")
+      _other = gateway_fixture(account: account, site: site, name: "gw-us-east-2")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", name: "gw-us-east-1")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+    end
+
+    test "filters by exact ipv4 match", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      _other = gateway_fixture(account: account, site: site)
+
+      ipv4 = Portal.Types.IP.to_string(gateway.ipv4)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv4: ipv4)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+    end
+
+    test "filters by exact ipv6 match", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      _other = gateway_fixture(account: account, site: site)
+
+      ipv6 = Portal.Types.IP.to_string(gateway.ipv6)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv6: ipv6)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == gateway.id
+    end
   end
 
   describe "show/2" do
@@ -180,6 +314,107 @@ defmodule PortalAPI.GatewayControllerTest do
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> get("/sites/#{site.id}/gateways/#{Ecto.UUID.generate()}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+
+    test "returns not found when the gateway belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+  end
+
+  describe "update/2" do
+    test "returns error when not authorized", %{conn: conn, account: account, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+      conn = put(conn, "/sites/#{site.id}/gateways/#{gateway.id}", %{})
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "renames a gateway", %{conn: conn, account: account, actor: actor, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed-gateway"})
+
+      assert %{"data" => %{"id" => id, "name" => "renamed-gateway"}} = json_response(conn, 200)
+      assert id == gateway.id
+    end
+
+    test "renames a never-connected gateway (firezone_id: nil)", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      # Regression test: Portal.Safe.update/1 re-applies Device.changeset/1
+      # centrally to every changeset it's given, so this previously 422'd
+      # on "firezone_id can't be blank" even though rename only touches
+      # :name - Device.changeset/1 only requires :firezone_id for :client
+      # devices now, since a gateway legitimately has none until it first
+      # connects (see Portal.Device's @type doc).
+      gateway = gateway_fixture(account: account, site: site, firezone_id: nil)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed-gateway"})
+
+      assert %{"data" => %{"id" => id, "name" => "renamed-gateway"}} = json_response(conn, 200)
+      assert id == gateway.id
+    end
+
+    test "returns validation error for a blank name", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: ""})
+
+      assert %{"status" => 422, "validation_errors" => %{"name" => _}} = json_response(conn, 422)
+    end
+
+    test "returns not found when the gateway belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed-gateway"})
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
@@ -247,6 +482,27 @@ defmodule PortalAPI.GatewayControllerTest do
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
+    end
+
+    test "returns not found when the gateway belongs to a different site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}/gateways/#{gateway.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+
+      assert Repo.get_by(Device, id: gateway.id, account_id: gateway.account_id)
     end
   end
 end

@@ -49,6 +49,43 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
       refute Enum.any?(data, fn item -> item["id"] == other_provider.id end)
       assert other_provider.account_id != account.id
     end
+
+    test "returns paginated metadata", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      # Entra is a singleton auth provider per account, so this only
+      # exercises the metadata shape, not multi-page cursoring.
+      entra_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/entra_auth_providers")
+
+      assert %{
+               "data" => data,
+               "metadata" => %{"count" => count, "limit" => limit, "next_page" => next_page}
+             } = json_response(conn, 200)
+
+      assert limit == 50
+      assert count == 1
+      assert length(data) == 1
+      assert is_nil(next_page)
+    end
+
+    test "returns error for invalid page cursor", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/entra_auth_providers", page_cursor: "not-a-valid-cursor")
+
+      assert %{"type" => "about:blank", "status" => 400, "detail" => "Invalid page cursor"} =
+               json_response(conn, 400)
+    end
   end
 
   describe "show/2" do

@@ -3,6 +3,7 @@ defmodule PortalAPI.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -13,7 +14,13 @@ defmodule PortalAPI.PolicyController do
     summary: "List Policies",
     parameters: [
       limit: [in: :query, description: "Limit Policies returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      group_id: [in: :query, description: "Filter to Policies granting this Group", type: :string],
+      resource_id: [
+        in: :query,
+        description: "Filter to Policies granting access to this Resource",
+        type: :string
+      ]
     ],
     responses:
       [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.ListResponse}] ++
@@ -23,13 +30,19 @@ defmodule PortalAPI.PolicyController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
+         {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp coerce_filters(params) do
+    []
+    |> Filters.maybe_append(:group_id, params["group_id"])
+    |> Filters.maybe_append(:resource_id, params["resource_id"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -169,15 +182,102 @@ defmodule PortalAPI.PolicyController do
     end
   end
 
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :disable,
+    summary: "Disable a Policy",
+    description: "Idempotent - disabling an already-disabled Policy is a no-op.",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Policy ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
+
+  @spec disable(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def disable(conn, %{"id" => id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, policy} <- Database.fetch_policy(id, subject),
+         {:ok, policy} <- Database.set_disabled_at(policy, :disable, subject) do
+      render(conn, :show, policy: policy)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :enable,
+    summary: "Enable a Policy",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Policy ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses:
+      [ok: {"Policy Response", "application/json", PortalAPI.Schemas.Policy.Response}] ++
+        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+
+  # coveralls-ignore-stop
+
+  @spec enable(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def enable(conn, %{"id" => id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, policy} <- Database.fetch_policy(id, subject),
+         {:ok, policy} <- Database.set_disabled_at(policy, :enable, subject) do
+      render(conn, :show, policy: policy)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
+    import Portal.Changeset, only: [put_default_value: 3]
     alias Portal.{Policy, Safe, Authentication}
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :group_id,
+          title: "Group",
+          type: {:string, :uuid},
+          fun: &filter_by_group_id/2
+        },
+        %Portal.Repo.Filter{
+          name: :resource_id,
+          title: "Resource",
+          type: {:string, :uuid},
+          fun: &filter_by_resource_id/2
+        }
+      ]
+    end
+
+    defp filter_by_group_id(queryable, group_id) do
+      dynamic = dynamic([policies: p], p.group_id == ^group_id)
+      {queryable, dynamic}
+    end
+
+    defp filter_by_resource_id(queryable, resource_id) do
+      dynamic = dynamic([policies: p], p.resource_id == ^resource_id)
+      {queryable, dynamic}
     end
 
     def fetch_policy(id, subject) do
@@ -262,6 +362,25 @@ defmodule PortalAPI.PolicyController do
       policy
       |> Safe.scoped(subject)
       |> Safe.delete()
+    end
+
+    # Mirrors the admin UI's disable/enable behavior (lib/portal_web/live/policies.ex):
+    # disabling is idempotent (only sets disabled_at if unset), enabling is
+    # unconditional.
+    def set_disabled_at(%Policy{} = policy, :disable, subject) do
+      policy
+      |> change()
+      |> put_default_value(:disabled_at, DateTime.utc_now())
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def set_disabled_at(%Policy{} = policy, :enable, subject) do
+      policy
+      |> change()
+      |> put_change(:disabled_at, nil)
+      |> Safe.scoped(subject)
+      |> Safe.update()
     end
 
     # The base Policy.changeset/1 is applied centrally by Safe.insert/Safe.update,

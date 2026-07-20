@@ -3,6 +3,7 @@ defmodule PortalAPI.LogController do
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Types.LogId
   alias __MODULE__.Database
@@ -133,9 +134,8 @@ defmodule PortalAPI.LogController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
-    pagination_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, type} <- parse_type(params),
+    with {:ok, pagination_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, type} <- parse_type(params),
          {:ok, filters} <- coerce_filters(type, params),
          {:ok, logs, metadata} <-
            Database.list_logs(
@@ -219,8 +219,8 @@ defmodule PortalAPI.LogController do
          :ok <- validate_type_filters(type, actor_email) do
       filters =
         [begin: begin_at, end: end_at]
-        |> maybe_append(:actor_id, actor_id)
-        |> maybe_append(:actor_email, actor_email)
+        |> Filters.maybe_append(:actor_id, actor_id)
+        |> Filters.maybe_append(:actor_email, actor_email)
 
       {:ok, filters}
     end
@@ -288,9 +288,6 @@ defmodule PortalAPI.LogController do
       {:error, :bad_request, reason: "`begin` must be less than or equal to `end`"}
     end
   end
-
-  defp maybe_append(filters, _name, nil), do: filters
-  defp maybe_append(filters, name, value), do: filters ++ [{name, value}]
 
   defmodule Database do
     import Ecto.Query

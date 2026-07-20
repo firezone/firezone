@@ -95,6 +95,56 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert MapSet.subset?(data_ids, policy_ids)
     end
+
+    test "filters by group_id", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      policy = policy_fixture(account: account, group: group)
+      _other = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", group_id: group.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == policy.id
+    end
+
+    test "filters by resource_id", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(account: account, resource: resource)
+      _other = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", resource_id: resource.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == policy.id
+    end
+
+    test "rejects a malformed group_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", group_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed resource_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/policies", resource_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
   end
 
   describe "show/2" do
@@ -891,6 +941,101 @@ defmodule PortalAPI.PolicyControllerTest do
              }
 
       refute Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+  end
+
+  describe "disable/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      policy = policy_fixture(account: account)
+      conn = post(conn, "/policies/#{policy.id}/disable")
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "disables a policy", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies/#{policy.id}/disable")
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 200)
+      assert id == policy.id
+
+      assert %Policy{disabled_at: disabled_at} =
+               Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+
+      refute is_nil(disabled_at)
+    end
+
+    test "disabling an already-disabled policy is idempotent", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy = disabled_policy_fixture(%{account: account})
+      original_disabled_at = policy.disabled_at
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies/#{policy.id}/disable")
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 200)
+      assert id == policy.id
+
+      assert %Policy{disabled_at: ^original_disabled_at} =
+               Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies/#{Ecto.UUID.generate()}/disable")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+  end
+
+  describe "enable/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      policy = disabled_policy_fixture(%{account: account})
+      conn = post(conn, "/policies/#{policy.id}/enable")
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "enables a disabled policy", %{conn: conn, account: account, actor: actor} do
+      policy = disabled_policy_fixture(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies/#{policy.id}/enable")
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 200)
+      assert id == policy.id
+
+      assert %Policy{disabled_at: nil} =
+               Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+
+    test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies/#{Ecto.UUID.generate()}/enable")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
     end
   end
 end

@@ -1,6 +1,7 @@
 defmodule PortalAPI.AccountController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
+  alias PortalAPI.Error
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -17,10 +18,13 @@ defmodule PortalAPI.AccountController do
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, _params) do
-    # The subject's own account always exists and is readable by every actor type
-    # (Safe.permit/3), so the fetch cannot fail here.
-    account = Database.fetch_account(conn.assigns.subject.account.id, conn.assigns.subject)
-    render(conn, :show, account: account)
+    subject = conn.assigns.subject
+
+    with {:ok, account} <- Database.fetch_account(subject.account.id, subject) do
+      render(conn, :show, account: account)
+    else
+      error -> Error.handle(conn, error)
+    end
   end
 
   defmodule Database do
@@ -29,9 +33,15 @@ defmodule PortalAPI.AccountController do
     alias Portal.Account
 
     def fetch_account(id, subject) do
-      from(a in Account, where: a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
+      result =
+        from(a in Account, where: a.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        account -> {:ok, account}
+      end
     end
   end
 end

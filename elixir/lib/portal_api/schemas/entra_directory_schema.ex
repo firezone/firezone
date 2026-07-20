@@ -75,6 +75,7 @@ defmodule PortalAPI.Schemas.EntraDirectory do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.EntraDirectory
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "EntraDirectoryListResponse",
@@ -85,7 +86,8 @@ defmodule PortalAPI.Schemas.EntraDirectory do
           description: "Entra Directory details",
           type: :array,
           items: EntraDirectory.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [

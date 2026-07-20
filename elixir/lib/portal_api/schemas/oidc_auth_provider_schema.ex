@@ -79,6 +79,7 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.OIDCAuthProvider
+    alias PortalAPI.Schemas.PaginationMetadata
 
     OpenApiSpex.schema(%{
       title: "OIDCAuthProviderListResponse",
@@ -89,7 +90,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
           description: "OIDC Auth Provider details",
           type: :array,
           items: OIDCAuthProvider.Schema
-        }
+        },
+        metadata: PaginationMetadata
       },
       example: %{
         "data" => [
