@@ -589,7 +589,7 @@ defmodule PortalWeb.NavigationComponents do
                 </p>
               </div>
               <div class="shrink-0 flex items-center gap-2">
-                <.docs_action path="/administer/logs" />
+                <.docs_action path="/audit-logs" />
               </div>
             </div>
           </div>
