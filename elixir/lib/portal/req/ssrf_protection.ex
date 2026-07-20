@@ -16,6 +16,9 @@ defmodule Portal.Req.SSRFProtection do
   calls an internal service must opt out explicitly:
 
       Req.get!(url, allow_private_ips: true)
+
+  Deployments that need the portal to reach private networks for all requests can
+  disable the plugin with `HTTP_CLIENT_SSRF_PROTECTION_ENABLED=false`.
   """
 
   @default_pool_max_idle_time :timer.minutes(1)

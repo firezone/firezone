@@ -817,6 +817,15 @@ defmodule Portal.Config.Definitions do
     dump: &Dumper.dump_ssl_opts/1
   )
 
+  @doc """
+  Enable or disable blocking outbound HTTP requests to private or reserved IP addresses.
+
+  Enabled by default to protect against SSRF attacks when the portal sends requests to
+  user-configured HTTP endpoints. Disable this only if the portal must be able to reach
+  services on a private network, for example in self-hosted deployments.
+  """
+  defconfig(:http_client_ssrf_protection_enabled, :boolean, default: true)
+
   ##############################################
   ## Geolocation
   ##############################################
