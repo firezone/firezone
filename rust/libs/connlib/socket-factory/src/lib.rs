@@ -539,6 +539,14 @@ impl PerfUdpSocket {
                     let sent_bytes = if sent == attempted {
                         previous_len
                     } else {
+                        tracing::debug!(
+                            target: "wire::net::send",
+                            attempted,
+                            sent = sent.get(),
+                            remaining = attempted - sent.get(),
+                            %dst,
+                            "Partial UDP batch sent; retrying unsent suffix"
+                        );
                         chunk.advance(sent);
                         previous_len - chunk.contents.len()
                     };
