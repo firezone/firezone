@@ -935,7 +935,7 @@ impl RefClient {
             .iter()
             .cloned()
             .filter_map(|r| r.into_dns())
-            .filter(|r| is_subdomain(&domain.to_string(), &r.address))
+            .filter(|r| dns::is_subdomain(domain, &r.address))
             .max_by(|r1, r2| {
                 let by_predicate = match (predicate(r1), predicate(r2)) {
                     (true, true) | (false, false) => Ordering::Equal,
@@ -1334,9 +1334,7 @@ impl RefClient {
             Destination::DomainName { name, .. } => self
                 .resources
                 .iter()
-                .filter(|r| {
-                    matches!(r, Resource::Dns(dns) if is_subdomain(&name.to_string(), &dns.address))
-                })
+                .filter(|r| matches!(r, Resource::Dns(d) if dns::is_subdomain(name, &d.address)))
                 .collect(),
         }
     }
@@ -1375,27 +1373,6 @@ fn udp_filter_allows(filters: &[Filter], dport: u16) -> bool {
                     if range.port_range_start <= dport && dport <= range.port_range_end
             )
         })
-}
-
-// This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
-// This limitation doesn't exists in production.
-fn is_subdomain(name: &str, record: &str) -> bool {
-    if name == record {
-        return true;
-    }
-    let Some((first, end)) = record.split_once('.') else {
-        return false;
-    };
-    match first {
-        "**" => name.ends_with(end) && name.strip_suffix(end).is_some_and(|n| n.ends_with('.')),
-        "*" => {
-            name.ends_with(end)
-                && name
-                    .strip_suffix(end)
-                    .is_some_and(|n| n.ends_with('.') && n.matches('.').count() == 1)
-        }
-        _ => false,
-    }
 }
 
 impl ExecMutScope for RefClient {
