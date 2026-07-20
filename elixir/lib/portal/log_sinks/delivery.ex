@@ -398,7 +398,9 @@ defmodule Portal.LogSinks.Delivery do
        user_agent: log.user_agent,
        ip: log.ip,
        ip_region: log.ip_region,
-       ip_city: log.ip_city
+       ip_city: log.ip_city,
+       ip_lat: log.ip_lat,
+       ip_lon: log.ip_lon
      }}
     ]
   end
