@@ -31,28 +31,12 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "update_resource/5" do
+  describe "update_resource/4" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
-
-      # Build session struct (mimics Socket.connect)
-      version =
-        case Portal.Version.fetch_version(subject.context.user_agent) do
-          {:ok, version} -> version
-          _ -> nil
-        end
-
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: version
-      }
 
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
@@ -71,7 +55,6 @@ defmodule Portal.Cache.ClientTest do
         account: account,
         subject: subject,
         client: client,
-        session: session,
         site: site,
         resource: resource
       }
@@ -80,7 +63,6 @@ defmodule Portal.Cache.ClientTest do
     test "handles cached resource with nil site by fetching from database", %{
       subject: subject,
       client: client,
-      session: session,
       site: site,
       resource: resource
     } do
@@ -123,7 +105,7 @@ defmodule Portal.Cache.ClientTest do
 
       # This should not crash - it should fetch the site from the database
       {:ok, _added, _removed, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, session, subject)
+        Cache.update_resource(cache, updated_resource, client, subject)
 
       # Verify the site was hydrated from the database
       cached = Map.get(updated_cache.resources, resource_id)
@@ -136,7 +118,6 @@ defmodule Portal.Cache.ClientTest do
     test "handles resource with nil site_id (site deleted)", %{
       subject: subject,
       client: client,
-      session: session,
       resource: resource
     } do
       resource_id = Ecto.UUID.dump!(resource.id)
@@ -182,7 +163,7 @@ defmodule Portal.Cache.ClientTest do
 
       # This should not crash - it should handle nil site_id gracefully
       {:ok, added, removed_ids, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, session, subject)
+        Cache.update_resource(cache, updated_resource, client, subject)
 
       # Verify the resource now has nil site
       cached = Map.get(updated_cache.resources, resource_id)
@@ -196,7 +177,6 @@ defmodule Portal.Cache.ClientTest do
     test "reuses cached site when site_id has not changed", %{
       subject: subject,
       client: client,
-      session: session,
       site: site,
       resource: resource
     } do
@@ -242,7 +222,7 @@ defmodule Portal.Cache.ClientTest do
       updated_resource = %{resource | name: "Updated Name"}
 
       {:ok, _added, _removed, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, session, subject)
+        Cache.update_resource(cache, updated_resource, client, subject)
 
       # Verify the cached site was reused (same struct reference)
       cached = Map.get(updated_cache.resources, resource_id)
@@ -273,15 +253,13 @@ defmodule Portal.Cache.ClientTest do
       resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
-      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+      cache = Cache.recompute_connectable_resources(nil, client, subject) |> elem(3)
 
       target_ipv4 = target_client.ipv4.address
       target_id = target_client.id
@@ -311,15 +289,13 @@ defmodule Portal.Cache.ClientTest do
       resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
-      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+      cache = Cache.recompute_connectable_resources(nil, client, subject) |> elem(3)
 
       target_ipv6 = target_client.ipv6.address
       target_id = target_client.id
@@ -344,15 +320,7 @@ defmodule Portal.Cache.ClientTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
-      }
-
-      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+      cache = Cache.recompute_connectable_resources(nil, client, subject) |> elem(3)
 
       target_ipv4 = target_client.ipv4.address
 
@@ -383,16 +351,14 @@ defmodule Portal.Cache.ClientTest do
       resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
       {:ok, _added, _removed, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       pool =
         Enum.find(cache.connectable_resources, &(&1.type == :static_device_pool))
@@ -434,49 +400,37 @@ defmodule Portal.Cache.ClientTest do
       resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.0"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.0",
+          last_seen_version: "1.5.0"
       }
 
       {:ok, _added, _removed, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       assert Enum.all?(cache.connectable_resources, &(&1.type != :static_device_pool))
       refute Map.has_key?(cache.pool_members, Ecto.UUID.dump!(resource.id))
     end
   end
 
-  describe "add_policy/5 no-op paths" do
+  describe "add_policy/4 no-op paths" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
-      %{account: account, actor: actor, subject: subject, client: client, session: session}
+      %{account: account, actor: actor, subject: subject, client: client}
     end
 
     test "returns the cache unchanged when the policy's group isn't in memberships", %{
       account: account,
       subject: subject,
-      client: client,
-      session: session
+      client: client
     } do
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       other_group = group_fixture(account: account)
       site = site_fixture(account: account)
@@ -484,7 +438,7 @@ defmodule Portal.Cache.ClientTest do
       policy = policy_fixture(account: account, group: other_group, resource: resource)
 
       assert {:ok, [], [], ^cache} =
-               Cache.add_policy(cache, policy, client, session, subject)
+               Cache.add_policy(cache, policy, client, subject)
     end
   end
 
@@ -510,33 +464,23 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "delete_policy/5 no-op when not in cache" do
+  describe "delete_policy/4 no-op when not in cache" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
-      %{account: account, subject: subject, client: client, session: session}
+      %{account: account, subject: subject, client: client}
     end
 
     test "returns cache unchanged for an unknown policy id", %{
       account: account,
       subject: subject,
-      client: client,
-      session: session
+      client: client
     } do
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       group = group_fixture(account: account)
       site = site_fixture(account: account)
@@ -544,43 +488,33 @@ defmodule Portal.Cache.ClientTest do
       stranger_policy = policy_fixture(account: account, group: group, resource: resource)
 
       assert {:ok, [], [], ^cache} =
-               Cache.delete_policy(cache, stranger_policy, client, session, subject)
+               Cache.delete_policy(cache, stranger_policy, client, subject)
     end
   end
 
-  describe "update_resource/5 no-op when not in cache" do
+  describe "update_resource/4 no-op when not in cache" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
-      %{account: account, subject: subject, client: client, session: session}
+      %{account: account, subject: subject, client: client}
     end
 
     test "returns cache unchanged when resource isn't in the cache", %{
       account: account,
       subject: subject,
-      client: client,
-      session: session
+      client: client
     } do
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       site = site_fixture(account: account)
       stranger = dns_resource_fixture(account: account, site: site)
 
       assert {:ok, [], [], ^cache} =
-               Cache.update_resource(cache, stranger, client, session, subject)
+               Cache.update_resource(cache, stranger, client, subject)
     end
   end
 
@@ -668,7 +602,7 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "delete_policy/5 keeps resource when another policy still references it" do
+  describe "delete_policy/4 keeps resource when another policy still references it" do
     test "keeps the resource and only removes the deleted policy" do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
@@ -686,20 +620,11 @@ defmodule Portal.Cache.ClientTest do
       policy_a = policy_fixture(account: account, group: group_a, resource: resource)
       policy_fixture(account: account, group: group_b, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       assert {:ok, [], [], cache} =
-               Cache.delete_policy(cache, policy_a, client, session, subject)
+               Cache.delete_policy(cache, policy_a, client, subject)
 
       assert Map.has_key?(cache.resources, Ecto.UUID.dump!(resource.id))
     end
@@ -791,7 +716,7 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "authorize_resource/5 logs when membership is missing from cache" do
+  describe "authorize_resource/4 logs when membership is missing from cache" do
     test "warns and returns :not_found when policy.group_id has no membership entry" do
       import ExUnit.CaptureLog
 
@@ -799,15 +724,6 @@ defmodule Portal.Cache.ClientTest do
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
-
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
 
       site = site_fixture(account: account)
       resource = dns_resource_fixture(account: account, site: site)
@@ -835,7 +751,7 @@ defmodule Portal.Cache.ClientTest do
 
       log =
         capture_log(fn ->
-          assert Cache.authorize_resource(cache, client, session, resource_id, subject) ==
+          assert Cache.authorize_resource(cache, client, resource_id, subject) ==
                    {:error, :not_found}
         end)
 
@@ -988,16 +904,14 @@ defmodule Portal.Cache.ClientTest do
 
       policy_fixture(account: account, group: group, resource: pool)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: "Mac OS/14 apple-client/1.5.16",
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       rid_bytes = Ecto.UUID.dump!(pool.id)
       did_a = Ecto.UUID.dump!(target_a.id)
@@ -1060,17 +974,8 @@ defmodule Portal.Cache.ClientTest do
       resource = dns_resource_fixture(account: account, site: site)
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       # Force the resource to point at a non-existent site, then run update_resource —
       # site will look "changed" relative to cache, but get_site_by_id returns nil.
@@ -1078,7 +983,7 @@ defmodule Portal.Cache.ClientTest do
       changed_resource = %{resource | site: nil, site_id: orphan_site_id}
 
       assert {:ok, _, _, updated} =
-               Cache.update_resource(cache, changed_resource, client, session, subject)
+               Cache.update_resource(cache, changed_resource, client, subject)
 
       cached_resource = Map.fetch!(updated.resources, Ecto.UUID.dump!(resource.id))
       assert is_nil(cached_resource.site)

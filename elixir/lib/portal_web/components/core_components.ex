@@ -866,16 +866,7 @@ defmodule PortalWeb.CoreComponents do
 
   def connection_status(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
-
-    last_seen_at =
-      if Map.has_key?(assigns.schema, :latest_session) do
-        session = Map.get(assigns.schema, :latest_session)
-        session && session.inserted_at
-      else
-        assigns.schema.last_seen_at
-      end
-
-    assigns = assign(assigns, :display_last_seen_at, last_seen_at)
+    assigns = assign(assigns, :display_last_seen_at, assigns.schema.last_seen_at)
 
     ~H"""
     <span class={["flex items-center", @class]}>
@@ -1137,24 +1128,6 @@ defmodule PortalWeb.CoreComponents do
   end
 
   defp assign_last_seen_fields(%{schema: nil} = assigns), do: assigns
-
-  defp assign_last_seen_fields(%{schema: %Portal.ClientSession{} = s} = assigns) do
-    assigns
-    |> assign(:display_remote_ip, s.remote_ip)
-    |> assign(:display_remote_ip_location_city, s.remote_ip_location_city)
-    |> assign(:display_remote_ip_location_region, s.remote_ip_location_region)
-    |> assign(:display_remote_ip_location_lat, s.remote_ip_location_lat)
-    |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
-  end
-
-  defp assign_last_seen_fields(%{schema: %Portal.GatewaySession{} = s} = assigns) do
-    assigns
-    |> assign(:display_remote_ip, s.remote_ip)
-    |> assign(:display_remote_ip_location_city, s.remote_ip_location_city)
-    |> assign(:display_remote_ip_location_region, s.remote_ip_location_region)
-    |> assign(:display_remote_ip_location_lat, s.remote_ip_location_lat)
-    |> assign(:display_remote_ip_location_lon, s.remote_ip_location_lon)
-  end
 
   defp assign_last_seen_fields(%{schema: %Portal.SessionLog{subject: subject}} = assigns) do
     subject = subject || %{}

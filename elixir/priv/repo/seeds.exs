@@ -13,14 +13,12 @@ defmodule Portal.Repo.Seeds do
     Account,
     Actor,
     ChangeLog,
-    ClientSession,
     Crypto,
     EmailOTP,
     Entra,
     ExternalIdentity,
     Device,
     PolicyAuthorization,
-    GatewaySession,
     Google,
     Group,
     Membership,
@@ -176,23 +174,23 @@ defmodule Portal.Repo.Seeds do
         )
       )
 
-    # Create a gateway session
     {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
-    %GatewaySession{
-      account_id: site.account_id,
-      device_id: gateway.id,
-      gateway_token_id: gateway_token.id,
-      public_key: public_key,
-      user_agent: context.user_agent,
-      remote_ip: context.remote_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon,
-      version: version
-    }
-    |> Repo.insert!()
+    gateway =
+      gateway
+      |> Ecto.Changeset.change(
+        public_key: public_key,
+        last_seen_user_agent: context.user_agent,
+        last_seen_remote_ip: context.remote_ip,
+        last_seen_remote_ip_location_region: location_region,
+        last_seen_remote_ip_location_city: location_city,
+        last_seen_remote_ip_location_lat: location_lat,
+        last_seen_remote_ip_location_lon: location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now(),
+        gateway_token_id: gateway_token.id
+      )
+      |> Repo.update!()
 
     {:ok, gateway}
   end
@@ -238,20 +236,21 @@ defmodule Portal.Repo.Seeds do
 
     {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
-    # Create a client session
-    Repo.insert!(%ClientSession{
-      account_id: subject.account.id,
-      device_id: client.id,
-      client_token_id: client_token_id,
-      public_key: public_key,
-      user_agent: user_agent,
-      remote_ip: subject.context.remote_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon,
-      version: version
-    })
+    client =
+      client
+      |> Ecto.Changeset.change(
+        public_key: public_key,
+        last_seen_user_agent: user_agent,
+        last_seen_remote_ip: subject.context.remote_ip,
+        last_seen_remote_ip_location_region: location_region,
+        last_seen_remote_ip_location_city: location_city,
+        last_seen_remote_ip_location_lat: location_lat,
+        last_seen_remote_ip_location_lon: location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now(),
+        client_token_id: client_token_id
+      )
+      |> Repo.update!()
 
     {:ok, client}
   end
@@ -1079,20 +1078,20 @@ defmodule Portal.Repo.Seeds do
 
         {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
-        # Create a client session
-        Repo.insert!(%ClientSession{
-          account_id: subject.account.id,
-          device_id: client.id,
-          client_token_id: token.id,
+        client
+        |> Ecto.Changeset.change(
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          user_agent: user_agent,
-          remote_ip: subject.context.remote_ip,
-          remote_ip_location_region: location_region,
-          remote_ip_location_city: location_city,
-          remote_ip_location_lat: location_lat,
-          remote_ip_location_lon: location_lon,
-          version: version
-        })
+          last_seen_user_agent: user_agent,
+          last_seen_remote_ip: subject.context.remote_ip,
+          last_seen_remote_ip_location_region: location_region,
+          last_seen_remote_ip_location_city: location_city,
+          last_seen_remote_ip_location_lat: location_lat,
+          last_seen_remote_ip_location_lon: location_lon,
+          last_seen_version: version,
+          last_seen_at: DateTime.utc_now(),
+          client_token_id: token.id
+        )
+        |> Repo.update!()
       end
     end
 

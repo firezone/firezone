@@ -11,6 +11,22 @@ defmodule Portal.Device do
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
+  # Columns rewritten by the connect flush; WAL consumers skip device updates
+  # that touch nothing else so connects don't flood audit logs and broadcasts.
+  @latest_session_columns ~w[
+    public_key
+    last_seen_user_agent
+    last_seen_remote_ip
+    last_seen_remote_ip_location_region
+    last_seen_remote_ip_location_city
+    last_seen_remote_ip_location_lat
+    last_seen_remote_ip_location_lon
+    last_seen_version
+    last_seen_at
+    client_token_id
+    gateway_token_id
+  ]
+
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           type: :client | :gateway,
@@ -21,10 +37,17 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
-          latest_session: any() | nil,
-          latest_session_inserted_at: DateTime.t() | nil,
-          latest_session_version: String.t() | nil,
-          latest_session_user_agent: String.t() | nil,
+          public_key: String.t() | nil,
+          last_seen_user_agent: String.t() | nil,
+          last_seen_remote_ip: Postgrex.INET.t() | nil,
+          last_seen_remote_ip_location_region: String.t() | nil,
+          last_seen_remote_ip_location_city: String.t() | nil,
+          last_seen_remote_ip_location_lat: float() | nil,
+          last_seen_remote_ip_location_lon: float() | nil,
+          last_seen_version: String.t() | nil,
+          last_seen_at: DateTime.t() | nil,
+          client_token_id: Ecto.UUID.t() | nil,
+          gateway_token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
           site_id: Ecto.UUID.t() | nil,
@@ -63,24 +86,27 @@ defmodule Portal.Device do
     # Gateway-only
     belongs_to :site, Portal.Site
 
-    has_many :client_sessions, Portal.ClientSession,
-      foreign_key: :device_id,
-      references: :id
-
-    has_many :gateway_sessions, Portal.GatewaySession,
-      foreign_key: :device_id,
-      references: :id
-
     has_many :gateway_tokens, Portal.GatewayToken,
       foreign_key: :device_id,
       references: :id
 
+    # Latest-session fields, written by the connect flush. The token columns
+    # have no FK: a token hard-deleted between connect and flush must not fail
+    # the batched upsert, so they may dangle.
+    field :public_key, :string
+    field :last_seen_user_agent, :string
+    field :last_seen_remote_ip, Portal.Types.IP
+    field :last_seen_remote_ip_location_region, :string
+    field :last_seen_remote_ip_location_city, :string
+    field :last_seen_remote_ip_location_lat, :float
+    field :last_seen_remote_ip_location_lon, :float
+    field :last_seen_version, :string
+    field :last_seen_at, :utc_datetime_usec
+    field :client_token_id, :binary_id
+    field :gateway_token_id, :binary_id
+
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
-    field :latest_session, :any, virtual: true
-    field :latest_session_inserted_at, :utc_datetime_usec, virtual: true
-    field :latest_session_version, :string, virtual: true
-    field :latest_session_user_agent, :string, virtual: true
 
     timestamps()
   end
@@ -110,6 +136,8 @@ defmodule Portal.Device do
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
   def reserved_ipv6_cidr, do: @reserved_ipv6_cidr
+
+  def latest_session_columns, do: @latest_session_columns
 
   defp validate_type_fields(changeset) do
     case get_field(changeset, :type) do
@@ -180,8 +208,7 @@ defmodule Portal.Device do
   def load_balance_gateways({lat, lon}, gateways) do
     gateways
     |> Enum.group_by(fn gateway ->
-      session = gateway.latest_session
-      {session && session.remote_ip_location_lat, session && session.remote_ip_location_lon}
+      {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
     end)
     |> Enum.map(fn
       {{gateway_lat, gateway_lon}, gateway} when is_nil(gateway_lat) or is_nil(gateway_lon) ->
@@ -194,10 +221,7 @@ defmodule Portal.Device do
     |> Enum.sort_by(&elem(&1, 0))
     |> List.first()
     |> elem(1)
-    |> Enum.group_by(fn gateway ->
-      session = gateway.latest_session
-      session && session.version
-    end)
+    |> Enum.group_by(& &1.last_seen_version)
     |> Enum.sort_by(&elem(&1, 0), :desc)
     |> Enum.at(0)
     |> elem(1)
@@ -215,7 +239,7 @@ defmodule Portal.Device do
 
   def gateway_outdated?(gateway) do
     latest_release = Portal.ComponentVersions.gateway_version()
-    version = gateway.latest_session && gateway.latest_session.version
+    version = gateway.last_seen_version
 
     if version do
       case Version.compare(version, latest_release) do

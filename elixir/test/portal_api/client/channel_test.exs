@@ -36,32 +36,29 @@ defmodule PortalAPI.Client.ChannelTest do
         end
       end)
 
-    # Fetch the Device row matching the client — the channel now expects Device structs
-    device = fetch_device!(client)
+    conn_id = Keyword.get_lazy(opts, :conn_id, fn -> make_ref() end)
 
-    session_id = Keyword.get_lazy(opts, :session_id, &Ecto.UUID.generate/0)
-
-    # Build a ClientSession struct to match what Socket.connect does
-    session = %Portal.ClientSession{
-      id: session_id,
-      device_id: client.id,
-      account_id: client.account_id,
-      client_token_id: subject.credential.id,
-      public_key: Portal.DeviceFixtures.generate_public_key(),
-      user_agent: subject.context.user_agent,
-      remote_ip: subject.context.remote_ip,
-      remote_ip_location_region: subject.context.remote_ip_location_region,
-      remote_ip_location_city: subject.context.remote_ip_location_city,
-      remote_ip_location_lat: subject.context.remote_ip_location_lat,
-      remote_ip_location_lon: subject.context.remote_ip_location_lon,
-      version: client_version
+    # Apply the connection snapshot onto the Device struct to match what
+    # Socket.connect does
+    device = %{
+      fetch_device!(client)
+      | client_token_id: subject.credential.id,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        last_seen_user_agent: subject.context.user_agent,
+        last_seen_remote_ip: subject.context.remote_ip,
+        last_seen_remote_ip_location_region: subject.context.remote_ip_location_region,
+        last_seen_remote_ip_location_city: subject.context.remote_ip_location_city,
+        last_seen_remote_ip_location_lat: subject.context.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
+        last_seen_version: client_version,
+        last_seen_at: DateTime.utc_now()
     }
 
     {:ok, _reply, socket} =
       socket_module
       |> socket("client:#{client.id}", %{
         client: device,
-        session: session,
+        conn_id: conn_id,
         subject: subject,
         client_version: client_version
       })
@@ -70,17 +67,33 @@ defmodule PortalAPI.Client.ChannelTest do
     socket
   end
 
-  defp connect_gateway_presence(gateway, token_id) do
-    session = gateway.latest_session
+  # Mirrors Socket.connect's apply_session: the connection snapshot lives on
+  # the Device struct.
+  defp with_session(client, subject, version) do
+    %{
+      client
+      | client_token_id: subject.credential.id,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        last_seen_user_agent: subject.context.user_agent,
+        last_seen_remote_ip: subject.context.remote_ip,
+        last_seen_remote_ip_location_region: subject.context.remote_ip_location_region,
+        last_seen_remote_ip_location_city: subject.context.remote_ip_location_city,
+        last_seen_remote_ip_location_lat: subject.context.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now()
+    }
+  end
 
+  defp connect_gateway_presence(gateway, token_id) do
     session_meta = %{
       site_id: gateway.site_id,
-      public_key: gateway.latest_session.public_key,
+      public_key: gateway.public_key,
       psk_base: gateway.psk_base,
-      version: session && session.version,
-      remote_ip: session && session.remote_ip,
-      remote_ip_location_lat: session && session.remote_ip_location_lat,
-      remote_ip_location_lon: session && session.remote_ip_location_lon
+      version: gateway.last_seen_version,
+      remote_ip: gateway.last_seen_remote_ip,
+      remote_ip_location_lat: gateway.last_seen_remote_ip_location_lat,
+      remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon
     }
 
     Presence.Gateways.connect(gateway, token_id, session_meta)
@@ -317,30 +330,31 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(client, subject, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(client, subject, conn_id: conn_id)
       assert_push "init", _init_payload
 
       Portal.Queue.flush(:client_session_queue)
 
-      persisted = Portal.Repo.get_by!(Portal.ClientSession, id: session_id)
-      assert persisted.device_id == client.id
-      assert persisted.account_id == client.account_id
+      persisted =
+        Portal.Repo.get_by!(Portal.Device, id: client.id, account_id: client.account_id)
+
       assert persisted.client_token_id == subject.credential.id
-      assert persisted.public_key == socket.assigns.session.public_key
-      assert persisted.user_agent == socket.assigns.session.user_agent
-      assert persisted.version == socket.assigns.session.version
+      assert persisted.public_key == socket.assigns.client.public_key
+      assert persisted.last_seen_user_agent == socket.assigns.client.last_seen_user_agent
+      assert persisted.last_seen_version == socket.assigns.client.last_seen_version
+      assert persisted.last_seen_at
     end
 
     test "session_durability timer is cancelled by the queue's confirm message", %{
       client: client,
       subject: subject
     } do
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(client, subject, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(client, subject, conn_id: conn_id)
       assert_push "init", _init_payload
 
-      assert {^session_id, _generation, _timer_ref} =
+      assert {^conn_id, _timer_ref} =
                :sys.get_state(socket.channel_pid).assigns.session_durability
 
       Portal.Queue.flush(:client_session_queue)
@@ -404,19 +418,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, _socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: device,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: nil
-          },
+          client: with_session(device, subject, nil),
+          conn_id: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -621,19 +624,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
-        client: client,
-        session: %Portal.ClientSession{
-          device_id: client.id,
-          account_id: client.account_id,
-          public_key: Portal.DeviceFixtures.generate_public_key(),
-          user_agent: subject.context.user_agent,
-          remote_ip: subject.context.remote_ip,
-          remote_ip_location_region: subject.context.remote_ip_location_region,
-          remote_ip_location_city: subject.context.remote_ip_location_city,
-          remote_ip_location_lat: subject.context.remote_ip_location_lat,
-          remote_ip_location_lon: subject.context.remote_ip_location_lon,
-          version: nil
-        },
+        client: with_session(client, subject, nil),
+        conn_id: make_ref(),
         subject: subject,
         client_version: nil
       })
@@ -701,19 +693,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
-        client: client,
-        session: %Portal.ClientSession{
-          device_id: client.id,
-          account_id: client.account_id,
-          public_key: Portal.DeviceFixtures.generate_public_key(),
-          user_agent: subject.context.user_agent,
-          remote_ip: subject.context.remote_ip,
-          remote_ip_location_region: subject.context.remote_ip_location_region,
-          remote_ip_location_city: subject.context.remote_ip_location_city,
-          remote_ip_location_lat: subject.context.remote_ip_location_lat,
-          remote_ip_location_lon: subject.context.remote_ip_location_lon,
-          version: "1.1.55"
-        },
+        client: with_session(client, subject, "1.1.55"),
+        conn_id: make_ref(),
         subject: subject,
         client_version: "1.1.55"
       })
@@ -747,19 +728,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
-        client: client,
-        session: %Portal.ClientSession{
-          device_id: client.id,
-          account_id: client.account_id,
-          public_key: Portal.DeviceFixtures.generate_public_key(),
-          user_agent: subject.context.user_agent,
-          remote_ip: subject.context.remote_ip,
-          remote_ip_location_region: subject.context.remote_ip_location_region,
-          remote_ip_location_city: subject.context.remote_ip_location_city,
-          remote_ip_location_lat: subject.context.remote_ip_location_lat,
-          remote_ip_location_lon: subject.context.remote_ip_location_lon,
-          version: nil
-        },
+        client: with_session(client, subject, nil),
+        conn_id: make_ref(),
         subject: subject,
         client_version: nil
       })
@@ -797,24 +767,9 @@ defmodule PortalAPI.Client.ChannelTest do
     test "relay credentials are stable across reconnects", %{client: client, subject: subject} do
       connect_relay(%{lat: 37.0, lon: -120.0})
 
-      public_key = Portal.DeviceFixtures.generate_public_key()
-
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        public_key: public_key,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        remote_ip_location_city: subject.context.remote_ip_location_city,
-        remote_ip_location_lat: subject.context.remote_ip_location_lat,
-        remote_ip_location_lon: subject.context.remote_ip_location_lon,
-        version: nil
-      }
-
       assigns = %{
-        client: client,
-        session: session,
+        client: with_session(client, subject, nil),
+        conn_id: make_ref(),
         subject: subject,
         client_version: nil
       }
@@ -894,19 +849,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
-        client: client,
-        session: %Portal.ClientSession{
-          device_id: client.id,
-          account_id: client.account_id,
-          public_key: Portal.DeviceFixtures.generate_public_key(),
-          user_agent: subject.context.user_agent,
-          remote_ip: subject.context.remote_ip,
-          remote_ip_location_region: subject.context.remote_ip_location_region,
-          remote_ip_location_city: subject.context.remote_ip_location_city,
-          remote_ip_location_lat: subject.context.remote_ip_location_lat,
-          remote_ip_location_lon: subject.context.remote_ip_location_lon,
-          version: nil
-        },
+        client: with_session(client, subject, nil),
+        conn_id: make_ref(),
         subject: subject,
         client_version: nil
       })
@@ -1113,19 +1057,19 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(client, subject, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(client, subject, conn_id: conn_id)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+      assert {^conn_id, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:confirm_session_durability, session_id})
+      send(socket.channel_pid, {:confirm_session_durability, conn_id})
 
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.session_durability == nil
 
-      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
+      send(socket.channel_pid, {:session_durability_timeout, conn_id})
       refute_push "disconnect", _
     end
 
@@ -1136,14 +1080,14 @@ defmodule PortalAPI.Client.ChannelTest do
          } do
       Process.flag(:trap_exit, true)
 
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(client, subject, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(client, subject, conn_id: conn_id)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+      assert {^conn_id, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
+      send(socket.channel_pid, {:session_durability_timeout, conn_id})
 
       assert_receive {:EXIT, _pid, :shutdown}
       refute_push "disconnect", _
@@ -3430,13 +3374,13 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
          ice_credentials}
       )
 
       gateway_group_id = gateway.site_id
       gateway_id = gateway.id
-      gateway_public_key = gateway.latest_session.public_key
+      gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
 
@@ -3513,7 +3457,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
 
@@ -3568,7 +3512,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
 
@@ -3638,7 +3582,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         socket.channel_pid,
         {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
          ice_credentials}
       )
 
@@ -3678,19 +3622,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: nil
-          },
+          client: with_session(client, subject, nil),
+          conn_id: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -3767,19 +3700,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: client_version
-          },
+          client: with_session(client, subject, client_version),
+          conn_id: make_ref(),
           subject: subject,
           client_version: client_version
         })
@@ -4007,7 +3929,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
 
@@ -4063,7 +3985,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
 
@@ -4113,7 +4035,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
-         gateway.latest_session.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
          payload2.ice_credentials}
       )
 
@@ -4514,19 +4436,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: nil
-          },
+          client: with_session(client, subject, nil),
+          conn_id: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -4574,19 +4485,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: client_version
-          },
+          client: with_session(client, subject, client_version),
+          conn_id: make_ref(),
           subject: subject,
           client_version: client_version
         })
@@ -4819,7 +4719,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       assert_push "init", %{resources: _, relays: _, interface: _}
-      public_key = gateway.latest_session.public_key
+      public_key = gateway.public_key
       resource_id = resource.id
       client_id = client.id
 
@@ -4874,7 +4774,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.latest_session.public_key,
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.public_key,
          "DNS_RPL"}
       )
 
@@ -4904,19 +4804,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: nil
-          },
+          client: with_session(client, subject, nil),
+          conn_id: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -5197,7 +5086,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject)
       assert_push "init", %{resources: _, relays: _, interface: _}
-      public_key = gateway.latest_session.public_key
+      public_key = gateway.public_key
       resource_id = resource.id
 
       gateway = Repo.preload(gateway, :site)
@@ -5232,7 +5121,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.latest_session.public_key,
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.public_key,
          "FULL_RTC_SD"}
       )
 
@@ -5260,19 +5149,8 @@ defmodule PortalAPI.Client.ChannelTest do
       {:ok, _reply, socket} =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
-          client: client,
-          session: %Portal.ClientSession{
-            device_id: client.id,
-            account_id: client.account_id,
-            public_key: Portal.DeviceFixtures.generate_public_key(),
-            user_agent: subject.context.user_agent,
-            remote_ip: subject.context.remote_ip,
-            remote_ip_location_region: subject.context.remote_ip_location_region,
-            remote_ip_location_city: subject.context.remote_ip_location_city,
-            remote_ip_location_lat: subject.context.remote_ip_location_lat,
-            remote_ip_location_lon: subject.context.remote_ip_location_lon,
-            version: nil
-          },
+          client: with_session(client, subject, nil),
+          conn_id: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -7591,24 +7469,13 @@ defmodule PortalAPI.Client.ChannelTest do
     # Joins the client channel with a custom transport pid instead of the test
     # process. Mirrors `join_channel/3` otherwise.
     defp join_channel_with_transport(client, subject, transport_pid) do
-      device = fetch_device!(client)
-      session_id = Ecto.UUID.generate()
-
-      session = %Portal.ClientSession{
-        id: session_id,
-        device_id: client.id,
-        account_id: client.account_id,
-        client_token_id: subject.credential.id,
-        public_key: Portal.DeviceFixtures.generate_public_key(),
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip
-      }
+      device = with_session(fetch_device!(client), subject, nil)
 
       base =
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: device,
-          session: session,
+          conn_id: make_ref(),
           subject: subject,
           client_version: nil
         })

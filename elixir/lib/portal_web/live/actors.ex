@@ -1289,7 +1289,7 @@ defmodule PortalWeb.Actors do
     import Portal.Repo.Query
     alias Portal.ExternalIdentity
     alias Portal.Actor
-    alias Portal.ClientSession
+    alias Portal.Device
     alias Portal.Presence
     alias Portal.Safe
     alias Portal.Directory
@@ -1586,25 +1586,25 @@ defmodule PortalWeb.Actors do
         |> Safe.all()
 
       tokens
-      |> preload_latest_sessions_for_tokens(subject)
+      |> preload_last_used_devices_for_tokens(subject)
       |> Presence.Clients.preload_client_tokens_presence()
     end
 
-    defp preload_latest_sessions_for_tokens(tokens, subject) do
+    defp preload_last_used_devices_for_tokens(tokens, subject) do
       token_ids = Enum.map(tokens, & &1.id)
 
-      sessions_by_token_id =
-        from(s in ClientSession,
-          where: s.client_token_id in ^token_ids,
-          distinct: s.client_token_id,
-          order_by: [asc: s.client_token_id, desc: s.inserted_at]
+      devices_by_token_id =
+        from(d in Device,
+          where: d.client_token_id in ^token_ids,
+          distinct: d.client_token_id,
+          order_by: [asc: d.client_token_id, desc: d.last_seen_at]
         )
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
         |> Map.new(&{&1.client_token_id, &1})
 
       Enum.map(tokens, fn token ->
-        %{token | latest_session: Map.get(sessions_by_token_id, token.id)}
+        %{token | last_used_device: Map.get(devices_by_token_id, token.id)}
       end)
     end
 

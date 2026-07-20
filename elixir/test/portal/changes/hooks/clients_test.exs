@@ -45,6 +45,29 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       assert new_client.id == client.id
     end
 
+    test "does not broadcast updates that only touch latest-session columns" do
+      account = account_fixture()
+      client = client_fixture(account: account)
+      :ok = PubSub.Changes.subscribe(client.account_id, :devices)
+
+      old_data = %{
+        "id" => client.id,
+        "account_id" => client.account_id,
+        "name" => client.name,
+        "last_seen_at" => nil
+      }
+
+      data = %{
+        "id" => client.id,
+        "account_id" => client.account_id,
+        "name" => client.name,
+        "last_seen_at" => "2026-07-20T00:00:00Z"
+      }
+
+      assert :ok == on_update(0, old_data, data)
+      refute_receive %Change{op: :update}
+    end
+
     test "update unverifies client and deletes associated policy authorizations" do
       account = account_fixture()
       client = client_fixture(account: account, verified_at: DateTime.utc_now())

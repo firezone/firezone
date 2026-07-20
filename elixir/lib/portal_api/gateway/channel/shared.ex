@@ -82,10 +82,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # On an abnormal exit, drain the whole WebSocket instead of just letting the
   # channel die. connlib ignores `phx_error` and would keep the transport alive,
-  # re-joining reactively and reusing the transport-scoped session id (which
-  # collides with the row already persisted). Draining forces a full reconnect
-  # that re-runs `Socket.connect/3` and mints a fresh id, keeping transport:session
-  # 1:1. Graceful stops already send `phx_close`, so we only intervene here.
+  # re-joining reactively and reusing the transport-scoped conn_id (whose
+  # earlier flush confirmation could cancel the new session's durability
+  # timer). Draining forces a full reconnect that re-runs `Socket.connect/3`
+  # and mints a fresh conn_id, keeping transport:session 1:1. Graceful stops
+  # already send `phx_close`, so we only intervene here.
   @impl true
   def terminate(reason, socket) do
     if abnormal_exit?(reason) do
@@ -245,8 +246,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       if needs_update do
         # Select best relays from the SAME snapshot we used for disconnected_ids
         location = {
-          socket.assigns.session.remote_ip_location_lat,
-          socket.assigns.session.remote_ip_location_lon
+          socket.assigns.gateway.last_seen_remote_ip_location_lat,
+          socket.assigns.gateway.last_seen_remote_ip_location_lon
         }
 
         relays = load_balance_relays(location, all_online_relays)
@@ -257,7 +258,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.session.public_key,
+              socket.assigns.gateway.public_key,
               @relay_credentials_expire_at
             )
         })
@@ -364,7 +365,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       client_payload: payload
     } = attrs
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -412,7 +413,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       authorization_expires_at: authorization_expires_at
     } = attrs
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -465,8 +466,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, cancel_authz_durability_timer(socket, authz_id)}
   end
 
-  def handle_info({:confirm_session_durability, session_id}, socket) do
-    {:noreply, cancel_session_durability_timer(socket, session_id)}
+  def handle_info({:confirm_session_durability, conn_id}, socket) do
+    {:noreply, cancel_session_durability_timer(socket, conn_id)}
   end
 
   # Authz durability timer fired — no `:confirm_authz_durability` or
@@ -499,11 +500,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     end
   end
 
-  def handle_info({:session_durability_timeout, session_id, generation}, socket) do
+  def handle_info({:session_durability_timeout, conn_id}, socket) do
     case socket.assigns[:session_durability] do
-      {^session_id, ^generation, _timer_ref} ->
+      {^conn_id, _timer_ref} ->
         Logger.warning(
-          "Gateway session #{inspect(session_id)} was not confirmed durable; disconnecting"
+          "Gateway session #{inspect(conn_id)} was not confirmed durable; disconnecting"
         )
 
         # Avoid sending "token_expired" since that will tear down connlib
@@ -607,7 +608,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             resource_id,
             socket.assigns.gateway.site_id,
             socket.assigns.gateway.id,
-            socket.assigns.session.public_key,
+            socket.assigns.gateway.public_key,
             socket.assigns.gateway.ipv4,
             socket.assigns.gateway.ipv6,
             preshared_key,
@@ -638,7 +639,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       {:ok, {channel_pid, socket_ref, rid_bytes}} ->
         send(
           channel_pid,
-          {:connect, socket_ref, rid_bytes, socket.assigns.session.public_key, payload}
+          {:connect, socket_ref, rid_bytes, socket.assigns.gateway.public_key, payload}
         )
 
         {:reply, :ok, socket}
@@ -696,7 +697,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       connected:
         Views.Relay.render_many(
           relays,
-          socket.assigns.session.public_key,
+          socket.assigns.gateway.public_key,
           @relay_credentials_expire_at
         )
     })
@@ -747,8 +748,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       Presence.Relays.all_connected_relays(except_ids)
 
     location = {
-      socket.assigns.session.remote_ip_location_lat,
-      socket.assigns.session.remote_ip_location_lon
+      socket.assigns.gateway.last_seen_remote_ip_location_lat,
+      socket.assigns.gateway.last_seen_remote_ip_location_lon
     }
 
     relays = load_balance_relays(location, relays)
@@ -770,7 +771,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.session.public_key,
+          socket.assigns.gateway.public_key,
           @relay_credentials_expire_at
         ),
       # These aren't used but needed for API compatibility
@@ -920,7 +921,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
 
-    case Resource.adapt_resource_for_version(resource, socket.assigns.session.version) do
+    case Resource.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
       nil ->
         {:noreply, socket}
 
@@ -977,29 +978,23 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   @authz_durability_timeout :timer.seconds(15)
 
   defp arm_session_durability_timer(socket) do
-    case socket.assigns.session.id do
-      nil ->
-        socket
+    conn_id = socket.assigns.conn_id
 
-      session_id ->
-        generation = make_ref()
+    timer_ref =
+      Process.send_after(
+        self(),
+        {:session_durability_timeout, conn_id},
+        @session_durability_timeout
+      )
 
-        timer_ref =
-          Process.send_after(
-            self(),
-            {:session_durability_timeout, session_id, generation},
-            @session_durability_timeout
-          )
-
-        # Fail-safe: if the session queue never confirms the DB flush, the
-        # channel disconnects and lets the gateway reconnect to create a new row.
-        assign(socket, session_durability: {session_id, generation, timer_ref})
-    end
+    # Fail-safe: if the session queue never confirms the DB flush, the
+    # channel disconnects so the gateway reconnects and retries the upsert.
+    assign(socket, session_durability: {conn_id, timer_ref})
   end
 
-  defp cancel_session_durability_timer(socket, session_id) do
+  defp cancel_session_durability_timer(socket, conn_id) do
     case socket.assigns[:session_durability] do
-      {^session_id, _generation, timer_ref} ->
+      {^conn_id, timer_ref} ->
         Process.cancel_timer(timer_ref)
         assign(socket, session_durability: nil)
 
@@ -1099,7 +1094,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         # Only enqueue + arm on the first successful registration; re-registrations
         # after a PG scope crash share the same channel and session row.
         if is_nil(current_pid) do
-          Portal.Queue.enqueue(:gateway_session_queue, session_attrs(socket.assigns.session),
+          Portal.Queue.enqueue(
+            :gateway_session_queue,
+            session_attrs(socket.assigns.gateway, socket.assigns.conn_id),
             metadata: %{timestamp: DateTime.utc_now()}
           )
 
@@ -1121,16 +1118,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
       sup_pid ->
         gateway = socket.assigns.gateway
-        session = socket.assigns.session
 
         session_meta = %{
           site_id: gateway.site_id,
-          public_key: session.public_key,
+          public_key: gateway.public_key,
           psk_base: gateway.psk_base,
-          version: session.version,
-          remote_ip: session.remote_ip,
-          remote_ip_location_lat: session.remote_ip_location_lat,
-          remote_ip_location_lon: session.remote_ip_location_lon
+          version: gateway.last_seen_version,
+          remote_ip: gateway.last_seen_remote_ip,
+          remote_ip_location_lat: gateway.last_seen_remote_ip_location_lat,
+          remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon
         }
 
         :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
@@ -1148,10 +1144,21 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     end
   end
 
-  defp session_attrs(%Portal.GatewaySession{} = session) do
-    session
-    |> Map.from_struct()
-    |> Map.drop([:__meta__, :account, :device, :gateway_token])
+  defp session_attrs(%Portal.Device{} = gateway, conn_id) do
+    %{
+      conn_id: conn_id,
+      account_id: gateway.account_id,
+      device_id: gateway.id,
+      gateway_token_id: gateway.gateway_token_id,
+      public_key: gateway.public_key,
+      user_agent: gateway.last_seen_user_agent,
+      remote_ip: gateway.last_seen_remote_ip,
+      remote_ip_location_region: gateway.last_seen_remote_ip_location_region,
+      remote_ip_location_city: gateway.last_seen_remote_ip_location_city,
+      remote_ip_location_lat: gateway.last_seen_remote_ip_location_lat,
+      remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon,
+      version: gateway.last_seen_version
+    }
   end
 
   defp abnormal_exit?(:normal), do: false

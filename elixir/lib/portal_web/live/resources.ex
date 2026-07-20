@@ -1421,7 +1421,6 @@ defmodule PortalWeb.Resources do
     alias Portal.ClientToken
     alias Portal.Actor
     alias Portal.Device
-    alias Portal.ClientSession
     alias Portal.Site
     alias Portal.Group
     alias Portal.Directory
@@ -1546,27 +1545,8 @@ defmodule PortalWeb.Resources do
         end
 
       from(c in Device, as: :devices)
-      |> join(
-        :left_lateral,
-        [devices: d],
-        s in subquery(
-          from(s in ClientSession,
-            where: s.device_id == parent_as(:devices).id,
-            where: s.account_id == parent_as(:devices).account_id,
-            order_by: [desc: s.inserted_at],
-            limit: 1
-          )
-        ),
-        on: true,
-        as: :latest_session
-      )
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^client_ids)
-      |> select_merge([latest_session: s], %{
-        latest_session_inserted_at: s.inserted_at,
-        latest_session_version: s.version,
-        latest_session_user_agent: s.user_agent
-      })
       |> preload(:actor)
       |> Safe.scoped(subject, :replica)
       |> Safe.all()
@@ -1575,30 +1555,11 @@ defmodule PortalWeb.Resources do
           []
 
         clients ->
-          clients
-          |> build_latest_sessions()
-          |> Portal.Presence.Clients.preload_clients_presence()
+          Portal.Presence.Clients.preload_clients_presence(clients)
       end
     end
 
     def list_pool_members(_resource, _subject), do: []
-
-    defp build_latest_sessions(clients) do
-      Enum.map(clients, fn client ->
-        if client.latest_session_inserted_at do
-          %{
-            client
-            | latest_session: %ClientSession{
-                version: client.latest_session_version,
-                inserted_at: client.latest_session_inserted_at,
-                user_agent: client.latest_session_user_agent
-              }
-          }
-        else
-          client
-        end
-      end)
-    end
 
     def get_resource(id, subject) do
       from(r in Resource, as: :resources)

@@ -57,7 +57,7 @@ defmodule Portal.ComponentVersions do
       }),
       do: :headless
 
-  def get_component_type(%Device{type: :client, latest_session: %{user_agent: ua}})
+  def get_component_type(%Device{type: :client, last_seen_user_agent: ua})
       when is_binary(ua),
       do: get_component_type_from_user_agent(ua)
 

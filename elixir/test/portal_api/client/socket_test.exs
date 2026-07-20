@@ -135,16 +135,15 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
-      session = socket.assigns.session
-      assert session.public_key == attrs["public_key"]
-      assert session.device_id == client.id
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip == @client_remote_ip
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
-      assert session.version == "1.3.0"
+      assert is_reference(socket.assigns.conn_id)
+      assert client.public_key == attrs["public_key"]
+      assert client.last_seen_user_agent == connect_info.user_agent
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert client.last_seen_version == "1.3.0"
     end
 
     test "creates a new client for service account identity" do
@@ -172,16 +171,15 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
-      session = socket.assigns.session
-      assert session.public_key == attrs["public_key"]
-      assert session.device_id == client.id
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip == @client_remote_ip
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
-      assert session.version == "1.3.0"
+      assert is_reference(socket.assigns.conn_id)
+      assert client.public_key == attrs["public_key"]
+      assert client.last_seen_user_agent == connect_info.user_agent
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert client.last_seen_version == "1.3.0"
     end
 
     test "propagates trace context" do
@@ -221,12 +219,11 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing_client.id
 
-      session = socket.assigns.session
-      assert session.device_id == existing_client.id
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
+      client = socket.assigns.client
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
     end
 
     test "preserves ipv4 and ipv6 addresses on reconnection" do
@@ -279,11 +276,11 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing_client.id
 
-      session = socket.assigns.session
-      assert session.remote_ip_location_region == "UA"
-      assert session.remote_ip_location_city == nil
-      assert session.remote_ip_location_lat == 49.0
-      assert session.remote_ip_location_lon == 32.0
+      client = socket.assigns.client
+      assert client.last_seen_remote_ip_location_region == "UA"
+      assert client.last_seen_remote_ip_location_city == nil
+      assert client.last_seen_remote_ip_location_lat == 49.0
+      assert client.last_seen_remote_ip_location_lon == 32.0
     end
 
     test "rate limits repeated connection attempts from same IP and token" do
@@ -445,7 +442,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
 
-    test "builds a client_session on successful connect" do
+    test "applies the session onto the client on successful connect" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
 
@@ -455,14 +452,13 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       client = socket.assigns.client
 
-      session = socket.assigns.session
-      assert session.device_id == client.id
-      assert session.client_token_id == token.id
-      assert session.account_id == client.account_id
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip == @client_remote_ip
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
+      assert is_reference(socket.assigns.conn_id)
+      assert client.client_token_id == token.id
+      assert client.last_seen_user_agent == connect_info.user_agent
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_at
     end
 
     test "logs warning when hardware identifiers mismatch" do

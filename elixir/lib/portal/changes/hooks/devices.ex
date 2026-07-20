@@ -14,17 +14,23 @@ defmodule Portal.Changes.Hooks.Devices do
 
   @impl true
   def on_update(lsn, old_data, data) do
-    old_device = struct_from_params(Portal.Device, old_data)
-    device = struct_from_params(Portal.Device, data)
-    change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
+    # Connect flushes rewrite only the latest-session columns; broadcasting
+    # them would fan every connect out to all subscribers in the account.
+    if latest_session_only_change?(old_data, data) do
+      :ok
+    else
+      old_device = struct_from_params(Portal.Device, old_data)
+      device = struct_from_params(Portal.Device, data)
+      change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
 
-    # Unverifying a client device - delete associated policy_authorizations
-    if device.type == :client and
-         not is_nil(old_device.verified_at) and is_nil(device.verified_at) do
-      Database.delete_policy_authorizations_for_device(device)
+      # Unverifying a client device - delete associated policy_authorizations
+      if device.type == :client and
+           not is_nil(old_device.verified_at) and is_nil(device.verified_at) do
+        Database.delete_policy_authorizations_for_device(device)
+      end
+
+      PubSub.Changes.broadcast(device.account_id, :devices, change)
     end
-
-    PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
 
   @impl true
@@ -34,6 +40,13 @@ defmodule Portal.Changes.Hooks.Devices do
 
     PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
+
+  defp latest_session_only_change?(old_data, data) when is_map(old_data) and is_map(data) do
+    changed = for {key, value} <- data, Map.get(old_data, key) != value, do: key
+    changed != [] and Enum.all?(changed, &(&1 in Portal.Device.latest_session_columns()))
+  end
+
+  defp latest_session_only_change?(_old_data, _data), do: false
 
   defmodule Database do
     import Ecto.Query

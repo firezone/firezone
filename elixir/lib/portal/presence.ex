@@ -259,13 +259,11 @@ defmodule Portal.Presence do
         site_id: meta.site_id,
         psk_base: meta.psk_base,
         online?: true,
-        latest_session: %{
-          public_key: meta.public_key,
-          version: meta.version,
-          remote_ip: normalize_ip(meta.remote_ip),
-          remote_ip_location_lat: meta.remote_ip_location_lat,
-          remote_ip_location_lon: meta.remote_ip_location_lon
-        }
+        public_key: meta.public_key,
+        last_seen_version: meta.version,
+        last_seen_remote_ip: normalize_ip(meta.remote_ip),
+        last_seen_remote_ip_location_lat: meta.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: meta.remote_ip_location_lon
       }
     end
 

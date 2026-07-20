@@ -228,10 +228,9 @@ defmodule Portal.Policies.EvaluatorTest do
   #  end
   # end
 
-  describe "fetch_conformation_expiration/4 with auth_provider_id" do
+  describe "fetch_conformation_expiration/3 with auth_provider_id" do
     test "is_in returns ok when auth_provider_id matches" do
       client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{}
       provider_id = Ecto.UUID.generate()
 
       condition = %{
@@ -240,12 +239,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: [provider_id]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, provider_id) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, provider_id) == {:ok, nil}
     end
 
     test "is_in returns error when auth_provider_id does not match" do
       client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{}
       provider_id = Ecto.UUID.generate()
       other_id = Ecto.UUID.generate()
 
@@ -255,12 +253,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: [other_id]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, provider_id) == :error
+      assert fetch_conformation_expiration(condition, client, provider_id) == :error
     end
 
     test "is_not_in returns error when auth_provider_id matches" do
       client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{}
       provider_id = Ecto.UUID.generate()
 
       condition = %{
@@ -269,12 +266,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: [provider_id]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, provider_id) == :error
+      assert fetch_conformation_expiration(condition, client, provider_id) == :error
     end
 
     test "is_not_in returns ok when auth_provider_id does not match" do
       client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{}
       provider_id = Ecto.UUID.generate()
       other_id = Ecto.UUID.generate()
 
@@ -284,14 +280,13 @@ defmodule Portal.Policies.EvaluatorTest do
         values: [other_id]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, provider_id) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, provider_id) == {:ok, nil}
     end
   end
 
-  describe "fetch_conformation_expiration/4 with client_verified" do
+  describe "fetch_conformation_expiration/3 with client_verified" do
     test "is with values [\"true\"] returns ok when device is verified" do
       verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}
-      session = %Portal.ClientSession{}
 
       condition = %{
         property: :client_verified,
@@ -299,12 +294,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["true"]
       }
 
-      assert fetch_conformation_expiration(condition, verified_client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, verified_client, nil) == {:ok, nil}
     end
 
     test "is with values [\"true\"] returns error when device is not verified" do
       unverified_client = %Portal.Device{type: :client, verified_at: nil}
-      session = %Portal.ClientSession{}
 
       condition = %{
         property: :client_verified,
@@ -312,13 +306,12 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["true"]
       }
 
-      assert fetch_conformation_expiration(condition, unverified_client, session, nil) == :error
+      assert fetch_conformation_expiration(condition, unverified_client, nil) == :error
     end
 
     test "is with values other than [\"true\"] always returns ok" do
       verified_client = %Portal.Device{type: :client, verified_at: DateTime.utc_now()}
       unverified_client = %Portal.Device{type: :client, verified_at: nil}
-      session = %Portal.ClientSession{}
 
       condition = %{
         property: :client_verified,
@@ -326,15 +319,14 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["false"]
       }
 
-      assert fetch_conformation_expiration(condition, verified_client, session, nil) == {:ok, nil}
-      assert fetch_conformation_expiration(condition, unverified_client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, verified_client, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, unverified_client, nil) == {:ok, nil}
     end
   end
 
-  describe "fetch_conformation_expiration/4 with remote_ip_location_region" do
+  describe "fetch_conformation_expiration/3 with remote_ip_location_region" do
     test "returns error when region is nil regardless of operator" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip_location_region: nil}
+      client = %Portal.Device{type: :client, last_seen_remote_ip_location_region: nil}
 
       is_in_condition = %{
         property: :remote_ip_location_region,
@@ -349,13 +341,12 @@ defmodule Portal.Policies.EvaluatorTest do
       }
 
       # Both should fail when region is unknown - conservative approach
-      assert fetch_conformation_expiration(is_in_condition, client, session, nil) == :error
-      assert fetch_conformation_expiration(is_not_in_condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(is_in_condition, client, nil) == :error
+      assert fetch_conformation_expiration(is_not_in_condition, client, nil) == :error
     end
 
     test "returns ok when region matches is_in values" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip_location_region: "US"}
+      client = %Portal.Device{type: :client, last_seen_remote_ip_location_region: "US"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -363,12 +354,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "returns error when region does not match is_in values" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip_location_region: "GB"}
+      client = %Portal.Device{type: :client, last_seen_remote_ip_location_region: "GB"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -376,12 +366,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(condition, client, nil) == :error
     end
 
     test "returns ok when region does not match is_not_in values" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip_location_region: "GB"}
+      client = %Portal.Device{type: :client, last_seen_remote_ip_location_region: "GB"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -389,12 +378,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "returns error when region matches is_not_in values" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip_location_region: "US"}
+      client = %Portal.Device{type: :client, last_seen_remote_ip_location_region: "US"}
 
       condition = %{
         property: :remote_ip_location_region,
@@ -402,14 +390,13 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["US", "CA"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(condition, client, nil) == :error
     end
   end
 
-  describe "fetch_conformation_expiration/4 with remote_ip" do
+  describe "fetch_conformation_expiration/3 with remote_ip" do
     test "is_in_cidr matches when remote_ip is a raw tuple inside the CIDR" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {192, 168, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {192, 168, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -417,12 +404,14 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "is_in_cidr matches when remote_ip is a %Postgrex.INET{} inside the CIDR" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}}
+      client = %Portal.Device{
+        type: :client,
+        last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
+      }
 
       condition = %{
         property: :remote_ip,
@@ -430,12 +419,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "is_in_cidr does not match when remote_ip is outside the CIDR" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {10, 0, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -443,12 +431,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(condition, client, nil) == :error
     end
 
     test "is_in_cidr matches when remote_ip matches a single IP value" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {192, 168, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {192, 168, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -456,12 +443,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.1"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "is_not_in_cidr returns ok when remote_ip is a raw tuple outside the CIDR" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {10, 0, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -469,12 +455,14 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "is_not_in_cidr returns ok when remote_ip is a %Postgrex.INET{} outside the CIDR" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: %Postgrex.INET{address: {10, 0, 0, 1}}}
+      client = %Portal.Device{
+        type: :client,
+        last_seen_remote_ip: %Postgrex.INET{address: {10, 0, 0, 1}}
+      }
 
       condition = %{
         property: :remote_ip,
@@ -482,12 +470,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "is_not_in_cidr returns error when remote_ip is inside the CIDR" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {192, 168, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {192, 168, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -495,12 +482,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(condition, client, nil) == :error
     end
 
     test "is_in_cidr matches any of multiple CIDR values" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {10, 0, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -508,12 +494,11 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24", "10.0.0.0/8"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, client, nil) == {:ok, nil}
     end
 
     test "is_not_in_cidr returns error if remote_ip is in any of multiple CIDR values" do
-      client = %Portal.Device{type: :client}
-      session = %Portal.ClientSession{remote_ip: {10, 0, 0, 1}}
+      client = %Portal.Device{type: :client, last_seen_remote_ip: {10, 0, 0, 1}}
 
       condition = %{
         property: :remote_ip,
@@ -521,7 +506,7 @@ defmodule Portal.Policies.EvaluatorTest do
         values: ["192.168.0.0/24", "10.0.0.0/8"]
       }
 
-      assert fetch_conformation_expiration(condition, client, session, nil) == :error
+      assert fetch_conformation_expiration(condition, client, nil) == :error
     end
   end
 

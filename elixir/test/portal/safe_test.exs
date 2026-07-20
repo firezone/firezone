@@ -145,20 +145,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:update, Portal.Device, :service_account) == :ok
     end
 
-    test "ClientSession: admin and api_client all actions, account_user/service_account read" do
-      assert Safe.permit(:delete, Portal.ClientSession, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.ClientSession, :api_client) == :ok
-      assert Safe.permit(:read, Portal.ClientSession, :account_user) == :ok
-      assert Safe.permit(:read, Portal.ClientSession, :service_account) == :ok
-    end
-
-    test "GatewaySession: admin and api_client all actions, account_user/service_account read" do
-      assert Safe.permit(:delete, Portal.GatewaySession, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.GatewaySession, :api_client) == :ok
-      assert Safe.permit(:read, Portal.GatewaySession, :account_user) == :ok
-      assert Safe.permit(:read, Portal.GatewaySession, :service_account) == :ok
-    end
-
     test "PolicyAuthorization: any type may read and insert, only admin may delete" do
       for type <- @all_types do
         assert Safe.permit(:read, Portal.PolicyAuthorization, type) == :ok

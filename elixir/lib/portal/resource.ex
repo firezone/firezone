@@ -433,10 +433,10 @@ defmodule Portal.Resource do
 
   def adapt_resource_for_version(
         %{type: :static_device_pool} = resource,
-        %Portal.ClientSession{} = session
+        %Portal.Device{type: :client} = client
       ) do
-    if Portal.Version.client_supports_static_device_pools?(session) do
-      adapt_resource_for_version(resource, session.version)
+    if Portal.Version.client_supports_static_device_pools?(client) do
+      adapt_resource_for_version(resource, client.last_seen_version)
     else
       nil
     end
@@ -444,17 +444,17 @@ defmodule Portal.Resource do
 
   def adapt_resource_for_version(
         %{type: :dynamic_device_pool} = resource,
-        %Portal.ClientSession{} = session
+        %Portal.Device{type: :client} = client
       ) do
-    if Portal.Version.client_supports_dynamic_device_pools?(session) do
-      adapt_resource_for_version(resource, session.version)
+    if Portal.Version.client_supports_dynamic_device_pools?(client) do
+      adapt_resource_for_version(resource, client.last_seen_version)
     else
       nil
     end
   end
 
-  def adapt_resource_for_version(resource, %Portal.ClientSession{version: version}) do
-    adapt_resource_for_version(resource, version)
+  def adapt_resource_for_version(resource, %Portal.Device{type: :client} = client) do
+    adapt_resource_for_version(resource, client.last_seen_version)
   end
 
   def adapt_resource_for_version(resource, client_or_gateway_version) do

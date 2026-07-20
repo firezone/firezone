@@ -439,8 +439,8 @@ defmodule PortalWeb.Sites.Components do
                   legacy token
                 </.badge>
               </div>
-              <p :if={gateway.latest_session} class="font-mono text-xs text-subtle mt-0.5">
-                {gateway.latest_session.remote_ip}
+              <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-subtle mt-0.5">
+                {gateway.last_seen_remote_ip}
               </p>
             </div>
             <.actions_dropdown
@@ -511,8 +511,8 @@ defmodule PortalWeb.Sites.Components do
             </div>
             <div class="flex-1 min-w-0">
               <p class="font-mono text-sm font-medium text-heading truncate">{gateway.name}</p>
-              <p :if={gateway.latest_session} class="font-mono text-xs text-subtle mt-0.5">
-                {gateway.latest_session.remote_ip}
+              <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-subtle mt-0.5">
+                {gateway.last_seen_remote_ip}
               </p>
             </div>
             <span class="text-xs text-error shrink-0">Delete this gateway?</span>
@@ -537,22 +537,22 @@ defmodule PortalWeb.Sites.Components do
             <span class="text-xs text-subtle">Last started</span>
             <span class="text-xs text-heading">
               <.relative_datetime
-                datetime={gateway.latest_session && gateway.latest_session.inserted_at}
+                datetime={gateway.last_seen_at}
                 popover={false}
                 empty="Unknown"
               />
             </span>
             <span class="text-xs text-subtle">Remote IP</span>
             <span class="text-xs text-heading">
-              <.last_seen schema={gateway.latest_session} />
+              <.last_seen schema={gateway} />
             </span>
             <span class="text-xs text-subtle">Version</span>
             <span class="font-mono text-xs text-heading">
-              {gateway.latest_session && gateway.latest_session.version}
+              {gateway.last_seen_version}
             </span>
             <span class="text-xs text-subtle">User agent</span>
             <span class="font-mono text-xs text-heading break-all">
-              {gateway.latest_session && gateway.latest_session.user_agent}
+              {gateway.last_seen_user_agent}
             </span>
             <span class="text-xs text-subtle">Tunnel IPv4</span>
             <span class="font-mono text-xs text-heading">
@@ -854,8 +854,8 @@ defmodule PortalWeb.Sites.Components do
   end
 
   # Whether the gateway's active single-owner token is actually in use.
-  # latest_session is a proxy for the server-side "ever referenced by a
-  # session" check that decides between grace-period rotation and outright
+  # gateway_token_id is a proxy for the server-side "referenced by a device"
+  # check that decides between grace-period rotation and outright
   # replacement - it matches exactly for never-connected gateways.
   defp active_token_state(device_tokens, gateway) do
     active =
@@ -865,14 +865,14 @@ defmodule PortalWeb.Sites.Components do
 
     cond do
       is_nil(active) -> :none
-      gateway.latest_session && gateway.latest_session.gateway_token_id == active.id -> :in_use
+      gateway.gateway_token_id == active.id -> :in_use
       true -> :never_used
     end
   end
 
   defp legacy_connected?(gateway, legacy_token_ids) do
-    gateway.latest_session != nil and
-      MapSet.member?(legacy_token_ids, gateway.latest_session.gateway_token_id)
+    gateway.gateway_token_id != nil and
+      MapSet.member?(legacy_token_ids, gateway.gateway_token_id)
   end
 
   # A gateway still connected with a legacy token is mid-upgrade even if a
@@ -928,23 +928,22 @@ defmodule PortalWeb.Sites.Components do
   end
 
   defp session_token_status(gateway, active, rotated, legacy_token_ids) do
-    session = gateway.latest_session
     verb = if gateway.online?, do: "Connected with", else: "Last connected with"
 
     cond do
-      is_nil(session) and active ->
+      is_nil(gateway.last_seen_at) and active ->
         "Never connected - Gateway token provisioned"
 
-      is_nil(session) ->
+      is_nil(gateway.last_seen_at) ->
         "Never connected - No token provisioned"
 
-      active && session.gateway_token_id == active.id ->
+      active && gateway.gateway_token_id == active.id ->
         "#{verb} gateway token"
 
-      rotated && session.gateway_token_id == rotated.id ->
+      rotated && gateway.gateway_token_id == rotated.id ->
         expiring_status(verb, active)
 
-      MapSet.member?(legacy_token_ids, session.gateway_token_id) ->
+      MapSet.member?(legacy_token_ids, gateway.gateway_token_id) ->
         with_unused_token_note("#{verb} legacy site token", active)
 
       true ->

@@ -119,7 +119,6 @@ defmodule Portal.Workers.OutdatedGateways do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.ClientSession
     alias Portal.Device
 
     def all_accounts_pending_notification! do
@@ -160,26 +159,12 @@ defmodule Portal.Workers.OutdatedGateways do
       from(c in Device, as: :clients)
       |> where([clients: c], c.type == :client)
       |> where([clients: c], c.account_id == ^account.id)
-      |> join(
-        :inner_lateral,
-        [clients: c],
-        s in subquery(
-          from(s in ClientSession,
-            where: s.device_id == parent_as(:clients).id,
-            where: s.account_id == parent_as(:clients).account_id,
-            order_by: [desc: s.inserted_at],
-            limit: 1
-          )
-        ),
-        on: true,
-        as: :latest_session
-      )
-      |> where([latest_session: s], s.inserted_at > ago(1, "week"))
+      |> where([clients: c], c.last_seen_at > ago(1, "week"))
       |> where(
-        [latest_session: s],
-        fragment("split_part(?, '.', 1)::int", s.version) < ^g_major or
-          (fragment("split_part(?, '.', 1)::int", s.version) == ^g_major and
-             fragment("split_part(?, '.', 2)::int", s.version) <= ^(g_minor - 2))
+        [clients: c],
+        fragment("split_part(?, '.', 1)::int", c.last_seen_version) < ^g_major or
+          (fragment("split_part(?, '.', 1)::int", c.last_seen_version) == ^g_major and
+             fragment("split_part(?, '.', 2)::int", c.last_seen_version) <= ^(g_minor - 2))
       )
       |> join(:inner, [clients: c], a in Portal.Actor,
         on: c.actor_id == a.id and c.account_id == a.account_id,
@@ -191,35 +176,12 @@ defmodule Portal.Workers.OutdatedGateways do
     end
 
     def all_gateways_for_account!(account) do
-      gateways =
-        from(g in Device,
-          where: g.type == :gateway,
-          where: g.account_id == ^account.id
-        )
-        |> Safe.unscoped(:replica)
-        |> Safe.all()
-
-      preload_latest_sessions(gateways)
-    end
-
-    defp preload_latest_sessions(gateways) do
-      account_ids = gateways |> Enum.map(& &1.account_id) |> Enum.uniq()
-      gateway_ids = Enum.map(gateways, & &1.id)
-
-      sessions_by_gateway_id =
-        from(s in Portal.GatewaySession,
-          where: s.account_id in ^account_ids,
-          where: s.device_id in ^gateway_ids,
-          distinct: s.device_id,
-          order_by: [asc: s.device_id, desc: s.inserted_at]
-        )
-        |> Safe.unscoped(:replica)
-        |> Safe.all()
-        |> Map.new(&{&1.device_id, &1})
-
-      Enum.map(gateways, fn gateway ->
-        %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}
-      end)
+      from(g in Device,
+        where: g.type == :gateway,
+        where: g.account_id == ^account.id
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.all()
     end
 
     def all_sites_for_account!(account) do

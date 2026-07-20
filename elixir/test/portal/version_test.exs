@@ -58,123 +58,159 @@ defmodule Portal.VersionTest do
       ]
 
       for {user_agent, unsupported_version, supported_version} <- cases do
-        refute Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
-                 version: unsupported_version,
-                 user_agent: user_agent
+        refute Portal.Version.client_supports_sites_payload?(%Portal.Device{
+                 type: :client,
+                 last_seen_version: unsupported_version,
+                 last_seen_user_agent: user_agent
                })
 
-        assert Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
-                 version: supported_version,
-                 user_agent: user_agent
+        assert Portal.Version.client_supports_sites_payload?(%Portal.Device{
+                 type: :client,
+                 last_seen_version: supported_version,
+                 last_seen_user_agent: user_agent
                })
       end
     end
 
     test "returns false for nil or invalid versions" do
-      refute Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
-               version: nil,
-               user_agent: "Windows/10.0.22631 gui-client/1.5.10"
+      refute Portal.Version.client_supports_sites_payload?(%Portal.Device{
+               type: :client,
+               last_seen_version: nil,
+               last_seen_user_agent: "Windows/10.0.22631 gui-client/1.5.10"
              })
 
-      refute Portal.Version.client_supports_sites_payload?(%Portal.ClientSession{
-               version: "not-a-version",
-               user_agent: "Windows/10.0.22631 gui-client/not-a-version"
+      refute Portal.Version.client_supports_sites_payload?(%Portal.Device{
+               type: :client,
+               last_seen_version: "not-a-version",
+               last_seen_user_agent: "Windows/10.0.22631 gui-client/not-a-version"
              })
     end
   end
 
-  describe "resource_cannot_change_sites_on_client?/1 with ClientSession" do
-    test "apple session below version cannot change sites" do
-      session = %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "apple session at version cannot change sites" do
-      session = %Portal.ClientSession{version: "1.5.8", user_agent: "Mac OS X"}
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "apple session above version can change sites" do
-      session = %Portal.ClientSession{version: "1.5.9", user_agent: "Mac OS X"}
-      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "android session below version cannot change sites" do
-      session = %Portal.ClientSession{version: "1.5.3", user_agent: "Android"}
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "android session at version cannot change sites" do
-      session = %Portal.ClientSession{version: "1.5.4", user_agent: "Android"}
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "android session above version can change sites" do
-      session = %Portal.ClientSession{version: "1.5.5", user_agent: "Android"}
-      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "gui session below version cannot change sites" do
-      session = %Portal.ClientSession{version: "1.5.7", user_agent: "Windows"}
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "gui session at version cannot change sites" do
-      session = %Portal.ClientSession{version: "1.5.8", user_agent: "Windows"}
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "gui session above version can change sites" do
-      session = %Portal.ClientSession{version: "1.5.9", user_agent: "Windows"}
-      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "headless session below version cannot change sites" do
-      session = %Portal.ClientSession{
-        version: "1.5.3",
-        user_agent: "Fedora/42.0.0 headless-client/1.5.3 (arm64; 24.1.0)"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "headless session at version cannot change sites" do
-      session = %Portal.ClientSession{
-        version: "1.5.4",
-        user_agent: "Fedora/42.0.0 headless-client/1.5.4 (arm64; 24.1.0)"
-      }
-
-      assert Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "headless session above version can change sites" do
-      session = %Portal.ClientSession{
-        version: "1.5.5",
-        user_agent: "Fedora/42.0.0 headless-client/1.5.5 (arm64; 24.1.0)"
-      }
-
-      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-
-    test "nil version returns false" do
-      session = %Portal.ClientSession{version: nil}
-      refute Portal.Version.resource_cannot_change_sites_on_client?(session)
-    end
-  end
-
-  describe "resource_cannot_change_sites_on_client?/1 with Device" do
-    test "client with nil latest_session returns false" do
-      client = %Portal.Device{type: :client, latest_session: nil}
-      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
-    end
-
-    test "client delegates to session" do
+  describe "resource_cannot_change_sites_on_client?/1" do
+    test "apple client below version cannot change sites" do
       client = %Portal.Device{
         type: :client,
-        latest_session: %Portal.ClientSession{version: "1.5.7", user_agent: "Mac OS X"}
+        last_seen_version: "1.5.7",
+        last_seen_user_agent: "Mac OS X"
       }
 
       assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "apple client at version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.8",
+        last_seen_user_agent: "Mac OS X"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "apple client above version can change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.9",
+        last_seen_user_agent: "Mac OS X"
+      }
+
+      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "android client below version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.3",
+        last_seen_user_agent: "Android"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "android client at version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.4",
+        last_seen_user_agent: "Android"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "android client above version can change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.5",
+        last_seen_user_agent: "Android"
+      }
+
+      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "gui client below version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.7",
+        last_seen_user_agent: "Windows"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "gui client at version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.8",
+        last_seen_user_agent: "Windows"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "gui client above version can change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.9",
+        last_seen_user_agent: "Windows"
+      }
+
+      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "headless client below version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.3",
+        last_seen_user_agent: "Fedora/42.0.0 headless-client/1.5.3 (arm64; 24.1.0)"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "headless client at version cannot change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.4",
+        last_seen_user_agent: "Fedora/42.0.0 headless-client/1.5.4 (arm64; 24.1.0)"
+      }
+
+      assert Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "headless client above version can change sites" do
+      client = %Portal.Device{
+        type: :client,
+        last_seen_version: "1.5.5",
+        last_seen_user_agent: "Fedora/42.0.0 headless-client/1.5.5 (arm64; 24.1.0)"
+      }
+
+      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "nil last_seen_version returns false" do
+      client = %Portal.Device{type: :client, last_seen_version: nil}
+      refute Portal.Version.resource_cannot_change_sites_on_client?(client)
     end
   end
 
@@ -188,27 +224,31 @@ defmodule Portal.VersionTest do
       ]
 
       for {user_agent, unsupported_version, supported_version} <- cases do
-        refute Portal.Version.supports_device_access?(%Portal.ClientSession{
-                 version: unsupported_version,
-                 user_agent: user_agent
+        refute Portal.Version.supports_device_access?(%Portal.Device{
+                 type: :client,
+                 last_seen_version: unsupported_version,
+                 last_seen_user_agent: user_agent
                })
 
-        assert Portal.Version.supports_device_access?(%Portal.ClientSession{
-                 version: supported_version,
-                 user_agent: user_agent
+        assert Portal.Version.supports_device_access?(%Portal.Device{
+                 type: :client,
+                 last_seen_version: supported_version,
+                 last_seen_user_agent: user_agent
                })
       end
     end
 
-    test "returns false for nil version or user_agent" do
-      refute Portal.Version.supports_device_access?(%Portal.ClientSession{
-               version: nil,
-               user_agent: "Mac OS/14 apple-client/1.5.14"
+    test "returns false for nil last_seen_version or last_seen_user_agent" do
+      refute Portal.Version.supports_device_access?(%Portal.Device{
+               type: :client,
+               last_seen_version: nil,
+               last_seen_user_agent: "Mac OS/14 apple-client/1.5.14"
              })
 
-      refute Portal.Version.supports_device_access?(%Portal.ClientSession{
-               version: "1.5.14",
-               user_agent: nil
+      refute Portal.Version.supports_device_access?(%Portal.Device{
+               type: :client,
+               last_seen_version: "1.5.14",
+               last_seen_user_agent: nil
              })
     end
   end

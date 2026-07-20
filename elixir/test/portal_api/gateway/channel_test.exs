@@ -23,8 +23,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   import Portal.TokenFixtures
 
   defp join_channel(gateway, site, token, opts \\ []) do
-    device = fetch_device!(gateway)
-    session = build_gateway_session(gateway, token, opts)
+    device = with_session(fetch_device!(gateway), token, opts)
     channel = Keyword.get(opts, :channel, PortalAPI.Gateway.Channel)
 
     socket_module =
@@ -38,7 +37,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         token_id: token.id,
         gateway: device,
         site: site,
-        session: session,
+        conn_id: Keyword.get_lazy(opts, :conn_id, fn -> make_ref() end),
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -51,8 +50,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   # process, so the channel's `Process.link(transport_pid)` targets our fake
   # trapping transport. Mirrors `join_channel/4` otherwise.
   defp join_channel_with_transport(gateway, site, token, transport_pid) do
-    device = fetch_device!(gateway)
-    session = build_gateway_session(gateway, token)
+    device = with_session(fetch_device!(gateway), token, [])
 
     base =
       PortalAPI.Gateway.Socket
@@ -60,7 +58,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         token_id: token.id,
         gateway: device,
         site: site,
-        session: session,
+        conn_id: make_ref(),
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -97,29 +95,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
-  defp build_gateway_session(gateway, token, opts \\ []) do
-    %Portal.GatewaySession{
-      id: Keyword.get_lazy(opts, :session_id, &Ecto.UUID.generate/0),
-      device_id: gateway.id,
-      account_id: gateway.account_id,
-      gateway_token_id: token.id,
-      public_key: gateway.latest_session && gateway.latest_session.public_key,
-      user_agent: "Firezone-Gateway/1.3.0",
-      remote_ip: gateway.latest_session && gateway.latest_session.remote_ip,
-      remote_ip_location_region:
-        gateway.latest_session && gateway.latest_session.remote_ip_location_region,
-      remote_ip_location_city:
-        gateway.latest_session && gateway.latest_session.remote_ip_location_city,
-      remote_ip_location_lat:
-        gateway.latest_session && gateway.latest_session.remote_ip_location_lat,
-      remote_ip_location_lon:
-        gateway.latest_session && gateway.latest_session.remote_ip_location_lon,
-      version:
-        Keyword.get(
-          opts,
-          :version,
-          (gateway.latest_session && gateway.latest_session.version) || "1.3.0"
-        )
+  # Mirrors Socket.connect's apply_session: the connection snapshot lives on
+  # the Device struct.
+  defp with_session(gateway, token, opts) do
+    %{
+      gateway
+      | gateway_token_id: token.id,
+        last_seen_user_agent: "Firezone-Gateway/1.3.0",
+        last_seen_version: Keyword.get(opts, :version, gateway.last_seen_version || "1.3.0"),
+        last_seen_at: DateTime.utc_now()
     }
   end
 
@@ -178,7 +162,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
     site = site_fixture(account: account)
     gateway_record = gateway_fixture(account: account, site: site)
     gateway = fetch_device!(gateway_record)
-    gateway = %{gateway | latest_session: gateway_record.latest_session}
 
     resource =
       dns_resource_fixture(
@@ -231,19 +214,20 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(gateway, site, token, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(gateway, site, token, conn_id: conn_id)
       assert_push "init", _init_payload
 
       Portal.Queue.flush(:gateway_session_queue)
 
-      persisted = Portal.Repo.get_by!(Portal.GatewaySession, id: session_id)
-      assert persisted.device_id == gateway.id
-      assert persisted.account_id == gateway.account_id
+      persisted =
+        Portal.Repo.get_by!(Portal.Device, id: gateway.id, account_id: gateway.account_id)
+
       assert persisted.gateway_token_id == token.id
-      assert persisted.public_key == socket.assigns.session.public_key
-      assert persisted.user_agent == socket.assigns.session.user_agent
-      assert persisted.version == socket.assigns.session.version
+      assert persisted.public_key == socket.assigns.gateway.public_key
+      assert persisted.last_seen_user_agent == socket.assigns.gateway.last_seen_user_agent
+      assert persisted.last_seen_version == socket.assigns.gateway.last_seen_version
+      assert persisted.last_seen_at
     end
 
     test "session_durability timer is cancelled by the queue's confirm message", %{
@@ -251,11 +235,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(gateway, site, token, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(gateway, site, token, conn_id: conn_id)
       assert_push "init", _init_payload
 
-      assert {^session_id, _generation, _timer_ref} =
+      assert {^conn_id, _timer_ref} =
                :sys.get_state(socket.channel_pid).assigns.session_durability
 
       Portal.Queue.flush(:gateway_session_queue)
@@ -1178,19 +1162,19 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(gateway, site, token, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(gateway, site, token, conn_id: conn_id)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+      assert {^conn_id, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:confirm_session_durability, session_id})
+      send(socket.channel_pid, {:confirm_session_durability, conn_id})
 
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.session_durability == nil
 
-      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
+      send(socket.channel_pid, {:session_durability_timeout, conn_id})
       refute_push "disconnect", _
     end
 
@@ -1202,14 +1186,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
          } do
       Process.flag(:trap_exit, true)
 
-      session_id = Ecto.UUID.generate()
-      socket = join_channel(gateway, site, token, session_id: session_id)
+      conn_id = make_ref()
+      socket = join_channel(gateway, site, token, conn_id: conn_id)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^session_id, generation, _timer_ref} = state.assigns.session_durability
+      assert {^conn_id, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:session_durability_timeout, session_id, generation})
+      send(socket.channel_pid, {:session_durability_timeout, conn_id})
 
       assert_receive {:EXIT, _pid, :shutdown}
       refute_push "disconnect", _
@@ -2482,14 +2466,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       # Create a new socket with the session set to an old version (< 1.2.0)
-      session = %{build_gateway_session(gateway, token) | version: "1.1.0"}
+      gateway = with_session(gateway, token, version: "1.1.0")
 
       {:ok, _, socket} =
         PortalAPI.Gateway.Socket
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
           gateway: gateway,
-          session: session,
+          conn_id: make_ref(),
           site: site,
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2552,7 +2536,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.session.version, "1.1.0")
+        put_in(state.assigns.gateway.last_seen_version, "1.1.0")
       end)
 
       # Create a DNS resource with an address that can't be adapted
@@ -2603,7 +2587,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.session.version, "1.1.0")
+        put_in(state.assigns.gateway.last_seen_version, "1.1.0")
       end)
 
       # Create a DNS resource with an address that needs adaptation for old versions
@@ -2705,13 +2689,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
       :ok = Portal.Presence.Relays.connect(relay2)
 
-      session = build_gateway_session(gateway, token)
+      gateway = with_session(gateway, token, [])
 
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        session: session,
+        conn_id: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2757,13 +2741,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       relay = relay_fixture(%{lat: 37.0, lon: -120.0})
 
-      session = build_gateway_session(gateway, token)
+      gateway = with_session(gateway, token, [])
 
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        session: session,
+        conn_id: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -3371,7 +3355,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       public_key = Portal.DeviceFixtures.generate_public_key()
       site_id = gateway.site_id
       gateway_id = gateway.id
-      gateway_public_key = gateway.latest_session.public_key
+      gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -3824,7 +3808,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       public_key = Portal.DeviceFixtures.generate_public_key()
-      gateway_public_key = gateway.latest_session.public_key
+      gateway_public_key = gateway.public_key
       payload = "RTC_SD"
 
       :ok = Portal.Presence.Relays.connect(relay)
@@ -4000,13 +3984,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
-      session = build_gateway_session(gateway, token)
+      gateway = with_session(gateway, token, [])
 
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        session: session,
+        conn_id: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -4044,13 +4028,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
-      session = build_gateway_session(gateway, token)
+      gateway = with_session(gateway, token, [])
 
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        session: session,
+        conn_id: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -4097,13 +4081,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay1)
 
-      session = build_gateway_session(gateway, token)
+      gateway = with_session(gateway, token, [])
 
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        session: session,
+        conn_id: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -4147,13 +4131,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :ok = Portal.Presence.Relays.connect(relay)
 
-      session = build_gateway_session(gateway, token)
+      gateway = with_session(gateway, token, [])
 
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        session: session,
+        conn_id: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")

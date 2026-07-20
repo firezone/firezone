@@ -194,7 +194,7 @@ defmodule PortalWeb.ClientsTest do
       assert html =~ "Tunnel IPv6"
       assert html =~ "Verification"
       assert html =~ "Verified"
-      assert html =~ session.version
+      assert html =~ session.last_seen_version
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/clients")

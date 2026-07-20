@@ -7,11 +7,9 @@ defmodule Portal.Dev.AccountPopulation do
   alias Portal.Actor
   alias Portal.AuthProvider
   alias Portal.Authentication
-  alias Portal.ClientSession
   alias Portal.Crypto
   alias Portal.Device
   alias Portal.EmailOTP
-  alias Portal.GatewaySession
   alias Portal.Group
   alias Portal.Membership
   alias Portal.Policy
@@ -787,37 +785,21 @@ defmodule Portal.Dev.AccountPopulation do
           {token, put_in(state.gateway_tokens[site.id], token)}
       end
 
-    %GatewaySession{}
-    |> cast(
-      %{
-        account_id: state.account.id,
-        device_id: gateway.id,
-        gateway_token_id: token.id,
+    gateway =
+      gateway
+      |> change(
         public_key: "gateway-public-key-#{index}",
-        user_agent: @gateway_user_agent,
-        remote_ip: @default_gateway_remote_ip,
-        remote_ip_location_region: "US-CA",
-        remote_ip_location_city: "San Francisco",
-        remote_ip_location_lat: 37.7749,
-        remote_ip_location_lon: -122.4194,
-        version: "1.4.0"
-      },
-      [
-        :account_id,
-        :device_id,
-        :gateway_token_id,
-        :public_key,
-        :user_agent,
-        :remote_ip,
-        :remote_ip_location_region,
-        :remote_ip_location_city,
-        :remote_ip_location_lat,
-        :remote_ip_location_lon,
-        :version
-      ]
-    )
-    |> GatewaySession.changeset()
-    |> Repo.insert!()
+        last_seen_user_agent: @gateway_user_agent,
+        last_seen_remote_ip: @default_gateway_remote_ip,
+        last_seen_remote_ip_location_region: "US-CA",
+        last_seen_remote_ip_location_city: "San Francisco",
+        last_seen_remote_ip_location_lat: 37.7749,
+        last_seen_remote_ip_location_lon: -122.4194,
+        last_seen_version: "1.4.0",
+        last_seen_at: DateTime.utc_now(),
+        gateway_token_id: token.id
+      )
+      |> Repo.update!()
 
     {gateway, state}
   end
@@ -859,37 +841,21 @@ defmodule Portal.Dev.AccountPopulation do
       |> Device.changeset()
       |> Repo.insert!()
 
-    %ClientSession{}
-    |> cast(
-      %{
-        account_id: state.account.id,
-        device_id: client.id,
-        client_token_id: token.id,
+    client =
+      client
+      |> change(
         public_key: "client-public-key-#{index}",
-        user_agent: @default_user_agent,
-        remote_ip: @default_client_remote_ip,
-        remote_ip_location_region: "US",
-        remote_ip_location_city: "New York",
-        remote_ip_location_lat: 40.7128,
-        remote_ip_location_lon: -74.0060,
-        version: "1.4.0"
-      },
-      [
-        :account_id,
-        :device_id,
-        :client_token_id,
-        :public_key,
-        :user_agent,
-        :remote_ip,
-        :remote_ip_location_region,
-        :remote_ip_location_city,
-        :remote_ip_location_lat,
-        :remote_ip_location_lon,
-        :version
-      ]
-    )
-    |> ClientSession.changeset()
-    |> Repo.insert!()
+        last_seen_user_agent: @default_user_agent,
+        last_seen_remote_ip: @default_client_remote_ip,
+        last_seen_remote_ip_location_region: "US",
+        last_seen_remote_ip_location_city: "New York",
+        last_seen_remote_ip_location_lat: 40.7128,
+        last_seen_remote_ip_location_lon: -74.0060,
+        last_seen_version: "1.4.0",
+        last_seen_at: DateTime.utc_now(),
+        client_token_id: token.id
+      )
+      |> Repo.update!()
 
     {client, state}
   end

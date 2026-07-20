@@ -327,7 +327,7 @@ defmodule Portal.AuthenticationTest do
       assert subject.account.id == account.id
     end
 
-    test "does not update last_seen fields on client token (moved to client_sessions)" do
+    test "does not update last_seen fields on client token (recorded on devices)" do
       encoded = encode_token(client_token_fixture())
 
       context =
@@ -343,9 +343,9 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, subject} = authenticate(encoded, context)
 
-      # Client tokens no longer track last_seen_* — session data is stored in ClientSession
+      # Client tokens no longer track last_seen_* — session data is stored on the device
       updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
-      assert is_nil(updated_token.latest_session)
+      assert is_nil(updated_token.last_used_device)
     end
 
     test "returns error when actor is deleted" do
@@ -1164,7 +1164,7 @@ defmodule Portal.AuthenticationTest do
       assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
-    test "does not update last_seen fields on client token (moved to client_sessions)" do
+    test "does not update last_seen fields on client token (recorded on devices)" do
       token = client_token_fixture()
       encoded = encode_token(token)
 
@@ -1177,9 +1177,9 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _used_token} = use_token(encoded, context)
 
-      # Client tokens no longer track last_seen_* — session data is stored in ClientSession
+      # Client tokens no longer track last_seen_* — session data is stored on the device
       updated_token = Repo.get_by(ClientToken, id: token.id)
-      assert is_nil(updated_token.latest_session)
+      assert is_nil(updated_token.last_used_device)
     end
 
     test "can use token multiple times" do
