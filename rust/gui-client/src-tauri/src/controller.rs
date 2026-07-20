@@ -512,9 +512,16 @@ impl<I: GuiIntegration> Controller<I> {
                 self.send_ipc(&service::ClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
             }
-            ExportLogs { path, stem } => logging::export_logs_to(path, stem)
-                .await
-                .context("Failed to export logs to zip")?,
+            ExportLogs { path, stem } => {
+                // Exporting logs is a best-effort diagnostic action, so a failure must
+                // notify the user rather than bring down the whole controller.
+                if let Err(error) = logging::export_logs_to(path, stem).await {
+                    tracing::error!("Failed to export logs: {error:#}");
+                    let _ = self
+                        .integration
+                        .show_notification("Failed to export logs", format!("{error:#}"));
+                }
+            }
             Fail(Failure::Crash) => {
                 tracing::error!("Crashing on purpose");
                 // SAFETY: Crashing is unsafe
