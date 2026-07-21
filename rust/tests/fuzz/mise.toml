@@ -1,0 +1,38 @@
+# Fuzzing runs on a dedicated nightly toolchain. It is declared here instead
+# of in `rust/mise.toml` so that only fuzzing jobs pay for installing it;
+# `mise install --cd rust` does not pick it up.
+#
+# mise defers to rustup for the toolchain itself and activates it by setting
+# `RUSTUP_TOOLCHAIN`, so the tasks below run plain `cargo` commands without a
+# `rustup run <version>` prefix.
+
+[tools]
+rust = { version = "nightly-2026-03-30", profile = "minimal", components = "rust-src,llvm-tools-preview" }
+"cargo:cargo-fuzz" = { version = "0.13.2", os = ["linux"] }
+
+[env]
+# LTO conflicts with the libFuzzer instrumentation.
+CARGO_PROFILE_RELEASE_LTO = "false"
+
+[tasks.fuzz]
+description = "Run a fuzz target; extra args are passed to libFuzzer"
+usage = '''
+arg "target"
+arg "libfuzzer_args" var=#true default=""
+'''
+run = 'cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target ${usage_target} -- ${usage_libfuzzer_args}'
+
+[tasks.cmin]
+description = "Minimize the corpus of a fuzz target"
+usage = 'arg "target"'
+run = 'cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target ${usage_target}'
+
+[tasks.coverage]
+description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
+usage = 'arg "target"'
+run = 'cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target ${usage_target}'
+
+[tasks.llvm-cov]
+description = "Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
+usage = 'arg "llvm_cov_args" var=#true'
+run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" ${usage_llvm_cov_args}'

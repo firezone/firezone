@@ -1,0 +1,9 @@
+# The eBPF program is compiled with this exact nightly toolchain: `aya_build`
+# invokes it via `rustup run` (see `../server/build.rs`; keep the two pins in
+# sync). It is declared here instead of in `rust/mise.toml` so that only jobs
+# which compile the relay install it; `mise install --cd rust` does not pick
+# it up.
+
+[tools]
+rust = { version = "nightly-2025-05-30", profile = "minimal", components = "rust-src", os = ["linux"] }
+"github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }

@@ -4,10 +4,6 @@
 version = "3.7.0"
 backend = "cargo:cargo-deb"
 
-[[tools."cargo:cargo-fuzz"]]
-version = "0.13.2"
-backend = "cargo:cargo-fuzz"
-
 [[tools."github:Boshen/cargo-shear"]]
 version = "1.12.4"
 backend = "github:Boshen/cargo-shear"
@@ -116,40 +112,6 @@ url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets
 checksum = "sha256:410b2f2bcb4d802dd8b018939156617ca290ac06554e95c35ab0a2bd07be2298"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/cargo-deny-0.19.4-x86_64-pc-windows-msvc.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396997478"
-
-[[tools."github:aya-rs/bpf-linker"]]
-version = "0.10.3"
-backend = "github:aya-rs/bpf-linker"
-
-[tools."github:aya-rs/bpf-linker"."platforms.linux-arm64"]
-checksum = "sha256:02f71967eddf61229fd0ae39736bfcaa00b27872df5af868b025f578371204d1"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525950"
-
-[tools."github:aya-rs/bpf-linker"."platforms.linux-arm64-musl"]
-checksum = "sha256:02f71967eddf61229fd0ae39736bfcaa00b27872df5af868b025f578371204d1"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525950"
-
-[tools."github:aya-rs/bpf-linker"."platforms.linux-x64"]
-checksum = "sha256:0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525972"
-
-[tools."github:aya-rs/bpf-linker"."platforms.linux-x64-musl"]
-checksum = "sha256:0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525972"
-
-[tools."github:aya-rs/bpf-linker"."platforms.macos-arm64"]
-checksum = "sha256:983f86e20f5353c9645e6ee314dcd897133c613315b57b00c7e75ddb507ee6a3"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525317"
-
-[tools."github:aya-rs/bpf-linker"."platforms.macos-x64"]
-checksum = "sha256:8dbea75f14d96e84a5fe7ce6120627e3c3511a49c406e76c14d187dc191ca528"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395527257"
 
 [[tools."github:cargo-bins/cargo-binstall"]]
 version = "1.18.1"

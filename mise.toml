@@ -12,6 +12,8 @@ config_roots = [
     "elixir",
     "kotlin/android",
     "rust",
+    "rust/relay/ebpf-turn-router",
+    "rust/tests/fuzz",
     "swift/apple",
 ]
 
