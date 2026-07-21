@@ -654,7 +654,11 @@ pub(crate) fn roam_client(
         client_id,
         nat_ip4s(),
         (0u64..3000).prop_map(Duration::from_millis),
-        (0u64..3000).prop_map(Duration::from_millis),
+        // Re-connecting to the portal takes at least a TCP + TLS + websocket handshake,
+        // so 100ms is a lower bound even on an excellent network. The ceiling keeps most
+        // sampled windows longer than the ~2s TURN re-handshake, so candidates gathered
+        // while the portal is still down are a common, not a rare, case.
+        (100u64..10_000).prop_map(Duration::from_millis),
     )
         .prop_map(
             |(ip_stack, client_id, nat_ip4, dead_window, portal_window)| Transition::RoamClient {
