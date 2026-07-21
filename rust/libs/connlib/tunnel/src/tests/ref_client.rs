@@ -1322,7 +1322,7 @@ pub(crate) fn ref_client_host(
         any_ip_stack(),
         listening_port(),
         ref_client(id, tunnel_ip4s, tunnel_ip6s, system_dns),
-        latency(250), // TODO: Increase with #6062.
+        latency(250),           // TODO: Increase with #6062.
         Just(FilterMode::Open), // TODO: Sample filter modes for clients too.
     )
 }
