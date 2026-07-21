@@ -32,17 +32,17 @@ jobs:
       - uses: ./.github/actions/setup-rust-target-dependency-cache
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ hashFiles('rust/relay/ebpf-turn-router/mise.toml') }}
+          key: ${{ hashFiles('rust/mise.toml') }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
-      # `--cd` points at the eBPF crate so that its nightly toolchain is
-      # installed too; the parent `rust/mise.toml` tools are included via
-      # config inheritance.
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: --cd rust/relay/ebpf-turn-router
+          install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only Linux compiles the eBPF program (`--all-features` enables it).
+      - run: mise run //rust:install-ebpf-toolchain
+        if: runner.os == 'Linux'
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
@@ -83,9 +83,12 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: --cd rust/relay/ebpf-turn-router
+          install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only Linux compiles the eBPF program (`--all-features` enables it).
+      - run: mise run //rust:install-ebpf-toolchain
+        if: runner.os == 'Linux'
       - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash

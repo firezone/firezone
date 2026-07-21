@@ -253,13 +253,13 @@ jobs:
         with:
           key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # The relay additionally needs the eBPF nightly toolchain and
-      # `bpf-linker`, declared in the eBPF crate's own mise config.
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: --cd rust${{ matrix.name.package == 'firezone-relay' && '/relay/ebpf-turn-router' || '' }}
+          install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise run //rust:install-ebpf-toolchain
+        if: matrix.name.package == 'firezone-relay'
       - name: Build binaries
         run: |
           set -xe
