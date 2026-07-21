@@ -508,6 +508,114 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "find_or_create_client/2" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "attested identifier match wins over firezone_id and upserts firezone_id", %{
+      account: account,
+      actor: actor
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          attested_device_serial: "SN-ATT-1",
+          firezone_id: "fz-old"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Reinstalled Client",
+          "firezone_id" => "fz-new",
+          "attested_device_serial" => "SN-ATT-1"
+        })
+
+      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+      assert client.id == existing.id
+      assert client.firezone_id == "fz-new"
+      assert [_only_one] = Portal.Repo.all(actor_devices_query(account, actor))
+    end
+
+    test "attested identifiers with no match insert a new device", %{
+      account: account,
+      actor: actor
+    } do
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "New Client",
+          "firezone_id" => "fz-1",
+          "attested_device_serial" => "SN-NEW-1"
+        })
+
+      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+      assert client.attested_device_serial == "SN-NEW-1"
+      assert client.firezone_id == "fz-1"
+    end
+
+    test "without attested identifiers the firezone_id lookup is unchanged", %{
+      account: account,
+      actor: actor
+    } do
+      existing = client_fixture(account: account, actor: actor, firezone_id: "fz-same")
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Same Client",
+          "firezone_id" => "fz-same"
+        })
+
+      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+      assert client.id == existing.id
+    end
+
+    test "attested identifiers are unique per actor", %{account: account, actor: actor} do
+      client_fixture(
+        account: account,
+        actor: actor,
+        attested_device_serial: "SN-DUP",
+        firezone_id: "fz-a"
+      )
+
+      assert {:error, changeset} =
+               device_trust_changeset(account, actor, %{
+                 "name" => "Duplicate",
+                 "firezone_id" => "fz-b",
+                 "attested_device_serial" => "SN-DUP"
+               })
+               |> Portal.Safe.unscoped()
+               |> Portal.Safe.insert()
+
+      assert {"has already been taken", _} = changeset.errors[:attested_device_serial]
+    end
+  end
+
+  defp device_trust_changeset(account, actor, attrs) do
+    %Portal.Device{}
+    |> Ecto.Changeset.cast(attrs, [
+      :name,
+      :firezone_id,
+      :attested_device_serial,
+      :attested_device_uuid,
+      :attested_mdm_device_id
+    ])
+    |> Ecto.Changeset.put_change(:type, :client)
+    |> Ecto.Changeset.put_change(:account_id, account.id)
+    |> Ecto.Changeset.put_change(:actor_id, actor.id)
+    |> Portal.Device.changeset()
+  end
+
+  defp actor_devices_query(account, actor) do
+    import Ecto.Query
+
+    from(d in Portal.Device,
+      where: d.account_id == ^account.id and d.actor_id == ^actor.id and d.type == :client
+    )
+  end
+
   defp connect_attrs(attrs) do
     valid_client_attrs()
     |> then(fn attrs -> %{external_id: attrs.firezone_id} end)

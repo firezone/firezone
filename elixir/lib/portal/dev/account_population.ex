@@ -824,8 +824,7 @@ defmodule Portal.Dev.AccountPopulation do
           device_uuid: Ecto.UUID.generate(),
           device_serial: "SN#{index}",
           identifier_for_vendor: "ifv-#{index}",
-          verified_at: if(verified?, do: DateTime.utc_now(), else: nil),
-          verification_method: if(verified?, do: :manual, else: nil)
+          verified_at: if(verified?, do: DateTime.utc_now(), else: nil)
         },
         [
           :name,
@@ -833,8 +832,7 @@ defmodule Portal.Dev.AccountPopulation do
           :device_uuid,
           :device_serial,
           :identifier_for_vendor,
-          :verified_at,
-          :verification_method
+          :verified_at
         ]
       )
       |> put_change(:type, :client)

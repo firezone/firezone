@@ -126,7 +126,6 @@ defmodule Portal.DeviceFixtures do
       attrs
       |> Map.drop([:account, :actor, :ipv4_address, :ipv6_address])
       |> valid_client_attrs()
-      |> put_default_verification_method()
 
     {:ok, device} =
       %Portal.Device{}
@@ -143,8 +142,7 @@ defmodule Portal.DeviceFixtures do
         :attested_mdm_device_id,
         :cert_serial,
         :cert_fingerprint,
-        :verified_at,
-        :verification_method
+        :verified_at
       ])
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, account.id)
@@ -236,18 +234,9 @@ defmodule Portal.DeviceFixtures do
   """
   def verify_client(client) do
     client
-    |> Ecto.Changeset.change(verified_at: DateTime.utc_now(), verification_method: :manual)
+    |> Ecto.Changeset.change(verified_at: DateTime.utc_now())
     |> Portal.Repo.update!()
   end
-
-  # `verified_at` and `verification_method` must be set together, so fixtures
-  # that only pass `verified_at` default to a manual verification.
-  defp put_default_verification_method(%{verified_at: verified_at} = attrs)
-       when not is_nil(verified_at) do
-    Map.put_new(attrs, :verification_method, :manual)
-  end
-
-  defp put_default_verification_method(attrs), do: attrs
 
   ##############################################################################
   # Gateway devices

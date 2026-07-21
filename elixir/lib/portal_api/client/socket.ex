@@ -323,32 +323,87 @@ defmodule PortalAPI.Client.Socket do
     require Logger
 
     @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
+    @attested_id_fields ~w[attested_device_serial attested_device_uuid attested_mdm_device_id]a
 
-    @dialyzer {:no_opaque, [find_or_create_client: 2]}
+    @dialyzer {:no_opaque, [find_or_create_client: 2, find_by_attested_ids: 3]}
     def find_or_create_client(changeset, attrs) do
       account_id = Ecto.Changeset.get_field(changeset, :account_id)
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
-      existing =
-        if firezone_id do
-          from(d in Device,
-            where: d.account_id == ^account_id,
-            where: d.actor_id == ^actor_id,
-            where: d.firezone_id == ^firezone_id,
-            where: d.type == :client
-          )
-          |> Safe.unscoped(:replica)
-          |> Safe.one(fallback_to_primary: true)
-        end
+      cond do
+        client = find_by_attested_ids(changeset, account_id, actor_id) ->
+          check_hardware_id_mismatch(client, attrs)
+          upsert_firezone_id(client, firezone_id)
 
-      if existing do
-        check_hardware_id_mismatch(existing, attrs)
-        {:ok, existing}
+        client = find_by_firezone_id(account_id, actor_id, firezone_id) ->
+          check_hardware_id_mismatch(client, attrs)
+          {:ok, client}
+
+        true ->
+          changeset
+          |> Safe.unscoped()
+          |> Safe.insert()
+      end
+    end
+
+    # Attested identifiers anchor a physical device, so they take precedence
+    # over the client-reported firezone_id: a reinstalled client (new
+    # firezone_id, same attested identity) merges back onto its existing device
+    # row instead of creating a duplicate. The partial unique indexes on the
+    # attested columns guarantee at most one row per identifier; limit(1)
+    # guards the pathological case of different attested fields matching
+    # different rows.
+    defp find_by_attested_ids(changeset, account_id, actor_id) do
+      filters =
+        for field <- @attested_id_fields,
+            value = Ecto.Changeset.get_field(changeset, field),
+            not is_nil(value),
+            do: {field, value}
+
+      if filters == [] do
+        nil
       else
-        changeset
+        attested_match =
+          Enum.reduce(filters, dynamic(false), fn {field, value}, dyn ->
+            dynamic([d], ^dyn or field(d, ^field) == ^value)
+          end)
+
+        from(d in Device,
+          where: d.account_id == ^account_id,
+          where: d.actor_id == ^actor_id,
+          where: d.type == :client,
+          where: ^attested_match,
+          order_by: [asc: d.inserted_at],
+          limit: 1
+        )
+        |> Safe.unscoped(:replica)
+        |> Safe.one(fallback_to_primary: true)
+      end
+    end
+
+    defp find_by_firezone_id(_account_id, _actor_id, nil), do: nil
+
+    defp find_by_firezone_id(account_id, actor_id, firezone_id) do
+      from(d in Device,
+        where: d.account_id == ^account_id,
+        where: d.actor_id == ^actor_id,
+        where: d.firezone_id == ^firezone_id,
+        where: d.type == :client
+      )
+      |> Safe.unscoped(:replica)
+      |> Safe.one(fallback_to_primary: true)
+    end
+
+    defp upsert_firezone_id(client, firezone_id) do
+      if is_nil(firezone_id) or client.firezone_id == firezone_id do
+        {:ok, client}
+      else
+        client
+        |> Ecto.Changeset.change(firezone_id: firezone_id)
+        |> Device.changeset()
         |> Safe.unscoped()
-        |> Safe.insert()
+        |> Safe.update()
       end
     end
 
