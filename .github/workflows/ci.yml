@@ -463,7 +463,10 @@ jobs:
   coverage-finish:
     name: coverage-finish
     needs: [elixir, rust, swift]
-    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped' || needs.swift.result != 'skipped'
+    # `!cancelled()` so the Coveralls parallel upload is still finalized when one
+    # of the coverage jobs fails; otherwise the default `success()` gate skips
+    # this step and coverage is never reported.
+    if: ${{ !cancelled() && (needs.elixir.result != 'skipped' || needs.rust.result != 'skipped' || needs.swift.result != 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Finalize coverage upload
