@@ -20,12 +20,12 @@ defmodule Portal.Queue.CallbacksTest do
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
       token = client_token_fixture(account: account, actor: actor)
-      conn_id = make_ref()
+      session_ref = make_ref()
 
       :ok = PG.register(client.id)
 
       attrs = %{
-        conn_id: conn_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
         client_token_id: token.id,
@@ -49,7 +49,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert device.client_token_id == token.id
       assert device.public_key == attrs.public_key
       assert device.last_seen_at == timestamp
-      assert_receive {:confirm_session_durability, ^conn_id}
+      assert_receive {:confirm_session_durability, ^session_ref}
 
       assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
       assert session_log.context == :client
@@ -65,12 +65,12 @@ defmodule Portal.Queue.CallbacksTest do
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
       token = client_token_fixture(account: account, actor: actor)
-      conn_id = make_ref()
+      session_ref = make_ref()
 
       :ok = PG.register(client.id)
 
       attrs = %{
-        conn_id: conn_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
         client_token_id: token.id,
@@ -92,7 +92,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert 1 = on_flush.([{attrs, metadata}])
       assert Repo.get_by!(Device, id: client.id, account_id: account.id).last_seen_at
       assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
-      refute_receive {:confirm_session_durability, ^conn_id}
+      refute_receive {:confirm_session_durability, ^session_ref}
     end
 
     test "disconnects entries whose token was deleted without confirming durability" do
@@ -100,13 +100,13 @@ defmodule Portal.Queue.CallbacksTest do
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
       token = client_token_fixture(account: account, actor: actor)
-      conn_id = make_ref()
+      session_ref = make_ref()
 
       :ok = PG.register(client.id)
       Repo.delete!(token)
 
       attrs = %{
-        conn_id: conn_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
         client_token_id: token.id,
@@ -129,7 +129,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert is_nil(device.last_seen_at)
       assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
       assert_receive :disconnect
-      refute_receive {:confirm_session_durability, ^conn_id}
+      refute_receive {:confirm_session_durability, ^session_ref}
     end
   end
 
@@ -139,12 +139,12 @@ defmodule Portal.Queue.CallbacksTest do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site)
       token = gateway_token_fixture(account: account, site: site)
-      conn_id = make_ref()
+      session_ref = make_ref()
 
       :ok = PG.register(gateway.id)
 
       attrs = %{
-        conn_id: conn_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: gateway.id,
         gateway_token_id: token.id,
@@ -165,7 +165,7 @@ defmodule Portal.Queue.CallbacksTest do
       device = Repo.get_by!(Device, id: gateway.id, account_id: account.id)
       assert device.gateway_token_id == token.id
       assert device.last_seen_at == timestamp
-      assert_receive {:confirm_session_durability, ^conn_id}
+      assert_receive {:confirm_session_durability, ^session_ref}
 
       assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
       assert session_log.context == :gateway

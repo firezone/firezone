@@ -37,7 +37,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         token_id: token.id,
         gateway: device,
         site: site,
-        conn_id: Keyword.get_lazy(opts, :conn_id, fn -> make_ref() end),
+        session_ref: Keyword.get_lazy(opts, :session_ref, fn -> make_ref() end),
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -58,7 +58,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         token_id: token.id,
         gateway: device,
         site: site,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
@@ -214,8 +214,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      conn_id = make_ref()
-      socket = join_channel(gateway, site, token, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(gateway, site, token, session_ref: session_ref)
       assert_push "init", _init_payload
 
       Portal.Queue.flush(:gateway_session_queue)
@@ -235,11 +235,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      conn_id = make_ref()
-      socket = join_channel(gateway, site, token, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(gateway, site, token, session_ref: session_ref)
       assert_push "init", _init_payload
 
-      assert {^conn_id, _timer_ref} =
+      assert {^session_ref, _timer_ref} =
                :sys.get_state(socket.channel_pid).assigns.session_durability
 
       Portal.Queue.flush(:gateway_session_queue)
@@ -1162,19 +1162,19 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      conn_id = make_ref()
-      socket = join_channel(gateway, site, token, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(gateway, site, token, session_ref: session_ref)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^conn_id, _timer_ref} = state.assigns.session_durability
+      assert {^session_ref, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:confirm_session_durability, conn_id})
+      send(socket.channel_pid, {:confirm_session_durability, session_ref})
 
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.session_durability == nil
 
-      send(socket.channel_pid, {:session_durability_timeout, conn_id})
+      send(socket.channel_pid, {:session_durability_timeout, session_ref})
       refute_push "disconnect", _
     end
 
@@ -1186,14 +1186,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
          } do
       Process.flag(:trap_exit, true)
 
-      conn_id = make_ref()
-      socket = join_channel(gateway, site, token, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(gateway, site, token, session_ref: session_ref)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^conn_id, _timer_ref} = state.assigns.session_durability
+      assert {^session_ref, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:session_durability_timeout, conn_id})
+      send(socket.channel_pid, {:session_durability_timeout, session_ref})
 
       assert_receive {:EXIT, _pid, :shutdown}
       refute_push "disconnect", _
@@ -2473,7 +2473,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
           gateway: gateway,
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           site: site,
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2695,7 +2695,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -2747,7 +2747,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -3990,7 +3990,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -4034,7 +4034,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -4087,7 +4087,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -4137,7 +4137,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
         gateway: gateway,
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         site: site,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")

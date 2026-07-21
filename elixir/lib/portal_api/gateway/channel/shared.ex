@@ -82,10 +82,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # On an abnormal exit, drain the whole WebSocket instead of just letting the
   # channel die. connlib ignores `phx_error` and would keep the transport alive,
-  # re-joining reactively and reusing the transport-scoped conn_id (whose
+  # re-joining reactively and reusing the transport-scoped session_ref (whose
   # earlier flush confirmation could cancel the new session's durability
   # timer). Draining forces a full reconnect that re-runs `Socket.connect/3`
-  # and mints a fresh conn_id, keeping transport:session 1:1. Graceful stops
+  # and mints a fresh session_ref, keeping transport:session 1:1. Graceful stops
   # already send `phx_close`, so we only intervene here.
   @impl true
   def terminate(reason, socket) do
@@ -466,8 +466,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, cancel_authz_durability_timer(socket, authz_id)}
   end
 
-  def handle_info({:confirm_session_durability, conn_id}, socket) do
-    {:noreply, cancel_session_durability_timer(socket, conn_id)}
+  def handle_info({:confirm_session_durability, session_ref}, socket) do
+    {:noreply, cancel_session_durability_timer(socket, session_ref)}
   end
 
   # Authz durability timer fired — no `:confirm_authz_durability` or
@@ -500,11 +500,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     end
   end
 
-  def handle_info({:session_durability_timeout, conn_id}, socket) do
+  def handle_info({:session_durability_timeout, session_ref}, socket) do
     case socket.assigns[:session_durability] do
-      {^conn_id, _timer_ref} ->
+      {^session_ref, _timer_ref} ->
         Logger.warning(
-          "Gateway session #{inspect(conn_id)} was not confirmed durable; disconnecting"
+          "Gateway session #{inspect(session_ref)} was not confirmed durable; disconnecting"
         )
 
         # Avoid sending "token_expired" since that will tear down connlib
@@ -978,23 +978,23 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   @authz_durability_timeout :timer.seconds(15)
 
   defp arm_session_durability_timer(socket) do
-    conn_id = socket.assigns.conn_id
+    session_ref = socket.assigns.session_ref
 
     timer_ref =
       Process.send_after(
         self(),
-        {:session_durability_timeout, conn_id},
+        {:session_durability_timeout, session_ref},
         @session_durability_timeout
       )
 
     # Fail-safe: if the session queue never confirms the DB flush, the
     # channel disconnects so the gateway reconnects and retries the upsert.
-    assign(socket, session_durability: {conn_id, timer_ref})
+    assign(socket, session_durability: {session_ref, timer_ref})
   end
 
-  defp cancel_session_durability_timer(socket, conn_id) do
+  defp cancel_session_durability_timer(socket, session_ref) do
     case socket.assigns[:session_durability] do
-      {^conn_id, timer_ref} ->
+      {^session_ref, timer_ref} ->
         Process.cancel_timer(timer_ref)
         assign(socket, session_durability: nil)
 
@@ -1096,7 +1096,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         if is_nil(current_pid) do
           Portal.Queue.enqueue(
             :gateway_session_queue,
-            session_attrs(socket.assigns.gateway, socket.assigns.conn_id),
+            session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
             metadata: %{timestamp: DateTime.utc_now()}
           )
 
@@ -1144,9 +1144,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     end
   end
 
-  defp session_attrs(%Portal.Device{} = gateway, conn_id) do
+  defp session_attrs(%Portal.Device{} = gateway, session_ref) do
     %{
-      conn_id: conn_id,
+      session_ref: session_ref,
       account_id: gateway.account_id,
       device_id: gateway.id,
       gateway_token_id: gateway.gateway_token_id,

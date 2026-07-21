@@ -135,7 +135,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
-      assert is_reference(socket.assigns.conn_id)
+      assert is_reference(socket.assigns.session_ref)
       assert client.public_key == attrs["public_key"]
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip
@@ -171,7 +171,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
-      assert is_reference(socket.assigns.conn_id)
+      assert is_reference(socket.assigns.session_ref)
       assert client.public_key == attrs["public_key"]
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip
@@ -452,7 +452,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       client = socket.assigns.client
 
-      assert is_reference(socket.assigns.conn_id)
+      assert is_reference(socket.assigns.session_ref)
       assert client.client_token_id == token.id
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip

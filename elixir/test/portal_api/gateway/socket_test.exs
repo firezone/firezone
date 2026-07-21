@@ -91,7 +91,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert gateway.firezone_id == attrs["external_id"]
 
-      assert is_reference(Map.fetch!(socket.assigns, :conn_id))
+      assert is_reference(Map.fetch!(socket.assigns, :session_ref))
       assert gateway.public_key == attrs["public_key"]
       assert gateway.last_seen_user_agent == connect_info.user_agent
       assert gateway.last_seen_remote_ip_location_region == "Ukraine"
@@ -150,7 +150,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.id == gateway.id
 
       connected_gateway = socket.assigns.gateway
-      assert is_reference(socket.assigns.conn_id)
+      assert is_reference(socket.assigns.session_ref)
       assert connected_gateway.gateway_token_id == token.id
       assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
       assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"

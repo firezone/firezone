@@ -36,7 +36,7 @@ defmodule PortalAPI.Client.ChannelTest do
         end
       end)
 
-    conn_id = Keyword.get_lazy(opts, :conn_id, fn -> make_ref() end)
+    session_ref = Keyword.get_lazy(opts, :session_ref, fn -> make_ref() end)
 
     # Apply the connection snapshot onto the Device struct to match what
     # Socket.connect does
@@ -58,7 +58,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket_module
       |> socket("client:#{client.id}", %{
         client: device,
-        conn_id: conn_id,
+        session_ref: session_ref,
         subject: subject,
         client_version: client_version
       })
@@ -330,8 +330,8 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      conn_id = make_ref()
-      socket = join_channel(client, subject, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(client, subject, session_ref: session_ref)
       assert_push "init", _init_payload
 
       Portal.Queue.flush(:client_session_queue)
@@ -350,11 +350,11 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      conn_id = make_ref()
-      socket = join_channel(client, subject, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(client, subject, session_ref: session_ref)
       assert_push "init", _init_payload
 
-      assert {^conn_id, _timer_ref} =
+      assert {^session_ref, _timer_ref} =
                :sys.get_state(socket.channel_pid).assigns.session_durability
 
       Portal.Queue.flush(:client_session_queue)
@@ -419,7 +419,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(device, subject, nil),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -625,7 +625,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: with_session(client, subject, nil),
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         subject: subject,
         client_version: nil
       })
@@ -694,7 +694,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: with_session(client, subject, "1.1.55"),
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         subject: subject,
         client_version: "1.1.55"
       })
@@ -729,7 +729,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: with_session(client, subject, nil),
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         subject: subject,
         client_version: nil
       })
@@ -769,7 +769,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assigns = %{
         client: with_session(client, subject, nil),
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         subject: subject,
         client_version: nil
       }
@@ -850,7 +850,7 @@ defmodule PortalAPI.Client.ChannelTest do
       PortalAPI.Client.Socket
       |> socket("client:#{client.id}", %{
         client: with_session(client, subject, nil),
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         subject: subject,
         client_version: nil
       })
@@ -1057,19 +1057,19 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      conn_id = make_ref()
-      socket = join_channel(client, subject, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(client, subject, session_ref: session_ref)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^conn_id, _timer_ref} = state.assigns.session_durability
+      assert {^session_ref, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:confirm_session_durability, conn_id})
+      send(socket.channel_pid, {:confirm_session_durability, session_ref})
 
       state = :sys.get_state(socket.channel_pid)
       assert state.assigns.session_durability == nil
 
-      send(socket.channel_pid, {:session_durability_timeout, conn_id})
+      send(socket.channel_pid, {:session_durability_timeout, session_ref})
       refute_push "disconnect", _
     end
 
@@ -1080,14 +1080,14 @@ defmodule PortalAPI.Client.ChannelTest do
          } do
       Process.flag(:trap_exit, true)
 
-      conn_id = make_ref()
-      socket = join_channel(client, subject, conn_id: conn_id)
+      session_ref = make_ref()
+      socket = join_channel(client, subject, session_ref: session_ref)
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert {^conn_id, _timer_ref} = state.assigns.session_durability
+      assert {^session_ref, _timer_ref} = state.assigns.session_durability
 
-      send(socket.channel_pid, {:session_durability_timeout, conn_id})
+      send(socket.channel_pid, {:session_durability_timeout, session_ref})
 
       assert_receive {:EXIT, _pid, :shutdown}
       refute_push "disconnect", _
@@ -3623,7 +3623,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(client, subject, nil),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -3701,7 +3701,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(client, subject, client_version),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: client_version
         })
@@ -4437,7 +4437,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(client, subject, nil),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -4486,7 +4486,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(client, subject, client_version),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: client_version
         })
@@ -4805,7 +4805,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(client, subject, nil),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -5150,7 +5150,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: with_session(client, subject, nil),
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: nil
         })
@@ -7475,7 +7475,7 @@ defmodule PortalAPI.Client.ChannelTest do
         PortalAPI.Client.Socket
         |> socket("client:#{client.id}", %{
           client: device,
-          conn_id: make_ref(),
+          session_ref: make_ref(),
           subject: subject,
           client_version: nil
         })

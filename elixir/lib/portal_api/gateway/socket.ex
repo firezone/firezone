@@ -72,7 +72,7 @@ defmodule PortalAPI.Gateway.Socket do
         |> assign(:token_id, gateway_token.id)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
-        |> assign(:conn_id, make_ref())
+        |> assign(:session_ref, make_ref())
         |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
         |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
@@ -199,7 +199,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp flush_gateway_sessions(entries) do
     {persisted, failed} = Sockets.LatestSession.upsert_all(entries, :gateway_token_id)
 
-    failed_conn_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs.conn_id end)
+    failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
 
     for {attrs, _metadata} <- failed do
       dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
@@ -212,8 +212,8 @@ defmodule PortalAPI.Gateway.Socket do
     # durability timer fires and the gateway reconnects to retry both. This
     # keeps the session log fail-closed without a transaction spanning the
     # upsert and the log insert.
-    log_failed_conn_ids = insert_session_logs(entries, failed_conn_ids)
-    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_conn_ids, log_failed_conn_ids))
+    log_failed_session_refs = insert_session_logs(entries, failed_session_refs)
+    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_session_refs, log_failed_session_refs))
 
     if failed != [] do
       Logger.info(
@@ -224,10 +224,10 @@ defmodule PortalAPI.Gateway.Socket do
     persisted
   end
 
-  defp dispatch_gateway_session_confirmed(entries, failed_conn_ids) do
-    for {attrs, _metadata} <- entries, not MapSet.member?(failed_conn_ids, attrs.conn_id) do
+  defp dispatch_gateway_session_confirmed(entries, failed_session_refs) do
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
       dispatch_queue_callback("gateway session", :on_confirmed, attrs, fn ->
-        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.conn_id})
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.session_ref})
       end)
     end
   end
@@ -238,12 +238,12 @@ defmodule PortalAPI.Gateway.Socket do
   # token and have no actor, so the subject snapshot is the gateway identity
   # and its connection context. The connect-time timestamp rides the queue
   # entry's metadata rather than the session row's flush-time inserted_at. Each
-  # log entry carries its conn_id so the caller can learn which sessions'
+  # log entry carries its session_ref so the caller can learn which sessions'
   # logs failed and withhold their durability confirmation.
-  defp insert_session_logs(entries, failed_conn_ids) do
+  defp insert_session_logs(entries, failed_session_refs) do
     log_entries =
-      for {attrs, metadata} <- entries, not MapSet.member?(failed_conn_ids, attrs.conn_id) do
-        {session_log_attrs(attrs, metadata), attrs.conn_id}
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
+        {session_log_attrs(attrs, metadata), attrs.session_ref}
       end
 
     {_inserted, failed} =
@@ -254,7 +254,7 @@ defmodule PortalAPI.Gateway.Socket do
         }
       )
 
-    MapSet.new(failed, fn {_log_attrs, conn_id} -> conn_id end)
+    MapSet.new(failed, fn {_log_attrs, session_ref} -> session_ref end)
   end
 
   defp session_log_attrs(attrs, %{timestamp: timestamp}) do
@@ -286,13 +286,13 @@ defmodule PortalAPI.Gateway.Socket do
   rescue
     error ->
       Logger.error(
-        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:conn_id])}: " <>
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:session_ref])}: " <>
           Exception.message(error)
       )
   catch
     kind, reason ->
       Logger.error(
-        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:conn_id])}: " <>
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:session_ref])}: " <>
           inspect(reason)
       )
   end

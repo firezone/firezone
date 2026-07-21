@@ -102,7 +102,7 @@ defmodule Portal.QueueTest do
     {persisted, failed} = Sockets.LatestSession.upsert_all(entries, token_field)
 
     dispatch_failed(failed, cb_opts)
-    dispatch_confirmed(entries, failed, cb_opts, :conn_id)
+    dispatch_confirmed(entries, failed, cb_opts, :session_ref)
 
     persisted
   end
@@ -154,7 +154,7 @@ defmodule Portal.QueueTest do
 
     defp client_session_attrs(ctx, overrides \\ %{}) do
       defaults = %{
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -336,7 +336,7 @@ defmodule Portal.QueueTest do
 
     defp gateway_session_attrs(ctx, overrides \\ %{}) do
       defaults = %{
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.gateway.id,
         gateway_token_id: ctx.token.id,
@@ -552,7 +552,7 @@ defmodule Portal.QueueTest do
 
     test "flushes buffered entries when timer fires", ctx do
       attrs = %{
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -791,7 +791,7 @@ defmodule Portal.QueueTest do
 
     defp err_session_attrs(ctx) do
       %{
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -808,7 +808,7 @@ defmodule Portal.QueueTest do
 
     test "{:error, _} dispatch return is propagated and skips the buffer", ctx do
       attrs = err_session_attrs(ctx)
-      attrs_conn_id = attrs.conn_id
+      attrs_session_ref = attrs.session_ref
 
       assert {:error, :not_found} =
                Queue.enqueue(ctx.queue, attrs, dispatch: fn -> {:error, :not_found} end)
@@ -821,7 +821,7 @@ defmodule Portal.QueueTest do
       assert is_nil(reload_device(ctx.client).last_seen_at)
 
       # And on_failed must NOT fire — there's nothing to revoke.
-      refute_received {:on_failed, %{conn_id: ^attrs_conn_id}}
+      refute_received {:on_failed, %{session_ref: ^attrs_session_ref}}
     end
 
     test ":ok dispatch return buffers the entry", ctx do
@@ -1006,7 +1006,7 @@ defmodule Portal.QueueTest do
 
     defp resilience_session_attrs(ctx, overrides \\ %{}) do
       defaults = %{
-        conn_id: make_ref(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -1028,7 +1028,7 @@ defmodule Portal.QueueTest do
       test_pid = self()
 
       on_failed = fn attrs, _ ->
-        send(test_pid, {:on_failed, attrs.conn_id})
+        send(test_pid, {:on_failed, attrs.session_ref})
         :ok
       end
 
@@ -1095,16 +1095,16 @@ defmodule Portal.QueueTest do
          ctx do
       test_pid = self()
 
-      bad_conn_id_1 = make_ref()
-      bad_conn_id_2 = make_ref()
+      bad_session_ref_1 = make_ref()
+      bad_session_ref_2 = make_ref()
 
       on_failed = fn attrs, _ ->
-        send(test_pid, {:on_failed_attempt, attrs.conn_id})
+        send(test_pid, {:on_failed_attempt, attrs.session_ref})
         # First entry raises; subsequent ones must still run.
-        if attrs.conn_id == bad_conn_id_1 do
+        if attrs.session_ref == bad_session_ref_1 do
           raise "boom from on_failed"
         else
-          send(test_pid, {:on_failed_succeeded, attrs.conn_id})
+          send(test_pid, {:on_failed_succeeded, attrs.session_ref})
           :ok
         end
       end
@@ -1123,8 +1123,8 @@ defmodule Portal.QueueTest do
       # entries flow through on_failed.
       actor = actor_fixture(account: ctx.account)
       other_client = client_fixture(account: ctx.account, actor: actor)
-      attrs1 = resilience_session_attrs(ctx, %{conn_id: bad_conn_id_1, device_id: other_client.id})
-      attrs2 = resilience_session_attrs(ctx, %{conn_id: bad_conn_id_2, device_id: other_client.id})
+      attrs1 = resilience_session_attrs(ctx, %{session_ref: bad_session_ref_1, device_id: other_client.id})
+      attrs2 = resilience_session_attrs(ctx, %{session_ref: bad_session_ref_2, device_id: other_client.id})
 
       other_device =
         Repo.get_by!(Portal.Device, account_id: other_client.account_id, id: other_client.id)
@@ -1139,12 +1139,12 @@ defmodule Portal.QueueTest do
 
       # Both on_failed callbacks must have been attempted, even though the
       # first one raised.
-      assert_received {:on_failed_attempt, ^bad_conn_id_1}
-      assert_received {:on_failed_attempt, ^bad_conn_id_2}
+      assert_received {:on_failed_attempt, ^bad_session_ref_1}
+      assert_received {:on_failed_attempt, ^bad_session_ref_2}
 
       # The second one must have completed successfully (the raise in the
       # first must not have aborted the loop).
-      assert_received {:on_failed_succeeded, ^bad_conn_id_2}
+      assert_received {:on_failed_succeeded, ^bad_session_ref_2}
     end
 
     test "terminate/2 flushes remaining buffered entries through on_failed",
@@ -1155,7 +1155,7 @@ defmodule Portal.QueueTest do
       test_pid = self()
 
       on_failed = fn attrs, _ ->
-        send(test_pid, {:terminate_on_failed, attrs.conn_id})
+        send(test_pid, {:terminate_on_failed, attrs.session_ref})
         :ok
       end
 
@@ -1188,10 +1188,10 @@ defmodule Portal.QueueTest do
       # Stop the queue gracefully — triggers terminate/2.
       :ok = stop_supervised(:cs_term_queue)
 
-      attrs1_conn_id = attrs1.conn_id
-      attrs2_conn_id = attrs2.conn_id
-      assert_received {:terminate_on_failed, ^attrs1_conn_id}
-      assert_received {:terminate_on_failed, ^attrs2_conn_id}
+      attrs1_session_ref = attrs1.session_ref
+      attrs2_session_ref = attrs2.session_ref
+      assert_received {:terminate_on_failed, ^attrs1_session_ref}
+      assert_received {:terminate_on_failed, ^attrs2_session_ref}
     end
   end
 

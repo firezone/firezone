@@ -106,7 +106,7 @@ defmodule PortalAPI.Client.Socket do
   defp flush_client_sessions(entries) do
     {persisted, failed} = Sockets.LatestSession.upsert_all(entries, :client_token_id)
 
-    failed_conn_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs.conn_id end)
+    failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
 
     for {attrs, _metadata} <- failed do
       dispatch_queue_callback("client session", :on_failed, attrs, fn ->
@@ -119,8 +119,8 @@ defmodule PortalAPI.Client.Socket do
     # durability timer fires and the client reconnects to retry both. This
     # keeps the session log fail-closed without a transaction spanning the
     # upsert and the log insert.
-    log_failed_conn_ids = insert_session_logs(entries, failed_conn_ids)
-    dispatch_client_session_confirmed(entries, MapSet.union(failed_conn_ids, log_failed_conn_ids))
+    log_failed_session_refs = insert_session_logs(entries, failed_session_refs)
+    dispatch_client_session_confirmed(entries, MapSet.union(failed_session_refs, log_failed_session_refs))
 
     if failed != [] do
       Logger.info(
@@ -131,10 +131,10 @@ defmodule PortalAPI.Client.Socket do
     persisted
   end
 
-  defp dispatch_client_session_confirmed(entries, failed_conn_ids) do
-    for {attrs, _metadata} <- entries, not MapSet.member?(failed_conn_ids, attrs.conn_id) do
+  defp dispatch_client_session_confirmed(entries, failed_session_refs) do
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
       dispatch_queue_callback("client session", :on_confirmed, attrs, fn ->
-        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.conn_id})
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.session_ref})
       end)
     end
   end
@@ -146,12 +146,12 @@ defmodule PortalAPI.Client.Socket do
   # snapshot and the connect-time timestamp ride the queue entry's metadata; the
   # timestamp is captured at connect rather than read from the session row's
   # inserted_at, which is stamped at flush time and would be identical across a
-  # whole batch. Each log entry carries its conn_id so the caller can learn
+  # whole batch. Each log entry carries its session_ref so the caller can learn
   # which sessions' logs failed and withhold their durability confirmation.
-  defp insert_session_logs(entries, failed_conn_ids) do
+  defp insert_session_logs(entries, failed_session_refs) do
     log_entries =
-      for {attrs, metadata} <- entries, not MapSet.member?(failed_conn_ids, attrs.conn_id) do
-        {session_log_attrs(attrs, metadata), attrs.conn_id}
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
+        {session_log_attrs(attrs, metadata), attrs.session_ref}
       end
 
     {_inserted, failed} =
@@ -162,7 +162,7 @@ defmodule PortalAPI.Client.Socket do
         }
       )
 
-    MapSet.new(failed, fn {_log_attrs, conn_id} -> conn_id end)
+    MapSet.new(failed, fn {_log_attrs, session_ref} -> session_ref end)
   end
 
   defp session_log_attrs(attrs, %{subject: subject, timestamp: timestamp}) do
@@ -185,13 +185,13 @@ defmodule PortalAPI.Client.Socket do
   rescue
     error ->
       Logger.error(
-        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:conn_id])}: " <>
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:session_ref])}: " <>
           Exception.message(error)
       )
   catch
     kind, reason ->
       Logger.error(
-        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:conn_id])}: " <>
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:session_ref])}: " <>
           inspect(reason)
       )
   end
@@ -211,7 +211,7 @@ defmodule PortalAPI.Client.Socket do
     socket
     |> assign(:subject, subject)
     |> assign(:client, client)
-    |> assign(:conn_id, make_ref())
+    |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
