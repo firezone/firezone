@@ -570,6 +570,10 @@ if config_env() == :prod do
   config :portal,
     http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
+  if !env_var_to_config!(:http_client_ssrf_protection_enabled) do
+    config :req, default_options: [plugins: []]
+  end
+
   config :portal,
          Portal.Mailer,
          [
