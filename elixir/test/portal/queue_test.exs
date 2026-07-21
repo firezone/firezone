@@ -232,7 +232,7 @@ defmodule Portal.QueueTest do
       assert reload_device(ctx.client).last_seen_at == device.last_seen_at
     end
 
-    test "persists the session even when its token was deleted", ctx do
+    test "skips sessions whose token was deleted", ctx do
       other_token = client_token_fixture(account: ctx.account)
       attrs = client_session_attrs(ctx, %{client_token_id: other_token.id})
       Repo.delete!(other_token)
@@ -240,8 +240,39 @@ defmodule Portal.QueueTest do
       Queue.enqueue(ctx.queue, attrs)
       Queue.flush(ctx.queue)
 
+      assert Process.alive?(ctx.queue)
       device = reload_device(ctx.client)
-      assert device.client_token_id == other_token.id
+      assert is_nil(device.client_token_id)
+      assert is_nil(device.last_seen_at)
+    end
+
+    test "a deleted-token entry does not block the device's live entry", ctx do
+      now = DateTime.utc_now()
+
+      other_token = client_token_fixture(account: ctx.account)
+      revoked = client_session_attrs(ctx, %{client_token_id: other_token.id, version: "1.0.0"})
+      Repo.delete!(other_token)
+
+      live = client_session_attrs(ctx, %{version: "1.3.1"})
+
+      Queue.enqueue(ctx.queue, revoked, metadata: %{timestamp: DateTime.add(now, -60, :second)})
+      Queue.enqueue(ctx.queue, live, metadata: %{timestamp: now})
+      Queue.flush(ctx.queue)
+
+      device = reload_device(ctx.client)
+      assert device.client_token_id == ctx.token.id
+      assert device.last_seen_version == "1.3.1"
+    end
+
+    test "hard-deleting the token nilifies the device's token column", ctx do
+      Queue.enqueue(ctx.queue, client_session_attrs(ctx))
+      Queue.flush(ctx.queue)
+      assert reload_device(ctx.client).client_token_id == ctx.token.id
+
+      Repo.delete!(ctx.token)
+
+      device = reload_device(ctx.client)
+      assert is_nil(device.client_token_id)
       assert device.last_seen_at
     end
 
@@ -337,6 +368,19 @@ defmodule Portal.QueueTest do
       device = reload_device(ctx.gateway)
       assert device.gateway_token_id == ctx.token.id
       assert device.last_seen_user_agent == valid.user_agent
+    end
+
+    test "skips gateway sessions whose token was deleted", ctx do
+      other_token = gateway_token_fixture(account: ctx.account, site: ctx.site)
+      attrs = gateway_session_attrs(ctx, %{gateway_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Queue.enqueue(ctx.queue, attrs)
+      Queue.flush(ctx.queue)
+
+      assert Process.alive?(ctx.queue)
+      device = reload_device(ctx.gateway)
+      refute device.last_seen_user_agent == attrs.user_agent
     end
   end
 

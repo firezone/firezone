@@ -124,7 +124,7 @@ defmodule PortalAPI.Client.Socket do
 
     if failed != [] do
       Logger.info(
-        "Skipped #{length(failed)} client session entries during flush due to deleted devices"
+        "Skipped #{length(failed)} client session entries during flush due to deleted devices or tokens"
       )
     end
 

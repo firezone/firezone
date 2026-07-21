@@ -5,8 +5,8 @@ defmodule PortalAPI.Sockets.LatestSession do
   Each queue entry carries the session attrs plus connect-time metadata. The
   newest entry per device wins within a batch, and the update is guarded on
   `last_seen_at` so a flush from another node can never roll a device back to
-  an older session. Entries whose device row no longer exists are returned as
-  failed so the caller can disconnect them.
+  an older session. Entries whose device or token row no longer exists are
+  returned as failed so the caller can disconnect them.
   """
   alias __MODULE__.Database
   require Logger
@@ -17,12 +17,24 @@ defmodule PortalAPI.Sockets.LatestSession do
 
   def upsert_all(entries, token_field)
       when token_field in [:client_token_id, :gateway_token_id] do
-    rows = rows(entries, token_field)
+    # A token hard-deleted before its channel joined the token PG group missed
+    # the deletion broadcast; failing the entry here is the backstop that
+    # disconnects it. Channels enqueue only after joining the group, so a
+    # deletion after this probe is always broadcast to the channel.
+    dead_tokens = Database.missing_token_ids(entries, token_field)
+
+    {live, revoked} =
+      Enum.split_with(entries, fn {attrs, _metadata} ->
+        not MapSet.member?(dead_tokens, Map.fetch!(attrs, token_field))
+      end)
+
+    rows = rows(live, token_field)
     updated_ids = Database.update_devices(rows, token_field)
     missing = missing_device_ids(rows, updated_ids)
 
     failed =
-      Enum.filter(entries, fn {attrs, _metadata} -> MapSet.member?(missing, attrs.device_id) end)
+      revoked ++
+        Enum.filter(live, fn {attrs, _metadata} -> MapSet.member?(missing, attrs.device_id) end)
 
     {length(entries) - length(failed), failed}
   rescue
@@ -103,6 +115,40 @@ defmodule PortalAPI.Sockets.LatestSession do
     }
 
     @probe_types %{account_id: Ecto.UUID, device_id: Ecto.UUID}
+    @token_probe_types %{account_id: Ecto.UUID, token_id: Ecto.UUID}
+
+    @token_schemas %{
+      client_token_id: Portal.ClientToken,
+      gateway_token_id: Portal.GatewayToken
+    }
+
+    def missing_token_ids(entries, token_field) do
+      probe_rows =
+        entries
+        |> Enum.map(fn {attrs, _metadata} ->
+          %{account_id: attrs.account_id, token_id: Map.fetch!(attrs, token_field)}
+        end)
+        |> Enum.uniq()
+
+      schema = Map.fetch!(@token_schemas, token_field)
+
+      existing =
+        from(t in schema,
+          join: v in values(probe_rows, @token_probe_types),
+          on: t.account_id == v.account_id and t.id == v.token_id,
+          select: t.id
+        )
+        |> Safe.unscoped()
+        |> Safe.all()
+        |> MapSet.new()
+
+      probe_rows
+      |> Enum.map(& &1.token_id)
+      |> Enum.reject(&MapSet.member?(existing, &1))
+      |> MapSet.new()
+    end
+
+    def update_devices([], _token_field), do: MapSet.new()
 
     def update_devices(rows, token_field) do
       set =

@@ -94,6 +94,43 @@ defmodule Portal.Queue.CallbacksTest do
       assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
       refute_receive {:confirm_session_durability, ^conn_id}
     end
+
+    test "disconnects entries whose token was deleted without confirming durability" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      conn_id = make_ref()
+
+      :ok = PG.register(client.id)
+      Repo.delete!(token)
+
+      attrs = %{
+        conn_id: conn_id,
+        account_id: account.id,
+        device_id: client.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        remote_ip_location_region: "US",
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 0 = on_flush.([{attrs, metadata}])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert is_nil(device.client_token_id)
+      assert is_nil(device.last_seen_at)
+      assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
+      assert_receive :disconnect
+      refute_receive {:confirm_session_durability, ^conn_id}
+    end
   end
 
   describe "gateway session queue callback" do

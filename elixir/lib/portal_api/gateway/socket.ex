@@ -217,7 +217,7 @@ defmodule PortalAPI.Gateway.Socket do
 
     if failed != [] do
       Logger.info(
-        "Skipped #{length(failed)} gateway session entries during flush due to deleted devices"
+        "Skipped #{length(failed)} gateway session entries during flush due to deleted devices or tokens"
       )
     end
 

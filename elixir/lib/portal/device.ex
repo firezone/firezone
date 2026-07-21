@@ -90,9 +90,9 @@ defmodule Portal.Device do
       foreign_key: :device_id,
       references: :id
 
-    # Latest-session fields, written by the connect flush. The token columns
-    # have no FK: a token hard-deleted between connect and flush must not fail
-    # the batched upsert, so they may dangle.
+    # Latest-session fields, written by the connect flush. The flush probes
+    # the token columns' referents and fails entries whose token was deleted;
+    # the FKs nilify on token delete so the columns never dangle.
     field :public_key, :string
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Portal.Types.IP
