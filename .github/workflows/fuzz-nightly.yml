@@ -1,12 +1,12 @@
 ---
 name: Fuzz corpus (nightly)
 run-name: Triggered from ${{ github.event_name }}
-# Grows and minimizes the committed `tunnel` fuzz corpus, then uploads the
-# result as an artifact. The committed corpus gates per-PR coverage in
-# `_rust.yml`; this job rediscovers coverage the per-PR run does not have time
-# for (and re-anchors it after `arb.rs` changes decode the same bytes into
-# different transitions). A maintainer downloads the artifact and commits it to
-# ratchet the coverage threshold up.
+# Grows and minimizes the committed `tunnel` fuzz corpus, then opens a bot PR
+# with the result. The committed corpus gates per-PR coverage in `_rust.yml`;
+# this job rediscovers coverage the per-PR run does not have time for (and
+# re-anchors it after `arb.rs` changes decode the same bytes into different
+# transitions). A maintainer reviews and merges the PR to ratchet the coverage
+# threshold up.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
@@ -36,11 +36,11 @@ jobs:
       - uses: ./.github/actions/free-disk-space
       - name: Install llvm-tools for coverage
         run: rustup component add llvm-tools-preview --toolchain ${{ steps.setup-rust.outputs.nightly_version }}
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2.81.1
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: cargo-fuzz
       - name: Discover new coverage (seeded from the committed corpus)
         run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
         env:
@@ -52,12 +52,51 @@ jobs:
       - name: Measure coverage (report only)
         run: |
           rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
-          python3 tests/fuzz/check_coverage.py 0
+          llvm_cov="$(rustc +${{ steps.setup-rust.outputs.nightly_version }} --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+          pct=$("$llvm_cov" export -instr-profile=tests/fuzz/coverage/tunnel/coverage.profdata target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
+          echo "tunnel-proto region coverage: ${pct}%"
         env:
           CARGO_PROFILE_RELEASE_LTO: false
-          COVERAGE_TOOLCHAIN: ${{ steps.setup-rust.outputs.nightly_version }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Set up GnuPG for the corpus commit
+        uses: ./.github/actions/setup-gpg
+        id: setup-gpg
         with:
-          name: tunnel-fuzz-corpus
-          path: rust/tests/fuzz/corpus/tunnel
-          if-no-files-found: error
+          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          email: github-bot@firezone.dev
+      - name: Open corpus update PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
+          git config --local commit.gpgsign true
+
+          branch="chore/fuzz-corpus"
+          git checkout -b "$branch"
+          git add -A tests/fuzz/corpus/tunnel
+          if git diff --cached --quiet; then
+            echo "Corpus unchanged; nothing to open a PR for."
+            exit 0
+          fi
+          git commit -m "chore(fuzz): grow committed tunnel corpus"
+
+          # The checkout persists the default (read-only) GITHUB_TOKEN as an
+          # http.extraheader, which git sends regardless of the remote URL's
+          # embedded credentials. Clear it so the bot token below is actually
+          # used, letting the PR's checks run (a GITHUB_TOKEN push would not
+          # trigger them). An empty value resets the extra headers to the
+          # empty list (see `git help config`), unlike `--unset-all`, which
+          # would fail if checkout didn't happen to set one.
+          git config --local http.https://github.com/.extraheader ""
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -u origin HEAD --force
+
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create \
+              --title "chore(fuzz): grow committed tunnel corpus" \
+              --body "The nightly fuzz job discovered new coverage. Committing the grown corpus ratchets the per-PR tunnel-proto coverage gate in \`_rust.yml\`." \
+              --reviewer firezone/engineering
+          fi
