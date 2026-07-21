@@ -8,6 +8,17 @@ defmodule PortalWeb.VerificationControllerTest do
     :ok
   end
 
+  defp sign_entra_state(lv_pid_string, type) do
+    verification_ref = Ecto.UUID.generate()
+
+    state =
+      PortalWeb.OIDC.sign_verification_state(lv_pid_string, type, %{
+        verification_ref: verification_ref
+      })
+
+    {state, verification_ref}
+  end
+
   describe "oidc/2" do
     test "with valid success result token, sends message to LV and renders success", %{
       conn: conn
@@ -113,14 +124,18 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:entra_verify_complete, issuer, tenant_id, {from, ref}} ->
-              send(parent, {:entra_verify_complete_received, issuer, tenant_id})
+            {:entra_verify_complete, issuer, tenant_id, verification_ref, {from, ref}} ->
+              send(
+                parent,
+                {:entra_verify_complete_received, issuer, tenant_id, verification_ref}
+              )
+
               send(from, {:verification_ack, ref})
           end
         end)
 
       lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-auth-provider")
 
       params = %{
         "state" => state,
@@ -134,7 +149,8 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Verification Successful"
 
       assert_received {:entra_verify_complete_received,
-                       "https://login.microsoftonline.com/my-tenant-id/v2.0", "my-tenant-id"}
+                       "https://login.microsoftonline.com/my-tenant-id/v2.0", "my-tenant-id",
+                       ^verification_ref}
     end
 
     test "with invalid state, renders failure", %{conn: conn} do
@@ -151,9 +167,27 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Invalid or expired"
     end
 
-    test "with consent denied (error params), sends failure and renders failure", %{conn: conn} do
+    test "with signed state missing verification_ref, renders failure", %{conn: conn} do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
       state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+
+      params = %{
+        "state" => state,
+        "admin_consent" => "True",
+        "tenant" => "my-tenant-id"
+      }
+
+      conn = get(conn, ~p"/verification/entra", params)
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "Verification Failed"
+      assert conn.resp_body =~ "Invalid or expired"
+      refute_received {:entra_verify_complete, _issuer, _tenant_id, _verification_ref, _ack_to}
+    end
+
+    test "with consent denied (error params), sends failure and renders failure", %{conn: conn} do
+      lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-auth-provider")
 
       params = %{
         "state" => state,
@@ -168,14 +202,14 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "The user denied consent"
       refute conn.resp_body =~ "window.close()"
-      assert_received {:verification_failed, "The user denied consent"}
+      assert_received {:verification_failed, "The user denied consent", ^verification_ref}
     end
 
     test "with admin_consent=False and no error params, sends failure and renders failure", %{
       conn: conn
     } do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-auth-provider")
 
       params = %{"state" => state, "admin_consent" => "False"}
 
@@ -184,12 +218,12 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "Admin consent was not granted"
-      assert_received {:verification_failed, "Admin consent was not granted"}
+      assert_received {:verification_failed, "Admin consent was not granted", ^verification_ref}
     end
 
     test "with missing admin_consent param, sends failure and renders failure", %{conn: conn} do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-auth-provider")
 
       params = %{"state" => state, "tenant" => "some-tenant"}
 
@@ -198,7 +232,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "Missing tenant information"
-      assert_received {:verification_failed, "Missing tenant information"}
+      assert_received {:verification_failed, "Missing tenant information", ^verification_ref}
     end
 
     # Microsoft always sends error_description alongside error in practice, but it is
@@ -207,7 +241,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn: conn
     } do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-auth-provider")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-auth-provider")
 
       params = %{
         "state" => state,
@@ -220,7 +254,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "access_denied"
-      assert_received {:verification_failed, "access_denied"}
+      assert_received {:verification_failed, "access_denied", ^verification_ref}
     end
   end
 
@@ -241,7 +275,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
     test "with consent denied (error params), sends failure and renders failure", %{conn: conn} do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-directory-sync")
 
       params = %{
         "state" => state,
@@ -254,7 +288,7 @@ defmodule PortalWeb.VerificationControllerTest do
 
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
-      assert_received {:verification_failed, "The user denied consent"}
+      assert_received {:verification_failed, "The user denied consent", ^verification_ref}
     end
 
     test "with successful Entra API verification, sends message and renders success", %{
@@ -265,14 +299,18 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:entra_directory_sync_complete, tenant_id, {from, ref}} ->
-              send(parent, {:entra_directory_sync_complete_received, tenant_id})
+            {:entra_directory_sync_complete, tenant_id, verification_ref, {from, ref}} ->
+              send(
+                parent,
+                {:entra_directory_sync_complete_received, tenant_id, verification_ref}
+              )
+
               send(from, {:verification_ack, ref})
           end
         end)
 
       lv_pid_string = lv_pid |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-directory-sync")
 
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         cond do
@@ -306,14 +344,15 @@ defmodule PortalWeb.VerificationControllerTest do
 
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Successful"
-      assert_received {:entra_directory_sync_complete_received, "my-tenant-id"}
+      assert_received {:entra_directory_sync_complete_received, "my-tenant-id",
+                       ^verification_ref}
     end
 
     test "with Entra API 401 error (nested message body), sends failure and renders failure", %{
       conn: conn
     } do
       # Sign an invalid pid string to cover the deserialize_pid rescue branch
-      state = PortalWeb.OIDC.sign_verification_state("not-a-valid-pid", "entra-directory-sync")
+      {state, _verification_ref} = sign_entra_state("not-a-valid-pid", "entra-directory-sync")
 
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         req_conn
@@ -342,7 +381,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn: conn
     } do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-directory-sync")
 
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         req_conn
@@ -362,7 +401,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "Access denied"
       assert conn.resp_body =~ "Access to resource forbidden"
-      assert_received {:verification_failed, message}
+      assert_received {:verification_failed, message, ^verification_ref}
       assert message =~ "Access denied"
     end
 
@@ -370,7 +409,7 @@ defmodule PortalWeb.VerificationControllerTest do
       conn: conn
     } do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-directory-sync")
 
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         req_conn
@@ -389,13 +428,13 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "Verification failed (HTTP 404)"
-      assert_received {:verification_failed, message}
+      assert_received {:verification_failed, message, ^verification_ref}
       assert message =~ "Verification failed (HTTP 404)"
     end
 
     test "with Entra API transport error, sends failure and renders failure", %{conn: conn} do
       lv_pid_string = self() |> :erlang.pid_to_list() |> to_string()
-      state = PortalWeb.OIDC.sign_verification_state(lv_pid_string, "entra-directory-sync")
+      {state, verification_ref} = sign_entra_state(lv_pid_string, "entra-directory-sync")
 
       Req.Test.stub(Portal.Entra.APIClient, fn req_conn ->
         Req.Test.transport_error(req_conn, :econnrefused)
@@ -412,7 +451,7 @@ defmodule PortalWeb.VerificationControllerTest do
       assert conn.status == 200
       assert conn.resp_body =~ "Verification Failed"
       assert conn.resp_body =~ "Failed to verify directory access"
-      assert_received {:verification_failed, message}
+      assert_received {:verification_failed, message, ^verification_ref}
       assert message =~ "Failed to verify directory access"
     end
   end
