@@ -185,11 +185,17 @@ defmodule PortalWeb.Settings.DirectorySync do
         "private_key_jwk" => keypair.jwk,
         "kid" => keypair.kid
       })
+      |> put_change(:is_verified, false)
 
     # Extract the public key for display
     public_jwk = JWK.extract_public_key_components(keypair.jwk)
 
-    {:noreply, assign(socket, form: to_form(changeset), public_jwk: public_jwk)}
+    {:noreply,
+     assign(socket,
+       form: to_form(changeset),
+       public_jwk: public_jwk,
+       verification_error: nil
+     )}
   end
 
   def handle_event("start_verification", _params, %{assigns: %{type: "entra"}} = socket) do
@@ -1736,7 +1742,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
-    fields = [:impersonation_email, :okta_domain, :client_id, :tenant_id]
+    fields = [:impersonation_email, :okta_domain, :client_id, :private_key_jwk, :kid, :tenant_id]
 
     if Enum.any?(fields, &get_change(changeset, &1)) do
       put_change(changeset, :is_verified, false)

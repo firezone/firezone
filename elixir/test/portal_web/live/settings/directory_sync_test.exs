@@ -352,6 +352,35 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       refute html =~ "Verification complete"
     end
 
+    test "requires reverification after regenerating an okta keypair", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        okta_directory_fixture(%{
+          account: account,
+          name: "Okta Key Rotation",
+          okta_domain: "key-rotation.okta.com",
+          is_verified: true
+        })
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      assert html =~ "This directory has been successfully verified."
+      refute html =~ "Verify Now"
+
+      html = render_click(lv, "generate_keypair")
+
+      assert html =~ "Verify Now"
+      assert html =~ "Awaiting verification..."
+      refute html =~ "This directory has been successfully verified."
+      assert has_element?(lv, "button[form='directory-form'][disabled]", "Save")
+    end
+
     test "updates a google directory name", %{conn: conn, account: account, actor: actor} do
       directory =
         google_directory_fixture(%{
