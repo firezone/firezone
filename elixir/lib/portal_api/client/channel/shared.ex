@@ -52,10 +52,11 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # On an abnormal exit, drain the whole WebSocket instead of just letting the
   # channel die. connlib ignores `phx_error` and would keep the transport alive,
-  # re-joining reactively and reusing the transport-scoped session id (which
-  # collides with the row already persisted). Draining forces a full reconnect
-  # that re-runs `Socket.connect/3` and mints a fresh id, keeping transport:session
-  # 1:1. Graceful stops already send `phx_close`, so we only intervene here.
+  # re-joining reactively and reusing the transport-scoped session_ref (whose
+  # earlier flush confirmation could cancel the new session's durability
+  # timer). Draining forces a full reconnect that re-runs `Socket.connect/3`
+  # and mints a fresh session_ref, keeping transport:session 1:1. Graceful stops
+  # already send `phx_close`, so we only intervene here.
   @impl true
   def terminate(reason, socket) do
     if abnormal_exit?(reason) do
@@ -88,7 +89,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       Cache.Client.recompute_connectable_resources(
         nil,
         socket.assigns.client,
-        socket.assigns.session,
         socket.assigns.subject
       )
 
@@ -161,7 +161,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       Cache.Client.recompute_connectable_resources(
         socket.assigns.cache,
         socket.assigns.client,
-        socket.assigns.session,
         socket.assigns.subject
       )
 
@@ -173,7 +172,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       push(
         socket,
         "resource_created_or_updated",
-        Views.Resource.render(resource, socket.assigns.session)
+        Views.Resource.render(resource, socket.assigns.client)
       )
     end
 
@@ -282,7 +281,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.session.public_key,
+              socket.assigns.client.public_key,
               socket.assigns.subject.expires_at
             )
         })
@@ -379,7 +378,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             use_iceless: use_iceless,
             flow_logs_ingest_token: initiator_token
           }
-          |> put_site_id(site_id, socket.assigns.session)
+          |> put_site_id(site_id, socket.assigns.client)
 
         push(socket, authorization_created_event(socket), reply_payload)
         {:noreply, assign(socket, :pending_authorizations, remaining)}
@@ -520,8 +519,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, cancel_authz_durability_timer(socket, authz_id)}
   end
 
-  def handle_info({:confirm_session_durability, session_id}, socket) do
-    {:noreply, cancel_session_durability_timer(socket, session_id)}
+  def handle_info({:confirm_session_durability, session_ref}, socket) do
+    {:noreply, cancel_session_durability_timer(socket, session_ref)}
   end
 
   # Authz durability timer fired — no confirm/reject arrived in time. Fail-closed.
@@ -545,11 +544,11 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  def handle_info({:session_durability_timeout, session_id, generation}, socket) do
+  def handle_info({:session_durability_timeout, session_ref}, socket) do
     case socket.assigns[:session_durability] do
-      {^session_id, ^generation, _timer_ref} ->
+      {^session_ref, _timer_ref} ->
         Logger.warning(
-          "Client session #{inspect(session_id)} was not confirmed durable; disconnecting"
+          "Client session #{inspect(session_ref)} was not confirmed durable; disconnecting"
         )
 
         # Avoid sending "token_expired" since that will tear down connlib
@@ -566,6 +565,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     # attempting to immediately reconnect
     push(socket, "disconnect", %{reason: "token_expired"})
     {:stop, :shutdown, socket}
+  end
+
+  # Flush-failure disconnects are PG-delivered by device id but target one
+  # session; a mismatched ref belongs to a predecessor channel and falls
+  # through to the catch-all.
+  def handle_info({:disconnect, session_ref}, socket)
+      when session_ref == socket.assigns.session_ref do
+    handle_info(:disconnect, socket)
   end
 
   # A monitored process crashed — determine which subsystem it belongs to and recover.
@@ -666,9 +673,9 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
   end
 
-  defp put_site_id(payload, site_id, client_session) do
+  defp put_site_id(payload, site_id, client) do
     key =
-      if Portal.Version.client_supports_sites_payload?(client_session) do
+      if Portal.Version.client_supports_sites_payload?(client) do
         :site_id
       else
         :gateway_group_id
@@ -705,7 +712,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     case Cache.Client.authorize_resource(
            socket.assigns.cache,
            socket.assigns.client,
-           socket.assigns.session,
            resource_id,
            socket.assigns.subject
          ) do
@@ -802,7 +808,6 @@ defmodule PortalAPI.Client.Channel.Shared do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
-             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
@@ -825,7 +830,7 @@ defmodule PortalAPI.Client.Channel.Shared do
            resource_id: resource_id,
            site_id: gateway.site_id,
            gateway_id: gateway.id,
-           gateway_remote_ip: gateway.latest_session && gateway.latest_session.remote_ip
+           gateway_remote_ip: gateway.last_seen_remote_ip
          }}
 
       {:reply, reply, socket}
@@ -861,7 +866,6 @@ defmodule PortalAPI.Client.Channel.Shared do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
-             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
@@ -944,7 +948,6 @@ defmodule PortalAPI.Client.Channel.Shared do
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
-             socket.assigns.session,
              resource_id,
              socket.assigns.subject
            ),
@@ -971,7 +974,7 @@ defmodule PortalAPI.Client.Channel.Shared do
            client:
              PortalAPI.Gateway.Views.Client.render_legacy(
                socket.assigns.client,
-               socket.assigns.session.public_key,
+               socket.assigns.client.public_key,
                client_payload,
                preshared_key
              ),
@@ -1137,7 +1140,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       connected:
         Views.Relay.render_many(
           relays,
-          socket.assigns.session.public_key,
+          socket.assigns.client.public_key,
           socket.assigns.subject.expires_at
         )
     })
@@ -1180,7 +1183,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp check_peer_compatibility(target_meta, socket) do
     target_user_agent = Map.get(target_meta, :user_agent)
     target_version = Map.get(target_meta, :version)
-    initiator_version = socket.assigns.session.version
+    initiator_version = socket.assigns.client.last_seen_version
 
     if Portal.Version.supports_device_access?(target_user_agent, target_version) and
          Portal.Version.same_minor_version?(initiator_version, target_version) do
@@ -1285,21 +1288,21 @@ defmodule PortalAPI.Client.Channel.Shared do
         }
 
         gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
-        gateway_public_key = gateway.latest_session.public_key
+        gateway_public_key = gateway.public_key
 
         policy_authorization_id = Ecto.UUID.generate()
 
         preshared_key =
           generate_preshared_key(
             socket.assigns.client,
-            socket.assigns.session.public_key,
+            socket.assigns.client.public_key,
             gateway,
             gateway_public_key
           )
 
         ice_credentials =
           generate_ice_credentials(
-            socket.assigns.session.public_key,
+            socket.assigns.client.public_key,
             socket.assigns.client,
             gateway,
             gateway_public_key
@@ -1323,7 +1326,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              client:
                PortalAPI.Gateway.Views.Client.render(
                  socket.assigns.client,
-                 socket.assigns.session.public_key,
+                 socket.assigns.client.public_key,
                  preshared_key,
                  socket.assigns.subject.context.user_agent
                ),
@@ -1543,7 +1546,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       id: target_client_id,
       account_id: socket.assigns.client.account_id,
       type: :client,
-      latest_session: %{remote_ip: target_meta.remote_ip}
+      last_seen_remote_ip: target_meta.remote_ip
     }
 
     attrs =
@@ -1646,7 +1649,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket
        ) do
     client = socket.assigns.client
-    client_public_key = socket.assigns.session.public_key
+    client_public_key = socket.assigns.client.public_key
 
     target_client = %Portal.Device{
       id: target_client_id,
@@ -1676,7 +1679,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     # We render with the initiator's session here — for static_device_pool
     # resources the version-dependent codepaths in the resource view aren't
     # exercised (no site fields), so this is safe across version skew.
-    rendered_resource = Views.Resource.render(resource, socket.assigns.session)
+    rendered_resource = Views.Resource.render(resource, socket.assigns.client)
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
@@ -1748,12 +1751,12 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
-      resources: Views.Resource.render_many(resources, socket.assigns.session),
+      resources: Views.Resource.render_many(resources, socket.assigns.client),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.session.public_key,
+          socket.assigns.client.public_key,
           socket.assigns.subject.expires_at
         ),
       interface:
@@ -1862,7 +1865,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     Cache.Client.add_membership(
       socket.assigns.cache,
       socket.assigns.client,
-      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -1880,7 +1882,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.cache,
       membership,
       socket.assigns.client,
-      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -1918,7 +1919,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       Cache.Client.recompute_connectable_resources(
         socket.assigns.cache,
         socket.assigns.client,
-        socket.assigns.session,
         socket.assigns.subject
       )
       |> push_resource_updates(socket)
@@ -1952,7 +1952,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.cache,
       site,
       socket.assigns.client,
-      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -1968,7 +1967,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.cache,
       policy,
       socket.assigns.client,
-      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -2029,7 +2027,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.cache,
       policy,
       socket.assigns.client,
-      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -2073,7 +2070,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.cache,
       resource,
       socket.assigns.client,
-      socket.assigns.session,
       socket.assigns.subject
     )
     |> push_resource_updates(socket)
@@ -2177,29 +2173,23 @@ defmodule PortalAPI.Client.Channel.Shared do
   @authz_durability_timeout :timer.seconds(15)
 
   defp arm_session_durability_timer(socket) do
-    case socket.assigns.session.id do
-      nil ->
-        socket
+    session_ref = socket.assigns.session_ref
 
-      session_id ->
-        generation = make_ref()
+    timer_ref =
+      Process.send_after(
+        self(),
+        {:session_durability_timeout, session_ref},
+        @session_durability_timeout
+      )
 
-        timer_ref =
-          Process.send_after(
-            self(),
-            {:session_durability_timeout, session_id, generation},
-            @session_durability_timeout
-          )
-
-        # Fail-safe: if the session queue never confirms the DB flush, the
-        # channel disconnects and lets the client reconnect to create a new row.
-        assign(socket, session_durability: {session_id, generation, timer_ref})
-    end
+    # Fail-safe: if the session queue never confirms the DB flush, the
+    # channel disconnects so the client reconnects and retries the upsert.
+    assign(socket, session_durability: {session_ref, timer_ref})
   end
 
-  defp cancel_session_durability_timer(socket, session_id) do
+  defp cancel_session_durability_timer(socket, session_ref) do
     case socket.assigns[:session_durability] do
-      {^session_id, _generation, timer_ref} ->
+      {^session_ref, timer_ref} ->
         Process.cancel_timer(timer_ref)
         assign(socket, session_durability: nil)
 
@@ -2293,7 +2283,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       push(
         socket,
         "resource_created_or_updated",
-        Views.Resource.render(resource, socket.assigns.session)
+        Views.Resource.render(resource, socket.assigns.client)
       )
     end
 
@@ -2341,7 +2331,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{
            id: receiving_device_id,
            account_id: account_id,
-           latest_session: %{remote_ip: receiver_remote_ip}
+           last_seen_remote_ip: receiver_remote_ip
          },
          resource_id,
          policy_id,
@@ -2546,7 +2536,9 @@ defmodule PortalAPI.Client.Channel.Shared do
         # Only enqueue + arm on the first successful registration; re-registrations
         # after a PG scope crash share the same channel and session row.
         if is_nil(current_pid) do
-          Portal.Queue.enqueue(:client_session_queue, session_attrs(socket.assigns.session),
+          Portal.Queue.enqueue(
+            :client_session_queue,
+            session_attrs(socket.assigns.client, socket.assigns.session_ref),
             metadata: %{
               subject: Authentication.Subject.to_map(socket.assigns.subject),
               timestamp: DateTime.utc_now()
@@ -2574,11 +2566,11 @@ defmodule PortalAPI.Client.Channel.Shared do
           ipv4: socket.assigns.client.ipv4.address,
           ipv6: socket.assigns.client.ipv6.address,
           name: socket.assigns.client.name,
-          public_key: socket.assigns.session.public_key,
+          public_key: socket.assigns.client.public_key,
           psk_base: socket.assigns.client.psk_base,
-          remote_ip: socket.assigns.session.remote_ip,
-          version: socket.assigns.session.version,
-          user_agent: socket.assigns.session.user_agent
+          remote_ip: socket.assigns.client.last_seen_remote_ip,
+          version: socket.assigns.client.last_seen_version,
+          user_agent: socket.assigns.client.last_seen_user_agent
         }
 
         :ok =
@@ -2601,10 +2593,21 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  defp session_attrs(%Portal.ClientSession{} = session) do
-    session
-    |> Map.from_struct()
-    |> Map.drop([:__meta__, :account, :device, :client_token])
+  defp session_attrs(%Portal.Device{} = client, session_ref) do
+    %{
+      session_ref: session_ref,
+      account_id: client.account_id,
+      device_id: client.id,
+      client_token_id: client.client_token_id,
+      public_key: client.public_key,
+      user_agent: client.last_seen_user_agent,
+      remote_ip: client.last_seen_remote_ip,
+      remote_ip_location_region: client.last_seen_remote_ip_location_region,
+      remote_ip_location_city: client.last_seen_remote_ip_location_city,
+      remote_ip_location_lat: client.last_seen_remote_ip_location_lat,
+      remote_ip_location_lon: client.last_seen_remote_ip_location_lon,
+      version: client.last_seen_version
+    }
   end
 
   defp abnormal_exit?(:normal), do: false
@@ -2731,7 +2734,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
 
     defp compatible_gateway?(gateway, resource, version) do
-      gateway_version_str = gateway.latest_session && gateway.latest_session.version
+      gateway_version_str = gateway.last_seen_version
 
       case gateway_version_str && Version.parse(gateway_version_str) do
         {:ok, gateway_version} ->

@@ -1,7 +1,8 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
-  alias Portal.{Authentication, ClientSession, Device, PG, SessionLog, Version}
+  alias Portal.{Authentication, Device, PG, SessionLog, Version}
   alias Portal.Repo.Batch
+  alias PortalAPI.Sockets
   alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
@@ -64,9 +65,9 @@ defmodule PortalAPI.Client.Socket do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
-      session = build_session(client, token_id, public_key, subject, version)
+      client = apply_session(client, token_id, public_key, subject, version)
       set_connect_attributes(token_id, client, subject, version)
-      {:ok, assign_connect(socket, subject, client, session, version)}
+      {:ok, assign_connect(socket, subject, client, version)}
     else
       {:error, :invalid_token} ->
         OpenTelemetry.Tracer.set_status(:error, "invalid_token")
@@ -84,64 +85,67 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  defp build_session(client, token_id, public_key, subject, version) do
-    %ClientSession{
-      id: Ecto.UUID.generate(),
-      device_id: client.id,
-      account_id: client.account_id,
-      client_token_id: token_id,
-      public_key: public_key,
-      user_agent: subject.context.user_agent,
-      remote_ip: subject.context.remote_ip,
-      remote_ip_location_region: subject.context.remote_ip_location_region,
-      remote_ip_location_city: subject.context.remote_ip_location_city,
-      remote_ip_location_lat: subject.context.remote_ip_location_lat,
-      remote_ip_location_lon: subject.context.remote_ip_location_lon,
-      version: version
+  # The connection snapshot lives directly on the device struct: these are the
+  # same fields the flush later persists as the device's latest session.
+  defp apply_session(client, token_id, public_key, subject, version) do
+    %{
+      client
+      | client_token_id: token_id,
+        public_key: public_key,
+        last_seen_user_agent: subject.context.user_agent,
+        last_seen_remote_ip: subject.context.remote_ip,
+        last_seen_remote_ip_location_region: subject.context.remote_ip_location_region,
+        last_seen_remote_ip_location_city: subject.context.remote_ip_location_city,
+        last_seen_remote_ip_location_lat: subject.context.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now()
     }
   end
 
   defp flush_client_sessions(entries) do
-    {inserted, failed} =
-      Batch.insert_all(ClientSession, entries,
-        label: "client session",
-        fk_partitions: %{
-          "client_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
-          "client_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
-          "client_sessions_client_token_id_fkey" =>
-            {:composite, :client_token_id, Portal.ClientToken}
-        }
-      )
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :client_token_id)
 
-    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+    failed = revoked ++ missing
+    failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
 
-    for {attrs, _metadata} <- failed do
+    # A deleted token fails only its own session: a successor connection on
+    # the same device may hold a valid token, so the disconnect carries the
+    # session_ref for the channel to match on. A deleted device takes every
+    # connection down with it.
+    for {attrs, _metadata} <- revoked do
+      dispatch_queue_callback("client session", :on_failed, attrs, fn ->
+        PG.deliver(attrs.device_id, {:disconnect, attrs.session_ref})
+      end)
+    end
+
+    for {attrs, _metadata} <- missing do
       dispatch_queue_callback("client session", :on_failed, attrs, fn ->
         PG.deliver(attrs.device_id, :disconnect)
       end)
     end
 
-    # Durability is confirmed only once both the session and its log have
+    # Durability is confirmed only once both the device upsert and the log have
     # landed: a session whose log write fails is left unconfirmed so its
-    # durability timer fires and the client reconnects to retry both. This keeps
-    # the session log fail-closed without a transaction (which is incompatible
-    # with Batch.insert_all's rescue-and-repartition retry).
-    log_failed_ids = insert_session_logs(entries, failed_ids)
-    dispatch_client_session_confirmed(entries, MapSet.union(failed_ids, log_failed_ids))
+    # durability timer fires and the client reconnects to retry both. This
+    # keeps the session log fail-closed without a transaction spanning the
+    # upsert and the log insert.
+    log_failed_session_refs = insert_session_logs(entries, failed_session_refs)
+    dispatch_client_session_confirmed(entries, MapSet.union(failed_session_refs, log_failed_session_refs))
 
     if failed != [] do
       Logger.info(
-        "Skipped #{length(failed)} client session entries during flush due to missing references"
+        "Skipped #{length(failed)} client session entries during flush due to deleted devices or tokens"
       )
     end
 
-    inserted
+    persisted
   end
 
-  defp dispatch_client_session_confirmed(entries, failed_ids) do
-    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+  defp dispatch_client_session_confirmed(entries, failed_session_refs) do
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
       dispatch_queue_callback("client session", :on_confirmed, attrs, fn ->
-        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.session_ref})
       end)
     end
   end
@@ -153,12 +157,12 @@ defmodule PortalAPI.Client.Socket do
   # snapshot and the connect-time timestamp ride the queue entry's metadata; the
   # timestamp is captured at connect rather than read from the session row's
   # inserted_at, which is stamped at flush time and would be identical across a
-  # whole batch. Each log entry carries its session id so the caller can learn
+  # whole batch. Each log entry carries its session_ref so the caller can learn
   # which sessions' logs failed and withhold their durability confirmation.
-  defp insert_session_logs(entries, failed_ids) do
+  defp insert_session_logs(entries, failed_session_refs) do
     log_entries =
-      for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
-        {session_log_attrs(attrs, metadata), attrs[:id]}
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
+        {session_log_attrs(attrs, metadata), attrs.session_ref}
       end
 
     {_inserted, failed} =
@@ -169,7 +173,7 @@ defmodule PortalAPI.Client.Socket do
         }
       )
 
-    MapSet.new(failed, fn {_log_attrs, session_id} -> session_id end)
+    MapSet.new(failed, fn {_log_attrs, session_ref} -> session_ref end)
   end
 
   defp session_log_attrs(attrs, %{subject: subject, timestamp: timestamp}) do
@@ -192,13 +196,13 @@ defmodule PortalAPI.Client.Socket do
   rescue
     error ->
       Logger.error(
-        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:id])}: " <>
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:session_ref])}: " <>
           Exception.message(error)
       )
   catch
     kind, reason ->
       Logger.error(
-        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:id])}: " <>
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:session_ref])}: " <>
           inspect(reason)
       )
   end
@@ -214,11 +218,11 @@ defmodule PortalAPI.Client.Socket do
     })
   end
 
-  defp assign_connect(socket, subject, client, session, version) do
+  defp assign_connect(socket, subject, client, version) do
     socket
     |> assign(:subject, subject)
     |> assign(:client, client)
-    |> assign(:session, session)
+    |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())

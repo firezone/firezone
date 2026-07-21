@@ -1297,7 +1297,7 @@ defmodule PortalWeb.Resources.Components do
                         {client.actor.email}
                       </p>
                     </div>
-                    <div :if={client.latest_session}>
+                    <div :if={client.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Operating System</p>
                       <.client_os client={client} />
                     </div>
@@ -1309,10 +1309,10 @@ defmodule PortalWeb.Resources.Components do
                       <p class="text-subtle font-medium mb-1">Tunnel IPv6</p>
                       <p class="text-heading font-mono break-all">{client.ipv6}</p>
                     </div>
-                    <div :if={client.latest_session}>
+                    <div :if={client.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Last Seen</p>
                       <p class="text-heading">
-                        <.relative_datetime datetime={client.latest_session.inserted_at} />
+                        <.relative_datetime datetime={client.last_seen_at} />
                       </p>
                     </div>
                     <div :if={client.device_serial}>

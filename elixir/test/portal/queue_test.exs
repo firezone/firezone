@@ -14,63 +14,34 @@ defmodule Portal.QueueTest do
 
   alias Portal.Queue
   alias Portal.Repo.Batch
-  alias Portal.{ClientSession, GatewaySession, PolicyAuthorization}
+  alias Portal.PolicyAuthorization
+  alias PortalAPI.Sockets
 
   defp unique_name(prefix), do: :"#{prefix}_#{inspect(make_ref())}"
 
   defp client_session_opts(extra) do
-    {batch_opts, queue_opts} = Keyword.split(extra, [:on_failed, :on_confirmed])
-
-    batch_opts =
-      Keyword.merge(
-        [
-          schema: Portal.ClientSession,
-          label: "client session",
-          fk_partitions: %{
-            "client_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
-            "client_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
-            "client_sessions_client_token_id_fkey" =>
-              {:composite, :client_token_id, Portal.ClientToken}
-          }
-        ],
-        batch_opts
-      )
+    {cb_opts, queue_opts} = Keyword.split(extra, [:on_failed, :on_confirmed])
 
     Keyword.merge(
       [
         flush_interval: :timer.seconds(5),
         flush_threshold: 1_000,
         label: "client session",
-        on_flush: &flush_batch(&1, batch_opts)
+        on_flush: &flush_upsert(&1, :client_token_id, cb_opts)
       ],
       queue_opts
     )
   end
 
   defp gateway_session_opts(extra) do
-    {batch_opts, queue_opts} = Keyword.split(extra, [:on_failed, :on_confirmed])
-
-    batch_opts =
-      Keyword.merge(
-        [
-          schema: Portal.GatewaySession,
-          label: "gateway session",
-          fk_partitions: %{
-            "gateway_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
-            "gateway_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
-            "gateway_sessions_gateway_token_id_fkey" =>
-              {:composite, :gateway_token_id, Portal.GatewayToken}
-          }
-        ],
-        batch_opts
-      )
+    {cb_opts, queue_opts} = Keyword.split(extra, [:on_failed, :on_confirmed])
 
     Keyword.merge(
       [
         flush_interval: :timer.seconds(5),
         flush_threshold: 1_000,
         label: "gateway session",
-        on_flush: &flush_batch(&1, batch_opts)
+        on_flush: &flush_upsert(&1, :gateway_token_id, cb_opts)
       ],
       queue_opts
     )
@@ -122,9 +93,23 @@ defmodule Portal.QueueTest do
       |> Batch.insert_all(entries, batch_opts)
 
     dispatch_failed(failed, batch_opts)
-    dispatch_confirmed(entries, failed, batch_opts)
+    dispatch_confirmed(entries, failed, batch_opts, :id)
 
     inserted
+  end
+
+  defp flush_upsert(entries, token_field, cb_opts) do
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, token_field)
+
+    failed = revoked ++ missing
+    dispatch_failed(failed, cb_opts)
+    dispatch_confirmed(entries, failed, cb_opts, :session_ref)
+
+    persisted
+  end
+
+  defp reload_device(device) do
+    Repo.get_by!(Portal.Device, account_id: device.account_id, id: device.id)
   end
 
   defp dispatch_failed(entries, batch_opts) do
@@ -135,11 +120,11 @@ defmodule Portal.QueueTest do
     end
   end
 
-  defp dispatch_confirmed(entries, failed, batch_opts) do
+  defp dispatch_confirmed(entries, failed, batch_opts, key) do
     on_confirmed = Keyword.get(batch_opts, :on_confirmed, fn _attrs -> :ok end)
-    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+    failed_keys = MapSet.new(failed, fn {attrs, _metadata} -> attrs[key] end)
 
-    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_keys, attrs[key]) do
       safe_callback(fn -> on_confirmed.(attrs) end)
     end
   end
@@ -170,7 +155,7 @@ defmodule Portal.QueueTest do
 
     defp client_session_attrs(ctx, overrides \\ %{}) do
       defaults = %{
-        id: Ecto.UUID.generate(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -187,57 +172,109 @@ defmodule Portal.QueueTest do
       Map.merge(defaults, overrides)
     end
 
-    test "inserts a single session into the database on flush", ctx do
+    test "upserts the latest session onto the device on flush", ctx do
       attrs = client_session_attrs(ctx)
 
       Queue.enqueue(ctx.queue, attrs)
       Queue.flush(ctx.queue)
 
-      [persisted] = Repo.all(ClientSession)
-      assert persisted.account_id == ctx.account.id
-      assert persisted.device_id == ctx.client.id
-      assert persisted.client_token_id == ctx.token.id
-      assert persisted.id == attrs.id
-      assert persisted.inserted_at
+      device = reload_device(ctx.client)
+      assert device.client_token_id == ctx.token.id
+      assert device.public_key == attrs.public_key
+      assert device.last_seen_user_agent == attrs.user_agent
+      assert device.last_seen_version == attrs.version
+      assert device.last_seen_remote_ip == %Postgrex.INET{address: {100, 64, 0, 1}}
+      assert device.last_seen_at
     end
 
-    test "buffers multiple sessions and flushes them all at once", ctx do
-      for _ <- 1..5 do
-        Queue.enqueue(ctx.queue, client_session_attrs(ctx))
-      end
+    test "keeps the newest entry when a batch has several sessions for one device", ctx do
+      now = DateTime.utc_now()
 
+      older = client_session_attrs(ctx, %{version: "1.0.0"})
+      newer = client_session_attrs(ctx, %{version: "1.3.1"})
+
+      Queue.enqueue(ctx.queue, newer, metadata: %{timestamp: now})
+      Queue.enqueue(ctx.queue, older, metadata: %{timestamp: DateTime.add(now, -60, :second)})
       Queue.flush(ctx.queue)
 
-      assert length(Repo.all(ClientSession)) == 5
+      device = reload_device(ctx.client)
+      assert device.last_seen_version == "1.3.1"
+      assert device.last_seen_at == now
+    end
+
+    test "does not roll a device back to an older session across flushes", ctx do
+      now = DateTime.utc_now()
+
+      newer = client_session_attrs(ctx, %{version: "1.3.1"})
+      Queue.enqueue(ctx.queue, newer, metadata: %{timestamp: now})
+      Queue.flush(ctx.queue)
+
+      older = client_session_attrs(ctx, %{version: "1.0.0"})
+      Queue.enqueue(ctx.queue, older, metadata: %{timestamp: DateTime.add(now, -60, :second)})
+      Queue.flush(ctx.queue)
+
+      device = reload_device(ctx.client)
+      assert device.last_seen_version == "1.3.1"
+      assert device.last_seen_at == now
     end
 
     test "flush is a no-op when buffer is empty", ctx do
       Queue.flush(ctx.queue)
-      assert Repo.all(ClientSession) == []
+      assert is_nil(reload_device(ctx.client).last_seen_at)
     end
 
     test "flush clears the buffer so a subsequent flush is a no-op", ctx do
       Queue.enqueue(ctx.queue, client_session_attrs(ctx))
       Queue.flush(ctx.queue)
+
+      device = reload_device(ctx.client)
       Queue.flush(ctx.queue)
 
-      assert length(Repo.all(ClientSession)) == 1
+      assert reload_device(ctx.client).last_seen_at == device.last_seen_at
     end
 
-    test "skips sessions whose token was deleted (composite FK partition)", ctx do
-      valid = client_session_attrs(ctx)
-
+    test "skips sessions whose token was deleted", ctx do
       other_token = client_token_fixture(account: ctx.account)
-      orphan = client_session_attrs(ctx, %{client_token_id: other_token.id})
+      attrs = client_session_attrs(ctx, %{client_token_id: other_token.id})
       Repo.delete!(other_token)
 
-      Queue.enqueue(ctx.queue, orphan)
-      Queue.enqueue(ctx.queue, valid)
+      Queue.enqueue(ctx.queue, attrs)
       Queue.flush(ctx.queue)
 
-      sessions = Repo.all(ClientSession)
-      assert length(sessions) == 1
-      assert hd(sessions).client_token_id == ctx.token.id
+      assert Process.alive?(ctx.queue)
+      device = reload_device(ctx.client)
+      assert is_nil(device.client_token_id)
+      assert is_nil(device.last_seen_at)
+    end
+
+    test "a deleted-token entry does not block the device's live entry", ctx do
+      now = DateTime.utc_now()
+
+      other_token = client_token_fixture(account: ctx.account)
+      revoked = client_session_attrs(ctx, %{client_token_id: other_token.id, version: "1.0.0"})
+      Repo.delete!(other_token)
+
+      live = client_session_attrs(ctx, %{version: "1.3.1"})
+
+      Queue.enqueue(ctx.queue, revoked, metadata: %{timestamp: DateTime.add(now, -60, :second)})
+      Queue.enqueue(ctx.queue, live, metadata: %{timestamp: now})
+      Queue.flush(ctx.queue)
+
+      device = reload_device(ctx.client)
+      assert device.client_token_id == ctx.token.id
+      assert device.last_seen_version == "1.3.1"
+    end
+
+    test "hard-deleting the token nilifies the device's token column", ctx do
+      Queue.enqueue(ctx.queue, client_session_attrs(ctx))
+      Queue.flush(ctx.queue)
+      assert reload_device(ctx.client).client_token_id == ctx.token.id
+
+      Repo.delete!(ctx.token)
+
+      device = reload_device(ctx.client)
+      assert is_nil(device.client_token_id)
+      assert device.last_seen_at
     end
 
     test "skips sessions whose device was deleted", ctx do
@@ -256,26 +293,30 @@ defmodule Portal.QueueTest do
       Queue.enqueue(ctx.queue, valid)
       Queue.flush(ctx.queue)
 
-      sessions = Repo.all(ClientSession)
-      assert length(sessions) == 1
-      assert hd(sessions).device_id == ctx.client.id
+      assert Process.alive?(ctx.queue)
+      assert reload_device(ctx.client).last_seen_at
     end
 
-    test "does not crash when all parents are deleted", ctx do
-      other_token = client_token_fixture(account: ctx.account)
-      orphan = client_session_attrs(ctx, %{client_token_id: other_token.id})
-      Repo.delete!(other_token)
+    test "does not crash when all devices are deleted", ctx do
+      actor = actor_fixture(account: ctx.account)
+      other_client = client_fixture(account: ctx.account, actor: actor)
+      orphan = client_session_attrs(ctx, %{device_id: other_client.id})
+
+      other_device =
+        Repo.get_by!(Portal.Device, account_id: other_client.account_id, id: other_client.id)
+
+      Repo.delete!(other_device)
 
       Queue.enqueue(ctx.queue, orphan)
       Queue.flush(ctx.queue)
 
       assert Process.alive?(ctx.queue)
-      assert Repo.all(ClientSession) == []
+      assert is_nil(reload_device(ctx.client).last_seen_at)
 
       Queue.enqueue(ctx.queue, client_session_attrs(ctx))
       Queue.flush(ctx.queue)
 
-      assert length(Repo.all(ClientSession)) == 1
+      assert reload_device(ctx.client).last_seen_at
     end
   end
 
@@ -291,16 +332,16 @@ defmodule Portal.QueueTest do
           {Queue, gateway_session_opts(name: unique_name(:gs), callers: [self()])}
         )
 
-      %{queue: queue, account: account, gateway: gateway, token: token}
+      %{queue: queue, account: account, site: site, gateway: gateway, token: token}
     end
 
     defp gateway_session_attrs(ctx, overrides \\ %{}) do
       defaults = %{
-        id: Ecto.UUID.generate(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.gateway.id,
         gateway_token_id: ctx.token.id,
-        public_key: ctx.gateway.latest_session.public_key,
+        public_key: ctx.gateway.public_key,
         user_agent: "Linux/6.1.0 connlib/1.3.0 (x86_64)",
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",
@@ -310,23 +351,37 @@ defmodule Portal.QueueTest do
       Map.merge(defaults, overrides)
     end
 
-    defp count_gateway_sessions(ctx) do
-      import Ecto.Query
-      Repo.aggregate(from(s in GatewaySession, where: s.gateway_token_id == ^ctx.token.id), :count)
-    end
-
-    test "inserts gateway sessions and skips orphaned ones", ctx do
+    test "upserts gateway sessions and skips deleted devices", ctx do
       valid = gateway_session_attrs(ctx)
 
-      other_token = gateway_token_fixture(account: ctx.account)
-      orphan = gateway_session_attrs(ctx, %{gateway_token_id: other_token.id})
-      Repo.delete!(other_token)
+      other_gateway = gateway_fixture(account: ctx.account, site: ctx.site)
+      orphan = gateway_session_attrs(ctx, %{device_id: other_gateway.id})
+
+      other_device =
+        Repo.get_by!(Portal.Device, account_id: other_gateway.account_id, id: other_gateway.id)
+
+      Repo.delete!(other_device)
 
       Queue.enqueue(ctx.queue, orphan)
       Queue.enqueue(ctx.queue, valid)
       Queue.flush(ctx.queue)
 
-      assert count_gateway_sessions(ctx) == 1
+      device = reload_device(ctx.gateway)
+      assert device.gateway_token_id == ctx.token.id
+      assert device.last_seen_user_agent == valid.user_agent
+    end
+
+    test "skips gateway sessions whose token was deleted", ctx do
+      other_token = gateway_token_fixture(account: ctx.account, site: ctx.site)
+      attrs = gateway_session_attrs(ctx, %{gateway_token_id: other_token.id})
+      Repo.delete!(other_token)
+
+      Queue.enqueue(ctx.queue, attrs)
+      Queue.flush(ctx.queue)
+
+      assert Process.alive?(ctx.queue)
+      device = reload_device(ctx.gateway)
+      refute device.last_seen_user_agent == attrs.user_agent
     end
   end
 
@@ -498,7 +553,7 @@ defmodule Portal.QueueTest do
 
     test "flushes buffered entries when timer fires", ctx do
       attrs = %{
-        id: Ecto.UUID.generate(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -516,7 +571,7 @@ defmodule Portal.QueueTest do
       send(ctx.queue, :flush)
       Queue.flush(ctx.queue)
 
-      assert length(Repo.all(ClientSession)) == 1
+      assert reload_device(ctx.client).last_seen_at
     end
   end
 
@@ -737,7 +792,7 @@ defmodule Portal.QueueTest do
 
     defp err_session_attrs(ctx) do
       %{
-        id: Ecto.UUID.generate(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -754,27 +809,27 @@ defmodule Portal.QueueTest do
 
     test "{:error, _} dispatch return is propagated and skips the buffer", ctx do
       attrs = err_session_attrs(ctx)
-      attrs_id = attrs.id
+      attrs_session_ref = attrs.session_ref
 
       assert {:error, :not_found} =
                Queue.enqueue(ctx.queue, attrs, dispatch: fn -> {:error, :not_found} end)
 
       Queue.flush(ctx.queue)
 
-      # Row must not be in the database — the dispatch never reached the
+      # The device must not be updated — the dispatch never reached the
       # receiver, so persisting authorization state would create a stale row
       # that no `:allow` is on the wire for.
-      assert Repo.all(ClientSession) == []
+      assert is_nil(reload_device(ctx.client).last_seen_at)
 
       # And on_failed must NOT fire — there's nothing to revoke.
-      refute_received {:on_failed, %{id: ^attrs_id}}
+      refute_received {:on_failed, %{session_ref: ^attrs_session_ref}}
     end
 
     test ":ok dispatch return buffers the entry", ctx do
       Queue.enqueue(ctx.queue, err_session_attrs(ctx), dispatch: fn -> :ok end)
       Queue.flush(ctx.queue)
 
-      assert length(Repo.all(ClientSession)) == 1
+      assert reload_device(ctx.client).last_seen_at
     end
 
     test "dispatch runs in the Queue process so its sender is the Queue pid", ctx do
@@ -952,7 +1007,7 @@ defmodule Portal.QueueTest do
 
     defp resilience_session_attrs(ctx, overrides \\ %{}) do
       defaults = %{
-        id: Ecto.UUID.generate(),
+        session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
         client_token_id: ctx.token.id,
@@ -974,7 +1029,7 @@ defmodule Portal.QueueTest do
       test_pid = self()
 
       on_failed = fn attrs, _ ->
-        send(test_pid, {:on_failed, attrs.id})
+        send(test_pid, {:on_failed, attrs.session_ref})
         :ok
       end
 
@@ -1008,9 +1063,9 @@ defmodule Portal.QueueTest do
       # The raising entry should NOT be buffered (error replies skip buffer).
       # The previously-enqueued valid entry should still flush successfully.
       Queue.flush(queue)
-      sessions = Repo.all(ClientSession)
-      assert length(sessions) == 1
-      assert hd(sessions).id == valid_attrs.id
+      device = reload_device(ctx.client)
+      assert device.last_seen_at
+      assert device.public_key == valid_attrs.public_key
 
       # No on_failed should have fired — the valid entry persisted, and the
       # raising entry was never buffered.
@@ -1041,16 +1096,16 @@ defmodule Portal.QueueTest do
          ctx do
       test_pid = self()
 
-      bad_id_1 = Ecto.UUID.generate()
-      bad_id_2 = Ecto.UUID.generate()
+      bad_session_ref_1 = make_ref()
+      bad_session_ref_2 = make_ref()
 
       on_failed = fn attrs, _ ->
-        send(test_pid, {:on_failed_attempt, attrs.id})
+        send(test_pid, {:on_failed_attempt, attrs.session_ref})
         # First entry raises; subsequent ones must still run.
-        if attrs.id == bad_id_1 do
+        if attrs.session_ref == bad_session_ref_1 do
           raise "boom from on_failed"
         else
-          send(test_pid, {:on_failed_succeeded, attrs.id})
+          send(test_pid, {:on_failed_succeeded, attrs.session_ref})
           :ok
         end
       end
@@ -1065,12 +1120,17 @@ defmodule Portal.QueueTest do
            )}
         )
 
-      # Both entries reference a since-deleted token → both fail FK → both
+      # Both entries reference a since-deleted device → both fail → both
       # entries flow through on_failed.
-      other_token = client_token_fixture(account: ctx.account)
-      attrs1 = resilience_session_attrs(ctx, %{id: bad_id_1, client_token_id: other_token.id})
-      attrs2 = resilience_session_attrs(ctx, %{id: bad_id_2, client_token_id: other_token.id})
-      Repo.delete!(other_token)
+      actor = actor_fixture(account: ctx.account)
+      other_client = client_fixture(account: ctx.account, actor: actor)
+      attrs1 = resilience_session_attrs(ctx, %{session_ref: bad_session_ref_1, device_id: other_client.id})
+      attrs2 = resilience_session_attrs(ctx, %{session_ref: bad_session_ref_2, device_id: other_client.id})
+
+      other_device =
+        Repo.get_by!(Portal.Device, account_id: other_client.account_id, id: other_client.id)
+
+      Repo.delete!(other_device)
 
       Queue.enqueue(queue, attrs1)
       Queue.enqueue(queue, attrs2)
@@ -1080,12 +1140,12 @@ defmodule Portal.QueueTest do
 
       # Both on_failed callbacks must have been attempted, even though the
       # first one raised.
-      assert_received {:on_failed_attempt, ^bad_id_1}
-      assert_received {:on_failed_attempt, ^bad_id_2}
+      assert_received {:on_failed_attempt, ^bad_session_ref_1}
+      assert_received {:on_failed_attempt, ^bad_session_ref_2}
 
       # The second one must have completed successfully (the raise in the
       # first must not have aborted the loop).
-      assert_received {:on_failed_succeeded, ^bad_id_2}
+      assert_received {:on_failed_succeeded, ^bad_session_ref_2}
     end
 
     test "terminate/2 flushes remaining buffered entries through on_failed",
@@ -1096,7 +1156,7 @@ defmodule Portal.QueueTest do
       test_pid = self()
 
       on_failed = fn attrs, _ ->
-        send(test_pid, {:terminate_on_failed, attrs.id})
+        send(test_pid, {:terminate_on_failed, attrs.session_ref})
         :ok
       end
 
@@ -1111,12 +1171,17 @@ defmodule Portal.QueueTest do
           id: :cs_term_queue
         )
 
-      # Buffer two entries that reference a deleted token so the final
-      # flush in terminate/2 fails FK and routes both through on_failed.
-      other_token = client_token_fixture(account: ctx.account)
-      attrs1 = resilience_session_attrs(ctx, %{client_token_id: other_token.id})
-      attrs2 = resilience_session_attrs(ctx, %{client_token_id: other_token.id})
-      Repo.delete!(other_token)
+      # Buffer two entries that reference a deleted device so the final
+      # flush in terminate/2 fails and routes both through on_failed.
+      actor = actor_fixture(account: ctx.account)
+      other_client = client_fixture(account: ctx.account, actor: actor)
+      attrs1 = resilience_session_attrs(ctx, %{device_id: other_client.id})
+      attrs2 = resilience_session_attrs(ctx, %{device_id: other_client.id})
+
+      other_device =
+        Repo.get_by!(Portal.Device, account_id: other_client.account_id, id: other_client.id)
+
+      Repo.delete!(other_device)
 
       Queue.enqueue(queue, attrs1)
       Queue.enqueue(queue, attrs2)
@@ -1124,10 +1189,10 @@ defmodule Portal.QueueTest do
       # Stop the queue gracefully — triggers terminate/2.
       :ok = stop_supervised(:cs_term_queue)
 
-      attrs1_id = attrs1.id
-      attrs2_id = attrs2.id
-      assert_received {:terminate_on_failed, ^attrs1_id}
-      assert_received {:terminate_on_failed, ^attrs2_id}
+      attrs1_session_ref = attrs1.session_ref
+      attrs2_session_ref = attrs2.session_ref
+      assert_received {:terminate_on_failed, ^attrs1_session_ref}
+      assert_received {:terminate_on_failed, ^attrs2_session_ref}
     end
   end
 

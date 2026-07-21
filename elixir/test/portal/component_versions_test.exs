@@ -52,7 +52,7 @@ defmodule Portal.ComponentVersionsTest do
       client = %Portal.Device{
         type: :client,
         actor: %Portal.Actor{type: :service_account},
-        latest_session: nil
+        last_seen_user_agent: nil
       }
 
       assert get_component_type(client) == :headless
@@ -62,7 +62,7 @@ defmodule Portal.ComponentVersionsTest do
       client = %Portal.Device{
         type: :client,
         actor: %Portal.Actor{type: :account_user},
-        latest_session: %{user_agent: "Mac OS/14.0"}
+        last_seen_user_agent: "Mac OS/14.0"
       }
 
       assert get_component_type(client) == :apple
@@ -72,7 +72,7 @@ defmodule Portal.ComponentVersionsTest do
       client = %Portal.Device{
         type: :client,
         actor: %Portal.Actor{type: :account_user},
-        latest_session: %{user_agent: "iOS/17.0"}
+        last_seen_user_agent: "iOS/17.0"
       }
 
       assert get_component_type(client) == :apple
@@ -82,7 +82,7 @@ defmodule Portal.ComponentVersionsTest do
       client = %Portal.Device{
         type: :client,
         actor: %Portal.Actor{type: :account_user},
-        latest_session: %{user_agent: "Android/14"}
+        last_seen_user_agent: "Android/14"
       }
 
       assert get_component_type(client) == :android
@@ -92,7 +92,7 @@ defmodule Portal.ComponentVersionsTest do
       client = %Portal.Device{
         type: :client,
         actor: %Portal.Actor{type: :account_user},
-        latest_session: %{user_agent: "Windows/10"}
+        last_seen_user_agent: "Windows/10"
       }
 
       assert get_component_type(client) == :gui
@@ -107,11 +107,11 @@ defmodule Portal.ComponentVersionsTest do
       assert get_component_type_from_user_agent("Linux/6.1.0 android-client/1.5.8") == :android
     end
 
-    test "returns :gui when latest_session is nil" do
+    test "returns :gui when last_seen_user_agent is nil" do
       client = %Portal.Device{
         type: :client,
         actor: %Portal.Actor{type: :account_user},
-        latest_session: nil
+        last_seen_user_agent: nil
       }
 
       assert get_component_type(client) == :gui

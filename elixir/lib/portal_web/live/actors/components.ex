@@ -468,7 +468,9 @@ defmodule PortalWeb.Actors.Components do
                   <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
                     <.icon
                       name={
-                        client_os_icon_name(token.latest_session && token.latest_session.user_agent)
+                        client_os_icon_name(
+                          token.last_used_device && token.last_used_device.last_seen_user_agent
+                        )
                       }
                       class="w-4 h-4 text-body"
                     />
@@ -481,15 +483,15 @@ defmodule PortalWeb.Actors.Components do
                       <span>
                         Connected
                         <.relative_datetime datetime={
-                          token.latest_session && token.latest_session.inserted_at
+                          token.last_used_device && token.last_used_device.last_seen_at
                         } />
                       </span>
                       <span :if={
                         token_location(token) ||
-                          (token.latest_session && token.latest_session.remote_ip)
+                          (token.last_used_device && token.last_used_device.last_seen_remote_ip)
                       }>
                         Location: {token_location(token) ||
-                          (token.latest_session && token.latest_session.remote_ip)}
+                          (token.last_used_device && token.last_used_device.last_seen_remote_ip)}
                       </span>
                     </div>
                   </div>
@@ -514,7 +516,7 @@ defmodule PortalWeb.Actors.Components do
                   />
                 </div>
               </summary>
-              <.session_details session={token.latest_session} location={token_location(token)}>
+              <.session_details device={token.last_used_device} location={token_location(token)}>
                 <.detail_field label="Token ID" mono>{token.id}</.detail_field>
                 <.detail_field :if={token.expires_at} label="Token Expires">
                   <.relative_datetime datetime={token.expires_at} />
@@ -748,7 +750,7 @@ defmodule PortalWeb.Actors.Components do
                         <span>
                           Last used:
                           <.relative_datetime datetime={
-                            token.latest_session && token.latest_session.inserted_at
+                            token.last_used_device && token.last_used_device.last_seen_at
                           } />
                         </span>
                         <span :if={token.expires_at}>
@@ -756,10 +758,10 @@ defmodule PortalWeb.Actors.Components do
                         </span>
                         <span :if={
                           token_location(token) ||
-                            (token.latest_session && token.latest_session.remote_ip)
+                            (token.last_used_device && token.last_used_device.last_seen_remote_ip)
                         }>
                           Location: {token_location(token) ||
-                            (token.latest_session && token.latest_session.remote_ip)}
+                            (token.last_used_device && token.last_used_device.last_seen_remote_ip)}
                         </span>
                       </div>
                     </div>
@@ -784,7 +786,7 @@ defmodule PortalWeb.Actors.Components do
                     />
                   </div>
                 </summary>
-                <.session_details session={token.latest_session} location={token_location(token)}>
+                <.session_details device={token.last_used_device} location={token_location(token)}>
                   <.detail_field label="Token ID" mono>{token.id}</.detail_field>
                   <.detail_field :if={token.expires_at} label="Token Expires">
                     <.relative_datetime datetime={token.expires_at} />
@@ -1656,7 +1658,7 @@ defmodule PortalWeb.Actors.Components do
   defp actor_display_type(%{type: :account_user}), do: "User"
   defp actor_display_type(_), do: "User"
 
-  attr :session, :any, required: true
+  attr :device, :any, required: true
   attr :location, :string, default: nil
   slot :inner_block
 
@@ -1664,24 +1666,24 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-raised/50">
       <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
-        <.detail_field :if={@session && @session.remote_ip} label="IP Address" mono>
-          {@session.remote_ip}
+        <.detail_field :if={@device && @device.last_seen_remote_ip} label="IP Address" mono>
+          {@device.last_seen_remote_ip}
         </.detail_field>
         <.detail_field :if={@location} label="Location">
           {@location}
         </.detail_field>
-        <.detail_field :if={@session && @session.version} label="Client Version">
-          {@session.version}
+        <.detail_field :if={@device && @device.last_seen_version} label="Client Version">
+          {@device.last_seen_version}
         </.detail_field>
         <.detail_field
-          :if={@session && @session.user_agent}
+          :if={@device && @device.last_seen_user_agent}
           label="User Agent"
-          title={@session.user_agent}
+          title={@device.last_seen_user_agent}
         >
-          {@session.user_agent}
+          {@device.last_seen_user_agent}
         </.detail_field>
-        <.detail_field :if={@session} label="Last Seen">
-          <.relative_datetime datetime={@session.inserted_at} />
+        <.detail_field :if={@device} label="Last Seen">
+          <.relative_datetime datetime={@device.last_seen_at} />
         </.detail_field>
         {render_slot(@inner_block)}
       </dl>
@@ -1714,15 +1716,15 @@ defmodule PortalWeb.Actors.Components do
     String.split(idp_id, ":", parts: 2) |> List.last()
   end
 
-  defp token_location(%{latest_session: nil}), do: nil
+  defp token_location(%{last_used_device: nil}), do: nil
 
-  defp token_location(%{latest_session: session}) do
+  defp token_location(%{last_used_device: device}) do
     cond do
-      session.remote_ip_location_city && session.remote_ip_location_region ->
-        "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
+      device.last_seen_remote_ip_location_city && device.last_seen_remote_ip_location_region ->
+        "#{device.last_seen_remote_ip_location_city}, #{device.last_seen_remote_ip_location_region}"
 
-      session.remote_ip_location_region ->
-        session.remote_ip_location_region
+      device.last_seen_remote_ip_location_region ->
+        device.last_seen_remote_ip_location_region
 
       true ->
         nil

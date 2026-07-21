@@ -269,7 +269,7 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "United States of America"
       assert html =~ "google.com/maps/place/37.7749,-122.4194"
       assert html =~ "Tunnel IPv4"
-      assert html =~ gateway.latest_session.version
+      assert html =~ gateway.last_seen_version
 
       html = render_click(lv, "show_online_gateways")
       assert html =~ "No gateways are currently online."

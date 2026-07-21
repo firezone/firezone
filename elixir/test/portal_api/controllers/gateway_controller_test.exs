@@ -158,7 +158,18 @@ defmodule PortalAPI.GatewayControllerTest do
                  "name" => gateway.name,
                  "ipv4" => Portal.Types.IP.to_string(gateway.ipv4),
                  "ipv6" => Portal.Types.IP.to_string(gateway.ipv6),
-                 "online" => false
+                 "online" => false,
+                 "public_key" => gateway.public_key,
+                 "last_seen_at" => DateTime.to_iso8601(gateway.last_seen_at),
+                 "last_seen_version" => gateway.last_seen_version,
+                 "last_seen_user_agent" => gateway.last_seen_user_agent,
+                 "last_seen_remote_ip" => Portal.Types.IP.to_string(gateway.last_seen_remote_ip),
+                 "last_seen_remote_ip_location_region" =>
+                   gateway.last_seen_remote_ip_location_region,
+                 "last_seen_remote_ip_location_city" =>
+                   gateway.last_seen_remote_ip_location_city,
+                 "last_seen_remote_ip_location_lat" => gateway.last_seen_remote_ip_location_lat,
+                 "last_seen_remote_ip_location_lon" => gateway.last_seen_remote_ip_location_lon
                }
              }
     end

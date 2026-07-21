@@ -646,12 +646,8 @@ defmodule PortalWeb.Settings.Account do
     @spec count_1m_active_users_for_account(Portal.Authentication.Subject.t()) :: integer()
     def count_1m_active_users_for_account(subject) do
       from(d in Device, as: :devices)
-      |> join(:inner, [devices: d], s in Portal.ClientSession,
-        on: s.device_id == d.id and s.account_id == d.account_id,
-        as: :session
-      )
       |> where([devices: d], d.type == :client)
-      |> where([session: s], s.inserted_at > ago(1, "month"))
+      |> where([devices: d], d.last_seen_at > ago(1, "month"))
       |> join(:inner, [devices: d], a in Actor,
         on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor

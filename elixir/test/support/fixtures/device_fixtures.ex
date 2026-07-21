@@ -338,9 +338,10 @@ defmodule Portal.DeviceFixtures do
       |> maybe_sync_device_ipv4(ipv4)
       |> maybe_sync_device_ipv6(ipv6)
 
-    # Always create a gateway session (gateways always have sessions in practice).
-    # Defaults to a legacy multi-owner site token; pass `token: :single_owner` to
-    # bind the session to a single-owner token, or pass a token struct directly.
+    # Always record a latest session (gateways always have sessions in
+    # practice). Defaults to a legacy multi-owner site token; pass
+    # `token: :single_owner` to bind the session to a single-owner token, or
+    # pass a token struct directly.
     token =
       case Map.get(attrs, :token) do
         nil -> gateway_token_fixture(account: account, site: site)
@@ -350,26 +351,41 @@ defmodule Portal.DeviceFixtures do
 
     public_key = Map.get(device_attrs, :public_key, generate_public_key())
 
-    session =
-      %Portal.GatewaySession{
-        account_id: account.id,
-        device_id: gateway.id,
-        gateway_token_id: token.id,
-        public_key: public_key,
-        user_agent: Map.get(session_attrs, :last_seen_user_agent, "Firezone-Gateway/1.3.0"),
-        remote_ip: Map.get(session_attrs, :last_seen_remote_ip, {100, 64, 0, 1}),
-        remote_ip_location_region: Map.get(session_attrs, :last_seen_remote_ip_location_region),
-        remote_ip_location_city: Map.get(session_attrs, :last_seen_remote_ip_location_city),
-        remote_ip_location_lat: Map.get(session_attrs, :last_seen_remote_ip_location_lat),
-        remote_ip_location_lon: Map.get(session_attrs, :last_seen_remote_ip_location_lon),
-        version: Map.get(session_attrs, :last_seen_version, "1.3.0")
-      }
-      |> Portal.Repo.insert!()
+    gateway =
+      gateway
+      |> Ecto.Changeset.cast(
+        %{
+          public_key: public_key,
+          last_seen_user_agent:
+            Map.get(session_attrs, :last_seen_user_agent, "Firezone-Gateway/1.3.0"),
+          last_seen_remote_ip: Map.get(session_attrs, :last_seen_remote_ip, {100, 64, 0, 1}),
+          last_seen_remote_ip_location_region:
+            Map.get(session_attrs, :last_seen_remote_ip_location_region),
+          last_seen_remote_ip_location_city:
+            Map.get(session_attrs, :last_seen_remote_ip_location_city),
+          last_seen_remote_ip_location_lat:
+            Map.get(session_attrs, :last_seen_remote_ip_location_lat),
+          last_seen_remote_ip_location_lon:
+            Map.get(session_attrs, :last_seen_remote_ip_location_lon),
+          last_seen_version: Map.get(session_attrs, :last_seen_version, "1.3.0"),
+          last_seen_at: Map.get(session_attrs, :last_seen_at, DateTime.utc_now())
+        },
+        [
+          :public_key,
+          :last_seen_user_agent,
+          :last_seen_remote_ip,
+          :last_seen_remote_ip_location_region,
+          :last_seen_remote_ip_location_city,
+          :last_seen_remote_ip_location_lat,
+          :last_seen_remote_ip_location_lon,
+          :last_seen_version,
+          :last_seen_at
+        ]
+      )
+      |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
+      |> Portal.Repo.update!()
 
-    # Return gateway with addresses preloaded and latest session set
-    gateway
-    |> Portal.Repo.preload(:site)
-    |> Map.put(:latest_session, session)
+    Portal.Repo.preload(gateway, :site)
   end
 
   @doc """

@@ -291,21 +291,7 @@ defmodule Portal.Workers.CheckAccountLimits do
       )
       |> where([actor: a], is_nil(a.disabled_at))
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> join(
-        :inner_lateral,
-        [clients: c],
-        s in subquery(
-          from(s in Portal.ClientSession,
-            where: s.device_id == parent_as(:clients).id,
-            where: s.account_id == parent_as(:clients).account_id,
-            where: s.inserted_at > ago(1, "month"),
-            select: s.id,
-            limit: 1
-          )
-        ),
-        on: true,
-        as: :recent_session
-      )
+      |> where([clients: c], c.last_seen_at > ago(1, "month"))
       |> group_by([clients: c], c.account_id)
       |> select([clients: c], {c.account_id, count(c.actor_id, :distinct)})
       |> Safe.unscoped(:replica)

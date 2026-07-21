@@ -91,15 +91,15 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert gateway.firezone_id == attrs["external_id"]
 
-      assert session = Map.fetch!(socket.assigns, :session)
-      assert session.public_key == attrs["public_key"]
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
-      assert session.version == @connlib_version
-      assert session.device_id == gateway.id
+      assert is_reference(Map.fetch!(socket.assigns, :session_ref))
+      assert gateway.public_key == attrs["public_key"]
+      assert gateway.last_seen_user_agent == connect_info.user_agent
+      assert gateway.last_seen_remote_ip_location_region == "Ukraine"
+      assert gateway.last_seen_remote_ip_location_city == "Kyiv"
+      assert gateway.last_seen_remote_ip_location_lat == 50.4333
+      assert gateway.last_seen_remote_ip_location_lon == 30.5167
+      assert gateway.last_seen_version == @connlib_version
+      assert gateway.last_seen_at
     end
 
     test "uses region code to put default coordinates" do
@@ -110,12 +110,11 @@ defmodule PortalAPI.Gateway.SocketTest do
       connect_info = build_connect_info(x_headers: [{"x-geo-location-region", "UA"}])
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
-      assert Map.fetch!(socket.assigns, :gateway)
-      assert session = Map.fetch!(socket.assigns, :session)
-      assert session.remote_ip_location_region == "UA"
-      assert session.remote_ip_location_city == nil
-      assert session.remote_ip_location_lat == 49.0
-      assert session.remote_ip_location_lon == 32.0
+      assert gateway = Map.fetch!(socket.assigns, :gateway)
+      assert gateway.last_seen_remote_ip_location_region == "UA"
+      assert gateway.last_seen_remote_ip_location_city == nil
+      assert gateway.last_seen_remote_ip_location_lat == 49.0
+      assert gateway.last_seen_remote_ip_location_lon == 32.0
     end
 
     test "propagates trace context" do
@@ -150,13 +149,13 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.gateway.id == gateway.id
 
-      session = socket.assigns.session
-      assert session.device_id == gateway.id
-      assert session.gateway_token_id == token.id
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
+      connected_gateway = socket.assigns.gateway
+      assert is_reference(socket.assigns.session_ref)
+      assert connected_gateway.gateway_token_id == token.id
+      assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
+      assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
+      assert connected_gateway.last_seen_remote_ip_location_lat == 50.4333
+      assert connected_gateway.last_seen_remote_ip_location_lon == 30.5167
     end
 
     test "preserves ipv4 and ipv6 addresses on reconnection" do
@@ -213,7 +212,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       # is ignored for identification
       assert socket.assigns.gateway.id == gateway.id
       assert socket.assigns.site.id == site.id
-      assert socket.assigns.session.gateway_token_id == token.id
+      assert socket.assigns.gateway.gateway_token_id == token.id
     end
 
     test "single-owner connect persists the reported firezone_id when blank" do

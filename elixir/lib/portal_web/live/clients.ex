@@ -33,10 +33,10 @@ defmodule PortalWeb.Clients do
         query_module: Database,
         sortable_fields: [
           {:devices, :name},
-          {:latest_session, :version},
-          {:latest_session, :inserted_at},
+          {:devices, :last_seen_version},
+          {:devices, :last_seen_at},
           {:devices, :inserted_at},
-          {:latest_session, :user_agent}
+          {:devices, :last_seen_user_agent}
         ],
         callback: &handle_clients_update!/2
       )
@@ -98,7 +98,7 @@ defmodule PortalWeb.Clients do
   end
 
   def handle_clients_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?, :last_seen])
+    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
     with {:ok, clients, metadata} <- Database.list_clients(socket.assigns.subject, list_opts) do
       {:ok,
@@ -173,9 +173,9 @@ defmodule PortalWeb.Clients do
               return_to={@return_to}
             />
           </:col>
-          <:col :let={client} field={{:latest_session, :version}} label="Version" class="w-32">
+          <:col :let={client} field={{:devices, :last_seen_version}} label="Version" class="w-32">
             <.version
-              current={client.latest_session && client.latest_session.version}
+              current={client.last_seen_version}
               latest={ComponentVersions.client_version(client)}
             />
           </:col>
@@ -199,14 +199,12 @@ defmodule PortalWeb.Clients do
           </:col>
           <:col
             :let={client}
-            field={{:latest_session, :inserted_at}}
+            field={{:devices, :last_seen_at}}
             label="Last Started"
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
-              <.relative_datetime datetime={
-                client.latest_session && client.latest_session.inserted_at
-              } />
+              <.relative_datetime datetime={client.last_seen_at} />
             </span>
           </:col>
           <:col
@@ -552,7 +550,7 @@ defmodule PortalWeb.Clients do
     import Ecto.Query
     import Portal.Changeset
     import Portal.Repo.Query
-    alias Portal.{Presence.Clients, ClientSession, Safe}
+    alias Portal.{Presence.Clients, Safe}
     alias Portal.Device
     alias Portal.Policy
     alias Portal.PolicyAuthorization
@@ -596,31 +594,7 @@ defmodule PortalWeb.Clients do
 
     defp page_query(_subject) do
       from(d in Device, as: :devices)
-      |> join(
-        :left_lateral,
-        [devices: d],
-        s in subquery(
-          from(s in ClientSession,
-            where: s.device_id == parent_as(:devices).id,
-            where: s.account_id == parent_as(:devices).account_id,
-            order_by: [desc: s.inserted_at],
-            limit: 1
-          )
-        ),
-        on: true,
-        as: :latest_session
-      )
       |> where([devices: d], d.type == :client)
-    end
-
-    defp hydrated_query(subject) do
-      subject
-      |> page_query()
-      |> select_merge([latest_session: s], %{
-        latest_session_inserted_at: s.inserted_at,
-        latest_session_version: s.version,
-        latest_session_user_agent: s.user_agent
-      })
     end
 
     defp maybe_filter_by_presence(base_query, presence, subject) do
@@ -650,7 +624,7 @@ defmodule PortalWeb.Clients do
 
     defp fetch_clients_page(client_ids, preload, subject) do
       clients =
-        hydrated_query(subject)
+        page_query(subject)
         |> where([devices: d], d.id in ^client_ids)
         |> Safe.scoped(subject, :replica)
         |> Safe.all()
@@ -670,9 +644,6 @@ defmodule PortalWeb.Clients do
 
         :online?, clients ->
           Clients.preload_clients_presence(clients)
-
-        :last_seen, clients ->
-          preload_latest_sessions(clients)
 
         _other, clients ->
           clients
@@ -744,17 +715,7 @@ defmodule PortalWeb.Clients do
 
       case client do
         %Device{type: :client} ->
-          session =
-            from(s in ClientSession,
-              where: s.device_id == ^client.id,
-              order_by: [desc: s.inserted_at],
-              limit: 1
-            )
-            |> Safe.scoped(subject, :replica)
-            |> Safe.one(fallback_to_primary: true)
-
-          client = Clients.preload_clients_presence([client]) |> List.first()
-          %{client | latest_session: session}
+          Clients.preload_clients_presence([client]) |> List.first()
 
         _ ->
           nil
@@ -763,7 +724,7 @@ defmodule PortalWeb.Clients do
 
     def cursor_fields do
       [
-        {:latest_session, :desc, :inserted_at},
+        {:devices, :desc, :last_seen_at},
         {:devices, :asc, :id}
       ]
     end
@@ -771,28 +732,8 @@ defmodule PortalWeb.Clients do
     def preloads do
       [
         :actor,
-        online?: &Clients.preload_clients_presence/1,
-        last_seen: &preload_latest_sessions/1
+        online?: &Clients.preload_clients_presence/1
       ]
-    end
-
-    # The latest session fields are already loaded by the lateral join in list_clients/2.
-    # We build the struct from those virtual fields to avoid a redundant DB round-trip.
-    defp preload_latest_sessions(clients) do
-      Enum.map(clients, fn client ->
-        if client.latest_session_inserted_at do
-          %{
-            client
-            | latest_session: %ClientSession{
-                version: client.latest_session_version,
-                inserted_at: client.latest_session_inserted_at,
-                user_agent: client.latest_session_user_agent
-              }
-          }
-        else
-          client
-        end
-      end)
     end
 
     def filters do

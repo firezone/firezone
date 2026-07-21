@@ -93,6 +93,19 @@ defmodule Portal.ChangeLogs.Consumer do
     buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
+  # Connect flushes rewrite only the latest-session columns on devices;
+  # auditing them would turn every connect into a change log entry, so those
+  # updates are skipped (connects are recorded in session_logs).
+  def on_write(state, lsn, :update, "devices", old_data, %{"account_id" => account_id} = data)
+      when not is_nil(account_id) do
+    if latest_session_only_change?(old_data, data) do
+      state
+    else
+      {old_data, data} = redact_from_schema("devices", old_data, data)
+      buffer(state, lsn, :update, "devices", account_id, old_data, data)
+    end
+  end
+
   # Handle other writes where an account_id is present
   def on_write(state, lsn, op, table, old_data, %{"account_id" => account_id} = data)
       when not is_nil(account_id) do
@@ -193,6 +206,13 @@ defmodule Portal.ChangeLogs.Consumer do
   defp drop_batch_seed(state) do
     Map.drop(state, [:seq_start, :tenant_offsets])
   end
+
+  defp latest_session_only_change?(old_data, data) when is_map(old_data) and is_map(data) do
+    changed = for {key, value} <- data, Map.get(old_data, key) != value, do: key
+    changed != [] and Enum.all?(changed, &(&1 in Portal.Device.latest_session_columns()))
+  end
+
+  defp latest_session_only_change?(_old_data, _data), do: false
 
   defp decode_subject(%{current_subject: nil}), do: nil
 

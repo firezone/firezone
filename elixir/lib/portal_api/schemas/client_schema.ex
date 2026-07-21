@@ -55,6 +55,51 @@ defmodule PortalAPI.Schemas.Client do
           type: :string,
           description: "Client verification timestamp"
         },
+        public_key: %Schema{
+          type: :string,
+          nullable: true,
+          description: "WireGuard public key from the latest session"
+        },
+        last_seen_at: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Timestamp of the latest connection"
+        },
+        last_seen_version: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Client version from the latest session"
+        },
+        last_seen_user_agent: %Schema{
+          type: :string,
+          nullable: true,
+          description: "User agent from the latest session"
+        },
+        last_seen_remote_ip: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Remote IP from the latest session"
+        },
+        last_seen_remote_ip_location_region: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Remote IP region from the latest session"
+        },
+        last_seen_remote_ip_location_city: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Remote IP city from the latest session"
+        },
+        last_seen_remote_ip_location_lat: %Schema{
+          type: :number,
+          nullable: true,
+          description: "Remote IP latitude from the latest session"
+        },
+        last_seen_remote_ip_location_lon: %Schema{
+          type: :number,
+          nullable: true,
+          description: "Remote IP longitude from the latest session"
+        },
         created_at: %Schema{
           type: :string,
           description: "Client creation timestamp"
@@ -89,6 +134,15 @@ defmodule PortalAPI.Schemas.Client do
         "firebase_installation_id" => nil,
         "hostname" => "johns-macbook.example.com",
         "verified_at" => "2025-01-01T00:00:00Z",
+        "public_key" => "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
+        "last_seen_at" => "2025-01-01T00:00:00Z",
+        "last_seen_version" => "1.5.0",
+        "last_seen_user_agent" => "macOS/14.0 apple-client/1.5.0",
+        "last_seen_remote_ip" => "203.0.113.10",
+        "last_seen_remote_ip_location_region" => "US",
+        "last_seen_remote_ip_location_city" => "New York",
+        "last_seen_remote_ip_location_lat" => 40.7128,
+        "last_seen_remote_ip_location_lon" => -74.006,
         "created_at" => "2025-01-01T00:00:00Z",
         "updated_at" => "2025-01-01T00:00:00Z"
       }

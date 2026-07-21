@@ -1,8 +1,9 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Authentication
-  alias Portal.{Device, GatewaySession, PG, SessionLog, Version}
+  alias Portal.{Device, PG, SessionLog, Version}
   alias Portal.Repo.Batch
+  alias PortalAPI.Sockets
   alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
@@ -57,7 +58,7 @@ defmodule PortalAPI.Gateway.Socket do
          :ok <- ensure_gateway_not_connected(gateway) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
-      session = build_session(gateway, gateway_token.id, public_key, context, version)
+      gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
 
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
@@ -71,7 +72,7 @@ defmodule PortalAPI.Gateway.Socket do
         |> assign(:token_id, gateway_token.id)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
-        |> assign(:session, session)
+        |> assign(:session_ref, make_ref())
         |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
         |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
@@ -177,64 +178,67 @@ defmodule PortalAPI.Gateway.Socket do
     |> public_socket_changeset()
   end
 
-  defp build_session(gateway, token_id, public_key, context, version) do
-    %GatewaySession{
-      id: Ecto.UUID.generate(),
-      device_id: gateway.id,
-      account_id: gateway.account_id,
-      gateway_token_id: token_id,
-      public_key: public_key,
-      user_agent: context.user_agent,
-      remote_ip: context.remote_ip,
-      remote_ip_location_region: context.remote_ip_location_region,
-      remote_ip_location_city: context.remote_ip_location_city,
-      remote_ip_location_lat: context.remote_ip_location_lat,
-      remote_ip_location_lon: context.remote_ip_location_lon,
-      version: version
+  # The connection snapshot lives directly on the device struct: these are the
+  # same fields the flush later persists as the device's latest session.
+  defp apply_session(gateway, token_id, public_key, context, version) do
+    %{
+      gateway
+      | gateway_token_id: token_id,
+        public_key: public_key,
+        last_seen_user_agent: context.user_agent,
+        last_seen_remote_ip: context.remote_ip,
+        last_seen_remote_ip_location_region: context.remote_ip_location_region,
+        last_seen_remote_ip_location_city: context.remote_ip_location_city,
+        last_seen_remote_ip_location_lat: context.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: context.remote_ip_location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now()
     }
   end
 
   defp flush_gateway_sessions(entries) do
-    {inserted, failed} =
-      Batch.insert_all(GatewaySession, entries,
-        label: "gateway session",
-        fk_partitions: %{
-          "gateway_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
-          "gateway_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
-          "gateway_sessions_gateway_token_id_fkey" =>
-            {:composite, :gateway_token_id, Portal.GatewayToken}
-        }
-      )
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :gateway_token_id)
 
-    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
+    failed = revoked ++ missing
+    failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
 
-    for {attrs, _metadata} <- failed do
+    # A deleted token fails only its own session: a successor connection on
+    # the same device may hold a valid token, so the disconnect carries the
+    # session_ref for the channel to match on. A deleted device takes every
+    # connection down with it.
+    for {attrs, _metadata} <- revoked do
+      dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
+        PG.deliver(attrs.device_id, {:disconnect, attrs.session_ref})
+      end)
+    end
+
+    for {attrs, _metadata} <- missing do
       dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
         PG.deliver(attrs.device_id, :disconnect)
       end)
     end
 
-    # Durability is confirmed only once both the session and its log have
+    # Durability is confirmed only once both the device upsert and the log have
     # landed: a session whose log write fails is left unconfirmed so its
     # durability timer fires and the gateway reconnects to retry both. This
-    # keeps the session log fail-closed without a transaction (which is
-    # incompatible with Batch.insert_all's rescue-and-repartition retry).
-    log_failed_ids = insert_session_logs(entries, failed_ids)
-    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_ids, log_failed_ids))
+    # keeps the session log fail-closed without a transaction spanning the
+    # upsert and the log insert.
+    log_failed_session_refs = insert_session_logs(entries, failed_session_refs)
+    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_session_refs, log_failed_session_refs))
 
     if failed != [] do
       Logger.info(
-        "Skipped #{length(failed)} gateway session entries during flush due to missing references"
+        "Skipped #{length(failed)} gateway session entries during flush due to deleted devices or tokens"
       )
     end
 
-    inserted
+    persisted
   end
 
-  defp dispatch_gateway_session_confirmed(entries, failed_ids) do
-    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+  defp dispatch_gateway_session_confirmed(entries, failed_session_refs) do
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
       dispatch_queue_callback("gateway session", :on_confirmed, attrs, fn ->
-        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.session_ref})
       end)
     end
   end
@@ -245,12 +249,12 @@ defmodule PortalAPI.Gateway.Socket do
   # token and have no actor, so the subject snapshot is the gateway identity
   # and its connection context. The connect-time timestamp rides the queue
   # entry's metadata rather than the session row's flush-time inserted_at. Each
-  # log entry carries its session id so the caller can learn which sessions'
+  # log entry carries its session_ref so the caller can learn which sessions'
   # logs failed and withhold their durability confirmation.
-  defp insert_session_logs(entries, failed_ids) do
+  defp insert_session_logs(entries, failed_session_refs) do
     log_entries =
-      for {attrs, metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
-        {session_log_attrs(attrs, metadata), attrs[:id]}
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
+        {session_log_attrs(attrs, metadata), attrs.session_ref}
       end
 
     {_inserted, failed} =
@@ -261,7 +265,7 @@ defmodule PortalAPI.Gateway.Socket do
         }
       )
 
-    MapSet.new(failed, fn {_log_attrs, session_id} -> session_id end)
+    MapSet.new(failed, fn {_log_attrs, session_ref} -> session_ref end)
   end
 
   defp session_log_attrs(attrs, %{timestamp: timestamp}) do
@@ -293,13 +297,13 @@ defmodule PortalAPI.Gateway.Socket do
   rescue
     error ->
       Logger.error(
-        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:id])}: " <>
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:session_ref])}: " <>
           Exception.message(error)
       )
   catch
     kind, reason ->
       Logger.error(
-        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:id])}: " <>
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:session_ref])}: " <>
           inspect(reason)
       )
   end

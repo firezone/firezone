@@ -321,6 +321,44 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert attrs.vsn == 0
     end
 
+    test "skips device updates that only touch latest-session columns", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      id = Ecto.UUID.generate()
+      old_data = %{"id" => id, "account_id" => account.id, "name" => "gw", "last_seen_at" => nil}
+
+      data = %{
+        "id" => id,
+        "account_id" => account.id,
+        "name" => "gw",
+        "last_seen_at" => "2026-07-20T00:00:00Z"
+      }
+
+      result_state = Consumer.on_write(initial_state, 12346, :update, "devices", old_data, data)
+
+      assert result_state.flush_buffer == %{}
+    end
+
+    test "buffers device updates that touch other columns too", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      id = Ecto.UUID.generate()
+      old_data = %{"id" => id, "account_id" => account.id, "name" => "old", "last_seen_at" => nil}
+
+      data = %{
+        "id" => id,
+        "account_id" => account.id,
+        "name" => "new",
+        "last_seen_at" => "2026-07-20T00:00:00Z"
+      }
+
+      result_state = Consumer.on_write(initial_state, 12346, :update, "devices", old_data, data)
+
+      assert map_size(result_state.flush_buffer) == 1
+    end
+
     test "handles account updates specially", %{
       account: account,
       initial_state: initial_state

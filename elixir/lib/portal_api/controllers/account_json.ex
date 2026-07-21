@@ -93,11 +93,7 @@ defmodule PortalAPI.AccountJSON do
       from(c in Device, as: :clients)
       |> where([clients: c], c.type == :client)
       |> where([clients: c], c.account_id == ^account.id)
-      |> join(:inner, [clients: c], s in Portal.ClientSession,
-        on: s.device_id == c.id and s.account_id == c.account_id,
-        as: :session
-      )
-      |> where([session: s], s.inserted_at > ago(1, "month"))
+      |> where([clients: c], c.last_seen_at > ago(1, "month"))
       |> join(:inner, [clients: c], a in Actor,
         on: c.actor_id == a.id and c.account_id == a.account_id,
         as: :actor

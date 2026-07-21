@@ -43,10 +43,7 @@ defmodule PortalWeb.Clients.Components do
   end
 
   defp device_user_agent(device) do
-    case device.latest_session do
-      %{user_agent: ua} -> ua
-      _ -> nil
-    end
+    device.last_seen_user_agent
   end
 
   def client_os(assigns) do
@@ -104,7 +101,7 @@ defmodule PortalWeb.Clients.Components do
         <div>
           <span>Last started:</span>
           <.relative_datetime
-            datetime={@client.latest_session && @client.latest_session.inserted_at}
+            datetime={@client.last_seen_at}
             popover={false}
           />
         </div>
@@ -603,7 +600,7 @@ defmodule PortalWeb.Clients.Components do
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Device" />
       <dl class="space-y-3">
-        <.client_detail_row :if={@client.latest_session} label="Operating System">
+        <.client_detail_row :if={@client.last_seen_at} label="Operating System">
           <.client_os client={@client} />
         </.client_detail_row>
         <.client_detail_row :if={@client.device_serial} label="Serial Number">
@@ -638,12 +635,9 @@ defmodule PortalWeb.Clients.Components do
     <div class="px-5 pt-4 pb-3">
       <.section_heading title="Network" />
       <dl class="space-y-3">
-        <.client_detail_row
-          :if={@client.latest_session && @client.latest_session.remote_ip}
-          label="Remote IP"
-        >
+        <.client_detail_row :if={@client.last_seen_remote_ip} label="Remote IP">
           <span class="text-xs text-body">
-            <.last_seen schema={@client.latest_session} />
+            <.last_seen schema={@client} />
           </span>
         </.client_detail_row>
         <.client_detail_row label="Tunnel IPv4">
@@ -699,15 +693,13 @@ defmodule PortalWeb.Clients.Components do
         </.client_detail_row>
         <.client_detail_row label="Version">
           <.version
-            current={@client.latest_session && @client.latest_session.version}
+            current={@client.last_seen_version}
             latest={ComponentVersions.client_version(@client)}
           />
         </.client_detail_row>
         <.client_detail_row label="Last Seen">
           <span class="text-xs text-body">
-            <.relative_datetime
-              datetime={@client.latest_session && @client.latest_session.inserted_at}
-            />
+            <.relative_datetime datetime={@client.last_seen_at} />
           </span>
         </.client_detail_row>
         <.client_detail_row label="Created">

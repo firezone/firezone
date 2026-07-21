@@ -12,8 +12,6 @@ defmodule Portal.ClientToken do
 
     belongs_to :actor, Portal.Actor
 
-    has_many :client_sessions, Portal.ClientSession, references: :id
-
     belongs_to :auth_provider, Portal.AuthProvider
 
     # we store just hash(nonce+fragment+salt)
@@ -22,7 +20,9 @@ defmodule Portal.ClientToken do
     field :secret_salt, :string, redact: true
     field :secret_hash, :string, redact: true
 
-    field :latest_session, :any, virtual: true
+    # The device that most recently connected with this token (see
+    # devices.client_token_id), for display on token lists
+    field :last_used_device, :any, virtual: true
 
     field :expires_at, :utc_datetime_usec
 

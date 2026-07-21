@@ -59,7 +59,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       # Age the session beyond one week
       session
-      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-8, :day))
+      |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now() |> DateTime.add(-8, :day))
       |> Repo.update!()
 
       assert OutdatedGateways.Database.count_incompatible_for(account, "1.3.0") == 0
@@ -156,7 +156,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       assert :ok =
                Portal.Presence.Gateways.connect(
                  gateway,
-                 gateway.latest_session.gateway_token_id
+                 gateway.gateway_token_id
                )
 
       assert Map.has_key?(Portal.Presence.Gateways.Site.list(site.id), gateway.id)

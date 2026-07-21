@@ -556,7 +556,10 @@ defmodule Portal.Authentication do
     # An active token is replaced outright rather than stamped when nothing
     # relies on it: either a rotation is already pending (the active token is
     # the unconfirmed replacement, and the in-use rotated sibling keeps its
-    # original deadline) or no session has ever referenced it.
+    # original deadline) or no device's latest session references it. Latest
+    # is as good as "ever used": a single-owner token can only be superseded
+    # on its own device by a rotated sibling, which the pending-rotation
+    # branch already covers.
     defp delete_replaceable_active_token(gateway, subject) do
       rotated_sibling =
         from(s in Portal.GatewayToken,
@@ -565,10 +568,10 @@ defmodule Portal.Authentication do
           where: not is_nil(s.rotated_at)
         )
 
-      used_by_session =
-        from(gs in Portal.GatewaySession,
-          where: gs.account_id == parent_as(:gateway_tokens).account_id,
-          where: gs.gateway_token_id == parent_as(:gateway_tokens).id
+      used_by_device =
+        from(d in Portal.Device,
+          where: d.account_id == parent_as(:gateway_tokens).account_id,
+          where: d.gateway_token_id == parent_as(:gateway_tokens).id
         )
 
       from(t in Portal.GatewayToken, as: :gateway_tokens)
@@ -577,7 +580,7 @@ defmodule Portal.Authentication do
       |> where([gateway_tokens: t], is_nil(t.rotated_at))
       |> where(
         [gateway_tokens: t],
-        exists(subquery(rotated_sibling)) or not exists(subquery(used_by_session))
+        exists(subquery(rotated_sibling)) or not exists(subquery(used_by_device))
       )
       |> Safe.scoped(subject)
       |> Safe.delete_all()

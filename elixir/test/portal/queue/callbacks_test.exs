@@ -12,7 +12,7 @@ defmodule Portal.Queue.CallbacksTest do
   import Portal.SiteFixtures
   import Portal.TokenFixtures
 
-  alias Portal.{ClientSession, GatewaySession, PG, PolicyAuthorization, SessionLog}
+  alias Portal.{Device, PG, PolicyAuthorization, SessionLog}
 
   describe "client session queue callback" do
     test "inserts client sessions and confirms durability" do
@@ -20,12 +20,12 @@ defmodule Portal.Queue.CallbacksTest do
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
       token = client_token_fixture(account: account, actor: actor)
-      session_id = Ecto.UUID.generate()
+      session_ref = make_ref()
 
       :ok = PG.register(client.id)
 
       attrs = %{
-        id: session_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
         client_token_id: token.id,
@@ -44,8 +44,12 @@ defmodule Portal.Queue.CallbacksTest do
       metadata = %{subject: subject, timestamp: timestamp}
 
       assert 1 = on_flush.([{attrs, metadata}])
-      assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
-      assert_receive {:confirm_session_durability, ^session_id}
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert device.client_token_id == token.id
+      assert device.public_key == attrs.public_key
+      assert device.last_seen_at == timestamp
+      assert_receive {:confirm_session_durability, ^session_ref}
 
       assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
       assert session_log.context == :client
@@ -61,12 +65,12 @@ defmodule Portal.Queue.CallbacksTest do
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
       token = client_token_fixture(account: account, actor: actor)
-      session_id = Ecto.UUID.generate()
+      session_ref = make_ref()
 
       :ok = PG.register(client.id)
 
       attrs = %{
-        id: session_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: client.id,
         client_token_id: token.id,
@@ -81,14 +85,85 @@ defmodule Portal.Queue.CallbacksTest do
       on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
 
       # A NUL byte in the subject fails only the session_log insert (jsonb
-      # rejects it), not the session row. The session lands but, because its log
-      # did not, its durability is left unconfirmed so the timer can retry.
+      # rejects it), not the device upsert. The session lands but, because its
+      # log did not, its durability is left unconfirmed so the timer can retry.
       metadata = %{subject: %{"actor_name" => "bad\0name"}, timestamp: DateTime.utc_now()}
 
       assert 1 = on_flush.([{attrs, metadata}])
-      assert Repo.get_by(ClientSession, id: session_id, account_id: account.id)
+      assert Repo.get_by!(Device, id: client.id, account_id: account.id).last_seen_at
       assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
-      refute_receive {:confirm_session_durability, ^session_id}
+      refute_receive {:confirm_session_durability, ^session_ref}
+    end
+
+    test "disconnects entries whose token was deleted without confirming durability" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+      Repo.delete!(token)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        remote_ip_location_region: "US",
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 0 = on_flush.([{attrs, metadata}])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert is_nil(device.client_token_id)
+      assert is_nil(device.last_seen_at)
+      assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
+      assert_receive {:disconnect, ^session_ref}
+      refute_receive :disconnect
+      refute_receive {:confirm_session_durability, ^session_ref}
+    end
+
+    test "disconnects the whole device when it was deleted" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+      Repo.delete!(Repo.get_by!(Device, id: client.id, account_id: account.id))
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        remote_ip_location_region: "US",
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 0 = on_flush.([{attrs, metadata}])
+
+      assert_receive :disconnect
+      refute_receive {:confirm_session_durability, ^session_ref}
     end
   end
 
@@ -98,16 +173,16 @@ defmodule Portal.Queue.CallbacksTest do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site)
       token = gateway_token_fixture(account: account, site: site)
-      session_id = Ecto.UUID.generate()
+      session_ref = make_ref()
 
       :ok = PG.register(gateway.id)
 
       attrs = %{
-        id: session_id,
+        session_ref: session_ref,
         account_id: account.id,
         device_id: gateway.id,
         gateway_token_id: token.id,
-        public_key: gateway.latest_session.public_key,
+        public_key: gateway.public_key,
         user_agent: "test-gateway/1.0",
         remote_ip: {100, 64, 0, 2},
         remote_ip_location_region: "US",
@@ -120,8 +195,11 @@ defmodule Portal.Queue.CallbacksTest do
       timestamp = DateTime.utc_now()
 
       assert 1 = on_flush.([{attrs, %{timestamp: timestamp}}])
-      assert Repo.get_by(GatewaySession, id: session_id, account_id: account.id)
-      assert_receive {:confirm_session_durability, ^session_id}
+
+      device = Repo.get_by!(Device, id: gateway.id, account_id: account.id)
+      assert device.gateway_token_id == token.id
+      assert device.last_seen_at == timestamp
+      assert_receive {:confirm_session_durability, ^session_ref}
 
       assert [session_log] = Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id))
       assert session_log.context == :gateway

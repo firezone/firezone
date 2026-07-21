@@ -922,10 +922,9 @@ defmodule Portal.BillingTest do
         )
 
       # Backdate the session to more than a month ago
-      Repo.query!("UPDATE client_sessions SET inserted_at = $1 WHERE id = $2", [
-        DateTime.add(DateTime.utc_now(), -35, :day),
-        Ecto.UUID.dump!(session.id)
-      ])
+      session
+      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
+      |> Repo.update!()
 
       assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
     end

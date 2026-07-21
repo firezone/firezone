@@ -1338,36 +1338,12 @@ defmodule PortalWeb.Sites do
             Device.t()
           ]
     def list_gateways_for_site(site_id, subject) do
-      gateway_ids =
-        from(d in Device, where: d.site_id == ^site_id, where: d.type == :gateway, select: d.id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.all()
-
-      gateways =
-        from(d in Device, as: :devices)
-        |> where([devices: d], d.type == :gateway)
-        |> where([devices: d], d.site_id == ^site_id)
-        |> order_by([devices: d], asc: d.name)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.all()
-
-      sessions_by_device_id =
-        if gateway_ids != [] do
-          from(s in Portal.GatewaySession,
-            where: s.device_id in ^gateway_ids,
-            distinct: s.device_id,
-            order_by: [asc: s.device_id, desc: s.inserted_at]
-          )
-          |> Safe.scoped(subject, :replica)
-          |> Safe.all()
-          |> Map.new(&{&1.device_id, &1})
-        else
-          %{}
-        end
-
-      Enum.map(gateways, fn gateway ->
-        %{gateway | latest_session: Map.get(sessions_by_device_id, gateway.id)}
-      end)
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :gateway)
+      |> where([devices: d], d.site_id == ^site_id)
+      |> order_by([devices: d], asc: d.name)
+      |> Safe.scoped(subject, :replica)
+      |> Safe.all()
     end
 
     @spec list_resources_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
