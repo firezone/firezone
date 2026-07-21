@@ -88,7 +88,7 @@ defmodule Portal.AzureCommunicationServicesTest do
       assert suppressed == 1
     end
 
-    test "marks a recipient quarantined and inserts a suppression" do
+    test "marks a recipient quarantined without inserting a suppression" do
       account = account_fixture()
 
       entry =
@@ -115,10 +115,10 @@ defmodule Portal.AzureCommunicationServicesTest do
         from(s in Portal.EmailSuppression, where: s.email == "quarantined@example.com")
         |> Repo.aggregate(:count, :email)
 
-      assert suppressed == 1
+      assert suppressed == 0
     end
 
-    test "marks a recipient filtered_spam and inserts a suppression" do
+    test "marks a recipient filtered_spam without inserting a suppression" do
       account = account_fixture()
 
       entry =
@@ -145,10 +145,10 @@ defmodule Portal.AzureCommunicationServicesTest do
         from(s in Portal.EmailSuppression, where: s.email == "filtered@example.com")
         |> Repo.aggregate(:count, :email)
 
-      assert suppressed == 1
+      assert suppressed == 0
     end
 
-    test "marks a recipient failed and inserts a suppression for unknown status" do
+    test "marks a recipient failed without inserting a suppression" do
       account = account_fixture()
 
       entry =
@@ -176,7 +176,7 @@ defmodule Portal.AzureCommunicationServicesTest do
         from(s in Portal.EmailSuppression, where: s.email == "failed@example.com")
         |> Repo.aggregate(:count, :email)
 
-      assert suppressed == 1
+      assert suppressed == 0
     end
 
     test "ignores out-of-order delivery events (stale: already terminal)" do

@@ -19,6 +19,13 @@ defmodule Portal.Workers.OutboundEmail do
     persist_delivery_result(result, account_id, email)
   end
 
+  # An empty response means the mailer skipped the send because every recipient
+  # was suppressed (or undeliverable) by the time the job ran; nothing to track.
+  defp persist_delivery_result({:ok, response}, _account_id, _email)
+       when map_size(response) == 0 do
+    :ok
+  end
+
   defp persist_delivery_result({:ok, response}, account_id, email) do
     with message_id when is_binary(message_id) <- response_message_id(response),
          {:ok, _} <-

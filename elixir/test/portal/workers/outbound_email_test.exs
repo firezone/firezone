@@ -29,6 +29,29 @@ defmodule Portal.Workers.OutboundEmailTest do
       assert db_entry.recipients == ["to@test.com"]
     end
 
+    test "skips delivery when the recipient was suppressed after enqueue" do
+      account = account_fixture()
+      configure_acs_secondary()
+      test_pid = self()
+
+      Repo.insert!(%Portal.EmailSuppression{
+        email: Portal.EmailSuppression.normalize_email("to@test.com")
+      })
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        send(test_pid, :acs_request_sent)
+
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-should-not-send", "status" => "Running"})
+      end)
+
+      assert :ok = perform_job(Worker, queued_args(account.id))
+
+      refute_received :acs_request_sent
+      assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
+    end
+
     test "returns error on HTTP delivery failures without tracking a row" do
       account = account_fixture()
       configure_acs_secondary()

@@ -7,8 +7,6 @@ defmodule Portal.Mailer do
   alias __MODULE__.Database
   require Logger
 
-  @recipient_fields [{"to", :to}, {"cc", :cc}, {"bcc", :bcc}]
-
   # Email addresses ending in any of these suffixes are non-deliverable and are
   # dropped from every recipient field before delivery.
   @blocked_suffixes ["@firezone.invalid"]
@@ -57,6 +55,10 @@ defmodule Portal.Mailer do
   so delivery report webhooks can update those messages too.
   """
   def deliver_and_track(email, config \\ []) do
+    # Filter before delivering so the tracked rows only contain recipients the
+    # message was actually sent to.
+    email = email |> drop_blocked_recipients() |> drop_suppressed_recipients()
+
     case deliver(email, config) do
       {:ok, result} = ok ->
         maybe_insert_tracked(email, result)
@@ -79,7 +81,7 @@ defmodule Portal.Mailer do
 
   defp deliver_with_mailer_config(email, opts, metadata) do
     if opts[:adapter] do
-      email = drop_blocked_recipients(email)
+      email = email |> drop_blocked_recipients() |> drop_suppressed_recipients()
 
       if has_recipients?(email) do
         email = put_adapter_client_options(email, opts)
@@ -87,7 +89,7 @@ defmodule Portal.Mailer do
 
         deliver_with_telemetry(email, opts, metadata)
       else
-        Logger.info("Skipping email because all recipients are undeliverable",
+        Logger.info("Skipping email because all recipients are undeliverable or suppressed",
           email_subject: inspect(email.subject)
         )
 
@@ -184,25 +186,24 @@ defmodule Portal.Mailer do
   Enqueues an email for delivery via the secondary ACS adapter.
 
   Checks the suppression table before inserting the Oban job. Returns
-  `{:ok, :suppressed}` if all recipients are suppressed.
+  `{:ok, :suppressed}` if all recipients are suppressed. The suppression
+  table is checked again right before the queued job delivers.
   """
   def enqueue(%Email{} = email) do
     account_id = email.private[:account_id]
-    request = serialize(email)
+    email = email |> drop_blocked_recipients() |> drop_suppressed_recipients()
 
-    case drop_suppressed_recipients(request) do
-      {:ok, filtered_request} ->
-        %{"account_id" => account_id, "request" => filtered_request}
-        |> OutboundEmailWorker.new()
-        |> Oban.insert()
+    if has_recipients?(email) do
+      %{"account_id" => account_id, "request" => serialize(email)}
+      |> OutboundEmailWorker.new()
+      |> Oban.insert()
+    else
+      Logger.info("Skipping queued email because all recipients are suppressed",
+        account_id: account_id,
+        subject: inspect(email.subject)
+      )
 
-      :fully_suppressed ->
-        Logger.info("Skipping queued email because all recipients are suppressed",
-          account_id: account_id,
-          subject: inspect(email.subject)
-        )
-
-        {:ok, :suppressed}
+      {:ok, :suppressed}
     end
   end
 
@@ -276,30 +277,31 @@ defmodule Portal.Mailer do
     |> Enum.uniq_by(fn %{"address" => addr} -> EmailSuppression.normalize_email(addr) end)
   end
 
-  defp drop_suppressed_recipients(request) do
+  defp drop_suppressed_recipients(%Email{} = email) do
     suppressed_emails =
-      request
-      |> recipient_addresses()
+      email
+      |> email_addresses()
       |> Database.suppressed_recipient_addresses()
 
-    filtered_request =
-      Enum.reduce(@recipient_fields, request, fn {field, _kind}, acc ->
-        recipients = Map.get(acc, field, [])
-
-        Map.put(
-          acc,
-          field,
-          Enum.reject(recipients, fn %{"address" => address} ->
-            undeliverable_address?(address) or
-              EmailSuppression.normalize_email(address) in suppressed_emails
-          end)
-        )
-      end)
-
-    case recipient_addresses(filtered_request) do
-      [] -> :fully_suppressed
-      _ -> {:ok, filtered_request}
+    if suppressed_emails == [] do
+      email
+    else
+      %{
+        email
+        | to: reject_suppressed_addresses(email.to, suppressed_emails),
+          cc: reject_suppressed_addresses(email.cc, suppressed_emails),
+          bcc: reject_suppressed_addresses(email.bcc, suppressed_emails)
+      }
     end
+  end
+
+  defp reject_suppressed_addresses(recipients, suppressed_emails) do
+    recipients
+    |> List.wrap()
+    |> Enum.reject(fn
+      {_name, address} -> EmailSuppression.normalize_email(address) in suppressed_emails
+      address when is_binary(address) -> EmailSuppression.normalize_email(address) in suppressed_emails
+    end)
   end
 
   defp drop_blocked_recipients(%Email{} = email) do
@@ -329,12 +331,6 @@ defmodule Portal.Mailer do
   defp undeliverable_address?(address) do
     normalized = EmailSuppression.normalize_email(address)
     Enum.any?(@blocked_suffixes, &String.ends_with?(normalized, &1))
-  end
-
-  defp recipient_addresses(request) do
-    Enum.flat_map(@recipient_fields, fn {field, _kind} ->
-      Enum.map(Map.get(request, field, []), fn %{"address" => address} -> address end)
-    end)
   end
 
   defmodule Database do

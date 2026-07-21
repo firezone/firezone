@@ -64,6 +64,12 @@ defmodule Portal.AzureCommunicationServices do
   defp extract_details(details) when is_binary(details), do: details
   defp extract_details(_), do: nil
 
+  # Only permanently-invalid recipients are added to the suppression table. Per
+  # https://learn.microsoft.com/en-us/azure/event-grid/communication-services-email-events
+  # that's "Bounced" (hard bounce: address or domain doesn't exist) and
+  # "Suppressed" (recipient previously hard bounced). "Failed", "Quarantined",
+  # and "FilteredSpam" are transient or content-based, not proof the address is
+  # bad, so they're recorded without suppressing future sends.
   defp terminal_status_attrs("Delivered", _details) do
     %{status: :delivered, failure_code: nil, failure_message: nil, suppress?: false}
   end
@@ -81,7 +87,7 @@ defmodule Portal.AzureCommunicationServices do
       status: :quarantined,
       failure_code: "Quarantined",
       failure_message: details,
-      suppress?: true
+      suppress?: false
     }
   end
 
@@ -90,7 +96,7 @@ defmodule Portal.AzureCommunicationServices do
       status: :filtered_spam,
       failure_code: "FilteredSpam",
       failure_message: details,
-      suppress?: true
+      suppress?: false
     }
   end
 
@@ -99,7 +105,7 @@ defmodule Portal.AzureCommunicationServices do
       status: :failed,
       failure_code: to_string(status),
       failure_message: details,
-      suppress?: true
+      suppress?: false
     }
   end
 
