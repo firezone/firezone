@@ -1,5 +1,5 @@
 use super::{
-    sim_net::{ExecMutScope, Host, dual_ip_stack, host},
+    sim_net::{ExecMutScope, FilterMode, Host, dual_ip_stack, host},
     strategies::latency,
 };
 use bufferpool::Buffer;
@@ -216,5 +216,6 @@ pub(crate) fn ref_relay_host() -> impl Strategy<Value = Host<u64>> {
         Just(3478),
         any::<u64>(),
         latency(50), // We assume our relays have a good Internet connection.
+        Just(FilterMode::Open), // Relays are the public rendezvous; they must accept from anyone.
     )
 }

@@ -1010,6 +1010,26 @@ impl TunnelTest {
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
 
+        // Passing the sender's edge opens its ingress filter for replies from `dst`.
+        match self.network.host_by_ip(src.ip()) {
+            Some(HostId::Client(id)) => {
+                if let Some(c) = self.clients.get_mut(&id) {
+                    c.record_sent_to(dst);
+                }
+            }
+            Some(HostId::Gateway(id)) => {
+                if let Some(g) = self.gateways.get_mut(&id) {
+                    g.record_sent_to(dst);
+                }
+            }
+            Some(HostId::Relay(id)) => {
+                if let Some(r) = self.relays.get_mut(&id) {
+                    r.record_sent_to(dst);
+                }
+            }
+            Some(HostId::Stale) | None => {}
+        }
+
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");
             return;
@@ -1025,10 +1045,15 @@ impl TunnelTest {
                     return;
                 }
 
-                self.clients
-                    .get_mut(&client_id)
-                    .unwrap()
-                    .receive(transmit, at);
+                let client = self.clients.get_mut(&client_id).unwrap();
+
+                if !client.accepts_from(src) {
+                    tracing::debug!(%src, %dst, "Client's ingress filter dropped packet");
+
+                    return;
+                }
+
+                client.receive(transmit, at);
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic
@@ -1039,10 +1064,15 @@ impl TunnelTest {
                     return;
                 }
 
-                self.gateways
-                    .get_mut(&id)
-                    .expect("unknown gateway")
-                    .receive(transmit, at);
+                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
+
+                if !gateway.accepts_from(src) {
+                    tracing::debug!(%src, %dst, "Gateway's ingress filter dropped packet");
+
+                    return;
+                }
+
+                gateway.receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays

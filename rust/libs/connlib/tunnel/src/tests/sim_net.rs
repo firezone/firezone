@@ -32,6 +32,11 @@ pub(crate) struct Host<T> {
     // The latency of incoming and outgoing packets.
     latency: Duration,
 
+    filter: FilterMode,
+    /// Destinations this host has sent to; the state backing [`FilterMode`].
+    #[debug(skip)]
+    sent_to: HashSet<SocketAddr>,
+
     #[debug(skip)]
     span: Span,
 
@@ -42,8 +47,23 @@ pub(crate) struct Host<T> {
     inbox: BufferedTransmits,
 }
 
+/// Stateful ingress filtering applied at a host's network edge.
+///
+/// The simulated network has no address translation - host IPs are wire addresses - so
+/// NATs and stateful firewalls reduce to the same observable behaviour: whether a packet
+/// from a source the host never contacted is delivered or dropped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FilterMode {
+    /// Everything is delivered; a publicly reachable host.
+    Open,
+    /// Inbound is delivered only from IPs this host has sent to (address-restricted).
+    AddressRestricted,
+    /// Inbound is delivered only from sockets this host has sent to (port-restricted).
+    PortRestricted,
+}
+
 impl<T> Host<T> {
-    pub(crate) fn new(inner: T, latency: Duration, port: u16) -> Self {
+    pub(crate) fn new(inner: T, latency: Duration, port: u16, filter: FilterMode) -> Self {
         Self {
             inner,
             ip4: None,
@@ -52,6 +72,8 @@ impl<T> Host<T> {
             span: Span::none(),
             allocated_ports: HashSet::default(),
             latency,
+            filter,
+            sent_to: HashSet::default(),
             inbox: BufferedTransmits::default(),
         }
     }
@@ -90,6 +112,24 @@ impl<T> Host<T> {
     pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
         self.ip4 = ip4;
         self.ip6 = ip6;
+
+        // A new network attachment means a new position behind a new filter:
+        // whatever pinholes the old traffic opened do not follow us.
+        self.sent_to.clear();
+    }
+
+    /// Records an outbound flow, opening this host's filter for replies from `dst`.
+    pub(crate) fn record_sent_to(&mut self, dst: SocketAddr) {
+        self.sent_to.insert(dst);
+    }
+
+    /// Whether this host's ingress filter delivers a packet from `src`.
+    pub(crate) fn accepts_from(&self, src: SocketAddr) -> bool {
+        match self.filter {
+            FilterMode::Open => true,
+            FilterMode::AddressRestricted => self.sent_to.iter().any(|d| d.ip() == src.ip()),
+            FilterMode::PortRestricted => self.sent_to.contains(&src),
+        }
     }
 
     pub(crate) fn is_sender(&self, src: IpAddr) -> bool {
@@ -173,6 +213,8 @@ where
             port: self.port,
             allocated_ports: self.allocated_ports.clone(),
             latency: self.latency,
+            filter: self.filter,
+            sent_to: self.sent_to.clone(),
             inbox: self.inbox.clone(),
         }
     }
@@ -297,16 +339,28 @@ pub(crate) fn host<T>(
     port: impl Strategy<Value = u16>,
     state: impl Strategy<Value = T>,
     latency: impl Strategy<Value = Duration>,
+    filter: impl Strategy<Value = FilterMode>,
 ) -> impl Strategy<Value = Host<T>>
 where
     T: fmt::Debug,
 {
-    (state, socket_ips, port, latency).prop_map(move |(state, ip_stack, port, latency)| {
-        let mut host = Host::new(state, latency, port);
-        host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied());
+    (state, socket_ips, port, latency, filter).prop_map(
+        move |(state, ip_stack, port, latency, filter)| {
+            let mut host = Host::new(state, latency, port, filter);
+            host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied());
 
-        host
-    })
+            host
+        },
+    )
+}
+
+/// All [`FilterMode`]s, uniformly.
+pub(crate) fn any_filter_mode() -> impl Strategy<Value = FilterMode> {
+    prop_oneof![
+        Just(FilterMode::Open),
+        Just(FilterMode::AddressRestricted),
+        Just(FilterMode::PortRestricted),
+    ]
 }
 
 pub(crate) fn any_ip_stack() -> impl Strategy<Value = IpStack> {

@@ -3,7 +3,7 @@ use super::{
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
     sim_client::SimClient,
-    sim_net::{ExecMutScope, Host, any_ip_stack, host},
+    sim_net::{ExecMutScope, FilterMode, Host, any_ip_stack, host},
     strategies::{latency, malicious_behaviour},
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
@@ -1323,6 +1323,7 @@ pub(crate) fn ref_client_host(
         listening_port(),
         ref_client(id, tunnel_ip4s, tunnel_ip6s, system_dns),
         latency(250), // TODO: Increase with #6062.
+        Just(FilterMode::Open), // TODO: Sample filter modes for clients too.
     )
 }
 
