@@ -656,7 +656,11 @@ defmodule PortalWeb.Resources do
     {:noreply, push_patch(socket, to: cancel_resource_form_path(socket))}
   end
 
-  def handle_event("switch_resource_tab", %{"tab" => tab}, socket) do
+  def handle_event(
+        "switch_resource_tab",
+        %{"tab" => tab},
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     params =
       socket.assigns.query_params
       |> Map.put("tab", tab)
@@ -664,8 +668,16 @@ defmodule PortalWeb.Resources do
 
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}?#{params}"
+       to: ~p"/#{socket.assigns.account}/resources/#{resource.id}?#{params}"
      )}
+  end
+
+  def handle_event(
+        "switch_resource_tab",
+        _params,
+        %{assigns: %{selected_resource: nil}} = socket
+      ) do
+    {:noreply, socket}
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do

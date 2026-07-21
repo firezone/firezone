@@ -279,13 +279,21 @@ defmodule PortalWeb.Groups do
     {:noreply, socket}
   end
 
-  def handle_event("switch_group_tab", %{"tab" => tab}, socket) do
+  def handle_event(
+        "switch_group_tab",
+        %{"tab" => tab},
+        %{assigns: %{selected_group: %Group{} = group}} = socket
+      ) do
     params = Map.put(socket.assigns.query_params, "tab", tab)
 
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}?#{params}"
+       to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}"
      )}
+  end
+
+  def handle_event("switch_group_tab", _params, %{assigns: %{selected_group: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("open_grant_resource_form", _params, socket) do

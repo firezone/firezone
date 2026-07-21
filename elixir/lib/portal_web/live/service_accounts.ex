@@ -477,14 +477,21 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
-  def handle_event("change_tab", %{"tab" => tab}, socket) do
+  def handle_event(
+        "change_tab",
+        %{"tab" => tab},
+        %{assigns: %{selected_actor: %Actor{} = actor}} = socket
+      ) do
     params = Map.put(socket.assigns.query_params, "tab", tab)
 
     {:noreply,
      push_patch(socket,
-       to:
-         ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}?#{params}"
+       to: ~p"/#{socket.assigns.account}/service_accounts/#{actor.id}?#{params}"
      )}
+  end
+
+  def handle_event("change_tab", _params, %{assigns: %{selected_actor: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("validate_token", params, socket) do

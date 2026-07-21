@@ -553,11 +553,18 @@ defmodule PortalWeb.Sites do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/sites?#{params}")}
   end
 
-  def handle_event("switch_panel_tab", %{"tab" => tab}, socket) do
-    site = socket.assigns.selected_site
+  def handle_event(
+        "switch_panel_tab",
+        %{"tab" => tab},
+        %{assigns: %{selected_site: %Portal.Site{} = site}} = socket
+      ) do
     params = Map.put(socket.assigns.query_params, "tab", tab)
 
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/sites/#{site.id}?#{params}")}
+  end
+
+  def handle_event("switch_panel_tab", _params, %{assigns: %{selected_site: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("handle_keydown", _params, socket)

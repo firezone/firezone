@@ -475,7 +475,11 @@ defmodule PortalWeb.Policies do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies?#{params}")}
   end
 
-  def handle_event("switch_policy_tab", %{"tab" => tab}, socket) do
+  def handle_event(
+        "switch_policy_tab",
+        %{"tab" => tab},
+        %{assigns: %{selected_policy: %Policy{} = policy}} = socket
+      ) do
     params =
       socket.assigns.query_params
       |> Map.put("tab", tab)
@@ -483,8 +487,12 @@ defmodule PortalWeb.Policies do
 
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}?#{params}"
+       to: ~p"/#{socket.assigns.account}/policies/#{policy.id}?#{params}"
      )}
+  end
+
+  def handle_event("switch_policy_tab", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
