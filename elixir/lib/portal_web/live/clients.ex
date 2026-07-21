@@ -470,6 +470,7 @@ defmodule PortalWeb.Clients do
     selected_client = %{
       socket.assigns.selected_client
       | verified_at: updated_client.verified_at,
+        verification_method: updated_client.verification_method,
         updated_at: updated_client.updated_at
     }
 
@@ -678,6 +679,7 @@ defmodule PortalWeb.Clients do
       client
       |> change()
       |> put_default_value(:verified_at, DateTime.utc_now())
+      |> put_default_value(:verification_method, :manual)
       |> update_client(subject)
     end
 
@@ -687,6 +689,7 @@ defmodule PortalWeb.Clients do
       client
       |> change()
       |> put_change(:verified_at, nil)
+      |> put_change(:verification_method, nil)
       |> update_client(subject)
     end
 
