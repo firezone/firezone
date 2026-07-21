@@ -10,7 +10,7 @@ use l3_tcp::Socket;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
+    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), l3_tcp::SocketHandle>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -35,7 +35,7 @@ impl Client {
 
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
-            sockets_by_remote: Default::default(),
+            sockets_by_conn: Default::default(),
             device,
             interface,
             created_at: now,
@@ -44,7 +44,12 @@ impl Client {
     }
 
     pub fn connect(&mut self, local: SocketAddr, remote: SocketAddr) -> Result<()> {
-        anyhow::ensure!(!self.sockets_by_remote.contains_key(&remote));
+        // Sockets are keyed by the full `(local, remote)` 4-tuple, so the client
+        // can hold several connections to one remote from different local ports.
+        // Re-connecting an already-open 4-tuple is a no-op.
+        if self.sockets_by_conn.contains_key(&(local, remote)) {
+            return Ok(());
+        }
 
         let mut socket = l3_tcp::create_tcp_socket();
         socket
@@ -59,7 +64,7 @@ impl Client {
 
         let handle = self.sockets.add(socket);
 
-        self.sockets_by_remote.insert(remote, handle);
+        self.sockets_by_conn.insert((local, remote), handle);
 
         Ok(())
     }
@@ -69,18 +74,20 @@ impl Client {
             return false;
         };
 
-        self.sockets_by_remote
-            .contains_key(&SocketAddr::new(packet.source(), tcp.source_port()))
+        let remote = SocketAddr::new(packet.source(), tcp.source_port());
+
+        self.sockets_by_conn.keys().any(|(_local, r)| *r == remote)
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         // TODO: Upstream ICMP error handling to `smoltcp`.
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
-            && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
-            && let socket = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(handle) = self.sockets_by_remote.get(&socket)
+            && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
+            && let local = SocketAddr::new(failed_packet.src(), src)
+            && let remote = SocketAddr::new(failed_packet.dst(), dst)
+            && let Some(handle) = self.sockets_by_conn.get(&(local, remote))
         {
-            tracing::debug!(%socket, "Received ICMP error");
+            tracing::debug!(%local, %remote, "Received ICMP error");
 
             self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
         }
