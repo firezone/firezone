@@ -15,7 +15,7 @@ defmodule Portal.Workers.OutboundEmail do
       |> deserialize()
       |> put_operation_id(job_id)
 
-    result = Mailer.deliver_secondary(email)
+    {result, email} = Mailer.deliver_secondary_with_email(email)
     persist_delivery_result(result, account_id, email)
   end
 

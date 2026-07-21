@@ -52,6 +52,31 @@ defmodule Portal.Workers.OutboundEmailTest do
       assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
     end
 
+    test "tracks only recipients delivered after suppressions change" do
+      account = account_fixture()
+      configure_acs_secondary()
+
+      Repo.insert!(%Portal.EmailSuppression{
+        email: Portal.EmailSuppression.normalize_email("suppressed@test.com")
+      })
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-partial-send", "status" => "Running"})
+      end)
+
+      args = put_in(queued_args(account.id), ["request", "to"], [
+        %{"name" => "", "address" => "to@test.com"},
+        %{"name" => "", "address" => "suppressed@test.com"}
+      ])
+
+      assert :ok = perform_job(Worker, args)
+
+      db_entry = Repo.get!(Portal.OutboundEmail, "acs-partial-send")
+      assert db_entry.recipients == ["to@test.com"]
+    end
+
     test "returns error on HTTP delivery failures without tracking a row" do
       account = account_fixture()
       configure_acs_secondary()

@@ -46,7 +46,8 @@ defmodule Portal.Mailer do
     opts = Mailer.parse_config(:portal, __MODULE__, [], config)
     metadata = %{email: email, config: config, mailer: __MODULE__}
 
-    deliver_with_mailer_config(email, opts, metadata)
+    {result, _email} = deliver_with_mailer_config(email, opts, metadata)
+    result
   end
 
   @doc """
@@ -55,21 +56,29 @@ defmodule Portal.Mailer do
   so delivery report webhooks can update those messages too.
   """
   def deliver_and_track(email, config \\ []) do
-    # Filter before delivering so the tracked rows only contain recipients the
-    # message was actually sent to.
-    email = email |> drop_blocked_recipients() |> drop_suppressed_recipients()
+    opts = Mailer.parse_config(:portal, __MODULE__, [], config)
+    metadata = %{email: email, config: config, mailer: __MODULE__}
 
-    case deliver(email, config) do
-      {:ok, result} = ok ->
+    case deliver_with_mailer_config(email, opts, metadata) do
+      {{:ok, result} = ok, email} ->
         maybe_insert_tracked(email, result)
         ok
 
-      {:error, _reason} = error ->
+      {{:error, _reason} = error, _email} ->
         error
     end
   end
 
   def deliver_secondary(email, config \\ []) do
+    {result, _email} = deliver_secondary_with_email(email, config)
+    result
+  end
+
+  @doc """
+  Delivers an email through the secondary adapter and returns the filtered email
+  that was submitted to the adapter alongside the delivery result.
+  """
+  def deliver_secondary_with_email(email, config \\ []) do
     opts =
       Portal.Config.fetch_env!(:portal, Portal.Mailer.Secondary)
       |> Keyword.merge(config)
@@ -87,17 +96,17 @@ defmodule Portal.Mailer do
         email = put_adapter_client_options(email, opts)
         metadata = %{metadata | email: email}
 
-        deliver_with_telemetry(email, opts, metadata)
+        {deliver_with_telemetry(email, opts, metadata), email}
       else
         Logger.info("Skipping email because all recipients are undeliverable or suppressed",
           email_subject: inspect(email.subject)
         )
 
-        {:ok, %{}}
+        {{:ok, %{}}, email}
       end
     else
       Logger.info("Emails are not configured", email_subject: inspect(email.subject))
-      {:ok, %{}}
+      {{:ok, %{}}, email}
     end
   end
 
