@@ -44,10 +44,5 @@
     "typescript-eslint": "^8.60.0",
     "vite": "^8.1.4",
     "vite-plugin-typescript": "^1.0.4"
-  },
-  "pnpm": {
-    "overrides": {
-      "js-yaml@^4.1.1": "^4.2.0"
-    }
   }
 }
