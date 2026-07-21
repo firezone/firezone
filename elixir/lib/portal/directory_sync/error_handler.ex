@@ -61,6 +61,10 @@ defmodule Portal.DirectorySync.ErrorHandler do
     end
   end
 
+  def format_transport_error(exception) when is_exception(exception) do
+    Exception.message(exception)
+  end
+
   # Sentry context building
 
   defp build_sentry_context(
