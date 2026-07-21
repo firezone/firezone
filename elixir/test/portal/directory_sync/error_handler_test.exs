@@ -73,6 +73,20 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       assert result == "Network error: :some_unknown_error"
     end
+
+    test "formats other exceptions with their message" do
+      error = %Portal.Req.SSRFProtection.UnsafeURLError{
+        host: "sts.us-east-1.amazonaws.com",
+        reason: :non_public_address
+      }
+
+      result = ErrorHandler.format_transport_error(error)
+
+      assert result ==
+               "request to \"sts.us-east-1.amazonaws.com\" was blocked because it resolves to a private or reserved IP address"
+
+      assert ErrorHandler.format_transport_error(%RuntimeError{message: "boom"}) == "boom"
+    end
   end
 
   describe "handle_error/1 shared behavior" do
