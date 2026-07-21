@@ -26,6 +26,21 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     |> Enum.any?()
   end
 
+  defp verification_ref_from_open_url(lv) do
+    assert_push_event(lv, "open_url", %{url: url})
+
+    %{"state" => state} =
+      url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+
+    assert {:ok, %{verification_ref: verification_ref}} =
+             PortalWeb.OIDC.verify_verification_state(state)
+
+    verification_ref
+  end
+
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
       path = ~p"/#{account}/settings/directory_sync"
@@ -221,6 +236,80 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/settings/directory_sync")
+    end
+
+    test "accepts only the active entra directory verification completion", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      stale_ref = verification_ref_from_open_url(lv)
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      current_ref = verification_ref_from_open_url(lv)
+
+      stale_ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "stale-tenant", stale_ref, {self(), stale_ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^stale_ack_ref}
+
+      html = render(lv)
+      refute html =~ "Verified"
+      refute html =~ "stale-tenant"
+
+      current_ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "current-tenant", current_ref,
+         {self(), current_ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^current_ack_ref}
+
+      html = render(lv)
+      assert html =~ "Verified"
+      assert html =~ "current-tenant"
+    end
+
+    test "ignores entra directory completion after navigating to another form", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+
+      render_patch(lv, ~p"/#{account}/settings/directory_sync/google/new")
+
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "stale-tenant", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      html = render(lv)
+      assert html =~ "Add Google Directory"
+      refute html =~ "Verified"
+      refute html =~ "stale-tenant"
     end
   end
 

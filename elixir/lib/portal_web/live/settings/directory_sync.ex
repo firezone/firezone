@@ -80,7 +80,9 @@ defmodule PortalWeb.Settings.DirectorySync do
     changeset = changeset(struct, attrs)
 
     {:noreply,
-     assign(socket,
+     socket
+     |> clear_verification_state()
+     |> assign(
        type: type,
        verification_error: nil,
        verifying: false,
@@ -114,7 +116,9 @@ defmodule PortalWeb.Settings.DirectorySync do
       type == "google" && directory.legacy_service_account_key != nil
 
     {:noreply,
-     assign(socket,
+     socket
+     |> clear_verification_state()
+     |> assign(
        directory: directory,
        directory_name: directory.name,
        verifying: false,
@@ -131,7 +135,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+    {:noreply, clear_verification_state(socket)}
   end
 
   def handle_event("close_panel", _params, socket) do
@@ -222,7 +226,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     changeset = changeset(base, attrs)
 
-    {:noreply, assign(socket, verification_error: nil, form: to_form(changeset))}
+    {:noreply,
+     socket
+     |> clear_verification_state()
+     |> assign(verification_error: nil, form: to_form(changeset))}
   end
 
   def handle_event("submit_directory", _params, socket) do
@@ -342,27 +349,53 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   # Sent directly by the Entra directory_sync verification controller
+  def handle_info({:entra_directory_sync_complete, tenant_id, verification_ref, ack_to}, socket) do
+    if active_verification?(socket, verification_ref) do
+      # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
+      # For NEW: Entra has no programmatically set fields, so .data works here too.
+      changeset = socket.assigns.form.source
+
+      attrs =
+        changeset.changes
+        |> Map.put(:is_verified, true)
+        |> Map.put(:tenant_id, tenant_id)
+
+      changeset = changeset(changeset.data, attrs)
+      maybe_send_verification_ack(ack_to)
+
+      {:noreply,
+       assign(socket,
+         active_verification: nil,
+         form: to_form(changeset),
+         verification_error: nil
+       )}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:entra_directory_sync_complete, tenant_id, ack_to}, socket) do
-    # For EDIT: Use .data (original directory) so changes are tracked relative to DB values.
-    # For NEW: Entra has no programmatically set fields, so .data works here too.
-    changeset = socket.assigns.form.source
-
-    attrs =
-      changeset.changes
-      |> Map.put(:is_verified, true)
-      |> Map.put(:tenant_id, tenant_id)
-
-    changeset = changeset(changeset.data, attrs)
-    maybe_send_verification_ack(ack_to)
-
-    {:noreply, assign(socket, form: to_form(changeset), verification_error: nil)}
+    handle_info({:entra_directory_sync_complete, tenant_id, nil, ack_to}, socket)
   end
 
   def handle_info({:entra_directory_sync_complete, tenant_id}, socket) do
-    handle_info({:entra_directory_sync_complete, tenant_id, nil}, socket)
+    handle_info({:entra_directory_sync_complete, tenant_id, nil, nil}, socket)
   end
 
   # Sent directly by the verification controller on any failure
+  def handle_info({:verification_failed, reason, verification_ref}, socket) do
+    if active_verification?(socket, verification_ref) do
+      {:noreply,
+       assign(socket,
+         active_verification: nil,
+         verification_error: format_verification_error_reason(reason)
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:verification_failed, reason}, socket) do
     {:noreply, assign(socket, verification_error: format_verification_error_reason(reason))}
   end
@@ -379,6 +412,20 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp maybe_send_verification_ack(_), do: :ok
+
+  defp active_verification?(socket, verification_ref) do
+    case socket.assigns[:active_verification] do
+      %{verification_ref: ^verification_ref} when is_binary(verification_ref) ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp clear_verification_state(socket) do
+    assign(socket, active_verification: nil)
+  end
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
   defp format_verification_error_reason(reason), do: inspect(reason)
@@ -1637,11 +1684,13 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp start_verification(%{assigns: %{type: "entra"}} = socket) do
     with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("entra_directory_sync", []),
+         verification_ref = Ecto.UUID.generate(),
          lv_pid_string = self() |> :erlang.pid_to_list() |> to_string(),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
-             PortalWeb.OIDC.verification_state_type("entra_directory_sync")
+             PortalWeb.OIDC.verification_state_type("entra_directory_sync"),
+             %{verification_ref: verification_ref}
            ),
          {:ok, uri} <-
            PortalWeb.OIDC.build_verification_uri(
@@ -1650,6 +1699,7 @@ defmodule PortalWeb.Settings.DirectorySync do
              "",
              state_token
            ) do
+      socket = assign(socket, active_verification: %{verification_ref: verification_ref})
       {:noreply, push_event(socket, "open_url", %{url: uri})}
     else
       {:error, reason} ->

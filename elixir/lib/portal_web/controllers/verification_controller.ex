@@ -59,11 +59,18 @@ defmodule PortalWeb.VerificationController do
   """
   def entra(conn, %{"state" => state} = params) do
     case PortalWeb.OIDC.verify_verification_state(state) do
-      {:ok, %{type: "entra-auth-provider", lv_pid: lv_pid_string}} ->
-        handle_entra_auth_provider(conn, params, lv_pid_string)
+      {:ok,
+       %{type: "entra-auth-provider", lv_pid: lv_pid_string, verification_ref: verification_ref}}
+      when is_binary(verification_ref) ->
+        handle_entra_auth_provider(conn, params, lv_pid_string, verification_ref)
 
-      {:ok, %{type: "entra-directory-sync", lv_pid: lv_pid_string}} ->
-        handle_entra_directory_sync(conn, params, lv_pid_string)
+      {:ok,
+       %{type: "entra-directory-sync", lv_pid: lv_pid_string, verification_ref: verification_ref}}
+      when is_binary(verification_ref) ->
+        handle_entra_directory_sync(conn, params, lv_pid_string, verification_ref)
+
+      {:ok, _state} ->
+        render(conn, :failure, error: "Invalid or expired verification state. Please try again.")
 
       {:error, _} ->
         render(conn, :failure, error: "Invalid or expired verification state. Please try again.")
@@ -74,36 +81,44 @@ defmodule PortalWeb.VerificationController do
     render(conn, :failure, error: "Invalid verification request. Please try again.")
   end
 
-  defp handle_entra_auth_provider(conn, params, lv_pid_string) do
+  defp handle_entra_auth_provider(conn, params, lv_pid_string, verification_ref) do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
-    case run_entra_auth_provider_verification(params, lv_pid) do
+    case run_entra_auth_provider_verification(params, lv_pid, verification_ref) do
       :ok ->
         render(conn, :success)
 
       {:error, error_message, notify_lv?} ->
-        if notify_lv? and lv_pid, do: send(lv_pid, {:verification_failed, error_message})
+        if notify_lv? and lv_pid,
+          do: send(lv_pid, {:verification_failed, error_message, verification_ref})
+
         render(conn, :failure, error: error_message)
     end
   end
 
-  defp handle_entra_directory_sync(conn, params, lv_pid_string) do
+  defp handle_entra_directory_sync(conn, params, lv_pid_string, verification_ref) do
     lv_pid = PortalWeb.OIDC.deserialize_pid(lv_pid_string)
 
-    case run_entra_directory_sync_verification(params, lv_pid) do
+    case run_entra_directory_sync_verification(params, lv_pid, verification_ref) do
       :ok ->
         render(conn, :success)
 
       {:error, error_message, notify_lv?} ->
-        if notify_lv? and lv_pid, do: send(lv_pid, {:verification_failed, error_message})
+        if notify_lv? and lv_pid,
+          do: send(lv_pid, {:verification_failed, error_message, verification_ref})
+
         render(conn, :failure, error: error_message)
     end
   end
 
-  defp run_entra_auth_provider_verification(params, lv_pid) do
+  defp run_entra_auth_provider_verification(params, lv_pid, verification_ref) do
     with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
          issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0",
-         :ok <- notify_and_await_ack(lv_pid, {:entra_verify_complete, issuer, tenant_id}) do
+         :ok <-
+           notify_and_await_ack(
+             lv_pid,
+             {:entra_verify_complete, issuer, tenant_id, verification_ref}
+           ) do
       :ok
     else
       {:error, reason} when reason in [:ack_timeout, :no_receiver] ->
@@ -114,10 +129,14 @@ defmodule PortalWeb.VerificationController do
     end
   end
 
-  defp run_entra_directory_sync_verification(params, lv_pid) do
+  defp run_entra_directory_sync_verification(params, lv_pid, verification_ref) do
     with {:ok, tenant_id} <- extract_tenant_id_for_verification(params),
          {:ok, :verified} <- verify_directory_access_for_verification(tenant_id),
-         :ok <- notify_and_await_ack(lv_pid, {:entra_directory_sync_complete, tenant_id}) do
+         :ok <-
+           notify_and_await_ack(
+             lv_pid,
+             {:entra_directory_sync_complete, tenant_id, verification_ref}
+           ) do
       :ok
     else
       {:error, reason} when reason in [:ack_timeout, :no_receiver] ->

@@ -65,6 +65,21 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     |> String.trim()
   end
 
+  defp verification_ref_from_open_url(lv) do
+    assert_push_event(lv, "open_url", %{url: url})
+
+    %{"state" => state} =
+      url
+      |> URI.parse()
+      |> Map.fetch!(:query)
+      |> URI.decode_query()
+
+    assert {:ok, %{verification_ref: verification_ref}} =
+             PortalWeb.OIDC.verify_verification_state(state)
+
+    verification_ref
+  end
+
   # =============================================================================
   # Basic Page Rendering Tests
   # =============================================================================
@@ -2671,6 +2686,83 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Verified"
     end
 
+    test "accepts only the active entra verification completion", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/new")
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{name: "Test Entra"}})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+      stale_ref = verification_ref_from_open_url(lv)
+
+      lv |> element("#verify-button") |> render_click()
+      current_ref = verification_ref_from_open_url(lv)
+
+      stale_ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_verify_complete, "https://login.microsoftonline.com/stale/v2.0", "stale",
+         stale_ref, {self(), stale_ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^stale_ack_ref}
+      refute render(lv) =~ "Verified"
+
+      current_ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_verify_complete, "https://login.microsoftonline.com/current/v2.0", "current",
+         current_ref, {self(), current_ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^current_ack_ref}
+      assert render(lv) =~ "Verified"
+    end
+
+    test "ignores entra completion after navigating to another provider form", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/new")
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{name: "Test Entra"}})
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+
+      render_patch(lv, ~p"/#{account}/settings/authentication/google/new")
+
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_verify_complete, "https://login.microsoftonline.com/stale/v2.0", "stale",
+         verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      html = render(lv)
+      assert html =~ "Add Google Provider"
+      refute html =~ "Verified"
+    end
+
     test "handles entra provider verification setup via bypass", %{
       account: account,
       actor: actor,
@@ -3174,10 +3266,11 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # Start verification
       lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
 
       lv_pid = lv.pid
 
-      send(lv_pid, {:verification_failed, "Admin consent error"})
+      send(lv_pid, {:verification_failed, "Admin consent error", verification_ref})
       html = render(lv)
       assert html =~ "Verification failed"
     end
@@ -3616,6 +3709,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       # Start verification
       lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
 
       # Wait for the verification to be set up
       html = render(lv)
@@ -3626,7 +3720,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       send(
         lv_pid,
         {:entra_verify_complete, "https://login.microsoftonline.com/test_tenant/v2.0",
-         "test_tenant"}
+         "test_tenant", verification_ref, nil}
       )
 
       html = render(lv)
