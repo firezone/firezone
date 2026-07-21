@@ -7,7 +7,7 @@ use ip_network_table::IpNetworkTable;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     fmt, iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -35,7 +35,7 @@ pub(crate) struct Host<T> {
     filter: FilterMode,
     /// Destinations this host has sent to; the state backing [`FilterMode`].
     #[debug(skip)]
-    sent_to: HashSet<SocketAddr>,
+    sent_to: BTreeSet<SocketAddr>,
 
     #[debug(skip)]
     span: Span,
@@ -73,7 +73,7 @@ impl<T> Host<T> {
             allocated_ports: HashSet::default(),
             latency,
             filter,
-            sent_to: HashSet::default(),
+            sent_to: BTreeSet::default(),
             inbox: BufferedTransmits::default(),
         }
     }
