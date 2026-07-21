@@ -99,8 +99,9 @@ defmodule Portal.QueueTest do
   end
 
   defp flush_upsert(entries, token_field, cb_opts) do
-    {persisted, failed} = Sockets.LatestSession.upsert_all(entries, token_field)
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, token_field)
 
+    failed = revoked ++ missing
     dispatch_failed(failed, cb_opts)
     dispatch_confirmed(entries, failed, cb_opts, :session_ref)
 

@@ -1120,6 +1120,39 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert Process.alive?(socket1.channel_pid)
     end
+
+    test "targeted disconnect stops the channel whose session_ref matches", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      session_ref = make_ref()
+      join_channel(gateway, site, token, session_ref: session_ref)
+
+      assert_push "init", _init_payload
+
+      PG.deliver(gateway.id, {:disconnect, session_ref})
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "targeted disconnect for another session is ignored", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+
+      assert_push "init", _init_payload
+
+      PG.deliver(gateway.id, {:disconnect, make_ref()})
+
+      :sys.get_state(socket.channel_pid)
+      assert Process.alive?(socket.channel_pid)
+      refute_push "disconnect", _payload
+    end
   end
 
   describe "handle_info/2 pg group monitoring" do

@@ -5,15 +5,16 @@ defmodule PortalAPI.Sockets.LatestSession do
   Each queue entry carries the session attrs plus connect-time metadata. The
   newest entry per device wins within a batch, and the update is guarded on
   `last_seen_at` so a flush from another node can never roll a device back to
-  an older session. Entries whose device or token row no longer exists are
-  returned as failed so the caller can disconnect them.
+  an older session. Entries whose token or device row no longer exists are
+  returned as failed, separately per cause, so the caller can disconnect a
+  deleted token's session without touching the device's other sessions.
   """
   alias __MODULE__.Database
   require Logger
 
   @spec upsert_all([{map(), map()}], :client_token_id | :gateway_token_id) ::
-          {non_neg_integer(), [{map(), map()}]}
-  def upsert_all([], _token_field), do: {0, []}
+          {non_neg_integer(), [{map(), map()}], [{map(), map()}]}
+  def upsert_all([], _token_field), do: {0, [], []}
 
   def upsert_all(entries, token_field)
       when token_field in [:client_token_id, :gateway_token_id] do
@@ -32,16 +33,17 @@ defmodule PortalAPI.Sockets.LatestSession do
     updated_ids = Database.update_devices(rows, token_field)
     missing = missing_device_ids(rows, updated_ids)
 
-    failed =
-      revoked ++
-        Enum.filter(live, fn {attrs, _metadata} -> MapSet.member?(missing, attrs.device_id) end)
+    device_failed =
+      Enum.filter(live, fn {attrs, _metadata} -> MapSet.member?(missing, attrs.device_id) end)
 
-    {length(entries) - length(failed), failed}
+    {length(entries) - length(revoked) - length(device_failed), revoked, device_failed}
   rescue
     error ->
       Logger.error("Failed to upsert latest sessions onto devices: " <> Exception.message(error))
 
-      {0, entries}
+      # Returned as token-style failures so each entry's own session is
+      # disconnected to retry, without booting the device's other sessions.
+      {0, entries, []}
   end
 
   # Newest entry per device wins within a batch; rows are sorted so

@@ -3,6 +3,10 @@ defmodule Portal.Repo.Migrations.AddDevicesTokenFkeys do
   Adds FKs from the devices token columns to their token tables, nilifying the
   token column when its token is hard-deleted so the columns never dangle.
 
+  Raw SQL on purpose: `modify` with `references` re-issues `ALTER COLUMN ...
+  TYPE`, which takes ACCESS EXCLUSIVE on devices even when the type is
+  unchanged, while a bare ADD CONSTRAINT only takes SHARE ROW EXCLUSIVE.
+
   The constraints are added NOT VALID so writes are never blocked for the
   validation scan; dangling ids left by token deletions between the backfill
   and this migration are nulled out before validating.
@@ -12,27 +16,23 @@ defmodule Portal.Repo.Migrations.AddDevicesTokenFkeys do
   @disable_ddl_transaction true
 
   def up do
-    alter table(:devices) do
-      modify(
-        :client_token_id,
-        references(:client_tokens,
-          type: :uuid,
-          with: [account_id: :account_id],
-          on_delete: {:nilify, [:client_token_id]},
-          validate: false
-        )
-      )
+    execute("""
+    ALTER TABLE devices
+      ADD CONSTRAINT devices_client_token_id_fkey
+      FOREIGN KEY (account_id, client_token_id)
+      REFERENCES client_tokens (account_id, id)
+      ON DELETE SET NULL (client_token_id)
+      NOT VALID
+    """)
 
-      modify(
-        :gateway_token_id,
-        references(:gateway_tokens,
-          type: :uuid,
-          with: [account_id: :account_id],
-          on_delete: {:nilify, [:gateway_token_id]},
-          validate: false
-        )
-      )
-    end
+    execute("""
+    ALTER TABLE devices
+      ADD CONSTRAINT devices_gateway_token_id_fkey
+      FOREIGN KEY (account_id, gateway_token_id)
+      REFERENCES gateway_tokens (account_id, id)
+      ON DELETE SET NULL (gateway_token_id)
+      NOT VALID
+    """)
 
     execute("""
     UPDATE devices SET client_token_id = NULL

@@ -544,6 +544,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:stop, :shutdown, socket}
   end
 
+  # Flush-failure disconnects are PG-delivered by device id but target one
+  # session; a mismatched ref belongs to a predecessor channel and falls
+  # through to the catch-all.
+  def handle_info({:disconnect, session_ref}, socket)
+      when session_ref == socket.assigns.session_ref do
+    handle_info(:disconnect, socket)
+  end
+
   # Another channel joined our gateway id group: a duplicate connection raced
   # past the connect-time check. First wins — we were here first, so tell the
   # newcomers to disconnect (their :disconnect handler pushes token_expired

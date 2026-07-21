@@ -128,6 +128,40 @@ defmodule Portal.Queue.CallbacksTest do
       assert is_nil(device.client_token_id)
       assert is_nil(device.last_seen_at)
       assert Repo.all(from(sl in SessionLog, where: sl.account_id == ^account.id)) == []
+      assert_receive {:disconnect, ^session_ref}
+      refute_receive :disconnect
+      refute_receive {:confirm_session_durability, ^session_ref}
+    end
+
+    test "disconnects the whole device when it was deleted" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+      Repo.delete!(Repo.get_by!(Device, id: client.id, account_id: account.id))
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        remote_ip_location_region: "US",
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 0 = on_flush.([{attrs, metadata}])
+
       assert_receive :disconnect
       refute_receive {:confirm_session_durability, ^session_ref}
     end

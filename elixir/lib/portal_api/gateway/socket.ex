@@ -197,11 +197,22 @@ defmodule PortalAPI.Gateway.Socket do
   end
 
   defp flush_gateway_sessions(entries) do
-    {persisted, failed} = Sockets.LatestSession.upsert_all(entries, :gateway_token_id)
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :gateway_token_id)
 
+    failed = revoked ++ missing
     failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
 
-    for {attrs, _metadata} <- failed do
+    # A deleted token fails only its own session: a successor connection on
+    # the same device may hold a valid token, so the disconnect carries the
+    # session_ref for the channel to match on. A deleted device takes every
+    # connection down with it.
+    for {attrs, _metadata} <- revoked do
+      dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
+        PG.deliver(attrs.device_id, {:disconnect, attrs.session_ref})
+      end)
+    end
+
+    for {attrs, _metadata} <- missing do
       dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
         PG.deliver(attrs.device_id, :disconnect)
       end)

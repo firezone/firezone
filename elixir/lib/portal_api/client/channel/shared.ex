@@ -567,6 +567,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:stop, :shutdown, socket}
   end
 
+  # Flush-failure disconnects are PG-delivered by device id but target one
+  # session; a mismatched ref belongs to a predecessor channel and falls
+  # through to the catch-all.
+  def handle_info({:disconnect, session_ref}, socket)
+      when session_ref == socket.assigns.session_ref do
+    handle_info(:disconnect, socket)
+  end
+
   # A monitored process crashed — determine which subsystem it belongs to and recover.
   def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
     cond do

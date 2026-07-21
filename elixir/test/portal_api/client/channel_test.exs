@@ -1050,6 +1050,37 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
     end
+
+    test "targeted disconnect stops the channel whose session_ref matches", %{
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      session_ref = make_ref()
+      join_channel(client, subject, session_ref: session_ref)
+
+      assert_push "init", _init_payload
+
+      PG.deliver(client.id, {:disconnect, session_ref})
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "targeted disconnect for another session is ignored", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+
+      assert_push "init", _init_payload
+
+      PG.deliver(client.id, {:disconnect, make_ref()})
+
+      :sys.get_state(socket.channel_pid)
+      assert Process.alive?(socket.channel_pid)
+      refute_push "disconnect", _payload
+    end
   end
 
   describe "session durability fail-safe" do
