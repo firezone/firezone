@@ -149,7 +149,11 @@ defmodule PortalAPI.ClientController do
     subject = conn.assigns.subject
 
     with {:ok, client} <- Database.fetch_client(id, subject),
-         changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
+         changeset =
+           client
+           |> change()
+           |> put_default_value(:verified_at, DateTime.utc_now())
+           |> put_default_value(:verification_method, :manual),
          {:ok, client} <- Database.verify_client(changeset, subject) do
       render(conn, :show, client: client)
     else
@@ -180,7 +184,11 @@ defmodule PortalAPI.ClientController do
     subject = conn.assigns.subject
 
     with {:ok, client} <- Database.fetch_client(id, subject),
-         changeset = client |> change() |> put_change(:verified_at, nil),
+         changeset =
+           client
+           |> change()
+           |> put_change(:verified_at, nil)
+           |> put_change(:verification_method, nil),
          {:ok, client} <- Database.remove_client_verification(changeset, subject) do
       render(conn, :show, client: client)
     else

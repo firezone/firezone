@@ -56,7 +56,13 @@ defmodule Portal.Device do
           identifier_for_vendor: String.t() | nil,
           firebase_installation_id: String.t() | nil,
           hostname: String.t() | nil,
+          attested_device_serial: String.t() | nil,
+          attested_device_uuid: String.t() | nil,
+          attested_mdm_device_id: String.t() | nil,
+          cert_serial: String.t() | nil,
+          cert_fingerprint: String.t() | nil,
           verified_at: DateTime.t() | nil,
+          verification_method: :manual | :certificate | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -81,7 +87,16 @@ defmodule Portal.Device do
     field :identifier_for_vendor, :string
     field :firebase_installation_id, :string
     field :hostname, :string
+
+    # Device trust. Enforced client-only today, but gateways may adopt
+    # cert-based verification too, hence no client_ prefix on the cert columns.
+    field :attested_device_serial, :string
+    field :attested_device_uuid, :string
+    field :attested_mdm_device_id, :string
+    field :cert_serial, :string
+    field :cert_fingerprint, :string
     field :verified_at, :utc_datetime_usec
+    field :verification_method, Ecto.Enum, values: [:manual, :certificate]
 
     # Gateway-only
     belongs_to :site, Portal.Site
@@ -148,6 +163,12 @@ defmodule Portal.Device do
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)
         |> validate_length(:firebase_installation_id, max: 255)
+        |> validate_length(:attested_device_serial, max: 255)
+        |> validate_length(:attested_device_uuid, max: 255)
+        |> validate_length(:attested_mdm_device_id, max: 255)
+        |> validate_length(:cert_serial, max: 255)
+        |> validate_length(:cert_fingerprint, max: 255)
+        |> validate_client_verification()
 
       :gateway ->
         changeset
@@ -160,10 +181,31 @@ defmodule Portal.Device do
   end
 
   defp validate_gateway_verification(changeset) do
-    if is_nil(get_field(changeset, :verified_at)) do
-      changeset
-    else
-      add_error(changeset, :verified_at, "can only be set for client devices")
+    ~w[verified_at verification_method]a
+    |> Enum.reduce(changeset, fn field, changeset ->
+      if is_nil(get_field(changeset, field)) do
+        changeset
+      else
+        add_error(changeset, field, "can only be set for client devices")
+      end
+    end)
+  end
+
+  # `verification_method` records how `verified_at` was established, so the two
+  # must be set and cleared together.
+  defp validate_client_verification(changeset) do
+    verified_at = get_field(changeset, :verified_at)
+    verification_method = get_field(changeset, :verification_method)
+
+    cond do
+      is_nil(verified_at) and not is_nil(verification_method) ->
+        add_error(changeset, :verification_method, "can only be set for verified devices")
+
+      not is_nil(verified_at) and is_nil(verification_method) ->
+        add_error(changeset, :verification_method, "must be set for verified devices")
+
+      true ->
+        changeset
     end
   end
 
