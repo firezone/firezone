@@ -587,7 +587,7 @@ defmodule OpenIDConnectTest do
 
       claims = %{
         "email" => "brian@example.com",
-        "exp" => DateTime.utc_now() |> DateTime.add(-29, :second) |> DateTime.to_unix(),
+        "exp" => DateTime.utc_now() |> DateTime.add(-10, :second) |> DateTime.to_unix(),
         "aud" => config.client_id
       }
 
