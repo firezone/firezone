@@ -16,23 +16,16 @@ CARGO_PROFILE_RELEASE_LTO = "false"
 
 [tasks.fuzz]
 description = "Run a fuzz target; extra args are passed to libFuzzer"
-usage = '''
-arg "target"
-arg "libfuzzer_args" var=#true default=""
-'''
-run = 'cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target ${usage_target} -- ${usage_libfuzzer_args}'
+run = 'cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} -- {{arg(name="libfuzzer_args", var=true, default="-max_total_time=60")}}'
 
 [tasks.cmin]
 description = "Minimize the corpus of a fuzz target"
-usage = 'arg "target"'
-run = 'cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target ${usage_target}'
+run = 'cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}}'
 
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
-usage = 'arg "target"'
-run = 'cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target ${usage_target}'
+run = 'cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}}'
 
 [tasks.llvm-cov]
 description = "Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
-usage = 'arg "llvm_cov_args" var=#true'
-run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" ${usage_llvm_cov_args}'
+run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" {{arg(name="llvm_cov_args", var=true)}}'
