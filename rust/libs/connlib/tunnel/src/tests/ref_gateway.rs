@@ -2,7 +2,7 @@ use super::{
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
     sim_gateway::SimGateway,
-    sim_net::{ExecMutScope, Host, any_filter_mode, dual_ip_stack, host},
+    sim_net::{ExecMutScope, Host, any_edge, dual_ip_stack, host},
     strategies::latency,
 };
 use crate::{GatewayState, IpConfig};
@@ -80,7 +80,7 @@ pub(crate) fn ref_gateway_host(
         Just(52625),
         ref_gateway(tunnel_ip4s, tunnel_ip6s, site_specific_dns_records),
         latency(200), // We assume gateways have a somewhat decent Internet connection.
-        any_filter_mode(), // Gateways commonly sit behind stateful edges (cloud NAT / LB).
+        any_edge(),   // Gateways commonly sit behind stateful edges (cloud NAT / LB).
     )
 }
 

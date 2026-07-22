@@ -21,29 +21,41 @@ struct ByTime<T> {
 
 impl BufferedTransmits {
     /// Pushes a new [`Transmit`] from a given [`Host`].
+    ///
+    /// The packet crosses the host's network edge here: the source address on the
+    /// wire is whatever the edge (e.g. a NAT) translates it to.
     pub(crate) fn push_from<T>(
         &mut self,
         transmit: impl Into<Option<Transmit>>,
-        sending_host: &Host<T>,
+        sending_host: &mut Host<T>,
         now: Instant,
     ) {
         let Some(transmit) = transmit.into() else {
             return;
         };
 
-        if transmit.src.is_some() {
-            self.push(transmit, sending_host.latency(), now);
-            return;
-        }
-
         // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
         // In production, the kernel does this for us.
         // In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
+        let src = match transmit.src {
+            Some(src) => src,
+            None => match sending_host.sending_socket_for(transmit.dst.ip()) {
+                Some(src) => src,
+                None => {
+                    tracing::debug!(dst = %transmit.dst, "No socket");
 
-        let Some(src) = sending_host.sending_socket_for(transmit.dst.ip()) else {
-            tracing::debug!(dst = %transmit.dst, "No socket");
+                    return;
+                }
+            },
+        };
 
-            return;
+        let src = match sending_host.egress(src, transmit.dst) {
+            Ok(src) => src,
+            Err(reason) => {
+                tracing::debug!(%src, dst = %transmit.dst, "Edge dropped outbound packet: {reason}");
+
+                return;
+            }
         };
 
         let transmit = Transmit {
