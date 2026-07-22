@@ -15,6 +15,7 @@
 
 use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
+use smallvec::SmallVec;
 use std::iter;
 use std::net::IpAddr;
 use std::slice;
@@ -34,8 +35,10 @@ const MAX_UDP_SEGMENTS: usize = 128;
 
 /// The longest possible super-packet prefix: a [`VirtioNetHdr`] followed by the largest
 /// coalescable IP header (the fixed IPv6 one; IPv4 options never coalesce) and a
-/// maximally-sized TCP header.
-const MAX_PREFIX_LEN: usize = VNET_HDR_LEN + Ipv6HeaderSlice::LEN + TcpSlice::HEADER_MAX_LEN;
+/// maximally-sized TCP header, rounded up to the next power of two so the prefix
+/// buffer never spills to the heap.
+const MAX_PREFIX_LEN: usize =
+    (VNET_HDR_LEN + Ipv6HeaderSlice::LEN + TcpSlice::HEADER_MAX_LEN).next_power_of_two();
 
 const TCP_FLAG_PSH: u8 = 0x08;
 
@@ -109,8 +112,7 @@ enum Inner {
     /// A super packet, gathered at write time from its segments.
     Batch {
         /// The [`VirtioNetHdr`] plus the fixed-up IP and L4 headers of the super packet.
-        prefix: [u8; MAX_PREFIX_LEN],
-        prefix_len: usize,
+        prefix: SmallVec<[u8; MAX_PREFIX_LEN]>,
         /// The original packets; only their payloads are written.
         segments: Buffer<VecBuf<IpPacket>>,
     },
@@ -132,11 +134,7 @@ impl Outgoing {
     pub fn bufs(&self) -> impl Iterator<Item = &[u8]> + '_ {
         let (prefix, segments) = match &self.0 {
             Inner::Packet(packet) => (ZEROED_VNET_HDR.as_slice(), slice::from_ref(packet)),
-            Inner::Batch {
-                prefix,
-                prefix_len,
-                segments,
-            } => (&prefix[..*prefix_len], segments.as_slice()),
+            Inner::Batch { prefix, segments } => (prefix.as_slice(), segments.as_slice()),
         };
 
         // Everything after the `VirtioNetHdr` are packet bytes; whatever the prefix
@@ -426,27 +424,26 @@ impl Batch {
             return Outgoing::from(packet);
         }
 
-        let (prefix, prefix_len) = self.prefix();
+        let prefix = self.prefix();
 
         Outgoing(Inner::Batch {
             prefix,
-            prefix_len,
             segments: self.segments,
         })
     }
 
     /// Builds the write prefix of the super packet: the [`VirtioNetHdr`] followed by the
     /// fixed-up IP and L4 headers of the first segment.
-    fn prefix(&self) -> ([u8; MAX_PREFIX_LEN], usize) {
+    fn prefix(&self) -> SmallVec<[u8; MAX_PREFIX_LEN]> {
         let headers_len = self.ip_hdr_len + self.l4_hdr_len;
-        let prefix_len = VNET_HDR_LEN + headers_len;
 
-        let mut prefix = [0u8; MAX_PREFIX_LEN];
-        prefix[VNET_HDR_LEN..prefix_len].copy_from_slice(&self.template()[..headers_len]);
+        let mut prefix = SmallVec::new();
+        prefix.resize(VNET_HDR_LEN + headers_len, 0);
+        prefix[VNET_HDR_LEN..].copy_from_slice(&self.template()[..headers_len]);
 
-        finalize(&mut prefix[..prefix_len], self);
+        finalize(&mut prefix, self);
 
-        (prefix, prefix_len)
+        prefix
     }
 
     fn can_append(&self, candidate: &Candidate, packet: &IpPacket) -> bool {
