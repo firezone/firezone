@@ -153,6 +153,35 @@ defmodule PortalAPI.ClientControllerTest do
       assert Map.has_key?(data, "hostname")
     end
 
+    test "renders device trust fields", %{conn: conn, actor: actor, account: account} do
+      client_actor = actor_fixture(account: account)
+
+      client =
+        client_fixture(
+          account: account,
+          actor: client_actor,
+          attested_device_serial: "SN-ATT-1",
+          attested_device_uuid: "7A461FF9-0BE2-64A9-A418-539D9A21827B",
+          attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+          cert_serial: "4A:2F:00:8C",
+          cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["attested_device_serial"] == "SN-ATT-1"
+      assert data["attested_device_uuid"] == "7A461FF9-0BE2-64A9-A418-539D9A21827B"
+      assert data["attested_mdm_device_id"] == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+      assert data["cert_serial"] == "4A:2F:00:8C"
+      assert data["cert_fingerprint"] ==
+               "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    end
+
     test "renders hostname when set", %{conn: conn, actor: actor, account: account} do
       client = client_fixture(account: account, actor: actor, hostname: "host.example.com")
 
