@@ -1,0 +1,27 @@
+---
+name: "Setup Rust `target` dir caching"
+description: "Sets up caching for the Rust `target` directory, including the workspace crates"
+inputs:
+  key:
+    description: "Additional cache key"
+    required: false
+    default: ""
+  save-if:
+    description: "When to save the cache"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # Restore mtime for all files to avoid re-builds if they haven't changed.
+    # This requires `fetch-depth: 0` on the checkout action!
+    - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
+
+    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      with:
+        workspaces: rust
+        cache-targets: true
+        cache-workspace-crates: true
+        key: ${{ inputs.key }}-${{ hashFiles('rust/**/*.rs') }}
+        prefix-key: v2-rust
+        save-if: ${{ inputs.save-if }}
