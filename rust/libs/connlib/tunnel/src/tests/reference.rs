@@ -930,7 +930,7 @@ impl ReferenceState {
                 // unless they can fall back to a direct path; this transition
                 // is only sampled when every pairing agrees on that, so the
                 // outcome is all-or-nothing.
-                if !state.portal.iceless() && state.direct_paths_possible() == Some(false) {
+                if !state.portal.iceless() && state.direct_paths() == DirectPaths::None {
                     for client in state.clients.values_mut() {
                         client.exec_mut(|c| c.reset_connections(now));
                     }
@@ -1229,7 +1229,7 @@ impl ReferenceState {
             // depends on the edges of the pairing. Only sample this when every
             // pairing agrees so the reference model stays all-or-nothing.
             Transition::PartitionRelaysFromPortal => {
-                state.portal.iceless() || state.direct_paths_possible().is_some()
+                state.portal.iceless() || state.direct_paths() != DirectPaths::Mixed
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(r) => {
                 let has_resource = state.clients.values().any(|c| c.inner().has_resource(*r));
@@ -1887,8 +1887,7 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Whether a direct path is possible for every client/gateway pairing (`Some(true)`), for none (`Some(false)`), or only for some (`None`).
-    fn direct_paths_possible(&self) -> Option<bool> {
+    fn direct_paths(&self) -> DirectPaths {
         let mut pairings = self.clients.values().flat_map(|client| {
             self.gateways.values().map(|gateway| {
                 direct_path_possible(
@@ -1899,9 +1898,19 @@ impl ReferenceState {
             })
         });
 
-        let first = pairings.next()?;
+        let Some(first) = pairings.next() else {
+            return DirectPaths::All;
+        };
 
-        pairings.all(|p| p == first).then_some(first)
+        if !pairings.all(|p| p == first) {
+            return DirectPaths::Mixed;
+        }
+
+        if first {
+            DirectPaths::All
+        } else {
+            DirectPaths::None
+        }
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
