@@ -12,9 +12,17 @@ RUSTFLAGS = "--cfg tokio_unstable"
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
-"cargo:cargo-fuzz" = { version = "0.13.2", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+
+# The eBPF program is compiled with this exact nightly toolchain: `aya_build`
+# invokes it via `rustup run` (see `relay/server/build.rs`; keep the two pins
+# in sync). Installing it is a task rather than a `rust` entry in `[tools]`
+# because the latter would activate the nightly via `RUSTUP_TOOLCHAIN`,
+# overriding `rust-toolchain.toml` for everything else in this directory.
+[tasks.install-ebpf-toolchain]
+description = "Install the nightly toolchain that the eBPF program is compiled with"
+run = "rustup toolchain install nightly-2025-05-30 --profile minimal --component rust-src"
 
 # =============================================================================
 # Individual checks (matching CI)

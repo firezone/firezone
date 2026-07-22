@@ -4,10 +4,6 @@
 version = "3.7.0"
 backend = "cargo:cargo-deb"
 
-[[tools."cargo:cargo-fuzz"]]
-version = "0.13.2"
-backend = "cargo:cargo-fuzz"
-
 [[tools."github:Boshen/cargo-shear"]]
 version = "1.12.4"
 backend = "github:Boshen/cargo-shear"
