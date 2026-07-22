@@ -45,10 +45,12 @@ jobs:
         run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
         env:
           CARGO_PROFILE_RELEASE_LTO: false
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
       - name: Minimize corpus
         run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
         env:
           CARGO_PROFILE_RELEASE_LTO: false
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
       - name: Measure coverage (report only)
         run: |
           rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
@@ -57,6 +59,7 @@ jobs:
           echo "tunnel-proto region coverage: ${pct}%"
         env:
           CARGO_PROFILE_RELEASE_LTO: false
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
       - name: Set up GnuPG for the corpus commit
         uses: ./.github/actions/setup-gpg
         id: setup-gpg
