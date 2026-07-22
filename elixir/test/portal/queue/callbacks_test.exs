@@ -60,6 +60,76 @@ defmodule Portal.Queue.CallbacksTest do
       assert session_log.subject["token_id"] == token.id
     end
 
+    test "persists a merged firezone_id carried by the session entry" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor, firezone_id: "fz-old")
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        firezone_id: "fz-new",
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      assert 1 = on_flush.([{attrs, metadata}])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert device.firezone_id == "fz-new"
+      assert_receive {:confirm_session_durability, ^session_ref}
+    end
+
+    test "skips a conflicting firezone_id merge but keeps the session" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor, firezone_id: "fz-one")
+      _other = client_fixture(account: account, actor: actor, firezone_id: "fz-two")
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        firezone_id: "fz-two",
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      # The identity merge is skipped (another device row owns fz-two), but the
+      # session itself persists and confirms durability.
+      assert 1 = on_flush.([{attrs, metadata}])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert device.firezone_id == "fz-one"
+      assert device.client_token_id == token.id
+      assert_receive {:confirm_session_durability, ^session_ref}
+    end
+
     test "does not confirm durability when the session log write fails" do
       account = account_fixture()
       actor = actor_fixture(account: account)

@@ -2598,6 +2598,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       session_ref: session_ref,
       account_id: client.account_id,
       device_id: client.id,
+      actor_id: client.actor_id,
+      firezone_id: client.firezone_id,
       client_token_id: client.client_token_id,
       public_key: client.public_key,
       user_agent: client.last_seen_user_agent,

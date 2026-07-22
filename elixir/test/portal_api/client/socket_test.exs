@@ -515,7 +515,7 @@ defmodule PortalAPI.Client.SocketTest do
       %{account: account, actor: actor}
     end
 
-    test "attested identifier match wins over firezone_id and upserts firezone_id", %{
+    test "attested identifier match wins over firezone_id and merges it in memory", %{
       account: account,
       actor: actor
     } do
@@ -538,6 +538,11 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.id == existing.id
       assert client.firezone_id == "fz-new"
       assert [_only_one] = Portal.Repo.all(actor_devices_query(account, actor))
+
+      # The connect path is write-free: the merged firezone_id is persisted by
+      # the batched client session flush, not here.
+      db_row = Portal.Repo.get_by!(Portal.Device, id: existing.id, account_id: account.id)
+      assert db_row.firezone_id == "fz-old"
     end
 
     test "attested identifiers with no match insert a new device", %{

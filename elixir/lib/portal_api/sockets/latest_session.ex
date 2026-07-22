@@ -57,6 +57,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       %{
         account_id: attrs.account_id,
         device_id: attrs.device_id,
+        actor_id: attrs[:actor_id],
+        firezone_id: attrs[:firezone_id],
         token_id: Map.fetch!(attrs, token_field),
         public_key: attrs[:public_key],
         user_agent: attrs[:user_agent],
@@ -100,10 +102,13 @@ defmodule PortalAPI.Sockets.LatestSession do
     import Ecto.Query
     alias Portal.Device
     alias Portal.Safe
+    require Logger
 
     @value_types %{
       account_id: Ecto.UUID,
       device_id: Ecto.UUID,
+      actor_id: Ecto.UUID,
+      firezone_id: :string,
       token_id: Ecto.UUID,
       public_key: :string,
       user_agent: :string,
@@ -118,6 +123,12 @@ defmodule PortalAPI.Sockets.LatestSession do
 
     @probe_types %{account_id: Ecto.UUID, device_id: Ecto.UUID}
     @token_probe_types %{account_id: Ecto.UUID, token_id: Ecto.UUID}
+    @identity_probe_types %{
+      account_id: Ecto.UUID,
+      actor_id: Ecto.UUID,
+      device_id: Ecto.UUID,
+      firezone_id: :string
+    }
 
     @token_schemas %{
       client_token_id: Portal.ClientToken,
@@ -153,8 +164,16 @@ defmodule PortalAPI.Sockets.LatestSession do
     def update_devices([], _token_field), do: MapSet.new()
 
     def update_devices(rows, token_field) do
+      rows = strip_conflicting_firezone_ids(rows)
+
       set =
         [
+          # The latest session's firezone_id follows the device: an attested
+          # connect merges a reinstalled client (new firezone_id, same attested
+          # identity) onto its existing row in memory, and this flush persists
+          # the new firezone_id. Entries that carry none (gateways) keep the
+          # row's current value.
+          firezone_id: dynamic([d, v], coalesce(v.firezone_id, d.firezone_id)),
           public_key: dynamic([d, v], v.public_key),
           last_seen_user_agent: dynamic([d, v], v.user_agent),
           last_seen_remote_ip: dynamic([d, v], v.remote_ip),
@@ -178,6 +197,51 @@ defmodule PortalAPI.Sockets.LatestSession do
         |> Safe.update_all([])
 
       MapSet.new(ids)
+    end
+
+    # A merged firezone_id can collide with another device row of the same
+    # actor (e.g. an unattested row created before the attested merge). The
+    # colliding entry keeps its session but skips the identity change, so one
+    # poisoned entry cannot fail the whole batch; the merge retries on the
+    # device's next connect. The probe-then-update window is not atomic: a
+    # collision that appears in between still raises unique_violation, which
+    # the caller's rescue turns into failed entries that reconnect and retry.
+    defp strip_conflicting_firezone_ids(rows) do
+      probe_rows =
+        for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
+          Map.take(row, [:account_id, :actor_id, :device_id, :firezone_id])
+        end
+
+      conflicted =
+        if probe_rows == [] do
+          MapSet.new()
+        else
+          from(d in Device,
+            join: v in values(probe_rows, @identity_probe_types),
+            on:
+              d.account_id == v.account_id and d.actor_id == v.actor_id and
+                d.firezone_id == v.firezone_id and d.id != v.device_id,
+            where: d.type == :client,
+            select: v.device_id
+          )
+          |> Safe.unscoped()
+          |> Safe.all()
+          |> MapSet.new()
+        end
+
+      if MapSet.size(conflicted) > 0 do
+        Logger.info(
+          "Skipped #{MapSet.size(conflicted)} firezone_id merges during flush due to conflicting device rows"
+        )
+      end
+
+      Enum.map(rows, fn row ->
+        if MapSet.member?(conflicted, row.device_id) do
+          %{row | firezone_id: nil}
+        else
+          row
+        end
+      end)
     end
 
     def existing_device_ids(rows) do

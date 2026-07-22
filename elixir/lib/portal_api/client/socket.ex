@@ -334,7 +334,7 @@ defmodule PortalAPI.Client.Socket do
       cond do
         client = find_by_attested_ids(changeset, account_id, actor_id) ->
           check_hardware_id_mismatch(client, attrs)
-          upsert_firezone_id(client, firezone_id)
+          {:ok, merge_firezone_id(client, firezone_id)}
 
         client = find_by_firezone_id(account_id, actor_id, firezone_id) ->
           check_hardware_id_mismatch(client, attrs)
@@ -395,15 +395,16 @@ defmodule PortalAPI.Client.Socket do
       |> Safe.one(fallback_to_primary: true)
     end
 
-    defp upsert_firezone_id(client, firezone_id) do
+    # The merge is in-memory only: the connect path stays write-free, and the
+    # new firezone_id is persisted by the batched client session flush
+    # (PortalAPI.Sockets.LatestSession) together with the rest of the
+    # connect-time columns, so a reconnect storm (e.g. after a deploy or a
+    # fleet-wide reinstall) never turns into a per-connect write storm.
+    defp merge_firezone_id(client, firezone_id) do
       if is_nil(firezone_id) or client.firezone_id == firezone_id do
-        {:ok, client}
-      else
         client
-        |> Ecto.Changeset.change(firezone_id: firezone_id)
-        |> Device.changeset()
-        |> Safe.unscoped()
-        |> Safe.update()
+      else
+        %{client | firezone_id: firezone_id}
       end
     end
 
