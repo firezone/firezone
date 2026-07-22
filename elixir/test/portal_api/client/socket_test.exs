@@ -645,6 +645,117 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "resolve_client/3 device-trust verification" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "persists verified identifiers and pinned cert onto the row", %{
+      account: account,
+      actor: actor
+    } do
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-1"})
+
+      verified = %{
+        identifiers: %{
+          last_attested_device_serial: "C02XK1ZGJGH5",
+          last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+        },
+        last_attested_cert_serial: "4A2F008C",
+        last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      }
+
+      assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, verified)
+      assert client.last_attested_device_serial == "C02XK1ZGJGH5"
+      assert client.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+      assert client.last_attested_cert_fingerprint == verified.last_attested_cert_fingerprint
+    end
+
+    test "verified identifiers split across devices refuse adoption entirely", %{
+      account: account,
+      actor: actor
+    } do
+      device_a =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-V-SPLIT",
+          firezone_id: "fz-a"
+        )
+
+      device_b =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_uuid: "uuid-v-split",
+          firezone_id: "fz-b"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      verified = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-V-SPLIT",
+          last_attested_device_uuid: "uuid-v-split"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, verified)
+          assert client.id != device_a.id
+          assert client.id != device_b.id
+          assert is_nil(client.last_attested_device_serial)
+          assert is_nil(client.last_attested_device_uuid)
+          assert is_nil(client.last_attested_at)
+        end)
+
+      assert log =~ "split across multiple devices"
+    end
+
+    test "refuses to adopt identity when a non-null identifier disagrees", %{
+      account: account,
+      actor: actor
+    } do
+      # Existing row proved serial SN-1 and uuid UUID-1 previously.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-1",
+          last_attested_device_uuid: "uuid-1",
+          firezone_id: "fz-old"
+        )
+
+      # New cert matches on serial but carries a conflicting uuid.
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      verified = %{
+        identifiers: %{last_attested_device_serial: "SN-1", last_attested_device_uuid: "uuid-2"},
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb"
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, client} = Socket.Database.resolve_client(changeset, %{}, verified)
+          # Adoption refused: a brand new row is inserted rather than merging
+          # onto the mismatched existing one.
+          assert client.id != existing.id
+          refute client.last_attested_device_uuid == "uuid-2"
+        end)
+
+      assert log =~ "Attested identifier mismatch"
+    end
+  end
+
   defp device_trust_changeset(account, actor, attrs) do
     %Portal.Device{}
     |> Ecto.Changeset.cast(attrs, [
