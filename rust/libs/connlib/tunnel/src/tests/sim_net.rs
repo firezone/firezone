@@ -567,17 +567,6 @@ fn any_filter_mode() -> impl Strategy<Value = FilterMode> {
     ]
 }
 
-/// Whether the client/gateway pairings of a fleet can hole-punch direct paths.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectPaths {
-    /// Every pairing can; losing all relays cuts no connection.
-    All,
-    /// No pairing can; every connection depends on relays.
-    None,
-    /// Some pairings can and some cannot.
-    Mixed,
-}
-
 /// Whether two hosts behind the given edges can establish a direct path by hole-punching.
 ///
 /// Over IPv6 there is no translation, only filtering, and punching through

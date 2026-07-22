@@ -254,6 +254,59 @@ impl RefClient {
         self.readd_all_resources();
     }
 
+    /// Resets the connections to the given gateways, as if only they had disconnected.
+    ///
+    /// Resources served by other gateways stay connected.
+    pub(crate) fn reset_connections_to_gateways(
+        &mut self,
+        gateways: &BTreeSet<GatewayId>,
+        gateway_for_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        now: Instant,
+    ) {
+        let is_affected =
+            |rid: &ResourceId| gateway_for_resource(*rid).is_some_and(|g| gateways.contains(&g));
+
+        for gateway in gateways {
+            self.gateway_send_times.remove(gateway);
+        }
+
+        let mut affected = self
+            .connected_cidr_resources
+            .iter()
+            .chain(self.connected_dns_resources.iter())
+            .copied()
+            .filter(is_affected)
+            .collect::<Vec<_>>();
+
+        if self.connected_internet_resource
+            && let Some(internet) = self.internet_resource()
+            && is_affected(&internet)
+        {
+            affected.push(internet);
+        }
+
+        if affected.is_empty() {
+            return;
+        }
+
+        self.connection_resets.push(now);
+
+        for resource in affected {
+            self.connected_cidr_resources.remove(&resource);
+            self.connected_dns_resources.remove(&resource);
+
+            if self.internet_resource().is_some_and(|r| r == resource) {
+                self.connected_internet_resource = false;
+            }
+
+            if let Ok(site) = self.site_for_resource(resource)
+                && let Some(status) = self.site_status.get_mut(&site.id)
+            {
+                *status = ResourceStatus::Unknown;
+            }
+        }
+    }
+
     pub(crate) fn reset_connections(&mut self, now: Instant) {
         self.connection_resets.push(now);
 
