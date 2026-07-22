@@ -1,5 +1,5 @@
 use crate::IpConfig;
-use crate::conn_track::ConnTrack;
+use crate::conn_track::{ConnTrack, Originator};
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::messages::Filter;
@@ -186,9 +186,9 @@ impl ClientOnClient {
         self.inbound_filter = FilterEngine::new(&combined);
     }
 
-    /// Handles an outbound packet we sent to this peer.
-    pub(crate) fn handle_outbound(&mut self, packet: &IpPacket, now: Instant) {
-        self.conn_track.handle_outbound(packet, now);
+    /// Records or refreshes a flow we opened so future replies can bypass the inbound filter.
+    pub(crate) fn record_outbound_as_originator(&mut self, packet: &IpPacket, now: Instant) {
+        self.conn_track.record_outbound_as_originator(packet, now);
     }
 
     /// Returns the next instant at which one of this peer's inbound authorizations expires.
@@ -216,12 +216,11 @@ impl ClientOnClient {
         }
     }
 
-    /// Returns `true` if the *outbound* packet is part of an existing flow
-    /// with this peer (either initiated by us or in reply to inbound from
-    /// the peer). Lets `route_packet` skip the per-(resource, peer) intent
-    /// when the connection is already established.
-    pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
-        self.conn_track.is_known_flow(packet)
+    /// Who opened the flow this *outbound* packet belongs to, if it is tracked.
+    /// Lets outbound routing send replies directly to the peer even when no
+    /// outbound route exists.
+    pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
+        self.conn_track.outbound_flow_originator(packet)
     }
 
     /// Decide whether an inbound packet from this peer is admitted.
@@ -263,6 +262,7 @@ impl ClientOnClient {
 
         // The packet passed our filters, record as successful inbound packet.
         self.conn_track.record_inbound(&packet, now);
+
         Ok(InboundResult::Send(packet))
     }
 }
@@ -319,7 +319,7 @@ mod tests {
         let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
-        peer.handle_outbound(&outbound, now);
+        peer.record_outbound_as_originator(&outbound, now);
         let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
 
         assert!(is_send(peer.ensure_allowed_inbound(icmp, now).unwrap()));
@@ -360,7 +360,7 @@ mod tests {
         let mut peer = peer();
 
         let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
-        peer.handle_outbound(&outbound, now);
+        peer.record_outbound_as_originator(&outbound, now);
 
         let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
         assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));

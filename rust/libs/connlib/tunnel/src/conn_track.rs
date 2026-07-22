@@ -15,13 +15,20 @@ pub(crate) struct ConnTrack {
     received: BTreeMap<Key, Instant>,
 }
 
+/// Which side opened a tracked flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Originator {
+    Us,
+    Peer,
+}
+
 impl ConnTrack {
-    /// Handles an outbound packet we sent to a peer.
+    /// Records or refreshes an outbound flow we opened to a peer.
     ///
     /// Remembers the packet's flow as one that we opened. Replies to flows
     /// that the peer opened are ignored: those flows must keep passing the
     /// inbound filter, so that they stop once their authorization is gone.
-    pub(crate) fn handle_outbound(&mut self, packet: &IpPacket, now: Instant) {
+    pub(crate) fn record_outbound_as_originator(&mut self, packet: &IpPacket, now: Instant) {
         let Ok(local) = packet.source_protocol() else {
             return;
         };
@@ -112,6 +119,33 @@ impl ConnTrack {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
+    /// Who opened the flow this *outbound* packet belongs to, if it is tracked.
+    pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
+        let Ok(local) = packet.source_protocol() else {
+            return None;
+        };
+        let Ok(peer) = packet.destination_protocol() else {
+            return None;
+        };
+
+        let key = Key {
+            local,
+            peer,
+            local_ip: packet.source(),
+            peer_ip: packet.destination(),
+        };
+
+        if self.initiated.contains_key(&key) {
+            return Some(Originator::Us);
+        }
+
+        if self.received.contains_key(&key) {
+            return Some(Originator::Peer);
+        }
+
+        None
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         for map in [&mut self.initiated, &mut self.received] {
             for _ in map.extract_if(.., |key, last_seen| {
@@ -159,7 +193,7 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.handle_outbound(&outbound, now);
+        ct.record_outbound_as_originator(&outbound, now);
 
         let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
@@ -173,7 +207,7 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.handle_outbound(&outbound, now);
+        ct.record_outbound_as_originator(&outbound, now);
 
         // Different source port — not the reply we expected.
         let unrelated = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 9999, 53535, &[])
@@ -206,9 +240,9 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.handle_outbound(&outbound, start);
+        ct.record_outbound_as_originator(&outbound, start);
 
-        ct.handle_outbound(&outbound, start + UDP_TTL - Duration::from_secs(1));
+        ct.record_outbound_as_originator(&outbound, start + UDP_TTL - Duration::from_secs(1));
 
         ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
 
@@ -228,7 +262,7 @@ mod tests {
 
         let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
-        ct.handle_outbound(&reply, now);
+        ct.record_outbound_as_originator(&reply, now);
 
         let next = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
             .expect("valid packet");
@@ -242,7 +276,7 @@ mod tests {
 
         let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
-        ct.handle_outbound(&outbound, start);
+        ct.record_outbound_as_originator(&outbound, start);
 
         ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
 
@@ -258,7 +292,7 @@ mod tests {
 
         let request =
             make::icmp_request_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 1, 42, &[]).expect("valid");
-        ct.handle_outbound(&request, now);
+        ct.record_outbound_as_originator(&request, now);
 
         let reply =
             make::icmp_reply_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[]).expect("valid");
@@ -272,7 +306,7 @@ mod tests {
 
         let v4_outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 5353, 5353, &[])
             .expect("valid packet");
-        ct.handle_outbound(&v4_outbound, now);
+        ct.record_outbound_as_originator(&v4_outbound, now);
 
         // A v6 reply on the same port pair must NOT count as return traffic.
         let v6_reply = make::udp_packet(
@@ -284,6 +318,27 @@ mod tests {
         )
         .expect("valid packet");
         assert!(!ct.is_return_traffic(&v6_reply));
+    }
+
+    #[test]
+    fn outbound_originator_follows_who_opened_the_flow() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let ours = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+            .expect("valid packet");
+        ct.record_outbound_as_originator(&ours, now);
+        assert_eq!(ct.outbound_flow_originator(&ours), Some(Originator::Us));
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        // Our reply belongs to the peer's flow, not to one we opened.
+        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
+            .expect("valid packet");
+        ct.record_outbound_as_originator(&reply, now);
+        assert_eq!(ct.outbound_flow_originator(&reply), Some(Originator::Peer));
     }
 
     fn ip(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
