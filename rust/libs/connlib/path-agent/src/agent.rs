@@ -40,10 +40,9 @@ pub struct PathAgent {
 
     pending_transmits: VecDeque<Transmit>,
     /// The most recent `now` we saw; [`Self::poll_timeout`] returns it while
-    /// transmits are queued so the driver drains them without delay.
+    /// transmits or events are queued so the driver drains them without delay.
     last_now: Option<Instant>,
     events: VecDeque<Event>,
-    events_queued_at: Option<Instant>,
 
     peer_reflexive_addrs: BTreeSet<SocketAddr>,
     next_pair_id: u16,
@@ -582,7 +581,7 @@ impl PathAgent {
                 // for our own sending, so it must not move our primary — probing
                 // decides. Hence we only adopt on the establishing init.
                 if !had_session && self.primary.is_none() && self.pairs.contains_key(&path) {
-                    self.set_primary(path, now);
+                    self.set_primary(path);
                 }
 
                 // Distinct inits with no data in between mean the peer isn't
@@ -627,7 +626,7 @@ impl PathAgent {
 
                 // A response is bidirectionally validated, so it is safe to
                 // adopt as a (tier-ranked) preliminary primary before probing.
-                self.promote_from_handshake(path, now);
+                self.promote_from_handshake(path);
 
                 for b in outbound {
                     self.handle_outbound(b, now);
@@ -743,13 +742,7 @@ impl PathAgent {
     }
 
     pub fn poll_event(&mut self) -> Option<Event> {
-        let event = self.events.pop_front();
-
-        if self.events.is_empty() {
-            self.events_queued_at = None;
-        }
-
-        event
+        self.events.pop_front()
     }
 
     pub fn handle_inbound_tun(
@@ -815,7 +808,7 @@ impl PathAgent {
                 tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
 
                 // A probe reply is bidirectionally validated: it may promote.
-                self.select_primary(now);
+                self.select_primary();
             }
         }
         ControlFlow::Break(())
@@ -850,13 +843,12 @@ impl PathAgent {
             .as_ref()
             .map(|d| d.cached_at + RESPONDER_DEDUP_TTL);
 
-        let pending_transmit = (!self.pending_transmits.is_empty())
+        let pending_io = (!self.pending_transmits.is_empty() || !self.events.is_empty())
             .then_some(self.last_now)
             .flatten();
 
         iter::empty()
-            .chain(pending_transmit)
-            .chain(self.events_queued_at)
+            .chain(pending_io)
             .chain(next_retransmit)
             .chain(next_probe)
             .chain(pending_fanout)
@@ -1044,17 +1036,17 @@ impl PathAgent {
     /// A handshake proves its path works both ways but carries no RTT, so it can
     /// only seed or improve the primary *by tier* — never displace a
     /// better-tier incumbent.
-    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
+    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr)) {
         if !self.pairs.contains_key(&path) {
             return;
         }
         match self.primary {
-            None => self.set_primary(path, now),
+            None => self.set_primary(path),
             Some(primary) if primary != path => {
                 let new = pair_score(path, &self.pairs[&path]);
                 let cur = pair_score(primary, &self.pairs[&primary]);
                 if new.bucket < cur.bucket {
-                    self.set_primary(path, now);
+                    self.set_primary(path);
                 }
             }
             Some(_) => {}
@@ -1065,7 +1057,7 @@ impl PathAgent {
     /// pair takes over an empty primary, or displaces the incumbent only when it
     /// scores strictly better (a better tier, or the same tier by a clear RTT
     /// margin). A worse pair never demotes a working primary.
-    fn select_primary(&mut self, now: Instant) {
+    fn select_primary(&mut self) {
         let Some(best) = self
             .pairs
             .iter()
@@ -1077,7 +1069,7 @@ impl PathAgent {
         };
 
         let Some(primary) = self.primary else {
-            self.set_primary(best, now);
+            self.set_primary(best);
             return;
         };
 
@@ -1089,7 +1081,7 @@ impl PathAgent {
         let cur = pair_score(primary, &self.pairs[&primary]);
 
         if new.bucket < cur.bucket {
-            self.set_primary(best, now);
+            self.set_primary(best);
             return;
         }
 
@@ -1105,12 +1097,12 @@ impl PathAgent {
             let margin =
                 PRIMARY_HYSTERESIS_FLOOR.max(cur_rtt.smoothed.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
             if new_rtt + margin < cur_rtt.smoothed {
-                self.set_primary(best, now);
+                self.set_primary(best);
             }
         }
     }
 
-    fn set_primary(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
+    fn set_primary(&mut self, path: (SocketAddr, SocketAddr)) {
         let from = self.primary;
         self.primary = Some(path);
 
@@ -1123,18 +1115,10 @@ impl PathAgent {
 
         tracing::debug!(?from, local = %path.0, remote = %path.1, "Iceless primary changed");
 
-        self.queue_event(
-            Event::PrimaryChanged {
-                local: path.0,
-                remote: path.1,
-            },
-            now,
-        );
-    }
-
-    fn queue_event(&mut self, event: Event, now: Instant) {
-        self.events.push_back(event);
-        self.events_queued_at = self.events_queued_at.or(Some(now));
+        self.events.push_back(Event::PrimaryChanged {
+            local: path.0,
+            remote: path.1,
+        });
     }
 }
 
