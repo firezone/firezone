@@ -32,7 +32,6 @@ jobs:
       - uses: ./.github/actions/setup-rust-target-dependency-cache
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ hashFiles('rust/mise.toml') }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
