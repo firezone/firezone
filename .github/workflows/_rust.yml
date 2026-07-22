@@ -139,8 +139,8 @@ jobs:
       - name: Enforce tunnel-proto coverage threshold
         run: |
           pct=$(mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
-          echo "tunnel-proto region coverage: ${pct}% (min 68%)"
-          jq -e -n "$pct >= 68" > /dev/null || { echo "::error::tunnel-proto coverage ${pct}% below 68% — the committed corpus regressed; grow it via the nightly fuzz job."; exit 1; }
+          echo "tunnel-proto region coverage: ${pct}% (min 70%)"
+          jq -e -n "$pct >= 70" > /dev/null || { echo "::error::tunnel-proto coverage ${pct}% below 70% — the committed corpus regressed; grow it via the nightly fuzz job."; exit 1; }
       - name: Export lcov for Coveralls
         run: mise run -q //rust/tests/fuzz:llvm-cov -- export -format=lcov -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel > lcov.info
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
