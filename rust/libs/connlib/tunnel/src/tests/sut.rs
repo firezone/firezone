@@ -1027,8 +1027,8 @@ impl TunnelTest {
                         },
                         at,
                     ),
-                    Err(reason) => {
-                        tracing::debug!(%src, %dst, "Client's edge dropped packet: {reason}")
+                    Err(e) => {
+                        tracing::debug!(%src, %dst, "Client's edge dropped packet: {e:#}")
                     }
                 }
             }
@@ -1043,8 +1043,8 @@ impl TunnelTest {
                         },
                         at,
                     ),
-                    Err(reason) => {
-                        tracing::debug!(%src, %dst, "Gateway's edge dropped packet: {reason}")
+                    Err(e) => {
+                        tracing::debug!(%src, %dst, "Gateway's edge dropped packet: {e:#}")
                     }
                 }
             }

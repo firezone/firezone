@@ -1,5 +1,6 @@
 use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
+use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
 use ip_network::IpNetwork;
@@ -166,27 +167,27 @@ impl Nat {
         public
     }
 
-    fn ingress(&self, src: SocketAddr, dst: SocketAddr) -> Result<SocketAddr, &'static str> {
+    fn ingress(&self, src: SocketAddr, dst: SocketAddr) -> Result<SocketAddr> {
         match dst.ip() {
             IpAddr::V4(ip) => {
                 if ip != self.ip4 {
-                    return Err("IPv4 address behind NAT is not routable");
+                    bail!("IPv4 address behind NAT is not routable");
                 }
 
                 let binding = self
                     .by_public
                     .get(&dst)
-                    .ok_or("no NAT binding for destination")?;
+                    .context("no NAT binding for destination")?;
 
                 if !self.filter.accepts(&binding.sent_to, src) {
-                    return Err("sender not in NAT filter state");
+                    bail!("sender not in NAT filter state");
                 }
 
                 Ok(binding.internal)
             }
             IpAddr::V6(_) => {
                 if !self.filter.accepts(&self.sent_to6, src) {
-                    return Err("sender not in NAT filter state");
+                    bail!("sender not in NAT filter state");
                 }
 
                 Ok(dst)
@@ -301,13 +302,9 @@ impl<T> Host<T> {
     }
 
     /// Passes an outbound packet through this host's edge, returning the wire source address.
-    pub(crate) fn egress(
-        &mut self,
-        src: SocketAddr,
-        dst: SocketAddr,
-    ) -> Result<SocketAddr, &'static str> {
+    pub(crate) fn egress(&mut self, src: SocketAddr, dst: SocketAddr) -> Result<SocketAddr> {
         if self.offline {
-            return Err("host is offline");
+            bail!("host is offline");
         }
 
         match &mut self.edge {
@@ -317,13 +314,9 @@ impl<T> Host<T> {
     }
 
     /// Passes an inbound wire packet through this host's edge, returning the address it is delivered to.
-    pub(crate) fn ingress(
-        &self,
-        src: SocketAddr,
-        dst: SocketAddr,
-    ) -> Result<SocketAddr, &'static str> {
+    pub(crate) fn ingress(&self, src: SocketAddr, dst: SocketAddr) -> Result<SocketAddr> {
         if self.offline {
-            return Err("host is offline");
+            bail!("host is offline");
         }
 
         match &self.edge {
