@@ -15,6 +15,7 @@ permissions:
 env:
   RUSTFLAGS: "--cfg tokio_unstable --deny warnings"
   RUSTDOCFLAGS: "--deny warnings"
+  MISE_EXPERIMENTAL: "1" # For monorepo task paths (`mise run //rust/...`).
 
 jobs:
   static-analysis:
