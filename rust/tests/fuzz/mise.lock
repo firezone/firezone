@@ -3,7 +3,3 @@
 [[tools."cargo:cargo-fuzz"]]
 version = "0.13.2"
 backend = "cargo:cargo-fuzz"
-
-[[tools.rust]]
-version = "nightly-2026-03-30"
-backend = "core:rust"

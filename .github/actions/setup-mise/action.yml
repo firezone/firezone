@@ -5,7 +5,7 @@ inputs:
   version:
     description: "mise version to install"
     required: false
-    default: "2026.7.7"
+    default: "2026.5.0"
   install_args:
     description: "Arguments to pass to `mise install`"
     required: false
