@@ -16,7 +16,7 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-android
       - name: Check formatting
         run: ./gradlew spotlessCheck
@@ -72,7 +72,7 @@ jobs:
             build-command: "./gradlew assembleRelease"
             output-path: app/build/outputs/apk/release/app-release.apk
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
@@ -173,7 +173,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: build-debug
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-android
       - name: Build debug APK
         run: |

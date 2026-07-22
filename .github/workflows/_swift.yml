@@ -32,7 +32,7 @@ jobs:
     env:
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: ./.github/actions/setup-mise
         with:
@@ -60,7 +60,7 @@ jobs:
     env:
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
       - uses: ./.github/actions/setup-mise
         with:
@@ -111,7 +111,7 @@ jobs:
             # mark:next-apple-version
             release-name: macos-client-1.5.19
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-mise

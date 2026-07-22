@@ -33,7 +33,7 @@ jobs:
   version-check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check version is up to date
         run: |
           ./scripts/bump-versions.sh
@@ -50,7 +50,7 @@ jobs:
   link-check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           fail: true
@@ -61,7 +61,7 @@ jobs:
     permissions:
       security-events: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-mise
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
