@@ -3,9 +3,6 @@ on:
   workflow_call:
   workflow_dispatch:
 
-env:
-  MISE_EXPERIMENTAL: "1"
-
 jobs:
   update-release-draft:
     name: update-release-draft
@@ -81,7 +78,6 @@ jobs:
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
-      MISE_EXPERIMENTAL: "1"
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth

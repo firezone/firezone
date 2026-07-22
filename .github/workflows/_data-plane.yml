@@ -252,8 +252,6 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-nightly
-        if: matrix.name.package == 'firezone-relay'
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -266,6 +264,8 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise run //rust:install-ebpf-toolchain
+        if: matrix.name.package == 'firezone-relay'
       - name: Build binaries
         run: |
           set -xe

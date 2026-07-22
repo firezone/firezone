@@ -1,0 +1,43 @@
+# Fuzzing runs on a dedicated nightly toolchain, pinned here via
+# `RUSTUP_TOOLCHAIN` so the tasks below run plain `cargo` commands without a
+# `rustup run <version>` prefix. It lives here instead of in `rust/mise.toml`
+# so that it only applies to fuzzing.
+#
+# The toolchain is not a `rust` entry in `[tools]` because rustup-managed
+# toolchains have no download URL for mise to pin in `mise.lock`, which strict
+# lockfile mode requires.
+
+[tools]
+"cargo:cargo-fuzz" = { version = "0.13.2", os = ["linux"] }
+
+[env]
+RUSTUP_TOOLCHAIN = "nightly-2026-03-30"
+# LTO conflicts with the libFuzzer instrumentation.
+CARGO_PROFILE_RELEASE_LTO = "false"
+# The workspace profile trades compile time for smaller binaries
+# (codegen-units = 1); for fuzz builds, compile time matters more.
+CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16"
+
+[tasks.install-toolchain]
+description = "Install the pinned nightly with the components fuzzing needs"
+run = 'rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rust-src --component llvm-tools-preview'
+
+[tasks.fuzz]
+description = "Run a fuzz target; extra args are passed to libFuzzer"
+depends = ["install-toolchain"]
+run = 'cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} -- {{arg(name="libfuzzer_args", var=true, default="-max_total_time=60")}}'
+
+[tasks.cmin]
+description = "Minimize the corpus of a fuzz target"
+depends = ["install-toolchain"]
+run = 'cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}}'
+
+[tasks.coverage]
+description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
+depends = ["install-toolchain"]
+run = 'cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}}'
+
+[tasks.llvm-cov]
+description = "Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
+depends = ["install-toolchain"]
+run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" {{arg(name="llvm_cov_args", var=true)}}'

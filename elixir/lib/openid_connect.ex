@@ -53,7 +53,7 @@ defmodule OpenIDConnect do
   @type config :: %{
           required(:discovery_document_uri) => discovery_document_uri(),
           required(:client_id) => client_id(),
-          required(:client_secret) => client_secret(),
+          optional(:client_secret) => client_secret(),
           required(:response_type) => response_type(),
           required(:scope) => scope(),
           optional(:leeway) => non_neg_integer(),
@@ -195,7 +195,8 @@ defmodule OpenIDConnect do
     req_opts = Map.get(config, :req_opts, [])
 
     form_params =
-      %{client_id: config.client_id, client_secret: config.client_secret}
+      %{client_id: config.client_id}
+      |> maybe_put_client_secret(config)
       |> Map.merge(params)
 
     request =
@@ -210,6 +211,13 @@ defmodule OpenIDConnect do
     else
       {:ok, %{status: status, body: body}} -> {:error, {status, decode_body(body)}}
       other -> other
+    end
+  end
+
+  defp maybe_put_client_secret(params, config) do
+    case Map.get(config, :client_secret) do
+      secret when is_binary(secret) and secret != "" -> Map.put(params, :client_secret, secret)
+      _ -> params
     end
   end
 

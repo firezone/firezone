@@ -29,8 +29,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust-stable
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust-nightly
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -41,6 +39,9 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only Linux compiles the eBPF program (`--all-features` enables it).
+      - run: mise run //rust:install-ebpf-toolchain
+        if: runner.os == 'Linux'
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
@@ -77,7 +78,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
-      - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -87,6 +87,9 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only Linux compiles the eBPF program (`--all-features` enables it).
+      - run: mise run //rust:install-ebpf-toolchain
+        if: runner.os == 'Linux'
       - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash
@@ -125,7 +128,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
-      - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -197,19 +199,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: --cd rust
+          install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=120
-        env:
-          CARGO_PROFILE_RELEASE_LTO: false
+      - run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

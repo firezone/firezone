@@ -3,6 +3,8 @@ defmodule Portal.Azure.ManagedIdentityTest do
 
   alias Portal.Azure.ManagedIdentity
 
+  @database_resource "https://ossrdbms-aad.database.windows.net"
+
   # The GenServer is not started in the test environment (DATABASE_ENTRA_AUTH
   # is disabled), so database_access_token!/0 uses the direct-fetch fallback
   # unless a test starts the server itself.
@@ -46,9 +48,9 @@ defmodule Portal.Azure.ManagedIdentityTest do
     end
   end
 
-  describe "database_access_token!/0 with the GenServer" do
+  describe "access token cache" do
     setup do
-      server = start_supervised!(ManagedIdentity)
+      server = start_supervised!({ManagedIdentity, name: unique_name()})
 
       # Establish stub ownership before allowing the server process to use it
       Req.Test.stub(ManagedIdentity, fn conn ->
@@ -59,7 +61,7 @@ defmodule Portal.Azure.ManagedIdentityTest do
       %{server: server}
     end
 
-    test "caches the token until it is about to expire" do
+    test "caches the token until it is about to expire", %{server: server} do
       Req.Test.expect(ManagedIdentity, fn conn ->
         Req.Test.json(conn, %{
           "access_token" => "cached_token",
@@ -67,12 +69,34 @@ defmodule Portal.Azure.ManagedIdentityTest do
         })
       end)
 
-      assert ManagedIdentity.database_access_token!() == "cached_token"
+      assert access_token!(server, @database_resource) == "cached_token"
       # A second IMDS request would exceed the expectation above and raise
-      assert ManagedIdentity.database_access_token!() == "cached_token"
+      assert access_token!(server, @database_resource) == "cached_token"
     end
 
-    test "fetches a new token when the cached one is about to expire" do
+    test "caches tokens independently by resource", %{server: server} do
+      test_pid = self()
+
+      Req.Test.expect(ManagedIdentity, 2, fn conn ->
+        resource = URI.decode_query(conn.query_string)["resource"]
+        send(test_pid, {:imds_request, resource})
+
+        Req.Test.json(conn, %{
+          "access_token" => "token-for-#{resource}",
+          "expires_on" => System.system_time(:second) + 3600
+        })
+      end)
+
+      assert access_token!(server, "resource-a") == "token-for-resource-a"
+      assert access_token!(server, "resource-b") == "token-for-resource-b"
+      assert access_token!(server, "resource-a") == "token-for-resource-a"
+      assert access_token!(server, "resource-b") == "token-for-resource-b"
+
+      assert_received {:imds_request, "resource-a"}
+      assert_received {:imds_request, "resource-b"}
+    end
+
+    test "fetches a new token when the cached one is about to expire", %{server: server} do
       test_pid = self()
 
       Req.Test.expect(ManagedIdentity, 2, fn conn ->
@@ -85,8 +109,8 @@ defmodule Portal.Azure.ManagedIdentityTest do
       end)
 
       # The token expires within the refresh margin, so each call fetches
-      assert ManagedIdentity.database_access_token!() == "short_lived_token"
-      assert ManagedIdentity.database_access_token!() == "short_lived_token"
+      assert access_token!(server, @database_resource) == "short_lived_token"
+      assert access_token!(server, @database_resource) == "short_lived_token"
 
       assert_received :imds_request
       assert_received :imds_request
@@ -100,7 +124,7 @@ defmodule Portal.Azure.ManagedIdentityTest do
       end)
 
       assert_raise MatchError, fn ->
-        ManagedIdentity.database_access_token!()
+        access_token!(server, @database_resource)
       end
 
       assert Process.alive?(server)
@@ -112,7 +136,7 @@ defmodule Portal.Azure.ManagedIdentityTest do
         })
       end)
 
-      assert ManagedIdentity.database_access_token!() == "recovered_token"
+      assert access_token!(server, @database_resource) == "recovered_token"
     end
   end
 
@@ -131,4 +155,13 @@ defmodule Portal.Azure.ManagedIdentityTest do
       assert opts[:username] == "apps-identity"
     end
   end
+
+  defp access_token!(server, resource) do
+    case GenServer.call(server, {:access_token, resource}) do
+      {:ok, token} -> token
+      {:error, exception} -> raise exception
+    end
+  end
+
+  defp unique_name, do: :"managed_identity_#{inspect(make_ref())}"
 end

@@ -316,6 +316,49 @@ defmodule OpenIDConnectTest do
       assert body =~ "redirect_uri=#{URI.encode_www_form(@redirect_uri)}"
     end
 
+    test "allows a client assertion without a client secret" do
+      test_pid = self()
+
+      token_response_attrs = %{
+        "access_token" => "ACCESS_TOKEN",
+        "id_token" => "ID_TOKEN"
+      }
+
+      token_handler = fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:req, URI.decode_query(body)})
+        Req.Test.json(conn, token_response_attrs)
+      end
+
+      {test_name, uri} =
+        start_fixture_with_routes("azure", %{}, %{{"POST", "/token"} => token_handler})
+
+      config = %{
+        @config
+        | client_secret: nil,
+          discovery_document_uri: uri,
+          req_opts: req_test_options(test_name)
+      }
+
+      params = %{
+        grant_type: "authorization_code",
+        redirect_uri: @redirect_uri,
+        client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        client_assertion: "managed-identity-assertion"
+      }
+
+      assert fetch_tokens(config, params) == {:ok, token_response_attrs}
+
+      assert_receive {:req, body}
+      assert body["client_id"] == "CLIENT_ID"
+      assert body["client_assertion"] == "managed-identity-assertion"
+
+      assert body["client_assertion_type"] ==
+               "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+      refute body["client_secret"]
+    end
+
     test "allows to use refresh_token grant type" do
       test_pid = self()
 

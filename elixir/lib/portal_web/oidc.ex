@@ -10,6 +10,8 @@ defmodule PortalWeb.OIDC do
 
   require Logger
 
+  @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
   # Workaround for an OTP `ssl` bug: the TLS 1.3 client aborts the handshake
   # against servers that send their middlebox-compatibility ChangeCipherSpec
   # after the ServerHello on a HelloRetryRequest. Disabling middlebox mode skips
@@ -116,16 +118,47 @@ defmodule PortalWeb.OIDC do
   Returns {:ok, tokens} or {:error, reason}.
   """
   def exchange_code(provider, code, verifier) do
-    with {:ok, config} <- config_for_provider(provider) do
-      params = %{
-        grant_type: "authorization_code",
-        code: code,
-        code_verifier: verifier,
-        redirect_uri: callback_url(provider)
-      }
+    with {:ok, config} <- config_for_provider(provider),
+         {:ok, credential} <- client_credential(provider, config) do
+      params =
+        %{
+          grant_type: "authorization_code",
+          code: code,
+          code_verifier: verifier,
+          redirect_uri: callback_url(provider)
+        }
+        |> Map.merge(credential)
 
       OpenIDConnect.fetch_tokens(config, params)
     end
+  end
+
+  # Production authenticates the Entra app with workload identity federation:
+  # the portal's managed identity mints a token-exchange assertion, so no secret
+  # is stored. A configured client secret (dev and migration environments) uses
+  # the secret already present in the OpenIDConnect config.
+  defp client_credential(%Entra.AuthProvider{}, config) do
+    case config[:client_secret] do
+      secret when is_binary(secret) and secret != "" ->
+        {:ok, %{}}
+
+      _ ->
+        federated_credential()
+    end
+  end
+
+  defp client_credential(_provider, _config), do: {:ok, %{}}
+
+  defp federated_credential do
+    assertion = Portal.Azure.ManagedIdentity.access_token!("api://AzureADTokenExchange")
+
+    {:ok,
+     %{
+       client_assertion_type: @client_assertion_type,
+       client_assertion: assertion
+     }}
+  rescue
+    exception -> {:error, exception}
   end
 
   @doc """
