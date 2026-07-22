@@ -185,9 +185,12 @@ if config_env() == :prod do
     client_id: env_var_to_config!(:entra_oidc_client_id),
     client_secret: env_var_to_config!(:entra_oidc_client_secret)
 
+  # No client secret required: when ENTRA_SYNC_CLIENT_SECRET is unset the app
+  # authenticates with workload identity federation, minting a token-exchange
+  # assertion from the portal's managed identity (Portal.Azure.ManagedIdentity).
+  # The optional secret still flows from config.exs for environments that set it.
   config :portal, Portal.Entra.APIClient,
     client_id: env_var_to_config!(:entra_sync_client_id),
-    client_secret: env_var_to_config!(:entra_sync_client_secret),
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
