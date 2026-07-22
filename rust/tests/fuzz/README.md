@@ -12,10 +12,13 @@
 
 `corpus/tunnel` is committed to the repository. It is the regression suite for
 the tunnel state machine: CI replays every input (crashes fail the build) and
-enforces a region-coverage threshold on `tunnel-proto` (see the `tunnel-test`
-job in `_rust.yml`). The nightly `fuzz-nightly.yml` workflow fuzzes longer,
-minimizes the corpus with `cmin`, and opens a bot PR with the grown corpus;
-merging it ratchets the coverage threshold up.
+pins the `tunnel-proto` region-coverage counts to the exact snapshot in
+`expected-coverage.json` (see the `tunnel-test` job in `_rust.yml`). The
+replay is deterministic, so any mismatch means the coverage genuinely changed:
+update the snapshot in the same PR, and justify decreases (or better, grow the
+corpus back). The nightly `fuzz-nightly.yml` workflow fuzzes longer, minimizes
+the corpus with `cmin`, and opens a bot PR with the grown corpus and the
+refreshed snapshot.
 
 Because inputs are decoded positionally, changing the decision layout in
 `arb.rs` re-interprets existing inputs. Coverage degrades gracefully rather
@@ -73,10 +76,11 @@ A crash writes the offending input to `artifacts/tunnel/`. To triage it:
    ```
 
 1. Post-process the profdata with the `llvm-cov` task, e.g. the `tunnel-proto`
-   region coverage as enforced by CI (paths are relative to this directory):
+   region counts as pinned by CI (paths are relative to this directory; write
+   the output to `expected-coverage.json` to update the snapshot):
 
    ```
-   mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100'
+   mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | {covered: (map(.covered) | add), total: (map(.count) | add)}'
    ```
 
 1. For a browsable HTML report, use `llvm-cov show` with the profdata and the

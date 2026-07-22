@@ -2,11 +2,11 @@
 name: Fuzz corpus (nightly)
 run-name: Triggered from ${{ github.event_name }}
 # Grows and minimizes the committed `tunnel` fuzz corpus, then opens a bot PR
-# with the result. The committed corpus gates per-PR coverage in `_rust.yml`;
-# this job rediscovers coverage the per-PR run does not have time for (and
-# re-anchors it after `arb.rs` changes decode the same bytes into different
-# transitions). A maintainer reviews and merges the PR to ratchet the coverage
-# threshold up.
+# with the result plus the refreshed coverage snapshot that `_rust.yml` pins
+# exactly. This job rediscovers coverage the per-PR run does not have time for
+# (and re-anchors it after `arb.rs` changes decode the same bytes into
+# different transitions). A maintainer reviews and merges the PR to adopt the
+# grown corpus.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
@@ -41,11 +41,11 @@ jobs:
         run: mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
       - name: Minimize corpus
         run: mise run //rust/tests/fuzz:cmin tunnel
-      - name: Measure coverage (report only)
+      - name: Measure coverage and refresh the snapshot
         run: |
           mise run //rust/tests/fuzz:coverage tunnel
-          pct=$(mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
-          echo "tunnel-proto region coverage: ${pct}%"
+          mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | {covered: (map(.covered) | add), total: (map(.count) | add)}' > tests/fuzz/expected-coverage.json
+          cat tests/fuzz/expected-coverage.json
       - name: Set up GnuPG for the corpus commit
         uses: ./.github/actions/setup-gpg
         id: setup-gpg
@@ -65,7 +65,7 @@ jobs:
 
           branch="chore/fuzz-corpus"
           git checkout -b "$branch"
-          git add -A tests/fuzz/corpus/tunnel
+          git add -A tests/fuzz/corpus/tunnel tests/fuzz/expected-coverage.json
           if git diff --cached --quiet; then
             echo "Corpus unchanged; nothing to open a PR for."
             exit 0
@@ -86,6 +86,6 @@ jobs:
           if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
             gh pr create \
               --title "chore(fuzz): grow committed tunnel corpus" \
-              --body "The nightly fuzz job discovered new coverage. Committing the grown corpus ratchets the per-PR tunnel-proto coverage gate in \`_rust.yml\`." \
+              --body "The nightly fuzz job discovered new coverage. The grown corpus comes with the refreshed snapshot that the per-PR tunnel-proto coverage gate in \`_rust.yml\` pins exactly." \
               --reviewer firezone/engineering
           fi
