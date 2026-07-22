@@ -39,8 +39,10 @@ pub struct PathAgent {
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
+    /// The most recent `now` we saw; [`Self::poll_timeout`] returns it while
+    /// transmits or events are queued so the driver drains them without delay.
+    last_now: Option<Instant>,
     events: VecDeque<Event>,
-    events_queued_at: Option<Instant>,
 
     peer_reflexive_addrs: BTreeSet<SocketAddr>,
     next_pair_id: u16,
@@ -236,6 +238,8 @@ impl PathAgent {
 
     /// Returns whether the candidate was newly added (`false` if already known).
     pub fn add_local_candidate(&mut self, c: Candidate, now: Instant) -> bool {
+        self.last_now = Some(now);
+
         if self.locals.contains(&c) {
             return false;
         }
@@ -253,6 +257,8 @@ impl PathAgent {
     }
 
     pub fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
+        self.last_now = Some(now);
+
         // Promote a previously-registered peer-reflexive in place so the
         // existing `PairState` (RTT, inflight, schedule) survives. Only consume
         // the marker once we actually promote: at registration time the srflx
@@ -332,6 +338,8 @@ impl PathAgent {
     }
 
     pub fn remove_local_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
+        self.last_now = Some(now);
+
         let Some(i) = self.locals.iter().position(|x| x == c) else {
             return false;
         };
@@ -347,6 +355,8 @@ impl PathAgent {
     }
 
     pub fn remove_remote_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
+        self.last_now = Some(now);
+
         let Some(i) = self.remotes.iter().position(|x| x == c) else {
             return false;
         };
@@ -380,6 +390,8 @@ impl PathAgent {
     /// The session survives (the WireGuard key is kept), so probing resumes as
     /// soon as pairs exist again — no handshake required.
     pub fn rebuild(&mut self, mut drop_local: impl FnMut(&Candidate) -> bool, now: Instant) {
+        self.last_now = Some(now);
+
         let locals: Vec<Candidate> = self
             .locals
             .iter()
@@ -424,6 +436,8 @@ impl PathAgent {
     }
 
     pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
+        self.last_now = Some(now);
+
         const MAX_SCRATCH_SPACE: usize = 148;
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
@@ -439,6 +453,8 @@ impl PathAgent {
     }
 
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
+        self.last_now = Some(now);
+
         match Tunn::parse_incoming_packet(&bytes) {
             // Before a session exists we cannot probe: fan the init out over the
             // relay pairs to bootstrap one. This is the *only* use of the fan-out.
@@ -505,6 +521,8 @@ impl PathAgent {
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), &'b [u8]> {
+        self.last_now = Some(now);
+
         let Ok(parsed) = Tunn::parse_incoming_packet(bytes) else {
             return ControlFlow::Continue(bytes);
         };
@@ -563,7 +581,7 @@ impl PathAgent {
                 // for our own sending, so it must not move our primary — probing
                 // decides. Hence we only adopt on the establishing init.
                 if !had_session && self.primary.is_none() && self.pairs.contains_key(&path) {
-                    self.set_primary(path, now);
+                    self.set_primary(path);
                 }
 
                 // Distinct inits with no data in between mean the peer isn't
@@ -608,7 +626,7 @@ impl PathAgent {
 
                 // A response is bidirectionally validated, so it is safe to
                 // adopt as a (tier-ranked) preliminary primary before probing.
-                self.promote_from_handshake(path, now);
+                self.promote_from_handshake(path);
 
                 for b in outbound {
                     self.handle_outbound(b, now);
@@ -724,13 +742,7 @@ impl PathAgent {
     }
 
     pub fn poll_event(&mut self) -> Option<Event> {
-        let event = self.events.pop_front();
-
-        if self.events.is_empty() {
-            self.events_queued_at = None;
-        }
-
-        event
+        self.events.pop_front()
     }
 
     pub fn handle_inbound_tun(
@@ -739,6 +751,8 @@ impl PathAgent {
         pair: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), ip_packet::IpPacket> {
+        self.last_now = Some(now);
+
         let Some(probe) = crate::icmpv6::Probe::try_parse(&packet) else {
             return ControlFlow::Continue(packet);
         };
@@ -794,7 +808,7 @@ impl PathAgent {
                 tracing::trace!(local = %pair.0, remote = %pair.1, ?rtt, "Probe reply received");
 
                 // A probe reply is bidirectionally validated: it may promote.
-                self.select_primary(now);
+                self.select_primary();
             }
         }
         ControlFlow::Break(())
@@ -829,8 +843,12 @@ impl PathAgent {
             .as_ref()
             .map(|d| d.cached_at + RESPONDER_DEDUP_TTL);
 
+        let pending_io = (!self.pending_transmits.is_empty() || !self.events.is_empty())
+            .then_some(self.last_now)
+            .flatten();
+
         iter::empty()
-            .chain(self.events_queued_at)
+            .chain(pending_io)
             .chain(next_retransmit)
             .chain(next_probe)
             .chain(pending_fanout)
@@ -839,6 +857,8 @@ impl PathAgent {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.last_now = Some(now);
+
         self.drive_bootstrap_fanout(now);
         self.drive_probes(now);
         self.expire_dedup(now);
@@ -1016,17 +1036,17 @@ impl PathAgent {
     /// A handshake proves its path works both ways but carries no RTT, so it can
     /// only seed or improve the primary *by tier* — never displace a
     /// better-tier incumbent.
-    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
+    fn promote_from_handshake(&mut self, path: (SocketAddr, SocketAddr)) {
         if !self.pairs.contains_key(&path) {
             return;
         }
         match self.primary {
-            None => self.set_primary(path, now),
+            None => self.set_primary(path),
             Some(primary) if primary != path => {
                 let new = pair_score(path, &self.pairs[&path]);
                 let cur = pair_score(primary, &self.pairs[&primary]);
                 if new.bucket < cur.bucket {
-                    self.set_primary(path, now);
+                    self.set_primary(path);
                 }
             }
             Some(_) => {}
@@ -1037,7 +1057,7 @@ impl PathAgent {
     /// pair takes over an empty primary, or displaces the incumbent only when it
     /// scores strictly better (a better tier, or the same tier by a clear RTT
     /// margin). A worse pair never demotes a working primary.
-    fn select_primary(&mut self, now: Instant) {
+    fn select_primary(&mut self) {
         let Some(best) = self
             .pairs
             .iter()
@@ -1049,7 +1069,7 @@ impl PathAgent {
         };
 
         let Some(primary) = self.primary else {
-            self.set_primary(best, now);
+            self.set_primary(best);
             return;
         };
 
@@ -1061,7 +1081,7 @@ impl PathAgent {
         let cur = pair_score(primary, &self.pairs[&primary]);
 
         if new.bucket < cur.bucket {
-            self.set_primary(best, now);
+            self.set_primary(best);
             return;
         }
 
@@ -1077,12 +1097,12 @@ impl PathAgent {
             let margin =
                 PRIMARY_HYSTERESIS_FLOOR.max(cur_rtt.smoothed.mul_f64(PRIMARY_HYSTERESIS_FRACTION));
             if new_rtt + margin < cur_rtt.smoothed {
-                self.set_primary(best, now);
+                self.set_primary(best);
             }
         }
     }
 
-    fn set_primary(&mut self, path: (SocketAddr, SocketAddr), now: Instant) {
+    fn set_primary(&mut self, path: (SocketAddr, SocketAddr)) {
         let from = self.primary;
         self.primary = Some(path);
 
@@ -1095,18 +1115,10 @@ impl PathAgent {
 
         tracing::debug!(?from, local = %path.0, remote = %path.1, "Iceless primary changed");
 
-        self.queue_event(
-            Event::PrimaryChanged {
-                local: path.0,
-                remote: path.1,
-            },
-            now,
-        );
-    }
-
-    fn queue_event(&mut self, event: Event, now: Instant) {
-        self.events.push_back(event);
-        self.events_queued_at = self.events_queued_at.or(Some(now));
+        self.events.push_back(Event::PrimaryChanged {
+            local: path.0,
+            remote: path.1,
+        });
     }
 }
 
