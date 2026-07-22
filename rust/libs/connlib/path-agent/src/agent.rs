@@ -39,6 +39,9 @@ pub struct PathAgent {
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
+    /// The most recent `now` we saw; [`Self::poll_timeout`] returns it while
+    /// transmits are queued so the driver drains them without delay.
+    last_now: Option<Instant>,
     events: VecDeque<Event>,
     events_queued_at: Option<Instant>,
 
@@ -236,6 +239,8 @@ impl PathAgent {
 
     /// Returns whether the candidate was newly added (`false` if already known).
     pub fn add_local_candidate(&mut self, c: Candidate, now: Instant) -> bool {
+        self.last_now = Some(now);
+
         if self.locals.contains(&c) {
             return false;
         }
@@ -253,6 +258,8 @@ impl PathAgent {
     }
 
     pub fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
+        self.last_now = Some(now);
+
         // Promote a previously-registered peer-reflexive in place so the
         // existing `PairState` (RTT, inflight, schedule) survives. Only consume
         // the marker once we actually promote: at registration time the srflx
@@ -332,6 +339,8 @@ impl PathAgent {
     }
 
     pub fn remove_local_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
+        self.last_now = Some(now);
+
         let Some(i) = self.locals.iter().position(|x| x == c) else {
             return false;
         };
@@ -347,6 +356,8 @@ impl PathAgent {
     }
 
     pub fn remove_remote_candidate(&mut self, c: &Candidate, now: Instant) -> bool {
+        self.last_now = Some(now);
+
         let Some(i) = self.remotes.iter().position(|x| x == c) else {
             return false;
         };
@@ -380,6 +391,8 @@ impl PathAgent {
     /// The session survives (the WireGuard key is kept), so probing resumes as
     /// soon as pairs exist again — no handshake required.
     pub fn rebuild(&mut self, mut drop_local: impl FnMut(&Candidate) -> bool, now: Instant) {
+        self.last_now = Some(now);
+
         let locals: Vec<Candidate> = self
             .locals
             .iter()
@@ -424,6 +437,8 @@ impl PathAgent {
     }
 
     pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
+        self.last_now = Some(now);
+
         const MAX_SCRATCH_SPACE: usize = 148;
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
@@ -439,6 +454,8 @@ impl PathAgent {
     }
 
     pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
+        self.last_now = Some(now);
+
         match Tunn::parse_incoming_packet(&bytes) {
             // Before a session exists we cannot probe: fan the init out over the
             // relay pairs to bootstrap one. This is the *only* use of the fan-out.
@@ -505,6 +522,8 @@ impl PathAgent {
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), &'b [u8]> {
+        self.last_now = Some(now);
+
         let Ok(parsed) = Tunn::parse_incoming_packet(bytes) else {
             return ControlFlow::Continue(bytes);
         };
@@ -739,6 +758,8 @@ impl PathAgent {
         pair: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), ip_packet::IpPacket> {
+        self.last_now = Some(now);
+
         let Some(probe) = crate::icmpv6::Probe::try_parse(&packet) else {
             return ControlFlow::Continue(packet);
         };
@@ -829,7 +850,12 @@ impl PathAgent {
             .as_ref()
             .map(|d| d.cached_at + RESPONDER_DEDUP_TTL);
 
+        let pending_transmit = (!self.pending_transmits.is_empty())
+            .then_some(self.last_now)
+            .flatten();
+
         iter::empty()
+            .chain(pending_transmit)
             .chain(self.events_queued_at)
             .chain(next_retransmit)
             .chain(next_probe)
@@ -839,6 +865,8 @@ impl PathAgent {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.last_now = Some(now);
+
         self.drive_bootstrap_fanout(now);
         self.drive_probes(now);
         self.expire_dedup(now);
