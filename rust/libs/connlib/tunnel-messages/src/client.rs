@@ -1,6 +1,6 @@
 //! Client related messages that are needed within connlib
 
-use crate::messages::{
+use crate::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
     RelaysPresence, SecretKey, SnownetCapabilities,
 };
@@ -11,7 +11,7 @@ use serde_with::{DurationSeconds, serde_as};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
-pub use crate::messages::Authorization;
+pub use crate::Authorization;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]

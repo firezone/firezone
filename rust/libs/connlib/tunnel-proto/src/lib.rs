@@ -28,7 +28,7 @@ mod filter_engine;
 mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
-pub mod messages;
+pub use tunnel_messages as messages;
 pub mod otel;
 mod p2p_control;
 mod packet_kind;
