@@ -159,8 +159,6 @@ pub struct ClientState {
     tun_config: TrackedState<TunConfig>,
     /// Cache of the resource list we emitted to the app.
     resource_list: TrackedState<ResourceList>,
-    /// Client peers we currently have a live connection to.
-    connected_pool_clients: BTreeSet<ClientId>,
 
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
@@ -215,7 +213,6 @@ impl ClientState {
             pending_packets: Default::default(),
             dns_resource_nat: Default::default(),
             resource_list: Default::default(),
-            connected_pool_clients: Default::default(),
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
         }
@@ -252,36 +249,35 @@ impl ClientState {
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
         let pools = self.static_device_pools().collect_vec();
 
-        self.connected_pool_clients
+        self.clients
             .iter()
-            .filter_map(|client_id| {
-                let Some(peer) = self.clients.peer_by_id(client_id) else {
-                    tracing::debug!(
-                        %client_id,
-                        "Connected client has no peer in the connection store"
-                    );
+            .filter_map(|peer| {
+                let client_id = peer.id();
+
+                if !self
+                    .node
+                    .is_connected(&ClientOrGatewayId::Client(client_id))
+                {
                     return None;
-                };
+                }
+
                 let tun_ipv4 = peer.tun_ipv4();
                 let tun_ipv6 = peer.tun_ipv6();
                 let name = peer.remote_name().to_owned();
 
                 let pool_names = pools
                     .iter()
-                    .filter(|pool| pool.devices.iter().any(|d| d.id == *client_id))
+                    .filter(|pool| pool.devices.iter().any(|d| d.id == client_id))
                     .map(|pool| pool.name.clone())
                     .sorted()
                     .collect_vec();
 
                 if pool_names.is_empty() {
-                    tracing::debug!(
-                        %client_id,
-                        "Connected client is not a member of any pool"
-                    );
+                    return None;
                 }
 
                 Some(ConnectedDeviceView {
-                    id: *client_id,
+                    id: client_id,
                     name,
                     tun_ipv4,
                     tun_ipv6,
@@ -1416,8 +1412,7 @@ impl ClientState {
     fn cleanup_connected_client(&mut self, disconnected_client: &ClientId) {
         self.pending_packets
             .remove(&ClientOrGatewayId::Client(*disconnected_client));
-        self.clients.remove(disconnected_client);
-        if self.connected_pool_clients.remove(disconnected_client) {
+        if self.clients.remove(disconnected_client).is_some() {
             self.resource_list.update(self.resource_list_snapshot());
         }
 
@@ -2116,9 +2111,7 @@ impl ClientState {
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
                     self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
-                    if self.connected_pool_clients.insert(id) {
-                        self.resource_list.update(self.resource_list_snapshot());
-                    }
+                    self.resource_list.update(self.resource_list_snapshot());
                 }
                 snownet::Event::NoRelays => {
                     self.buffered_events.push_back(ClientEvent::NoRelays);
@@ -2329,7 +2322,7 @@ impl ClientState {
         // Static device pools are diffed in-place: a single member changing
         // shouldn't churn the entire pool's routing table entries.
         if let Resource::StaticDevicePool(new_pool) = new_resource {
-            self.upsert_static_device_pool(new_pool, now);
+            self.upsert_static_device_pool(new_pool);
             return;
         }
 
@@ -2382,9 +2375,8 @@ impl ClientState {
     /// any existing pool with the same id.
     ///
     /// Existing routing table entries for unchanged members are preserved; only
-    /// removed and updated members touch the table. When a member is dropped
-    /// from the pool, any active connection to that client is closed.
-    fn upsert_static_device_pool(&mut self, new_pool: StaticDevicePoolResource, now: Instant) {
+    /// removed and updated members touch the table.
+    fn upsert_static_device_pool(&mut self, new_pool: StaticDevicePoolResource) {
         let pool_id = new_pool.id;
 
         let old_pool = self.resources_by_id.get(&pool_id).and_then(|r| match r {
@@ -2437,25 +2429,13 @@ impl ClientState {
                 })
             {}
 
-            // If the member is no longer in the pool, drop any active
-            // connection so traffic doesn't keep flowing to a revoked device —
-            // but only if no other pool still authorises it.
-            if new_member.is_none() && !self.is_client_in_other_static_device_pool(*cid, pool_id) {
-                if let hash_map::Entry::Occupied(mut entry) =
+            if new_member.is_none()
+                && let hash_map::Entry::Occupied(mut entry) =
                     self.authorized_resources.entry(pool_id)
-                    && let AccessPath::Direct(set) = entry.get_mut()
-                {
-                    set.remove(cid);
-                };
-
-                if self.clients.remove(cid).is_some() {
-                    self.node.close_connection(
-                        ClientOrGatewayId::Client(*cid),
-                        p2p_control::goodbye(),
-                        now,
-                    );
-                }
-            }
+                && let AccessPath::Direct(set) = entry.get_mut()
+            {
+                set.remove(cid);
+            };
         }
 
         // Insert entries for new and updated members.
@@ -2506,17 +2486,6 @@ impl ClientState {
         tracing::info!(%name, address, sites, "Activating resource");
     }
 
-    /// Whether `cid` is a member of any static device pool other than `excluded`.
-    ///
-    /// Used during a pool update to decide whether dropping a member also
-    /// requires tearing down its connection: a client that's still authorised
-    /// via another pool must keep its connection.
-    fn is_client_in_other_static_device_pool(&self, cid: ClientId, excluded: ResourceId) -> bool {
-        self.static_device_pools()
-            .filter(|p| p.id != excluded)
-            .any(|p| p.devices.iter().any(|d| d.id == cid))
-    }
-
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
     pub fn remove_resource(&mut self, id: ResourceId, now: Instant) {
         self.disable_resource(id, now);
@@ -2534,14 +2503,6 @@ impl ClientState {
     fn disable_resource(&mut self, id: ResourceId, now: Instant) {
         let Some(resource) = self.resources_by_id.get(&id) else {
             return;
-        };
-
-        let pool_members: Vec<ClientId> = match resource {
-            Resource::StaticDevicePool(p) => p.devices.iter().map(|d| d.id).collect(),
-            Resource::Dns(_)
-            | Resource::Cidr(_)
-            | Resource::Internet(_)
-            | Resource::DynamicDevicePool(_) => Vec::new(),
         };
 
         match resource {
@@ -2564,20 +2525,6 @@ impl ClientState {
             .pending_authorizations
             .remove_device_authorizations(|pool, _| pool == id)
         {}
-
-        for cid in pool_members {
-            if self.is_client_in_other_static_device_pool(cid, id) {
-                continue;
-            }
-
-            if self.clients.remove(&cid).is_some() {
-                self.node.close_connection(
-                    ClientOrGatewayId::Client(cid),
-                    p2p_control::goodbye(),
-                    now,
-                );
-            }
-        }
 
         let Some((_, peer)) =
             gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
