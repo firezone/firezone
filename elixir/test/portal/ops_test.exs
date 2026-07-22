@@ -315,14 +315,19 @@ defmodule Portal.OpsTest do
       end)
     end
 
-    test "chunks BCC recipients into groups of 50" do
-      account = account_fixture()
+    test "chunks BCC recipients and globally sends 100 every 5 minutes" do
+      account1 = account_fixture()
+      account2 = account_fixture()
 
-      # Create 75 admin actors
-      Enum.each(1..75, fn i ->
+      Enum.each(1..60, fn i ->
         admin_actor_fixture(
-          account: account,
-          email: "admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
+          account: account1,
+          email: "account-1-admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
+        )
+
+        admin_actor_fixture(
+          account: account2,
+          email: "account-2-admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
         )
       end)
 
@@ -330,21 +335,34 @@ defmodule Portal.OpsTest do
         capture_io("y\n", fn ->
           assert :ok =
                    queue_admin_email(
-                     [account.id],
+                     [account1.id, account2.id],
                      "Chunk Subject",
                      "<p>Chunk HTML</p>",
                      "Chunk Text"
                    )
 
-          queued = collect_queued_emails(account.id)
-          assert length(queued) == 2
+          jobs =
+            [worker: Portal.Workers.OutboundEmail]
+            |> Oban.Job.query()
+            |> Repo.all()
 
-          bcc_counts = Enum.map(queued, fn email -> length(email.bcc) end) |> Enum.sort()
-          assert bcc_counts == [25, 50]
+          assert length(jobs) == 4
+
+          available_recipients =
+            jobs
+            |> Enum.filter(&(&1.state == "available"))
+            |> Enum.map(&length(&1.args["request"]["bcc"]))
+            |> Enum.sum()
+
+          assert available_recipients == 100
+          assert [scheduled_job] = Enum.filter(jobs, &(&1.state == "scheduled"))
+          assert length(scheduled_job.args["request"]["bcc"]) == 20
+
+          assert DateTime.diff(scheduled_job.scheduled_at, scheduled_job.inserted_at, :second) in 299..300
         end)
 
-      assert output =~ "75 unique admin(s)"
-      assert output =~ "1 account(s)"
+      assert output =~ "120 unique admin(s)"
+      assert output =~ "2 account(s)"
     end
   end
 end

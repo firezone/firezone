@@ -4,6 +4,8 @@ defmodule Portal.Ops do
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
+  @max_recipients_per_send_window 100
+  @send_window_seconds 5 * 60
 
   @doc """
   Counts presences grouped by topic prefix.
@@ -149,21 +151,44 @@ defmodule Portal.Ops do
   end
 
   defp enqueue_chunked(emails_by_account, subject, html_body, plaintext_body) do
-    Enum.each(emails_by_account, fn {account_id, admin_emails} ->
-      admin_emails
-      |> Enum.chunk_every(@max_bcc_per_message)
-      |> Enum.each(fn chunk ->
-        Mailer.default_email()
-        |> Swoosh.Email.subject(subject)
-        |> Mailer.bcc_recipients(chunk)
-        |> Swoosh.Email.html_body(html_body)
-        |> Swoosh.Email.text_body(plaintext_body)
-        |> Mailer.with_account_id(account_id)
-        |> Mailer.enqueue()
+    first_send_at = DateTime.utc_now()
+
+    emails_by_account
+    |> Enum.flat_map(fn {account_id, admin_emails} ->
+      Enum.map(admin_emails, &{account_id, &1})
+    end)
+    |> Enum.chunk_every(@max_recipients_per_send_window)
+    |> Enum.with_index()
+    |> Enum.each(fn {send_window, window_index} ->
+      job_opts = send_window_job_opts(first_send_at, window_index)
+
+      send_window
+      |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
+        email
+      end)
+      |> Enum.each(fn {account_id, admin_emails} ->
+        admin_emails
+        |> Enum.chunk_every(@max_bcc_per_message)
+        |> Enum.each(fn chunk ->
+          Mailer.default_email()
+          |> Swoosh.Email.subject(subject)
+          |> Mailer.bcc_recipients(chunk)
+          |> Swoosh.Email.html_body(html_body)
+          |> Swoosh.Email.text_body(plaintext_body)
+          |> Mailer.with_account_id(account_id)
+          |> Mailer.enqueue(job_opts)
+        end)
       end)
     end)
 
     :ok
+  end
+
+  defp send_window_job_opts(_first_send_at, 0), do: []
+
+  defp send_window_job_opts(first_send_at, window_index) do
+    scheduled_at = DateTime.add(first_send_at, window_index * @send_window_seconds, :second)
+    [scheduled_at: scheduled_at]
   end
 
   defmodule Database do
