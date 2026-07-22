@@ -15,7 +15,7 @@ parking_lot = { workspace = true }
 sentry-tracing = { workspace = true }
 supports-color = { workspace = true }
 telemetry = { workspace = true }
-time = { workspace = true, features = ["formatting"] }
+time = { workspace = true, features = ["formatting", "macros"] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-log = { workspace = true }
