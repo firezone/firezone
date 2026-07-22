@@ -260,8 +260,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //rust:install-ebpf-toolchain
         if: matrix.name.package == 'firezone-relay'
-        env:
-          MISE_EXPERIMENTAL: "1" # For monorepo task paths.
       - name: Build binaries
         run: |
           set -xe
