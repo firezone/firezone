@@ -158,7 +158,7 @@ mise run <task>         # Run a task (e.g. mise run build)
 From the repository root:
 
 ```sh
-mise //swift/apple:<task>   # e.g. mise //swift/apple:build
+mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 ```
 
 ### Instruments
