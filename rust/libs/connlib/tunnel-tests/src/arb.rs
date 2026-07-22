@@ -971,16 +971,39 @@ fn arb_do53_pool(g: &mut Gen) -> Vec<IpAddr> {
     pool
 }
 
-/// Per-element keep-bit subset (a subsequence) of a fresh do53 pool.
-fn arb_system_dns_servers(g: &mut Gen) -> Vec<IpAddr> {
+/// Per-element keep-bit subset of a fresh do53 pool that keeps at least one
+/// server per address family, so DNS queries stay possible regardless of the
+/// client's socket stack. 10% of the time the subset is deliberately empty to
+/// keep the no-DNS-servers edge reachable.
+fn arb_do53_subset(g: &mut Gen) -> Vec<IpAddr> {
     let pool = arb_do53_pool(g);
-    pool.into_iter().filter(|_| g.bool()).collect()
+
+    if g.flip(10) {
+        return Vec::new();
+    }
+
+    let mut subset: Vec<IpAddr> = pool.iter().copied().filter(|_| g.bool()).collect();
+    for family_first in [
+        pool.iter().find(|ip| ip.is_ipv4()),
+        pool.iter().find(|ip| ip.is_ipv6()),
+    ] {
+        if let Some(ip) = family_first
+            && !subset.iter().any(|s| s.is_ipv4() == ip.is_ipv4())
+        {
+            subset.push(*ip);
+        }
+    }
+
+    subset
+}
+
+fn arb_system_dns_servers(g: &mut Gen) -> Vec<IpAddr> {
+    arb_do53_subset(g)
 }
 
 fn arb_upstream_do53_servers(g: &mut Gen) -> Vec<UpstreamDo53> {
-    let pool = arb_do53_pool(g);
-    pool.into_iter()
-        .filter(|_| g.bool())
+    arb_do53_subset(g)
+        .into_iter()
         .map(|ip| UpstreamDo53 { ip })
         .collect()
 }
@@ -1609,29 +1632,41 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
             arb_icmp_or_udp_for_filters(g, src_id, src_ip, DstSpec::Ip(dst_ip), &filters)
         }
         K::SendDnsQueriesAllDomains => {
-            let domains = state.all_domains(now);
+            // Sample the DNS server first and restrict domains to that client:
+            // sampling both independently made most transitions cross-client
+            // no-ops, starving the DNS-resource (proxy IP / NAT) paths of
+            // queries.
             let dns_servers = state.reachable_dns_servers();
-            let (client_id, domain, rtypes) = domains[g.choose_index(domains.len())].clone();
-            let (dns_client_id, dns_server) =
-                dns_servers[g.choose_index(dns_servers.len())].clone();
-            // The proptest deliberately emits a NO-OP when the sampled domain's
-            // client differs from the sampled DNS server's client.
-            if client_id != dns_client_id {
+            let (client_id, dns_server) = dns_servers[g.choose_index(dns_servers.len())].clone();
+            let domains: Vec<_> = state
+                .all_domains(now)
+                .into_iter()
+                .filter(|(cid, _, _)| *cid == client_id)
+                .map(|(_, domain, rtypes)| (domain, rtypes))
+                .collect();
+            if domains.is_empty() {
                 Transition::SendDnsQueries(Vec::new())
             } else {
+                let (domain, rtypes) = domains[g.choose_index(domains.len())].clone();
                 let queries = arb_dns_queries(g, vec![(domain, rtypes)], dns_server);
                 Transition::SendDnsQueries(queries.into_iter().map(|q| (client_id, q)).collect())
             }
         }
         K::SendDnsQueriesWildcard => {
-            let wildcards = state.wildcard_dns_resources();
+            // Server-first sampling for the same reason as `SendDnsQueriesAllDomains`.
             let dns_servers = state.reachable_dns_servers();
-            let (client_id, resource) = wildcards[g.choose_index(wildcards.len())].clone();
             let (dns_client_id, dns_server) =
                 dns_servers[g.choose_index(dns_servers.len())].clone();
-            if client_id != dns_client_id {
+            let wildcards: Vec<_> = state
+                .wildcard_dns_resources()
+                .into_iter()
+                .filter(|(cid, _)| *cid == dns_client_id)
+                .collect();
+            let client_id = dns_client_id;
+            if wildcards.is_empty() {
                 Transition::SendDnsQueries(Vec::new())
             } else {
+                let (_, resource) = wildcards[g.choose_index(wildcards.len())].clone();
                 let base = resource.address.trim_start_matches("*.").to_owned();
                 let label = g.lower_ascii(3, 6);
                 let domain: DomainName = format!("{label}.{base}").parse().unwrap();
@@ -1917,11 +1952,16 @@ fn arb_dns_query_id(g: &mut Gen) -> u16 {
 /// pick from {PTR, MX, A, AAAA}; otherwise pick from the available rtypes.
 fn arb_maybe_available_response_rtype(g: &mut Gen, available: &[RecordType]) -> RecordType {
     if available.contains(&RecordType::A) || available.contains(&RecordType::AAAA) {
+        // A/AAAA are weighted up: they are the only types that resolve DNS
+        // resources to (proxy) IPs and thereby feed the packet / NAT paths,
+        // while PTR and MX only exercise the negative answers.
         let choices = [
-            RecordType::PTR,
-            RecordType::MX,
+            RecordType::A,
             RecordType::A,
             RecordType::AAAA,
+            RecordType::AAAA,
+            RecordType::PTR,
+            RecordType::MX,
         ];
         choices[g.choose_index(choices.len())]
     } else if available.is_empty() {
