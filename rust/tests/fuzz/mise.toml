@@ -20,7 +20,9 @@ CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16"
 
 [tasks.install-toolchain]
 description = "Install the pinned nightly with the components fuzzing needs"
-run = 'rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rust-src --component llvm-tools-preview'
+# Status output goes to stderr so tasks that depend on this one (e.g.
+# `llvm-cov`) keep a machine-readable stdout.
+run = 'rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rust-src --component llvm-tools-preview 1>&2'
 
 [tasks.fuzz]
 description = "Run a fuzz target; extra args are passed to libFuzzer"
