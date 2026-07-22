@@ -105,11 +105,12 @@ enum Edge {
 /// A NAT device with a dedicated public IP per address family.
 ///
 /// The interface addresses of a host behind a NAT are not routable from other
-/// hosts; only the NAT's public addresses are.
+/// hosts; only the NAT's public addresses are. Both families are always
+/// present so a host can roam onto a different IP stack behind the same NAT.
 #[derive(Debug, Clone)]
 pub(crate) struct Nat {
-    ip4: Option<Ipv4Addr>,
-    ip6: Option<Ipv6Addr>,
+    ip4: Ipv4Addr,
+    ip6: Ipv6Addr,
     mapping: Mapping,
     filter: FilterMode,
     next_port: u16,
@@ -125,12 +126,7 @@ struct Binding {
 }
 
 impl Nat {
-    fn new(
-        mapping: Mapping,
-        filter: FilterMode,
-        ip4: Option<Ipv4Addr>,
-        ip6: Option<Ipv6Addr>,
-    ) -> Self {
+    fn new(mapping: Mapping, filter: FilterMode, ip4: Ipv4Addr, ip6: Ipv6Addr) -> Self {
         Self {
             ip4,
             ip6,
@@ -142,10 +138,10 @@ impl Nat {
         }
     }
 
-    fn translate_outbound(&mut self, src: SocketAddr, dst: SocketAddr) -> Option<SocketAddr> {
+    fn translate_outbound(&mut self, src: SocketAddr, dst: SocketAddr) -> SocketAddr {
         let public_ip: IpAddr = match dst.ip() {
-            IpAddr::V4(_) => (self.ip4?).into(),
-            IpAddr::V6(_) => (self.ip6?).into(),
+            IpAddr::V4(_) => self.ip4.into(),
+            IpAddr::V6(_) => self.ip6.into(),
         };
 
         let key = match self.mapping {
@@ -170,7 +166,7 @@ impl Nat {
             .sent_to
             .insert(dst);
 
-        Some(public)
+        public
     }
 
     fn translate_inbound(
@@ -192,8 +188,8 @@ impl Nat {
 
     fn is_public_ip(&self, ip: IpAddr) -> bool {
         match ip {
-            IpAddr::V4(ip) => self.ip4 == Some(ip),
-            IpAddr::V6(ip) => self.ip6 == Some(ip),
+            IpAddr::V4(ip) => self.ip4 == ip,
+            IpAddr::V6(ip) => self.ip6 == ip,
         }
     }
 
@@ -277,7 +273,7 @@ impl<T> Host<T> {
     /// The public addresses of this host's NAT, if it sits behind one.
     pub(crate) fn nat_ips(&self) -> (Option<Ipv4Addr>, Option<Ipv6Addr>) {
         match &self.edge {
-            Edge::Nat(nat) => (nat.ip4, nat.ip6),
+            Edge::Nat(nat) => (Some(nat.ip4), Some(nat.ip6)),
             Edge::Open | Edge::Firewall { .. } => (None, None),
         }
     }
@@ -307,9 +303,7 @@ impl<T> Host<T> {
 
                 Ok(src)
             }
-            Edge::Nat(nat) => nat
-                .translate_outbound(src, dst)
-                .ok_or("no public NAT address for family"),
+            Edge::Nat(nat) => Ok(nat.translate_outbound(src, dst)),
         }
     }
 
@@ -569,12 +563,9 @@ where
                         filter,
                         sent_to: BTreeSet::default(),
                     },
-                    EdgeConfig::Nat(mapping, filter) => Edge::Nat(Nat::new(
-                        mapping,
-                        filter,
-                        ip_stack.as_v4().map(|_| nat_ip4),
-                        ip_stack.as_v6().map(|_| nat_ip6),
-                    )),
+                    EdgeConfig::Nat(mapping, filter) => {
+                        Edge::Nat(Nat::new(mapping, filter, nat_ip4, nat_ip6))
+                    }
                 };
 
                 let mut host = Host::new(state, latency, port, edge);
