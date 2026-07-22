@@ -155,8 +155,7 @@ mise tasks              # List all available tasks
 mise run <task>         # Run a task (e.g. mise run build)
 ```
 
-From the repository root (requires `export MISE_EXPERIMENTAL=1` for monorepo
-syntax):
+From the repository root:
 
 ```sh
 mise //swift/apple:<task>   # e.g. mise //swift/apple:build

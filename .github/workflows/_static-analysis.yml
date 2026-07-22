@@ -58,8 +58,6 @@ jobs:
 
   global-linter:
     runs-on: ubuntu-24.04
-    env:
-      MISE_EXPERIMENTAL: 1
     permissions:
       security-events: write
     steps:

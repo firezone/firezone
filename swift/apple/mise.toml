@@ -3,8 +3,6 @@
 #
 # Tasks are auto-discovered from mise-tasks/ directory.
 # Task names match filenames (e.g., mise-tasks/build.sh -> //swift/apple:build.sh)
-#
-# Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
 
 [settings]
 auto_install = false
