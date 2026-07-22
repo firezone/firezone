@@ -5848,8 +5848,8 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.6.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#8acb578f10b02986050bc600e629f56f40162266"
+version = "0.6.1"
+source = "git+https://github.com/firezone/quinn?branch=feat%2Fhandle-partial-sendmsg-x-progress#aaaec9a48d4a97bbcee1bc098266da3ae1f9c872"
 dependencies = [
  "cfg_aliases",
  "libc",
