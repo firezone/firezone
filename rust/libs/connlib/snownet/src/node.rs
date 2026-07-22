@@ -100,8 +100,9 @@ pub struct Node<TId, RId> {
     inflight_stun_requests: InflightStunRequests<TId>,
 
     pending_events: VecDeque<Event<TId>>,
-    /// The most recent `now` we saw; [`Node::poll_timeout`] returns it while
-    /// transmits or events are queued so the driver drains them without delay.
+    /// The most recent `now` passed to a mutating API; [`Node::poll_timeout`]
+    /// returns it while transmits or events are queued so the driver drains
+    /// them without delay.
     last_now: Instant,
 
     stats: NodeStats,
