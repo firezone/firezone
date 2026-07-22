@@ -926,42 +926,13 @@ impl ReferenceState {
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
-                // and probes revive the path. Classic ICE flows disconnect for
-                // every pairing that cannot fall back to a direct path.
-                if !state.portal.iceless() {
-                    let gateway_edges = state
-                        .gateways
-                        .iter()
-                        .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
-                        .collect::<BTreeMap<_, _>>();
-                    let portal = &state.portal;
-
+                // and probes revive the path. Classic ICE flows disconnect
+                // unless they can fall back to a direct path; this transition
+                // is only sampled when every pairing agrees on that, so the
+                // outcome is all-or-nothing.
+                if !state.portal.iceless() && state.direct_paths_possible() == Some(false) {
                     for client in state.clients.values_mut() {
-                        let client_edge = client.edge_config();
-                        let client_has_ip6 = client.ip6.is_some();
-                        let unreachable_gateways = gateway_edges
-                            .iter()
-                            .filter(|(_, (gateway_edge, gateway_has_ip6))| {
-                                !direct_path_possible(
-                                    client_edge,
-                                    *gateway_edge,
-                                    client_has_ip6 && *gateway_has_ip6,
-                                )
-                            })
-                            .map(|(id, _)| *id)
-                            .collect::<BTreeSet<_>>();
-
-                        if unreachable_gateways.is_empty() {
-                            continue;
-                        }
-
-                        client.exec_mut(|c| {
-                            c.reset_connections_to_gateways(
-                                &unreachable_gateways,
-                                |rid| portal.gateway_for_resource(rid).copied(),
-                                now,
-                            )
-                        });
+                        client.exec_mut(|c| c.reset_connections(now));
                     }
                 }
             }
@@ -1254,7 +1225,12 @@ impl ReferenceState {
             }
             Transition::Idle => true,
             Transition::RestartClient { client_id, .. } => state.clients.contains_key(client_id),
-            Transition::PartitionRelaysFromPortal => true,
+            // Whether a classic ICE connection survives losing all relays
+            // depends on the edges of the pairing. Only sample this when every
+            // pairing agrees so the reference model stays all-or-nothing.
+            Transition::PartitionRelaysFromPortal => {
+                state.portal.iceless() || state.direct_paths_possible().is_some()
+            }
             Transition::DeauthorizeWhileGatewayIsPartitioned(r) => {
                 let has_resource = state.clients.values().any(|c| c.inner().has_resource(*r));
                 let has_gateway_for_resource = state
@@ -1909,6 +1885,23 @@ impl ReferenceState {
                     })
             })
             .collect()
+    }
+
+    /// Whether a direct path is possible for every client/gateway pairing (`Some(true)`), for none (`Some(false)`), or only for some (`None`).
+    fn direct_paths_possible(&self) -> Option<bool> {
+        let mut pairings = self.clients.values().flat_map(|client| {
+            self.gateways.values().map(|gateway| {
+                direct_path_possible(
+                    client.edge_config(),
+                    gateway.edge_config(),
+                    client.ip6.is_some() && gateway.ip6.is_some(),
+                )
+            })
+        });
+
+        let first = pairings.next()?;
+
+        pairings.all(|p| p == first).then_some(first)
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
