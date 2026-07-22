@@ -32,6 +32,17 @@ description = "Minimize the corpus of a fuzz target"
 depends = ["install-toolchain"]
 run = 'cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}}'
 
+[tasks.tmin]
+description = "Reduce a crashing input of a fuzz target"
+depends = ["install-toolchain"]
+run = 'cargo fuzz tmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} {{arg(name="testcase")}}'
+
+[tasks.repro]
+description = "Replay one fuzz input with tracing, so a crash/reduced case prints its scenario to stderr. Override RUST_LOG for more detail."
+depends = ["install-toolchain"]
+raw = true
+run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} {{arg(name="testcase")}}'
+
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
 depends = ["install-toolchain"]

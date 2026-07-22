@@ -124,31 +124,25 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: ./.github/actions/free-disk-space
-      - name: Install llvm-tools for coverage
-        run: rustup component add llvm-tools-preview --toolchain ${{ steps.setup-rust.outputs.nightly_version }}
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2.81.1
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: cargo-fuzz
+      - uses: ./.github/actions/free-disk-space
       - name: Replay committed corpus under coverage instrumentation
-        run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
-        env:
-          CARGO_PROFILE_RELEASE_LTO: false
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+        run: mise run //rust/tests/fuzz:coverage tunnel
+      # The llvm-cov task runs with cwd rust/tests/fuzz, so the profdata and
+      # binary paths are relative to that directory while the lcov.info
+      # redirect below lands in the step's cwd (rust/).
       - name: Enforce tunnel-proto coverage threshold
         run: |
-          llvm_cov="$(rustc +${{ steps.setup-rust.outputs.nightly_version }} --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
-          pct=$("$llvm_cov" export -instr-profile=tests/fuzz/coverage/tunnel/coverage.profdata target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
+          pct=$(mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
           echo "tunnel-proto region coverage: ${pct}% (min 68%)"
           jq -e -n "$pct >= 68" > /dev/null || { echo "::error::tunnel-proto coverage ${pct}% below 68% — the committed corpus regressed; grow it via the nightly fuzz job."; exit 1; }
       - name: Export lcov for Coveralls
-        run: |
-          "$(rustc +${{ steps.setup-rust.outputs.nightly_version }} --print sysroot)"/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov export -format=lcov -instr-profile=tests/fuzz/coverage/tunnel/coverage.profdata target/x86_64-unknown-linux-gnu/release/tunnel > lcov.info
+        run: mise run -q //rust/tests/fuzz:llvm-cov -- export -format=lcov -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel > lcov.info
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

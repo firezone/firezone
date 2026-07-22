@@ -12,10 +12,10 @@
 
 `corpus/tunnel` is committed to the repository. It is the regression suite for
 the tunnel state machine: CI replays every input (crashes fail the build) and
-enforces a region-coverage threshold on `tunnel-proto` via
-`check_coverage.py`. The nightly `fuzz-nightly.yml` workflow fuzzes longer,
-minimizes the corpus with `cmin`, and uploads the result as an artifact;
-commit that artifact to grow the corpus and ratchet the threshold up.
+enforces a region-coverage threshold on `tunnel-proto` (see the `tunnel-test`
+job in `_rust.yml`). The nightly `fuzz-nightly.yml` workflow fuzzes longer,
+minimizes the corpus with `cmin`, and opens a bot PR with the grown corpus;
+merging it ratchets the coverage threshold up.
 
 Because inputs are decoded positionally, changing the decision layout in
 `arb.rs` re-interprets existing inputs. Coverage degrades gracefully rather
@@ -24,25 +24,22 @@ corpus should be re-minimized and re-grown via the nightly job.
 
 ## Setup
 
-1. Install `cargo-fuzz`
-1. Temporarily disable LTO (fuzzing won't work otherwise):
-   ```
-   export CARGO_PROFILE_RELEASE_LTO=false
-   ```
+Everything is managed through `mise.toml` in this directory: the pinned
+nightly toolchain, `cargo-fuzz`, and the profile overrides fuzzing needs
+(LTO off, parallel codegen). There is nothing to install by hand.
 
 ## Run
 
-Runs the fuzzer for the `ip_packet` fuzz target.
-Substitute that for other targets that you want to run.
+Run a target via the `fuzz` task; extra arguments are passed to libFuzzer:
 
 ```
-cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target ip_packet
+mise run //rust/tests/fuzz:fuzz ip_packet
 ```
 
 For the `tunnel` target, allow long inputs so deep scenarios stay reachable:
 
 ```
-cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0
+mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_len=8192 -len_control=0
 ```
 
 ## Reproducing a crash
@@ -53,7 +50,7 @@ A crash writes the offending input to `artifacts/tunnel/`. To triage it:
    cleanly since dropping trailing bytes drops trailing transitions):
 
    ```
-   cargo +nightly fuzz tmin --fuzz-dir tests/fuzz --target-dir ./target tunnel artifacts/tunnel/crash-<hash>
+   mise run //rust/tests/fuzz:tmin tunnel artifacts/tunnel/crash-<hash>
    ```
 
 1. Replay the single input with tracing to see the scenario. The harness
@@ -61,10 +58,10 @@ A crash writes the offending input to `artifacts/tunnel/`. To triage it:
    silent), and logs one line per applied transition plus the connlib trace:
 
    ```
-   RUST_LOG=debug cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target tunnel <reduced-input> 2> repro.log
+   mise run //rust/tests/fuzz:repro tunnel <reduced-input> 2> repro.log
    ```
 
-   Or via mise: `mise run tunnel-fuzz-repro <reduced-input>` (set `RUST_LOG=trace` for more).
+   Set `RUST_LOG=trace` for more detail.
 
 ## Coverage
 
@@ -72,15 +69,15 @@ A crash writes the offending input to `artifacts/tunnel/`. To triage it:
    `coverage/tunnel/coverage.profdata`):
 
    ```
-   cargo +nightly fuzz coverage --fuzz-dir tests/fuzz --target-dir ./target tunnel
+   mise run //rust/tests/fuzz:coverage tunnel
    ```
 
-1. Check the `tunnel-proto` region coverage against a threshold:
+1. Post-process the profdata with the `llvm-cov` task, e.g. the `tunnel-proto`
+   region coverage as enforced by CI (paths are relative to this directory):
 
    ```
-   python3 tests/fuzz/check_coverage.py 68
+   mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100'
    ```
 
-1. For a browsable HTML report, use `llvm-cov show` from the nightly
-   toolchain's `llvm-tools-preview` with the profdata and the rebuilt target
-   at `target/x86_64-unknown-linux-gnu/release/tunnel`.
+1. For a browsable HTML report, use `llvm-cov show` with the profdata and the
+   rebuilt target at `../../target/x86_64-unknown-linux-gnu/release/tunnel`.

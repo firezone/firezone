@@ -30,36 +30,22 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: ./.github/actions/free-disk-space
-      - name: Install llvm-tools for coverage
-        run: rustup component add llvm-tools-preview --toolchain ${{ steps.setup-rust.outputs.nightly_version }}
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: --cd rust
+          install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/free-disk-space
       - name: Discover new coverage (seeded from the committed corpus)
-        run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel -- -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
-        env:
-          CARGO_PROFILE_RELEASE_LTO: false
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+        run: mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
       - name: Minimize corpus
-        run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
-        env:
-          CARGO_PROFILE_RELEASE_LTO: false
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+        run: mise run //rust/tests/fuzz:cmin tunnel
       - name: Measure coverage (report only)
         run: |
-          rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz --target-dir ./target tunnel
-          llvm_cov="$(rustc +${{ steps.setup-rust.outputs.nightly_version }} --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
-          pct=$("$llvm_cov" export -instr-profile=tests/fuzz/coverage/tunnel/coverage.profdata target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
+          mise run //rust/tests/fuzz:coverage tunnel
+          pct=$(mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | (map(.covered) | add) / (map(.count) | add) * 100')
           echo "tunnel-proto region coverage: ${pct}%"
-        env:
-          CARGO_PROFILE_RELEASE_LTO: false
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
       - name: Set up GnuPG for the corpus commit
         uses: ./.github/actions/setup-gpg
         id: setup-gpg
