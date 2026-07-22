@@ -82,15 +82,17 @@ defmodule Portal.Azure.ManagedIdentity do
         {:reply, {:ok, token}, state}
 
       _ ->
-        try do
-          token = fetch_token!(resource)
-          {:reply, {:ok, token.token}, Map.put(state, resource, token)}
-        rescue
-          # Reply with the error instead of crashing so that an IMDS outage
-          # surfaces in the calling process without crash-looping this server.
-          exception -> {:reply, {:error, exception}, state}
-        end
+        fetch_and_cache_token(resource, state)
     end
+  end
+
+  defp fetch_and_cache_token(resource, state) do
+    token = fetch_token!(resource)
+    {:reply, {:ok, token.token}, Map.put(state, resource, token)}
+  rescue
+    # Reply with the error instead of crashing so that an IMDS outage surfaces
+    # in the calling process without crash-looping this server.
+    exception -> {:reply, {:error, exception}, state}
   end
 
   defp fetch_token!(resource) do
