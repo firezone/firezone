@@ -4,6 +4,8 @@ defmodule Portal.Ops do
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
+  @max_recipients_per_send_window 100
+  @send_window_seconds 5 * 60
 
   @doc """
   Counts presences grouped by topic prefix.
@@ -149,21 +151,90 @@ defmodule Portal.Ops do
   end
 
   defp enqueue_chunked(emails_by_account, subject, html_body, plaintext_body) do
-    Enum.each(emails_by_account, fn {account_id, admin_emails} ->
-      admin_emails
-      |> Enum.chunk_every(@max_bcc_per_message)
-      |> Enum.each(fn chunk ->
-        Mailer.default_email()
-        |> Swoosh.Email.subject(subject)
-        |> Mailer.bcc_recipients(chunk)
-        |> Swoosh.Email.html_body(html_body)
-        |> Swoosh.Email.text_body(plaintext_body)
-        |> Mailer.with_account_id(account_id)
-        |> Mailer.enqueue()
-      end)
-    end)
+    first_send_at = DateTime.utc_now()
+
+    emails_by_account
+    |> account_send_windows()
+    |> Enum.with_index()
+    |> Enum.each(&enqueue_send_window(&1, first_send_at, subject, html_body, plaintext_body))
 
     :ok
+  end
+
+  defp account_send_windows([]), do: []
+
+  defp account_send_windows(emails_by_account) do
+    {completed_windows, current_window, _recipient_count} =
+      Enum.reduce(emails_by_account, {[], [], 0}, &add_account_to_send_window/2)
+
+    Enum.reverse([Enum.reverse(current_window) | completed_windows])
+  end
+
+  defp add_account_to_send_window(
+         {_account_id, admin_emails} = account,
+         {completed_windows, current_window, recipient_count}
+       ) do
+    account_recipient_count = length(admin_emails)
+
+    # Keep every admin for an account in the same window. An account larger
+    # than the target window size gets a window to itself.
+    if current_window == [] or
+         recipient_count + account_recipient_count <= @max_recipients_per_send_window do
+      {completed_windows, [account | current_window], recipient_count + account_recipient_count}
+    else
+      {[Enum.reverse(current_window) | completed_windows], [account], account_recipient_count}
+    end
+  end
+
+  defp enqueue_send_window(
+         {send_window, window_index},
+         first_send_at,
+         subject,
+         html_body,
+         plaintext_body
+       ) do
+    job_opts = send_window_job_opts(first_send_at, window_index)
+
+    Enum.each(
+      send_window,
+      &enqueue_account_emails(&1, subject, html_body, plaintext_body, job_opts)
+    )
+  end
+
+  defp enqueue_account_emails(
+         {account_id, admin_emails},
+         subject,
+         html_body,
+         plaintext_body,
+         job_opts
+       ) do
+    admin_emails
+    |> Enum.chunk_every(@max_bcc_per_message)
+    |> Enum.each(&enqueue_admin_email(&1, account_id, subject, html_body, plaintext_body, job_opts))
+  end
+
+  defp enqueue_admin_email(
+         recipients,
+         account_id,
+         subject,
+         html_body,
+         plaintext_body,
+         job_opts
+       ) do
+    Mailer.default_email()
+    |> Swoosh.Email.subject(subject)
+    |> Mailer.bcc_recipients(recipients)
+    |> Swoosh.Email.html_body(html_body)
+    |> Swoosh.Email.text_body(plaintext_body)
+    |> Mailer.with_account_id(account_id)
+    |> Mailer.enqueue(job_opts)
+  end
+
+  defp send_window_job_opts(_first_send_at, 0), do: []
+
+  defp send_window_job_opts(first_send_at, window_index) do
+    scheduled_at = DateTime.add(first_send_at, window_index * @send_window_seconds, :second)
+    [scheduled_at: scheduled_at]
   end
 
   defmodule Database do

@@ -196,15 +196,16 @@ defmodule Portal.Mailer do
 
   Checks the suppression table before inserting the Oban job. Returns
   `{:ok, :suppressed}` if all recipients are suppressed. The suppression
-  table is checked again right before the queued job delivers.
+  table is checked again right before the queued job delivers. Accepts Oban job
+  options such as `:scheduled_at` for callers that need delayed delivery.
   """
-  def enqueue(%Email{} = email) do
+  def enqueue(%Email{} = email, job_opts \\ []) when is_list(job_opts) do
     account_id = email.private[:account_id]
     email = email |> drop_blocked_recipients() |> drop_suppressed_recipients()
 
     if has_recipients?(email) do
       %{"account_id" => account_id, "request" => serialize(email)}
-      |> OutboundEmailWorker.new()
+      |> OutboundEmailWorker.new(job_opts)
       |> Oban.insert()
     else
       Logger.info("Skipping queued email because all recipients are suppressed",
