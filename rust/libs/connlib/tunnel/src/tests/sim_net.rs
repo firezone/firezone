@@ -542,29 +542,28 @@ where
     )
 }
 
-/// All [`EdgeConfig`]s that occur in the wild, uniformly.
+/// All [`EdgeConfig`]s that occur in the wild.
 ///
-/// A symmetric NAT (endpoint-dependent mapping) always filters by port; the
-/// cone NATs (endpoint-independent mapping) span the full filtering spectrum.
+/// The cone NATs (endpoint-independent mapping) span the full filtering
+/// spectrum; a symmetric NAT (endpoint-dependent mapping) always filters by
+/// port.
 pub(crate) fn any_edge() -> impl Strategy<Value = EdgeConfig> {
     prop_oneof![
         Just(EdgeConfig::Open),
-        Just(EdgeConfig::Nat(
-            Mapping::EndpointIndependent,
-            FilterMode::Open
-        )),
-        Just(EdgeConfig::Nat(
-            Mapping::EndpointIndependent,
-            FilterMode::AddressRestricted
-        )),
-        Just(EdgeConfig::Nat(
-            Mapping::EndpointIndependent,
-            FilterMode::PortRestricted
-        )),
+        any_filter_mode().prop_map(|filter| EdgeConfig::Nat(Mapping::EndpointIndependent, filter)),
         Just(EdgeConfig::Nat(
             Mapping::EndpointDependent,
             FilterMode::PortRestricted
         )),
+    ]
+}
+
+/// All [`FilterMode`]s, uniformly.
+fn any_filter_mode() -> impl Strategy<Value = FilterMode> {
+    prop_oneof![
+        Just(FilterMode::Open),
+        Just(FilterMode::AddressRestricted),
+        Just(FilterMode::PortRestricted),
     ]
 }
 
