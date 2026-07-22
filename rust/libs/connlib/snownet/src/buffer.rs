@@ -76,6 +76,10 @@ impl TransmitBuffer {
         self.transmits.pop_front()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.transmits.is_empty()
+    }
+
     pub fn clear(&mut self) {
         self.transmits.clear();
     }

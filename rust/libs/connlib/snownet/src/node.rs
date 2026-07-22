@@ -100,6 +100,9 @@ pub struct Node<TId, RId> {
     inflight_stun_requests: InflightStunRequests<TId>,
 
     pending_events: VecDeque<Event<TId>>,
+    /// The most recent `now` we saw; [`Node::poll_timeout`] returns it while
+    /// transmits or events are queued so the driver drains them without delay.
+    last_now: Instant,
 
     stats: NodeStats,
     buffer_pool: BufferPool<Vec<u8>>,
@@ -200,6 +203,7 @@ where
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: TransmitBuffer::default(),
             pending_events: VecDeque::default(),
+            last_now: now,
             allocations,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
@@ -223,6 +227,8 @@ where
     ///
     /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
     pub fn reset(&mut self, now: Instant) {
+        self.last_now = now;
+
         self.allocations.clear();
         self.buffered_transmits.clear();
         self.pending_events.clear();
@@ -281,6 +287,8 @@ where
         use_iceless: bool,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
+        self.last_now = now;
+
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
 
@@ -394,6 +402,8 @@ where
     /// Removes a connection by just clearing its local memory.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_connection(&mut self, cid: TId, reason: impl fmt::Display, now: Instant) {
+        self.last_now = now;
+
         let existing = self.connections.remove_established(&cid, now);
 
         if existing.is_none() {
@@ -408,6 +418,8 @@ where
     /// If we are connected, sends the provided "goodbye" packet before discarding the connection.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn close_connection(&mut self, cid: TId, goodbye: IpPacket, now: Instant) {
+        self.last_now = now;
+
         let Some(mut connection) = self.connections.remove_established(&cid, now) else {
             tracing::debug!("Cannot close unknown connection");
 
@@ -447,6 +459,8 @@ where
     }
 
     pub fn close_all(&mut self, goodbye: IpPacket, now: Instant) {
+        self.last_now = now;
+
         for id in self.connections.iter_ids().collect::<Vec<_>>() {
             self.close_connection(id, goodbye.clone(), now);
         }
@@ -469,6 +483,8 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
+        self.last_now = now;
+
         let Ok(c) = self.connections.get_mut(&cid, now) else {
             tracing::warn!(%candidate, "Received candidate for unknown connection");
             return;
@@ -503,6 +519,8 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
+        self.last_now = now;
+
         let Ok(c) = self.connections.get_mut(&cid, now) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
@@ -531,6 +549,8 @@ where
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<(TId, IpPacket)>> {
+        self.last_now = now;
+
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
@@ -566,6 +586,8 @@ where
         now: Instant,
         provider: &mut impl BufferProvider,
     ) -> Result<Option<EncapsulateInfo>> {
+        self.last_now = now;
+
         let conn = self.connections.get_mut(&cid, now)?;
 
         let socket = match &conn.state {
@@ -604,7 +626,11 @@ where
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        let queued_io = (!self.buffered_transmits.is_empty() || !self.pending_events.is_empty())
+            .then_some((self.last_now, "queued IO"));
+
         iter::empty()
+            .chain(queued_io)
             .chain(self.connections.poll_timeout())
             .chain(self.allocations.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
@@ -627,6 +653,8 @@ where
     ///
     /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.last_now = now;
+
         self.allocations.handle_timeout(now);
 
         self.allocations_drain_events(now);
@@ -698,6 +726,8 @@ where
         to_add: &BTreeSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
+        self.last_now = now;
+
         // First, invalidate all candidates from relays that we should stop using.
         for rid in &to_remove {
             let Some(allocation) = self.allocations.remove_by_id(rid) else {
