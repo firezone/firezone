@@ -1,0 +1,25 @@
+[package]
+name = "tunnel-messages"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+base64 = { workspace = true, features = ["std"] }
+boringtun = { workspace = true }
+chrono = { workspace = true }
+connlib-model = { workspace = true }
+dns-types = { workspace = true }
+flow-tracker = { workspace = true }
+ip_network = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+snownet = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }
+
+[lints]
+workspace = true

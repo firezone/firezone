@@ -30,6 +30,7 @@ members = [
     "libs/connlib/socket-factory",
     "libs/connlib/tun",
     "libs/connlib/tunnel",
+    "libs/connlib/tunnel-messages",
     "libs/connlib/tunnel-proto",
     "libs/connlib/tunnel-tests",
     "libs/eventloop-budget",
@@ -239,6 +240,7 @@ tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
+tunnel-messages = { path = "libs/connlib/tunnel-messages" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
 tunnel-tests = { path = "libs/connlib/tunnel-tests" }
 uniffi = "0.31.1"

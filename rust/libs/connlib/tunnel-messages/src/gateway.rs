@@ -1,6 +1,6 @@
 //! Gateway related messages that are needed within connlib
 
-use crate::messages::{
+use crate::{
     Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
     SecretKey, SnownetCapabilities,
 };
@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-pub use crate::messages::Authorization;
+pub use crate::Authorization;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone)]
@@ -202,7 +202,7 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
-    use crate::messages::PortRange;
+    use crate::PortRange;
 
     use super::*;
 
