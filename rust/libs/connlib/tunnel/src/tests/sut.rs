@@ -418,6 +418,7 @@ impl TunnelTest {
                 client_id,
                 ip4,
                 ip6,
+                nat_ip4,
                 dead_window,
                 portal_window,
             } => {
@@ -444,6 +445,7 @@ impl TunnelTest {
                 let now = state.flux_capacitor.now::<Instant>();
                 let client = state.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
+                client.migrate_nat(nat_ip4);
                 let added = state.network.add_host(client_id, client);
                 debug_assert!(added);
                 client.exec_mut(|c| {

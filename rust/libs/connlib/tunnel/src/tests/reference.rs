@@ -884,6 +884,7 @@ impl ReferenceState {
                 client_id,
                 ip4,
                 ip6,
+                nat_ip4,
                 dead_window: _,
                 portal_window: _,
             } => {
@@ -896,6 +897,7 @@ impl ReferenceState {
                 state.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
+                client.migrate_nat(*nat_ip4);
                 let added = state.network.add_host(*client_id, client);
                 debug_assert!(added);
 
@@ -930,16 +932,21 @@ impl ReferenceState {
                     let gateway_edges = state
                         .gateways
                         .iter()
-                        .map(|(id, g)| (*id, g.edge_config()))
+                        .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
                     let portal = &state.portal;
 
                     for client in state.clients.values_mut() {
                         let client_edge = client.edge_config();
+                        let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
                             .iter()
-                            .filter(|(_, gateway_edge)| {
-                                !direct_path_possible(client_edge, **gateway_edge)
+                            .filter(|(_, (gateway_edge, gateway_has_ip6))| {
+                                !direct_path_possible(
+                                    client_edge,
+                                    *gateway_edge,
+                                    client_has_ip6 && *gateway_has_ip6,
+                                )
                             })
                             .map(|(id, _)| *id)
                             .collect::<BTreeSet<_>>();
@@ -1197,6 +1204,7 @@ impl ReferenceState {
                 client_id: _,
                 ip4,
                 ip6,
+                nat_ip4,
                 dead_window: _,
                 portal_window: _,
             } => {
@@ -1204,8 +1212,9 @@ impl ReferenceState {
 
                 let is_assigned_ip4 = ip4.is_some_and(|ip| state.network.contains(ip));
                 let is_assigned_ip6 = ip6.is_some_and(|ip| state.network.contains(ip));
+                let is_assigned_nat_ip4 = state.network.contains(*nat_ip4);
 
-                !is_assigned_ip4 && !is_assigned_ip6
+                !is_assigned_ip4 && !is_assigned_ip6 && !is_assigned_nat_ip4
             }
             Transition::ReconnectPortal { client_id } => state.clients.contains_key(client_id),
             Transition::RemoveResource(r) => {
