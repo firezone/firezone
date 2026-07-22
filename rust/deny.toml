@@ -266,6 +266,9 @@ skip = [
     "core-foundation", # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
     "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
     "crypto-common", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.2 vs 0.1 elsewhere).
+    "darling", # ingot-macros pins darling 0.21; serde_with is on 0.23.
+    "darling_core", # See `darling`.
+    "darling_macro", # See `darling`.
     "digest", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.11 vs 0.10 elsewhere).
     "foldhash",
     "getrandom",

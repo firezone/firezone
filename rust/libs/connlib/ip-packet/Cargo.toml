@@ -15,12 +15,10 @@ arbitrary = ["dep:arbitrary"]
 anyhow = { workspace = true }
 arbitrary = { workspace = true, optional = true, features = ["derive"] }
 bufferpool = { workspace = true }
-etherparse = { workspace = true, features = ["std"] }
-etherparse-ext = { workspace = true }
 incremental-inet-checksum = { workspace = true }
+ingot = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 
 [dev-dependencies]
 divan = { workspace = true }

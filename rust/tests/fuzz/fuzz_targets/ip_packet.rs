@@ -63,13 +63,15 @@ fuzz_target!(|input: Input| {
 fn checksum_errors(packet: &IpPacket) -> Vec<String> {
     let mut errors = Vec::new();
 
-    if let Some(hdr) = packet.ipv4_header() {
-        let expected = hdr.calc_header_checksum();
+    if let (Some(hdr), Ok(expected)) = (
+        packet.ipv4_header(),
+        packet.calculate_ipv4_header_checksum(),
+    ) {
+        let stored = hdr.checksum();
 
-        if !checksum_matches(hdr.header_checksum, expected) {
+        if !checksum_matches(stored, expected) {
             errors.push(format!(
-                "IPv4 header checksum: stored {:#06x}, expected {expected:#06x}",
-                hdr.header_checksum
+                "IPv4 header checksum: stored {stored:#06x}, expected {expected:#06x}"
             ));
         }
     }
@@ -98,9 +100,8 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
         }
     }
 
-    if let Some(icmp) = packet.as_icmpv4() {
+    if let (Some(icmp), Ok(expected)) = (packet.as_icmpv4(), packet.calculate_icmpv4_checksum()) {
         let stored = icmp.checksum();
-        let expected = icmp.icmp_type().calc_checksum(icmp.payload());
 
         if !checksum_matches(stored, expected) {
             errors.push(format!(
@@ -109,12 +110,7 @@ fn checksum_errors(packet: &IpPacket) -> Vec<String> {
         }
     }
 
-    if let Some(icmp) = packet.as_icmpv6()
-        && let (IpAddr::V6(src), IpAddr::V6(dst)) = (packet.source(), packet.destination())
-        && let Ok(expected) =
-            icmp.icmp_type()
-                .calc_checksum(src.octets(), dst.octets(), icmp.payload())
-    {
+    if let (Some(icmp), Ok(expected)) = (packet.as_icmpv6(), packet.calculate_icmpv6_checksum()) {
         let stored = icmp.checksum();
 
         if !checksum_matches(stored, expected) {

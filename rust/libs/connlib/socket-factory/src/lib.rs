@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool, VecBuf};
 use gat_lending_iterator::LendingIterator;
-use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
+use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use smallvec::SmallVec;
@@ -364,8 +364,8 @@ impl DatagramOut {
     /// chunked below this, but never above it.
     pub fn max_len(dst: SocketAddr, segment_size: usize) -> usize {
         let header_overhead = match dst {
-            SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
-            SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
+            SocketAddr::V4(_) => Ipv4HeaderSlice::MAX_LEN + UdpSlice::HEADER_LEN,
+            SocketAddr::V6(_) => Ipv6HeaderSlice::LEN + UdpSlice::HEADER_LEN,
         };
 
         let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size.max(1);

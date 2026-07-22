@@ -16,7 +16,6 @@ members = [
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
     "libs/connlib/etc-hosts-dns-client",
-    "libs/connlib/etherparse-ext",
     "libs/connlib/flow-tracker",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
@@ -102,8 +101,6 @@ dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
-etherparse = { version = "0.20.1", default-features = false }
-etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fd-lock = "4.0.4"
 filetime = "0.2.29"
@@ -128,6 +125,7 @@ humantime = "2.3.0"
 hyper = "1.10.1"
 hyper-util = "0.1.20"
 incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
+ingot = { version = "0.1.1", default-features = false, features = ["alloc"] }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }

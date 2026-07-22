@@ -8,7 +8,7 @@
 //! passed through untouched.
 
 use bufferpool::{Buffer, BufferPool};
-use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6Header, TcpSlice, UdpSlice};
+use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
 use std::net::IpAddr;
 
 use super::checksum;
@@ -235,28 +235,28 @@ fn ip_layout(packet: &IpPacket) -> Option<usize> {
     match (packet.ipv4_header(), packet.ipv6_header()) {
         (Some(header), _) => {
             // IP options never coalesce.
-            if !header.options.is_empty() {
+            if !header.options().is_empty() {
                 return None;
             }
 
             // The IP length must describe the entire buffer for byte-level coalescing to be sound.
-            if header.total_len as usize != total_len {
+            if header.total_len() as usize != total_len {
                 return None;
             }
 
             Some(header.header_len())
         }
         (_, Some(header)) => {
-            if header.payload_length as usize + Ipv6Header::LEN != total_len {
+            if header.payload_length() as usize + Ipv6HeaderSlice::LEN != total_len {
                 return None;
             }
 
             // Extension headers never coalesce.
-            if !matches!(header.next_header, IpNumber::TCP | IpNumber::UDP) {
+            if !matches!(header.next_header(), IpNumber::TCP | IpNumber::UDP) {
                 return None;
             }
 
-            Some(Ipv6Header::LEN)
+            Some(Ipv6HeaderSlice::LEN)
         }
         (None, None) => None,
     }

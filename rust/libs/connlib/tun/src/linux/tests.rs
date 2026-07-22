@@ -1,6 +1,10 @@
 use std::net::Ipv4Addr;
 
-use ip_packet::{IpHeaders, IpPacket, IpPacketBuf, Ipv4Header, PacketBuilder, ip_number};
+use ingot::ip::{IpProtocol, Ipv4};
+use ingot::tcp::{Tcp, TcpFlags};
+use ingot::types::{Emit, HeaderLen as _};
+use ingot::udp::Udp;
+use ip_packet::{IpPacket, IpPacketBuf};
 
 use super::coalesce::TunGsoQueue;
 use super::split::split;
@@ -245,37 +249,30 @@ fn tcp4(seq: u32, payload: &[u8]) -> IpPacket {
 }
 
 fn tcp4_id(id: u16, seq: u32, payload: &[u8]) -> IpPacket {
-    let builder = PacketBuilder::ip(ipv4_header(id, ip_number::TCP))
-        .tcp(5000, 6000, seq, 64000)
-        .ack(42);
-
-    let mut bytes = Vec::new();
-    builder.write(&mut bytes, payload).unwrap();
-
-    packet_from_bytes(&bytes)
+    ipv4_packet(
+        id,
+        IpProtocol::TCP,
+        tcp_header(5000, 6000, seq, false),
+        payload,
+    )
 }
 
 fn tcp4_ports(sport: u16, dport: u16, seq: u32, payload: &[u8]) -> IpPacket {
-    let builder = PacketBuilder::ipv4(SRC, DST, 64)
-        .tcp(sport, dport, seq, 64000)
-        .ack(42);
-
-    let mut bytes = Vec::new();
-    builder.write(&mut bytes, payload).unwrap();
-
-    packet_from_bytes(&bytes)
+    ipv4_packet(
+        0,
+        IpProtocol::TCP,
+        tcp_header(sport, dport, seq, false),
+        payload,
+    )
 }
 
 fn tcp4_psh(seq: u32, payload: &[u8]) -> IpPacket {
-    let builder = PacketBuilder::ipv4(SRC, DST, 64)
-        .tcp(5000, 6000, seq, 64000)
-        .ack(42)
-        .psh();
-
-    let mut bytes = Vec::new();
-    builder.write(&mut bytes, payload).unwrap();
-
-    packet_from_bytes(&bytes)
+    ipv4_packet(
+        0,
+        IpProtocol::TCP,
+        tcp_header(5000, 6000, seq, true),
+        payload,
+    )
 }
 
 fn udp4(payload: &[u8]) -> IpPacket {
@@ -283,19 +280,52 @@ fn udp4(payload: &[u8]) -> IpPacket {
 }
 
 fn udp4_id(id: u16, payload: &[u8]) -> IpPacket {
-    let builder = PacketBuilder::ip(ipv4_header(id, ip_number::UDP)).udp(5000, 6000);
+    let udp = Udp {
+        source: 5000,
+        destination: 6000,
+        length: (8 + payload.len()) as u16,
+        checksum: 0,
+    };
 
-    let mut bytes = Vec::new();
-    builder.write(&mut bytes, payload).unwrap();
-
-    packet_from_bytes(&bytes)
+    ipv4_packet(id, IpProtocol::UDP, udp, payload)
 }
 
-fn ipv4_header(id: u16, protocol: ip_packet::IpNumber) -> IpHeaders {
-    let mut header = Ipv4Header::new(0, 64, protocol, SRC, DST).unwrap();
-    header.identification = id;
+fn tcp_header(sport: u16, dport: u16, seq: u32, psh: bool) -> Tcp {
+    let mut flags = TcpFlags::ACK;
+    flags.set(TcpFlags::PSH, psh);
 
-    IpHeaders::Ipv4(header, Default::default())
+    Tcp {
+        source: sport,
+        destination: dport,
+        sequence: seq,
+        acknowledgement: 42,
+        flags,
+        window_size: 64000,
+        ..Default::default()
+    }
+}
+
+fn ipv4_packet(id: u16, protocol: IpProtocol, l4_header: impl Emit, payload: &[u8]) -> IpPacket {
+    let total_len = Ipv4::MINIMUM_LENGTH + l4_header.packet_length() + payload.len();
+
+    let ipv4 = Ipv4 {
+        ihl: 5,
+        total_len: total_len as u16,
+        identification: id,
+        hop_limit: 64,
+        protocol,
+        source: Ipv4Addr::from(SRC).into(),
+        destination: Ipv4Addr::from(DST).into(),
+        ..Default::default()
+    };
+
+    let mut bytes = (ipv4, l4_header).to_vec();
+    bytes.extend_from_slice(payload);
+
+    let mut packet = packet_from_bytes(&bytes);
+    packet.compute_checksums();
+
+    packet
 }
 
 fn packet_from_bytes(bytes: &[u8]) -> IpPacket {
