@@ -1,5 +1,5 @@
 defmodule Portal.Azure.ManagedIdentityTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Portal.Azure.ManagedIdentity
 
@@ -70,6 +70,28 @@ defmodule Portal.Azure.ManagedIdentityTest do
       assert ManagedIdentity.database_access_token!() == "cached_token"
       # A second IMDS request would exceed the expectation above and raise
       assert ManagedIdentity.database_access_token!() == "cached_token"
+    end
+
+    test "caches tokens independently by resource" do
+      test_pid = self()
+
+      Req.Test.expect(ManagedIdentity, 2, fn conn ->
+        resource = URI.decode_query(conn.query_string)["resource"]
+        send(test_pid, {:imds_request, resource})
+
+        Req.Test.json(conn, %{
+          "access_token" => "token-for-#{resource}",
+          "expires_on" => System.system_time(:second) + 3600
+        })
+      end)
+
+      assert ManagedIdentity.access_token!("resource-a") == "token-for-resource-a"
+      assert ManagedIdentity.access_token!("resource-b") == "token-for-resource-b"
+      assert ManagedIdentity.access_token!("resource-a") == "token-for-resource-a"
+      assert ManagedIdentity.access_token!("resource-b") == "token-for-resource-b"
+
+      assert_received {:imds_request, "resource-a"}
+      assert_received {:imds_request, "resource-b"}
     end
 
     test "fetches a new token when the cached one is about to expire" do

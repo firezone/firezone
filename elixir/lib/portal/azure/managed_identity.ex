@@ -5,10 +5,9 @@ defmodule Portal.Azure.ManagedIdentity do
 
   Azure Database for PostgreSQL accepts an Entra access token as the connection
   password, which is how database connections are authenticated when
-  DATABASE_ENTRA_AUTH is enabled. The GenServer serializes IMDS requests and
-  caches the token until shortly before it expires; tokens are only needed to
-  establish new connections, so a refresh happens at most once per token
-  lifetime (24 hours for managed identity tokens).
+  DATABASE_ENTRA_AUTH is enabled. Other Entra integrations use managed-identity
+  tokens as workload identity federation assertions. The GenServer serializes
+  IMDS requests and caches tokens by resource until shortly before they expire.
   """
   use GenServer
 
@@ -42,49 +41,55 @@ defmodule Portal.Azure.ManagedIdentity do
   release migrations, which connect without starting the supervision tree.
   """
   def database_access_token! do
+    access_token!(@database_resource)
+  end
+
+  @doc """
+  Returns a Microsoft Entra access token for an arbitrary resource audience,
+  fetching a new one from IMDS if the cached one is missing or about to expire.
+
+  This is used for token-exchange assertions for workload identity federation
+  (`api://AzureADTokenExchange`) as well as database authentication. Falls back
+  to fetching directly when the GenServer is not running. Raises on an IMDS
+  error.
+  """
+  def access_token!(resource) when is_binary(resource) do
     case GenServer.whereis(__MODULE__) do
       nil ->
-        %{token: token} = fetch_token!(@database_resource)
+        %{token: token} = fetch_token!(resource)
         token
 
       server ->
-        case GenServer.call(server, :database_access_token, @call_timeout) do
+        case GenServer.call(server, {:access_token, resource}, @call_timeout) do
           {:ok, token} -> token
           {:error, exception} -> raise exception
         end
     end
   end
 
-  @doc """
-  Fetches an uncached Entra token for an arbitrary resource audience, used by
-  callers other than the database connection (e.g. a token-exchange assertion
-  for workload identity federation, `api://AzureADTokenExchange`). Raises on an
-  IMDS error.
-  """
-  def access_token!(resource) when is_binary(resource) do
-    %{token: token} = fetch_token!(resource)
-    token
-  end
-
   @impl true
   def init(nil) do
-    {:ok, %{token: nil, expires_at: 0}}
+    {:ok, %{}}
   end
 
   @impl true
-  def handle_call(:database_access_token, _from, state) do
-    if state.expires_at - @expiry_margin_seconds > System.system_time(:second) do
-      {:reply, {:ok, state.token}, state}
-    else
-      try do
-        state = fetch_token!(@database_resource)
-        {:reply, {:ok, state.token}, state}
-      rescue
-        # Reply with the error instead of crashing so that an IMDS outage
-        # surfaces in the calling connection process (which DBConnection
-        # retries with backoff) without crash-looping this server
-        exception -> {:reply, {:error, exception}, state}
-      end
+  def handle_call({:access_token, resource}, _from, state) do
+    now = System.system_time(:second)
+
+    case Map.get(state, resource) do
+      %{token: token, expires_at: expires_at}
+      when expires_at - @expiry_margin_seconds > now ->
+        {:reply, {:ok, token}, state}
+
+      _ ->
+        try do
+          token = fetch_token!(resource)
+          {:reply, {:ok, token.token}, Map.put(state, resource, token)}
+        rescue
+          # Reply with the error instead of crashing so that an IMDS outage
+          # surfaces in the calling process without crash-looping this server.
+          exception -> {:reply, {:error, exception}, state}
+        end
     end
   end
 
