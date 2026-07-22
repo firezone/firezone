@@ -270,6 +270,11 @@ where
         self.connections.len()
     }
 
+    /// Whether the connection to `cid` has completed setup and is available for traffic.
+    pub fn is_connected(&self, cid: &TId) -> bool {
+        self.connections.is_connected(cid)
+    }
+
     /// Upserts a connection to the given remote.
     ///
     /// If we already have a connection with the same parameters, this does nothing.
@@ -1383,6 +1388,13 @@ impl<RId> Connection<RId>
 where
     RId: PartialEq + Eq + Hash + fmt::Debug + fmt::Display + Copy + Ord,
 {
+    fn is_connected(&self) -> bool {
+        matches!(
+            self.state,
+            ConnectionState::Connected { .. } | ConnectionState::Idle { .. }
+        )
+    }
+
     fn duration_since_intent(&self, now: Instant) -> Duration {
         now.duration_since(self.intent_sent_at)
     }

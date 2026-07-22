@@ -296,6 +296,12 @@ where
         self.established.len()
     }
 
+    pub(crate) fn is_connected(&self, id: &TId) -> bool {
+        self.established
+            .get(id)
+            .is_some_and(Connection::is_connected)
+    }
+
     pub(crate) fn clear(&mut self) {
         self.established.clear();
         self.established_by_wireguard_session_index.clear();
