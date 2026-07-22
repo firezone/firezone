@@ -730,7 +730,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
 
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
-  defconfig(:entra_sync_client_secret, :string, default: nil, sensitive: true)
 
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
   defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)

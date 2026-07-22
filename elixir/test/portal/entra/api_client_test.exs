@@ -50,6 +50,35 @@ defmodule Portal.Entra.APIClientTest do
       assert params["client_secret"] == config[:client_secret]
     end
 
+    test "authenticates with a managed-identity assertion when no secret is set" do
+      test_pid = self()
+      Portal.Config.put_env_override(:portal, APIClient, client_secret: nil)
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "mi-federation-assertion",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:token_request, body})
+        Req.Test.json(conn, %{"access_token" => "graph_token", "expires_in" => 3600})
+      end)
+
+      assert {:ok, %Req.Response{status: 200}} = APIClient.get_access_token(@test_tenant_id)
+
+      assert_receive {:token_request, request_body}
+      params = URI.decode_query(request_body)
+      assert params["client_assertion"] == "mi-federation-assertion"
+
+      assert params["client_assertion_type"] ==
+               "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+      refute params["client_secret"]
+    end
+
     test "returns error on network failure" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.transport_error(conn, :econnrefused)

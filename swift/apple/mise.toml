@@ -1,10 +1,8 @@
 # Firezone Apple Client - mise configuration
-# Usage: mise run <task> (from this directory) or mise //swift/apple:<task> (from repo root)
+# Usage: mise run <task> (from this directory) or mise run //swift/apple:<task> (from repo root)
 #
 # Tasks are auto-discovered from mise-tasks/ directory.
-# Task names match filenames (e.g., mise-tasks/build.sh -> //swift/apple:build.sh)
-#
-# Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
+# Task names are the filenames without extension (e.g., mise-tasks/build.sh -> //swift/apple:build)
 
 [settings]
 auto_install = false
