@@ -196,6 +196,7 @@ pub struct TcpSlice<'a> {
 
 impl<'a> TcpSlice<'a> {
     pub const HEADER_MIN_LEN: usize = 20;
+    pub const HEADER_MAX_LEN: usize = 60;
 
     pub(crate) fn from_l4(l4: &'a [u8]) -> Self {
         let (header, _, payload) = ValidTcp::parse(l4).expect(INVARIANT);
