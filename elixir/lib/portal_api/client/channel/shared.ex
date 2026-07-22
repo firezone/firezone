@@ -2570,7 +2570,10 @@ defmodule PortalAPI.Client.Channel.Shared do
           psk_base: socket.assigns.client.psk_base,
           remote_ip: socket.assigns.client.last_seen_remote_ip,
           version: socket.assigns.client.last_seen_version,
-          user_agent: socket.assigns.client.last_seen_user_agent
+          user_agent: socket.assigns.client.last_seen_user_agent,
+          # Whether THIS session proved possession of an MDM-provisioned
+          # certificate (v3 challenge). v1/v2 sessions never set the assign.
+          attested?: socket.assigns[:attested?] || false
         }
 
         :ok =
