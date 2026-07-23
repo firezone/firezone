@@ -618,7 +618,11 @@ mod tests {
             .unwrap();
 
         let mut io = Io::for_test();
-        io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
+        // The bootstrap DNS client doesn't retransmit; production relies on outer
+        // retries. Listing the resolver several times makes `resolve` fan out that
+        // many concurrent queries, standing in for those retries so a single
+        // dropped UDP packet to the real server doesn't flake the test.
+        io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1]); 5]);
 
         {
             io.send_dns_query(example_com_recursive_query(), Instant::now());
