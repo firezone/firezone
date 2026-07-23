@@ -255,7 +255,7 @@ can be found at [https://www.firezone.dev/kb](https://www.firezone.dev/kb).
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=firezone/firezone&type=Date)](https://star-history.com/#firezone/firezone&Date)
+[![Star History Chart](https://api.gitrep.fyi/v1/star-history.svg?repos=firezone/firezone&theme=light&markers=true)](https://gitrep.fyi/history?compare=firezone/firezone)
 
 ## Developing and Contributing
 
