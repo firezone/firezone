@@ -8457,31 +8457,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "tunnel-messages"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "boringtun",
- "chrono",
- "connlib-model",
- "dns-types",
- "flow-tracker",
- "ip_network",
- "rand 0.10.2",
- "secrecy",
- "serde",
- "serde_json",
- "serde_with",
- "snownet",
-]
-
-[[package]]
 name = "tunnel-proto"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "base64 0.22.1",
  "bimap",
  "boringtun",
+ "chrono",
  "connlib-model",
  "derive_more",
  "divan",
@@ -8505,6 +8488,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "serde_with",
  "smallvec",
  "snownet",
  "telemetry",
@@ -8512,7 +8496,6 @@ dependencies = [
  "test-strategy",
  "thiserror 2.0.19",
  "tracing",
- "tunnel-messages",
 ]
 
 [[package]]

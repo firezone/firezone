@@ -12,8 +12,10 @@ malicious-behaviour = []
 
 [dependencies]
 anyhow = { workspace = true }
+base64 = { workspace = true, features = ["std"] }
 bimap = { workspace = true }
 boringtun = { workspace = true }
+chrono = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug", "from", "display"] }
 divan = { workspace = true, optional = true }
@@ -36,12 +38,12 @@ ringbuffer = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
+serde_with = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 snownet = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
-tunnel-messages = { workspace = true }
 
 [dev-dependencies]
 ip-packet = { workspace = true, features = ["proptest"] }

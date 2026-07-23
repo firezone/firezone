@@ -1,7 +1,4 @@
 //! Message types that are used by both the gateway and client.
-#![cfg_attr(test, allow(clippy::unwrap_used))]
-#![cfg_attr(test, allow(clippy::print_stdout))]
-#![cfg_attr(test, allow(clippy::print_stderr))]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
