@@ -571,6 +571,18 @@ impl RefClient {
             };
             tracing::Span::current().record("gateway", tracing::field::display(gateway));
 
+            // A gateway's tunnel IP is only routable once we are connected to it:
+            // connlib learns the IP as part of the connection setup and drops
+            // packets to unknown peers.
+            if !self
+                .connected_resources()
+                .filter_map(&gateway_by_resource)
+                .any(|g| g == gateway)
+            {
+                tracing::debug!(%gateway, "Not connected to gateway; packet to its tunnel IP is unroutable");
+                return;
+            }
+
             gateway
         } else {
             let Some(resource) = self.resource_by_dst(&dst, proto) else {
