@@ -185,14 +185,19 @@ pub struct ClientState {
     /// Whether we currently have a live connection to the portal.
     ///
     /// ICE candidates are signalled to peers through the portal, so while it is
-    /// disconnected any candidate we emit would be lost. We therefore hold candidates
-    /// back in [`Self::held_ice_candidates`] until the portal reconnects.
+    /// disconnected any candidate change we emit would be lost. We therefore hold
+    /// candidate changes back until the portal reconnects.
     portal_connected: bool,
-    /// Candidates gathered while the portal was disconnected, per connection.
+    /// New candidates gathered while the portal was disconnected, per connection.
     ///
     /// Flushed to the peer as soon as the portal reconnects (see
     /// [`ClientState::set_portal_connected`]).
-    held_ice_candidates: BTreeMap<ClientOrGatewayId, BTreeSet<IceCandidate>>,
+    held_added_ice_candidates: BTreeMap<ClientOrGatewayId, BTreeSet<IceCandidate>>,
+    /// Previously-signalled candidates invalidated while the portal was disconnected.
+    ///
+    /// Flushed to the peer on reconnect so it stops using an address that is no longer
+    /// reachable (e.g. a replaced relay allocation).
+    held_removed_ice_candidates: BTreeMap<ClientOrGatewayId, BTreeSet<IceCandidate>>,
 
     unix_ts_clock: UnixTsClock,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
@@ -220,7 +225,8 @@ impl ClientState {
             node: Node::new(seed, now, unix_ts),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             portal_connected: true,
-            held_ice_candidates: Default::default(),
+            held_added_ice_candidates: Default::default(),
+            held_removed_ice_candidates: Default::default(),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
             resource_stub_resolver: ResourceStubResolver::new(records),
@@ -1454,7 +1460,9 @@ impl ClientState {
             .remove(&ClientOrGatewayId::Gateway(*disconnected_gateway));
         self.pending_peer_packets
             .remove(&ClientOrGatewayId::Gateway(*disconnected_gateway));
-        self.held_ice_candidates
+        self.held_added_ice_candidates
+            .remove(&ClientOrGatewayId::Gateway(*disconnected_gateway));
+        self.held_removed_ice_candidates
             .remove(&ClientOrGatewayId::Gateway(*disconnected_gateway));
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown, now);
         self.gateways.remove(disconnected_gateway);
@@ -1471,7 +1479,9 @@ impl ClientState {
             .remove(&ClientOrGatewayId::Client(*disconnected_client));
         self.pending_peer_packets
             .remove(&ClientOrGatewayId::Client(*disconnected_client));
-        self.held_ice_candidates
+        self.held_added_ice_candidates
+            .remove(&ClientOrGatewayId::Client(*disconnected_client));
+        self.held_removed_ice_candidates
             .remove(&ClientOrGatewayId::Client(*disconnected_client));
         if self.clients.remove(disconnected_client).is_some() {
             self.resource_list.update(self.resource_list_snapshot());
@@ -2109,18 +2119,33 @@ impl ClientState {
                 } if !self.portal_connected => {
                     // Portal is down: hold the candidate back until it reconnects
                     // instead of emitting an event that would be lost.
-                    self.held_ice_candidates
+                    let candidate = candidate.into();
+                    if let Some(removed) = self.held_removed_ice_candidates.get_mut(&connection) {
+                        removed.remove(&candidate);
+                    }
+                    self.held_added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate.into());
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
                     candidate,
                 } if !self.portal_connected => {
-                    // Never signalled while held, so just drop it from the pending set.
-                    if let Some(held) = self.held_ice_candidates.get_mut(&connection) {
-                        held.remove(&candidate.into());
+                    let candidate = candidate.into();
+                    let was_held_add = self
+                        .held_added_ice_candidates
+                        .get_mut(&connection)
+                        .is_some_and(|added| added.remove(&candidate));
+
+                    // Only signal the removal for candidates the peer already learned.
+                    // One we were still holding back was never signalled, so cancelling
+                    // it locally is enough.
+                    if !was_held_add {
+                        self.held_removed_ice_candidates
+                            .entry(connection)
+                            .or_default()
+                            .insert(candidate);
                     }
                 }
                 snownet::Event::NewIceCandidate {
@@ -2280,10 +2305,10 @@ impl ClientState {
 
     /// Records whether we currently have a live connection to the portal.
     ///
-    /// While disconnected, ICE candidates are held back (see [`Self::held_ice_candidates`]).
-    /// On the disconnected -> connected edge, the held candidates are flushed to their peers
-    /// as a single `AddedIceCandidates` per connection so a peer we roamed away from learns
-    /// our new addresses.
+    /// While disconnected, ICE candidate changes are held back. On the disconnected ->
+    /// connected edge, the held changes are flushed to their peers, one batch per
+    /// connection, so a peer we roamed away from learns our new addresses and forgets
+    /// the ones that became unreachable.
     pub fn set_portal_connected(&mut self, connected: bool) {
         let reconnected = connected && !self.portal_connected;
         self.portal_connected = connected;
@@ -2292,13 +2317,25 @@ impl ClientState {
             return;
         }
 
-        for (conn_id, candidates) in std::mem::take(&mut self.held_ice_candidates) {
+        for (conn_id, candidates) in std::mem::take(&mut self.held_added_ice_candidates) {
             if candidates.is_empty() {
                 continue;
             }
 
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                });
+        }
+
+        for (conn_id, candidates) in std::mem::take(&mut self.held_removed_ice_candidates) {
+            if candidates.is_empty() {
+                continue;
+            }
+
+            self.buffered_events
+                .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
                     candidates,
                 });
