@@ -98,12 +98,12 @@ internal class SettingsActivity : AppCompatActivity() {
             }.attach()
 
             val isUserSignedIn = intent.getBooleanExtra("isUserSignedIn", false)
-            if (isUserSignedIn) {
-                btSaveSettings.setOnClickListener {
+            btSaveSettings.setOnClickListener {
+                // The tunnel service applies the log filter live once it's persisted, so only warn
+                // about a re-login when a setting that actually invalidates the session changed.
+                if (isUserSignedIn && viewModel.requiresReLogin()) {
                     showSaveWarningDialog()
-                }
-            } else {
-                btSaveSettings.setOnClickListener {
+                } else {
                     viewModel.onSaveSettingsCompleted()
                 }
             }
