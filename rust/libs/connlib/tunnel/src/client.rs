@@ -588,7 +588,14 @@ impl ClientState {
         };
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-        let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
+
+        // Recursive DNS queries we tunnel to upstream resolvers are internal
+        // traffic and never become flows either; their responses are handed to
+        // the DNS clients before any flow data is recorded.
+        let is_recursive_dns_query = self.udp_dns_client.owns_outbound(&packet)
+            || self.tcp_dns_client.owns_outbound(&packet);
+        let _guard = (!is_recursive_dns_query)
+            .then(|| self.flow_tracker.begin_tun_packet(&packet, now));
 
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;

@@ -202,6 +202,29 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         has_socket
     }
 
+    /// Checks whether the given outbound packet belongs to one of our upstream connections.
+    ///
+    /// Matches packets from our source interface to a connected DNS resolver,
+    /// i.e. the reverse direction of [`Client::accepts`].
+    pub fn owns_outbound(&self, packet: &IpPacket) -> bool {
+        let Some((ipv4_source, ipv6_source)) = self.source_ips else {
+            return false;
+        };
+
+        match packet.source() {
+            IpAddr::V4(v4) if v4 != ipv4_source => return false,
+            IpAddr::V6(v6) if v6 != ipv6_source => return false,
+            IpAddr::V4(_) | IpAddr::V6(_) => {}
+        }
+
+        let Some(tcp) = packet.as_tcp() else {
+            return false;
+        };
+
+        self.sockets_by_remote
+            .contains_key(&SocketAddr::new(packet.destination(), tcp.destination_port()))
+    }
+
     /// Handle the [`IpPacket`].
     ///
     /// This function only inserts the packet into a buffer.
