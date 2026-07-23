@@ -93,6 +93,73 @@ defmodule Portal.Queue.CallbacksTest do
       assert_receive {:confirm_session_durability, ^session_ref}
     end
 
+    test "a same-batch firezone_id collision fails only the losing merge" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_a = client_fixture(account: account, actor: actor, firezone_id: "fz-a")
+      client_b = client_fixture(account: account, actor: actor, firezone_id: "fz-b")
+      token_a = client_token_fixture(account: account, actor: actor)
+      token_b = client_token_fixture(account: account, actor: actor)
+      ref_a = make_ref()
+      ref_b = make_ref()
+
+      :ok = PG.register(client_a.id)
+      :ok = PG.register(client_b.id)
+
+      older = DateTime.add(DateTime.utc_now(), -60, :second)
+      newer = DateTime.utc_now()
+
+      base = %{
+        account_id: account.id,
+        actor_id: actor.id,
+        # Both entries propose the same previously unused firezone_id.
+        firezone_id: "fz-shared",
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0"
+      }
+
+      entry_a =
+        {Map.merge(base, %{
+           session_ref: ref_a,
+           device_id: client_a.id,
+           client_token_id: token_a.id,
+           inserted_at: older
+         }), %{subject: %{"actor_id" => actor.id}, timestamp: older}}
+
+      entry_b =
+        {Map.merge(base, %{
+           session_ref: ref_b,
+           device_id: client_b.id,
+           client_token_id: token_b.id,
+           inserted_at: newer
+         }), %{subject: %{"actor_id" => actor.id}, timestamp: newer}}
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          # Both sessions land; only the losing identity merge is skipped.
+          assert 2 = on_flush.([entry_a, entry_b])
+        end)
+
+      assert log =~ "another device in the same batch claims this firezone_id"
+
+      device_a = Repo.get_by!(Device, id: client_a.id, account_id: account.id)
+      device_b = Repo.get_by!(Device, id: client_b.id, account_id: account.id)
+
+      # The newest session wins the identifier; the loser keeps its old one.
+      assert device_b.firezone_id == "fz-shared"
+      assert device_a.firezone_id == "fz-a"
+
+      # Both sessions persisted and confirmed durability.
+      assert device_a.client_token_id == token_a.id
+      assert device_b.client_token_id == token_b.id
+      assert_receive {:confirm_session_durability, ^ref_a}
+      assert_receive {:confirm_session_durability, ^ref_b}
+    end
+
     test "skips a conflicting firezone_id merge but keeps the session" do
       account = account_fixture()
       actor = actor_fixture(account: account)

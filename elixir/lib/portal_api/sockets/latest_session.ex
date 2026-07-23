@@ -164,7 +164,20 @@ defmodule PortalAPI.Sockets.LatestSession do
     def update_devices([], _token_field), do: MapSet.new()
 
     def update_devices(rows, token_field) do
-      rows = strip_conflicting_firezone_ids(rows)
+      do_update_devices(rows, token_field, _retries_left = 1)
+    end
+
+    # The probe-then-update window is not atomic: a flush on another node can
+    # win a proposed firezone_id in between, so the bulk UPDATE can still hit
+    # the unique index. Re-probing (which then sees the winner and strips the
+    # loser) and retrying once resolves the collision at the entry level
+    # instead of failing every session in the batch; anything beyond that is
+    # left to the caller's batch-level rescue.
+    defp do_update_devices(rows, token_field, retries_left) do
+      rows =
+        rows
+        |> dedupe_proposed_firezone_ids()
+        |> strip_conflicting_firezone_ids()
 
       set =
         [
@@ -197,6 +210,62 @@ defmodule PortalAPI.Sockets.LatestSession do
         |> Safe.update_all([])
 
       MapSet.new(ids)
+    rescue
+      error in Postgrex.Error ->
+        if retries_left > 0 and unique_violation?(error) do
+          do_update_devices(rows, token_field, retries_left - 1)
+        else
+          reraise error, __STACKTRACE__
+        end
+    end
+
+    defp unique_violation?(%Postgrex.Error{postgres: %{code: :unique_violation}}), do: true
+    defp unique_violation?(_error), do: false
+
+    # Two rows in the same batch can propose the same previously unused
+    # {account_id, actor_id, firezone_id}: both would pass the persisted-row
+    # probe and the bulk UPDATE would violate the unique index, failing every
+    # session in the batch. The newest session wins the identifier (device_id
+    # tie-break keeps it deterministic); losers keep their session but skip
+    # the identity change, exactly like a persisted-row conflict.
+    defp dedupe_proposed_firezone_ids(rows) do
+      losers =
+        rows
+        |> Enum.filter(&(not is_nil(&1.firezone_id) and not is_nil(&1.actor_id)))
+        |> Enum.group_by(&{&1.account_id, &1.actor_id, &1.firezone_id})
+        |> Enum.flat_map(fn {_key, contenders} ->
+          contenders |> sort_newest_first() |> tl()
+        end)
+
+      loser_ids = MapSet.new(losers, & &1.device_id)
+
+      for loser <- losers do
+        Logger.warning(
+          "Skipping firezone_id merge during flush: another device in the same batch claims this firezone_id",
+          device_id: loser.device_id,
+          firezone_id: loser.firezone_id
+        )
+      end
+
+      Enum.map(rows, fn row ->
+        if MapSet.member?(loser_ids, row.device_id) do
+          %{row | firezone_id: nil}
+        else
+          row
+        end
+      end)
+    end
+
+    defp sort_newest_first([single]), do: [single]
+
+    defp sort_newest_first(contenders) do
+      Enum.sort(contenders, fn a, b ->
+        case DateTime.compare(a.last_seen_at, b.last_seen_at) do
+          :gt -> true
+          :lt -> false
+          :eq -> a.device_id >= b.device_id
+        end
+      end)
     end
 
     # A merged firezone_id can collide with another device row of the same
