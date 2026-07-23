@@ -25,6 +25,7 @@ mod icmp_error_hosts;
 mod ref_client;
 mod ref_gateway;
 mod reference;
+mod resource;
 mod sim_client;
 mod sim_gateway;
 mod sim_net;

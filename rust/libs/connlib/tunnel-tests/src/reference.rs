@@ -13,9 +13,11 @@ use std::{
     fmt,
     net::{IpAddr, SocketAddr},
 };
+use tunnel::dns;
 use tunnel::dns::is_subdomain;
 use tunnel::messages::Filter;
-use tunnel::{self as client, dns};
+
+use crate::resource as client;
 
 /// The reference state machine of the tunnel.
 ///

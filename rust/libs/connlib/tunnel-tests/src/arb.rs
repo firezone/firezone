@@ -36,11 +36,9 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use tunnel::MaliciousBehaviour;
 use tunnel::dns;
 use tunnel::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember};
-use tunnel::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, MaliciousBehaviour,
-};
 
 use crate::dns_records::DnsRecords;
 use crate::flux_capacitor::FluxCapacitor;
@@ -48,6 +46,10 @@ use crate::icmp_error_hosts::IcmpErrorHosts;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::{PrivateKey, ReferenceState};
+use crate::resource::{
+    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource,
+    StaticDevicePoolResource,
+};
 use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::{StaticDevicePoolPlan, StubPortal};
 use crate::sut::TunnelTest;
@@ -2029,7 +2031,7 @@ fn arb_ptr_query_ip(g: &mut Gen) -> IpAddr {
 fn arb_static_pool_members(
     g: &mut Gen,
     state: &ReferenceState,
-    pool: &tunnel::StaticDevicePoolResource,
+    pool: &StaticDevicePoolResource,
 ) -> Vec<DevicePoolMember> {
     let online_clients: Vec<(ClientId, Ipv4Network, Ipv6Network)> = state
         .clients
