@@ -131,7 +131,9 @@ impl<'a, 'u> Gen<'a, 'u> {
     fn new(u: &'a mut Unstructured<'u>) -> Self {
         Self {
             u,
-            socket_ip4: SubnetCursor::<Ipv4Addr>::over("203.0.113.0/24".parse().unwrap()),
+            socket_ip4: SubnetCursor::<Ipv4Addr>::over(
+                "203.0.113.0/24".parse::<Ipv4Network>().unwrap(),
+            ),
             socket_ip6: SubnetCursor::<Ipv6Addr>::over(
                 Ipv6Network::new_truncate(
                     Ipv6Addr::new(0x2001, 0xDB80, 0x1010, 0x1010, 0, 0, 0, 0),
@@ -139,8 +141,12 @@ impl<'a, 'u> Gen<'a, 'u> {
                 )
                 .unwrap(),
             ),
-            nat_ip4: SubnetCursor::<Ipv4Addr>::over("198.51.100.0/24".parse().unwrap()),
-            do53_ip4: SubnetCursor::<Ipv4Addr>::over("192.18.0.0/24".parse().unwrap()),
+            nat_ip4: SubnetCursor::<Ipv4Addr>::over(
+                "198.51.100.0/24".parse::<Ipv4Network>().unwrap(),
+            ),
+            do53_ip4: SubnetCursor::<Ipv4Addr>::over(
+                "192.18.0.0/24".parse::<Ipv4Network>().unwrap(),
+            ),
             do53_ip6: SubnetCursor::<Ipv6Addr>::over(
                 Ipv6Network::new_truncate(
                     Ipv6Addr::new(0x2001, 0xDB80, 0x53, 0x53, 0, 0, 0, 0),
@@ -267,7 +273,7 @@ impl<'a, 'u> Gen<'a, 'u> {
         let n = self.count(lo, hi);
         (0..n)
             .map(|_| self.u.int_in_range(b'a'..=b'z').unwrap_or(b'a') as char)
-            .collect()
+            .collect::<String>()
     }
 }
 
@@ -349,24 +355,28 @@ fn arb_initial_state(g: &mut Gen, start: Instant) -> ReferenceState {
     let icmp_error_hosts = arb_icmp_error_hosts(g, &dns_resource_records, start);
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts, start);
 
-    let mut global_dns_records = arb_global_dns_records(g, start);
-    global_dns_records.merge(dns_resource_records);
+    let global_dns_records =
+        merge_dns_records(arb_global_dns_records(g, start), dns_resource_records);
 
     // Rebuild the routing table. Uniqueness is structural, so this never rejects;
-    // a debug_assert guards against accidental collisions.
-    let mut network = RoutingTable::default();
-    for (id, host) in &clients {
-        let ok = network.add_host(*id, host);
-        debug_assert!(ok, "client socket IPs must be unique by construction");
-    }
-    for (id, host) in &gateways {
+    // debug assertions guard against accidental collisions.
+    let network = clients
+        .iter()
+        .fold(RoutingTable::default(), |mut network, (id, host)| {
+            let ok = network.add_host(*id, host);
+            debug_assert!(ok, "client socket IPs must be unique by construction");
+            network
+        });
+    let network = gateways.iter().fold(network, |mut network, (id, host)| {
         let ok = network.add_host(*id, host);
         debug_assert!(ok, "gateway socket IPs must be unique by construction");
-    }
-    for (id, host) in &relays {
+        network
+    });
+    let network = relays.iter().fold(network, |mut network, (id, host)| {
         let ok = network.add_host(*id, host);
         debug_assert!(ok, "relay socket IPs must be unique by construction");
-    }
+        network
+    });
 
     ReferenceState::from_parts(
         clients,
@@ -381,60 +391,63 @@ fn arb_initial_state(g: &mut Gen, start: Instant) -> ReferenceState {
 }
 
 fn arb_stub_portal(g: &mut Gen) -> StubPortal {
-    // Sites: 2..=4, first one becomes the Internet site.
-    let n_sites = g.count(2, 4);
-    let mut sites: Vec<Site> = (0..n_sites)
+    let internet_site = Site {
+        id: g.fresh_site_id(),
+        name: "Internet".to_owned(),
+    };
+    let regular_sites = (0..g.count(1, 3))
         .map(|_| Site {
             id: g.fresh_site_id(),
             name: g.lower_ascii(4, 10),
         })
-        .collect();
-    let mut internet_site = sites.remove(0);
-    internet_site.name = "Internet".to_owned();
-    let regular_sites = sites;
+        .collect::<Vec<_>>();
 
     // Clients: exactly 2.
-    let clients: BTreeSet<ClientId> = (0..2).map(|_| g.fresh_client_id()).collect();
+    let clients = (0..2).map(|_| g.fresh_client_id()).collect::<BTreeSet<_>>();
 
     // CIDR resources: 1..=4 (1..5).
     let n_cidr = g.count(1, 4);
-    let mut cidr_resources: BTreeSet<CidrResource> = BTreeSet::new();
-    for _ in 0..n_cidr {
-        let site = pick_site(g, &regular_sites);
-        cidr_resources.insert(arb_cidr_resource(g, vec![site]));
-    }
+    let cidr_resources = (0..n_cidr)
+        .map(|_| {
+            let site = pick_site(g, &regular_sites);
+            arb_cidr_resource(g, vec![site])
+        })
+        .collect::<BTreeSet<_>>();
 
     // DNS resources: 1..=4, each non-wildcard / `*.` / `**.`.
     let n_dns = g.count(1, 4);
-    let mut dns_resources: BTreeSet<DnsResource> = BTreeSet::new();
-    for _ in 0..n_dns {
-        let site = pick_site(g, &regular_sites);
-        dns_resources.insert(arb_dns_resource(g, vec![site]));
-    }
+    let dns_resources = (0..n_dns)
+        .map(|_| {
+            let site = pick_site(g, &regular_sites);
+            arb_dns_resource(g, vec![site])
+        })
+        .collect::<BTreeSet<_>>();
 
     // Dynamic device pool resources: 0..=2.
     let n_pool = g.count(0, 2);
-    let mut device_pool_resources: BTreeSet<DynamicDevicePoolResource> = BTreeSet::new();
-    for _ in 0..n_pool {
-        device_pool_resources.insert(arb_dynamic_device_pool_resource(g));
-    }
+    let device_pool_resources = (0..n_pool)
+        .map(|_| arb_dynamic_device_pool_resource(g))
+        .collect::<BTreeSet<_>>();
 
     // Static device pool plans: 0..=3.
     let n_static = g.count(0, 3);
-    let mut static_device_pool_plans = Vec::new();
-    for _ in 0..n_static {
-        static_device_pool_plans.push(arb_static_device_pool_plan(g));
-    }
+    let static_device_pool_plans = (0..n_static)
+        .map(|_| arb_static_device_pool_plan(g))
+        .collect::<Vec<_>>();
 
     let internet_resource = arb_internet_resource(g, vec![internet_site.clone()]);
 
     // Gateways per site: 1..=3 for each (Internet + regular) site.
-    let mut gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>> = BTreeMap::new();
-    for site in std::iter::once(&internet_site).chain(regular_sites.iter()) {
-        let n_gw = g.count(1, 3);
-        let gws: BTreeSet<GatewayId> = (0..n_gw).map(|_| g.fresh_gateway_id()).collect();
-        gateways_by_site.insert(site.id, gws);
-    }
+    let gateways_by_site = std::iter::once(&internet_site)
+        .chain(&regular_sites)
+        .map(|site| {
+            let n_gw = g.count(1, 3);
+            let gateways = (0..n_gw)
+                .map(|_| g.fresh_gateway_id())
+                .collect::<BTreeSet<_>>();
+            (site.id, gateways)
+        })
+        .collect::<BTreeMap<_, _>>();
 
     let gateway_selector = g.u32();
 
@@ -444,34 +457,51 @@ fn arb_stub_portal(g: &mut Gen) -> StubPortal {
     // Extra (overlapping) resources, mirroring `extra_cidr_resources` /
     // `extra_dns_resources`: each existing resource has a 50% chance of
     // spawning an overlapping sibling.
-    let extra_cidr = arb_extra_cidr_resources(g, &cidr_resources);
-    let extra_dns = arb_extra_dns_resources(g, &dns_resources);
+    let extra_cidr_resources = arb_extra_cidr_resources(g, &cidr_resources);
+    let extra_dns_resources = arb_extra_dns_resources(g, &dns_resources);
 
     // Search domain derived from the (pre-extra) DNS resources.
     let search_domain = arb_search_domain(g, &dns_resources);
 
-    cidr_resources.extend(extra_cidr);
-    dns_resources.extend(extra_dns);
-
     // Do53-coverage augmentation: if a CIDR resource covers an upstream Do53
     // server, in 80% of cases allow udp/53 + tcp/53 through it.
-    let cidr_resources: BTreeSet<CidrResource> = cidr_resources
+    let cidr_resources = cidr_resources
         .into_iter()
-        .map(|mut r| {
-            let covers_do53 = upstream_do53.iter().any(|s| r.address.contains(s.ip));
-            if covers_do53 && g.flip(80) {
-                r.filters.push(Filter::Udp(PortRange {
-                    port_range_start: 53,
-                    port_range_end: 53,
-                }));
-                r.filters.push(Filter::Tcp(PortRange {
-                    port_range_start: 53,
-                    port_range_end: 53,
-                }));
+        .chain(extra_cidr_resources)
+        .map(|resource| {
+            let filters = resource
+                .filters
+                .iter()
+                .copied()
+                .chain(
+                    (upstream_do53
+                        .iter()
+                        .any(|server| resource.address.contains(server.ip))
+                        && g.flip(80))
+                    .then_some([
+                        Filter::Udp(PortRange {
+                            port_range_start: 53,
+                            port_range_end: 53,
+                        }),
+                        Filter::Tcp(PortRange {
+                            port_range_start: 53,
+                            port_range_end: 53,
+                        }),
+                    ])
+                    .into_iter()
+                    .flatten(),
+                )
+                .collect::<Vec<_>>();
+            CidrResource {
+                filters,
+                ..resource
             }
-            r
         })
-        .collect();
+        .collect::<BTreeSet<_>>();
+    let dns_resources = dns_resources
+        .into_iter()
+        .chain(extra_dns_resources)
+        .collect::<BTreeSet<_>>();
 
     StubPortal::new(
         clients,
@@ -555,7 +585,9 @@ fn arb_dynamic_device_pool_resource(g: &mut Gen) -> DynamicDevicePoolResource {
 fn arb_static_device_pool_plan(g: &mut Gen) -> StaticDevicePoolPlan {
     let n_online_members = g.count(0, 2);
     let n_offline = g.count(0, 2);
-    let offline_members: Vec<ClientId> = (0..n_offline).map(|_| g.fresh_client_id()).collect();
+    let offline_members = (0..n_offline)
+        .map(|_| g.fresh_client_id())
+        .collect::<Vec<_>>();
     StaticDevicePoolPlan {
         id: g.fresh_resource_id(),
         name: g.lower_ascii(4, 10),
@@ -565,77 +597,82 @@ fn arb_static_device_pool_plan(g: &mut Gen) -> StaticDevicePoolPlan {
     }
 }
 
-/// Mirrors `extra_cidr_resources`: 50% per existing resource, either same
-/// address or a more-specific subnet within it.
+/// For half of the existing resources, generate a sibling with the same address
+/// or a more-specific subnet within it.
 fn arb_extra_cidr_resources(g: &mut Gen, existing: &BTreeSet<CidrResource>) -> Vec<CidrResource> {
-    let mut out = Vec::new();
-    for resource in existing {
-        if !g.flip(50) {
-            continue;
-        }
-        let extra_bits = match resource.address {
-            IpNetwork::V4(n) => (32 - n.netmask()) as usize,
-            IpNetwork::V6(n) => (128 - n.netmask()) as usize,
-        };
-        let address = if extra_bits > 0 && g.flip(50) {
-            arb_more_specific_subnet(g, resource.address, extra_bits)
-        } else {
-            resource.address
-        };
-        out.push(CidrResource {
-            id: g.fresh_resource_id(),
-            address,
-            name: g.lower_ascii(4, 10),
-            address_description: None,
-            sites: resource.sites.clone(),
-            filters: arb_filters(g),
-        });
-    }
-    out
+    existing
+        .iter()
+        .filter_map(|resource| {
+            if !g.flip(50) {
+                return None;
+            }
+
+            let extra_bits = match resource.address {
+                IpNetwork::V4(network) => (32 - network.netmask()) as usize,
+                IpNetwork::V6(network) => (128 - network.netmask()) as usize,
+            };
+            let address = if extra_bits > 0 && g.flip(50) {
+                arb_more_specific_subnet(g, resource.address, extra_bits)
+            } else {
+                resource.address
+            };
+            Some(CidrResource {
+                id: g.fresh_resource_id(),
+                address,
+                name: g.lower_ascii(4, 10),
+                address_description: None,
+                sites: resource.sites.clone(),
+                filters: arb_filters(g),
+            })
+        })
+        .collect::<Vec<_>>()
 }
 
-/// Mirrors `extra_dns_resources`: 50% per existing resource, a same-or-more
-/// specific address pattern.
+/// For half of the existing resources, generate a sibling with the same or a
+/// more-specific address pattern.
 fn arb_extra_dns_resources(g: &mut Gen, existing: &BTreeSet<DnsResource>) -> Vec<DnsResource> {
-    let mut out = Vec::new();
-    for resource in existing {
-        if !g.flip(50) {
-            continue;
-        }
+    existing
+        .iter()
+        .filter_map(|resource| {
+            if !g.flip(50) {
+                return None;
+            }
 
-        let address = &resource.address;
-        let mut candidates: Vec<String> = vec![address.clone()];
-        if let Some(base) = address.strip_prefix("**.") {
-            candidates.push(format!("*.{base}"));
-            candidates.push(format!("{}.{base}", g.lower_ascii(3, 6)));
-        } else if let Some(base) = address.strip_prefix("*.") {
-            candidates.push(format!("{}.{base}", g.lower_ascii(3, 6)));
-        }
+            let address = &resource.address;
+            let candidates = if let Some(base) = address.strip_prefix("**.") {
+                vec![
+                    address.clone(),
+                    format!("*.{base}"),
+                    format!("{}.{base}", g.lower_ascii(3, 6)),
+                ]
+            } else if let Some(base) = address.strip_prefix("*.") {
+                vec![address.clone(), format!("{}.{base}", g.lower_ascii(3, 6))]
+            } else {
+                vec![address.clone()]
+            };
+            let address = candidates[g.choose_index(candidates.len())].clone();
 
-        let idx = g.choose_index(candidates.len());
-        let new_address = candidates[idx].clone();
-
-        out.push(DnsResource {
-            id: g.fresh_resource_id(),
-            address: new_address,
-            name: g.lower_ascii(4, 10),
-            address_description: None,
-            sites: resource.sites.clone(),
-            ip_stack: resource.ip_stack,
-            filters: arb_filters(g),
-        });
-    }
-    out
+            Some(DnsResource {
+                id: g.fresh_resource_id(),
+                address,
+                name: g.lower_ascii(4, 10),
+                address_description: None,
+                sites: resource.sites.clone(),
+                ip_stack: resource.ip_stack,
+                filters: arb_filters(g),
+            })
+        })
+        .collect::<Vec<_>>()
 }
 
 fn arb_search_domain(g: &mut Gen, dns_resources: &BTreeSet<DnsResource>) -> Option<DomainName> {
-    let candidates: Vec<DomainName> = dns_resources
+    let candidates = dns_resources
         .iter()
         .filter_map(|r| {
             let (_, search) = r.address.split_once('.')?;
             DomainName::vec_from_str(search).ok()
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     if candidates.is_empty() || !g.flip(50) {
         return None;
@@ -649,12 +686,11 @@ fn arb_search_domain(g: &mut Gen, dns_resources: &BTreeSet<DnsResource>) -> Opti
 // ---------------------------------------------------------------------------
 
 fn arb_clients(g: &mut Gen, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
-    let mut clients = BTreeMap::new();
-    for (id, tun4, tun6) in portal.client_tunnel_ips() {
-        let host = arb_client_host(g, id, tun4, tun6);
-        clients.insert(id, host);
-    }
-    clients
+    portal
+        .client_tunnel_ips()
+        .into_iter()
+        .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
+        .collect::<BTreeMap<_, _>>()
 }
 
 fn arb_client_host(g: &mut Gen, id: ClientId, tun4: Ipv4Addr, tun6: Ipv6Addr) -> Host<RefClient> {
@@ -680,9 +716,11 @@ fn arb_client_host(g: &mut Gen, id: ClientId, tun4: Ipv4Addr, tun6: Ipv6Addr) ->
     let port = arb_listening_port(g);
     let latency = g.latency(250);
     let edge = arb_edge_config(g);
-    let mut host = Host::new(inner, latency, port, edge, g.nat_ip4.next());
-    host.update_interface(ip4, ip6);
-    host
+    with_interface(
+        Host::new(inner, latency, port, edge, g.nat_ip4.next()),
+        ip4,
+        ip6,
+    )
 }
 
 fn arb_gateways(
@@ -690,33 +728,39 @@ fn arb_gateways(
     portal: &StubPortal,
     start: Instant,
 ) -> BTreeMap<GatewayId, Host<RefGateway>> {
-    let mut gateways = BTreeMap::new();
-    for (id, tun4, tun6, site_id) in portal.gateway_tunnel_ips() {
-        // Gateways are always dual-stack on a fixed listening port (matching
-        // `ref_gateway_host`).
-        let site_specific = arb_site_specific_dns_records(g, portal, site_id, start);
-        let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
-        let latency = g.latency(200);
-        let edge = arb_edge_config(g);
-        let mut host = Host::new(inner, latency, 52625, edge, g.nat_ip4.next());
-        host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
-        gateways.insert(id, host);
-    }
-    gateways
+    portal
+        .gateway_tunnel_ips()
+        .into_iter()
+        .map(|(id, tun4, tun6, site_id)| {
+            // Gateways are always dual-stack on a fixed listening port.
+            let site_specific = arb_site_specific_dns_records(g, portal, site_id, start);
+            let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
+            let latency = g.latency(200);
+            let edge = arb_edge_config(g);
+            let host = Host::new(inner, latency, 52625, edge, g.nat_ip4.next());
+            let host = with_interface(host, Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
+            (id, host)
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 fn arb_relays(g: &mut Gen) -> BTreeMap<RelayId, Host<u64>> {
     let n = g.count(1, 2);
-    let mut relays = BTreeMap::new();
-    for _ in 0..n {
-        let id = g.fresh_relay_id();
-        let seed = g.u64();
-        let latency = g.latency(50);
-        let mut host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4.next());
-        host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
-        relays.insert(id, host);
-    }
-    relays
+    (0..n)
+        .map(|_| {
+            let id = g.fresh_relay_id();
+            let seed = g.u64();
+            let latency = g.latency(50);
+            let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4.next());
+            let host = with_interface(host, Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
+            (id, host)
+        })
+        .collect::<BTreeMap<_, _>>()
+}
+
+fn with_interface<T>(mut host: Host<T>, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Host<T> {
+    host.update_interface(ip4, ip6);
+    host
 }
 
 /// Network edge configurations worth varying in the system-level harness.
@@ -761,21 +805,11 @@ fn arb_listening_port(g: &mut Gen) -> u16 {
 // ---------------------------------------------------------------------------
 
 fn arb_dns_resource_records(g: &mut Gen, portal: &StubPortal, at: Instant) -> DnsRecords {
-    let mut map = DnsRecords::default();
-    for resource in portal.dns_resources() {
-        let address = resource.address;
-        match address.split_once('.') {
-            Some(("*" | "**", base)) => {
-                map.merge(arb_subdomain_records(g, base.to_owned(), at));
-            }
-            _ => {
-                let ips = arb_resolved_ips(g);
-                let domain: DomainName = address.parse().unwrap();
-                map.merge(DnsRecords::from([(domain, BTreeMap::from([(at, ips)]))]));
-            }
-        }
-    }
-    map
+    portal
+        .dns_resources()
+        .into_iter()
+        .map(|resource| arb_records_for_dns_resource(g, resource.address, at))
+        .fold(DnsRecords::default(), merge_dns_records)
 }
 
 /// Site-specific DNS records for a gateway: records for the DNS resources in
@@ -786,48 +820,47 @@ fn arb_site_specific_dns_records(
     site: SiteId,
     at: Instant,
 ) -> DnsRecords {
-    let mut map = DnsRecords::default();
-    for resource in portal.dns_resources() {
-        if !resource.sites.iter().any(|s| s.id == site) {
-            continue;
-        }
-        let address = resource.address;
-        match address.split_once('.') {
-            Some(("*" | "**", base)) => {
-                map.merge(arb_subdomain_records(g, base.to_owned(), at));
-            }
-            _ => {
-                let ips = arb_resolved_ips(g);
-                let domain: DomainName = address.parse().unwrap();
-                map.merge(DnsRecords::from([(domain, BTreeMap::from([(at, ips)]))]));
-            }
-        }
+    portal
+        .dns_resources()
+        .into_iter()
+        .filter(|resource| resource.sites.iter().any(|candidate| candidate.id == site))
+        .map(|resource| arb_records_for_dns_resource(g, resource.address, at))
+        .fold(DnsRecords::default(), merge_dns_records)
+}
+
+fn arb_records_for_dns_resource(g: &mut Gen, address: String, at: Instant) -> DnsRecords {
+    match address.split_once('.') {
+        Some(("*" | "**", base)) => arb_subdomain_records(g, base.to_owned(), at),
+        _ => DnsRecords::from([(
+            address.parse::<DomainName>().unwrap(),
+            BTreeMap::from([(at, arb_resolved_ips(g))]),
+        )]),
     }
-    map
+}
+
+fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
+    records.merge(next);
+    records
 }
 
 fn arb_subdomain_records(g: &mut Gen, base: String, at: Instant) -> DnsRecords {
     let n = g.count(1, 3);
-    let mut map = DnsRecords::default();
-    for _ in 0..n {
-        let label = g.lower_ascii(3, 6);
-        let domain: DomainName = format!("{label}.{base}").parse().unwrap();
-        let ips = arb_resolved_ips(g);
-        map.merge(DnsRecords::from([(domain, BTreeMap::from([(at, ips)]))]));
-    }
-    map
+    (0..n)
+        .map(|_| {
+            let label = g.lower_ascii(3, 6);
+            let domain = format!("{label}.{base}").parse::<DomainName>().unwrap();
+            (domain, BTreeMap::from([(at, arb_resolved_ips(g))]))
+        })
+        .collect::<DnsRecords>()
 }
 
 /// 1..=5 "real" IP records drawn from the small documentation ranges (kept small
 /// on purpose so two domains can share an IP).
 fn arb_resolved_ips(g: &mut Gen) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
-    let mut set = BTreeSet::new();
-    for _ in 0..n {
-        let ip = arb_dns_resource_ip(g);
-        set.insert(dns_types::records::ip(ip));
-    }
-    set
+    (0..n)
+        .map(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
+        .collect::<BTreeSet<_>>()
 }
 
 fn arb_dns_resource_ip(g: &mut Gen) -> IpAddr {
@@ -845,16 +878,14 @@ fn arb_dns_resource_ip(g: &mut Gen) -> IpAddr {
 /// Global DNS records: 0..=4 domains, each with 1..=5 records (IP or TXT).
 fn arb_global_dns_records(g: &mut Gen, at: Instant) -> DnsRecords {
     let n = g.count(0, 4);
-    let mut map = DnsRecords::default();
-    for _ in 0..n {
-        let domain: DomainName = arb_domain_name_string(g, 2, 3).parse().unwrap();
-        let records = arb_dns_record_set(g);
-        map.merge(DnsRecords::from([(
-            domain,
-            BTreeMap::from([(at, records)]),
-        )]));
-    }
-    map
+    (0..n)
+        .map(|_| {
+            let domain = arb_domain_name_string(g, 2, 3)
+                .parse::<DomainName>()
+                .unwrap();
+            (domain, BTreeMap::from([(at, arb_dns_record_set(g))]))
+        })
+        .collect::<DnsRecords>()
 }
 
 /// 1..=5 records, weighted 3:1 IP:TXT (matching `dns_record`).
@@ -867,62 +898,53 @@ fn arb_global_dns_records(g: &mut Gen, at: Instant) -> DnsRecords {
 /// addresses correspondingly exclude these ranges (see `arb_cidr_resource_address`).
 fn arb_dns_record_set(g: &mut Gen) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
-    let mut set = BTreeSet::new();
-    for _ in 0..n {
-        let record = if g.flip(75) {
-            dns_types::records::ip(arb_dns_resource_ip(g))
-        } else {
-            // TXT: 6..=10 sections of 255 'a's. Build it directly.
+    (0..n)
+        .map(|_| {
+            if g.flip(75) {
+                return dns_types::records::ip(arb_dns_resource_ip(g));
+            }
+
+            // TXT: 6..=10 sections of 255 'a's.
             let sections = g.count(6, 10);
-            let mut content = Vec::new();
-            for _ in 0..sections {
-                content.push(255u8);
-                content.extend(std::iter::repeat_n(b'a', 255));
-            }
-            match dns_types::records::txt(content) {
-                Ok(r) => r,
-                Err(_) => dns_types::records::ip(arb_dns_resource_ip(g)),
-            }
-        };
-        set.insert(record);
-    }
-    set
+            let content = (0..sections)
+                .flat_map(|_| std::iter::once(255u8).chain(std::iter::repeat_n(b'a', 255)))
+                .collect::<Vec<_>>();
+            dns_types::records::txt(content)
+                .unwrap_or_else(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
+        })
+        .collect::<BTreeSet<_>>()
 }
 
 // ---------------------------------------------------------------------------
 // ICMP error hosts (H1) + TCP resources
 // ---------------------------------------------------------------------------
 
-/// Pick *exactly* `floor(n/2)` of the (deduplicated) record IPs and assign each
-/// an ICMP error, matching `subsequence(ips, num_ips/2)` over a shuffle.
-///
-/// Implemented as a partial Fisher-Yates: we draw `floor(n/2)` distinct indices
-/// uniformly, which is the faithful by-construction analog (a uniform
-/// `floor(n/2)`-subset), not an independent keep-bit.
+/// Pick exactly half of the deduplicated record IPs and assign each an ICMP
+/// error. A partial Fisher-Yates shuffle selects a uniform subset.
 fn arb_icmp_error_hosts(g: &mut Gen, records: &DnsRecords, now: Instant) -> IcmpErrorHosts {
-    let mut ips: Vec<IpAddr> = records
+    let mut ips = records
         .ips_iter(now)
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .collect();
+        .collect::<Vec<_>>();
     let num_ips = ips.len();
     let pick = num_ips / 2;
 
-    let mut chosen = Vec::with_capacity(pick);
-    for i in 0..pick {
-        // Select from the remaining suffix `ips[i..]`, swap into position `i`.
-        let remaining = num_ips - i;
-        let j = i + g.choose_index(remaining);
-        ips.swap(i, j);
-        chosen.push(ips[i]);
-    }
+    let chosen = (0..pick)
+        .map(|i| {
+            let remaining = num_ips - i;
+            let j = i + g.choose_index(remaining);
+            ips.swap(i, j);
+            ips[i]
+        })
+        .collect::<Vec<_>>();
 
-    let inner: BTreeMap<IpAddr, crate::icmp_error_hosts::IcmpError> = chosen
+    let entries = chosen
         .into_iter()
         .map(|ip| (ip, arb_icmp_error(g)))
-        .collect();
+        .collect::<BTreeMap<_, _>>();
 
-    IcmpErrorHosts::from_entries(inner)
+    IcmpErrorHosts::from_entries(entries)
 }
 
 fn arb_icmp_error(g: &mut Gen) -> crate::icmp_error_hosts::IcmpError {
@@ -944,55 +966,52 @@ fn arb_tcp_resources(
     icmp_error_hosts: &IcmpErrorHosts,
     at: Instant,
 ) -> BTreeMap<DomainName, BTreeSet<SocketAddr>> {
-    let mut all_domains: Vec<DomainName> = records.domains_iter().collect();
+    let mut all_domains = records.domains_iter().collect::<Vec<_>>();
     if all_domains.is_empty() {
         return BTreeMap::new();
     }
 
     let n = g.count(1, all_domains.len());
-    let mut out: BTreeMap<DomainName, BTreeSet<SocketAddr>> = BTreeMap::new();
-    for i in 0..n {
-        let idx = i + g.choose_index(all_domains.len() - i);
-        all_domains.swap(i, idx);
-        let domain = all_domains[i].clone();
-        let port = g.u.int_in_range(1..=u16::MAX).unwrap_or(1);
+    (0..n)
+        .filter_map(|i| {
+            let idx = i + g.choose_index(all_domains.len() - i);
+            all_domains.swap(i, idx);
+            let domain = all_domains[i].clone();
+            let port = g.u.int_in_range(1..=u16::MAX).unwrap_or(1);
 
-        // Drop the domain if any of its IPs would produce an ICMP error.
-        if records
-            .domain_ips_iter(&domain, at)
-            .any(|ip| icmp_error_hosts.icmp_error_for_ip(ip).is_some())
-        {
-            continue;
-        }
+            let has_icmp_error = records
+                .domain_ips_iter(&domain, at)
+                .any(|ip| icmp_error_hosts.icmp_error_for_ip(ip).is_some());
+            if has_icmp_error {
+                return None;
+            }
 
-        let addresses: BTreeSet<SocketAddr> = records
-            .domain_ips_iter(&domain, at)
-            .map(|ip| SocketAddr::new(ip, port))
-            .collect();
-        if !addresses.is_empty() {
-            out.insert(domain, addresses);
-        }
-    }
-    out
+            let addresses = records
+                .domain_ips_iter(&domain, at)
+                .map(|ip| SocketAddr::new(ip, port))
+                .collect::<BTreeSet<_>>();
+            (!addresses.is_empty()).then_some((domain, addresses))
+        })
+        .collect::<BTreeMap<_, _>>()
 }
 
 // ---------------------------------------------------------------------------
 // DNS servers / upstreams / filters / addresses
 // ---------------------------------------------------------------------------
 
-/// At least one v4 and one v6 do53 server, then a subset (matching
-/// `system_dns_servers` = subsequence of `do53_servers`).
+/// Generate at least one IPv4 and one IPv6 Do53 server.
 fn arb_do53_pool(g: &mut Gen) -> Vec<IpAddr> {
     let n4 = g.count(1, 3);
     let n6 = g.count(1, 3);
-    let mut pool = Vec::new();
-    for _ in 0..n4 {
-        pool.push(IpAddr::V4(g.do53_ip4.next()));
-    }
-    for _ in 0..n6 {
-        pool.push(IpAddr::V6(g.do53_ip6.next()));
-    }
-    pool
+    (0..n4 + n6)
+        .map(|i| {
+            if i < n4 {
+                IpAddr::V4(g.do53_ip4.next())
+            } else {
+                IpAddr::V6(g.do53_ip6.next())
+            }
+        })
+        .collect::<Vec<_>>()
 }
 
 /// Per-element keep-bit subset of a fresh do53 pool that keeps at least one
@@ -1006,19 +1025,29 @@ fn arb_do53_subset(g: &mut Gen) -> Vec<IpAddr> {
         return Vec::new();
     }
 
-    let mut subset: Vec<IpAddr> = pool.iter().copied().filter(|_| g.bool()).collect();
-    for family_first in [
-        pool.iter().find(|ip| ip.is_ipv4()),
-        pool.iter().find(|ip| ip.is_ipv6()),
-    ] {
-        if let Some(ip) = family_first
-            && !subset.iter().any(|s| s.is_ipv4() == ip.is_ipv4())
-        {
-            subset.push(*ip);
-        }
-    }
+    let subset = pool
+        .iter()
+        .copied()
+        .filter(|_| g.bool())
+        .collect::<Vec<_>>();
+    let has_ipv4 = subset.iter().any(IpAddr::is_ipv4);
+    let has_ipv6 = subset.iter().any(IpAddr::is_ipv6);
 
     subset
+        .into_iter()
+        .chain(
+            pool.iter()
+                .find(|ip| ip.is_ipv4())
+                .filter(|_| !has_ipv4)
+                .copied(),
+        )
+        .chain(
+            pool.iter()
+                .find(|ip| ip.is_ipv6())
+                .filter(|_| !has_ipv6)
+                .copied(),
+        )
+        .collect::<Vec<_>>()
 }
 
 fn arb_system_dns_servers(g: &mut Gen) -> Vec<IpAddr> {
@@ -1029,28 +1058,28 @@ fn arb_upstream_do53_servers(g: &mut Gen) -> Vec<UpstreamDo53> {
     arb_do53_subset(g)
         .into_iter()
         .map(|ip| UpstreamDo53 { ip })
-        .collect()
+        .collect::<Vec<_>>()
 }
 
 fn arb_upstream_doh_servers(g: &mut Gen) -> Vec<UpstreamDoH> {
-    // 0..=1 DoH servers (btree_set(doh_server(), 0..2)).
+    // Generate at most one DoH server.
     let n = g.count(0, 1);
-    let mut out = Vec::new();
-    for _ in 0..n {
-        let url = match g.choose_index(4) {
-            0 => dns_types::DoHUrl::quad9(),
-            1 => dns_types::DoHUrl::cloudflare(),
-            2 => dns_types::DoHUrl::google(),
-            _ => dns_types::DoHUrl::opendns(),
-        };
-        out.push(UpstreamDoH { url });
-    }
-    out
+    (0..n)
+        .map(|_| {
+            let url = match g.choose_index(4) {
+                0 => dns_types::DoHUrl::quad9(),
+                1 => dns_types::DoHUrl::cloudflare(),
+                2 => dns_types::DoHUrl::google(),
+                _ => dns_types::DoHUrl::opendns(),
+            };
+            UpstreamDoH { url }
+        })
+        .collect::<Vec<_>>()
 }
 
 fn arb_filters(g: &mut Gen) -> Vec<Filter> {
     let n = g.count(0, 2);
-    (0..n).map(|_| arb_filter(g)).collect()
+    (0..n).map(|_| arb_filter(g)).collect::<Vec<_>>()
 }
 
 fn arb_filter(g: &mut Gen) -> Filter {
@@ -1088,8 +1117,10 @@ fn arb_ip_stack_kind(g: &mut Gen) -> IpStack {
 
 fn arb_domain_name_string(g: &mut Gen, lo: usize, hi: usize) -> String {
     let n = g.count(lo, hi);
-    let labels: Vec<String> = (0..n).map(|_| g.lower_ascii(3, 6)).collect();
-    labels.join(".")
+    (0..n)
+        .map(|_| g.lower_ascii(3, 6))
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 /// The IP ranges that DNS records (resource + global) resolve into, plus the host
@@ -1103,10 +1134,10 @@ fn arb_domain_name_string(g: &mut Gen, lo: usize, hi: usize) -> String {
 fn cidr_reserved_v4() -> [Ipv4Network; 4] {
     use tunnel::DNS_SENTINELS_V4;
     [
-        "192.0.2.0/24".parse().unwrap(),    // TEST-NET-1 (documentation)
-        "198.51.100.0/24".parse().unwrap(), // TEST-NET-2 (DNS resource real IPs)
-        "203.0.113.0/24".parse().unwrap(),  // TEST-NET-3 (host socket IPs)
-        DNS_SENTINELS_V4,                   // 100.100.111.0/24
+        "192.0.2.0/24".parse::<Ipv4Network>().unwrap(), // TEST-NET-1 (documentation)
+        "198.51.100.0/24".parse::<Ipv4Network>().unwrap(), // TEST-NET-2 (DNS resource real IPs)
+        "203.0.113.0/24".parse::<Ipv4Network>().unwrap(), // TEST-NET-3 (host socket IPs)
+        DNS_SENTINELS_V4,                               // 100.100.111.0/24
     ]
 }
 
@@ -1121,16 +1152,16 @@ fn cidr_reserved_v6() -> [Ipv6Network; 3] {
     ]
 }
 
-fn v4_overlaps_reserved(net: Ipv4Network) -> bool {
-    cidr_reserved_v4()
-        .iter()
-        .any(|r| r.contains(net.network_address()) || net.contains(r.network_address()))
+fn overlapping_reserved_v4(net: Ipv4Network) -> Option<Ipv4Network> {
+    cidr_reserved_v4().into_iter().find(|reserved| {
+        reserved.contains(net.network_address()) || net.contains(reserved.network_address())
+    })
 }
 
-fn v6_overlaps_reserved(net: Ipv6Network) -> bool {
-    cidr_reserved_v6()
-        .iter()
-        .any(|r| r.contains(net.network_address()) || net.contains(r.network_address()))
+fn overlapping_reserved_v6(net: Ipv6Network) -> Option<Ipv6Network> {
+    cidr_reserved_v6().into_iter().find(|reserved| {
+        reserved.contains(net.network_address()) || net.contains(reserved.network_address())
+    })
 }
 
 /// A CIDR address outside all reserved + documentation + DNS + sentinel ranges
@@ -1146,39 +1177,30 @@ fn arb_cidr_resource_address(g: &mut Gen) -> IpNetwork {
     match ip {
         IpAddr::V4(v4) => {
             let netmask = 32 - mask_offset as u8;
-            let mut net = Ipv4Network::new_truncate(v4, netmask).unwrap();
-            for _ in 0..cidr_reserved_v4().len() {
-                if !v4_overlaps_reserved(net) {
-                    break;
-                }
-                // Advance past the overlapping reserved range, then re-truncate.
-                let reserved = *cidr_reserved_v4()
-                    .iter()
-                    .find(|r| {
-                        r.contains(net.network_address()) || net.contains(r.network_address())
-                    })
-                    .unwrap();
-                let next = u32::from(reserved.broadcast_address()).wrapping_add(1);
-                net = Ipv4Network::new_truncate(Ipv4Addr::from(next), netmask).unwrap();
-            }
+            let net = std::iter::successors(
+                Some(Ipv4Network::new_truncate(v4, netmask).unwrap()),
+                |network| {
+                    let reserved = overlapping_reserved_v4(*network)?;
+                    let next = u32::from(reserved.broadcast_address()).wrapping_add(1);
+                    Ipv4Network::new_truncate(Ipv4Addr::from(next), netmask).ok()
+                },
+            )
+            .find(|network| overlapping_reserved_v4(*network).is_none())
+            .expect("reserved IPv4 ranges are finite");
             IpNetwork::V4(net)
         }
         IpAddr::V6(v6) => {
             let netmask = 128 - mask_offset as u8;
-            let mut net = Ipv6Network::new_truncate(v6, netmask).unwrap();
-            for _ in 0..cidr_reserved_v6().len() {
-                if !v6_overlaps_reserved(net) {
-                    break;
-                }
-                let reserved = *cidr_reserved_v6()
-                    .iter()
-                    .find(|r| {
-                        r.contains(net.network_address()) || net.contains(r.network_address())
-                    })
-                    .unwrap();
-                let next = u128::from(reserved.last_address()).wrapping_add(1);
-                net = Ipv6Network::new_truncate(Ipv6Addr::from(next), netmask).unwrap();
-            }
+            let net = std::iter::successors(
+                Some(Ipv6Network::new_truncate(v6, netmask).unwrap()),
+                |network| {
+                    let reserved = overlapping_reserved_v6(*network)?;
+                    let next = u128::from(reserved.last_address()).wrapping_add(1);
+                    Ipv6Network::new_truncate(Ipv6Addr::from(next), netmask).ok()
+                },
+            )
+            .find(|network| overlapping_reserved_v6(*network).is_none())
+            .expect("reserved IPv6 ranges are finite");
             IpNetwork::V6(net)
         }
     }
@@ -1217,10 +1239,14 @@ fn arb_non_reserved_ip(g: &mut Gen) -> IpAddr {
             IPV4_RESOURCES,
             IPV4_TUNNEL,
         ];
-        let mut ip = Ipv4Addr::from(g.u32());
-        while let Some(range) = undesired.iter().find(|r| r.contains(ip)) {
-            ip = Ipv4Addr::from(u32::from(range.broadcast_address()).wrapping_add(1));
-        }
+        let ip = std::iter::successors(Some(Ipv4Addr::from(g.u32())), |ip| {
+            let range = undesired.iter().find(|range| range.contains(*ip))?;
+            Some(Ipv4Addr::from(
+                u32::from(range.broadcast_address()).wrapping_add(1),
+            ))
+        })
+        .find(|ip| undesired.iter().all(|range| !range.contains(*ip)))
+        .expect("undesired IPv4 ranges are finite");
         IpAddr::V4(ip)
     } else {
         let undesired = [
@@ -1232,10 +1258,14 @@ fn arb_non_reserved_ip(g: &mut Gen) -> IpAddr {
         ];
         let hi = (g.u64() as u128) << 64;
         let lo = g.u64() as u128;
-        let mut ip = Ipv6Addr::from(hi | lo);
-        while let Some(range) = undesired.iter().find(|r| r.contains(ip)) {
-            ip = Ipv6Addr::from(u128::from(range.last_address()).wrapping_add(1));
-        }
+        let ip = std::iter::successors(Some(Ipv6Addr::from(hi | lo)), |ip| {
+            let range = undesired.iter().find(|range| range.contains(*ip))?;
+            Some(Ipv6Addr::from(
+                u128::from(range.last_address()).wrapping_add(1),
+            ))
+        })
+        .find(|ip| undesired.iter().all(|range| !range.contains(*ip)))
+        .expect("undesired IPv6 ranges are finite");
         IpAddr::V6(ip)
     }
 }
@@ -1280,52 +1310,40 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
     // destination, protocol and fields from subsequent bytes.
-    let mut legal: Vec<(TransitionKind, u32)> = Vec::new();
     use TransitionKind as K;
 
-    legal.push((K::UpdateSystemDnsServers, 1));
-    legal.push((K::UpdateUpstreamDo53Servers, 1));
-    legal.push((K::UpdateUpstreamDoHServers, 1));
-    legal.push((K::UpdateUpstreamSearchDomain, 1));
-    legal.push((K::RoamClient, 1));
-    legal.push((K::DeployNewRelays, 1));
-    legal.push((K::PartitionRelaysFromPortal, 1));
-    legal.push((K::RebootRelaysWhilePartitioned, 1));
-    legal.push((K::Idle, 1));
-
-    if !state.all_resources_not_known_to_client().is_empty() {
-        legal.push((K::AddResource, 5));
-    }
-    if !state.cidr_resources_on_client().is_empty() {
-        legal.push((K::ChangeCidrResourceAddress, 1));
-    }
-    if !state.cidr_and_dns_resources_on_client().is_empty() && !state.regular_sites().is_empty() {
-        legal.push((K::MoveResourceToNewSite, 1));
-    }
-    if !state.resources_with_filters_on_client().is_empty() {
-        legal.push((K::ChangeFiltersOfResource, 1));
-    }
-    if !state.all_resource_ids().is_empty() {
-        legal.push((K::RemoveResource, 1));
-        legal.push((K::DeauthorizeWhileGatewayIsPartitioned, 1));
-    }
-    if !state.all_client_ids().is_empty() {
-        legal.push((K::ReconnectPortal, 1));
-        legal.push((K::RestartClient, 1));
-        legal.push((K::SetInternetResourceState, 1));
-    }
-    if !state.dns_resource_domains().is_empty() {
-        legal.push((K::UpdateDnsRecords, 5));
-    }
-    if !packet_targets.is_empty() {
-        legal.push((K::SendPacket, 50));
-    }
-    if !dns_query_targets.is_empty() {
-        legal.push((K::SendDnsQuery, 10));
-    }
-    if !state.static_device_pools_on_any_client().is_empty() {
-        legal.push((K::UpdateStaticDevicePool, 2));
-    }
+    let has_resources = !state.all_resource_ids().is_empty();
+    let has_clients = !state.all_client_ids().is_empty();
+    let legal = [
+        Some((K::UpdateSystemDnsServers, 1)),
+        Some((K::UpdateUpstreamDo53Servers, 1)),
+        Some((K::UpdateUpstreamDoHServers, 1)),
+        Some((K::UpdateUpstreamSearchDomain, 1)),
+        Some((K::RoamClient, 1)),
+        Some((K::DeployNewRelays, 1)),
+        Some((K::PartitionRelaysFromPortal, 1)),
+        Some((K::RebootRelaysWhilePartitioned, 1)),
+        Some((K::Idle, 1)),
+        (!state.all_resources_not_known_to_client().is_empty()).then_some((K::AddResource, 5)),
+        (!state.cidr_resources_on_client().is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
+        (!state.cidr_and_dns_resources_on_client().is_empty() && !state.regular_sites().is_empty())
+            .then_some((K::MoveResourceToNewSite, 1)),
+        (!state.resources_with_filters_on_client().is_empty())
+            .then_some((K::ChangeFiltersOfResource, 1)),
+        has_resources.then_some((K::RemoveResource, 1)),
+        has_resources.then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
+        has_clients.then_some((K::ReconnectPortal, 1)),
+        has_clients.then_some((K::RestartClient, 1)),
+        has_clients.then_some((K::SetInternetResourceState, 1)),
+        (!state.dns_resource_domains().is_empty()).then_some((K::UpdateDnsRecords, 5)),
+        (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
+        (!state.static_device_pools_on_any_client().is_empty())
+            .then_some((K::UpdateStaticDevicePool, 2)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
     // 2. Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
@@ -1343,13 +1361,13 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
         }
         K::UpdateUpstreamSearchDomain => {
             let domains = state.portal.dns_resources();
-            let candidates: Vec<DomainName> = domains
+            let candidates = domains
                 .iter()
                 .filter_map(|r| {
                     let (_, s) = r.address.split_once('.')?;
                     DomainName::vec_from_str(s).ok()
                 })
-                .collect();
+                .collect::<Vec<_>>();
             let chosen = if candidates.is_empty() || !g.flip(50) {
                 None
             } else {
@@ -1378,15 +1396,18 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
             // Reboot the *existing* relays with fresh credentials (same ids).
-            let ids: Vec<RelayId> = state.relays.keys().copied().collect();
-            let mut relays = BTreeMap::new();
-            for id in ids {
-                let seed = g.u64();
-                let latency = g.latency(50);
-                let mut host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4.next());
-                host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
-                relays.insert(id, host);
-            }
+            let ids = state.relays.keys().copied().collect::<Vec<_>>();
+            let relays = ids
+                .into_iter()
+                .map(|id| {
+                    let seed = g.u64();
+                    let latency = g.latency(50);
+                    let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4.next());
+                    let host =
+                        with_interface(host, Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
+                    (id, host)
+                })
+                .collect::<BTreeMap<_, _>>();
             Transition::RebootRelaysWhilePartitioned(relays)
         }
         K::Idle => Transition::Idle,
@@ -1480,15 +1501,15 @@ fn weighted_choose(g: &mut Gen, opts: &[(TransitionKind, u32)]) -> Option<Transi
     if opts.is_empty() {
         return None;
     }
-    let total: u32 = opts.iter().map(|(_, w)| *w).sum();
-    let mut pick = g.u.int_in_range(0..=total - 1).unwrap_or(0);
-    for (k, w) in opts {
-        if pick < *w {
-            return Some(*k);
-        }
-        pick -= *w;
-    }
-    opts.last().map(|(k, _)| *k)
+    let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
+    let pick = g.u.int_in_range(0..=total - 1).unwrap_or(0);
+
+    opts.iter()
+        .scan(0, |end, (kind, weight)| {
+            *end += *weight;
+            Some((*kind, *end))
+        })
+        .find_map(|(kind, end)| (pick < end).then_some(kind))
 }
 
 /// The semantic destination selected by the state-aware grammar.
@@ -1537,93 +1558,106 @@ enum DstSpec {
 }
 
 fn packet_targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget> {
-    let mut targets = Vec::new();
-
-    for (client_id, network, filters) in state.ipv4_cidr_resource_dsts() {
-        let src = IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4);
-        targets.push(PacketTarget::Cidr {
-            client_id,
-            src,
-            network: network.into(),
-            filters,
-        });
-    }
-    for (client_id, network, filters) in state.ipv6_cidr_resource_dsts() {
-        let src = IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6);
-        targets.push(PacketTarget::Cidr {
-            client_id,
-            src,
-            network: network.into(),
-            filters,
-        });
-    }
-
-    for (client_id, domain, filters) in state.resolved_v4_domains() {
-        let src = IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4);
-        targets.push(PacketTarget::Dns {
-            client_id,
-            src,
-            tcp_service_ports: tcp_service_ports(state, &domain, true),
-            domain,
-            filters,
-        });
-    }
-    for (client_id, domain, filters) in state.resolved_v6_domains() {
-        let src = IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6);
-        targets.push(PacketTarget::Dns {
-            client_id,
-            src,
-            tcp_service_ports: tcp_service_ports(state, &domain, false),
-            domain,
-            filters,
-        });
-    }
-
-    for (client_id, dst) in state.resolved_ip4_for_non_resources(&state.global_dns_records, now) {
-        targets.push(PacketTarget::NonResource {
-            client_id,
-            src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
-            dst: IpAddr::V4(dst),
-        });
-    }
-    for (client_id, dst) in state.resolved_ip6_for_non_resources(&state.global_dns_records, now) {
-        targets.push(PacketTarget::NonResource {
-            client_id,
-            src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
-            dst: IpAddr::V6(dst),
-        });
-    }
-
-    for (client_id, network) in state.connected_gateway_ipv4_ips() {
-        targets.push(PacketTarget::ConnectedGateway {
+    state
+        .ipv4_cidr_resource_dsts()
+        .into_iter()
+        .map(|(client_id, network, filters)| PacketTarget::Cidr {
             client_id,
             src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
             network: network.into(),
-        });
-    }
-    for (client_id, network) in state.connected_gateway_ipv6_ips() {
-        targets.push(PacketTarget::ConnectedGateway {
-            client_id,
-            src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
-            network: network.into(),
-        });
-    }
-
-    for (client_id, dst, filters) in state.pool_routed_other_client_tun_ips() {
-        let client = state.clients[&client_id].inner();
-        let src = match dst {
-            IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
-            IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
-        };
-        targets.push(PacketTarget::Peer {
-            client_id,
-            src,
-            dst,
             filters,
-        });
-    }
-
-    targets
+        })
+        .chain(
+            state
+                .ipv6_cidr_resource_dsts()
+                .into_iter()
+                .map(|(client_id, network, filters)| PacketTarget::Cidr {
+                    client_id,
+                    src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
+                    network: network.into(),
+                    filters,
+                }),
+        )
+        .chain(
+            state
+                .resolved_v4_domains()
+                .into_iter()
+                .map(|(client_id, domain, filters)| PacketTarget::Dns {
+                    client_id,
+                    src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
+                    tcp_service_ports: tcp_service_ports(state, &domain, true),
+                    domain,
+                    filters,
+                }),
+        )
+        .chain(
+            state
+                .resolved_v6_domains()
+                .into_iter()
+                .map(|(client_id, domain, filters)| PacketTarget::Dns {
+                    client_id,
+                    src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
+                    tcp_service_ports: tcp_service_ports(state, &domain, false),
+                    domain,
+                    filters,
+                }),
+        )
+        .chain(
+            state
+                .resolved_ip4_for_non_resources(&state.global_dns_records, now)
+                .into_iter()
+                .map(|(client_id, dst)| PacketTarget::NonResource {
+                    client_id,
+                    src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
+                    dst: IpAddr::V4(dst),
+                }),
+        )
+        .chain(
+            state
+                .resolved_ip6_for_non_resources(&state.global_dns_records, now)
+                .into_iter()
+                .map(|(client_id, dst)| PacketTarget::NonResource {
+                    client_id,
+                    src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
+                    dst: IpAddr::V6(dst),
+                }),
+        )
+        .chain(
+            state
+                .connected_gateway_ipv4_ips()
+                .into_iter()
+                .map(|(client_id, network)| PacketTarget::ConnectedGateway {
+                    client_id,
+                    src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
+                    network: network.into(),
+                }),
+        )
+        .chain(
+            state
+                .connected_gateway_ipv6_ips()
+                .into_iter()
+                .map(|(client_id, network)| PacketTarget::ConnectedGateway {
+                    client_id,
+                    src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
+                    network: network.into(),
+                }),
+        )
+        .chain(state.pool_routed_other_client_tun_ips().into_iter().map(
+            |(client_id, dst, filters)| {
+                let client = state.clients[&client_id].inner();
+                let src = match dst {
+                    IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
+                    IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
+                };
+                PacketTarget::Peer {
+                    client_id,
+                    src,
+                    dst,
+                    filters,
+                }
+            },
+        ))
+        .collect::<Vec<_>>()
 }
 
 fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) -> Vec<u16> {
@@ -1636,7 +1670,7 @@ fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) ->
         .map(SocketAddr::port)
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .collect()
+        .collect::<Vec<_>>()
 }
 
 fn arb_packet(g: &mut Gen, state: &ReferenceState, target: PacketTarget) -> Transition {
@@ -1746,7 +1780,7 @@ fn arb_filtered_packet(
     dst: DstSpec,
     filters: &[Filter],
 ) -> Transition {
-    let usable: Vec<Filter> = filters
+    let usable = filters
         .iter()
         .filter(|f| !matches!(f, Filter::Tcp(_)))
         .filter(|f| {
@@ -1759,7 +1793,7 @@ fn arb_filtered_packet(
             )
         })
         .copied()
-        .collect();
+        .collect::<Vec<_>>();
 
     let use_matching = !usable.is_empty() && g.flip(80);
 
@@ -1797,15 +1831,15 @@ fn arb_tcp_connection(
     filters: &[Filter],
     service_ports: &[u16],
 ) -> Transition {
-    let tcp_filters: Vec<PortRange> = filters
+    let tcp_filters = filters
         .iter()
         .filter_map(|f| match f {
             Filter::Tcp(r) => Some(*r),
             Filter::Udp(_) | Filter::Icmp => None,
         })
-        .collect();
+        .collect::<Vec<_>>();
 
-    let matching_service_ports: Vec<u16> = service_ports
+    let matching_service_ports = service_ports
         .iter()
         .copied()
         .filter(|port| {
@@ -1814,7 +1848,7 @@ fn arb_tcp_connection(
                     .iter()
                     .any(|range| (range.port_range_start..=range.port_range_end).contains(port))
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     let dport = if !matching_service_ports.is_empty() && g.flip(75) {
         matching_service_ports[g.choose_index(matching_service_ports.len())]
@@ -1823,11 +1857,7 @@ fn arb_tcp_connection(
         g.u.int_in_range(r.port_range_start..=r.port_range_end)
             .unwrap_or(r.port_range_start)
     } else {
-        let mut p = arb_non_dns_port(g);
-        if p == 0 {
-            p = 1;
-        }
-        p
+        arb_non_dns_port(g).max(1)
     };
 
     let sport = g.u.int_in_range(1..=u16::MAX).unwrap_or(1);
@@ -1890,61 +1920,72 @@ enum DnsNameSpec {
 
 fn dns_query_targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarget> {
     let servers = state.reachable_dns_servers();
-    let mut targets = Vec::new();
-
-    for (client_id, domain, rtypes) in state.all_domains(now) {
-        for (_, dns_server) in servers.iter().filter(|(id, _)| *id == client_id) {
-            targets.push(DnsQueryTarget {
-                client_id,
-                dns_server: dns_server.clone(),
-                name: DnsNameSpec::Concrete {
-                    domain: domain.clone(),
-                    rtypes: rtypes.clone(),
-                },
-            });
-        }
-    }
-
-    for (client_id, resource) in state.wildcard_dns_resources() {
-        for (_, dns_server) in servers.iter().filter(|(id, _)| *id == client_id) {
-            targets.push(DnsQueryTarget {
-                client_id,
-                dns_server: dns_server.clone(),
-                name: DnsNameSpec::Wildcard {
-                    base: resource.address.trim_start_matches("*.").to_owned(),
-                },
-            });
-        }
-    }
-
     let labels = state.portal.device_labels();
-    for (client_id, resource, dns_server) in state.device_pool_query_targets() {
-        let base = resource.address.trim_start_matches("*.").to_owned();
-        if !labels.is_empty() {
-            targets.push(DnsQueryTarget {
-                client_id,
-                dns_server: dns_server.clone(),
-                name: DnsNameSpec::KnownDevice {
-                    base: base.clone(),
-                    labels: labels.clone(),
-                },
-            });
-        }
-        targets.push(DnsQueryTarget {
-            client_id,
-            dns_server,
-            name: DnsNameSpec::UnknownDevice { base },
-        });
-    }
 
-    targets
+    state
+        .all_domains(now)
+        .into_iter()
+        .flat_map(|(client_id, domain, rtypes)| {
+            servers
+                .iter()
+                .filter(move |(id, _)| *id == client_id)
+                .map(move |(_, dns_server)| DnsQueryTarget {
+                    client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::Concrete {
+                        domain: domain.clone(),
+                        rtypes: rtypes.clone(),
+                    },
+                })
+        })
+        .chain(
+            state
+                .wildcard_dns_resources()
+                .into_iter()
+                .flat_map(|(client_id, resource)| {
+                    servers.iter().filter(move |(id, _)| *id == client_id).map(
+                        move |(_, dns_server)| DnsQueryTarget {
+                            client_id,
+                            dns_server: dns_server.clone(),
+                            name: DnsNameSpec::Wildcard {
+                                base: resource.address.trim_start_matches("*.").to_owned(),
+                            },
+                        },
+                    )
+                }),
+        )
+        .chain(state.device_pool_query_targets().into_iter().flat_map(
+            |(client_id, resource, dns_server)| {
+                let base = resource.address.trim_start_matches("*.").to_owned();
+                [
+                    (!labels.is_empty()).then(|| DnsQueryTarget {
+                        client_id,
+                        dns_server: dns_server.clone(),
+                        name: DnsNameSpec::KnownDevice {
+                            base: base.clone(),
+                            labels: labels.clone(),
+                        },
+                    }),
+                    Some(DnsQueryTarget {
+                        client_id,
+                        dns_server,
+                        name: DnsNameSpec::UnknownDevice { base },
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+            },
+        ))
+        .collect::<Vec<_>>()
 }
 
 fn arb_dns_query(g: &mut Gen, target: DnsQueryTarget) -> Transition {
-    let (mut domain, rtypes) = match target.name {
+    let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
         DnsNameSpec::Wildcard { base } => {
-            let domain = format!("{}.{}", g.lower_ascii(3, 6), base).parse().unwrap();
+            let domain = format!("{}.{}", g.lower_ascii(3, 6), base)
+                .parse::<DomainName>()
+                .unwrap();
             let rtypes = if g.bool() {
                 vec![RecordType::A]
             } else {
@@ -1955,20 +1996,22 @@ fn arb_dns_query(g: &mut Gen, target: DnsQueryTarget) -> Transition {
         DnsNameSpec::KnownDevice { base, labels } => {
             let label = &labels[g.choose_index(labels.len())];
             (
-                format!("{label}.{base}").parse().unwrap(),
+                format!("{label}.{base}").parse::<DomainName>().unwrap(),
                 vec![RecordType::A],
             )
         }
         DnsNameSpec::UnknownDevice { base } => (
-            format!("{}.{}", g.lower_ascii(3, 6), base).parse().unwrap(),
+            format!("{}.{}", g.lower_ascii(3, 6), base)
+                .parse::<DomainName>()
+                .unwrap(),
             vec![RecordType::A],
         ),
     };
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
-    if matches!(r_type, RecordType::PTR) {
-        domain = DomainName::reverse_from_addr(arb_ptr_query_ip(g)).unwrap();
-    }
+    let domain = matches!(r_type, RecordType::PTR)
+        .then(|| DomainName::reverse_from_addr(arb_ptr_query_ip(g)).unwrap())
+        .unwrap_or(domain);
 
     Transition::SendDnsQuery {
         client_id: target.client_id,
@@ -2039,14 +2082,14 @@ fn arb_ptr_query_ip(g: &mut Gen) -> IpAddr {
     }
 }
 
-/// Generate a subsequence of online clients (as `/32` + `/128` device members)
-/// and preserve every offline member already in the pool.
+/// Select any subset of online clients (as `/32` + `/128` device members) and
+/// preserve every offline member already in the pool.
 fn arb_static_pool_members(
     g: &mut Gen,
     state: &ReferenceState,
     pool: &StaticDevicePoolResource,
 ) -> Vec<DevicePoolMember> {
-    let online_clients: Vec<(ClientId, Ipv4Network, Ipv6Network)> = state
+    let online_clients = state
         .clients
         .iter()
         .map(|(id, c)| {
@@ -2057,24 +2100,26 @@ fn arb_static_pool_members(
                 Ipv6Network::new(inner.tunnel_ip6, 128).unwrap(),
             )
         })
-        .collect();
-    let online_ids: BTreeSet<ClientId> = online_clients.iter().map(|(id, _, _)| *id).collect();
+        .collect::<Vec<_>>();
+    let online_ids = online_clients
+        .iter()
+        .map(|(id, _, _)| *id)
+        .collect::<BTreeSet<_>>();
 
-    let preserved_offline: Vec<DevicePoolMember> = pool
+    let preserved_offline = pool
         .devices
         .iter()
         .filter(|d| !online_ids.contains(&d.id))
         .cloned()
-        .collect();
+        .collect::<Vec<_>>();
 
-    // Per-element keep-bit subsequence of the online clients (0..=all).
-    let mut devices: Vec<DevicePoolMember> = online_clients
+    // Keep any subset of the online clients.
+    online_clients
         .into_iter()
         .filter(|_| g.bool())
         .map(|(id, ipv4, ipv6)| DevicePoolMember { id, ipv4, ipv6 })
-        .collect();
-    devices.extend(preserved_offline);
-    devices
+        .chain(preserved_offline)
+        .collect::<Vec<_>>()
 }
 
 fn arb_icmp_packet(
@@ -2145,13 +2190,9 @@ fn into_destination(dst: DstSpec, resolved_ip: u32) -> Destination {
 /// (53535 - 1 = 53534, because the hole at 53 already shifted everything below
 /// it down by one).
 fn arb_non_dns_port(g: &mut Gen) -> u16 {
-    let mut p: u32 = g.u.int_in_range(0..=65533u32).unwrap_or(0);
-    if p >= 53 {
-        p += 1;
-    }
-    if p >= 53535 {
-        p += 1;
-    }
+    let p = g.u.int_in_range(0..=65533u32).unwrap_or(0);
+    let p = p + u32::from(p >= 53);
+    let p = p + u32::from(p >= 53535);
     p as u16
 }
 
@@ -2175,13 +2216,8 @@ mod tests {
         let mut seen = std::collections::BTreeSet::new();
         for idx in 0..=65533u32 {
             // Reproduce the body of `arb_non_dns_port` for a known index.
-            let mut p = idx;
-            if p >= 53 {
-                p += 1;
-            }
-            if p >= 53535 {
-                p += 1;
-            }
+            let p = idx + u32::from(idx >= 53);
+            let p = p + u32::from(p >= 53535);
             let p = p as u16;
             assert_ne!(p, 53, "53 is a hole");
             assert_ne!(p, 53535, "53535 is a hole");
@@ -2198,7 +2234,7 @@ mod tests {
         run_fuzz_case_structured(&[0u8; 64]);
         run_fuzz_case_structured(&[0xAB; 256]);
 
-        let ramp: Vec<u8> = (0u8..=255).cycle().take(8192).collect();
+        let ramp = (0u8..=255).cycle().take(8192).collect::<Vec<_>>();
         run_fuzz_case_structured(&ramp);
     }
 }
