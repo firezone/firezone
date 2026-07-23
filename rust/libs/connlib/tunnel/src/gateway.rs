@@ -49,6 +49,16 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: snownet::TransmitBuffer,
+
+    /// Whether we currently have a live connection to the portal.
+    ///
+    /// ICE candidate changes are signalled to clients through the portal, so while it is
+    /// disconnected we hold them back rather than emit events that would be lost.
+    portal_connected: bool,
+    /// New candidates gathered while the portal was disconnected, per client.
+    held_added_ice_candidates: BTreeMap<ClientId, BTreeSet<IceCandidate>>,
+    /// Previously-signalled candidates invalidated while the portal was disconnected, per client.
+    held_removed_ice_candidates: BTreeMap<ClientId, BTreeSet<IceCandidate>>,
 }
 
 #[derive(Debug)]
@@ -73,6 +83,9 @@ impl GatewayState {
         Self {
             peers: Default::default(),
             node: Node::new(seed, now, unix_ts),
+            portal_connected: true,
+            held_added_ice_candidates: Default::default(),
+            held_removed_ice_candidates: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
@@ -470,10 +483,42 @@ impl GatewayState {
 
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(_) | snownet::Event::ConnectionClosed(_) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     // We purposely don't clear the peer-state here.
                     // The Client might re-establish the connection but if it hasn't cleared its local state too,
                     // it will consider all its access authorizations to be still valid.
+                    self.held_added_ice_candidates.remove(&id);
+                    self.held_removed_ice_candidates.remove(&id);
+                }
+                snownet::Event::NewIceCandidate {
+                    connection,
+                    candidate,
+                } if !self.portal_connected => {
+                    let candidate = candidate.into();
+                    if let Some(removed) = self.held_removed_ice_candidates.get_mut(&connection) {
+                        removed.remove(&candidate);
+                    }
+                    self.held_added_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
+                snownet::Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } if !self.portal_connected => {
+                    let candidate = candidate.into();
+                    let was_held_add = self
+                        .held_added_ice_candidates
+                        .get_mut(&connection)
+                        .is_some_and(|added| added.remove(&candidate));
+
+                    if !was_held_add {
+                        self.held_removed_ice_candidates
+                            .entry(connection)
+                            .or_default()
+                            .insert(candidate);
+                    }
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -535,6 +580,44 @@ impl GatewayState {
         }
 
         None
+    }
+
+    /// Records whether we currently have a live connection to the portal.
+    ///
+    /// While disconnected, ICE candidate changes are held back. On the disconnected ->
+    /// connected edge, the held changes are flushed to their clients, one batch per
+    /// connection.
+    pub fn set_portal_connected(&mut self, connected: bool) {
+        let reconnected = connected && !self.portal_connected;
+        self.portal_connected = connected;
+
+        if !reconnected {
+            return;
+        }
+
+        for (conn_id, candidates) in std::mem::take(&mut self.held_added_ice_candidates) {
+            if candidates.is_empty() {
+                continue;
+            }
+
+            self.buffered_events
+                .push_back(GatewayEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                });
+        }
+
+        for (conn_id, candidates) in std::mem::take(&mut self.held_removed_ice_candidates) {
+            if candidates.is_empty() {
+                continue;
+            }
+
+            self.buffered_events
+                .push_back(GatewayEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                });
+        }
     }
 
     pub fn update_relays(
