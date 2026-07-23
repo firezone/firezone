@@ -8,8 +8,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 use tunnel::{
-    client,
-    client::{DynamicDevicePoolResource, StaticDevicePoolResource},
+    self as client, DynamicDevicePoolResource, StaticDevicePoolResource,
     messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
 };
 

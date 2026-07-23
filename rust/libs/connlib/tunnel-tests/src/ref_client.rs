@@ -7,14 +7,8 @@ use super::{
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
 use tunnel::{
-    ClientState,
-    client::{
-        CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
-        StaticDevicePoolResource,
-    },
-    dns,
-    filter_engine::FilterEngine,
-    malicious_behaviour::MaliciousBehaviour,
+    CidrResource, ClientState, DnsResource, DynamicDevicePoolResource, FilterEngine,
+    InternetResource, MaliciousBehaviour, Resource, StaticDevicePoolResource, dns,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
 

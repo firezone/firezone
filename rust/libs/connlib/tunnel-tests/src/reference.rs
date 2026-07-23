@@ -15,7 +15,7 @@ use std::{
 };
 use tunnel::dns::is_subdomain;
 use tunnel::messages::Filter;
-use tunnel::{client, dns};
+use tunnel::{self as client, dns};
 
 /// The reference state machine of the tunnel.
 ///
@@ -27,8 +27,6 @@ pub(crate) struct ReferenceState {
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
 
     pub(crate) portal: StubPortal,
-
-    pub(crate) drop_direct_client_traffic: bool,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -63,7 +61,6 @@ impl ReferenceState {
         tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
         icmp_error_hosts: IcmpErrorHosts,
         network: RoutingTable,
-        drop_direct_client_traffic: bool,
     ) -> Self {
         Self {
             clients,
@@ -74,7 +71,6 @@ impl ReferenceState {
             tcp_resources,
             icmp_error_hosts,
             network,
-            drop_direct_client_traffic,
         }
     }
 

@@ -1,7 +1,7 @@
 //! Shared fuzz harness for connlib's tunnel state machine.
 //!
-//! Extracted from the `tunnel` crate (behind its `test-util` feature) so the
-//! reference model and system-under-test wrapper can drive the fuzzer. Because
+//! Extracted from the `tunnel` crate so the reference model and
+//! system-under-test wrapper can drive the fuzzer. Because
 //! the harness is consumed selectively by the fuzz entry point, not every item
 //! is reachable in a plain library build; and, like the test code it grew out
 //! of, it leans on `unwrap` and stdout.

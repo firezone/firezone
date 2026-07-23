@@ -28,7 +28,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::debug_span;
-use tunnel::client;
+use tunnel as client;
 use tunnel::dns::is_subdomain;
 use tunnel::messages::gateway::Client;
 use tunnel::messages::{IceCredentials, Key, SecretKey};
