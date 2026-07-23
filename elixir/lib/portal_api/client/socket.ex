@@ -331,29 +331,44 @@ defmodule PortalAPI.Client.Socket do
       actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
-      cond do
-        client = find_by_attested_ids(changeset, account_id, actor_id) ->
+      case find_by_attested_ids(changeset, account_id, actor_id) do
+        {:ok, client} ->
           check_hardware_id_mismatch(client, attrs)
           {:ok, merge_firezone_id(client, firezone_id)}
 
-        client = find_by_firezone_id(account_id, actor_id, firezone_id) ->
-          check_hardware_id_mismatch(client, attrs)
-          {:ok, client}
-
-        true ->
+        :identity_conflict ->
+          # Refuse to guess which device this is: fall back to the plain
+          # firezone_id path with the attested fields stripped, so a fallback
+          # insert cannot collide with the split rows' unique indexes.
           changeset
-          |> Safe.unscoped()
-          |> Safe.insert()
+          |> strip_attested_changes()
+          |> resolve_by_firezone_id(attrs, account_id, actor_id, firezone_id)
+
+        nil ->
+          resolve_by_firezone_id(changeset, attrs, account_id, actor_id, firezone_id)
+      end
+    end
+
+    defp resolve_by_firezone_id(changeset, attrs, account_id, actor_id, firezone_id) do
+      if client = find_by_firezone_id(account_id, actor_id, firezone_id) do
+        check_hardware_id_mismatch(client, attrs)
+        {:ok, client}
+      else
+        changeset
+        |> Safe.unscoped()
+        |> Safe.insert()
       end
     end
 
     # Attested identifiers anchor a physical device, so they take precedence
     # over the client-reported firezone_id: a reinstalled client (new
     # firezone_id, same attested identity) merges back onto its existing device
-    # row instead of creating a duplicate. The partial unique indexes on the
-    # attested columns guarantee at most one row per identifier; limit(1)
-    # guards the pathological case of different attested fields matching
-    # different rows.
+    # row instead of creating a duplicate. The per-column partial unique
+    # indexes guarantee each identifier maps to at most one row, so when all
+    # supplied identifiers resolve to one device the query returns exactly one
+    # row. More than one distinct row means the identifiers split across
+    # devices; adopting either would merge the connection onto an arbitrary
+    # device, so adoption is refused instead.
     defp find_by_attested_ids(changeset, account_id, actor_id) do
       filters =
         for field <- @attested_id_fields,
@@ -374,12 +389,30 @@ defmodule PortalAPI.Client.Socket do
           where: d.actor_id == ^actor_id,
           where: d.type == :client,
           where: ^attested_match,
-          order_by: [asc: d.inserted_at],
-          limit: 1
+          order_by: [asc: d.inserted_at]
         )
         |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.all()
+        |> classify_attested_rows(Map.new(filters))
       end
+    end
+
+    defp classify_attested_rows([], _cert_identifiers), do: nil
+    defp classify_attested_rows([client], _cert_identifiers), do: {:ok, client}
+
+    defp classify_attested_rows(clients, cert_identifiers) do
+      Logger.warning(
+        "Attested identifiers split across multiple devices: refusing to adopt device identity",
+        client_ids: Enum.map(clients, & &1.id),
+        cert_identifiers: inspect(cert_identifiers),
+        row_identifiers: inspect(Enum.map(clients, &Map.take(&1, @attested_id_fields)))
+      )
+
+      :identity_conflict
+    end
+
+    defp strip_attested_changes(changeset) do
+      Enum.reduce(@attested_id_fields, changeset, &Ecto.Changeset.delete_change(&2, &1))
     end
 
     defp find_by_firezone_id(_account_id, _actor_id, nil), do: nil

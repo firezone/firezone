@@ -596,6 +596,53 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {"has already been taken", _} = changeset.errors[:attested_device_serial]
     end
+
+    test "identifiers split across devices refuse adoption and fall back", %{
+      account: account,
+      actor: actor
+    } do
+      # Serial matches device A, UUID matches device B: nothing can prove
+      # which physical device is connecting, so neither row is adopted.
+      device_a =
+        client_fixture(
+          account: account,
+          actor: actor,
+          attested_device_serial: "SN-SPLIT",
+          firezone_id: "fz-a"
+        )
+
+      device_b =
+        client_fixture(
+          account: account,
+          actor: actor,
+          attested_device_uuid: "uuid-split",
+          firezone_id: "fz-b"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Ambiguous Client",
+          "firezone_id" => "fz-new",
+          "attested_device_serial" => "SN-SPLIT",
+          "attested_device_uuid" => "uuid-split"
+        })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+
+          # Falls back to the firezone_id path: a fresh row, with the attested
+          # fields stripped so the insert cannot collide with A's or B's
+          # unique indexes.
+          assert client.id != device_a.id
+          assert client.id != device_b.id
+          assert client.firezone_id == "fz-new"
+          assert is_nil(client.attested_device_serial)
+          assert is_nil(client.attested_device_uuid)
+        end)
+
+      assert log =~ "split across multiple devices"
+    end
   end
 
   defp device_trust_changeset(account, actor, attrs) do
