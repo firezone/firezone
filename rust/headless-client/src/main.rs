@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use telemetry::{SentryMeterProvider, analytics, otel};
+use telemetry::{analytics, otel};
 use tokio::time::Instant;
 
 #[cfg(target_os = "linux")]
@@ -118,13 +118,6 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Dump internal metrics to stdout every 60s.
-    ///
-    /// This configuration option is private API and has no stability guarantees.
-    /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
-    metrics: Option<MetricsExporter>,
-
     /// Send metrics to a custom OTLP collector.
     ///
     /// By default, Firezone's hosted OTLP collector is used.
@@ -153,13 +146,6 @@ struct Cli {
     /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-enum MetricsExporter {
-    Stdout,
-    OtelCollector,
-    Sentry,
 }
 
 impl Cli {
@@ -384,37 +370,27 @@ fn try_main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        if let Some(backend) = cli.metrics {
+        // Export to a custom OTLP collector if one is configured, otherwise to
+        // Firezone's hosted endpoint, which self-gates on the `stream_metrics`
+        // feature flag. Suppressed entirely by `--no-telemetry`.
+        if !cli.no_telemetry {
             let resource = otel::default_resource_with([
                 otel::attr::service_name!(),
                 otel::attr::service_version!(),
                 otel::attr::service_instance_id(firezone_id.clone()),
             ]);
 
-            match (backend, cli.otlp_grpc_endpoint) {
-                (MetricsExporter::Sentry, _) => {
-                    opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
-                }
-                (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource)
-                        .build(),
-                ),
-                (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                    opentelemetry::global::set_meter_provider(
-                        SdkMeterProvider::builder()
-                            .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                            .with_resource(resource)
-                            .build(),
-                    )
-                }
-                (MetricsExporter::OtelCollector, None) => {
-                    opentelemetry::global::set_meter_provider(
-                        SdkMeterProvider::builder().with_resource(resource).build(),
-                    )
-                }
-            }
+            let mut builder = SdkMeterProvider::builder().with_resource(resource);
+
+            builder = match cli.otlp_grpc_endpoint {
+                Some(endpoint) => builder.with_periodic_exporter(tonic_otlp_exporter(endpoint)?),
+                None => match telemetry::hosted_metric_exporter(cli.api_url.as_ref()) {
+                    Some(exporter) => builder.with_periodic_exporter(exporter),
+                    None => builder,
+                },
+            };
+
+            opentelemetry::global::set_meter_provider(builder.build());
         }
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
