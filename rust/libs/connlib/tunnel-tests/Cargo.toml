@@ -14,10 +14,10 @@ connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
-firezone-relay = { workspace = true, features = ["proptest"] }
+firezone-relay = { workspace = true }
 flow-tracker = { workspace = true }
 hex = { workspace = true }
-ip-packet = { workspace = true, features = ["proptest"] }
+ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }

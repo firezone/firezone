@@ -548,6 +548,7 @@ impl SimClient {
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
         self.tcp_client.reset();
+        self.failed_tcp_packets.clear();
     }
 }
 

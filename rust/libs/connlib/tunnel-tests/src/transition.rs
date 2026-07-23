@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 use tunnel::{
@@ -54,6 +54,7 @@ pub(crate) enum Transition {
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
+        expected_route: PacketRoute,
         seq: Seq,
         identifier: Identifier,
         payload: u64,
@@ -63,6 +64,7 @@ pub(crate) enum Transition {
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
+        expected_route: PacketRoute,
         sport: SPort,
         dport: DPort,
         payload: u64,
@@ -72,12 +74,16 @@ pub(crate) enum Transition {
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
+        expected_route: PacketRoute,
         sport: SPort,
         dport: DPort,
     },
 
     /// Send a DNS query.
-    SendDnsQueries(Vec<(ClientId, DnsQuery)>),
+    SendDnsQuery {
+        client_id: ClientId,
+        query: DnsQuery,
+    },
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -158,7 +164,7 @@ impl Transition {
             Transition::SendIcmpPacket { .. }
             | Transition::SendUdpPacket { .. }
             | Transition::ConnectTcp { .. }
-            | Transition::SendDnsQueries(_)
+            | Transition::SendDnsQuery { .. }
             | Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
             | Transition::UpdateUpstreamDoHServers(_)
@@ -204,6 +210,37 @@ pub(crate) struct SPort(pub u16);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct DPort(pub u16);
 
+/// The semantic outcome expected from a packet transition.
+///
+/// The SUT only sees [`Destination`] and must derive this route itself. Carrying
+/// the expected route on the transition keeps application of the reference
+/// model mechanical and makes a failing scenario readable in a debug dump.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PacketRoute {
+    /// No route exists, so the packet cannot leave the client.
+    Drop,
+    /// The packet should reach a resource through a gateway.
+    Resource {
+        resource: ResourceId,
+        gateway: GatewayId,
+    },
+    /// The client's outbound filter should return ICMP prohibited.
+    RejectedByClient,
+    /// A malicious client bypasses its outbound filter, but the gateway's
+    /// inbound filter should return ICMP prohibited.
+    ResourceRejectedByGateway {
+        resource: ResourceId,
+        gateway: GatewayId,
+    },
+    /// The packet directly addresses a connected gateway's tunnel IP.
+    Gateway(GatewayId),
+    /// The packet should reach another client through a static device pool.
+    Peer(ClientId),
+    /// A malicious client bypasses its outbound filter, but the peer's inbound
+    /// filter should return ICMP prohibited.
+    PeerRejectedByPeer(ClientId),
+}
+
 #[derive(Clone, derive_more::Debug)]
 pub(crate) enum Destination {
     DomainName {
@@ -211,9 +248,7 @@ pub(crate) enum Destination {
         ///
         /// The set of candidate IPs is only known at apply-time (it depends on the
         /// source address family and the current DNS records), so we store an index
-        /// and select with `% len` over the materialized candidates. This replaces
-        /// the previous `proptest::sample::Selector`, which had no public constructor
-        /// and therefore could not be produced from `arbitrary::Unstructured`.
+        /// and select with `% len` over the materialized candidates.
         resolved_ip: u32,
         name: DomainName,
     },

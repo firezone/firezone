@@ -48,10 +48,7 @@ pub(crate) struct StubPortal {
     upstream_do53: Vec<UpstreamDo53>,
     upstream_doh: Vec<UpstreamDoH>,
 
-    /// Index used to pick a gateway within a site (selected with `% len`).
-    ///
-    /// Replaces `proptest::sample::Selector`, which cannot be constructed from
-    /// `arbitrary::Unstructured` (no public constructor).
+    /// Stable index used to pick a gateway within a site (`index % len`).
     #[debug(skip)]
     gateway_selector: u32,
 
@@ -191,8 +188,7 @@ impl StubPortal {
 
     /// The tunnel IPs assigned to each client, in client order.
     ///
-    /// Used by the structured generator to materialize client hosts without going
-    /// through the `clients(...)` proptest strategy.
+    /// Used by the structured generator to materialize client hosts.
     pub(crate) fn client_tunnel_ips(&self) -> Vec<(ClientId, Ipv4Addr, Ipv6Addr)> {
         self.clients
             .iter()
@@ -466,8 +462,6 @@ impl StubPortal {
 
 /// Picks an element from a set by index (`index % len`), or `None` if empty.
 ///
-/// Used in place of `proptest::sample::Selector::select`/`try_select` so the
-/// gateway choice can be driven by a plain `u32` (and thus by `arbitrary`).
 fn select_by_index<T>(set: &BTreeSet<T>, index: u32) -> Option<&T> {
     let len = set.len();
     if len == 0 {

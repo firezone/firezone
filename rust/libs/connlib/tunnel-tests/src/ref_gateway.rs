@@ -21,9 +21,7 @@ pub struct RefGateway {
 }
 
 impl RefGateway {
-    /// Construct a [`RefGateway`] from already-sampled parts.
-    ///
-    /// Mirrors the `ref_gateway` proptest strategy for the structured generator.
+    /// Construct a [`RefGateway`] from generated parts.
     pub(crate) fn from_parts(
         key: PrivateKey,
         tunnel_ip4: Ipv4Addr,
