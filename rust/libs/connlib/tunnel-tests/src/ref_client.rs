@@ -124,6 +124,11 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
 
+    /// System resolvers with a TCP connection whose sentinel may be retired by
+    /// the next DNS configuration update.
+    #[debug(skip)]
+    system_dns_tcp_connections: BTreeSet<IpAddr>,
+
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
@@ -169,6 +174,7 @@ impl RefClient {
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
+            system_dns_tcp_connections: Default::default(),
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
@@ -764,6 +770,11 @@ impl RefClient {
             return;
         }
 
+        if self.is_local_dns_resource_query(query) {
+            self.expect_dns_response(query);
+            return;
+        }
+
         if let Some(resource) = self.dns_query_via_resource(query, upstream_do53) {
             self.expect_dns_response(query); // We always generate a response, even if we don't connect to the upstream server.
 
@@ -781,6 +792,13 @@ impl RefClient {
             self.set_resource_online(resource);
 
             return;
+        }
+
+        if matches!(query.transport, DnsTransport::Tcp)
+            && let dns::Upstream::Do53 { server } = query.dns_server
+            && self.system_dns_resolvers.contains(&server.ip())
+        {
+            self.system_dns_tcp_connections.insert(server.ip());
         }
 
         self.expect_dns_response(query);
@@ -971,64 +989,6 @@ impl RefClient {
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
-    /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq, identifier and payload.
-    pub(crate) fn is_valid_icmp_packet(
-        &self,
-        seq: &Seq,
-        identifier: &Identifier,
-        payload: &u64,
-    ) -> bool {
-        let not_an_existing_gateway_handshake = self
-            .expected_gateway_icmp_handshakes
-            .values()
-            .flatten()
-            .all(
-                |(existig_payload, (_, existing_seq, existing_identifier))| {
-                    existing_seq != seq
-                        && existing_identifier != identifier
-                        && existig_payload != payload
-                },
-            );
-        let not_an_existing_client_handshake =
-            self.expected_client_icmp_handshakes.values().flatten().all(
-                |(existig_payload, (_, existing_seq, existing_identifier))| {
-                    existing_seq != seq
-                        && existing_identifier != identifier
-                        && existig_payload != payload
-                },
-            );
-
-        let not_an_existing_rejection =
-            !self.expected_icmp_rejections.contains(&(*seq, *identifier));
-
-        not_an_existing_gateway_handshake
-            && not_an_existing_client_handshake
-            && not_an_existing_rejection
-    }
-
-    /// An UDP packet is valid if we didn't yet send an UDP packet with the same sport, dport and payload.
-    pub(crate) fn is_valid_udp_packet(&self, sport: &SPort, dport: &DPort, payload: &u64) -> bool {
-        let not_an_existing_gateway_handshake = self
-            .expected_gateway_udp_handshakes
-            .values()
-            .flatten()
-            .all(|(existing_payload, (_, existing_sport, existing_dport))| {
-                existing_dport != dport && existing_sport != sport && existing_payload != payload
-            });
-        let not_an_existing_client_handshake = self
-            .expected_client_udp_handshakes
-            .values()
-            .flatten()
-            .all(|(existing_payload, (_, existing_sport, existing_dport))| {
-                existing_dport != dport && existing_sport != sport && existing_payload != payload
-            });
-        let not_an_existing_rejection = !self.expected_udp_rejections.contains(&(*sport, *dport));
-
-        not_an_existing_gateway_handshake
-            && not_an_existing_client_handshake
-            && not_an_existing_rejection
-    }
-
     pub(crate) fn resolved_v4_domains(&self) -> Vec<(DomainName, Vec<Filter>)> {
         self.resolved_domains()
             .filter_map(|(domain, records)| {
@@ -1189,25 +1149,29 @@ impl RefClient {
         query: &DnsQuery,
         upstream_do53: &[UpstreamDo53],
     ) -> Option<ResourceId> {
-        // Unless we are using upstream resolvers, DNS queries are never routed through the tunnel.
+        // System resolvers are contacted outside the tunnel.
         if upstream_do53.is_empty() {
             return None;
         }
 
-        // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
-        if self
+        self.upstream_dns_server_via_resource(&query.dns_server)
+    }
+
+    fn is_local_dns_resource_query(&self, query: &DnsQuery) -> bool {
+        matches!(
+            query.r_type,
+            RecordType::A | RecordType::AAAA | RecordType::PTR
+        ) && self
             .dns_resource_by_domain(&query.domain, |_| true)
             .is_some()
-            && matches!(
-                query.r_type,
-                RecordType::A | RecordType::AAAA | RecordType::PTR
-            )
-        {
-            return None;
-        }
+    }
 
+    pub(crate) fn upstream_dns_server_via_resource(
+        &self,
+        upstream: &dns::Upstream,
+    ) -> Option<ResourceId> {
         // TODO: Verify if we ever generate something that is not port 53 here.
-        let server = match query.dns_server {
+        let server = match upstream {
             dns::Upstream::Do53 { server } => server,
             dns::Upstream::DoH { .. } => return None,
         };
@@ -1265,20 +1229,38 @@ impl RefClient {
         self.system_dns_resolvers.clone()
     }
 
-    pub(crate) fn set_system_dns_resolvers(&mut self, servers: &Vec<IpAddr>) {
-        self.system_dns_resolvers.clone_from(servers);
+    pub(crate) fn update_system_dns_resolvers(
+        &mut self,
+        servers: &[IpAddr],
+        can_connect_to_internet: bool,
+    ) {
+        if self.system_dns_resolvers == servers {
+            self.system_dns_tcp_connections.clear();
+            return;
+        }
+
+        let retires_tcp_sentinel = self.system_dns_tcp_connections.iter().any(|old| {
+            !servers.iter().any(|new| {
+                matches!(
+                    (old, new),
+                    (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
+                )
+            })
+        });
+        self.system_dns_tcp_connections.clear();
+        self.system_dns_resolvers = servers.to_vec();
+
+        if retires_tcp_sentinel
+            && can_connect_to_internet
+            && let Some(resource) = self.active_internet_resource()
+        {
+            self.connect_to_internet_or_cidr_resource(resource);
+            self.set_resource_online(resource);
+        }
     }
 
-    pub(crate) fn has_tcp_attempt(
-        &self,
-        src: IpAddr,
-        dst: Destination,
-        sport: SPort,
-        dport: DPort,
-    ) -> bool {
-        self.expected_tcp_connections
-            .contains_key(&(src, dst, sport, dport))
-            || self.expected_tcp_rejections.contains(&(sport, dport))
+    pub(crate) fn finish_system_dns_tcp_connections(&mut self) {
+        self.system_dns_tcp_connections.clear();
     }
 
     pub(crate) fn tcp_connection_tuple_to_resource(
