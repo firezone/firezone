@@ -528,11 +528,18 @@ impl PerfUdpSocket {
             };
 
             match result {
-                Ok(()) => {
-                    self.record_send_batch_size(contents.len() / segment_size);
+                Ok(sent) => {
+                    // The kernel may accept only a prefix of the batch, e.g. `sendmsg_x`
+                    // under memory pressure; resume from the first unsent datagram.
+                    let sent_bytes = match chunk.advance(sent) {
+                        Some(remainder) => contents.len() - remainder.contents.len(),
+                        None => contents.len(),
+                    };
+
+                    self.record_send_batch_size(sent.get());
                     self.record_send_retries(attempt);
 
-                    offset = end;
+                    offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
                 // Connected sockets get a write-readiness wakeup from the kernel's flow advisory

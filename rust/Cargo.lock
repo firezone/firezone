@@ -185,7 +185,7 @@ dependencies = [
  "objc2-foundation",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
  "x11rb",
 ]
 
@@ -4347,7 +4347,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -5848,8 +5848,8 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.6.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#8acb578f10b02986050bc600e629f56f40162266"
+version = "0.6.1"
+source = "git+https://github.com/firezone/quinn?branch=feat%2Fhandle-partial-sendmsg-x-progress#d77ce7e0c1268f565ac422773472527b12fa74fb"
 dependencies = [
  "cfg_aliases",
  "libc",
