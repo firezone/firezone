@@ -52,8 +52,7 @@ pub(crate) struct ReferenceState {
 impl ReferenceState {
     /// Assemble a [`ReferenceState`] from already-generated parts.
     ///
-    /// Used by the structured (`arbitrary`-driven) generator, which builds each
-    /// component directly instead of through a proptest `Strategy`.
+    /// Used by the structured generator after it has built each component.
     pub(crate) fn from_parts(
         clients: BTreeMap<ClientId, Host<RefClient>>,
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
@@ -194,24 +193,22 @@ impl ReferenceState {
             } => state.clients.get_mut(client).unwrap().exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
-            Transition::SendDnsQueries(queries) => {
+            Transition::SendDnsQuery { client_id, query } => {
                 let upstream_do53 = state.portal.upstream_do53();
 
-                for (client_id, query) in queries {
-                    state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                        c.on_dns_query(query, upstream_do53);
-                    });
-                }
+                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                    c.on_dns_query(query, upstream_do53);
+                });
             }
             Transition::SendIcmpPacket {
                 client_id,
                 dst,
+                expected_route,
                 seq,
                 identifier,
                 payload,
                 ..
             } => {
-                let client_ip_to_id = state.client_ip_to_id();
                 state
                     .clients
                     .get_mut(client_id)
@@ -219,12 +216,10 @@ impl ReferenceState {
                     .exec_mut(|client| {
                         client.on_icmp_packet(
                             dst.clone(),
+                            *expected_route,
                             *seq,
                             *identifier,
                             *payload,
-                            |r| state.portal.gateway_for_resource(r).copied(),
-                            |ip| state.portal.gateway_by_ip(ip),
-                            |ip| client_ip_to_id.get(&ip).copied(),
                             now,
                         )
                     });
@@ -232,12 +227,12 @@ impl ReferenceState {
             Transition::SendUdpPacket {
                 client_id,
                 dst,
+                expected_route,
                 sport,
                 dport,
                 payload,
                 ..
             } => {
-                let client_ip_to_id = state.client_ip_to_id();
                 state
                     .clients
                     .get_mut(client_id)
@@ -245,12 +240,10 @@ impl ReferenceState {
                     .exec_mut(|client| {
                         client.on_udp_packet(
                             dst.clone(),
+                            *expected_route,
                             *sport,
                             *dport,
                             *payload,
-                            |r| state.portal.gateway_for_resource(r).copied(),
-                            |ip| state.portal.gateway_by_ip(ip),
-                            |ip| client_ip_to_id.get(&ip).copied(),
                             now,
                         )
                     });
@@ -259,18 +252,16 @@ impl ReferenceState {
                 client_id,
                 src,
                 dst,
+                expected_route,
                 sport,
                 dport,
             } => {
-                let client_ip_to_id = state.client_ip_to_id();
                 state
                     .clients
                     .get_mut(client_id)
                     .unwrap()
                     .exec_mut(|client| {
-                        client.on_connect_tcp(*src, dst.clone(), *sport, *dport, |ip| {
-                            client_ip_to_id.get(&ip).copied()
-                        });
+                        client.on_connect_tcp(*src, dst.clone(), *expected_route, *sport, *dport);
                     });
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -454,56 +445,6 @@ impl ReferenceState {
             }
             Transition::SendIcmpPacket {
                 client_id,
-                src,
-                dst: Destination::DomainName { name, .. },
-                seq,
-                identifier,
-                payload,
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state.is_valid_dst_domain(
-                        client_id,
-                        name,
-                        src,
-                        Protocol::IcmpEcho(identifier.0),
-                    )
-            }
-            Transition::SendUdpPacket {
-                client_id,
-                src,
-                dst: Destination::DomainName { name, .. },
-                sport,
-                dport,
-                payload,
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                ref_client.is_valid_udp_packet(sport, dport, payload)
-                    && state.is_valid_dst_domain(client_id, name, src, Protocol::Udp(dport.0))
-            }
-            Transition::ConnectTcp {
-                client_id,
-                src,
-                dst: dst @ Destination::DomainName { name, .. },
-                sport,
-                dport,
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                state.is_valid_dst_domain(client_id, name, src, Protocol::Tcp(dport.0))
-                    && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
-            }
-            Transition::SendIcmpPacket {
-                client_id,
-                dst: Destination::IpAddr(dst),
                 seq,
                 identifier,
                 payload,
@@ -514,11 +455,9 @@ impl ReferenceState {
                 };
 
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state.is_valid_dst_ip(*dst, Protocol::IcmpEcho(identifier.0))
             }
             Transition::SendUdpPacket {
                 client_id,
-                dst: Destination::IpAddr(dst),
                 sport,
                 dport,
                 payload,
@@ -529,12 +468,11 @@ impl ReferenceState {
                 };
 
                 ref_client.is_valid_udp_packet(sport, dport, payload)
-                    && state.is_valid_dst_ip(*dst, Protocol::Udp(dport.0))
             }
             Transition::ConnectTcp {
                 client_id,
                 src,
-                dst: dst @ Destination::IpAddr(dst_ip),
+                dst,
                 sport,
                 dport,
                 ..
@@ -543,8 +481,7 @@ impl ReferenceState {
                     return false;
                 };
 
-                state.is_valid_dst_ip(*dst_ip, Protocol::Tcp(dport.0))
-                    && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
+                !ref_client.has_tcp_attempt(*src, dst.clone(), *sport, *dport)
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 if servers.is_empty() {
@@ -572,7 +509,7 @@ impl ReferenceState {
             }
             Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
-            Transition::SendDnsQueries(queries) => queries.iter().all(|(client_id, query)| {
+            Transition::SendDnsQuery { client_id, query } => {
                 let Some(client) = state.clients.get(client_id) else {
                     return false;
                 };
@@ -606,7 +543,7 @@ impl ReferenceState {
                 has_socket_for_server
                     && has_dns_server
                     && gateway_is_present_in_case_dns_server_is_cidr_resource
-            }),
+            }
             Transition::RoamClient {
                 client_id: _,
                 ip4,
@@ -686,71 +623,6 @@ impl ReferenceState {
             client.exec_mut(|c| c.clear_packets())
         }
     }
-
-    fn is_valid_dst_ip(&self, dst: IpAddr, proto: Protocol) -> bool {
-        let rid = self
-            .clients
-            .values()
-            .find_map(|c| c.inner().cidr_resource_by_ip_and_proto(dst, proto));
-
-        let Some(rid) = rid else {
-            // As long as the packet is valid it's always valid to send to a non-resource
-            return true;
-        };
-
-        // If the dst is a peer, the packet will only be routed if we are connected.
-        if tunnel::is_peer(dst) {
-            return match dst {
-                IpAddr::V4(dst) => self
-                    .connected_gateway_ipv4_ips()
-                    .iter()
-                    .any(|(_, network)| network.contains(dst)),
-                IpAddr::V6(dst) => self
-                    .connected_gateway_ipv6_ips()
-                    .iter()
-                    .any(|(_, network)| network.contains(dst)),
-            };
-        }
-
-        let Some(gateway) = self.portal.gateway_for_resource(rid) else {
-            return false;
-        };
-
-        self.gateways.contains_key(gateway)
-    }
-
-    fn is_valid_dst_domain(
-        &self,
-        client_id: &ClientId,
-        name: &DomainName,
-        src: &IpAddr,
-        proto: Protocol,
-    ) -> bool {
-        let resource = self
-            .clients
-            .values()
-            .find_map(|c| c.inner().dns_resource_by_domain_and_proto(name, proto));
-
-        let Some(resource) = resource else {
-            return false;
-        };
-        let Some(gateway) = self.portal.gateway_for_resource(resource.id) else {
-            return false;
-        };
-        let Some(client) = self.clients.get(client_id) else {
-            return false;
-        };
-
-        client
-            .inner()
-            .dns_records
-            .get(name)
-            .is_some_and(|r| match src {
-                IpAddr::V4(_) => r.contains(&RecordType::A),
-                IpAddr::V6(_) => r.contains(&RecordType::AAAA),
-            })
-            && self.gateways.contains_key(gateway)
-    }
 }
 
 /// Several helper functions to make the reference state more readable.
@@ -772,6 +644,35 @@ impl ReferenceState {
                 [(ip4, *id), (ip6, *id)]
             })
             .collect()
+    }
+
+    pub(crate) fn route_for_packet(
+        &self,
+        client_id: ClientId,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> PacketRoute {
+        let Some(client) = self.clients.get(&client_id) else {
+            return PacketRoute::Drop;
+        };
+        let clients_by_ip = self.client_ip_to_id();
+
+        client.inner().route_for_packet(
+            dst,
+            protocol,
+            |resource| {
+                self.portal
+                    .gateway_for_resource(resource)
+                    .copied()
+                    .filter(|gateway| self.gateways.contains_key(gateway))
+            },
+            |ip| {
+                self.portal
+                    .gateway_by_ip(ip)
+                    .filter(|gateway| self.gateways.contains_key(gateway))
+            },
+            |ip| clients_by_ip.get(&ip).copied(),
+        )
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {
@@ -944,41 +845,6 @@ impl ReferenceState {
             .collect()
     }
 
-    /// DNS resources not yet known to a client but whose address pattern matches a domain that
-    /// client has already queried.
-    ///
-    /// connlib's `StubResolver` allows associating different resources with the same IPs and that
-    /// state needs to be correct, even if we add a new resource that we have already assigned IPs for.
-    pub(crate) fn unknown_dns_resources_for_already_queried_domains(
-        &self,
-    ) -> Vec<(ClientId, client::Resource)> {
-        let all_resources = self.portal.all_resources();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                let ref_client = client.inner();
-                let queried_domains: Vec<_> = ref_client.dns_records.keys().cloned().collect();
-
-                all_resources
-                    .iter()
-                    .filter(|r| {
-                        let client::Resource::Dns(dns) = r else {
-                            return false;
-                        };
-
-                        !ref_client.has_resource(dns.id)
-                            && queried_domains
-                                .iter()
-                                .any(|domain| is_subdomain(domain, &dns.address))
-                    })
-                    .cloned()
-                    .map(move |r| (*client_id, r))
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
     /// Resources that have configurable traffic filters and exist on at least one client.
     ///
     /// Used by `Transition::ChangeFiltersOfResource`.
@@ -1115,86 +981,6 @@ impl ReferenceState {
                         Some((*id, gateway_host.inner().tunnel_ip6.into()))
                     })
                     .unique()
-            })
-            .collect()
-    }
-
-    pub(crate) fn resolved_v4_domains_with_tcp_resources(
-        &self,
-    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
-        self.clients
-            .iter()
-            .flat_map(|(id, client)| {
-                client
-                    .inner()
-                    .resolved_v4_domains()
-                    .into_iter()
-                    .filter_map(|(domain, filters)| {
-                        self.tcp_resources
-                            .contains_key(&domain)
-                            .then_some((*id, domain, filters))
-                    })
-            })
-            .collect()
-    }
-
-    pub(crate) fn resolved_v6_domains_with_tcp_resources(
-        &self,
-    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
-        self.clients
-            .iter()
-            .flat_map(|(id, client)| {
-                client
-                    .inner()
-                    .resolved_v6_domains()
-                    .into_iter()
-                    .filter_map(|(domain, filters)| {
-                        self.tcp_resources
-                            .contains_key(&domain)
-                            .then_some((*id, domain, filters))
-                    })
-            })
-            .collect()
-    }
-
-    pub(crate) fn resolved_v4_domains_with_icmp_errors(
-        &self,
-        at: Instant,
-    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
-        self.clients
-            .iter()
-            .flat_map(|(id, client)| {
-                client
-                    .inner()
-                    .resolved_v4_domains()
-                    .into_iter()
-                    .filter_map(|(d, filters)| {
-                        self.global_dns_records
-                            .domain_ips_iter(&d, at)
-                            .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
-                            .then_some((*id, d, filters))
-                    })
-            })
-            .collect()
-    }
-
-    pub(crate) fn resolved_v6_domains_with_icmp_errors(
-        &self,
-        at: Instant,
-    ) -> Vec<(ClientId, DomainName, Vec<Filter>)> {
-        self.clients
-            .iter()
-            .flat_map(|(id, client)| {
-                client
-                    .inner()
-                    .resolved_v6_domains()
-                    .into_iter()
-                    .filter_map(|(d, filters)| {
-                        self.global_dns_records
-                            .domain_ips_iter(&d, at)
-                            .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
-                            .then_some((*id, d, filters))
-                    })
             })
             .collect()
     }

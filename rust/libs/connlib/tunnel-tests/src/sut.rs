@@ -291,6 +291,7 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
+                expected_route: _,
                 seq,
                 identifier,
                 payload,
@@ -316,6 +317,7 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
+                expected_route: _,
                 sport,
                 dport,
                 payload,
@@ -335,6 +337,7 @@ impl TunnelTest {
                 client_id,
                 src,
                 dst,
+                expected_route: _,
                 sport,
                 dport,
             } => {
@@ -346,9 +349,9 @@ impl TunnelTest {
                     .unwrap()
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
-            Transition::SendDnsQueries(queries) => {
-                for (
-                    client_id,
+            Transition::SendDnsQuery {
+                client_id,
+                query:
                     DnsQuery {
                         domain,
                         r_type,
@@ -356,15 +359,13 @@ impl TunnelTest {
                         query_id,
                         transport,
                     },
-                ) in queries
-                {
-                    let client = state.clients.get_mut(&client_id).unwrap();
-                    let transmit = client.exec_mut(|sim| {
-                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
-                    });
+            } => {
+                let client = state.clients.get_mut(&client_id).unwrap();
+                let transmit = client.exec_mut(|sim| {
+                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                });
 
-                    buffered_transmits.push_from(transmit, client, now);
-                }
+                buffered_transmits.push_from(transmit, client, now);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
@@ -1483,7 +1484,7 @@ fn address_from_destination(
 
             // Select one candidate by index. The candidate set is only known here
             // (it is filtered by source address family at apply-time), so we index
-            // with `% len` rather than relying on a `proptest::sample::Selector`.
+            // with `% len`.
             available_ips[*resolved_ip as usize % available_ips.len()]
         }
         Destination::IpAddr(addr) => *addr,

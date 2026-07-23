@@ -61,12 +61,12 @@ pub(crate) fn assert_icmp_packets_properties(
         |sim_client| &sim_client.sent_icmp_requests,
         |ref_client| &ref_client.expected_gateway_icmp_handshakes,
         |ref_client| &ref_client.expected_client_icmp_handshakes,
+        |ref_client| &ref_client.expected_icmp_rejections,
         |sim_client| &sim_client.received_icmp_replies,
         |sim_gateway| &sim_gateway.received_icmp_requests,
         |sim_client| &sim_client.received_icmp_requests,
         "ICMP",
         |seq, identifier| tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier),
-        |ref_client, dst, _, _| ref_client.any_resource_allows_icmp(dst),
     );
 }
 
@@ -92,12 +92,12 @@ pub(crate) fn assert_udp_packets_properties(
         |sim_client| &sim_client.sent_udp_requests,
         |ref_client| &ref_client.expected_gateway_udp_handshakes,
         |ref_client| &ref_client.expected_client_udp_handshakes,
+        |ref_client| &ref_client.expected_udp_rejections,
         |sim_client| &sim_client.received_udp_replies,
         |sim_gateway| &sim_gateway.received_udp_requests,
         |sim_client| &sim_client.received_udp_requests,
         "UDP",
         |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
-        |ref_client, dst, _, dport| ref_client.any_resource_allows_udp_on_port(dst, dport.0),
     );
 }
 
@@ -116,12 +116,12 @@ fn assert_packets_properties<T, U>(
         &RefClient,
     )
         -> &BTreeMap<ClientId, BTreeMap<u64, (Destination, T, U)>>,
+    get_expected_rejections: impl Fn(&RefClient) -> &std::collections::BTreeSet<(T, U)>,
     get_received_replies: impl Fn(&SimClient) -> &BTreeMap<(T, U), IpPacket>,
     get_received_requests_on_gateway: impl Fn(&SimGateway) -> &BTreeMap<u64, (Instant, IpPacket)>,
     get_received_requests_on_client: impl Fn(&SimClient) -> &BTreeMap<u64, (Instant, IpPacket)>,
     packet_protocol: &str,
     make_span: impl Fn(T, U) -> Span,
-    any_resource_allows: impl Fn(&RefClient, &Destination, T, U) -> bool,
 ) where
     T: Copy + std::fmt::Debug,
     U: Copy + std::fmt::Debug,
@@ -187,6 +187,15 @@ fn assert_packets_properties<T, U>(
         })
         .collect::<BTreeMap<_, _>>();
 
+    let all_expected_rejections = ref_clients
+        .iter()
+        .flat_map(|(cid, ref_client)| {
+            get_expected_rejections(ref_client)
+                .iter()
+                .map(move |request| (*cid, request.reply_to()))
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+
     let received_requests_by_gateway = sim_gateways
         .iter()
         .map(|(g, s)| (*g, get_received_requests_on_gateway(s)))
@@ -200,17 +209,34 @@ fn assert_packets_properties<T, U>(
         .map(|(g, s)| (*g, &s.dns_query_timestamps))
         .collect::<BTreeMap<_, _>>();
 
-    // ICMP "destination unreachable (administratively prohibited)" replies
-    // are emitted by a peer client when its inbound filter denies a packet we
-    // sent. They aren't "expected handshakes" — the proptest tolerates them
-    // because the production code is meant to send them in that scenario, and
-    // separate assertions cover the prohibited-reply property elsewhere.
+    for expected in &all_expected_rejections {
+        let Some(reply) = all_received_replies_on_client.get(expected) else {
+            tracing::error!(target: "assertions", ?expected, "❌ Missing ICMP prohibited reply for rejected {packet_protocol} packet");
+            continue;
+        };
+
+        if !reply
+            .icmp_error()
+            .is_ok_and(|error| error.is_some_and(|(_, error)| error.is_unreachable_prohibited()))
+        {
+            tracing::error!(target: "assertions", ?expected, "❌ Expected ICMP prohibited reply for rejected {packet_protocol} packet");
+        }
+    }
+
+    // Rejected packets are not handshakes, so validate their ICMP errors
+    // separately before comparing successful replies below.
     let received_replies_excluding_prohibited = all_received_replies_on_client
         .iter()
-        .filter(|(_, packet)| {
-            !packet
+        .filter(|(key, packet)| {
+            let prohibited = packet
                 .icmp_error()
-                .is_ok_and(|e| e.is_some_and(|(_, err)| err.is_unreachable_prohibited()))
+                .is_ok_and(|e| e.is_some_and(|(_, err)| err.is_unreachable_prohibited()));
+
+            if prohibited && !all_expected_rejections.contains(*key) {
+                tracing::error!(target: "assertions", ?key, "❌ Unexpected ICMP prohibited reply for {packet_protocol} packet");
+            }
+
+            !prohibited
         })
         .map(|(k, v)| (*k, v.clone()))
         .collect::<BTreeMap<_, _>>();
@@ -234,10 +260,10 @@ fn assert_packets_properties<T, U>(
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
     // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
     for (gateway, expected_handshakes) in &all_expected_gateway_handshakes {
-        let Some(ref_gateway) = ref_gateways.get(gateway) else {
+        if !ref_gateways.contains_key(gateway) {
             tracing::error!(target: "assertions", %gateway, "❌ Unknown Gateway");
             continue;
-        };
+        }
         let received_requests_for_gateway = received_requests_by_gateway.get(gateway).unwrap();
         let dns_query_timestamps_for_gateway = dns_query_timestamps.get(gateway).unwrap();
 
@@ -278,14 +304,10 @@ fn assert_packets_properties<T, U>(
             let Some((packet_sent_at, gateway_received_request)) =
                 received_requests_for_gateway.get(payload)
             else {
-                // An "administratively prohibited" error is produced by the gateway when a
-                // resource filter blocks the packet before it ever reaches the network.
-                // This is only tolerated if all filters on matching resources block this packet.
                 if let Ok(Some((_, icmp_error))) = client_received_reply.icmp_error()
                     && icmp_error.is_unreachable_prohibited()
-                    && any_resource_allows(ref_client, resource_dst, *t, *u)
                 {
-                    tracing::error!(target: "assertions", %cid, "❌ Received ICMP prohibited error but at least one resource allows this {packet_protocol} packet");
+                    tracing::error!(target: "assertions", %cid, "❌ Received ICMP prohibited error for a packet expected to reach the resource");
                     continue;
                 }
 
@@ -308,12 +330,6 @@ fn assert_packets_properties<T, U>(
                 if expected != actual {
                     tracing::error!(target: "assertions", %cid, %expected, %actual, "❌ Unexpected {packet_protocol} request source");
                 }
-            }
-
-            if !any_resource_allows(ref_client, resource_dst, *t, *u)
-                && !is_tunnel_ip(ref_gateway, resource_dst)
-            {
-                tracing::error!(target: "assertions", %cid, "❌ {packet_protocol} packet was delivered to resource but no traffic filter allows it");
             }
 
             match resource_dst {
@@ -426,7 +442,36 @@ fn assert_packets_properties<T, U>(
 }
 
 pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
-    for (src, dst, sport, dport) in ref_client.expected_tcp_connections.keys() {
+    for ((sport, dport), error) in &sim_client.failed_tcp_packets {
+        let expected_rejection = ref_client
+            .expected_tcp_rejections
+            .contains(&(*sport, *dport));
+        let expected_connection = ref_client.expected_tcp_connections.keys().any(
+            |(_, _, expected_sport, expected_dport)| {
+                (expected_sport, expected_dport) == (sport, dport)
+            },
+        );
+
+        if !expected_rejection && !expected_connection {
+            tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?error, "Unexpected failed TCP connection");
+        }
+    }
+
+    for (sport, dport) in &ref_client.expected_tcp_rejections {
+        match sim_client.failed_tcp_packets.get(&(*sport, *dport)) {
+            Some(error) if error.is_unreachable_prohibited() => {
+                tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP connection was rejected as expected");
+            }
+            Some(error) => {
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?error, "Expected ICMP prohibited error for rejected TCP connection");
+            }
+            None => {
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, "Missing ICMP prohibited error for rejected TCP connection");
+            }
+        }
+    }
+
+    for (src, _, sport, dport) in ref_client.expected_tcp_connections.keys() {
         let src = SocketAddr::new(*src, sport.0);
         let received_icmp_error_for_tuple = sim_client.failed_tcp_packets.get(&(*sport, *dport));
 
@@ -435,14 +480,10 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
 
             (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))
         }) else {
-            // An ICMP "administratively prohibited" error is only expected when every
-            // resource that matches this destination blocks TCP on this port.  If at
-            // least one resource allows it, the error is a bug.
             if let Some(icmp_error) = received_icmp_error_for_tuple
                 && icmp_error.is_unreachable_prohibited()
-                && ref_client.any_resource_allows_tcp_on_port(dst, dport.0)
             {
-                tracing::error!(target: "assertions", %src, port = %dport.0, "Received ICMP error for TCP connection but at least one matching resource allows this port");
+                tracing::error!(target: "assertions", %src, port = %dport.0, "Received ICMP prohibited error for a TCP connection expected to reach the resource");
                 continue;
             }
 
@@ -453,10 +494,6 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
             tracing::error!(target: "assertions", %src, "Missing TCP connection");
             continue;
         };
-
-        if !ref_client.any_resource_allows_tcp_on_port(dst, dport.0) {
-            tracing::error!(target: "assertions", %src, port = %dport.0, "TCP connection was established but no traffic filter allows this port");
-        }
 
         let Some(remote) = socket.remote_endpoint() else {
             tracing::error!(target: "assertions", %src, "TCP socket does not have a remote endpoint");
@@ -726,14 +763,6 @@ fn find_unexpected_entries<'a, E, K, V>(
         .filter(|(k, _)| !expected.iter().any(|e| is_expected(e, k)))
         .map(|(_, v)| v)
         .collect()
-}
-
-fn is_tunnel_ip(g: &RefGateway, dst: &Destination) -> bool {
-    let Destination::IpAddr(ip) = dst else {
-        return false;
-    };
-
-    g.tunnel_ip_for(*ip) == *ip
 }
 
 /// Tracks whether any [`Level::ERROR`] events are emitted and panics on `Drop` in case.

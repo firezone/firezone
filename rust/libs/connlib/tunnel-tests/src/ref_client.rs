@@ -8,7 +8,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
+    transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, PacketRoute, SPort, Seq},
 };
 use tunnel::{
     ClientState, MaliciousBehaviour, dns,
@@ -91,6 +91,10 @@ pub struct RefClient {
     pub(crate) expected_client_icmp_handshakes:
         BTreeMap<ClientId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
 
+    /// ICMP packets that should be rejected by the destination's inbound filter.
+    #[debug(skip)]
+    pub(crate) expected_icmp_rejections: BTreeSet<(Seq, Identifier)>,
+
     /// The expected UDP handshakes with Gateways.
     #[debug(skip)]
     pub(crate) expected_gateway_udp_handshakes:
@@ -101,14 +105,17 @@ pub struct RefClient {
     pub(crate) expected_client_udp_handshakes:
         BTreeMap<ClientId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
+    /// UDP packets that should be rejected by the destination's inbound filter.
+    #[debug(skip)]
+    pub(crate) expected_udp_rejections: BTreeSet<(SPort, DPort)>,
+
     /// The expected TCP connections.
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
-    /// The expected TCP connections to peer clients via static device pools.
+    /// TCP connections that should be rejected by the destination's inbound filter.
     #[debug(skip)]
-    pub(crate) expected_client_tcp_connections:
-        BTreeMap<(IpAddr, Destination, SPort, DPort), ClientId>,
+    pub(crate) expected_tcp_rejections: BTreeSet<(SPort, DPort)>,
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
@@ -129,9 +136,8 @@ pub struct RefClient {
 impl RefClient {
     /// Construct a fresh [`RefClient`] with all derived collections empty.
     ///
-    /// Mirrors the `ref_client` proptest strategy but takes already-sampled
-    /// values, so the structured (`arbitrary`-driven) generator can build a
-    /// client without going through a `Strategy`.
+    /// The structured generator supplies all independent values; this
+    /// constructor initializes the derived reference-model state.
     pub(crate) fn new(
         id: ClientId,
         key: PrivateKey,
@@ -155,10 +161,12 @@ impl RefClient {
             connected_internet_resource: Default::default(),
             expected_gateway_icmp_handshakes: Default::default(),
             expected_client_icmp_handshakes: Default::default(),
+            expected_icmp_rejections: Default::default(),
             expected_gateway_udp_handshakes: Default::default(),
             expected_client_udp_handshakes: Default::default(),
+            expected_udp_rejections: Default::default(),
             expected_tcp_connections: Default::default(),
-            expected_client_tcp_connections: Default::default(),
+            expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
             resources: Default::default(),
@@ -504,24 +512,21 @@ impl RefClient {
     pub(crate) fn on_icmp_packet(
         &mut self,
         dst: Destination,
+        expected_route: PacketRoute,
         seq: Seq,
         identifier: Identifier,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
         now: Instant,
     ) {
         self.on_packet(
             dst.clone(),
-            Protocol::IcmpEcho(identifier.0),
+            expected_route,
             (dst, seq, identifier),
             |ref_client| &mut ref_client.expected_gateway_icmp_handshakes,
             |ref_client| &mut ref_client.expected_client_icmp_handshakes,
+            |ref_client| &mut ref_client.expected_icmp_rejections,
+            (seq, identifier),
             payload,
-            gateway_by_resource,
-            gateway_by_ip,
-            client_by_ip,
             now,
         );
     }
@@ -529,111 +534,75 @@ impl RefClient {
     pub(crate) fn on_udp_packet(
         &mut self,
         dst: Destination,
+        expected_route: PacketRoute,
         sport: SPort,
         dport: DPort,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
         now: Instant,
     ) {
         self.on_packet(
             dst.clone(),
-            Protocol::Udp(dport.0),
+            expected_route,
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_gateway_udp_handshakes,
             |ref_client| &mut ref_client.expected_client_udp_handshakes,
+            |ref_client| &mut ref_client.expected_udp_rejections,
+            (sport, dport),
             payload,
-            gateway_by_resource,
-            gateway_by_ip,
-            client_by_ip,
             now,
         );
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway, peer))]
-    fn on_packet<E>(
+    fn on_packet<E, K: Ord>(
         &mut self,
         dst: Destination,
-        proto: Protocol,
+        expected_route: PacketRoute,
         packet_id: E,
         gateway_map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
         client_map: impl FnOnce(&mut Self) -> &mut BTreeMap<ClientId, BTreeMap<u64, E>>,
+        rejection_set: impl FnOnce(&mut Self) -> &mut BTreeSet<K>,
+        rejection_id: K,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
         now: Instant,
     ) {
-        // Peer destination: try device-pool routing (client-to-client) first,
-        // then fall back to gateway routing.
-        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel::is_peer(*ip)) {
-            let pools = self.static_device_pool_by_tun_ip(ip);
-
-            if !pools.is_empty() {
-                // Static-device-pool path. Track an expected handshake only
-                // when at least one authorising pool's strict filter allows
-                // the protocol — the malicious-behaviour bypass on the source
-                // intentionally lets forbidden traffic onto the wire, but the
-                // receiver's inbound filter then drops it and replies with
-                // ICMP prohibited rather than completing a handshake.
-                if !pools
-                    .iter()
-                    .any(|(_, filters)| protocol_filter_allows(filters, proto))
-                {
-                    tracing::debug!(?proto, "Device filter does not allow protocol, dropping");
-                    return;
-                }
-
-                let Some(remote_id) = client_by_ip(ip) else {
-                    tracing::error!("Unknown peer client for tunnel IP");
-                    return;
-                };
+        let gateway = match expected_route {
+            PacketRoute::Drop => return,
+            PacketRoute::Peer(remote_id) => {
                 tracing::Span::current().record("peer", tracing::field::display(remote_id));
-
-                tracing::debug!(%payload, "Sending packet to peer");
                 client_map(self)
                     .entry(remote_id)
                     .or_default()
                     .insert(payload, packet_id);
                 return;
             }
-        }
-
-        let gateway = if dst.ip_addr().is_some_and(tunnel::is_peer) {
-            let Some(gateway) = gateway_by_ip(dst.ip_addr().unwrap()) else {
-                tracing::error!("Unknown gateway");
-                return;
-            };
-            tracing::Span::current().record("gateway", tracing::field::display(gateway));
-
-            gateway
-        } else {
-            let Some(resource) = self.resource_by_dst(&dst, proto) else {
-                tracing::warn!("Unknown resource");
-                return;
-            };
-
-            tracing::Span::current().record("resource", tracing::field::display(resource));
-
-            if !self.resource_filter_allows(resource, proto) {
-                tracing::debug!("Resource filter does not allow protocol, dropping");
+            PacketRoute::PeerRejectedByPeer(remote_id) => {
+                tracing::Span::current().record("peer", tracing::field::display(remote_id));
+                rejection_set(self).insert(rejection_id);
                 return;
             }
-
-            let Some(gateway) = gateway_by_resource(resource) else {
-                tracing::error!("No gateway for resource");
+            PacketRoute::RejectedByClient => {
+                rejection_set(self).insert(rejection_id);
                 return;
-            };
-
-            tracing::Span::current().record("gateway", tracing::field::display(gateway));
-
-            self.connect_to_resource(resource, dst);
-            self.set_resource_online(resource);
-
-            gateway
+            }
+            PacketRoute::Gateway(gateway) => gateway,
+            PacketRoute::Resource { resource, gateway } => {
+                tracing::Span::current().record("resource", tracing::field::display(resource));
+                self.connect_to_resource(resource, dst);
+                self.set_resource_online(resource);
+                gateway
+            }
+            PacketRoute::ResourceRejectedByGateway { resource, gateway } => {
+                tracing::Span::current().record("resource", tracing::field::display(resource));
+                tracing::Span::current().record("gateway", tracing::field::display(gateway));
+                self.connect_to_resource(resource, dst);
+                self.set_resource_online(resource);
+                rejection_set(self).insert(rejection_id);
+                return;
+            }
         };
 
+        tracing::Span::current().record("gateway", tracing::field::display(gateway));
         tracing::debug!(%payload, "Sending packet");
 
         gateway_map(self)
@@ -651,49 +620,90 @@ impl RefClient {
         &mut self,
         src: IpAddr,
         dst: Destination,
+        expected_route: PacketRoute,
         sport: SPort,
         dport: DPort,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
     ) {
-        let proto = Protocol::Tcp(dport.0);
+        match expected_route {
+            PacketRoute::Drop | PacketRoute::Gateway(_) | PacketRoute::Peer(_) => {}
+            PacketRoute::RejectedByClient | PacketRoute::PeerRejectedByPeer(_) => {
+                self.expected_tcp_rejections.insert((sport, dport));
+            }
+            PacketRoute::Resource {
+                resource,
+                gateway: _,
+            } => {
+                self.connect_to_resource(resource, dst.clone());
+                self.set_resource_online(resource);
 
-        // Peer destination: try device-pool routing first.
+                self.expected_tcp_connections
+                    .insert((src, dst, sport, dport), resource);
+            }
+            PacketRoute::ResourceRejectedByGateway {
+                resource,
+                gateway: _,
+            } => {
+                self.connect_to_resource(resource, dst);
+                self.set_resource_online(resource);
+                self.expected_tcp_rejections.insert((sport, dport));
+            }
+        }
+    }
+
+    pub(crate) fn route_for_packet(
+        &self,
+        dst: &Destination,
+        protocol: Protocol,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
+        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
+    ) -> PacketRoute {
+        // Peer tunnel IPs first mean client-to-client device-pool routing. A
+        // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel::is_peer(*ip)) {
             let pools = self.static_device_pool_by_tun_ip(ip);
 
             if !pools.is_empty() {
-                if !pools
+                let allowed = pools
                     .iter()
-                    .any(|(_, filters)| protocol_filter_allows(filters, proto))
-                {
-                    tracing::debug!(?proto, "Device filter does not allow TCP, dropping");
-                    return;
+                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
+
+                if allowed {
+                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
                 }
-                let Some(remote_id) = client_by_ip(ip) else {
-                    tracing::error!("Unknown peer client for tunnel IP");
-                    return;
-                };
-                self.expected_client_tcp_connections
-                    .insert((src, dst, sport, dport), remote_id);
-                return;
+
+                if !self.malicious_behaviour.ignore_resource_filters {
+                    return PacketRoute::RejectedByClient;
+                }
+
+                return client_by_ip(ip)
+                    .map(PacketRoute::PeerRejectedByPeer)
+                    .unwrap_or(PacketRoute::Drop);
             }
+
+            return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
         }
 
-        let Some(resource) = self.resource_by_dst(&dst, proto) else {
-            tracing::warn!("Unknown resource");
-            return;
+        // Resource selection is the one deliberate classifier in the oracle.
+        // `resource_by_dst` has small, independently tested precedence rules for
+        // overlapping resources; applying a transition does not classify again.
+        let Some(resource) = self.resource_by_dst(dst, protocol) else {
+            return PacketRoute::Drop;
+        };
+        let strictly_allowed = self.strict_resource_filter_allows(resource, protocol);
+
+        if !strictly_allowed && !self.malicious_behaviour.ignore_resource_filters {
+            return PacketRoute::RejectedByClient;
+        }
+        let Some(gateway) = gateway_by_resource(resource) else {
+            return PacketRoute::Drop;
         };
 
-        if !self.resource_filter_allows(resource, proto) {
-            tracing::debug!("Resource filter does not allow protocol, dropping");
-            return;
+        if strictly_allowed {
+            PacketRoute::Resource { resource, gateway }
+        } else {
+            PacketRoute::ResourceRejectedByGateway { resource, gateway }
         }
-
-        self.connect_to_resource(resource, dst.clone());
-        self.set_resource_online(resource);
-
-        self.expected_tcp_connections
-            .insert((src, dst, sport, dport), resource);
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
@@ -877,6 +887,13 @@ impl RefClient {
         self.filter_allows(filters, proto)
     }
 
+    fn strict_resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
+        self.resources
+            .iter()
+            .find(|r| r.id() == rid)
+            .is_some_and(|r| protocol_filter_allows(r.filters(), proto))
+    }
+
     /// Apply `filters` to `proto`, honoring the malicious-behaviour
     /// `ignore_resource_filters` bypass.
     fn filter_allows(&self, filters: &[tunnel::messages::Filter], proto: Protocol) -> bool {
@@ -981,16 +998,35 @@ impl RefClient {
                 },
             );
 
-        not_an_existing_gateway_handshake && not_an_existing_client_handshake
+        let not_an_existing_rejection =
+            !self.expected_icmp_rejections.contains(&(*seq, *identifier));
+
+        not_an_existing_gateway_handshake
+            && not_an_existing_client_handshake
+            && not_an_existing_rejection
     }
 
     /// An UDP packet is valid if we didn't yet send an UDP packet with the same sport, dport and payload.
     pub(crate) fn is_valid_udp_packet(&self, sport: &SPort, dport: &DPort, payload: &u64) -> bool {
-        self.expected_gateway_udp_handshakes.values().flatten().all(
-            |(existig_payload, (_, existing_sport, existing_dport))| {
-                existing_dport != dport && existing_sport != sport && existig_payload != payload
-            },
-        )
+        let not_an_existing_gateway_handshake = self
+            .expected_gateway_udp_handshakes
+            .values()
+            .flatten()
+            .all(|(existing_payload, (_, existing_sport, existing_dport))| {
+                existing_dport != dport && existing_sport != sport && existing_payload != payload
+            });
+        let not_an_existing_client_handshake = self
+            .expected_client_udp_handshakes
+            .values()
+            .flatten()
+            .all(|(existing_payload, (_, existing_sport, existing_dport))| {
+                existing_dport != dport && existing_sport != sport && existing_payload != payload
+            });
+        let not_an_existing_rejection = !self.expected_udp_rejections.contains(&(*sport, *dport));
+
+        not_an_existing_gateway_handshake
+            && not_an_existing_client_handshake
+            && not_an_existing_rejection
     }
 
     pub(crate) fn resolved_v4_domains(&self) -> Vec<(DomainName, Vec<Filter>)> {
@@ -1233,7 +1269,7 @@ impl RefClient {
         self.system_dns_resolvers.clone_from(servers);
     }
 
-    pub(crate) fn has_tcp_connection(
+    pub(crate) fn has_tcp_attempt(
         &self,
         src: IpAddr,
         dst: Destination,
@@ -1242,6 +1278,7 @@ impl RefClient {
     ) -> bool {
         self.expected_tcp_connections
             .contains_key(&(src, dst, sport, dport))
+            || self.expected_tcp_rejections.contains(&(sport, dport))
     }
 
     pub(crate) fn tcp_connection_tuple_to_resource(
@@ -1278,66 +1315,14 @@ impl RefClient {
     pub(crate) fn clear_packets(&mut self) {
         self.expected_gateway_icmp_handshakes.clear();
         self.expected_client_icmp_handshakes.clear();
+        self.expected_icmp_rejections.clear();
         self.expected_gateway_udp_handshakes.clear();
         self.expected_client_udp_handshakes.clear();
+        self.expected_udp_rejections.clear();
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
         self.expected_tcp_connections.clear();
-        self.expected_client_tcp_connections.clear();
-    }
-
-    pub(crate) fn any_resource_allows_tcp_on_port(
-        &self,
-        destination: &Destination,
-        dport: u16,
-    ) -> bool {
-        self.any_resource_allows(destination, |filters| tcp_filter_allows(filters, dport))
-    }
-
-    pub(crate) fn any_resource_allows_icmp(&self, destination: &Destination) -> bool {
-        self.any_resource_allows(destination, icmp_filter_allows)
-    }
-
-    pub(crate) fn any_resource_allows_udp_on_port(
-        &self,
-        destination: &Destination,
-        dport: u16,
-    ) -> bool {
-        self.any_resource_allows(destination, |filters| udp_filter_allows(filters, dport))
-    }
-
-    fn any_resource_allows(
-        &self,
-        destination: &Destination,
-        filter_allows: impl Fn(&[Filter]) -> bool,
-    ) -> bool {
-        let matching_resources = self.resources_matching_destination(destination);
-
-        match matching_resources.as_slice() {
-            [] => self.internet_resource().is_some(),
-            resources => resources.iter().any(|r| match r {
-                Resource::Cidr(cidr) => filter_allows(&cidr.filters),
-                Resource::Dns(dns) => filter_allows(&dns.filters),
-                Resource::Internet(_)
-                | Resource::StaticDevicePool(_)
-                | Resource::DynamicDevicePool(_) => unreachable!(),
-            }),
-        }
-    }
-
-    fn resources_matching_destination(&self, destination: &Destination) -> Vec<&Resource> {
-        match destination {
-            Destination::IpAddr(ip) => self
-                .resources
-                .iter()
-                .filter(|r| matches!(r, Resource::Cidr(cidr) if cidr.address.contains(*ip)))
-                .collect(),
-            Destination::DomainName { name, .. } => self
-                .resources
-                .iter()
-                .filter(|r| matches!(r, Resource::Dns(d) if dns::is_subdomain(name, &d.address)))
-                .collect(),
-        }
+        self.expected_tcp_rejections.clear();
     }
 }
 
@@ -1421,4 +1406,96 @@ fn default_routes_v6() -> Vec<IpNetwork> {
             .unwrap(),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tunnel::messages::PortRange;
+
+    #[test]
+    fn packet_route_makes_overlapping_resource_precedence_explicit() {
+        let client_id = ClientId::from_u128(1);
+        let broad_id = ResourceId::from_u128(2);
+        let specific_id = ResourceId::from_u128(3);
+        let broad_gateway = GatewayId::from_u128(4);
+        let specific_gateway = GatewayId::from_u128(5);
+        let site = Site {
+            id: SiteId::from_u128(6),
+            name: "site".to_owned(),
+        };
+        let mut client = RefClient::new(
+            client_id,
+            PrivateKey([0; 32]),
+            "100.96.0.1".parse().unwrap(),
+            "fd00:2021:1111:8000::1".parse().unwrap(),
+            Vec::new(),
+            false,
+            MaliciousBehaviour {
+                ignore_resource_filters: false,
+            },
+        );
+        client.add_cidr_resource(CidrResource {
+            id: broad_id,
+            address: "10.0.0.0/8".parse().unwrap(),
+            name: "broad".to_owned(),
+            address_description: None,
+            sites: vec![site.clone()],
+            filters: vec![Filter::Icmp],
+        });
+        client.add_cidr_resource(CidrResource {
+            id: specific_id,
+            address: "10.0.0.0/24".parse().unwrap(),
+            name: "specific".to_owned(),
+            address_description: None,
+            sites: vec![site],
+            filters: vec![Filter::Udp(PortRange {
+                port_range_start: 80,
+                port_range_end: 80,
+            })],
+        });
+
+        let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());
+        let route = |client: &RefClient, protocol| {
+            client.route_for_packet(
+                &dst,
+                protocol,
+                |resource| match resource {
+                    id if id == broad_id => Some(broad_gateway),
+                    id if id == specific_id => Some(specific_gateway),
+                    _ => None,
+                },
+                |_| None,
+                |_| None,
+            )
+        };
+
+        assert_eq!(
+            route(&client, Protocol::IcmpEcho(1)),
+            PacketRoute::Resource {
+                resource: broad_id,
+                gateway: broad_gateway,
+            }
+        );
+        assert_eq!(
+            route(&client, Protocol::Udp(80)),
+            PacketRoute::Resource {
+                resource: specific_id,
+                gateway: specific_gateway,
+            }
+        );
+        assert_eq!(
+            route(&client, Protocol::Udp(81)),
+            PacketRoute::RejectedByClient
+        );
+
+        client.malicious_behaviour.ignore_resource_filters = true;
+        assert_eq!(
+            route(&client, Protocol::Udp(81)),
+            PacketRoute::ResourceRejectedByGateway {
+                resource: specific_id,
+                gateway: specific_gateway,
+            }
+        );
+    }
 }
