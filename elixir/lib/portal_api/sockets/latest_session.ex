@@ -144,27 +144,45 @@ defmodule PortalAPI.Sockets.LatestSession do
         |> Enum.uniq()
 
       schema = Map.fetch!(@token_schemas, token_field)
+      existing = existing_token_ids(schema, probe_rows, :replica)
+      misses = Enum.reject(probe_rows, &MapSet.member?(existing, &1.token_id))
 
-      existing =
-        from(t in schema,
-          join: v in values(probe_rows, @token_probe_types),
-          on: t.account_id == v.account_id and t.id == v.token_id,
-          select: t.id
-        )
-        |> Safe.unscoped()
-        |> Safe.all()
+      # Replica lag can hide a token created moments before the flush; a token
+      # is only declared dead (disconnecting its session) once the primary
+      # confirms the miss. Steady state issues no primary query.
+      if misses == [] do
+        MapSet.new()
+      else
+        existing_on_primary = existing_token_ids(schema, misses, :primary)
+
+        misses
+        |> Enum.map(& &1.token_id)
+        |> Enum.reject(&MapSet.member?(existing_on_primary, &1))
         |> MapSet.new()
+      end
+    end
 
-      probe_rows
-      |> Enum.map(& &1.token_id)
-      |> Enum.reject(&MapSet.member?(existing, &1))
-      |> MapSet.new()
+    defp existing_token_ids(schema, probe_rows, repo) do
+      from(t in schema,
+        join: v in values(probe_rows, @token_probe_types),
+        on: t.account_id == v.account_id and t.id == v.token_id,
+        select: t.id
+      )
+      |> probe(repo)
+    end
+
+    defp probe(queryable, :replica) do
+      queryable |> Safe.unscoped(:replica) |> Safe.all(fallback_to_primary: true) |> MapSet.new()
+    end
+
+    defp probe(queryable, :primary) do
+      queryable |> Safe.unscoped() |> Safe.all() |> MapSet.new()
     end
 
     def update_devices([], _token_field), do: MapSet.new()
 
     def update_devices(rows, token_field) do
-      do_update_devices(rows, token_field, _retries_left = 1)
+      do_update_devices(rows, token_field, _retries_left = 1, :replica)
     end
 
     # The probe-then-update window is not atomic: a flush on another node can
@@ -172,12 +190,13 @@ defmodule PortalAPI.Sockets.LatestSession do
     # the unique index. Re-probing (which then sees the winner and strips the
     # loser) and retrying once resolves the collision at the entry level
     # instead of failing every session in the batch; anything beyond that is
-    # left to the caller's batch-level rescue.
-    defp do_update_devices(rows, token_field, retries_left) do
+    # left to the caller's batch-level rescue. The retry probes the primary:
+    # the winning write just landed and may not have replicated yet.
+    defp do_update_devices(rows, token_field, retries_left, probe_repo) do
       rows =
         rows
         |> dedupe_proposed_firezone_ids()
-        |> strip_conflicting_firezone_ids()
+        |> strip_conflicting_firezone_ids(probe_repo)
 
       set =
         [
@@ -213,7 +232,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     rescue
       error in Postgrex.Error ->
         if retries_left > 0 and unique_violation?(error) do
-          do_update_devices(rows, token_field, retries_left - 1)
+          do_update_devices(rows, token_field, retries_left - 1, :primary)
         else
           reraise error, __STACKTRACE__
         end
@@ -278,7 +297,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # is not atomic: a collision that appears in between still raises
     # unique_violation, which the caller's rescue turns into failed entries
     # that reconnect and retry.
-    defp strip_conflicting_firezone_ids(rows) do
+    defp strip_conflicting_firezone_ids(rows, probe_repo) do
       probe_rows =
         for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
           Map.take(row, [:account_id, :actor_id, :device_id, :firezone_id])
@@ -296,9 +315,7 @@ defmodule PortalAPI.Sockets.LatestSession do
             where: d.type == :client,
             select: v.device_id
           )
-          |> Safe.unscoped()
-          |> Safe.all()
-          |> MapSet.new()
+          |> probe(probe_repo)
         end
 
       if MapSet.size(conflicted) > 0 do
@@ -316,17 +333,27 @@ defmodule PortalAPI.Sockets.LatestSession do
       end)
     end
 
+    # A device missing here fails its entry (disconnecting the session), so a
+    # replica miss is confirmed against the primary before it counts.
     def existing_device_ids(rows) do
       probe_rows = Enum.map(rows, &Map.take(&1, [:account_id, :device_id]))
+      existing = probe_device_ids(probe_rows, :replica)
+      misses = Enum.reject(probe_rows, &MapSet.member?(existing, &1.device_id))
 
+      if misses == [] do
+        existing
+      else
+        MapSet.union(existing, probe_device_ids(misses, :primary))
+      end
+    end
+
+    defp probe_device_ids(probe_rows, repo) do
       from(d in Device,
         join: v in values(probe_rows, @probe_types),
         on: d.account_id == v.account_id and d.id == v.device_id,
         select: d.id
       )
-      |> Safe.unscoped()
-      |> Safe.all()
-      |> MapSet.new()
+      |> probe(repo)
     end
   end
 end

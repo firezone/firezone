@@ -392,7 +392,7 @@ defmodule PortalAPI.Client.Socket do
           order_by: [asc: d.inserted_at]
         )
         |> Safe.unscoped(:replica)
-        |> Safe.all()
+        |> Safe.all(fallback_to_primary: true)
         |> classify_attested_rows(Map.new(filters))
       end
     end
