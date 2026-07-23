@@ -20,9 +20,8 @@
 //! iterator, preserving the static-device-pool invariant (only *socket* IPs move
 //! to cursors).
 //!
-//! Residual payload-level preconditions (e.g. `new_address != old_address`) are
-//! not satisfiable purely by construction, so the loop keeps a **bounded**
-//! "draw, check, skip" validity gate via [`ReferenceState::is_valid_transition`].
+//! Transition preconditions are encoded in the state-aware generators, so every
+//! generated transition can be applied without rejection or retry loops.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -47,7 +46,7 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::{PrivateKey, ReferenceState};
 use crate::resource::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource,
+    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
     StaticDevicePoolResource,
 };
 use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
@@ -59,10 +58,6 @@ use crate::transition::{
 
 /// Upper bound on transitions applied per case.
 const MAX_TRANSITIONS: usize = 20;
-
-/// Hard cap on sampling attempts, so a case always terminates even if many
-/// sampled transitions fail their pre-conditions in the current state.
-const MAX_ATTEMPTS: usize = 400;
 
 /// Hands out a fresh address per call from a fixed subnet.
 ///
@@ -125,6 +120,11 @@ struct Gen<'a, 'u> {
 
     // Monotonic payload counter (packet identity; see `fresh_payload`).
     next_payload: u64,
+
+    // Packet keys used by the simulated clients' request / reply maps.
+    icmp_packets: BTreeSet<(Seq, Identifier)>,
+    udp_packets: BTreeSet<(SPort, DPort)>,
+    tcp_connections: BTreeSet<(SPort, DPort)>,
 }
 
 impl<'a, 'u> Gen<'a, 'u> {
@@ -161,6 +161,9 @@ impl<'a, 'u> Gen<'a, 'u> {
             next_resource: 0,
             next_key: 0,
             next_payload: 0,
+            icmp_packets: BTreeSet::new(),
+            udp_packets: BTreeSet::new(),
+            tcp_connections: BTreeSet::new(),
         }
     }
 
@@ -264,6 +267,47 @@ impl<'a, 'u> Gen<'a, 'u> {
         ((n & 0xFF_FFFF) << 40) | (entropy & 0xFF_FFFF_FFFF)
     }
 
+    fn fresh_icmp_packet(&mut self) -> (Seq, Identifier) {
+        let candidate = (self.u16(), self.u16());
+        let packet = (0..=u16::MAX)
+            .map(|offset| {
+                (
+                    Seq(candidate.0.wrapping_add(offset)),
+                    Identifier(candidate.1),
+                )
+            })
+            .find(|packet| !self.icmp_packets.contains(packet))
+            .expect("a scenario cannot exhaust all ICMP packet identifiers");
+        self.icmp_packets.insert(packet);
+
+        packet
+    }
+
+    fn fresh_udp_packet(&mut self, dport: u16) -> (SPort, DPort) {
+        let candidate = self.u16();
+        let packet = (0..=u16::MAX)
+            .map(|offset| (SPort(candidate.wrapping_add(offset)), DPort(dport)))
+            .find(|packet| !self.udp_packets.contains(packet))
+            .expect("a scenario cannot exhaust all UDP packet identifiers");
+        self.udp_packets.insert(packet);
+
+        packet
+    }
+
+    fn fresh_tcp_connection(&mut self, dport: u16) -> (SPort, DPort) {
+        let candidate = self.u.int_in_range(1..=u16::MAX).unwrap_or(1);
+        let connection = (0..u32::from(u16::MAX))
+            .map(|offset| {
+                let sport = ((u32::from(candidate) - 1 + offset) % u32::from(u16::MAX) + 1) as u16;
+                (SPort(sport), DPort(dport))
+            })
+            .find(|connection| !self.tcp_connections.contains(connection))
+            .expect("a scenario cannot exhaust all TCP connection identifiers");
+        self.tcp_connections.insert(connection);
+
+        connection
+    }
+
     fn latency(&mut self, max: u64) -> Duration {
         Duration::from_millis(self.u.int_in_range(10..=max - 1).unwrap_or(10))
     }
@@ -300,21 +344,14 @@ pub fn run_fuzz_case_structured(data: &[u8]) {
     let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor.clone());
     TunnelTest::check_invariants(&sut, &ref_state);
 
-    let mut applied = 0;
-    for _ in 0..MAX_ATTEMPTS {
-        if applied >= MAX_TRANSITIONS || g.is_empty() {
+    for applied in 0..MAX_TRANSITIONS {
+        if g.is_empty() {
             break;
         }
 
         let Some(transition) = arb_transition(&mut g, &ref_state, now) else {
             break; // no legal arm
         };
-
-        // Bounded residual validity gate (payload-level preconditions). Skipping
-        // is safe: MAX_ATTEMPTS caps total iterations, so this cannot hang.
-        if !ReferenceState::is_valid_transition(&ref_state, &transition) {
-            continue;
-        }
 
         // One line per applied transition. Silent during mass fuzzing (no
         // subscriber is installed unless `RUST_LOG` is set); with `RUST_LOG`
@@ -329,8 +366,6 @@ pub fn run_fuzz_case_structured(data: &[u8]) {
         ref_state = ReferenceState::apply(ref_state, &transition, flux_capacitor.now());
         sut = TunnelTest::apply(sut, &ref_state, transition.clone());
         TunnelTest::check_invariants(&sut, &ref_state);
-
-        applied += 1;
     }
 }
 
@@ -1061,6 +1096,19 @@ fn arb_upstream_do53_servers(g: &mut Gen) -> Vec<UpstreamDo53> {
         .collect::<Vec<_>>()
 }
 
+fn arb_compatible_upstream_do53_servers(g: &mut Gen, state: &ReferenceState) -> Vec<UpstreamDo53> {
+    let clients_share_ipv4 = state.clients.values().all(|client| client.ip4.is_some());
+    let clients_share_ipv6 = state.clients.values().all(|client| client.ip6.is_some());
+
+    arb_upstream_do53_servers(g)
+        .into_iter()
+        .filter(|server| {
+            (server.ip.is_ipv4() && clients_share_ipv4)
+                || (server.ip.is_ipv6() && clients_share_ipv6)
+        })
+        .collect::<Vec<_>>()
+}
+
 fn arb_upstream_doh_servers(g: &mut Gen) -> Vec<UpstreamDoH> {
     // Generate at most one DoH server.
     let n = g.count(0, 1);
@@ -1080,6 +1128,20 @@ fn arb_upstream_doh_servers(g: &mut Gen) -> Vec<UpstreamDoH> {
 fn arb_filters(g: &mut Gen) -> Vec<Filter> {
     let n = g.count(0, 2);
     (0..n).map(|_| arb_filter(g)).collect::<Vec<_>>()
+}
+
+fn arb_different_filters(g: &mut Gen, current: &[Filter]) -> Vec<Filter> {
+    let filters = arb_filters(g);
+
+    if filters != current {
+        return filters;
+    }
+
+    if filters.is_empty() {
+        vec![Filter::Icmp]
+    } else {
+        Vec::new()
+    }
 }
 
 fn arb_filter(g: &mut Gen) -> Filter {
@@ -1206,6 +1268,23 @@ fn arb_cidr_resource_address(g: &mut Gen) -> IpNetwork {
     }
 }
 
+fn arb_different_cidr_resource_address(g: &mut Gen, current: IpNetwork) -> IpNetwork {
+    let address = arb_cidr_resource_address(g);
+
+    if address != current {
+        return address;
+    }
+
+    match current {
+        IpNetwork::V4(_) => IpNetwork::V6(
+            Ipv6Network::new(Ipv6Addr::new(0x2001, 0xDB81, 0, 0, 0, 0, 0, 1), 128).unwrap(),
+        ),
+        IpNetwork::V6(_) => {
+            IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(192, 0, 3, 1), 32).unwrap())
+        }
+    }
+}
+
 fn arb_more_specific_subnet(g: &mut Gen, address: IpNetwork, extra_bits: usize) -> IpNetwork {
     // Pick a host within `address`, then a longer prefix.
     let add = g.count(1, extra_bits.max(1));
@@ -1303,17 +1382,38 @@ enum TransitionKind {
     UpdateStaticDevicePool,
 }
 
+fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
+    let sites = state.regular_sites();
+
+    state
+        .cidr_and_dns_resources_on_any_client()
+        .into_iter()
+        .flat_map(|resource| {
+            sites.clone().into_iter().filter_map(move |site| {
+                (!resource.is_exclusively_at(&site)).then(|| (resource.clone(), site))
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
 fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<Transition> {
+    let addable_resources = state.resources_unknown_to_all_clients();
+    let cidr_resources = state.cidr_resources_on_any_client();
+    let move_resources = move_resource_candidates(state);
+    let filter_resources = state.resources_with_filters_on_any_client();
+    let removable_resources = state.removable_resource_ids();
+    let deauthorizable_resources = state.deauthorizable_resource_ids();
+    let client_ids = state.all_client_ids();
+    let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packet_targets(state, now);
     let dns_query_targets = dns_query_targets(state, now);
+    let static_device_pools = state.static_device_pools_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
     // destination, protocol and fields from subsequent bytes.
     use TransitionKind as K;
 
-    let has_resources = !state.all_resource_ids().is_empty();
-    let has_clients = !state.all_client_ids().is_empty();
     let legal = [
         Some((K::UpdateSystemDnsServers, 1)),
         Some((K::UpdateUpstreamDo53Servers, 1)),
@@ -1324,22 +1424,20 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
         Some((K::PartitionRelaysFromPortal, 1)),
         Some((K::RebootRelaysWhilePartitioned, 1)),
         Some((K::Idle, 1)),
-        (!state.all_resources_not_known_to_client().is_empty()).then_some((K::AddResource, 5)),
-        (!state.cidr_resources_on_client().is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
-        (!state.cidr_and_dns_resources_on_client().is_empty() && !state.regular_sites().is_empty())
-            .then_some((K::MoveResourceToNewSite, 1)),
-        (!state.resources_with_filters_on_client().is_empty())
-            .then_some((K::ChangeFiltersOfResource, 1)),
-        has_resources.then_some((K::RemoveResource, 1)),
-        has_resources.then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
-        has_clients.then_some((K::ReconnectPortal, 1)),
-        has_clients.then_some((K::RestartClient, 1)),
-        has_clients.then_some((K::SetInternetResourceState, 1)),
-        (!state.dns_resource_domains().is_empty()).then_some((K::UpdateDnsRecords, 5)),
+        (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
+        (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
+        (!move_resources.is_empty()).then_some((K::MoveResourceToNewSite, 1)),
+        (!filter_resources.is_empty()).then_some((K::ChangeFiltersOfResource, 1)),
+        (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
+        (!deauthorizable_resources.is_empty())
+            .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
+        (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
+        (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
+        (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
+        (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
-        (!state.static_device_pools_on_any_client().is_empty())
-            .then_some((K::UpdateStaticDevicePool, 2)),
+        (!static_device_pools.is_empty()).then_some((K::UpdateStaticDevicePool, 2)),
     ]
     .into_iter()
     .flatten()
@@ -1354,7 +1452,7 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
             servers: arb_system_dns_servers(g),
         },
         K::UpdateUpstreamDo53Servers => {
-            Transition::UpdateUpstreamDo53Servers(arb_upstream_do53_servers(g))
+            Transition::UpdateUpstreamDo53Servers(arb_compatible_upstream_do53_servers(g, state))
         }
         K::UpdateUpstreamDoHServers => {
             Transition::UpdateUpstreamDoHServers(arb_upstream_doh_servers(g))
@@ -1412,65 +1510,53 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
         }
         K::Idle => Transition::Idle,
         K::AddResource => {
-            let candidates = state.all_resources_not_known_to_client();
-            let (_, resource) = candidates[g.choose_index(candidates.len())].clone();
+            let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
             Transition::AddResource(resource)
         }
         K::ChangeCidrResourceAddress => {
-            let candidates = state.cidr_resources_on_client();
-            let (_, resource) = candidates[g.choose_index(candidates.len())].clone();
-            let new_address = arb_cidr_resource_address(g);
+            let resource = cidr_resources[g.choose_index(cidr_resources.len())].clone();
+            let new_address = arb_different_cidr_resource_address(g, resource.address);
             Transition::ChangeCidrResourceAddress {
                 resource,
                 new_address,
             }
         }
         K::MoveResourceToNewSite => {
-            let resources = state.cidr_and_dns_resources_on_client();
-            let sites = state.regular_sites();
-            let (_, resource) = resources[g.choose_index(resources.len())].clone();
-            let new_site = sites[g.choose_index(sites.len())].clone();
+            let (resource, new_site) = move_resources[g.choose_index(move_resources.len())].clone();
             Transition::MoveResourceToNewSite { resource, new_site }
         }
         K::ChangeFiltersOfResource => {
-            let candidates = state.resources_with_filters_on_client();
-            let (_, resource) = candidates[g.choose_index(candidates.len())].clone();
-            let new_filters = arb_filters(g);
+            let resource = filter_resources[g.choose_index(filter_resources.len())].clone();
+            let new_filters = arb_different_filters(g, resource.filters());
             Transition::ChangeFiltersOfResource {
                 resource,
                 new_filters,
             }
         }
         K::RemoveResource => {
-            let ids = state.all_resource_ids();
-            let id = ids[g.choose_index(ids.len())];
+            let id = removable_resources[g.choose_index(removable_resources.len())];
             Transition::RemoveResource(id)
         }
         K::DeauthorizeWhileGatewayIsPartitioned => {
-            let ids = state.all_resource_ids();
-            let id = ids[g.choose_index(ids.len())];
+            let id = deauthorizable_resources[g.choose_index(deauthorizable_resources.len())];
             Transition::DeauthorizeWhileGatewayIsPartitioned(id)
         }
         K::ReconnectPortal => {
-            let ids = state.all_client_ids();
-            let client_id = ids[g.choose_index(ids.len())];
+            let client_id = client_ids[g.choose_index(client_ids.len())];
             Transition::ReconnectPortal { client_id }
         }
         K::RestartClient => {
-            let ids = state.all_client_ids();
-            let client_id = ids[g.choose_index(ids.len())];
+            let client_id = client_ids[g.choose_index(client_ids.len())];
             let key = g.fresh_private_key();
             Transition::RestartClient { client_id, key }
         }
         K::SetInternetResourceState => {
-            let ids = state.all_client_ids();
-            let client_id = ids[g.choose_index(ids.len())];
+            let client_id = client_ids[g.choose_index(client_ids.len())];
             let active = g.bool();
             Transition::SetInternetResourceState { client_id, active }
         }
         K::UpdateDnsRecords => {
-            let domains = state.dns_resource_domains();
-            let domain = domains[g.choose_index(domains.len())].clone();
+            let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
             let records = arb_dns_record_set(g);
             Transition::UpdateDnsRecords { domain, records }
         }
@@ -1483,8 +1569,7 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
             arb_dns_query(g, target)
         }
         K::UpdateStaticDevicePool => {
-            let pools = state.static_device_pools_on_any_client();
-            let pool = pools[g.choose_index(pools.len())].clone();
+            let pool = static_device_pools[g.choose_index(static_device_pools.len())].clone();
             Transition::UpdateStaticDevicePool {
                 pool_id: pool.id,
                 new_devices: arb_static_pool_members(g, state, &pool),
@@ -1860,16 +1945,16 @@ fn arb_tcp_connection(
         arb_non_dns_port(g).max(1)
     };
 
-    let sport = g.u.int_in_range(1..=u16::MAX).unwrap_or(1);
+    let (sport, dport) = g.fresh_tcp_connection(dport);
     let dst = arb_destination(g, DstSpec::Domain(domain));
-    let expected_route = state.route_for_packet(client_id, &dst, Protocol::Tcp(dport));
+    let expected_route = state.route_for_packet(client_id, &dst, Protocol::Tcp(dport.0));
     Transition::ConnectTcp {
         client_id,
         src,
         dst,
         expected_route,
-        sport: SPort(sport),
-        dport: DPort(dport),
+        sport,
+        dport,
     }
 }
 
@@ -2129,19 +2214,18 @@ fn arb_icmp_packet(
     src: IpAddr,
     dst: DstSpec,
 ) -> Transition {
-    let seq = g.u16();
-    let identifier = g.u16();
+    let (seq, identifier) = g.fresh_icmp_packet();
     let resolved_ip = g.u32();
     let payload = g.fresh_payload();
     let dst = into_destination(dst, resolved_ip);
-    let expected_route = state.route_for_packet(client_id, &dst, Protocol::IcmpEcho(identifier));
+    let expected_route = state.route_for_packet(client_id, &dst, Protocol::IcmpEcho(identifier.0));
     Transition::SendIcmpPacket {
         client_id,
         src,
         dst,
         expected_route,
-        seq: Seq(seq),
-        identifier: Identifier(identifier),
+        seq,
+        identifier,
         payload,
     }
 }
@@ -2154,18 +2238,18 @@ fn arb_udp_packet(
     dst: DstSpec,
     dport: u16,
 ) -> Transition {
-    let sport = g.u16();
+    let (sport, dport) = g.fresh_udp_packet(dport);
     let resolved_ip = g.u32();
     let payload = g.fresh_payload();
     let dst = into_destination(dst, resolved_ip);
-    let expected_route = state.route_for_packet(client_id, &dst, Protocol::Udp(dport));
+    let expected_route = state.route_for_packet(client_id, &dst, Protocol::Udp(dport.0));
     Transition::SendUdpPacket {
         client_id,
         src,
         dst,
         expected_route,
-        sport: SPort(sport),
-        dport: DPort(dport),
+        sport,
+        dport,
         payload,
     }
 }

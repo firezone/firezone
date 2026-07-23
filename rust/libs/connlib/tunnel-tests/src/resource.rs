@@ -107,6 +107,10 @@ impl Resource {
         }
     }
 
+    pub(crate) fn is_exclusively_at(&self, site: &Site) -> bool {
+        self.sites() == BTreeSet::from([site])
+    }
+
     pub(crate) fn filters(&self) -> &[Filter] {
         match self {
             Resource::Dns(r) => &r.filters,

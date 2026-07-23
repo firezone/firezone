@@ -79,6 +79,12 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub(crate) fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
+        if !matches!(transition, Transition::UpdateSystemDnsServers { .. }) {
+            for client in state.clients.values_mut() {
+                client.exec_mut(RefClient::finish_system_dns_tcp_connections);
+            }
+        }
+
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -266,7 +272,19 @@ impl ReferenceState {
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|client| client.set_system_dns_resolvers(servers));
+                    let can_connect_to_internet = client
+                        .inner()
+                        .active_internet_resource()
+                        .is_some_and(|resource| {
+                            state
+                                .portal
+                                .gateway_for_resource(resource)
+                                .is_some_and(|gateway| state.gateways.contains_key(gateway))
+                        });
+
+                    client.exec_mut(|client| {
+                        client.update_system_dns_resolvers(servers, can_connect_to_internet)
+                    });
                 }
             }
             Transition::UpdateUpstreamDo53Servers(servers) => {
@@ -384,240 +402,6 @@ impl ReferenceState {
         state
     }
 
-    /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
-    pub(crate) fn is_valid_transition(state: &Self, transition: &Transition) -> bool {
-        match transition {
-            Transition::AddResource(resource) => {
-                // Don't add resource we already have.
-                if state
-                    .clients
-                    .values()
-                    .any(|c| c.inner().has_resource(resource.id()))
-                {
-                    return false;
-                }
-
-                true
-            }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                resource.address != *new_address
-                    && state
-                        .clients
-                        .values()
-                        .any(|c| c.inner().has_resource(resource.id))
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                resource.sites() != BTreeSet::from([new_site])
-                    && state
-                        .clients
-                        .values()
-                        .any(|c| c.inner().has_resource(resource.id()))
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                resource.filters() != new_filters.as_slice()
-                    && state
-                        .clients
-                        .values()
-                        .any(|c| c.inner().has_resource(resource.id()))
-            }
-            Transition::UpdateStaticDevicePool { pool_id, .. } => {
-                // Pool must already exist on at least one client.
-                state.portal.all_resources().iter().any(|r| {
-                    let client::Resource::StaticDevicePool(existing) = r else {
-                        return false;
-                    };
-
-                    existing.id == *pool_id
-                        && state
-                            .clients
-                            .values()
-                            .any(|c| c.inner().has_resource(*pool_id))
-                })
-            }
-            Transition::SetInternetResourceState { client_id, .. } => {
-                state.clients.contains_key(client_id)
-            }
-            Transition::SendIcmpPacket {
-                client_id,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                ref_client.is_valid_icmp_packet(seq, identifier, payload)
-            }
-            Transition::SendUdpPacket {
-                client_id,
-                sport,
-                dport,
-                payload,
-                ..
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                ref_client.is_valid_udp_packet(sport, dport, payload)
-            }
-            Transition::ConnectTcp {
-                client_id,
-                src,
-                dst,
-                sport,
-                dport,
-                ..
-            } => {
-                let Some(ref_client) = state.clients.get(client_id).map(|h| h.inner()) else {
-                    return false;
-                };
-
-                !ref_client.has_tcp_attempt(*src, dst.clone(), *sport, *dport)
-            }
-            Transition::UpdateSystemDnsServers { servers } => {
-                if servers.is_empty() {
-                    return true; // Clearing is allowed.
-                }
-
-                servers.iter().any(|dns_server| {
-                    state
-                        .clients
-                        .values()
-                        .any(|c| c.sending_socket_for(*dns_server).is_some())
-                })
-            }
-            Transition::UpdateUpstreamDo53Servers(servers) => {
-                if servers.is_empty() {
-                    return true; // Clearing is allowed.
-                }
-
-                servers.iter().any(|dns_server| {
-                    state
-                        .clients
-                        .values()
-                        .all(|client| client.sending_socket_for(dns_server.ip).is_some())
-                })
-            }
-            Transition::UpdateUpstreamDoHServers(_) => true,
-            Transition::UpdateUpstreamSearchDomain(_) => true,
-            Transition::SendDnsQuery { client_id, query } => {
-                let Some(client) = state.clients.get(client_id) else {
-                    return false;
-                };
-
-                let has_socket_for_server = match query.dns_server {
-                    tunnel::dns::Upstream::Do53 { server } => {
-                        client.sending_socket_for(server.ip()).is_some()
-                    }
-                    tunnel::dns::Upstream::DoH { .. } => true,
-                };
-                let upstream_do53 = state.portal.upstream_do53();
-                let upstream_doh = state.portal.upstream_doh();
-
-                let has_dns_server = client
-                    .inner()
-                    .expected_dns_servers(upstream_do53, upstream_doh)
-                    .contains(&query.dns_server);
-
-                let gateway_is_present_in_case_dns_server_is_cidr_resource =
-                    match client.inner().dns_query_via_resource(query, upstream_do53) {
-                        Some(r) => {
-                            let Some(gateway) = state.portal.gateway_for_resource(r) else {
-                                return false;
-                            };
-
-                            state.gateways.contains_key(gateway)
-                        }
-                        None => true,
-                    };
-
-                has_socket_for_server
-                    && has_dns_server
-                    && gateway_is_present_in_case_dns_server_is_cidr_resource
-            }
-            Transition::RoamClient {
-                client_id: _,
-                ip4,
-                ip6,
-                nat_ip4,
-                dead_window: _,
-                portal_window: _,
-            } => {
-                // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
-
-                let is_assigned_ip4 = ip4.is_some_and(|ip| state.network.contains(ip));
-                let is_assigned_ip6 = ip6.is_some_and(|ip| state.network.contains(ip));
-                let is_assigned_nat_ip4 = state.network.contains(*nat_ip4);
-
-                !is_assigned_ip4 && !is_assigned_ip6 && !is_assigned_nat_ip4
-            }
-            Transition::ReconnectPortal { client_id } => state.clients.contains_key(client_id),
-            Transition::RemoveResource(r) => {
-                let has_resource = state.clients.values().any(|c| c.inner().has_resource(*r));
-                let has_tcp_connection = state
-                    .clients
-                    .values()
-                    .any(|c| c.inner().tcp_connection_tuple_to_resource(*r).is_some());
-
-                // Don't deactivate resources we don't have. It doesn't hurt but makes the logs of reduced testcases weird.
-                // Also don't deactivate resources where we have TCP connections as those would get interrupted.
-                has_resource && !has_tcp_connection
-            }
-            Transition::DeployNewRelays(new_relays) => {
-                let mut additional_routes = RoutingTable::default();
-                for (rid, relay) in new_relays {
-                    if !additional_routes.add_host(*rid, relay) {
-                        return false;
-                    }
-                }
-
-                let route_overlap = state.network.overlaps_with(&additional_routes);
-
-                !route_overlap
-            }
-            Transition::RebootRelaysWhilePartitioned(new_relays) => {
-                let mut additional_routes = RoutingTable::default();
-                for (rid, relay) in new_relays {
-                    if !additional_routes.add_host(*rid, relay) {
-                        return false;
-                    }
-                }
-
-                let route_overlap = state.network.overlaps_with(&additional_routes);
-
-                !route_overlap
-            }
-            Transition::Idle => true,
-            Transition::RestartClient { client_id, .. } => state.clients.contains_key(client_id),
-            Transition::PartitionRelaysFromPortal => true,
-            Transition::DeauthorizeWhileGatewayIsPartitioned(r) => {
-                let has_resource = state.clients.values().any(|c| c.inner().has_resource(*r));
-                let has_gateway_for_resource = state
-                    .portal
-                    .gateway_for_resource(*r)
-                    .is_some_and(|g| state.gateways.contains_key(g));
-                let has_tcp_connection = state
-                    .clients
-                    .values()
-                    .any(|c| c.inner().tcp_connection_tuple_to_resource(*r).is_some());
-
-                // Don't deactivate resources we don't have. It doesn't hurt but makes the logs of reduced testcases weird.
-                // Also don't deactivate resources where we have TCP connections as those would get interrupted.
-                has_resource && has_gateway_for_resource && !has_tcp_connection
-            }
-            Transition::UpdateDnsRecords { .. } => true,
-        }
-    }
-
     pub(crate) fn clear_packets(state: &mut ReferenceState) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets())
@@ -631,6 +415,33 @@ impl ReferenceState {
         self.clients
             .values()
             .flat_map(|c| c.inner().all_resource_ids())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    pub(crate) fn removable_resource_ids(&self) -> Vec<ResourceId> {
+        self.all_resource_ids()
+            .into_iter()
+            .filter(|resource| {
+                self.clients.values().all(|client| {
+                    client
+                        .inner()
+                        .tcp_connection_tuple_to_resource(*resource)
+                        .is_none()
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) fn deauthorizable_resource_ids(&self) -> Vec<ResourceId> {
+        self.removable_resource_ids()
+            .into_iter()
+            .filter(|resource| {
+                self.portal
+                    .gateway_for_resource(*resource)
+                    .is_some_and(|gateway| self.gateways.contains_key(gateway))
+            })
             .collect()
     }
 
@@ -773,6 +584,8 @@ impl ReferenceState {
     }
 
     pub(crate) fn reachable_dns_servers(&self) -> Vec<(ClientId, dns::Upstream)> {
+        let upstream_do53 = self.portal.upstream_do53();
+
         self.clients
             .iter()
             .flat_map(|(client_id, client)| {
@@ -788,6 +601,20 @@ impl ReferenceState {
                             server: SocketAddr::V6(_),
                         } => client.ip6.is_some(),
                         tunnel::dns::Upstream::DoH { .. } => true,
+                    })
+                    .filter(|server| {
+                        if upstream_do53.is_empty() {
+                            return true;
+                        }
+
+                        client
+                            .inner()
+                            .upstream_dns_server_via_resource(server)
+                            .is_none_or(|resource| {
+                                self.portal
+                                    .gateway_for_resource(resource)
+                                    .is_some_and(|gateway| self.gateways.contains_key(gateway))
+                            })
                     })
                     .map(move |server| (*client_id, server))
             })
@@ -831,16 +658,14 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn all_resources_not_known_to_client(&self) -> Vec<(ClientId, client::Resource)> {
-        let all_resources = self.portal.all_resources();
-
-        self.clients
-            .iter()
-            .flat_map(move |(id, client)| {
-                let mut all_resources = all_resources.clone();
-                all_resources.retain(|r| !client.inner().has_resource(r.id()));
-
-                all_resources.into_iter().map(|r| (*id, r))
+    pub(crate) fn resources_unknown_to_all_clients(&self) -> Vec<client::Resource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .filter(|resource| {
+                self.clients
+                    .values()
+                    .all(|client| !client.inner().has_resource(resource.id()))
             })
             .collect()
     }
@@ -848,47 +673,42 @@ impl ReferenceState {
     /// Resources that have configurable traffic filters and exist on at least one client.
     ///
     /// Used by `Transition::ChangeFiltersOfResource`.
-    pub(crate) fn resources_with_filters_on_client(&self) -> Vec<(ClientId, client::Resource)> {
-        let all_resources = self.portal.all_resources();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                let mut all_resources = all_resources.clone();
-                all_resources.retain(|r| {
-                    matches!(
-                        r,
-                        client::Resource::Cidr(_)
-                            | client::Resource::Dns(_)
-                            | client::Resource::StaticDevicePool(_)
-                    ) && client.inner().has_resource(r.id())
-                });
-
-                all_resources.into_iter().map(move |r| (*client_id, r))
+    pub(crate) fn resources_with_filters_on_any_client(&self) -> Vec<client::Resource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .filter(|resource| {
+                matches!(
+                    resource,
+                    client::Resource::Cidr(_)
+                        | client::Resource::Dns(_)
+                        | client::Resource::StaticDevicePool(_)
+                ) && self
+                    .clients
+                    .values()
+                    .any(|client| client.inner().has_resource(resource.id()))
             })
             .collect()
     }
 
-    pub(crate) fn cidr_and_dns_resources_on_client(&self) -> Vec<(ClientId, client::Resource)> {
-        let all_resources = self.portal.all_resources();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                let mut all_resources = all_resources.clone();
-                all_resources.retain(|r| {
-                    matches!(r, client::Resource::Cidr(_) | client::Resource::Dns(_))
-                        && client.inner().has_resource(r.id())
-                });
-
-                all_resources.into_iter().map(move |r| (*client_id, r))
+    pub(crate) fn cidr_and_dns_resources_on_any_client(&self) -> Vec<client::Resource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .filter(|resource| {
+                matches!(
+                    resource,
+                    client::Resource::Cidr(_) | client::Resource::Dns(_)
+                ) && self
+                    .clients
+                    .values()
+                    .any(|client| client.inner().has_resource(resource.id()))
             })
             .collect()
     }
 
-    pub(crate) fn cidr_resources_on_client(&self) -> Vec<(ClientId, client::CidrResource)> {
-        let cidr_resources: Vec<_> = self
-            .portal
+    pub(crate) fn cidr_resources_on_any_client(&self) -> Vec<client::CidrResource> {
+        self.portal
             .all_resources()
             .into_iter()
             .filter_map(|r| match r {
@@ -898,15 +718,10 @@ impl ReferenceState {
                 | client::Resource::StaticDevicePool(_)
                 | client::Resource::DynamicDevicePool(_) => None,
             })
-            .collect();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                cidr_resources
-                    .iter()
-                    .filter(|r| client.inner().has_resource(r.id))
-                    .map(move |r| (*client_id, r.clone()))
+            .filter(|resource| {
+                self.clients
+                    .values()
+                    .any(|client| client.inner().has_resource(resource.id))
             })
             .collect()
     }
