@@ -121,14 +121,9 @@ jobs:
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
             grep "WARN" && exit 1 || exit 0
 
-      - name: Ensure no UDP socket errors
+      - name: Ensure no socket errors or TCP reordering
         if: "!cancelled() && startsWith(matrix.test, 'tcp')"
-        run: |
-          docker compose exec client-1 /bin/sh -c 'nstat -s' |
-            grep -i "error" && exit 1 || exit 0
-
-          docker compose exec gateway /bin/sh -c 'nstat -s' |
-            grep -i "error" && exit 1 || exit 0
+        run: ./scripts/tests/perf/assert-clean-netstat.sh client-1 client-2 gateway iperf3
 
   upload-bencher:
     continue-on-error: true
