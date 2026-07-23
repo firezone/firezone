@@ -315,14 +315,19 @@ defmodule Portal.OpsTest do
       end)
     end
 
-    test "chunks BCC recipients into groups of 50" do
-      account = account_fixture()
+    test "keeps each account in one send window" do
+      account1 = account_fixture()
+      account2 = account_fixture()
 
-      # Create 75 admin actors
-      Enum.each(1..75, fn i ->
+      Enum.each(1..60, fn i ->
         admin_actor_fixture(
-          account: account,
-          email: "admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
+          account: account1,
+          email: "account-1-admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
+        )
+
+        admin_actor_fixture(
+          account: account2,
+          email: "account-2-admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
         )
       end)
 
@@ -330,21 +335,50 @@ defmodule Portal.OpsTest do
         capture_io("y\n", fn ->
           assert :ok =
                    queue_admin_email(
-                     [account.id],
+                     [account1.id, account2.id],
                      "Chunk Subject",
                      "<p>Chunk HTML</p>",
                      "Chunk Text"
                    )
 
-          queued = collect_queued_emails(account.id)
-          assert length(queued) == 2
+          jobs =
+            [worker: Portal.Workers.OutboundEmail]
+            |> Oban.Job.query()
+            |> Repo.all()
 
-          bcc_counts = Enum.map(queued, fn email -> length(email.bcc) end) |> Enum.sort()
-          assert bcc_counts == [25, 50]
+          assert length(jobs) == 4
+
+          states_by_account =
+            jobs
+            |> Enum.group_by(& &1.args["account_id"])
+            |> Enum.map(fn {_account_id, account_jobs} ->
+              recipient_count =
+                account_jobs
+                |> Enum.map(&length(&1.args["request"]["bcc"]))
+                |> Enum.sum()
+
+              assert recipient_count == 60
+              assert [state] = Enum.uniq(Enum.map(account_jobs, & &1.state))
+              state
+            end)
+
+          assert Enum.sort(states_by_account) == ["available", "scheduled"]
+
+          scheduled_jobs = Enum.filter(jobs, &(&1.state == "scheduled"))
+          assert length(scheduled_jobs) == 2
+          assert length(Enum.uniq(Enum.map(scheduled_jobs, & &1.scheduled_at))) == 1
+
+          assert Enum.all?(scheduled_jobs, fn job ->
+                   DateTime.diff(job.scheduled_at, job.inserted_at, :second) in 299..300
+                 end)
+
+          assert Enum.all?(jobs, fn job ->
+                   length(job.args["request"]["bcc"]) <= 50
+                 end)
         end)
 
-      assert output =~ "75 unique admin(s)"
-      assert output =~ "1 account(s)"
+      assert output =~ "120 unique admin(s)"
+      assert output =~ "2 account(s)"
     end
   end
 end
