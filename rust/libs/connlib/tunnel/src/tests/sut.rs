@@ -1201,6 +1201,7 @@ impl TunnelTest {
                             client_ice,
                             gateway_ice,
                             use_iceless,
+                            test_ingest_token(),
                             now,
                         )
                     })
@@ -1266,6 +1267,7 @@ impl TunnelTest {
                                     use_iceless,
                                     "initiating client".to_owned(),
                                     Some(remote_authorization),
+                                    test_ingest_token(),
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client {
@@ -1292,6 +1294,7 @@ impl TunnelTest {
                                     use_iceless,
                                     "target client".to_owned(),
                                     None,
+                                    test_ingest_token(),
                                     now,
                                 )
                                 .map_err(|error| ClientEventError::Client { id: src, error })?;

@@ -74,6 +74,7 @@ impl Session {
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
+        local_flow_logs: bool,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -85,6 +86,7 @@ impl Session {
                     is_internet_resource_active,
                     dns_servers,
                     flow_logs_dir,
+                    local_flow_logs,
                     portal,
                     cmd_rx,
                     resource_list_sender,

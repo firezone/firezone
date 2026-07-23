@@ -59,6 +59,10 @@ pub struct Eventloop {
     /// entrypoint's `flow_log_writer` layer.
     flow_logs_dir: Option<std::path::PathBuf>,
 
+    /// The `--flow-logs` flag: keeps flow tracking on even when the portal has
+    /// uploads disabled.
+    local_flow_logs: bool,
+
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<ResourceList>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -121,6 +125,7 @@ impl Eventloop {
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
+        local_flow_logs: bool,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<ResourceList>,
@@ -156,6 +161,7 @@ impl Eventloop {
             tunnel: Some(tunnel),
             resolver_bypass,
             flow_logs_dir,
+            local_flow_logs,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -479,6 +485,11 @@ impl Eventloop {
                     "Flow-log config received from portal init"
                 );
 
+                tunnel.state_mut().set_flow_logs_enabled(
+                    (flow_logs.upload_enabled() && self.flow_logs_dir.is_some())
+                        || self.local_flow_logs,
+                );
+
                 if let Some(spool_root) = &self.flow_logs_dir
                     && let Err(e) = flow_log_upload::configure_uploads(
                         spool_root,
@@ -575,6 +586,7 @@ impl Eventloop {
                     client_ice_credentials,
                     gateway_ice_credentials,
                     use_iceless,
+                    flow_logs_ingest_token,
                     now,
                 ) {
                     Ok(Ok(())) => {}
@@ -662,6 +674,7 @@ impl Eventloop {
                     use_iceless,
                     client_name,
                     authorization,
+                    flow_logs_ingest_token,
                     now,
                 ) {
                     Ok(()) => {}

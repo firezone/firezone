@@ -153,6 +153,23 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .contains_key(&udp.destination_port())
     }
 
+    /// Checks whether the given outbound packet is one of our in-flight queries.
+    ///
+    /// Matches a pending query's local socket as the source and its server as
+    /// the destination, i.e. the reverse direction of [`Client::accepts`].
+    pub fn owns_outbound(&self, packet: &IpPacket) -> bool {
+        let Some(udp) = packet.as_udp() else {
+            return false;
+        };
+
+        let Some(pending) = self.pending_queries_by_local_port.get(&udp.source_port()) else {
+            return false;
+        };
+
+        pending.local == SocketAddr::new(packet.source(), udp.source_port())
+            && pending.server == SocketAddr::new(packet.destination(), udp.destination_port())
+    }
+
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
 
@@ -448,6 +465,28 @@ mod tests {
         assert!(client.accepts(&late_response));
         client.handle_inbound(late_response);
         assert!(client.poll_query_result().is_none());
+    }
+
+    #[test]
+    fn owns_outbound_matches_only_pending_queries() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+
+        client.send_query(server, create_test_query(), now).unwrap();
+        let query_packet = client.poll_outbound().unwrap();
+
+        let unrelated_packet = ip_packet::make::udp_packet(
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+            50000,
+            53,
+            &[],
+        )
+        .unwrap();
+
+        assert!(client.owns_outbound(&query_packet));
+        assert!(!client.owns_outbound(&unrelated_packet));
     }
 
     fn create_test_client() -> Client {

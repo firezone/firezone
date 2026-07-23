@@ -2,12 +2,13 @@ use crate::IpConfig;
 use crate::conn_track::{ConnTrack, Originator};
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
-use crate::messages::Filter;
+use crate::messages::{Filter, IngestToken};
+use crate::routing_table::{RouteEntry, RoutingTable};
 use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
@@ -36,6 +37,13 @@ pub(crate) struct ClientOnClient {
     inbound_filter: FilterEngine,
     /// Tracks outbound flows so legitimate return traffic is admitted.
     conn_track: ConnTrack,
+
+    /// The portal's per-flow ingest token for each resource of this peer, used
+    /// to attribute the client-to-client flow logs.
+    ingest_tokens: HashMap<ResourceId, IngestToken>,
+    /// Finds the resource an inbound packet belongs to; rebuilt whenever
+    /// `resources` changes.
+    inbound_resources: InboundResources,
 }
 
 /// An inbound resource: filters granted by a resource for traffic from the remote peer.
@@ -69,6 +77,8 @@ impl ClientOnClient {
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),
+            ingest_tokens: HashMap::new(),
+            inbound_resources: InboundResources::default(),
         }
     }
 
@@ -86,6 +96,10 @@ impl ClientOnClient {
 
     pub(crate) fn set_remote_name(&mut self, name: String) {
         self.remote_name = name;
+    }
+
+    pub(crate) fn set_ingest_token(&mut self, resource_id: ResourceId, token: IngestToken) {
+        self.ingest_tokens.insert(resource_id, token);
     }
 
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
@@ -119,6 +133,7 @@ impl ClientOnClient {
 
         for (resource_id, _) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
             tracing::info!(%resource_id, "Revoking peer authorization on resync");
+            self.ingest_tokens.remove(&resource_id);
             any_removed = true;
         }
 
@@ -156,6 +171,8 @@ impl ClientOnClient {
 
     /// Drop a previously-active resource.
     pub(crate) fn remove_resource(&mut self, resource_id: &ResourceId) {
+        self.ingest_tokens.remove(resource_id);
+
         let Some(_entry) = self.resources.remove(resource_id) else {
             return;
         };
@@ -165,6 +182,8 @@ impl ClientOnClient {
     }
 
     fn recompute_inbound_filter(&mut self) {
+        self.inbound_resources = InboundResources::new(&self.resources);
+
         if self.resources.is_empty() {
             // No resources -> deny all (except return traffic).
             self.inbound_filter = FilterEngine::DenyAll;
@@ -191,6 +210,10 @@ impl ClientOnClient {
         self.conn_track.record_outbound_as_originator(packet, now);
     }
 
+    pub(crate) fn ingest_token(&self, resource: &ResourceId) -> Option<IngestToken> {
+        self.ingest_tokens.get(resource).cloned()
+    }
+
     /// Returns the next instant at which one of this peer's inbound authorizations expires.
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         self.resources.poll_timeout()
@@ -206,6 +229,7 @@ impl ClientOnClient {
             match event {
                 crate::expiring_map::Event::EntryExpired { key, .. } => {
                     tracing::info!(rid = %key, "Resource authorization expired, revoking");
+                    self.ingest_tokens.remove(&key);
                     any_expired = true;
                 }
             }
@@ -216,9 +240,9 @@ impl ClientOnClient {
         }
     }
 
-    /// Who opened the flow this *outbound* packet belongs to, if it is tracked.
-    /// Lets outbound routing send replies directly to the peer even when no
-    /// outbound route exists.
+    /// Who opened the flow this *outbound* packet belongs to, if it is
+    /// tracked. Lets outbound routing skip the per-(resource, peer) intent when
+    /// the connection is already established.
     pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
         self.conn_track.outbound_flow_originator(packet)
     }
@@ -250,6 +274,9 @@ impl ClientOnClient {
         }
 
         if self.conn_track.is_return_traffic(&packet) {
+            // A reply to a flow we opened.
+            flow_tracker::record_peer(self.id, flow_tracker::Role::Initiator);
+
             return Ok(InboundResult::Send(packet));
         }
 
@@ -263,7 +290,70 @@ impl ClientOnClient {
         // The packet passed our filters, record as successful inbound packet.
         self.conn_track.record_inbound(&packet, now);
 
+        // The peer opened this flow towards us.
+        flow_tracker::record_peer(self.id, flow_tracker::Role::Responder);
+        flow_tracker::record_ingest_token(self.ingest_token_for_inbound(&packet));
+
         Ok(InboundResult::Send(packet))
+    }
+
+    /// Finds the token of the resource an inbound packet belongs to.
+    fn ingest_token_for_inbound(&mut self, packet: &IpPacket) -> Option<IngestToken> {
+        let resource = self.inbound_resources.resource_for(packet)?;
+
+        self.ingest_tokens.get(&resource).cloned()
+    }
+}
+
+/// Finds the inbound resource a packet belongs to.
+///
+/// Reuses the sender's routing-table selection rule, so both ends of a flow
+/// pick the same resource. Inbound packets all target our TUN address, so
+/// every resource matches every address and only its filter and id decide.
+#[derive(Default)]
+struct InboundResources {
+    table: RoutingTable<InboundEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct InboundEntry {
+    resource_id: ResourceId,
+    filter: FilterEngine,
+}
+
+impl RouteEntry for InboundEntry {
+    fn filter(&self) -> &FilterEngine {
+        &self.filter
+    }
+
+    fn resource_id(&self) -> ResourceId {
+        self.resource_id
+    }
+}
+
+impl InboundResources {
+    fn new(resources: &ExpiringMap<ResourceId, ResourceOnClient>) -> Self {
+        let mut table = RoutingTable::new();
+
+        for (resource_id, resource) in resources.iter() {
+            table.upsert_for_all_addresses(InboundEntry {
+                resource_id: *resource_id,
+                filter: FilterEngine::new(&resource.filters),
+            });
+        }
+
+        Self { table }
+    }
+
+    fn resource_for(&mut self, packet: &IpPacket) -> Option<ResourceId> {
+        let entry = self
+            .table
+            .matches(packet.destination(), packet.destination_protocol())?;
+
+        // Only a resource whose filter admits the packet may claim it.
+        entry.filter.apply(packet.destination_protocol()).ok()?;
+
+        Some(entry.resource_id)
     }
 }
 
@@ -426,6 +516,68 @@ mod tests {
         assert!(is_filtered(
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
+    }
+
+    #[test]
+    fn inbound_resource_matches_like_the_sender() {
+        let now = Instant::now();
+        let r1 = ResourceId::from_u128(1);
+        let r2 = ResourceId::from_u128(2);
+
+        let tcp_443 = vec![Filter::Tcp(PortRange {
+            port_range_start: 443,
+            port_range_end: 443,
+        })];
+
+        // R1 admits only TCP 443; R2 has no filters and admits everything.
+        let mut resources = ExpiringMap::default();
+        resources.insert(
+            r1,
+            ResourceOnClient {
+                filters: tcp_443.clone(),
+            },
+            now,
+            NEVER_EXPIRES_TTL,
+        );
+        resources.insert(
+            r2,
+            ResourceOnClient { filters: vec![] },
+            now,
+            NEVER_EXPIRES_TTL,
+        );
+
+        let mut inbound = InboundResources::new(&resources);
+
+        // Both admit TCP 443; the highest id wins, like on the sender.
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(443)), Some(r2));
+        // Only R2 admits TCP 80.
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(80)), Some(r2));
+
+        // Alone, R1 only answers for its own port.
+        let mut resources = ExpiringMap::default();
+        resources.insert(
+            r1,
+            ResourceOnClient { filters: tcp_443 },
+            now,
+            NEVER_EXPIRES_TTL,
+        );
+
+        let mut inbound = InboundResources::new(&resources);
+
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(443)), Some(r1));
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(80)), None);
+    }
+
+    fn tcp_packet_to_us(dst_port: u16) -> IpPacket {
+        make::tcp_packet(
+            peer_v4(),
+            our_v4(),
+            50000,
+            dst_port,
+            Default::default(),
+            &[],
+        )
+        .unwrap()
     }
 
     fn peer() -> ClientOnClient {

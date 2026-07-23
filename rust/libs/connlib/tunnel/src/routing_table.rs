@@ -1,7 +1,12 @@
-use std::{cmp::Ordering, collections::BTreeSet, net::IpAddr, num::NonZeroUsize};
+use std::{
+    cmp::Ordering,
+    collections::BTreeSet,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    num::NonZeroUsize,
+};
 
 use connlib_model::ResourceId;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use lru::LruCache;
@@ -50,6 +55,25 @@ where
 {
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+
+    /// Inserts `entry` so it matches every address, v4 and v6.
+    ///
+    /// Use this when only the entry's filter and id should decide the match,
+    /// not the address.
+    pub(crate) fn upsert_for_all_addresses(&mut self, entry: T) {
+        self.upsert(
+            Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0)
+                .expect("/0 is a valid prefix")
+                .into(),
+            entry.clone(),
+        );
+        self.upsert(
+            Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 0)
+                .expect("/0 is a valid prefix")
+                .into(),
+            entry,
+        );
     }
 
     /// Inserts `entry` into the set associated with `network`.

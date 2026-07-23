@@ -27,6 +27,7 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
+use crate::messages::IngestToken;
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
     client::{DevicePoolMember, FailReason},
@@ -116,13 +117,15 @@ pub struct ClientState {
     /// All clients we are connected to and the associated, connection-specific state.
     clients: PeerStore<ClientId, ClientOnClient>,
 
+    /// Tracks the flows tunneled through this Client.
+    flow_tracker: flow_tracker::Tracker<ClientOrGatewayId>,
     /// Tracks the authorizations we have requested but not yet been granted.
     pending_authorizations: PendingAuthorizations,
 
     /// Routed IP packets buffered per peer while its connection is still being established.
     ///
     /// These packets are replayed through normal routing when the connection is established so
-    /// their route is validated again.
+    /// their route is validated again and the successful send is included in flow tracking.
     pending_routed_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 
     /// IP packets whose destination peer was selected by protocol context rather than routing.
@@ -203,6 +206,7 @@ impl ClientState {
             tun_config: Default::default(),
             buffered_packets: Default::default(),
             node: Node::new(seed, now, unix_ts),
+            flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
             resource_stub_resolver: ResourceStubResolver::new(records),
@@ -432,8 +436,14 @@ impl ClientState {
         self.node.public_key()
     }
 
+    pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
+        self.flow_tracker.set_enabled(enabled);
+    }
+
     pub fn shut_down(&mut self, now: Instant) {
         tracing::info!("Initiating graceful shutdown");
+
+        self.flow_tracker.close_all(now);
 
         self.clients.clear();
         self.gateways.clear();
@@ -571,13 +581,22 @@ impl ClientState {
             UnroutablePacket::packet_to_self(&packet)
         );
 
-        // DNS packets to our sentinel resolvers are handled before routing.
+        // DNS packets to our sentinel resolvers never become flows.
         let packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return Ok(()),
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
+        let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
+
+        // Recursive DNS queries we tunnel to upstream resolvers are internal
+        // traffic and never become flows either; dropping the guard before any
+        // fact is recorded discards the packet's flow data.
+        if self.udp_dns_client.owns_outbound(&packet) || self.tcp_dns_client.owns_outbound(&packet)
+        {
+            drop(_guard);
+        }
 
         let dst = packet.destination();
         let dst_proto = packet.destination_protocol()?;
@@ -596,11 +615,15 @@ impl ClientState {
         let (packet, peer) = match (direct_gateway, peer_originated_client_flow, route) {
             (Some(gid), _, _) => {
                 // Traffic addressed directly to a Gateway's TUN IP bypasses resource routing.
+                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
+
                 (packet, gid.into())
             }
             (None, Some(cid), _) => {
                 // A reply follows its peer-originated flow even if we have no outbound route to
                 // that peer.
+                flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
+
                 (packet, cid.into())
             }
             (
@@ -636,6 +659,8 @@ impl ClientState {
                     .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
 
                 peer.record_outbound_as_originator(&packet, now);
+                flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
+                flow_tracker::record_ingest_token(peer.ingest_token(&rid));
 
                 (packet, cid.into())
             }
@@ -664,7 +689,16 @@ impl ClientState {
                     return Ok(());
                 };
 
+                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
+                let ingest_token = self
+                    .gateways
+                    .peer_by_id(&gid)
+                    .and_then(|peer| peer.ingest_token(&rid));
+                flow_tracker::record_ingest_token(ingest_token);
+
                 let packet = if let Some(domain) = domain {
+                    flow_tracker::record_domain(domain.clone());
+
                     let Some(packet) = self
                         .dns_resource_nat
                         .handle_outgoing(gid, &domain, rid, packet, now)
@@ -698,8 +732,8 @@ impl ClientState {
         Ok(())
     }
 
-    /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing,
-    /// queueing any resulting network transmit.
+    /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
+    /// and flow tracking, queueing any resulting network transmit.
     fn handle_out_of_band_ip_packet(&mut self, packet: IpPacket, now: Instant) -> Result<()> {
         let mut buffered_transmits = std::mem::take(&mut self.buffered_transmits);
         let result = self.handle_tun_input(packet, now, &mut buffered_transmits);
@@ -721,6 +755,8 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
+        let _guard = self.flow_tracker.begin_network_packet(local, from, now);
+
         let Some((pid, packet)) = self
             .node
             .decapsulate(local, from, packet.as_ref(), now)
@@ -728,6 +764,8 @@ impl ClientState {
         else {
             return Ok(None);
         };
+
+        flow_tracker::record_decrypted_packet(&packet);
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
@@ -740,6 +778,10 @@ impl ClientState {
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
+            // Control traffic is not a flow; release the tracker borrow for
+            // the `&mut self` calls below.
+            drop(_guard);
+
             match (fz_p2p_control.event_type(), pid) {
                 (p2p_control::DOMAIN_STATUS_EVENT, ClientOrGatewayId::Gateway(gid)) => {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
@@ -808,6 +850,14 @@ impl ClientState {
                 };
 
                 peer.ensure_allowed_src(&packet)?;
+
+                // To a gateway we are always the one who opened the flow;
+                // this packet is a reply.
+                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
+
+                // All facts are recorded; commit the flow so the tracker
+                // borrow is free for the `&mut self` calls below.
+                drop(_guard);
 
                 if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
@@ -973,6 +1023,7 @@ impl ClientState {
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
         use_iceless: bool,
+        flow_logs_ingest_token: IngestToken,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::debug!(%gid, "New resource access authorized");
@@ -1010,6 +1061,8 @@ impl ClientState {
         let peer = self
             .gateways
             .upsert(gid, || GatewayOnClient::new(gateway_tun));
+
+        peer.set_ingest_token(rid, flow_logs_ingest_token);
 
         // Deal with buffered packets
 
@@ -1075,6 +1128,7 @@ impl ClientState {
         use_iceless: bool,
         client_name: String,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
+        flow_logs_ingest_token: IngestToken,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         tracing::debug!(%cid, "New device access authorized");
@@ -1117,6 +1171,8 @@ impl ClientState {
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
         if let Some((resource_id, filters, expires_at)) = authorization {
+            // The token logs the peer's flows for this resource.
+            peer.set_ingest_token(resource_id, flow_logs_ingest_token.clone());
             peer.add_resource(resource_id, filters, expires_at, now);
         }
 
@@ -1149,6 +1205,12 @@ impl ClientState {
             }
 
             let (packets, _) = pending_authorization.into_buffered_packets();
+
+            // The token logs our flows for the resource we asked for.
+            self.clients
+                .peer_by_id_mut(&cid)
+                .expect("peer was just inserted")
+                .set_ingest_token(resource_id, flow_logs_ingest_token.clone());
 
             buffered_packets.extend(packets);
         }
@@ -1563,6 +1625,7 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.flow_tracker.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
 
@@ -2601,7 +2664,10 @@ fn encapsulate_or_buffer(
     }
 
     match node.encapsulate(pid, &packet, now, provider) {
-        Ok(Some(_)) => Ok(()),
+        Ok(Some(info)) => {
+            flow_tracker::record_transmit(info.src, info.dst);
+            Ok(())
+        }
         Ok(None) => Ok(()),
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             pending_packets
