@@ -64,7 +64,7 @@ pub struct Eventloop {
     tun_config_sender: watch::Sender<Option<TunConfig>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
 
-    portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
+    portal_event_rx: mpsc::Receiver<Result<PortalEvent, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
@@ -91,6 +91,15 @@ enum PortalCommand {
     Connect(PublicKeyParam),
     Send(EgressMessages),
     UpdateDnsServers(Vec<IpAddr>),
+}
+
+/// An update from the portal connection task to the main event-loop.
+enum PortalEvent {
+    Message(IngressMessages),
+    /// The portal connection (re)established.
+    Connected,
+    /// The portal connection dropped and is being re-established.
+    Disconnected,
 }
 
 /// Unified error type to use across connlib.
@@ -171,7 +180,7 @@ impl Eventloop {
 enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(ClientEvent),
-    Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
+    Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
 }
 
 impl Eventloop {
@@ -212,8 +221,19 @@ impl Eventloop {
                 Ok(ControlFlow::Continue(()))
             }
             CombinedEvent::Portal(Some(event)) => {
-                let msg = event.context("Connection to portal failed")?;
-                self.handle_portal_message(msg).await?;
+                match event.context("Connection to portal failed")? {
+                    PortalEvent::Message(msg) => self.handle_portal_message(msg).await?,
+                    PortalEvent::Connected => {
+                        if let Some(tunnel) = self.tunnel.as_mut() {
+                            tunnel.state_mut().set_portal_connected(true);
+                        }
+                    }
+                    PortalEvent::Disconnected => {
+                        if let Some(tunnel) = self.tunnel.as_mut() {
+                            tunnel.state_mut().set_portal_connected(false);
+                        }
+                    }
+                }
 
                 Ok(ControlFlow::Continue(()))
             }
@@ -810,7 +830,7 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
     mut public_key: PublicKeyParam,
-    event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
+    event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -862,7 +882,7 @@ async fn phoenix_channel_event_loop(
                 break;
             }
             Either::Right((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
-                if event_tx.send(Ok(msg)).await.is_err() {
+                if event_tx.send(Ok(PortalEvent::Message(msg))).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
                     break;
@@ -887,6 +907,8 @@ async fn phoenix_channel_event_loop(
                 );
                 hiccups.add(1, &telemetry::otel::error_layers(&error));
 
+                let _ = event_tx.send(Ok(PortalEvent::Disconnected)).await;
+
                 let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
                 portal.connect(ips, backoff, public_key.clone());
             }
@@ -897,6 +919,8 @@ async fn phoenix_channel_event_loop(
                 ) {
                     tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
                 }
+
+                let _ = event_tx.send(Ok(PortalEvent::Connected)).await;
             }
             Either::Right((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
