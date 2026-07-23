@@ -3,7 +3,7 @@ use super::{
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
     sim_client::SimClient,
-    sim_net::{ExecMutScope, Host, any_ip_stack, host},
+    sim_net::{ExecMutScope, Host, any_edge, any_ip_stack, host},
     strategies::{latency, malicious_behaviour},
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
@@ -252,6 +252,59 @@ impl RefClient {
 
         self.reset_connections(now);
         self.readd_all_resources();
+    }
+
+    /// Resets the connections to the given gateways, as if only they had disconnected.
+    ///
+    /// Resources served by other gateways stay connected.
+    pub(crate) fn reset_connections_to_gateways(
+        &mut self,
+        gateways: &BTreeSet<GatewayId>,
+        gateway_for_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        now: Instant,
+    ) {
+        let is_affected =
+            |rid: &ResourceId| gateway_for_resource(*rid).is_some_and(|g| gateways.contains(&g));
+
+        for gateway in gateways {
+            self.gateway_send_times.remove(gateway);
+        }
+
+        let mut affected = self
+            .connected_cidr_resources
+            .iter()
+            .chain(self.connected_dns_resources.iter())
+            .copied()
+            .filter(is_affected)
+            .collect::<Vec<_>>();
+
+        if self.connected_internet_resource
+            && let Some(internet) = self.internet_resource()
+            && is_affected(&internet)
+        {
+            affected.push(internet);
+        }
+
+        if affected.is_empty() {
+            return;
+        }
+
+        self.connection_resets.push(now);
+
+        for resource in affected {
+            self.connected_cidr_resources.remove(&resource);
+            self.connected_dns_resources.remove(&resource);
+
+            if self.internet_resource().is_some_and(|r| r == resource) {
+                self.connected_internet_resource = false;
+            }
+
+            if let Ok(site) = self.site_for_resource(resource)
+                && let Some(status) = self.site_status.get_mut(&site.id)
+            {
+                *status = ResourceStatus::Unknown;
+            }
+        }
     }
 
     pub(crate) fn reset_connections(&mut self, now: Instant) {
@@ -1323,6 +1376,7 @@ pub(crate) fn ref_client_host(
         listening_port(),
         ref_client(id, tunnel_ip4s, tunnel_ip6s, system_dns),
         latency(250), // TODO: Increase with #6062.
+        any_edge(),   // Clients commonly sit behind NATs and stateful firewalls.
     )
 }
 

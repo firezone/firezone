@@ -34,8 +34,6 @@ pub(crate) struct ReferenceState {
 
     pub(crate) portal: StubPortal,
 
-    pub(crate) drop_direct_client_traffic: bool,
-
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
@@ -64,7 +62,6 @@ impl ReferenceState {
                 let clients = portal.clients(system_dns_servers());
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(start); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
-                let drop_direct_client_traffic = any::<bool>();
 
                 (
                     clients,
@@ -73,19 +70,10 @@ impl ReferenceState {
                     dns_resource_records,
                     relays,
                     global_dns_records,
-                    drop_direct_client_traffic,
                 )
             })
             .prop_flat_map(
-                move |(
-                    clients,
-                    gateways,
-                    portal,
-                    dns_resource_records,
-                    relays,
-                    global_dns,
-                    drop_direct_client_traffic,
-                )| {
+                move |(clients, gateways, portal, dns_resource_records, relays, global_dns)| {
                     (
                         Just(clients),
                         Just(gateways),
@@ -94,7 +82,6 @@ impl ReferenceState {
                         icmp_error_hosts(dns_resource_records, start),
                         Just(relays),
                         Just(global_dns),
-                        Just(drop_direct_client_traffic),
                     )
                 },
             )
@@ -107,7 +94,6 @@ impl ReferenceState {
                     icmp_error_hosts,
                     relays,
                     global_dns,
-                    drop_direct_client_traffic,
                 )| {
                     (
                         Just(clients),
@@ -118,7 +104,6 @@ impl ReferenceState {
                         tcp_resources(dns_resource_records, icmp_error_hosts, start),
                         Just(relays),
                         Just(global_dns),
-                        Just(drop_direct_client_traffic),
                     )
                 },
             )
@@ -133,7 +118,6 @@ impl ReferenceState {
                     tcp_resources,
                     relays,
                     mut global_dns,
-                    drop_direct_client_traffic,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -166,14 +150,13 @@ impl ReferenceState {
                         global_dns,
                         tcp_resources,
                         icmp_error_hosts,
-                        drop_direct_client_traffic,
                         routing_table,
                     ))
                 },
             )
             .prop_filter(
                 "private keys must be unique",
-                |(clients, gateways, _, _, _, _, _, _, _)| {
+                |(clients, gateways, _, _, _, _, _, _)| {
                     let different_keys = iter::empty()
                         .chain(gateways.values().map(|g| g.inner().key))
                         .chain(clients.values().map(|g| g.inner().key))
@@ -191,7 +174,6 @@ impl ReferenceState {
                     global_dns_records,
                     tcp_resources,
                     icmp_error_hosts,
-                    drop_direct_client_traffic,
                     network,
                 )| {
                     Self {
@@ -202,7 +184,6 @@ impl ReferenceState {
                         global_dns_records,
                         icmp_error_hosts,
                         network,
-                        drop_direct_client_traffic,
                         tcp_resources,
                     }
                 },
@@ -903,6 +884,7 @@ impl ReferenceState {
                 client_id,
                 ip4,
                 ip6,
+                nat_ip4,
                 dead_window: _,
                 portal_window: _,
             } => {
@@ -915,6 +897,7 @@ impl ReferenceState {
                 state.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
+                client.migrate_nat(*nat_ip4);
                 let added = state.network.add_host(*client_id, client);
                 debug_assert!(added);
 
@@ -943,11 +926,42 @@ impl ReferenceState {
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
-                // and probes revive the path. Classic ICE flows disconnect if
-                // direct traffic is dropped.
-                if state.drop_direct_client_traffic && !state.portal.iceless() {
+                // and probes revive the path. Classic ICE flows disconnect for
+                // every pairing that cannot fall back to a direct path.
+                if !state.portal.iceless() {
+                    let gateway_edges = state
+                        .gateways
+                        .iter()
+                        .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
+                        .collect::<BTreeMap<_, _>>();
+                    let portal = &state.portal;
+
                     for client in state.clients.values_mut() {
-                        client.exec_mut(|c| c.reset_connections(now));
+                        let client_edge = client.edge_config();
+                        let client_has_ip6 = client.ip6.is_some();
+                        let unreachable_gateways = gateway_edges
+                            .iter()
+                            .filter(|(_, (gateway_edge, gateway_has_ip6))| {
+                                !direct_path_possible(
+                                    client_edge,
+                                    *gateway_edge,
+                                    client_has_ip6 && *gateway_has_ip6,
+                                )
+                            })
+                            .map(|(id, _)| *id)
+                            .collect::<BTreeSet<_>>();
+
+                        if unreachable_gateways.is_empty() {
+                            continue;
+                        }
+
+                        client.exec_mut(|c| {
+                            c.reset_connections_to_gateways(
+                                &unreachable_gateways,
+                                |rid| portal.gateway_for_resource(rid).copied(),
+                                now,
+                            )
+                        });
                     }
                 }
             }
@@ -1190,6 +1204,7 @@ impl ReferenceState {
                 client_id: _,
                 ip4,
                 ip6,
+                nat_ip4,
                 dead_window: _,
                 portal_window: _,
             } => {
@@ -1197,8 +1212,9 @@ impl ReferenceState {
 
                 let is_assigned_ip4 = ip4.is_some_and(|ip| state.network.contains(ip));
                 let is_assigned_ip6 = ip6.is_some_and(|ip| state.network.contains(ip));
+                let is_assigned_nat_ip4 = state.network.contains(*nat_ip4);
 
-                !is_assigned_ip4 && !is_assigned_ip6
+                !is_assigned_ip4 && !is_assigned_ip6 && !is_assigned_nat_ip4
             }
             Transition::ReconnectPortal { client_id } => state.clients.contains_key(client_id),
             Transition::RemoveResource(r) => {

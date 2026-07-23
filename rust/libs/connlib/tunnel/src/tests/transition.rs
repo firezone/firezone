@@ -10,7 +10,7 @@ use ip_network::IpNetwork;
 
 use super::{
     reference::PrivateKey,
-    sim_net::{Host, any_ip_stack},
+    sim_net::{Host, any_ip_stack, nat_ip4s},
 };
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -97,6 +97,8 @@ pub(crate) enum Transition {
         client_id: ClientId,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
+        /// The public address of the new network's NAT; ignored for clients that are not behind one.
+        nat_ip4: Ipv4Addr,
         /// How long the new sockets drop all packets after the roam.
         dead_window: Duration,
         /// How long after the dead window the client is still not reconnected to the portal.
@@ -650,14 +652,16 @@ pub(crate) fn roam_client(
     (
         any_ip_stack(),
         client_id,
+        nat_ip4s(),
         (0u64..3000).prop_map(Duration::from_millis),
         (0u64..3000).prop_map(Duration::from_millis),
     )
         .prop_map(
-            |(ip_stack, client_id, dead_window, portal_window)| Transition::RoamClient {
+            |(ip_stack, client_id, nat_ip4, dead_window, portal_window)| Transition::RoamClient {
                 client_id,
                 ip4: ip_stack.as_v4().copied(),
                 ip6: ip_stack.as_v6().copied(),
+                nat_ip4,
                 dead_window,
                 portal_window,
             },

@@ -46,7 +46,6 @@ pub(crate) struct TunnelTest {
 
     buffer_pool: BufferPool<Vec<u8>>,
 
-    drop_direct_client_traffic: bool,
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
     /// the portal after a roam.
@@ -140,7 +139,6 @@ impl TunnelTest {
         let mut this = Self {
             flux_capacitor,
             network: ref_state.network.clone(),
-            drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -420,6 +418,7 @@ impl TunnelTest {
                 client_id,
                 ip4,
                 ip6,
+                nat_ip4,
                 dead_window,
                 portal_window,
             } => {
@@ -432,6 +431,7 @@ impl TunnelTest {
                 //    simulated time.
                 let client = state.clients.get_mut(&client_id).unwrap();
                 state.network.remove_host(client);
+                client.set_offline();
 
                 let dead_until = now + dead_window;
                 state.advance_to(ref_state, &mut buffered_transmits, dead_until);
@@ -445,6 +445,7 @@ impl TunnelTest {
                 let now = state.flux_capacitor.now::<Instant>();
                 let client = state.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
+                client.migrate_nat(nat_ip4);
                 let added = state.network.add_host(client_id, client);
                 debug_assert!(added);
                 client.exec_mut(|c| {
@@ -1001,9 +1002,8 @@ impl TunnelTest {
     /// Dispatches a [`Transmit`] to the correct host.
     ///
     /// This function is basically the "network layer" of our tests.
-    /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
-    ///
-    /// Currently, the network topology of our tests are a single subnet without NAT.
+    /// It routes by the wire destination and passes the packet through the
+    /// receiving host's network edge, which may translate or drop it.
     fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
         let src = transmit
             .src
@@ -1016,33 +1016,37 @@ impl TunnelTest {
         };
 
         match host {
-            HostId::Client(client_id) => {
-                if self.drop_direct_client_traffic
-                    && self.gateways.values().any(|g| g.is_sender(src.ip()))
-                {
-                    tracing::trace!(%src, %dst, "Dropping direct traffic");
+            HostId::Client(id) => {
+                let client = self.clients.get_mut(&id).unwrap();
 
-                    return;
+                match client.ingress(src, dst) {
+                    Ok(local_dst) => client.receive(
+                        Transmit {
+                            dst: local_dst,
+                            ..transmit
+                        },
+                        at,
+                    ),
+                    Err(e) => {
+                        tracing::debug!(%src, %dst, "Client's edge dropped packet: {e:#}")
+                    }
                 }
-
-                self.clients
-                    .get_mut(&client_id)
-                    .unwrap()
-                    .receive(transmit, at);
             }
             HostId::Gateway(id) => {
-                if self.drop_direct_client_traffic
-                    && self.clients.values().any(|c| c.is_sender(src.ip()))
-                {
-                    tracing::trace!(%src, %dst, "Dropping direct traffic");
+                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
-                    return;
+                match gateway.ingress(src, dst) {
+                    Ok(local_dst) => gateway.receive(
+                        Transmit {
+                            dst: local_dst,
+                            ..transmit
+                        },
+                        at,
+                    ),
+                    Err(e) => {
+                        tracing::debug!(%src, %dst, "Gateway's edge dropped packet: {e:#}")
+                    }
                 }
-
-                self.gateways
-                    .get_mut(&id)
-                    .expect("unknown gateway")
-                    .receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
