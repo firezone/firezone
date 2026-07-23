@@ -2,13 +2,16 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     reference::PrivateKey,
+    resource::{
+        CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
+        StaticDevicePoolResource,
+    },
     sim_client::SimClient,
     sim_net::ExecMutScope,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
 use tunnel::{
-    CidrResource, ClientState, DnsResource, DynamicDevicePoolResource, FilterEngine,
-    InternetResource, MaliciousBehaviour, Resource, StaticDevicePoolResource, dns,
+    ClientState, MaliciousBehaviour, dns,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
 
@@ -576,7 +579,7 @@ impl RefClient {
                 // ICMP prohibited rather than completing a handshake.
                 if !pools
                     .iter()
-                    .any(|(_, filters)| FilterEngine::new(filters).apply(Ok(proto)).is_ok())
+                    .any(|(_, filters)| protocol_filter_allows(filters, proto))
                 {
                     tracing::debug!(?proto, "Device filter does not allow protocol, dropping");
                     return;
@@ -661,7 +664,7 @@ impl RefClient {
             if !pools.is_empty() {
                 if !pools
                     .iter()
-                    .any(|(_, filters)| FilterEngine::new(filters).apply(Ok(proto)).is_ok())
+                    .any(|(_, filters)| protocol_filter_allows(filters, proto))
                 {
                     tracing::debug!(?proto, "Device filter does not allow TCP, dropping");
                     return;
@@ -881,7 +884,7 @@ impl RefClient {
             return true;
         }
 
-        FilterEngine::new(filters).apply(Ok(proto)).is_ok()
+        protocol_filter_allows(filters, proto)
     }
 
     /// Look up every static device pool that lists `ip` (the peer's tunnel
@@ -915,9 +918,7 @@ impl RefClient {
         domain: &DomainName,
         proto: Protocol,
     ) -> Option<DnsResource> {
-        self.dns_resource_by_domain(domain, |r| {
-            FilterEngine::new(&r.filters).apply(Ok(proto)).is_ok()
-        })
+        self.dns_resource_by_domain(domain, |r| protocol_filter_allows(&r.filters, proto))
     }
 
     pub(crate) fn dns_resource_by_domain(
@@ -1073,9 +1074,7 @@ impl RefClient {
         ip: IpAddr,
         proto: Protocol,
     ) -> Option<ResourceId> {
-        self.cidr_resource_by_ip(ip, |r| {
-            FilterEngine::new(&r.filters).apply(Ok(proto)).is_ok()
-        })
+        self.cidr_resource_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto))
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1178,10 +1177,8 @@ impl RefClient {
         };
 
         let maybe_active_cidr_resource = self.cidr_resource_by_ip(server.ip(), |r| {
-            let filter_engine = FilterEngine::new(&r.filters);
-
-            filter_engine.apply(Ok(Protocol::Udp(53))).is_ok()
-                && filter_engine.apply(Ok(Protocol::Tcp(53))).is_ok()
+            protocol_filter_allows(&r.filters, Protocol::Udp(53))
+                && protocol_filter_allows(&r.filters, Protocol::Tcp(53))
         });
         let maybe_active_internet_resource = self.active_internet_resource();
 
@@ -1206,6 +1203,16 @@ impl RefClient {
 
     pub(crate) fn all_resources(&self) -> Vec<Resource> {
         self.resources.clone()
+    }
+
+    pub(crate) fn resource_descriptions(
+        &self,
+    ) -> Vec<tunnel::messages::client::ResourceDescription> {
+        self.resources
+            .iter()
+            .cloned()
+            .map(Resource::into_description)
+            .collect()
     }
 
     fn internet_resource(&self) -> Option<ResourceId> {
@@ -1334,9 +1341,16 @@ impl RefClient {
     }
 }
 
+/// Applies the reference model's independent interpretation of resource filters.
+fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
+    match protocol {
+        Protocol::Tcp(port) => tcp_filter_allows(filters, port),
+        Protocol::Udp(port) => udp_filter_allows(filters, port),
+        Protocol::IcmpEcho(_) => icmp_filter_allows(filters),
+    }
+}
+
 /// Checks if a set of [`Filter`]s allows the given TCP port.
-///
-/// This purposely doesn't use [`FilterEngine`] because we are in the reference implementation here.
 fn tcp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
         || filters.iter().any(|f| {
@@ -1349,15 +1363,11 @@ fn tcp_filter_allows(filters: &[Filter], dport: u16) -> bool {
 }
 
 /// Checks if a set of [`Filter`]s allows ICMP traffic.
-///
-/// This purposely doesn't use [`FilterEngine`] because we are in the reference implementation here.
 fn icmp_filter_allows(filters: &[Filter]) -> bool {
     filters.is_empty() || filters.iter().any(|f| matches!(f, Filter::Icmp))
 }
 
 /// Checks if a set of [`Filter`]s allows the given UDP port.
-///
-/// This purposely doesn't use [`FilterEngine`] because we are in the reference implementation here.
 fn udp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
         || filters.iter().any(|f| {

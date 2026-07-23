@@ -7,10 +7,9 @@ use std::{
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
-use tunnel::{
-    self as client, DynamicDevicePoolResource, StaticDevicePoolResource,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway},
-};
+use tunnel::messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway};
+
+use crate::resource::{self as client, DynamicDevicePoolResource, StaticDevicePoolResource};
 
 /// Number of online members and synthetic ClientIds for offline members in a sampled
 /// static device pool.

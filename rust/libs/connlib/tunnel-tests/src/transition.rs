@@ -2,11 +2,15 @@ use connlib_model::{ClientId, RelayId, ResourceId, Site};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 use tunnel::{
-    CidrResource, Resource, dns,
+    dns,
     messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
 };
 
-use super::{reference::PrivateKey, sim_net::Host};
+use super::{
+    reference::PrivateKey,
+    resource::{CidrResource, Resource},
+    sim_net::Host,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},

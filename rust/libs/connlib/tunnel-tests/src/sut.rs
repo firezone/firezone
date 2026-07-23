@@ -9,6 +9,7 @@ use super::sim_relay::SimRelay;
 use super::transition::{Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
+use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
@@ -28,7 +29,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::debug_span;
-use tunnel as client;
 use tunnel::dns::is_subdomain;
 use tunnel::messages::gateway::Client;
 use tunnel::messages::{IceCredentials, Key, SecretKey};
@@ -184,7 +184,7 @@ impl TunnelTest {
                             | client::Resource::DynamicDevicePool(_) => {}
                         }
 
-                        c.sut.add_resource(resource.clone(), now);
+                        c.sut.add_resource(resource.clone().into_description(), now);
                     });
                 }
             }
@@ -206,14 +206,20 @@ impl TunnelTest {
                         gateway
                             .exec_mut(|g| g.sut.remove_access(client_id, &new_resource.id(), now))
                     }
-                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
                 }
             }
             Transition::MoveResourceToNewSite { resource, new_site } => {
                 let new_resource = resource.with_new_site(new_site);
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
                 }
             }
             Transition::ChangeFiltersOfResource {
@@ -223,7 +229,10 @@ impl TunnelTest {
                 let new_resource = resource.with_new_filters(new_filters);
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.sut.add_resource(new_resource.clone(), now));
+                    client.exec_mut(|c| {
+                        c.sut
+                            .add_resource(new_resource.clone().into_description(), now)
+                    });
                 }
             }
             Transition::UpdateStaticDevicePool {
@@ -254,7 +263,8 @@ impl TunnelTest {
                     });
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.sut.add_resource(resource.clone(), now));
+                    client
+                        .exec_mut(|c| c.sut.add_resource(resource.clone().into_description(), now));
                 }
             }
             Transition::RemoveResource(rid) => {
@@ -465,7 +475,8 @@ impl TunnelTest {
                 let client = state.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
                     c.update_relays(iter::empty(), state.relays.iter(), now);
-                    c.sut.set_resources(ref_client.inner().all_resources(), now);
+                    c.sut
+                        .set_resources(ref_client.inner().resource_descriptions(), now);
                 });
             }
 
@@ -474,7 +485,7 @@ impl TunnelTest {
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
                 let ipv4 = client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = client.inner().sut.tunnel_ip_config().unwrap().v6;
-                let all_resources = ref_client.inner().all_resources();
+                let all_resources = ref_client.inner().resource_descriptions();
 
                 // Simulate receiving `init`.
                 client.exec_mut(|c| {
@@ -580,7 +591,7 @@ impl TunnelTest {
                 let ipv4 = client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let system_dns = ref_client.inner().system_dns_resolvers();
-                let all_resources = ref_client.inner().all_resources();
+                let all_resources = ref_client.inner().resource_descriptions();
                 let internet_resource_state = ref_client.inner().internet_resource_active;
 
                 client.exec_mut(|c| {
