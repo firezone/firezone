@@ -221,8 +221,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return false;
         };
 
-        self.sockets_by_remote
-            .contains_key(&SocketAddr::new(packet.destination(), tcp.destination_port()))
+        self.sockets_by_remote.contains_key(&SocketAddr::new(
+            packet.destination(),
+            tcp.destination_port(),
+        ))
     }
 
     /// Handle the [`IpPacket`].
