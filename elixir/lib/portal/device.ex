@@ -37,6 +37,7 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
           last_seen_remote_ip: Postgrex.INET.t() | nil,
@@ -56,6 +57,11 @@ defmodule Portal.Device do
           identifier_for_vendor: String.t() | nil,
           firebase_installation_id: String.t() | nil,
           hostname: String.t() | nil,
+          last_attested_device_serial: String.t() | nil,
+          last_attested_device_uuid: String.t() | nil,
+          last_attested_mdm_device_id: String.t() | nil,
+          last_attested_cert_serial: String.t() | nil,
+          last_attested_cert_fingerprint: String.t() | nil,
           verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -81,6 +87,14 @@ defmodule Portal.Device do
     field :identifier_for_vendor, :string
     field :firebase_installation_id, :string
     field :hostname, :string
+
+    # Device trust. Enforced client-only today, but gateways may adopt
+    # cert-based verification too, hence no client_ prefix on the cert columns.
+    field :last_attested_device_serial, :string
+    field :last_attested_device_uuid, :string
+    field :last_attested_mdm_device_id, :string
+    field :last_attested_cert_serial, :string
+    field :last_attested_cert_fingerprint, :string
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only
@@ -107,6 +121,11 @@ defmodule Portal.Device do
 
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
+
+    # Set when this connect adopted a new firezone_id (attested-first merge).
+    # The session flush persists firezone_id only for merged connects, so the
+    # steady state adds no conflict-probe query to the flush.
+    field :firezone_id_merged?, :boolean, virtual: true, default: false
 
     timestamps()
   end
@@ -148,6 +167,20 @@ defmodule Portal.Device do
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)
         |> validate_length(:firebase_installation_id, max: 255)
+        |> validate_length(:last_attested_device_serial, max: 255)
+        |> validate_length(:last_attested_device_uuid, max: 255)
+        |> validate_length(:last_attested_mdm_device_id, max: 255)
+        |> validate_length(:last_attested_cert_serial, max: 255)
+        |> validate_length(:last_attested_cert_fingerprint, max: 255)
+        |> unique_constraint(:last_attested_device_serial,
+          name: :devices_account_id_actor_id_last_attested_device_serial_index
+        )
+        |> unique_constraint(:last_attested_device_uuid,
+          name: :devices_account_id_actor_id_last_attested_device_uuid_index
+        )
+        |> unique_constraint(:last_attested_mdm_device_id,
+          name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
+        )
 
       :gateway ->
         changeset

@@ -508,6 +508,166 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "find_or_create_client/2" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "attested identifier match wins over firezone_id and merges it in memory", %{
+      account: account,
+      actor: actor
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-ATT-1",
+          firezone_id: "fz-old"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Reinstalled Client",
+          "firezone_id" => "fz-new",
+          "last_attested_device_serial" => "SN-ATT-1"
+        })
+
+      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+      assert client.id == existing.id
+      assert client.firezone_id == "fz-new"
+      assert [_only_one] = Portal.Repo.all(actor_devices_query(account, actor))
+
+      # The connect path is write-free: the merged firezone_id is persisted by
+      # the batched client session flush, not here.
+      db_row = Portal.Repo.get_by!(Portal.Device, id: existing.id, account_id: account.id)
+      assert db_row.firezone_id == "fz-old"
+    end
+
+    test "attested identifiers with no match insert a new device", %{
+      account: account,
+      actor: actor
+    } do
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "New Client",
+          "firezone_id" => "fz-1",
+          "last_attested_device_serial" => "SN-NEW-1"
+        })
+
+      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+      assert client.last_attested_device_serial == "SN-NEW-1"
+      assert client.firezone_id == "fz-1"
+    end
+
+    test "without attested identifiers the firezone_id lookup is unchanged", %{
+      account: account,
+      actor: actor
+    } do
+      existing = client_fixture(account: account, actor: actor, firezone_id: "fz-same")
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Same Client",
+          "firezone_id" => "fz-same"
+        })
+
+      assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+      assert client.id == existing.id
+    end
+
+    test "attested identifiers are unique per actor", %{account: account, actor: actor} do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_device_serial: "SN-DUP",
+        firezone_id: "fz-a"
+      )
+
+      assert {:error, changeset} =
+               device_trust_changeset(account, actor, %{
+                 "name" => "Duplicate",
+                 "firezone_id" => "fz-b",
+                 "last_attested_device_serial" => "SN-DUP"
+               })
+               |> Portal.Safe.unscoped()
+               |> Portal.Safe.insert()
+
+      assert {"has already been taken", _} = changeset.errors[:last_attested_device_serial]
+    end
+
+    test "identifiers split across devices refuse adoption and fall back", %{
+      account: account,
+      actor: actor
+    } do
+      # Serial matches device A, UUID matches device B: nothing can prove
+      # which physical device is connecting, so neither row is adopted.
+      device_a =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-SPLIT",
+          firezone_id: "fz-a"
+        )
+
+      device_b =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_uuid: "uuid-split",
+          firezone_id: "fz-b"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Ambiguous Client",
+          "firezone_id" => "fz-new",
+          "last_attested_device_serial" => "SN-SPLIT",
+          "last_attested_device_uuid" => "uuid-split"
+        })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
+
+          # Falls back to the firezone_id path: a fresh row, with the attested
+          # fields stripped so the insert cannot collide with A's or B's
+          # unique indexes.
+          assert client.id != device_a.id
+          assert client.id != device_b.id
+          assert client.firezone_id == "fz-new"
+          assert is_nil(client.last_attested_device_serial)
+          assert is_nil(client.last_attested_device_uuid)
+        end)
+
+      assert log =~ "split across multiple devices"
+    end
+  end
+
+  defp device_trust_changeset(account, actor, attrs) do
+    %Portal.Device{}
+    |> Ecto.Changeset.cast(attrs, [
+      :name,
+      :firezone_id,
+      :last_attested_device_serial,
+      :last_attested_device_uuid,
+      :last_attested_mdm_device_id
+    ])
+    |> Ecto.Changeset.put_change(:type, :client)
+    |> Ecto.Changeset.put_change(:account_id, account.id)
+    |> Ecto.Changeset.put_change(:actor_id, actor.id)
+    |> Portal.Device.changeset()
+  end
+
+  defp actor_devices_query(account, actor) do
+    import Ecto.Query
+
+    from(d in Portal.Device,
+      where: d.account_id == ^account.id and d.actor_id == ^actor.id and d.type == :client
+    )
+  end
+
   defp connect_attrs(attrs) do
     valid_client_attrs()
     |> then(fn attrs -> %{external_id: attrs.firezone_id} end)
