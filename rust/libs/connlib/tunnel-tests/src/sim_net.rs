@@ -87,6 +87,30 @@ pub(crate) enum EdgeConfig {
     Nat(Mapping, FilterMode),
 }
 
+/// Whether two hosts behind the given edges can establish a direct path by hole-punching.
+///
+/// Over IPv6 there is no translation, only filtering, and punching through
+/// filters always succeeds because both sides advertise their real sockets.
+/// Over IPv4, punching fails when one side mints an unpredictable source port
+/// per destination (endpoint-dependent mapping) and the other side only
+/// accepts packets from sockets it has contacted: the advertised reflexive
+/// candidate then never matches the source the peer actually sees.
+pub(crate) fn direct_path_possible(a: EdgeConfig, b: EdgeConfig, shared_ip6: bool) -> bool {
+    if shared_ip6 {
+        return true;
+    }
+
+    fn symmetric(e: EdgeConfig) -> bool {
+        matches!(e, EdgeConfig::Nat(Mapping::EndpointDependent, _))
+    }
+
+    fn port_filtered(e: EdgeConfig) -> bool {
+        matches!(e, EdgeConfig::Nat(_, FilterMode::PortRestricted))
+    }
+
+    !(symmetric(a) && port_filtered(b) || symmetric(b) && port_filtered(a))
+}
+
 /// The network edge of a host: every packet passes through it in both directions.
 #[derive(Debug, Clone)]
 enum Edge {
@@ -207,7 +231,18 @@ impl Nat {
 }
 
 impl<T> Host<T> {
-    fn new(inner: T, latency: Duration, port: u16, edge: Edge) -> Self {
+    pub(crate) fn new(
+        inner: T,
+        latency: Duration,
+        port: u16,
+        edge: EdgeConfig,
+        nat_ip4: Ipv4Addr,
+    ) -> Self {
+        let edge = match edge {
+            EdgeConfig::Open => Edge::Open,
+            EdgeConfig::Nat(mapping, filter) => Edge::Nat(Nat::new(mapping, filter, nat_ip4)),
+        };
+
         Self {
             inner,
             ip4: None,

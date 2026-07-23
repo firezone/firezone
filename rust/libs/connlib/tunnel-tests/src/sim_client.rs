@@ -18,10 +18,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel::{
-    ClientState, DnsMapping, DnsResourceRecord,
-    client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6},
-    dns,
-    malicious_behaviour::{Guard, MaliciousBehaviour},
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
+    MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
 /// Simulation state for a particular client.

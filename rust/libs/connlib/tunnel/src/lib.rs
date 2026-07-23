@@ -31,21 +31,6 @@ use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 mod sockets;
-#[cfg(feature = "test-util")]
-pub mod client {
-    pub use tunnel_proto::{
-        CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, DynamicDevicePoolResource,
-        IPV4_RESOURCES, IPV6_RESOURCES, InternetResource, Resource, StaticDevicePoolResource,
-    };
-}
-#[cfg(feature = "test-util")]
-pub mod filter_engine {
-    pub use tunnel_proto::FilterEngine;
-}
-#[cfg(feature = "test-util")]
-pub mod malicious_behaviour {
-    pub use tunnel_proto::{MaliciousBehaviour, MaliciousBehaviourGuard as Guard};
-}
 mod utils;
 
 pub use tunnel_proto::*;

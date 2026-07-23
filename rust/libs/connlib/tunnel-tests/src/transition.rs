@@ -2,8 +2,7 @@ use connlib_model::{ClientId, RelayId, ResourceId, Site};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 use tunnel::{
-    client::{CidrResource, Resource},
-    dns,
+    CidrResource, Resource, dns,
     messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
 };
 

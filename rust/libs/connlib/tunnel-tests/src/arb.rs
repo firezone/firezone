@@ -36,10 +36,11 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use tunnel::client::{CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource};
 use tunnel::dns;
-use tunnel::malicious_behaviour::MaliciousBehaviour;
 use tunnel::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember};
+use tunnel::{
+    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, MaliciousBehaviour,
+};
 
 use crate::dns_records::DnsRecords;
 use crate::flux_capacitor::FluxCapacitor;
@@ -47,7 +48,7 @@ use crate::icmp_error_hosts::IcmpErrorHosts;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::{PrivateKey, ReferenceState};
-use crate::sim_net::{Host, RoutingTable};
+use crate::sim_net::{EdgeConfig, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::{StaticDevicePoolPlan, StubPortal};
 use crate::sut::TunnelTest;
 use crate::transition::{
@@ -106,6 +107,7 @@ struct Gen<'a, 'u> {
     // reserved ranges and from each other).
     socket_ip4: SubnetCursor<Ipv4Addr>, // 203.0.113.0/24 (TEST-NET-3), today's host_ip4s
     socket_ip6: SubnetCursor<Ipv6Addr>, // 2001:db80:1010:1010::/64
+    nat_ip4: SubnetCursor<Ipv4Addr>,    // 198.51.100.0/24 (TEST-NET-2), public NAT addresses
     do53_ip4: SubnetCursor<Ipv4Addr>,   // 192.18.0.0/24 (benchmarking range, RFC2544)
     do53_ip6: SubnetCursor<Ipv6Addr>,   // 2001:db80:53:53::/64
 
@@ -135,6 +137,7 @@ impl<'a, 'u> Gen<'a, 'u> {
                 )
                 .unwrap(),
             ),
+            nat_ip4: SubnetCursor::<Ipv4Addr>::over("198.51.100.0/24".parse().unwrap()),
             do53_ip4: SubnetCursor::<Ipv4Addr>::over("192.18.0.0/24".parse().unwrap()),
             do53_ip6: SubnetCursor::<Ipv6Addr>::over(
                 Ipv6Network::new_truncate(
@@ -345,8 +348,6 @@ fn arb_initial_state(g: &mut Gen, start: Instant) -> ReferenceState {
     let mut global_dns_records = arb_global_dns_records(g, start);
     global_dns_records.merge(dns_resource_records);
 
-    let drop_direct_client_traffic = g.bool();
-
     // Rebuild the routing table. Uniqueness is structural, so this never rejects;
     // a debug_assert guards against accidental collisions.
     let mut network = RoutingTable::default();
@@ -372,7 +373,6 @@ fn arb_initial_state(g: &mut Gen, start: Instant) -> ReferenceState {
         tcp_resources,
         icmp_error_hosts,
         network,
-        drop_direct_client_traffic,
     )
 }
 
@@ -675,7 +675,8 @@ fn arb_client_host(g: &mut Gen, id: ClientId, tun4: Ipv4Addr, tun6: Ipv6Addr) ->
     let (ip4, ip6) = arb_socket_ip_stack(g);
     let port = arb_listening_port(g);
     let latency = g.latency(250);
-    let mut host = Host::new(inner, latency, port);
+    let edge = arb_edge_config(g);
+    let mut host = Host::new(inner, latency, port, edge, g.nat_ip4.next());
     host.update_interface(ip4, ip6);
     host
 }
@@ -692,7 +693,8 @@ fn arb_gateways(
         let site_specific = arb_site_specific_dns_records(g, portal, site_id, start);
         let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
         let latency = g.latency(200);
-        let mut host = Host::new(inner, latency, 52625);
+        let edge = arb_edge_config(g);
+        let mut host = Host::new(inner, latency, 52625, edge, g.nat_ip4.next());
         host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
         gateways.insert(id, host);
     }
@@ -706,11 +708,28 @@ fn arb_relays(g: &mut Gen) -> BTreeMap<RelayId, Host<u64>> {
         let id = g.fresh_relay_id();
         let seed = g.u64();
         let latency = g.latency(50);
-        let mut host = Host::new(seed, latency, 3478);
+        let mut host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4.next());
         host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
         relays.insert(id, host);
     }
     relays
+}
+
+/// Match the edge configurations exercised by `main`'s former proptest generator.
+fn arb_edge_config(g: &mut Gen) -> EdgeConfig {
+    match g.choose_index(3) {
+        0 => EdgeConfig::Open,
+        1 => {
+            let filter = match g.choose_index(3) {
+                0 => FilterMode::Open,
+                1 => FilterMode::AddressRestricted,
+                _ => FilterMode::PortRestricted,
+            };
+
+            EdgeConfig::Nat(Mapping::EndpointIndependent, filter)
+        }
+        _ => EdgeConfig::Nat(Mapping::EndpointDependent, FilterMode::PortRestricted),
+    }
 }
 
 /// V4 / V6 / Dual socket shape, addresses from the cursors so they never collide.
@@ -1077,7 +1096,7 @@ fn arb_domain_name_string(g: &mut Gen, lo: usize, hi: usize) -> String {
 /// resolved IP) disagree on the gateway. Defining a resource inside the DNS
 /// sentinel range is also explicitly unsupported by connlib.
 fn cidr_reserved_v4() -> [Ipv4Network; 4] {
-    use tunnel::client::DNS_SENTINELS_V4;
+    use tunnel::DNS_SENTINELS_V4;
     [
         "192.0.2.0/24".parse().unwrap(),    // TEST-NET-1 (documentation)
         "198.51.100.0/24".parse().unwrap(), // TEST-NET-2 (DNS resource real IPs)
@@ -1087,7 +1106,7 @@ fn cidr_reserved_v4() -> [Ipv4Network; 4] {
 }
 
 fn cidr_reserved_v6() -> [Ipv6Network; 3] {
-    use tunnel::client::DNS_SENTINELS_V6;
+    use tunnel::DNS_SENTINELS_V6;
     [
         // The host (`2001:db80:1010:1010::/64`) and DNS (`2001:db80:2020:2020::/64`)
         // documentation subnets both live under `2001:db80::/32`.
@@ -1187,8 +1206,10 @@ fn arb_more_specific_subnet(g: &mut Gen, address: IpNetwork, extra_bits: usize) 
 
 /// An IP outside connlib's reserved ranges, via wrap-around repair (no rejection).
 fn arb_non_reserved_ip(g: &mut Gen) -> IpAddr {
-    use tunnel::client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
-    use tunnel::{IPV4_TUNNEL, IPV6_TUNNEL};
+    use tunnel::{
+        DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV4_TUNNEL, IPV6_RESOURCES,
+        IPV6_TUNNEL,
+    };
 
     if g.bool() {
         let undesired = [
@@ -1424,6 +1445,7 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
                 client_id,
                 ip4,
                 ip6,
+                nat_ip4: g.nat_ip4.next(),
                 dead_window,
                 portal_window,
             }
@@ -1437,7 +1459,7 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
             for id in ids {
                 let seed = g.u64();
                 let latency = g.latency(50);
-                let mut host = Host::new(seed, latency, 3478);
+                let mut host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4.next());
                 host.update_interface(Some(g.socket_ip4.next()), Some(g.socket_ip6.next()));
                 relays.insert(id, host);
             }
@@ -1975,7 +1997,7 @@ fn arb_maybe_available_response_rtype(g: &mut Gen, available: &[RecordType]) -> 
 
 /// Port of `ptr_query_ip`: a host in the resource ranges, or any IP.
 fn arb_ptr_query_ip(g: &mut Gen) -> IpAddr {
-    use tunnel::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+    use tunnel::{IPV4_RESOURCES, IPV6_RESOURCES};
     match g.choose_index(3) {
         0 => {
             let DstSpec::Ip(ip) = host_in_v4(g, IPV4_RESOURCES) else {
@@ -2007,7 +2029,7 @@ fn arb_ptr_query_ip(g: &mut Gen) -> IpAddr {
 fn arb_static_pool_members(
     g: &mut Gen,
     state: &ReferenceState,
-    pool: &tunnel::client::StaticDevicePoolResource,
+    pool: &tunnel::StaticDevicePoolResource,
 ) -> Vec<DevicePoolMember> {
     let online_clients: Vec<(ClientId, Ipv4Network, Ipv6Network)> = state
         .clients
