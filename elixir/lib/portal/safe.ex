@@ -182,27 +182,29 @@ defmodule Portal.Safe do
   def one!(repo, queryable) when repo == Repo,
     do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
-  # all/1
-  @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
-  def all(%Scoped{
-        subject: %Subject{account: %{id: account_id}} = subject,
-        queryable: queryable,
-        repo: repo
-      }) do
+  # all/1,2
+  def all(ctx, opts \\ [])
+
+  @spec all(Scoped.t(), Keyword.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
+  def all(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable,
+          repo: repo
+        },
+        opts
+      ) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> repo.all()
-      end) || []
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+      fetch_all_with_primary_fallback(repo, filtered_query, opts[:fallback_to_primary])
     end
   end
 
-  @spec all(Unscoped.t()) :: [Ecto.Schema.t()]
-  def all(%Unscoped{queryable: queryable, repo: repo}),
-    do: safe_repo(fn -> repo.all(queryable) end) || []
+  @spec all(Unscoped.t(), Keyword.t()) :: [Ecto.Schema.t()]
+  def all(%Unscoped{queryable: queryable, repo: repo}, opts),
+    do: fetch_all_with_primary_fallback(repo, queryable, opts[:fallback_to_primary])
 
   @spec all(Portal.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
   def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
@@ -754,6 +756,17 @@ defmodule Portal.Safe do
 
       result ->
         result
+    end
+  end
+
+  # Unlike one/2, an empty list is a legitimate result, so fallback_to_primary
+  # only covers replica connection errors, never empty replica reads; callers
+  # that must not miss rows due to replication lag re-probe the primary.
+  defp fetch_all_with_primary_fallback(repo, query, retry?) do
+    case read_replica(fn -> repo.all(query) end, retry?) do
+      :fallback -> safe_repo(fn -> Repo.all(query) end) || []
+      nil -> []
+      result -> result
     end
   end
 
