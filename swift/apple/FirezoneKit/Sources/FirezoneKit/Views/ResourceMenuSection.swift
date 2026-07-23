@@ -37,40 +37,38 @@
 
     var body: some View {
       Group {
+        // Information: the description or address, and the Site status. The
+        // parent menu item already shows the name, so it isn't repeated here.
         if resource.isInternetResource() {
           Text("All network traffic")
             .foregroundStyle(.secondary)
+        } else if let detail = displayDetail {
+          if let url = URL(string: detail), url.scheme != nil {
+            Link(destination: url) {
+              Text(detail)
+                .foregroundColor(.blue)
+                .underline()
+            }
+          } else {
+            Text(detail)
+              .foregroundStyle(.secondary)
+          }
+        }
 
+        if let site = resource.sites.first {
+          siteStatus(site)
+        }
+
+        // Actions, separated from the information above.
+        if hasInfo {
           Divider()
+        }
 
+        if resource.isInternetResource() {
           Button(internetResourceToggleTitle) {
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          // Show address - clickable if it's a valid URL
-          if let displayAddress = resource.addressDescription ?? resource.address {
-            if let url = URL(string: displayAddress), url.scheme != nil {
-              Link(destination: url) {
-                Text(displayAddress)
-                  .foregroundColor(.blue)
-                  .underline()
-              }
-            } else {
-              Button(displayAddress) {
-                Clipboard.copy(displayAddress)
-              }
-            }
-          }
-
-          Divider()
-
-          Text("Resource")
-            .foregroundStyle(.secondary)
-
-          Button(resource.name) {
-            Clipboard.copy(resource.name)
-          }
-
           if let address = resource.address {
             Button("Copy address") {
               Clipboard.copy(address)
@@ -81,31 +79,40 @@
             toggleFavorite()
           }
         }
+      }
+    }
 
-        // Site information (if available)
-        if let site = resource.sites.first {
-          Divider()
+    /// The single detail line: the description if present, otherwise the
+    /// address. Hidden when empty or identical to the name shown by the parent.
+    private var displayDetail: String? {
+      let description = resource.addressDescription.flatMap { $0.isEmpty ? nil : $0 }
+      guard let detail = description ?? resource.address,
+        !detail.isEmpty,
+        detail != resource.name
+      else { return nil }
 
-          Text("Site")
-            .foregroundStyle(.secondary)
+      return detail
+    }
 
-          Button(site.name) {
-            Clipboard.copy(site.name)
+    private var hasInfo: Bool {
+      resource.isInternetResource() || displayDetail != nil || resource.sites.first != nil
+    }
+
+    /// The Site name with its status as a colored dot. The textual status is
+    /// kept in the tooltip so the menu stays compact.
+    @ViewBuilder
+    private func siteStatus(_ site: Site) -> some View {
+      Button {
+        Clipboard.copy(site.name)
+      } label: {
+        HStack {
+          if let icon = resource.status.statusIcon {
+            Image(nsImage: icon)
           }
-
-          Button {
-            Clipboard.copy(resource.status.toSiteStatus())
-          } label: {
-            HStack {
-              if let icon = resource.status.statusIcon {
-                Image(nsImage: icon)
-              }
-              Text(resource.status.toSiteStatus())
-            }
-          }
-          .help(resource.status.toSiteStatusTooltip())
+          Text(site.name)
         }
       }
+      .help(resource.status.toSiteStatusTooltip())
     }
 
     var internetResourceToggleTitle: String {
