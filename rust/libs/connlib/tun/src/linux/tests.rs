@@ -6,7 +6,7 @@ use ingot::types::{Emit, HeaderLen as _};
 use ingot::udp::Udp;
 use ip_packet::{IpPacket, IpPacketBuf};
 
-use super::coalesce::TunGsoQueue;
+use super::coalesce::{Outgoing, TunGsoQueue};
 use super::split::split;
 use super::virtio::*;
 use super::{checksum, virtio};
@@ -29,7 +29,7 @@ fn coalesces_sequential_tcp_segments() {
     };
     assert_eq!(super_packet.num_segments(), 3);
 
-    let buf = super_packet.bufs().concat();
+    let buf = write_bytes(super_packet);
     let (hdr, packet) = VirtioNetHdr::parse(&buf).unwrap();
 
     assert_eq!(hdr.flags, VIRTIO_NET_HDR_F_NEEDS_CSUM);
@@ -71,13 +71,36 @@ fn coalesced_tcp_packet_splits_back_into_segments() {
         panic!("Expected a single super packet");
     };
 
-    let roundtripped = split(&super_packet.bufs().concat()).unwrap();
+    let roundtripped = split(&write_bytes(super_packet)).unwrap();
 
     assert_eq!(roundtripped.len(), 3);
 
     for (original, roundtripped) in segments.iter().zip(&roundtripped) {
         assert_eq!(original.packet(), roundtripped.packet());
     }
+}
+
+#[test]
+fn super_packet_gathers_payloads_from_original_packets() {
+    let mut queue = TunGsoQueue::new();
+
+    queue.enqueue(tcp4(1000, &[1; 100]));
+    queue.enqueue(tcp4(1100, &[2; 100]));
+
+    let out = queue.drain().collect::<Vec<_>>();
+
+    let [super_packet] = out.as_slice() else {
+        panic!("Expected a single super packet");
+    };
+
+    let bufs = super_packet.bufs().collect::<Vec<_>>();
+
+    let [prefix, first, second] = bufs.as_slice() else {
+        panic!("Expected the header prefix plus one payload buffer per segment");
+    };
+    assert_eq!(prefix.len(), VNET_HDR_LEN + 20 + 20);
+    assert_eq!(*first, [1u8; 100].as_slice());
+    assert_eq!(*second, [2u8; 100].as_slice());
 }
 
 #[test]
@@ -125,7 +148,7 @@ fn psh_closes_the_batch() {
     assert_eq!(super_packet.num_segments(), 2);
     assert_eq!(segment.num_segments(), 1);
 
-    let buf = super_packet.bufs().concat();
+    let buf = write_bytes(super_packet);
     let (_, packet) = VirtioNetHdr::parse(&buf).unwrap();
     assert_eq!(
         packet[33] & 0x08,
@@ -185,7 +208,7 @@ fn coalesces_udp_datagrams() {
     };
     assert_eq!(super_packet.num_segments(), 3);
 
-    let buf = super_packet.bufs().concat();
+    let buf = write_bytes(super_packet);
     let (hdr, _) = VirtioNetHdr::parse(&buf).unwrap();
     assert_eq!(hdr.gso_type, VIRTIO_NET_HDR_GSO_UDP_L4);
     assert_eq!(hdr.gso_size, 100);
@@ -333,4 +356,9 @@ fn packet_from_bytes(bytes: &[u8]) -> IpPacket {
     buf.buf()[..bytes.len()].copy_from_slice(bytes);
 
     IpPacket::new(buf, bytes.len()).unwrap()
+}
+
+/// Concatenates all buffers of an [`Outgoing`] into the byte stream `writev` produces.
+fn write_bytes(outgoing: &Outgoing) -> Vec<u8> {
+    outgoing.bufs().collect::<Vec<_>>().concat()
 }
