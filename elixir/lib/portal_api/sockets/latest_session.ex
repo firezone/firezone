@@ -272,9 +272,12 @@ defmodule PortalAPI.Sockets.LatestSession do
     # actor (e.g. an unattested row created before the attested merge). The
     # colliding entry keeps its session but skips the identity change, so one
     # poisoned entry cannot fail the whole batch; the merge retries on the
-    # device's next connect. The probe-then-update window is not atomic: a
-    # collision that appears in between still raises unique_violation, which
-    # the caller's rescue turns into failed entries that reconnect and retry.
+    # device's next connect. Entries carry a firezone_id only when their
+    # connect actually adopted a new one, so in the steady state this probe
+    # has nothing to check and issues no query. The probe-then-update window
+    # is not atomic: a collision that appears in between still raises
+    # unique_violation, which the caller's rescue turns into failed entries
+    # that reconnect and retry.
     defp strip_conflicting_firezone_ids(rows) do
       probe_rows =
         for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do

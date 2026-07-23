@@ -37,6 +37,7 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
           last_seen_remote_ip: Postgrex.INET.t() | nil,
@@ -120,6 +121,11 @@ defmodule Portal.Device do
 
     # Virtual fields
     field :online?, :boolean, virtual: true, default: false
+
+    # Set when this connect adopted a new firezone_id (attested-first merge).
+    # The session flush persists firezone_id only for merged connects, so the
+    # steady state adds no conflict-probe query to the flush.
+    field :firezone_id_merged?, :boolean, virtual: true, default: false
 
     timestamps()
   end

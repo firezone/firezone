@@ -437,7 +437,7 @@ defmodule PortalAPI.Client.Socket do
       if is_nil(firezone_id) or client.firezone_id == firezone_id do
         client
       else
-        %{client | firezone_id: firezone_id}
+        %{client | firezone_id: firezone_id, firezone_id_merged?: true}
       end
     end
 
