@@ -323,7 +323,7 @@ defmodule PortalAPI.Client.Socket do
     require Logger
 
     @hardware_id_fields ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
-    @attested_id_fields ~w[attested_device_serial attested_device_uuid attested_mdm_device_id]a
+    @attested_id_fields ~w[last_attested_device_serial last_attested_device_uuid last_attested_mdm_device_id]a
 
     @dialyzer {:no_opaque, [find_or_create_client: 2, find_by_attested_ids: 3]}
     def find_or_create_client(changeset, attrs) do

@@ -51,31 +51,31 @@ defmodule PortalAPI.Schemas.Client do
           nullable: true,
           description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
         },
-        attested_device_serial: %Schema{
+        last_attested_device_serial: %Schema{
           type: :string,
           nullable: true,
           readOnly: true,
           description: "Device serial number attested by an MDM-provisioned client certificate"
         },
-        attested_device_uuid: %Schema{
+        last_attested_device_uuid: %Schema{
           type: :string,
           nullable: true,
           readOnly: true,
           description: "Device UUID attested by an MDM-provisioned client certificate"
         },
-        attested_mdm_device_id: %Schema{
+        last_attested_mdm_device_id: %Schema{
           type: :string,
           nullable: true,
           readOnly: true,
           description: "MDM device ID attested by an MDM-provisioned client certificate"
         },
-        cert_serial: %Schema{
+        last_attested_cert_serial: %Schema{
           type: :string,
           nullable: true,
           readOnly: true,
           description: "Serial number of the client certificate used for device verification"
         },
-        cert_fingerprint: %Schema{
+        last_attested_cert_fingerprint: %Schema{
           type: :string,
           nullable: true,
           readOnly: true,
@@ -163,11 +163,11 @@ defmodule PortalAPI.Schemas.Client do
         "identifier_for_vendor" => nil,
         "firebase_installation_id" => nil,
         "hostname" => "johns-macbook.example.com",
-        "attested_device_serial" => "GCCFX0DBQ6L5",
-        "attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-        "attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-        "cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
-        "cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "last_attested_device_serial" => "GCCFX0DBQ6L5",
+        "last_attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
+        "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+        "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
+        "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
         "verified_at" => "2025-01-01T00:00:00Z",
         "public_key" => "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
         "last_seen_at" => "2025-01-01T00:00:00Z",
@@ -252,11 +252,11 @@ defmodule PortalAPI.Schemas.Client do
           "identifier_for_vendor" => nil,
           "firebase_installation_id" => nil,
           "hostname" => "johns-macbook.example.com",
-          "attested_device_serial" => "GCCFX0DBQ6L5",
-          "attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-          "attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-          "cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
-          "cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "last_attested_device_serial" => "GCCFX0DBQ6L5",
+          "last_attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
+          "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+          "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
+          "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "verified_at" => "2025-01-01T00:00:00Z",
           "created_at" => "2025-01-01T00:00:00Z",
           "updated_at" => "2025-01-01T00:00:00Z"
@@ -294,11 +294,11 @@ defmodule PortalAPI.Schemas.Client do
             "identifier_for_vendor" => nil,
             "firebase_installation_id" => nil,
             "hostname" => "johns-macbook.example.com",
-            "attested_device_serial" => "GCCFX0DBQ6L5",
-            "attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
-            "cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "last_attested_device_serial" => "GCCFX0DBQ6L5",
+            "last_attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
+            "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+            "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
+            "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
             "verified_at" => "2025-01-01T00:00:00Z",
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
@@ -316,11 +316,11 @@ defmodule PortalAPI.Schemas.Client do
             "identifier_for_vendor" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "firebase_installation_id" => nil,
             "hostname" => nil,
-            "attested_device_serial" => nil,
-            "attested_device_uuid" => nil,
-            "attested_mdm_device_id" => nil,
-            "cert_serial" => nil,
-            "cert_fingerprint" => nil,
+            "last_attested_device_serial" => nil,
+            "last_attested_device_uuid" => nil,
+            "last_attested_mdm_device_id" => nil,
+            "last_attested_cert_serial" => nil,
+            "last_attested_cert_fingerprint" => nil,
             "verified_at" => nil,
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"

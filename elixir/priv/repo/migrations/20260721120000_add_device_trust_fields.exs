@@ -7,14 +7,14 @@ defmodule Portal.Repo.Migrations.AddDeviceTrustFields do
   `attested_*` columns hold identifiers proven by answering the portal's
   challenge-response with an MDM-provisioned client certificate:
 
-    * `attested_device_serial` / `attested_device_uuid` - hardware identifiers
+    * `last_attested_device_serial` / `last_attested_device_uuid` - hardware identifiers
       (serial, SMBIOS UUID / UDID) asserted in the certificate subject/SAN.
       On Android 12+ personally-owned work profiles hardware IDs are
       unavailable to MDMs, so these stay NULL there.
-    * `attested_mdm_device_id` - the MDM's logical device ID asserted in the
+    * `last_attested_mdm_device_id` - the MDM's logical device ID asserted in the
       certificate (e.g. Intune {{DeviceId}}), the stable link to the MDM
       record on every platform.
-    * `cert_serial` / `cert_fingerprint` - the pinned client certificate used
+    * `last_attested_cert_serial` / `last_attested_cert_fingerprint` - the pinned client certificate used
       to answer the challenge-response.
 
   An attested identifier anchors a physical device, so each one is unique per
@@ -38,33 +38,33 @@ defmodule Portal.Repo.Migrations.AddDeviceTrustFields do
 
   def up do
     alter table(:devices) do
-      add(:attested_device_serial, :string)
-      add(:attested_device_uuid, :string)
-      add(:attested_mdm_device_id, :string)
-      add(:cert_serial, :string)
-      add(:cert_fingerprint, :string)
+      add(:last_attested_device_serial, :string)
+      add(:last_attested_device_uuid, :string)
+      add(:last_attested_mdm_device_id, :string)
+      add(:last_attested_cert_serial, :string)
+      add(:last_attested_cert_fingerprint, :string)
     end
 
     create(
-      unique_index(:devices, [:account_id, :actor_id, :attested_device_serial],
-        where: "attested_device_serial IS NOT NULL",
-        name: :devices_account_id_actor_id_attested_device_serial_index,
+      unique_index(:devices, [:account_id, :actor_id, :last_attested_device_serial],
+        where: "last_attested_device_serial IS NOT NULL",
+        name: :devices_account_id_actor_id_last_attested_device_serial_index,
         concurrently: true
       )
     )
 
     create(
-      unique_index(:devices, [:account_id, :actor_id, :attested_device_uuid],
-        where: "attested_device_uuid IS NOT NULL",
-        name: :devices_account_id_actor_id_attested_device_uuid_index,
+      unique_index(:devices, [:account_id, :actor_id, :last_attested_device_uuid],
+        where: "last_attested_device_uuid IS NOT NULL",
+        name: :devices_account_id_actor_id_last_attested_device_uuid_index,
         concurrently: true
       )
     )
 
     create(
-      unique_index(:devices, [:account_id, :actor_id, :attested_mdm_device_id],
-        where: "attested_mdm_device_id IS NOT NULL",
-        name: :devices_account_id_actor_id_attested_mdm_device_id_index,
+      unique_index(:devices, [:account_id, :actor_id, :last_attested_mdm_device_id],
+        where: "last_attested_mdm_device_id IS NOT NULL",
+        name: :devices_account_id_actor_id_last_attested_mdm_device_id_index,
         concurrently: true
       )
     )
@@ -72,29 +72,29 @@ defmodule Portal.Repo.Migrations.AddDeviceTrustFields do
 
   def down do
     drop(
-      index(:devices, [:account_id, :actor_id, :attested_mdm_device_id],
-        name: :devices_account_id_actor_id_attested_mdm_device_id_index
+      index(:devices, [:account_id, :actor_id, :last_attested_mdm_device_id],
+        name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
       )
     )
 
     drop(
-      index(:devices, [:account_id, :actor_id, :attested_device_uuid],
-        name: :devices_account_id_actor_id_attested_device_uuid_index
+      index(:devices, [:account_id, :actor_id, :last_attested_device_uuid],
+        name: :devices_account_id_actor_id_last_attested_device_uuid_index
       )
     )
 
     drop(
-      index(:devices, [:account_id, :actor_id, :attested_device_serial],
-        name: :devices_account_id_actor_id_attested_device_serial_index
+      index(:devices, [:account_id, :actor_id, :last_attested_device_serial],
+        name: :devices_account_id_actor_id_last_attested_device_serial_index
       )
     )
 
     alter table(:devices) do
-      remove(:attested_device_serial)
-      remove(:attested_device_uuid)
-      remove(:attested_mdm_device_id)
-      remove(:cert_serial)
-      remove(:cert_fingerprint)
+      remove(:last_attested_device_serial)
+      remove(:last_attested_device_uuid)
+      remove(:last_attested_mdm_device_id)
+      remove(:last_attested_cert_serial)
+      remove(:last_attested_cert_fingerprint)
     end
   end
 end

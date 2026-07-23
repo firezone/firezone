@@ -56,11 +56,11 @@ defmodule Portal.Device do
           identifier_for_vendor: String.t() | nil,
           firebase_installation_id: String.t() | nil,
           hostname: String.t() | nil,
-          attested_device_serial: String.t() | nil,
-          attested_device_uuid: String.t() | nil,
-          attested_mdm_device_id: String.t() | nil,
-          cert_serial: String.t() | nil,
-          cert_fingerprint: String.t() | nil,
+          last_attested_device_serial: String.t() | nil,
+          last_attested_device_uuid: String.t() | nil,
+          last_attested_mdm_device_id: String.t() | nil,
+          last_attested_cert_serial: String.t() | nil,
+          last_attested_cert_fingerprint: String.t() | nil,
           verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -89,11 +89,11 @@ defmodule Portal.Device do
 
     # Device trust. Enforced client-only today, but gateways may adopt
     # cert-based verification too, hence no client_ prefix on the cert columns.
-    field :attested_device_serial, :string
-    field :attested_device_uuid, :string
-    field :attested_mdm_device_id, :string
-    field :cert_serial, :string
-    field :cert_fingerprint, :string
+    field :last_attested_device_serial, :string
+    field :last_attested_device_uuid, :string
+    field :last_attested_mdm_device_id, :string
+    field :last_attested_cert_serial, :string
+    field :last_attested_cert_fingerprint, :string
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only
@@ -161,19 +161,19 @@ defmodule Portal.Device do
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)
         |> validate_length(:firebase_installation_id, max: 255)
-        |> validate_length(:attested_device_serial, max: 255)
-        |> validate_length(:attested_device_uuid, max: 255)
-        |> validate_length(:attested_mdm_device_id, max: 255)
-        |> validate_length(:cert_serial, max: 255)
-        |> validate_length(:cert_fingerprint, max: 255)
-        |> unique_constraint(:attested_device_serial,
-          name: :devices_account_id_actor_id_attested_device_serial_index
+        |> validate_length(:last_attested_device_serial, max: 255)
+        |> validate_length(:last_attested_device_uuid, max: 255)
+        |> validate_length(:last_attested_mdm_device_id, max: 255)
+        |> validate_length(:last_attested_cert_serial, max: 255)
+        |> validate_length(:last_attested_cert_fingerprint, max: 255)
+        |> unique_constraint(:last_attested_device_serial,
+          name: :devices_account_id_actor_id_last_attested_device_serial_index
         )
-        |> unique_constraint(:attested_device_uuid,
-          name: :devices_account_id_actor_id_attested_device_uuid_index
+        |> unique_constraint(:last_attested_device_uuid,
+          name: :devices_account_id_actor_id_last_attested_device_uuid_index
         )
-        |> unique_constraint(:attested_mdm_device_id,
-          name: :devices_account_id_actor_id_attested_mdm_device_id_index
+        |> unique_constraint(:last_attested_mdm_device_id,
+          name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
         )
 
       :gateway ->

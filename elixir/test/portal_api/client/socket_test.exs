@@ -523,7 +523,7 @@ defmodule PortalAPI.Client.SocketTest do
         client_fixture(
           account: account,
           actor: actor,
-          attested_device_serial: "SN-ATT-1",
+          last_attested_device_serial: "SN-ATT-1",
           firezone_id: "fz-old"
         )
 
@@ -531,7 +531,7 @@ defmodule PortalAPI.Client.SocketTest do
         device_trust_changeset(account, actor, %{
           "name" => "Reinstalled Client",
           "firezone_id" => "fz-new",
-          "attested_device_serial" => "SN-ATT-1"
+          "last_attested_device_serial" => "SN-ATT-1"
         })
 
       assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
@@ -553,11 +553,11 @@ defmodule PortalAPI.Client.SocketTest do
         device_trust_changeset(account, actor, %{
           "name" => "New Client",
           "firezone_id" => "fz-1",
-          "attested_device_serial" => "SN-NEW-1"
+          "last_attested_device_serial" => "SN-NEW-1"
         })
 
       assert {:ok, client} = Socket.Database.find_or_create_client(changeset, %{})
-      assert client.attested_device_serial == "SN-NEW-1"
+      assert client.last_attested_device_serial == "SN-NEW-1"
       assert client.firezone_id == "fz-1"
     end
 
@@ -581,7 +581,7 @@ defmodule PortalAPI.Client.SocketTest do
       client_fixture(
         account: account,
         actor: actor,
-        attested_device_serial: "SN-DUP",
+        last_attested_device_serial: "SN-DUP",
         firezone_id: "fz-a"
       )
 
@@ -589,12 +589,12 @@ defmodule PortalAPI.Client.SocketTest do
                device_trust_changeset(account, actor, %{
                  "name" => "Duplicate",
                  "firezone_id" => "fz-b",
-                 "attested_device_serial" => "SN-DUP"
+                 "last_attested_device_serial" => "SN-DUP"
                })
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
 
-      assert {"has already been taken", _} = changeset.errors[:attested_device_serial]
+      assert {"has already been taken", _} = changeset.errors[:last_attested_device_serial]
     end
 
     test "identifiers split across devices refuse adoption and fall back", %{
@@ -607,7 +607,7 @@ defmodule PortalAPI.Client.SocketTest do
         client_fixture(
           account: account,
           actor: actor,
-          attested_device_serial: "SN-SPLIT",
+          last_attested_device_serial: "SN-SPLIT",
           firezone_id: "fz-a"
         )
 
@@ -615,7 +615,7 @@ defmodule PortalAPI.Client.SocketTest do
         client_fixture(
           account: account,
           actor: actor,
-          attested_device_uuid: "uuid-split",
+          last_attested_device_uuid: "uuid-split",
           firezone_id: "fz-b"
         )
 
@@ -623,8 +623,8 @@ defmodule PortalAPI.Client.SocketTest do
         device_trust_changeset(account, actor, %{
           "name" => "Ambiguous Client",
           "firezone_id" => "fz-new",
-          "attested_device_serial" => "SN-SPLIT",
-          "attested_device_uuid" => "uuid-split"
+          "last_attested_device_serial" => "SN-SPLIT",
+          "last_attested_device_uuid" => "uuid-split"
         })
 
       log =
@@ -637,8 +637,8 @@ defmodule PortalAPI.Client.SocketTest do
           assert client.id != device_a.id
           assert client.id != device_b.id
           assert client.firezone_id == "fz-new"
-          assert is_nil(client.attested_device_serial)
-          assert is_nil(client.attested_device_uuid)
+          assert is_nil(client.last_attested_device_serial)
+          assert is_nil(client.last_attested_device_uuid)
         end)
 
       assert log =~ "split across multiple devices"
@@ -650,9 +650,9 @@ defmodule PortalAPI.Client.SocketTest do
     |> Ecto.Changeset.cast(attrs, [
       :name,
       :firezone_id,
-      :attested_device_serial,
-      :attested_device_uuid,
-      :attested_mdm_device_id
+      :last_attested_device_serial,
+      :last_attested_device_uuid,
+      :last_attested_mdm_device_id
     ])
     |> Ecto.Changeset.put_change(:type, :client)
     |> Ecto.Changeset.put_change(:account_id, account.id)

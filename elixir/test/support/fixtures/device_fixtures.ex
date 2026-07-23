@@ -137,11 +137,11 @@ defmodule Portal.DeviceFixtures do
         :identifier_for_vendor,
         :firebase_installation_id,
         :hostname,
-        :attested_device_serial,
-        :attested_device_uuid,
-        :attested_mdm_device_id,
-        :cert_serial,
-        :cert_fingerprint,
+        :last_attested_device_serial,
+        :last_attested_device_uuid,
+        :last_attested_mdm_device_id,
+        :last_attested_cert_serial,
+        :last_attested_cert_fingerprint,
         :verified_at
       ])
       |> Ecto.Changeset.put_change(:type, :client)
