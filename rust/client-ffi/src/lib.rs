@@ -487,7 +487,7 @@ impl Drop for Session {
         // Android's app process outlives the session, so waiting would only
         // delay the disconnect.
         if let Some(uploader) = self.uploader.take() {
-            let flush = (!cfg!(target_os = "android")).then_some(Duration::from_secs(5));
+            let flush = (!cfg!(target_os = "android")).then_some(FLOW_LOG_DRAIN_TIMEOUT);
 
             uploader.stop(flush);
         }
@@ -770,9 +770,14 @@ pub fn drain_flow_logs(spool_dir: String) {
     // Outside the registry lock, so a concurrent `connect` is never blocked on
     // our bounded wait.
     if let Some(one_shot) = one_shot {
-        one_shot.stop(Some(Duration::from_secs(10)));
+        one_shot.stop(Some(FLOW_LOG_DRAIN_TIMEOUT));
     }
 }
+
+/// Longest we block for a flow-log drain: the one-shot in [`drain_flow_logs`]
+/// and the final flush when a session drops. Well within the 15-30s the OS
+/// grants `stopTunnel` on Apple.
+const FLOW_LOG_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The one live uploader thread, if any: the session's while one exists, else
 /// the latest one-shot. Serializes drains: at most one thread uploads at a time.
