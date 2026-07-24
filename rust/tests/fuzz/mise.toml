@@ -20,12 +20,14 @@ CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16"
 
 [tasks.install-toolchain]
 description = "Install the pinned nightly with the components fuzzing needs"
+shell = "bash -c"
 # Status output goes to stderr so tasks that depend on this one can keep a
 # machine-readable stdout.
 run = 'rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rust-src --component llvm-tools-preview 1>&2'
 
 [tasks.fuzz]
 description = "Run a fuzz target with its target-specific defaults; extra args are passed to libFuzzer"
+shell = "bash -c"
 depends = [
   "install-toolchain",
   { task = "unpack-corpus", args = ["{{usage.target}}"] },
@@ -56,6 +58,7 @@ cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../..
 
 [tasks.cmin]
 description = "Minimize the corpus of a fuzz target"
+shell = "bash -c"
 depends = [
   "install-toolchain",
   { task = "unpack-corpus", args = ["{{usage.target}}"] },
@@ -71,6 +74,7 @@ cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../.
 
 [tasks.pack-corpus]
 description = "Pack a fuzz target's corpus into its deterministic archive"
+shell = "bash -c"
 usage = 'arg "<target>"'
 raw = true
 run = '''
@@ -101,6 +105,7 @@ chmod 0644 "$archive"
 
 [tasks.unpack-corpus]
 description = "Unpack a fuzz target's committed corpus"
+shell = "bash -c"
 usage = 'arg "<target>"'
 raw = true
 run = '''
@@ -121,6 +126,7 @@ tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$corpus"
 
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
+shell = "bash -c"
 depends = [
   "install-toolchain",
   { task = "unpack-corpus", args = ["{{usage.target}}"] },
@@ -136,6 +142,7 @@ cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir 
 
 [tasks.coverage-summary]
 description = "Print region coverage for the crate with the same name as the fuzz target"
+shell = "bash -c"
 depends = ["install-toolchain"]
 usage = 'arg "<crate>"'
 raw = true
@@ -171,6 +178,7 @@ crate_dir="${manifest%/Cargo.toml}/"
 
 [tasks.coverage-check]
 description = "Fail if a crate exceeds its committed uncovered-region ceiling"
+shell = "bash -c"
 usage = 'arg "<crate>"'
 raw = true
 run = '''
@@ -200,6 +208,7 @@ exit 1
 
 [tasks.lcov]
 description = "Export an existing fuzz coverage profile as lcov"
+shell = "bash -c"
 depends = ["install-toolchain"]
 usage = 'arg "<crate>"'
 raw = true
@@ -207,6 +216,7 @@ run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-c
 
 [tasks.llvm-cov]
 description = "Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
+shell = "bash -c"
 depends = ["install-toolchain"]
 usage = 'arg "<llvm_cov_args>" var=#true'
 raw = true
