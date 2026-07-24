@@ -2883,6 +2883,7 @@ dependencies = [
  "secrecy",
  "serde_json",
  "sha2",
+ "smallvec",
  "snownet",
  "tracing",
  "tracing-subscriber",
