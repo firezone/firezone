@@ -36,6 +36,7 @@ pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
     runtime: Option<tokio::runtime::Runtime>,
+    uploader: Option<flow_log_upload::Uploader>,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -194,6 +195,7 @@ impl Session {
         device_name: String,
         log_dir: String,
         log_filter: String,
+        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
         protect_socket: Arc<dyn ProtectSocket>,
@@ -209,6 +211,7 @@ impl Session {
             Some(device_name),
             log_dir,
             log_filter,
+            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -233,6 +236,7 @@ impl Session {
         device_name: Option<String>,
         log_dir: String,
         log_filter: String,
+        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
@@ -248,6 +252,7 @@ impl Session {
             device_name,
             log_dir,
             log_filter,
+            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -278,6 +283,7 @@ impl Session {
         device_name: Option<String>,
         log_dir: String,
         log_filter: String,
+        flow_logs_dir: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
@@ -292,6 +298,7 @@ impl Session {
             device_name,
             log_dir,
             log_filter,
+            flow_logs_dir,
             device_info,
             is_internet_resource_active,
             tcp_socket_factory,
@@ -369,7 +376,7 @@ impl Session {
     }
 
     pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
-        let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
+        let (_, reload_handle, _) = LOGGER_STATE.get().context("Logger not yet initialised")?;
 
         reload_handle
             .reload(&directives)
@@ -473,6 +480,17 @@ impl Drop for Session {
         });
 
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+
+        // The event loop spooled its open flows on the way out; run one final
+        // upload pass, then let the uploader thread exit. Apple blocks briefly
+        // because the provider process may be reaped right after `stopTunnel`;
+        // Android's app process outlives the session, so waiting would only
+        // delay the disconnect.
+        if let Some(uploader) = self.uploader.take() {
+            let flush = (!cfg!(target_os = "android")).then_some(FLOW_LOG_DRAIN_TIMEOUT);
+
+            uploader.stop(flush);
+        }
     }
 }
 
@@ -484,6 +502,7 @@ fn connect(
     device_name: Option<String>,
     log_dir: String,
     log_filter: String,
+    flow_logs_dir: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -507,7 +526,11 @@ fn connect(
 
     install_rustls_crypto_provider();
 
-    init_logging(&PathBuf::from(log_dir), log_filter)?;
+    let flow_logs_dir = flow_logs_dir
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from);
+
+    init_logging(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
 
     tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
@@ -540,14 +563,26 @@ fn connect(
         },
         tcp_socket_factory.clone(),
     );
+    // The uploader thread lives and dies with the session: its interval only
+    // makes sense while flows are being produced, and a resident thread in an
+    // idle app process would poll and dial for nothing. It uses the session's
+    // tunnel-bypassing socket factory, and registers itself so `drain_flow_logs`
+    // nudges it instead of spawning a second drain.
+    let uploader = flow_logs_dir.clone().map(|dir| {
+        let uploader = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
+
+        *lock_uploader() = Some(uploader.clone());
+
+        uploader
+    });
+
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
         is_internet_resource_active,
         Vec::default(),
-        // Mobile flow-log wiring (spool dir + uploader) comes separately.
-        None,
+        flow_logs_dir,
         false,
         runtime.handle().clone(),
     );
@@ -558,6 +593,7 @@ fn connect(
         inner: session,
         events: Mutex::new(events),
         runtime: Some(runtime),
+        uploader,
     })
 }
 
@@ -589,11 +625,14 @@ pub fn stop_telemetry() {
     telemetry::stop();
 }
 
-static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =
-    OnceLock::new();
+static LOGGER_STATE: OnceLock<(
+    logging::file::Handle,
+    logging::FilterReloadHandle,
+    Option<flow_log_writer::Guard>,
+)> = OnceLock::new();
 
-fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
-    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
+fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBuf>) -> Result<()> {
+    if let Some((_, reload_handle, _)) = LOGGER_STATE.get() {
         reload_handle
             .reload(&log_filter)
             .context("Failed to apply new log-filter")?;
@@ -603,6 +642,8 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
     let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
     let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
+    // Spools flow-log reports for the uploader, like the desktop entrypoints do.
+    let (flow_log_layer, flow_log_guard) = flow_logs_dir.map(flow_log_writer::layer).unzip();
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
@@ -613,6 +654,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
                 .with_writer(platform::MakeWriter::default())
                 .with_filter(platform_log_filter),
         )
+        .with(flow_log_layer)
         .with(sentry_layer());
 
     let reload_handle = file_reload_handle.merge(platform_reload_handle);
@@ -620,7 +662,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     logging::init(subscriber)?;
 
     LOGGER_STATE
-        .set((handle, reload_handle))
+        .set((handle, reload_handle, flow_log_guard))
         .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())
@@ -692,6 +734,59 @@ pub fn log_cleanup_default_interval_secs() -> u64 {
 #[uniffi::export]
 pub fn hash_device_id(id: String) -> String {
     telemetry::hash_device_id(id)
+}
+
+/// Drains the flow-log spool at `spool_dir`. Call whenever a prompt upload is
+/// wanted, e.g. on app foreground or launch.
+///
+/// A live session's uploader is nudged to upload now; the caller returns
+/// immediately, since that thread sticks around to see the upload through.
+/// Without one, a one-shot pass runs over plain sockets (no session means no
+/// tunnel of ours to bypass) and the call blocks until it completes, bounded to
+/// 10 seconds; the pass finishes in the background if it overruns.
+#[uniffi::export]
+pub fn drain_flow_logs(spool_dir: String) {
+    install_rustls_crypto_provider();
+
+    let one_shot = {
+        let mut uploader = lock_uploader();
+
+        match uploader.as_ref() {
+            Some(uploader) if !uploader.is_finished() => {
+                uploader.nudge();
+                None
+            }
+            _ => {
+                let one_shot =
+                    flow_log_upload::spawn(PathBuf::from(spool_dir), Arc::new(socket_factory::tcp));
+
+                *uploader = Some(one_shot.clone());
+
+                Some(one_shot)
+            }
+        }
+    };
+
+    // Outside the registry lock, so a concurrent `connect` is never blocked on
+    // our bounded wait.
+    if let Some(one_shot) = one_shot {
+        one_shot.stop(Some(FLOW_LOG_DRAIN_TIMEOUT));
+    }
+}
+
+/// Longest we block for a flow-log drain: the one-shot in [`drain_flow_logs`]
+/// and the final flush when a session drops. Well within the 15-30s the OS
+/// grants `stopTunnel` on Apple.
+const FLOW_LOG_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The one live uploader thread, if any: the session's while one exists, else
+/// the latest one-shot. Serializes drains: at most one thread uploads at a time.
+static UPLOADER: std::sync::Mutex<Option<flow_log_upload::Uploader>> = std::sync::Mutex::new(None);
+
+fn lock_uploader() -> std::sync::MutexGuard<'static, Option<flow_log_upload::Uploader>> {
+    UPLOADER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Returns whether log streaming is currently active.
