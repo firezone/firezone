@@ -29,15 +29,18 @@ use std::{
 };
 
 /// The deployed release identifier (the commit SHA), read from the
-/// `FIREZONE_RELEASE` environment variable at startup.
-pub static VERSION: LazyLock<Option<String>> =
-    LazyLock::new(|| std::env::var("FIREZONE_RELEASE").ok());
+/// `FIREZONE_RELEASE` environment variable.
+pub static VERSION: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("FIREZONE_RELEASE")
+        .ok()
+        .filter(|release| !release.trim().is_empty())
+});
 pub static SOFTWARE: LazyLock<Software> = LazyLock::new(|| {
     Software::new(format!(
         "firezone-relay; rev={}",
         VERSION
             .as_deref()
-            .map(|rev| rev.get(..8).unwrap_or(rev))
+            .and_then(|rev| rev.get(..8))
             .unwrap_or("xxxx")
     ))
     .expect("less than 128 chars")
