@@ -11,7 +11,8 @@ use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use super::dns_records::DnsRecords;
 
 pub struct TcpDnsServerResource {
-    server: dns_over_tcp::Server,
+    socket: SocketAddr,
+    server: Option<dns_over_tcp::Server>,
 }
 
 #[derive(Debug, Default)]
@@ -21,30 +22,44 @@ pub struct UdpDnsServerResource {
 }
 
 impl TcpDnsServerResource {
-    pub fn new(socket: SocketAddr, now: Instant) -> Self {
-        let mut server = dns_over_tcp::Server::new(now);
-        server.set_listen_addresses::<5>(BTreeSet::from([socket]));
-
-        Self { server }
+    pub fn new(socket: SocketAddr) -> Self {
+        Self {
+            socket,
+            server: None,
+        }
     }
 
-    pub fn handle_input(&mut self, packet: IpPacket) {
-        self.server.handle_inbound(packet);
+    pub fn handle_input(&mut self, packet: IpPacket, now: Instant) {
+        let server = self.server.get_or_insert_with(|| {
+            let mut server = dns_over_tcp::Server::new(now);
+            // Each simulated client maintains at most one connection to a DNS
+            // server, and the generated topology contains exactly two clients.
+            server.set_listen_addresses::<2>(BTreeSet::from([self.socket]));
+            server
+        });
+
+        server.handle_inbound(packet);
     }
 
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
-        self.server.handle_timeout(now);
-        while let Some(query) = self.server.poll_queries() {
+        let Some(server) = self.server.as_mut() else {
+            return;
+        };
+
+        server.handle_timeout(now);
+        while let Some(query) = server.poll_queries() {
             let response = handle_dns_query(&query.message, global_dns_records, now);
 
-            self.server
+            server
                 .send_message(query.local, query.remote, response)
                 .unwrap();
         }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.server.poll_outbound()
+        self.server
+            .as_mut()
+            .and_then(dns_over_tcp::Server::poll_outbound)
     }
 }
 
