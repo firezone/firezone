@@ -29,9 +29,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust-stable
-      - uses: ./.github/actions/setup-rust-target-dependency-cache
+      - uses: ./.github/actions/setup-rust-sccache
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
@@ -79,6 +79,8 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
       - uses: ./.github/actions/setup-mise
         with:
@@ -127,6 +129,8 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
@@ -196,6 +200,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz
@@ -220,6 +226,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - run: scripts/tests/${{ matrix.test }}

@@ -134,6 +134,9 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:
           key: ${{ matrix.package }}-${{ inputs.stage }}-${{ inputs.profile }}
@@ -249,6 +252,9 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:
           key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
