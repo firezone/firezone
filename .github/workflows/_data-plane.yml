@@ -139,21 +139,21 @@ jobs:
           path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
           key: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
       - name: Build binaries
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -xe
 
-          if [[ "${{ steps.binary-cache.outputs.cache-hit }}" != "true" ]]; then
-            if [[ "${{ inputs.profile }}" == "release" ]]; then
-              PROFILE="--release"
-            else
-              PROFILE=""
-            fi
-
-            cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
           fi
 
-          cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
+      - name: Package binary
+        shell: bash
+        run: cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - uses: ./.github/actions/setup-azure-sign-tool
         if: inputs.profile == 'release'
       - name: Sign the binary
@@ -264,23 +264,25 @@ jobs:
       - run: mise run //rust:install-ebpf-toolchain
         if: matrix.name.package == 'firezone-relay' && steps.binary-cache.outputs.cache-hit != 'true'
       - name: Build binaries
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
           set -xe
 
-          if [[ "${{ steps.binary-cache.outputs.cache-hit }}" != "true" ]]; then
-            if [[ "${{ inputs.profile }}" == "release" ]]; then
-              PROFILE="--release"
-            else
-              PROFILE=""
-              # Build the debug images with `line-tables-only` debug info: keeps
-              # backtraces but roughly halves the binaries, so the images pull
-              # faster/more reliably from ghcr and are smaller in the test-image
-              # artifact. Local `cargo build` is unaffected (keeps full debug).
-              export CARGO_PROFILE_DEV_DEBUG=line-tables-only
-            fi
-
-            cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+            # Build the debug images with `line-tables-only` debug info: keeps
+            # backtraces but roughly halves the binaries, so the images pull
+            # faster/more reliably from ghcr and are smaller in the test-image
+            # artifact. Local `cargo build` is unaffected (keeps full debug).
+            export CARGO_PROFILE_DEV_DEBUG=line-tables-only
           fi
+
+          cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
+      - name: Package binaries
+        run: |
+          set -xe
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
