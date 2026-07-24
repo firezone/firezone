@@ -10,7 +10,9 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use fuzz::tunnel::{FluxCapacitor, Generator, ReferenceState, TunnelTest, init_fuzz_subscriber};
+use fuzz::tunnel_proto::{
+    FluxCapacitor, Generator, ReferenceState, TunnelTest, init_fuzz_subscriber,
+};
 use libfuzzer_sys::fuzz_target;
 
 const MAX_TRANSITIONS: usize = 20;

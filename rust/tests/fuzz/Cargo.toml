@@ -17,7 +17,7 @@ bench = false
 
 [[bin]]
 name = "tunnel-proto"
-path = "fuzz_targets/tunnel.rs"
+path = "fuzz_targets/tunnel_proto.rs"
 test = false
 doc = false
 bench = false

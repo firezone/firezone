@@ -31,8 +31,8 @@ mod transition;
 
 type QueryId = u16;
 
-/// The tunnel target's reference-model harness.
-pub mod tunnel {
+/// The tunnel-proto target's reference-model harness.
+pub mod tunnel_proto {
     use tracing_subscriber::{
         EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
     };
