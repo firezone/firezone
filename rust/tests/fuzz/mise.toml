@@ -26,7 +26,10 @@ run = 'rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --componen
 
 [tasks.fuzz]
 description = "Run a fuzz target with its target-specific defaults; extra args are passed to libFuzzer"
-depends = ["install-toolchain"]
+depends = [
+  "install-toolchain",
+  { task = "unpack-corpus", args = ["{{usage.target}}"] },
+]
 usage = '''
 arg "<target>"
 arg "[libfuzzer_args]…" var=#true
@@ -36,7 +39,6 @@ run = '''
 set -euo pipefail
 
 target="$usage_target"
-mise run -q //rust/tests/fuzz:unpack-corpus "$target"
 
 if [ -n "$usage_libfuzzer_args" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
@@ -54,13 +56,17 @@ cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../..
 
 [tasks.cmin]
 description = "Minimize the corpus of a fuzz target"
-depends = ["install-toolchain"]
+depends = [
+  "install-toolchain",
+  { task = "unpack-corpus", args = ["{{usage.target}}"] },
+]
+usage = 'arg "<target>"'
+raw = true
+env = { ASAN_OPTIONS = "detect_leaks=0" }
 run = '''
 set -euo pipefail
 
-target={{arg(name="target")}}
-mise run -q //rust/tests/fuzz:unpack-corpus "$target"
-ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=0" cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target"
+cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
 [tasks.pack-corpus]
@@ -104,20 +110,28 @@ target="$usage_target"
 archive="corpora/$target.tar.gz"
 corpus="corpus/$target"
 
+if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+  echo "error: refusing to unpack unsafe paths from $archive" >&2
+  exit 1
+fi
+
 mkdir -p "$corpus"
-tar -xzf "$archive" -C "$corpus"
+tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$corpus"
 '''
 
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
-depends = ["install-toolchain"]
+depends = [
+  "install-toolchain",
+  { task = "unpack-corpus", args = ["{{usage.target}}"] },
+]
 usage = 'arg "<target>"'
 raw = true
+env = { ASAN_OPTIONS = "detect_leaks=0" }
 run = '''
 set -euo pipefail
 
-mise run -q //rust/tests/fuzz:unpack-corpus "$usage_target"
-ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=0" cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
+cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
 [tasks.coverage-summary]
@@ -184,23 +198,16 @@ echo "error: $crate has $measured_uncovered uncovered regions; $expected_file al
 exit 1
 '''
 
-[tasks.coverage-snapshot]
-description = "Refresh expected-coverage/<crate>.json from an existing coverage profile"
-usage = 'arg "<crate>"'
-raw = true
-run = '''
-set -euo pipefail
-
-mkdir -p expected-coverage
-mise run -q //rust/tests/fuzz:coverage-summary "$usage_crate" > "expected-coverage/$usage_crate.json"
-'''
-
 [tasks.lcov]
 description = "Export an existing fuzz coverage profile as lcov"
 depends = ["install-toolchain"]
-run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" export -format=lcov -instr-profile=coverage/{{arg(name="crate")}}/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/{{arg(name="crate")}}'
+usage = 'arg "<crate>"'
+raw = true
+run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" export -format=lcov -instr-profile=coverage/$usage_crate/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/$usage_crate'
 
 [tasks.llvm-cov]
 description = "Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
 depends = ["install-toolchain"]
-run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" {{arg(name="llvm_cov_args", var=true)}}'
+usage = 'arg "<llvm_cov_args>" var=#true'
+raw = true
+run = '"$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov" $usage_llvm_cov_args'

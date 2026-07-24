@@ -18,12 +18,13 @@ It never performs random coverage discovery.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json`
 on `main`, minimizes and repacks the grown corpora, refreshes their coverage
-snapshots, and opens one bot PR with the results.
+baselines, and opens one bot PR with the results.
 
 ## Setup
 
 Everything is managed through this directory's `mise.toml`: the pinned nightly
 toolchain, `cargo-fuzz`, and the profile overrides required by fuzz builds.
+Fuzzing tasks require Linux because `cargo-fuzz` is installed only for Linux.
 
 ## Run
 
@@ -43,11 +44,12 @@ mise run //rust/tests/fuzz:coverage ip-packet
 mise run //rust/tests/fuzz:coverage-check ip-packet
 ```
 
-Coverage growth passes without requiring a snapshot update. An increase in
+Coverage growth passes without requiring a baseline update. An increase in
 uncovered regions fails. After deliberately growing and minimizing a corpus,
-refresh its snapshot with:
+refresh its baseline with:
 
 ```console
 mise run //rust/tests/fuzz:pack-corpus ip-packet
-mise run //rust/tests/fuzz:coverage-snapshot ip-packet
+mise run //rust/tests/fuzz:coverage ip-packet
+mise run -q //rust/tests/fuzz:coverage-summary ip-packet > expected-coverage/ip-packet.json
 ```
