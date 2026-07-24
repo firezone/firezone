@@ -23,6 +23,7 @@ defmodule Portal.Device do
     last_seen_remote_ip_location_lon
     last_seen_version
     last_seen_at
+    last_attested_at
     client_token_id
     gateway_token_id
   ]
@@ -62,6 +63,7 @@ defmodule Portal.Device do
           last_attested_mdm_device_id: String.t() | nil,
           last_attested_cert_serial: String.t() | nil,
           last_attested_cert_fingerprint: String.t() | nil,
+          last_attested_at: DateTime.t() | nil,
           verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -95,6 +97,11 @@ defmodule Portal.Device do
     field :last_attested_mdm_device_id, :string
     field :last_attested_cert_serial, :string
     field :last_attested_cert_fingerprint, :string
+    # When the device last proved possession of an MDM-provisioned client
+    # certificate. Point-in-time history, never cleared by the flush; whether
+    # the CURRENT session proved possession is live connection state (the
+    # `attested?` presence attribute).
+    field :last_attested_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only

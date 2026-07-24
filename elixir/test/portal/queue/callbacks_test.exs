@@ -160,6 +160,47 @@ defmodule Portal.Queue.CallbacksTest do
       assert_receive {:confirm_session_durability, ^ref_b}
     end
 
+    test "an unattested session preserves last_attested_at history" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      attested_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      client =
+        client_fixture(account: account, actor: actor)
+        |> Ecto.Changeset.change(last_attested_at: attested_at)
+        |> Repo.update!()
+
+      token = client_token_fixture(account: account, actor: actor)
+      session_ref = make_ref()
+
+      :ok = PG.register(client.id)
+
+      attrs = %{
+        session_ref: session_ref,
+        account_id: account.id,
+        device_id: client.id,
+        actor_id: actor.id,
+        client_token_id: token.id,
+        public_key: generate_public_key(),
+        user_agent: "test-client/1.0",
+        remote_ip: {100, 64, 0, 1},
+        version: "1.3.0",
+        inserted_at: DateTime.utc_now()
+      }
+
+      on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
+      metadata = %{subject: %{"actor_id" => actor.id}, timestamp: DateTime.utc_now()}
+
+      # The entry carries no last_attested_at: this session did not prove
+      # possession, but the record of the last successful proof is history
+      # and is kept. Whether the CURRENT session is attested lives in
+      # presence metadata, not on the row.
+      assert 1 = on_flush.([{attrs, metadata}])
+
+      device = Repo.get_by!(Device, id: client.id, account_id: account.id)
+      assert DateTime.compare(device.last_attested_at, attested_at) == :eq
+    end
+
     test "skips a conflicting firezone_id merge but keeps the session" do
       account = account_fixture()
       actor = actor_fixture(account: account)
