@@ -249,9 +249,9 @@ public final class Store: ObservableObject {
       }
     }
 
-    observeForegroundForUploaderDrain()
+    observeForegroundForFlowLogDrain()
     // Nudge a drain on launch too, not just on subsequent foregrounds.
-    drainFlowLogUploader()
+    drainFlowLogs()
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: session.status)
@@ -636,7 +636,7 @@ public final class Store: ObservableObject {
   /// starts the provider on both platforms (macOS via an explicit cycle-start,
   /// iOS by launching the appex to deliver it). Best effort: nothing happens
   /// once the app quits.
-  private func observeForegroundForUploaderDrain() {
+  private func observeForegroundForFlowLogDrain() {
     #if os(iOS)
       let didBecomeActive = UIApplication.didBecomeActiveNotification
     #elseif os(macOS)
@@ -645,17 +645,17 @@ public final class Store: ObservableObject {
 
     NotificationCenter.default.publisher(for: didBecomeActive)
       .sink { [weak self] _ in
-        Task { @MainActor in self?.drainFlowLogUploader() }
+        Task { @MainActor in self?.drainFlowLogs() }
       }
       .store(in: &cancellables)
   }
 
   /// Nudges the provider to run a best-effort flow-log upload pass.
-  private func drainFlowLogUploader() {
+  private func drainFlowLogs() {
     Task {
       guard let session = try? manager().session() else { return }
       do {
-        try await IPCClient.registerUploader(session: session)
+        try await IPCClient.drainFlowLogs(session: session)
       } catch {
         Log.debug("Failed to nudge flow-log uploader: \(error)")
       }
