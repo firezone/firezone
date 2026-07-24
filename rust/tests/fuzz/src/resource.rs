@@ -10,7 +10,7 @@ use connlib_model::{IpStack, ResourceId, Site};
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use serde_json::{Value, json};
-use tunnel::messages::{
+use tunnel_proto::messages::{
     Filter,
     client::{DevicePoolMember, ResourceDescription},
 };

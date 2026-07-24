@@ -1,7 +1,7 @@
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
-use tunnel::{
+use tunnel_proto::{
     dns,
     messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
 };

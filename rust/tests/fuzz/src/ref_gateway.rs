@@ -8,7 +8,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
-use tunnel::{GatewayState, IpConfig};
+use tunnel_proto::{GatewayState, IpConfig};
 
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]

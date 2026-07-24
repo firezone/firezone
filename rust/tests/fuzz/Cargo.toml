@@ -47,7 +47,7 @@ sha2 = { workspace = true }
 snownet = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tunnel = { workspace = true, features = ["malicious-behaviour"] }
+tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
 
 [lints]
 workspace = true

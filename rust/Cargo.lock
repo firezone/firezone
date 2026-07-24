@@ -2886,7 +2886,7 @@ dependencies = [
  "snownet",
  "tracing",
  "tracing-subscriber",
- "tunnel",
+ "tunnel-proto",
 ]
 
 [[package]]

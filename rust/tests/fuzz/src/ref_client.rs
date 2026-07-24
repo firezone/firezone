@@ -10,7 +10,7 @@ use super::{
     sim_net::ExecMutScope,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, PacketRoute, SPort, Seq},
 };
-use tunnel::{
+use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
@@ -660,7 +660,7 @@ impl RefClient {
     ) -> PacketRoute {
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway.
-        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel::is_peer(*ip)) {
+        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
             let pools = self.static_device_pool_by_tun_ip(ip);
 
             if !pools.is_empty() {
@@ -901,7 +901,7 @@ impl RefClient {
 
     /// Apply `filters` to `proto`, honoring the malicious-behaviour
     /// `ignore_resource_filters` bypass.
-    fn filter_allows(&self, filters: &[tunnel::messages::Filter], proto: Protocol) -> bool {
+    fn filter_allows(&self, filters: &[tunnel_proto::messages::Filter], proto: Protocol) -> bool {
         if self.malicious_behaviour.ignore_resource_filters {
             return true;
         }
@@ -917,7 +917,7 @@ impl RefClient {
     pub(crate) fn static_device_pool_by_tun_ip(
         &self,
         ip: IpAddr,
-    ) -> Vec<(ResourceId, Vec<tunnel::messages::Filter>)> {
+    ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
         self.resources
             .iter()
             .filter_map(|r| {
@@ -1194,7 +1194,7 @@ impl RefClient {
 
     pub(crate) fn resource_descriptions(
         &self,
-    ) -> Vec<tunnel::messages::client::ResourceDescription> {
+    ) -> Vec<tunnel_proto::messages::client::ResourceDescription> {
         self.resources
             .iter()
             .cloned()
@@ -1350,7 +1350,7 @@ fn default_routes_v6() -> Vec<IpNetwork> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tunnel::messages::PortRange;
+    use tunnel_proto::messages::PortRange;
 
     #[test]
     fn packet_route_makes_overlapping_resource_precedence_explicit() {
