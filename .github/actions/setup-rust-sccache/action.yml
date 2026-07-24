@@ -33,7 +33,8 @@ runs:
 
     - name: Start sccache
       if: inputs.azure-connection-string != ''
-      run: ./scripts/retry.sh $SCCACHE_PATH --start-server
+      run: |
+        "$GITHUB_ACTION_PATH/../setup-scripts/retry.sh" "$SCCACHE_PATH" --start-server
       continue-on-error: true
       shell: bash
       env:
