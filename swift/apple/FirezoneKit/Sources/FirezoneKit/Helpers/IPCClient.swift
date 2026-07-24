@@ -72,6 +72,15 @@ enum IPCClient {
     _ = try await sendProviderMessage(session: session, message: message)
   }
 
+  // Asks the provider to drain the flow-log spool. Delivering the message
+  // starts the provider if it isn't running (macOS cycle-starts it in
+  // `sendProviderMessage`, iOS launches the appex to deliver the message).
+  @MainActor
+  static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
+    let message = ProviderMessage.drainFlowLogs
+    _ = try await sendProviderMessage(session: session, message: message)
+  }
+
   // MARK: - Low-level IPC operations
 
   @MainActor

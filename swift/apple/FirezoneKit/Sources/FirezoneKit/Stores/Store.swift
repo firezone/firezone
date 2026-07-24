@@ -13,6 +13,10 @@ import UserNotifications
   import AppKit
 #endif
 
+#if os(iOS)
+  import UIKit
+#endif
+
 @MainActor
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
@@ -244,6 +248,10 @@ public final class Store: ObservableObject {
         }
       }
     }
+
+    observeForegroundForFlowLogDrain()
+    // Nudge a drain on launch too, not just on subsequent foregrounds.
+    drainFlowLogs()
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: session.status)
@@ -618,6 +626,40 @@ public final class Store: ObservableObject {
     unreachableResources.removeAll()
     connectedDevices.removeAll()
     Log.setStreamingActive(false)
+  }
+
+  /// Subscribes to app-foreground events to nudge a best-effort flow-log drain.
+  ///
+  /// The provider pokes a connected session's uploader, or runs a bounded
+  /// one-shot pass while disconnected, when the user opening the app may be the
+  /// only chance to upload. Delivering the message while disconnected also
+  /// starts the provider on both platforms (macOS via an explicit cycle-start,
+  /// iOS by launching the appex to deliver it). Best effort: nothing happens
+  /// once the app quits.
+  private func observeForegroundForFlowLogDrain() {
+    #if os(iOS)
+      let didBecomeActive = UIApplication.didBecomeActiveNotification
+    #elseif os(macOS)
+      let didBecomeActive = NSApplication.didBecomeActiveNotification
+    #endif
+
+    NotificationCenter.default.publisher(for: didBecomeActive)
+      .sink { [weak self] _ in
+        Task { @MainActor in self?.drainFlowLogs() }
+      }
+      .store(in: &cancellables)
+  }
+
+  /// Nudges the provider to run a best-effort flow-log upload pass.
+  private func drainFlowLogs() {
+    Task {
+      guard let session = try? manager().session() else { return }
+      do {
+        try await IPCClient.drainFlowLogs(session: session)
+      } catch {
+        Log.debug("Failed to nudge flow-log uploader: \(error)")
+      }
+    }
   }
 
   private func pollStateOnce() async throws {
