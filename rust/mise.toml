@@ -5,10 +5,6 @@
 [settings]
 auto_install = false
 
-[env]
-# Match CI environment - enables tokio unstable features and denies warnings
-RUSTFLAGS = "--cfg tokio_unstable"
-
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
