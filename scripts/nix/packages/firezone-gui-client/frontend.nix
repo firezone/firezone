@@ -28,7 +28,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # when it drifts (so CI/CD never fails on a stale pin) and opens a
     # firezone-bot PR to commit the new value; run
     # scripts/nix/update-pnpm-hash.sh to refresh it by hand.
-    hash = "sha256-Be+NwL33/uOQwEO6uJtqOBzTMi/PjnrwAwjgY0DoCM0=";
+    hash = "sha256-m7fJFcn+syHXwOWjW9XSNsz6dsUYtulgj0sXuFVv/YU=";
   };
 
   # nixpkgs packages pnpm by major version only, not the exact patch in
