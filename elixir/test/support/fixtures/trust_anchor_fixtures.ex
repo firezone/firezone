@@ -43,6 +43,17 @@ defmodule Portal.TrustAnchorFixtures do
         -subj "/CN=Ed25519 Trust Anchor CA" \\
         -addext "basicConstraints=critical,CA:true" \\
         -addext "keyUsage=critical,keyCertSign"
+
+  `p384_leaf.pem` / `p384_leaf.der` exercises leaf field extraction (URI and
+  DNS SANs, client-auth EKU, subject OUs, P-384 key). Regenerated with:
+
+      openssl ecparam -name secp384r1 -genkey -noout -out key.pem
+      openssl req -x509 -new -key key.pem -days 3650 -out p384_leaf.pem \\
+        -subj "/CN=dev.firezone.device-trust/OU=Engineering/OU=Device Trust" \\
+        -addext "basicConstraints=critical,CA:FALSE" \\
+        -addext "keyUsage=critical,digitalSignature" \\
+        -addext "extendedKeyUsage=clientAuth" \\
+        -addext "subjectAltName=URI:firezone://serial/C02XK1ZGJGH5,URI:firezone://udid/7a461ff9-0be2-64a9-a418-539d9a21827b,DNS:UDID=7A461FF9,DNS:host.test.invalid"
   """
 
   import Portal.AccountFixtures
@@ -61,6 +72,7 @@ defmodule Portal.TrustAnchorFixtures do
   @ec_ca_pem_path Path.join(@fixtures_dir, "ec_ca.pem")
   @ed25519_ca_der_path Path.join(@fixtures_dir, "ed25519_ca.der")
   @ed25519_ca_pem_path Path.join(@fixtures_dir, "ed25519_ca.pem")
+  @p384_leaf_der_path Path.join(@fixtures_dir, "p384_leaf.der")
 
   @doc """
   Returns the sample trust anchor certificate as base64-encoded DER.
@@ -154,6 +166,14 @@ defmodule Portal.TrustAnchorFixtures do
   """
   def sample_ed25519_ca_der do
     File.read!(@ed25519_ca_der_path)
+  end
+
+  @doc """
+  Returns a synthetic P-384 leaf certificate as raw DER bytes, covering URI
+  and DNS Subject Alternative Names, client-auth EKU, and subject OUs.
+  """
+  def sample_p384_leaf_der do
+    File.read!(@p384_leaf_der_path)
   end
 
   @doc """
