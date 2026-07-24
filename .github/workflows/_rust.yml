@@ -136,18 +136,17 @@ jobs:
       # The llvm-cov task runs with cwd rust/tests/fuzz, so the profdata and
       # binary paths are relative to that directory while the lcov.info
       # redirect below lands in the step's cwd (rust/).
-      # The replay is deterministic, so the region counts are pinned exactly:
-      # any change — new code that the corpus does not exercise, or a corpus
-      # that gained or lost coverage — must update the snapshot in the same PR,
-      # making coverage changes explicit and reviewable.
-      - name: Enforce tunnel-proto coverage snapshot
+      # The replay is deterministic, so the snapshot defines the maximum number
+      # of uncovered regions. Coverage growth passes without requiring a
+      # snapshot update; adding uncovered regions or losing coverage fails.
+      - name: Enforce tunnel-proto uncovered-region ceiling
         run: |
           measured=$(mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | {covered: (map(.covered) | add), total: (map(.count) | add)}')
           expected=$(cat tests/fuzz/expected-coverage.json)
           echo "measured: $(echo "$measured" | jq -c .)"
           echo "expected: $(echo "$expected" | jq -c .)"
-          jq -e -n --argjson m "$measured" --argjson e "$expected" '$m == $e' > /dev/null || {
-            echo "::error::tunnel-proto region coverage no longer matches rust/tests/fuzz/expected-coverage.json. If this change is intended, update the snapshot to the measured value above (a decrease deserves a justification in the PR; growing the corpus back is better)."
+          jq -e -n --argjson m "$measured" --argjson e "$expected" '($m.total - $m.covered) <= ($e.total - $e.covered)' > /dev/null || {
+            echo "::error::tunnel-proto has more uncovered regions than rust/tests/fuzz/expected-coverage.json allows. If this change is intended, update the snapshot to the measured value above and justify the regression; growing the corpus back is better."
             exit 1
           }
       - name: Export lcov for Coveralls

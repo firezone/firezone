@@ -11,13 +11,12 @@
 
 `corpus/tunnel` is committed to the repository. It is the regression suite for
 the tunnel state machine: CI replays every input (crashes fail the build) and
-pins the `tunnel-proto` region-coverage counts to the exact snapshot in
-`expected-coverage.json` (see the `tunnel-test` job in `_rust.yml`). The
-replay is deterministic, so any mismatch means the coverage genuinely changed:
-update the snapshot in the same PR, and justify decreases (or better, grow the
-corpus back). The nightly `fuzz-nightly.yml` workflow fuzzes longer, minimizes
-the corpus with `cmin`, and opens a bot PR with the grown corpus and the
-refreshed snapshot.
+uses `expected-coverage.json` as a ceiling for the number of uncovered
+`tunnel-proto` regions (see the `tunnel-test` job in `_rust.yml`). Coverage
+growth passes without requiring a snapshot update; an increase in uncovered
+regions fails and should be justified (or better, grow the corpus back). The
+nightly `fuzz-nightly.yml` workflow fuzzes longer, minimizes the corpus with
+`cmin`, and opens a bot PR with the grown corpus and the refreshed snapshot.
 
 Because inputs are decoded positionally, changing the decision layout in
 `src/arb/` re-interprets existing inputs. Coverage degrades gracefully rather

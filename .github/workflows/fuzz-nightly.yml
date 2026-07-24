@@ -2,11 +2,11 @@
 name: Fuzz corpus (nightly)
 run-name: Triggered from ${{ github.event_name }}
 # Grows and minimizes the committed `tunnel` fuzz corpus, then opens a bot PR
-# with the result plus the refreshed coverage snapshot that `_rust.yml` pins
-# exactly. This job rediscovers coverage the per-PR run does not have time for
-# (and re-anchors it after `arb.rs` changes decode the same bytes into
-# different transitions). A maintainer reviews and merges the PR to adopt the
-# grown corpus.
+# with the result plus the refreshed coverage snapshot that `_rust.yml` uses
+# as an uncovered-region ceiling. This job rediscovers coverage the per-PR run
+# does not have time for (and re-anchors it after `arb.rs` changes decode the
+# same bytes into different transitions). A maintainer reviews and merges the
+# PR to adopt the grown corpus.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
