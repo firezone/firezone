@@ -36,6 +36,7 @@ pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
     runtime: Option<tokio::runtime::Runtime>,
+    uploader: Option<flow_log_upload::Uploader>,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -480,9 +481,16 @@ impl Drop for Session {
 
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
 
-        // The event loop spooled its open flows on the way out; flush them
-        // before the OS may reap the process.
-        flush_flow_logs_on_disconnect();
+        // The event loop spooled its open flows on the way out; run one final
+        // upload pass, then let the uploader thread exit. Apple blocks briefly
+        // because the provider process may be reaped right after `stopTunnel`;
+        // Android's app process outlives the session, so waiting would only
+        // delay the disconnect.
+        if let Some(uploader) = self.uploader.take() {
+            let flush = (!cfg!(target_os = "android")).then_some(Duration::from_secs(5));
+
+            uploader.stop(flush);
+        }
     }
 }
 
@@ -555,14 +563,14 @@ fn connect(
         },
         tcp_socket_factory.clone(),
     );
-    // The tunnel process on these platforms (iOS Network Extension, Android
-    // foreground service, macOS System Extension) is session-scoped, so the
-    // session only *writes* the spool. The uploader thread outlives it
-    // (`ensure_flow_log_uploader`); the session lends it its tunnel-bypassing
-    // socket factory while it lives and flushes it on drop.
-    if let Some(dir) = flow_logs_dir.clone() {
-        install_session_socket_factory(dir, tcp_socket_factory.clone());
-    }
+    // The uploader thread lives and dies with the session: its interval only
+    // makes sense while flows are being produced, and a resident thread in an
+    // idle app process would poll and dial for nothing. It uses the session's
+    // tunnel-bypassing socket factory; out-of-session spool is drained by the
+    // one-shot `run_flow_log_upload` instead.
+    let uploader = flow_logs_dir
+        .clone()
+        .map(|dir| flow_log_upload::spawn(dir, tcp_socket_factory.clone()));
 
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
@@ -581,6 +589,7 @@ fn connect(
         inner: session,
         events: Mutex::new(events),
         runtime: Some(runtime),
+        uploader,
     })
 }
 
@@ -723,82 +732,34 @@ pub fn hash_device_id(id: String) -> String {
     telemetry::hash_device_id(id)
 }
 
-// Flow-log uploads go through a tunnel-bypassing socket factory so they never
-// traverse an active tunnel: on Apple the NetworkExtension's own sockets are
-// excluded from its tunnel, so plain sockets always suffice; on Android the
-// session installs its VPN-protected factory into the uploader on connect and
-// drop resets it to plain sockets, so the thread opens connections correctly
-// no matter who started it or when.
-
-/// Ensures the process-lifetime flow-log uploader thread is running over the
-/// spool at `spool_dir` and kicks a pass: a dead thread (e.g. its runtime
-/// failed to build) is respawned and uploads immediately, a live one is nudged
-/// to skip its interval. Needs no connlib session, so it serves process boot
-/// and the app-foreground drain while disconnected.
+/// Runs a single flow-log upload pass over the spool at `spool_dir` and
+/// returns whether a backlog remained (more than one batch pending). For
+/// draining spool left behind while no session is running (app launch on
+/// Android, the app-foreground nudge on Apple); the interval uploader lives
+/// inside the session, so out of session there is nothing else draining.
+///
+/// Uses plain sockets: without a session there is no tunnel of ours to bypass
+/// on Android, and Apple's NetworkExtension sockets are always excluded from
+/// its tunnel.
 #[uniffi::export]
-pub fn ensure_flow_log_uploader(spool_dir: String) {
-    let mut uploader = lock_uploader();
+pub fn run_flow_log_upload(spool_dir: String) -> bool {
+    install_rustls_crypto_provider();
 
-    match uploader.as_ref() {
-        Some(uploader) if !uploader.is_finished() => uploader.nudge(),
-        _ => {
-            // The uploader may run without `connect` ever being called, so ensure the
-            // rustls crypto provider its TLS needs is installed (idempotent).
-            install_rustls_crypto_provider();
-
-            *uploader = Some(flow_log_upload::spawn(
-                PathBuf::from(spool_dir),
-                Arc::new(socket_factory::tcp),
-            ));
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            tracing::error!("Failed to build flow-log upload runtime: {e:#}");
+            return false;
         }
-    }
-}
-
-/// The uploader thread, once a caller ensured it; sessions steer and flush it.
-static UPLOADER: std::sync::Mutex<Option<flow_log_upload::Uploader>> = std::sync::Mutex::new(None);
-
-fn lock_uploader() -> std::sync::MutexGuard<'static, Option<flow_log_upload::Uploader>> {
-    UPLOADER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Points the uploader at the session's tunnel-bypassing socket factory for the
-/// session's lifetime, spawning it if it isn't running.
-fn install_session_socket_factory(spool_dir: PathBuf, tcp: Arc<dyn SocketFactory<TcpSocket>>) {
-    let mut uploader = lock_uploader();
-
-    match uploader.as_ref() {
-        Some(uploader) if !uploader.is_finished() => uploader.set_socket_factory(tcp),
-        _ => *uploader = Some(flow_log_upload::spawn(spool_dir, tcp)),
-    }
-}
-
-/// Flushes the spool when a session ends: connlib finalized its open flows on
-/// shutdown, and on Apple the provider process may be reaped shortly after
-/// `stopTunnel` returns, so block briefly for an upload pass. Android's app
-/// process outlives the session, so a wake-up suffices and keeps the disconnect
-/// prompt.
-fn flush_flow_logs_on_disconnect() {
-    let uploader = lock_uploader();
-
-    let Some(uploader) = uploader.as_ref() else {
-        return;
     };
 
-    if uploader.is_finished() {
-        return;
-    }
-
-    // The session's protected factory dies with it; plain sockets are correct
-    // again until the next session installs its own.
-    uploader.set_socket_factory(Arc::new(socket_factory::tcp));
-
-    if cfg!(target_os = "android") {
-        uploader.nudge();
-    } else {
-        uploader.nudge_and_wait(Duration::from_secs(5));
-    }
+    runtime.block_on(flow_log_upload::upload_once(
+        std::path::Path::new(&spool_dir),
+        Arc::new(socket_factory::tcp),
+    ))
 }
 
 /// Returns whether log streaming is currently active.

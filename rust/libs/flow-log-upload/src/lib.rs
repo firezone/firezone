@@ -11,10 +11,12 @@
 //! what it sent; submits are idempotent (the portal upserts by flow identity), so
 //! ambiguous failures retry the whole batch.
 //!
-//! [`spawn`] runs a long-lived thread that uploads on the portal's interval;
-//! [`Uploader::nudge`] wakes it early for prompt drains and
-//! [`Uploader::set_socket_factory`] swaps how it opens connections (e.g. to
-//! VPN-protected sockets while an Android session is up).
+//! Two drivers share this logic:
+//! - [`spawn`] runs a thread that uploads on the portal's interval, for as long
+//!   as flows are being produced: the process lifetime on the gateway and
+//!   desktop clients, the session lifetime on mobile ([`Uploader::stop`]).
+//! - [`upload_once`] runs a single pass for draining a spool with no thread
+//!   around (mobile out-of-session drains).
 //!
 //! The async fns offload all disk IO to the blocking pool: the HTTP/2 connection
 //! driver shares their runtime, so stalling it would starve the connection.
@@ -23,7 +25,10 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Condvar, Mutex, PoisonError},
+    sync::{
+        Arc, Condvar, Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -113,46 +118,29 @@ pub fn configure_uploads(
 ///
 /// Dropping it detaches the thread; it keeps running until the process exits.
 pub struct Uploader {
-    thread: std::thread::JoinHandle<()>,
     nudge: Arc<tokio::sync::Notify>,
     passes: Arc<(Mutex<u64>, Condvar)>,
-    socket_factory: Arc<Mutex<Arc<dyn SocketFactory<TcpSocket>>>>,
+    stop: Arc<AtomicBool>,
 }
 
 impl Uploader {
-    /// Whether the thread has exited (e.g. its runtime failed to build).
-    pub fn is_finished(&self) -> bool {
-        self.thread.is_finished()
-    }
-
-    /// Wakes the uploader to run a pass now instead of waiting out its interval.
+    /// Wakes the uploader for one final pass, after which the thread exits.
     ///
-    /// A nudge during a running pass is remembered and triggers another pass
-    /// right after it.
-    pub fn nudge(&self) {
-        self.nudge.notify_one();
-    }
-
-    /// Swaps the socket factory used for subsequent passes; a pass in flight
-    /// finishes on the old one.
-    pub fn set_socket_factory(&self, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) {
-        *self
-            .socket_factory
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = socket_factory;
-    }
-
-    /// [`Self::nudge`], then blocks until a pass completes or `timeout` elapses;
-    /// returns whether one completed.
-    ///
-    /// Best effort: a pass already in flight when this is called counts, and it
-    /// may have started before the caller's spool writes landed.
-    pub fn nudge_and_wait(&self, timeout: Duration) -> bool {
+    /// With `flush`, blocks until that pass completes or the timeout elapses;
+    /// returns whether one completed. Best effort: a pass already in flight when
+    /// this is called counts, and it may have started before the caller's spool
+    /// writes landed.
+    pub fn stop(self, flush: Option<Duration>) -> bool {
         let (lock, condvar) = &*self.passes;
         let guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
         let observed = *guard;
 
-        self.nudge();
+        self.stop.store(true, Ordering::Relaxed);
+        self.nudge.notify_one();
+
+        let Some(timeout) = flush else {
+            return false;
+        };
 
         match condvar.wait_timeout_while(guard, timeout, |passes| *passes <= observed) {
             Ok((_, result)) => !result.timed_out(),
@@ -161,21 +149,21 @@ impl Uploader {
     }
 }
 
-/// Spawns the long-lived uploader thread.
+/// Spawns the uploader thread.
 ///
-/// Prunes stale spool directories on start, re-reads the persisted config each
-/// pass and runs until the process exits.
+/// Prunes stale spool directories on start and re-reads the persisted config
+/// each pass. Runs until the process exits, or until [`Uploader::stop`].
 pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> Uploader {
     let nudge = Arc::new(tokio::sync::Notify::new());
     let passes = Arc::new((Mutex::new(0_u64), Condvar::new()));
-    let socket_factory = Arc::new(Mutex::new(socket_factory));
+    let stop = Arc::new(AtomicBool::new(false));
 
-    let thread = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name("flow-log-uploader".to_owned())
         .spawn({
             let nudge = nudge.clone();
             let passes = passes.clone();
-            let socket_factory = socket_factory.clone();
+            let stop = stop.clone();
 
             move || {
                 prune(&spool_root);
@@ -191,16 +179,42 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
                     }
                 };
 
-                runtime.block_on(run(&spool_root, &socket_factory, &nudge, &passes));
+                runtime.block_on(run(&spool_root, socket_factory, &nudge, &passes, &stop));
             }
         })
         .expect("Failed to spawn flow-log uploader thread");
 
     Uploader {
-        thread,
         nudge,
         passes,
-        socket_factory,
+        stop,
+    }
+}
+
+/// Runs a single upload pass on the caller's runtime, for draining a spool with
+/// no uploader thread around.
+///
+/// Returns `true` when a backlog remained, so the caller may schedule another pass
+/// sooner.
+pub async fn upload_once(
+    spool_root: &Path,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+) -> bool {
+    let config = match load_upload_config(spool_root).await {
+        Ok(Some(config)) => config,
+        Ok(None) => return false,
+        Err(e) => {
+            tracing::error!("Failed to load flow-log upload config: {e:#}");
+            return false;
+        }
+    };
+
+    match upload_pending(spool_root, &config, socket_factory).await {
+        Ok(backlog) => backlog,
+        Err(e) => {
+            tracing::error!("Flow-log upload pass failed: {e:#}");
+            false
+        }
     }
 }
 
@@ -428,27 +442,25 @@ fn ingest_endpoint(base_url: &str) -> Result<String> {
 
 async fn run(
     spool_root: &Path,
-    socket_factory: &Mutex<Arc<dyn SocketFactory<TcpSocket>>>,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     nudge: &tokio::sync::Notify,
     passes: &(Mutex<u64>, Condvar),
+    stop: &AtomicBool,
 ) {
     tracing::info!("Flow-log uploader started");
 
     loop {
-        let socket_factory = socket_factory
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-
         let delay = match load_upload_config(spool_root).await {
-            Ok(Some(config)) => match upload_pending(spool_root, &config, socket_factory).await {
-                Ok(true) => CATCHUP_POLL,
-                Ok(false) => config.interval,
-                Err(e) => {
-                    tracing::error!("Flow-log upload pass failed: {e:#}");
-                    config.interval
+            Ok(Some(config)) => {
+                match upload_pending(spool_root, &config, socket_factory.clone()).await {
+                    Ok(true) => CATCHUP_POLL,
+                    Ok(false) => config.interval,
+                    Err(e) => {
+                        tracing::error!("Flow-log upload pass failed: {e:#}");
+                        config.interval
+                    }
                 }
-            },
+            }
             Ok(None) => DISABLED_POLL,
             Err(e) => {
                 tracing::error!("Failed to load flow-log upload config: {e:#}");
@@ -460,6 +472,12 @@ async fn run(
             let (lock, condvar) = passes;
             *lock.lock().unwrap_or_else(PoisonError::into_inner) += 1;
             condvar.notify_all();
+        }
+
+        // Checked after the pass, so a stop always gets its final flush.
+        if stop.load(Ordering::Relaxed) {
+            tracing::info!("Flow-log uploader stopped");
+            return;
         }
 
         tokio::select! {
@@ -1170,13 +1188,21 @@ mod tests {
     }
 
     #[test]
-    fn nudge_and_wait_completes_a_pass_before_the_timeout() {
+    fn stop_flushes_a_final_pass_before_the_timeout() {
         let root = tempfile::tempdir().unwrap();
         let uploader = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
 
-        // Unconfigured spool: without a nudge the next pass is DISABLED_POLL away.
-        assert!(uploader.nudge_and_wait(Duration::from_secs(10)));
-        assert!(!uploader.is_finished());
+        // Unconfigured spool: without the stop nudge the next pass is
+        // DISABLED_POLL away.
+        assert!(uploader.stop(Some(Duration::from_secs(10))));
+    }
+
+    #[test]
+    fn stop_without_flush_returns_immediately() {
+        let root = tempfile::tempdir().unwrap();
+        let uploader = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
+
+        assert!(!uploader.stop(None));
     }
 
     #[test]
