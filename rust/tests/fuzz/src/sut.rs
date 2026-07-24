@@ -37,7 +37,7 @@ use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 /// The actual system-under-test.
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
-pub(crate) struct TunnelTest {
+pub struct TunnelTest {
     flux_capacitor: FluxCapacitor,
 
     clients: BTreeMap<ClientId, Host<SimClient>>,
@@ -55,7 +55,7 @@ pub(crate) struct TunnelTest {
 
 impl TunnelTest {
     // Initialize the system under test from our reference state.
-    pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
+    pub fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut clients = ref_state
             .clients
@@ -153,11 +153,7 @@ impl TunnelTest {
     }
 
     /// Apply a generated state transition to our system under test.
-    pub(crate) fn apply(
-        mut state: Self,
-        ref_state: &ReferenceState,
-        transition: Transition,
-    ) -> Self {
+    pub fn apply(mut state: Self, ref_state: &ReferenceState, transition: Transition) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
         let utc_now = state.flux_capacitor.now();
@@ -649,7 +645,7 @@ impl TunnelTest {
     }
 
     // Assert against the reference state machine.
-    pub(crate) fn check_invariants(state: &Self, ref_state: &ReferenceState) {
+    pub fn check_invariants(state: &Self, ref_state: &ReferenceState) {
         // Aggregate all clients for system-wide assertions
         let all_ref_clients = ref_state
             .clients
@@ -703,7 +699,7 @@ impl TunnelTest {
         }
     }
 
-    pub(crate) fn clear_packets(state: &mut TunnelTest) {
+    pub fn clear_packets(state: &mut TunnelTest) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets());
         }

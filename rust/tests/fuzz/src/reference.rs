@@ -23,7 +23,7 @@ use crate::resource as client;
 ///
 /// This is the "expected" part of our test.
 #[derive(Debug, Clone)]
-pub(crate) struct ReferenceState {
+pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
@@ -78,7 +78,7 @@ impl ReferenceState {
     /// Apply the transition to our reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    pub(crate) fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
+    pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -417,7 +417,7 @@ impl ReferenceState {
         state
     }
 
-    pub(crate) fn clear_packets(state: &mut ReferenceState) {
+    pub fn clear_packets(state: &mut ReferenceState) {
         for client in state.clients.values_mut() {
             client.exec_mut(|c| c.clear_packets())
         }

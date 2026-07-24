@@ -5,8 +5,7 @@
 - `ip_packet` — parses and mutates a single IP packet through `ip-packet`'s API.
 - `tunnel` — drives the connlib tunnel state machine. Each input is decoded
   positionally through `arbitrary::Unstructured` into one run of the
-  reference-model / system-under-test harness (see
-  `fuzz::run`).
+  reference-model / system-under-test harness.
 
 ## Corpus
 

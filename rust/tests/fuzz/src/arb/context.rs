@@ -50,7 +50,7 @@ impl SubnetCursor<Ipv6Addr> {
 
 /// The shared generation context: an [`Unstructured`] plus every by-construction
 /// allocator used to satisfy uniqueness constraints without rejection loops.
-pub(crate) struct Generator<'a> {
+pub struct Generator<'a> {
     input: Unstructured<'a>,
 
     // Disjoint socket-IP allocators (host routing IPs, distinct from connlib's
@@ -81,7 +81,7 @@ pub(crate) struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
-    pub(crate) fn new(data: &'a [u8]) -> Self {
+    pub fn new(data: &'a [u8]) -> Self {
         Self {
             input: Unstructured::new(data),
             socket_ip4: SubnetCursor::<Ipv4Addr>::over(
@@ -120,7 +120,7 @@ impl<'a> Generator<'a> {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.input.is_empty()
     }
 
