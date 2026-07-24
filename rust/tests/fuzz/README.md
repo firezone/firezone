@@ -39,6 +39,13 @@ mise run //rust/tests/fuzz:fuzz ip-packet -fork=4
 
 A crash writes the offending input to `artifacts/tunnel/`. To triage it:
 
+1. Replay every failure artifact from the preceding fuzz run through the
+   already-built binary with tracing:
+
+   ```
+   mise run //rust/tests/fuzz:replay-crashes tunnel
+   ```
+
 1. Reduce it (libFuzzer test-case minimization; the positional decoder shrinks
    cleanly since dropping trailing bytes drops trailing transitions):
 
