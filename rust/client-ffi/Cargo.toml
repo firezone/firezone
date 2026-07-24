@@ -15,6 +15,7 @@ backoff = { workspace = true }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 flow-log-upload = { workspace = true }
+flow-log-writer = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 itertools = { workspace = true }
