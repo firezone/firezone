@@ -124,11 +124,6 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
 
-    /// System resolvers with a TCP connection whose sentinel may be retired by
-    /// the next DNS configuration update.
-    #[debug(skip)]
-    system_dns_tcp_connections: BTreeSet<IpAddr>,
-
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
@@ -174,7 +169,6 @@ impl RefClient {
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
-            system_dns_tcp_connections: Default::default(),
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
@@ -794,13 +788,6 @@ impl RefClient {
             return;
         }
 
-        if matches!(query.transport, DnsTransport::Tcp)
-            && let dns::Upstream::Do53 { server } = query.dns_server
-            && self.system_dns_resolvers.contains(&server.ip())
-        {
-            self.system_dns_tcp_connections.insert(server.ip());
-        }
-
         self.expect_dns_response(query);
     }
 
@@ -1229,38 +1216,8 @@ impl RefClient {
         self.system_dns_resolvers.clone()
     }
 
-    pub(crate) fn update_system_dns_resolvers(
-        &mut self,
-        servers: &[IpAddr],
-        can_connect_to_internet: bool,
-    ) {
-        if self.system_dns_resolvers == servers {
-            self.system_dns_tcp_connections.clear();
-            return;
-        }
-
-        let retires_tcp_sentinel = self.system_dns_tcp_connections.iter().any(|old| {
-            !servers.iter().any(|new| {
-                matches!(
-                    (old, new),
-                    (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
-                )
-            })
-        });
-        self.system_dns_tcp_connections.clear();
+    pub(crate) fn set_system_dns_resolvers(&mut self, servers: &[IpAddr]) {
         self.system_dns_resolvers = servers.to_vec();
-
-        if retires_tcp_sentinel
-            && can_connect_to_internet
-            && let Some(resource) = self.active_internet_resource()
-        {
-            self.connect_to_internet_or_cidr_resource(resource);
-            self.set_resource_online(resource);
-        }
-    }
-
-    pub(crate) fn finish_system_dns_tcp_connections(&mut self) {
-        self.system_dns_tcp_connections.clear();
     }
 
     pub(crate) fn tcp_connection_tuple_to_resource(

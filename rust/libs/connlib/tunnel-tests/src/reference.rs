@@ -79,12 +79,6 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub(crate) fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
-        if !matches!(transition, Transition::UpdateSystemDnsServers { .. }) {
-            for client in state.clients.values_mut() {
-                client.exec_mut(RefClient::finish_system_dns_tcp_connections);
-            }
-        }
-
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -272,19 +266,7 @@ impl ReferenceState {
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in state.clients.values_mut() {
-                    let can_connect_to_internet = client
-                        .inner()
-                        .active_internet_resource()
-                        .is_some_and(|resource| {
-                            state
-                                .portal
-                                .gateway_for_resource(resource)
-                                .is_some_and(|gateway| state.gateways.contains_key(gateway))
-                        });
-
-                    client.exec_mut(|client| {
-                        client.update_system_dns_resolvers(servers, can_connect_to_internet)
-                    });
+                    client.exec_mut(|client| client.set_system_dns_resolvers(servers));
                 }
             }
             Transition::UpdateUpstreamDo53Servers(servers) => {
