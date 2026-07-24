@@ -3022,6 +3022,37 @@ mod tests {
         assert!(state.poll_event().is_none());
     }
 
+    #[test]
+    fn held_candidates_flush_to_peer_on_portal_reconnect() {
+        let mut state = ClientState::for_test();
+        let gateway = ClientOrGatewayId::Gateway(GatewayId::from_u128(1));
+
+        // While the portal is down, candidate changes are held back rather than emitted.
+        state.set_portal_connected(false);
+        state
+            .held_added_ice_candidates
+            .entry(gateway)
+            .or_default()
+            .insert("added".to_owned().into());
+        state
+            .held_removed_ice_candidates
+            .entry(gateway)
+            .or_default()
+            .insert("removed".to_owned().into());
+        assert!(state.poll_event().is_none());
+
+        // On reconnect, both the additions and the removals are flushed to the peer.
+        state.set_portal_connected(true);
+        let events = std::iter::from_fn(|| state.poll_event()).collect::<Vec<_>>();
+
+        assert!(events.iter().any(|e| matches!(e,
+            ClientEvent::AddedIceCandidates { conn_id, candidates }
+                if *conn_id == gateway && candidates.len() == 1)));
+        assert!(events.iter().any(|e| matches!(e,
+            ClientEvent::RemovedIceCandidates { conn_id, candidates }
+                if *conn_id == gateway && candidates.len() == 1)));
+    }
+
     impl ClientState {
         pub fn for_test() -> ClientState {
             ClientState::new(
