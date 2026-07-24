@@ -450,6 +450,7 @@ impl TunnelTest {
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.sut.reset(now, "roam");
+                    c.sut.set_portal_connected(false);
                 });
 
                 let portal_until = now + portal_window;
@@ -464,6 +465,7 @@ impl TunnelTest {
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
                 let client = state.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
+                    c.sut.set_portal_connected(true);
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(ref_client.inner().all_resources(), now);
                 });
