@@ -264,14 +264,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         exportLogs(handler)
       case .registerUploader:
-        // The app nudges this on foreground/launch to drain spool left behind
-        // while disconnected; a connected session's own uploader drains on its
-        // interval. Delivering this while disconnected also starts the provider
-        // (macOS via `maybeCycleStart`, iOS by launching the appex to deliver
-        // the message). Ack right away; the drain runs in the background.
+        // The app nudges this on foreground/launch. `drainFlowLogs` pokes a
+        // connected session's uploader, or runs a bounded one-shot pass while
+        // disconnected. Delivering this while disconnected also starts the
+        // provider (macOS via `maybeCycleStart`, iOS by launching the appex to
+        // deliver the message). Ack right away; the drain runs in the background.
         Task.detached(priority: .utility) { @Sendable in
           guard let spoolDir = SharedAccess.flowLogsFolderURL?.path else { return }
-          _ = runFlowLogUpload(spoolDir: spoolDir)
+          drainFlowLogs(spoolDir: spoolDir)
         }
         completionHandler?(nil)
       }
