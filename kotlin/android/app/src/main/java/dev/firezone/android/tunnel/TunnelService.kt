@@ -53,18 +53,16 @@ import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.enforceLogSizeCap
+import uniffi.connlib.ensureFlowLogUploader
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
-import uniffi.connlib.runFlowLogUploadTimeboxed
-import uniffi.connlib.startFlowLogUploader
 import uniffi.connlib.startTelemetry
 import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
-import kotlin.concurrent.thread
 import kotlin.coroutines.cancellation.CancellationException
 
 @AndroidEntryPoint
@@ -255,7 +253,8 @@ class TunnelService : VpnService() {
         // connlib session, so spooled flows keep uploading across connect/disconnect
         // cycles while the process is alive. Idempotent across service restarts. Uses
         // protected (tunnel-bypassing) sockets so uploads never loop through the VPN.
-        startFlowLogUploader(getFlowLogsDir(), protectSocket)
+        // connlib wakes it when a session ends, so disconnects drain promptly too.
+        ensureFlowLogUploader(getFlowLogsDir(), protectSocket)
     }
 
     override fun onDestroy() {
@@ -374,14 +373,6 @@ class TunnelService : VpnService() {
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
-
-                    // Best-effort: connlib has finalized any open flows into the spool,
-                    // so kick a prompt, timeboxed drain over protected sockets (the tunnel
-                    // may still be tearing down). The process-lifetime uploader also keeps
-                    // draining while the app process is alive.
-                    val flowLogsDir = getFlowLogsDir()
-                    val protect = protectSocket
-                    thread(isDaemon = true) { runFlowLogUploadTimeboxed(flowLogsDir, 5UL, protect) }
 
                     stopNetworkMonitoring()
                     stopDisconnectMonitoring()
