@@ -630,11 +630,11 @@ public final class Store: ObservableObject {
 
   /// Subscribes to app-foreground events to nudge a best-effort flow-log drain.
   ///
-  /// The uploader itself runs in the provider for its process lifetime; this just
-  /// asks it to drain promptly when the user opens the app. Delivering the message
-  /// while disconnected also starts the provider on both platforms (macOS via an
-  /// explicit cycle-start, iOS by launching the appex to deliver it), spinning the
-  /// uploader up to drain without a session. Best effort: nothing happens once the
+  /// A connected session's uploader drains on its own; this catches spool left
+  /// behind while disconnected, when the user opening the app may be the only
+  /// chance to upload it. Delivering the message while disconnected also starts
+  /// the provider on both platforms (macOS via an explicit cycle-start, iOS by
+  /// launching the appex to deliver it). Best effort: nothing happens once the
   /// app quits.
   private func observeForegroundForUploaderDrain() {
     #if os(iOS)
