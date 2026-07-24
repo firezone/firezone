@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/free-disk-space
       - name: Discover new coverage (seeded from the committed corpus)
-        run: mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_len=8192 -len_control=0 -max_total_time=1800
+        run: mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_total_time=1800
       - name: Minimize corpus
         run: mise run //rust/tests/fuzz:cmin tunnel
       - name: Measure coverage and refresh the snapshot

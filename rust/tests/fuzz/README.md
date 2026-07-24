@@ -6,7 +6,7 @@
 - `tunnel` — drives the connlib tunnel state machine. Each input is decoded
   positionally through `arbitrary::Unstructured` into one run of the
   reference-model / system-under-test harness (see
-  `fuzz::run_fuzz_case_structured`).
+  `fuzz::run`).
 
 ## Corpus
 
@@ -21,7 +21,7 @@ the corpus with `cmin`, and opens a bot PR with the grown corpus and the
 refreshed snapshot.
 
 Because inputs are decoded positionally, changing the decision layout in
-`arb.rs` re-interprets existing inputs. Coverage degrades gracefully rather
+`src/arb/` re-interprets existing inputs. Coverage degrades gracefully rather
 than breaking (the decoder is total), but after larger generator changes the
 corpus should be re-minimized and re-grown via the nightly job.
 
@@ -39,10 +39,12 @@ Run a target via the `fuzz` task; extra arguments are passed to libFuzzer:
 mise run //rust/tests/fuzz:fuzz ip_packet
 ```
 
-For the `tunnel` target, allow long inputs so deep scenarios stay reachable:
+The task automatically gives the `tunnel` target `-max_len=8192
+-len_control=0`, so deep scenarios stay reachable without callers having to
+remember the target-specific defaults:
 
 ```
-mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_len=8192 -len_control=0
+mise run //rust/tests/fuzz:fuzz tunnel -fork=4
 ```
 
 ## Reproducing a crash
@@ -75,20 +77,20 @@ A crash writes the offending input to `artifacts/tunnel/`. To triage it:
 
 ## Coverage
 
-1. Replay the corpus under instrumentation (writes
-   `coverage/tunnel/coverage.profdata`):
+1. Generate a browsable HTML report:
 
    ```
-   mise run //rust/tests/fuzz:coverage tunnel
+   mise run //rust/tests/fuzz:coverage-report tunnel
    ```
 
-1. Post-process the profdata with the `llvm-cov` task, e.g. the `tunnel-proto`
+   The task prints the path to `coverage/tunnel/html/index.html`. To only replay
+   the corpus and produce `coverage/tunnel/coverage.profdata`, use the
+   `coverage` task instead.
+
+1. Post-process that profdata with the `llvm-cov` task, e.g. the `tunnel-proto`
    region counts as pinned by CI (paths are relative to this directory; write
    the output to `expected-coverage.json` to update the snapshot):
 
    ```
    mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | {covered: (map(.covered) | add), total: (map(.count) | add)}'
    ```
-
-1. For a browsable HTML report, use `llvm-cov show` with the profdata and the
-   rebuilt target at `../../target/x86_64-unknown-linux-gnu/release/tunnel`.

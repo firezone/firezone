@@ -167,9 +167,6 @@ jobs:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         fuzz-target: [ip_packet, tunnel]
-        include:
-          - fuzz-target: tunnel
-            libfuzzer-args: "-max_len=8192 -len_control=0"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,7 +178,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Fuzz ${{ matrix.fuzz-target }}
-        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120 ${{ matrix.libfuzzer-args }}
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120
       - name: Replay crashing input with tracing
         if: failure()
         run: mise run //rust/tests/fuzz:replay-crashes ${{ matrix.fuzz-target }}
