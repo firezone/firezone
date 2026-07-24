@@ -6,7 +6,8 @@ import android.content.Context
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
-import uniffi.connlib.ensureFlowLogUploader
+import uniffi.connlib.runFlowLogUpload
+import kotlin.concurrent.thread
 
 @HiltAndroidApp
 class FirezoneApp : Application() {
@@ -26,10 +27,12 @@ class FirezoneApp : Application() {
         // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
         initRustlsPlatformVerifier(this)
 
-        // Run the flow-log uploader for the app-process lifetime so spool a previous
-        // session left behind uploads promptly. Safe in every state: connlib sessions
-        // install their VPN-protected sockets into it while they live.
-        ensureFlowLogUploader(filesDir.absolutePath + "/flow_logs")
+        // Drain flow logs a previous session left spooled. One-shot on purpose: the
+        // interval uploader lives inside connlib sessions, and with no session there
+        // is nothing producing flows, so a resident thread would poll and dial for
+        // nothing. Plain sockets are fine because no VPN of ours is up yet.
+        val flowLogsDir = filesDir.absolutePath + "/flow_logs"
+        thread(isDaemon = true) { runFlowLogUpload(flowLogsDir) }
     }
 
     companion object {
