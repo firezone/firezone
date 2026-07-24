@@ -25,4 +25,8 @@ runs:
       run: sudo apt-get update
     - name: Install packages
       shell: bash
-      run: sudo apt-get --yes install ${{ inputs.packages }}
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        read -ra packages <<< "$PACKAGES"
+        sudo apt-get --yes install -- "${packages[@]}"
