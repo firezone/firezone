@@ -156,7 +156,6 @@ impl Resource {
         }
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub fn into_dns(self) -> Option<DnsResource> {
         match self {
             Resource::Dns(d) => Some(d),
@@ -167,7 +166,6 @@ impl Resource {
         }
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub fn into_cidr(self) -> Option<CidrResource> {
         match self {
             Resource::Cidr(c) => Some(c),
@@ -306,7 +304,6 @@ impl Resource {
         }
     }
 
-    #[cfg(all(test, feature = "proptest"))]
     pub fn with_new_site(self, site: Site) -> Self {
         match self {
             Resource::Dns(r) => Self::Dns(DnsResource {
@@ -326,7 +323,6 @@ impl Resource {
         }
     }
 
-    #[cfg(all(test, feature = "proptest"))]
     pub fn with_new_filters(self, filters: Vec<Filter>) -> Self {
         match self {
             Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),

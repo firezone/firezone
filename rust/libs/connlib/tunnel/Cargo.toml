@@ -5,76 +5,58 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [features]
-proptest = ["dep:proptest"]
-divan = ["dep:divan"]
+proptest = ["tunnel-proto/proptest", "tunnel-proto/malicious-behaviour"]
 
 [dependencies]
 anyhow = { workspace = true }
-base64 = { workspace = true, features = ["std"] }
-bimap = { workspace = true }
 bootstrap-dns-client = { workspace = true }
-boringtun = { workspace = true }
 bufferpool = { workspace = true }
-chrono = { workspace = true }
 connlib-model = { workspace = true }
-derive_more = { workspace = true, features = ["debug", "from", "display"] }
-divan = { workspace = true, optional = true }
-dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
-flow-tracker = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
-glob = { workspace = true }
-hex = { workspace = true }
 http-client = { workspace = true }
 ip-packet = { workspace = true }
-ip_network = { workspace = true }
-ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
-l3-udp-dns-client = { workspace = true }
 l4-tcp-dns-server = { workspace = true }
 l4-udp-dns-server = { workspace = true }
 logging = { workspace = true }
-lru = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
-proptest = { workspace = true, optional = true }
 rand = { workspace = true }
-rangemap = { workspace = true }
-ringbuffer = { workspace = true }
-secrecy = { workspace = true, features = ["serde"] }
-serde = { workspace = true, features = ["derive", "std"] }
-serde_json = { workspace = true }
-serde_with = { workspace = true }
-smallvec = { workspace = true, features = ["const_generics"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
-telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+tunnel-proto = { workspace = true }
 
 [dev-dependencies]
+chrono = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
+dns-over-tcp = { workspace = true }
 firezone-relay = { workspace = true, features = ["proptest"] }
+flow-tracker = { workspace = true }
+hex = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+itertools = { workspace = true }
 l3-tcp = { workspace = true }
+proptest = { workspace = true }
 proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 rustls = { workspace = true }
+secrecy = { workspace = true }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
-test-case = { workspace = true }
 test-strategy = { workspace = true }
-tokio = { workspace = true, features = ["process", "test-util"] }
+tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-
-[[bench]]
-name = "divan"
-harness = false
-required-features = ["divan"]
 
 [lints]
 workspace = true
