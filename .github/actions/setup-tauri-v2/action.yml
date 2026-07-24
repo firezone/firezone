@@ -27,19 +27,11 @@ runs:
 
     - name: Install Tauri build deps
       if: ${{ runner.os == 'Linux' }}
+      # `gnome-keyring` is only needed to launch the Tauri GUI, but installing it
+      # here keeps the non-GUI jobs on a single apt transaction.
       uses: ./.github/actions/apt-install
       with:
-        packages: build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget
-
-    - name: Install gnome-keyring
-      if: ${{ runner.os == 'Linux' }}
-      # This is only needed if we'll launch the Tauri GUI, so it's redundant for clippy / test
-      # This is what the Tauri CI tests use
-      # <https://github.com/tauri-apps/tauri/blob/3fb414b61ad7cfce67751230826fddfb39effec5/.github/workflows/bench.yml#L74>
-      uses: ./.github/actions/apt-install
-      with:
-        packages: gnome-keyring
-        update: "false"
+        packages: build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget gnome-keyring
 
     - name: Install Tauri runtime deps
       if: ${{ runner.os == 'Linux' && inputs.runtime == 'true' }}
