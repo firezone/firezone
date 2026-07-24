@@ -630,12 +630,12 @@ public final class Store: ObservableObject {
 
   /// Subscribes to app-foreground events to nudge a best-effort flow-log drain.
   ///
-  /// A connected session's uploader drains on its own; this catches spool left
-  /// behind while disconnected, when the user opening the app may be the only
-  /// chance to upload it. Delivering the message while disconnected also starts
-  /// the provider on both platforms (macOS via an explicit cycle-start, iOS by
-  /// launching the appex to deliver it). Best effort: nothing happens once the
-  /// app quits.
+  /// The provider pokes a connected session's uploader, or runs a bounded
+  /// one-shot pass while disconnected, when the user opening the app may be the
+  /// only chance to upload. Delivering the message while disconnected also
+  /// starts the provider on both platforms (macOS via an explicit cycle-start,
+  /// iOS by launching the appex to deliver it). Best effort: nothing happens
+  /// once the app quits.
   private func observeForegroundForUploaderDrain() {
     #if os(iOS)
       let didBecomeActive = UIApplication.didBecomeActiveNotification
@@ -654,11 +654,6 @@ public final class Store: ObservableObject {
   private func drainFlowLogUploader() {
     Task {
       guard let session = try? manager().session() else { return }
-
-      // While the session is up (or coming up / going down), its own uploader
-      // owns the spool; the nudge exists for spool stranded while disconnected.
-      guard session.status == .disconnected else { return }
-
       do {
         try await IPCClient.registerUploader(session: session)
       } catch {
