@@ -3,10 +3,13 @@ package dev.firezone.android.core
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
-import uniffi.connlib.runFlowLogUpload
+import uniffi.connlib.drainFlowLogs
 import kotlin.concurrent.thread
 
 @HiltAndroidApp
@@ -27,12 +30,18 @@ class FirezoneApp : Application() {
         // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
         initRustlsPlatformVerifier(this)
 
-        // Drain flow logs a previous session left spooled. One-shot on purpose: the
-        // interval uploader lives inside connlib sessions, and with no session there
-        // is nothing producing flows, so a resident thread would poll and dial for
-        // nothing. Plain sockets are fine because no VPN of ours is up yet.
+        // Drain flow logs whenever the app comes to the foreground (including this
+        // launch): pokes the session's uploader while connected, or runs a bounded
+        // one-shot pass to sweep up spool a previous session left behind. Off the
+        // main thread because the one-shot case blocks for up to ten seconds.
         val flowLogsDir = filesDir.absolutePath + "/flow_logs"
-        thread(isDaemon = true) { runFlowLogUpload(flowLogsDir) }
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    thread(isDaemon = true) { drainFlowLogs(flowLogsDir) }
+                }
+            },
+        )
     }
 
     companion object {
