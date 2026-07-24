@@ -1,6 +1,11 @@
 # From https://tauri.app/v1/guides/getting-started/prerequisites
 name: "Setup Android"
 description: "Sets up the dependencies for building our Android app"
+inputs:
+  sccache-azure-connection-string:
+    description: "Forwarded to setup-rust-sccache"
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -13,6 +18,8 @@ runs:
         targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
 
     - uses: ./.github/actions/setup-rust-sccache
+      with:
+        azure-connection-string: ${{ inputs.sccache-azure-connection-string }}
 
     - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 

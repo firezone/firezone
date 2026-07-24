@@ -51,6 +51,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+
       - uses: ./.github/actions/setup-rust-target-workspace-cache
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
