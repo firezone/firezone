@@ -147,7 +147,7 @@ fn main() -> ExitCode {
         telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
         telemetry::start(
             args.api_url.as_str(),
-            VERSION.unwrap_or("unknown"),
+            VERSION.as_deref().unwrap_or("unknown"),
             RELAY_DSN,
         );
     }
@@ -228,7 +228,7 @@ async fn try_main(args: Args) -> Result<()> {
         let is_connected = is_connected.clone();
         http_health_check::serve_with_version(
             args.health_check.health_check_addr,
-            firezone_relay::VERSION,
+            firezone_relay::VERSION.as_deref(),
             move || is_connected.load(Ordering::Relaxed),
         )
     });

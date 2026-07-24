@@ -28,11 +28,17 @@ use std::{
     sync::LazyLock,
 };
 
-pub const VERSION: Option<&str> = option_env!("GITHUB_SHA");
+/// The deployed release identifier (the commit SHA), read from the
+/// `FIREZONE_RELEASE` environment variable at startup.
+pub static VERSION: LazyLock<Option<String>> =
+    LazyLock::new(|| std::env::var("FIREZONE_RELEASE").ok());
 pub static SOFTWARE: LazyLock<Software> = LazyLock::new(|| {
     Software::new(format!(
         "firezone-relay; rev={}",
-        VERSION.map(|rev| &rev[..8]).unwrap_or("xxxx")
+        VERSION
+            .as_deref()
+            .map(|rev| rev.get(..8).unwrap_or(rev))
+            .unwrap_or("xxxx")
     ))
     .expect("less than 128 chars")
 });
