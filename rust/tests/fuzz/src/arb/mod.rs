@@ -18,18 +18,14 @@ mod topology;
 mod transitions;
 mod values;
 
-pub(crate) use context::Generator;
+pub use context::Generator;
 
 impl Generator<'_> {
-    pub(crate) fn initial_state(&mut self, start: Instant) -> ReferenceState {
+    pub fn initial_state(&mut self, start: Instant) -> ReferenceState {
         topology::generate(self, start)
     }
 
-    pub(crate) fn transition(
-        &mut self,
-        state: &ReferenceState,
-        now: Instant,
-    ) -> Option<Transition> {
+    pub fn transition(&mut self, state: &ReferenceState, now: Instant) -> Option<Transition> {
         transitions::generate(self, state, now)
     }
 }

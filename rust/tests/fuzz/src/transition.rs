@@ -18,8 +18,9 @@ use std::{
 };
 
 /// The possible transitions of the state machine.
+#[allow(private_interfaces)]
 #[derive(Clone, Debug)]
-pub(crate) enum Transition {
+pub enum Transition {
     /// Add a resource on the client.
     AddResource(Resource),
     /// Remove a resource on the client.
@@ -157,7 +158,7 @@ impl Transition {
     /// was previously filtered out could now suddenly be allowed.
     ///
     /// To make our lives easier in the assertions, we clear all sent packets in certain cases.
-    pub(crate) fn should_clear_packets(&self) -> bool {
+    pub fn should_clear_packets(&self) -> bool {
         match self {
             Transition::AddResource(_)
             | Transition::RemoveResource(_)
