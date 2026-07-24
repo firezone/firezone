@@ -5,10 +5,7 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [features]
-proptest = ["tunnel-proto/proptest", "malicious-behaviour"]
-# Allows callers to bypass client-side resource filters. Only used by test
-# harnesses and fuzzers to exercise the remote filtering path.
-malicious-behaviour = ["tunnel-proto/malicious-behaviour"]
+proptest = ["tunnel-proto/proptest", "tunnel-proto/malicious-behaviour"]
 
 [dependencies]
 anyhow = { workspace = true }
