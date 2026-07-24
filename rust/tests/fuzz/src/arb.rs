@@ -35,9 +35,11 @@ use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, Sit
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
-use tunnel::MaliciousBehaviour;
-use tunnel::dns;
-use tunnel::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember};
+use tunnel_proto::MaliciousBehaviour;
+use tunnel_proto::dns;
+use tunnel_proto::messages::{
+    Filter, PortRange, UpstreamDo53, UpstreamDoH, client::DevicePoolMember,
+};
 
 use crate::dns_records::DnsRecords;
 use crate::flux_capacitor::FluxCapacitor;
@@ -1195,7 +1197,7 @@ fn arb_domain_name_string(g: &mut Gen, lo: usize, hi: usize) -> String {
 /// resolved IP) disagree on the gateway. Defining a resource inside the DNS
 /// sentinel range is also explicitly unsupported by connlib.
 fn cidr_reserved_v4() -> [Ipv4Network; 4] {
-    use tunnel::DNS_SENTINELS_V4;
+    use tunnel_proto::DNS_SENTINELS_V4;
     [
         "192.0.2.0/24".parse::<Ipv4Network>().unwrap(), // TEST-NET-1 (documentation)
         "198.51.100.0/24".parse::<Ipv4Network>().unwrap(), // TEST-NET-2 (DNS resource real IPs)
@@ -1205,7 +1207,7 @@ fn cidr_reserved_v4() -> [Ipv4Network; 4] {
 }
 
 fn cidr_reserved_v6() -> [Ipv6Network; 3] {
-    use tunnel::DNS_SENTINELS_V6;
+    use tunnel_proto::DNS_SENTINELS_V6;
     [
         // The host (`2001:db80:1010:1010::/64`) and DNS (`2001:db80:2020:2020::/64`)
         // documentation subnets both live under `2001:db80::/32`.
@@ -1305,7 +1307,7 @@ fn arb_more_specific_subnet(g: &mut Gen, address: IpNetwork, extra_bits: usize) 
 
 /// An IP outside connlib's reserved ranges, via wrap-around repair (no rejection).
 fn arb_non_reserved_ip(g: &mut Gen) -> IpAddr {
-    use tunnel::{
+    use tunnel_proto::{
         DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV4_TUNNEL, IPV6_RESOURCES,
         IPV6_TUNNEL,
     };
@@ -2230,7 +2232,7 @@ fn arb_maybe_available_response_rtype(g: &mut Gen, available: &[RecordType]) -> 
 
 /// Generate a PTR target inside a resource range or anywhere in the IP space.
 fn arb_ptr_query_ip(g: &mut Gen) -> IpAddr {
-    use tunnel::{IPV4_RESOURCES, IPV6_RESOURCES};
+    use tunnel_proto::{IPV4_RESOURCES, IPV6_RESOURCES};
     match g.choose_index(3) {
         0 => IpAddr::V4(host_in_v4(g, IPV4_RESOURCES)),
         1 => IpAddr::V6(host_in_v6(g, IPV6_RESOURCES)),

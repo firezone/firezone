@@ -7,7 +7,9 @@ use std::{
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
-use tunnel::messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway};
+use tunnel_proto::messages::{
+    Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway,
+};
 
 use crate::resource::{self as client, DynamicDevicePoolResource, StaticDevicePoolResource};
 
@@ -403,7 +405,7 @@ impl StubPortal {
     pub(crate) fn change_filters_of_resource(
         &mut self,
         rid: ResourceId,
-        new_filters: Vec<tunnel::messages::Filter>,
+        new_filters: Vec<tunnel_proto::messages::Filter>,
     ) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             resource.filters = new_filters;
@@ -475,7 +477,7 @@ impl StubPortal {
     pub(crate) fn static_device_pool_filters(
         &self,
         pool_id: ResourceId,
-    ) -> Option<Vec<tunnel::messages::Filter>> {
+    ) -> Option<Vec<tunnel_proto::messages::Filter>> {
         Some(
             self.static_device_pool_resources
                 .get(&pool_id)?
@@ -575,14 +577,14 @@ fn realize_static_device_pool_plans(
 /// We use the CG-NAT range for IPv4.
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
 fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    tunnel::IPV4_TUNNEL.hosts()
+    tunnel_proto::IPV4_TUNNEL.hosts()
 }
 
 /// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
 ///
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    tunnel::IPV6_TUNNEL
+    tunnel_proto::IPV6_TUNNEL
         .subnets_with_prefix(128)
         .map(|n| n.network_address())
 }

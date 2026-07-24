@@ -13,9 +13,9 @@ use std::{
     fmt,
     net::{IpAddr, SocketAddr},
 };
-use tunnel::dns;
-use tunnel::dns::is_subdomain;
-use tunnel::messages::Filter;
+use tunnel_proto::dns;
+use tunnel_proto::dns::is_subdomain;
+use tunnel_proto::messages::Filter;
 
 use crate::resource as client;
 
@@ -46,7 +46,7 @@ pub(crate) struct ReferenceState {
 
 /// Implementation of our reference state machine.
 ///
-/// The logic in here represents what we expect the [`ClientState`](tunnel::ClientState) & [`GatewayState`](tunnel::GatewayState) to do.
+/// The logic in here represents what we expect the [`ClientState`](tunnel_proto::ClientState) & [`GatewayState`](tunnel_proto::GatewayState) to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
@@ -609,13 +609,13 @@ impl ReferenceState {
                     .expected_dns_servers(self.portal.upstream_do53(), self.portal.upstream_doh())
                     .into_iter()
                     .filter(|s| match s {
-                        tunnel::dns::Upstream::Do53 {
+                        tunnel_proto::dns::Upstream::Do53 {
                             server: SocketAddr::V4(_),
                         } => client.ip4.is_some(),
-                        tunnel::dns::Upstream::Do53 {
+                        tunnel_proto::dns::Upstream::Do53 {
                             server: SocketAddr::V6(_),
                         } => client.ip6.is_some(),
-                        tunnel::dns::Upstream::DoH { .. } => true,
+                        tunnel_proto::dns::Upstream::DoH { .. } => true,
                     })
                     .filter(|server| {
                         if upstream_do53.is_empty() {

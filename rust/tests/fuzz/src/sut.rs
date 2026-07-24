@@ -29,10 +29,10 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::debug_span;
-use tunnel::dns::is_subdomain;
-use tunnel::messages::gateway::Client;
-use tunnel::messages::{IceCredentials, Key, SecretKey};
-use tunnel::{ClientEvent, GatewayEvent, dns, messages::Interface};
+use tunnel_proto::dns::is_subdomain;
+use tunnel_proto::messages::gateway::Client;
+use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
+use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
 /// The actual system-under-test.
 ///
@@ -1290,7 +1290,7 @@ impl TunnelTest {
                             .unwrap_or_default();
 
                         let remote_authorization =
-                            tunnel::messages::client::ResourceAuthorization {
+                            tunnel_proto::messages::client::ResourceAuthorization {
                                 resource_id,
                                 filters: pool_filters,
                                 expires_at: None,
@@ -1304,7 +1304,7 @@ impl TunnelTest {
                                     preshared_key.clone(),
                                     remote_client_ice.clone(),
                                     local_client_ice.clone(),
-                                    tunnel::messages::IceRole::Controlled,
+                                    tunnel_proto::messages::IceRole::Controlled,
                                     use_iceless,
                                     "initiating client".to_owned(),
                                     Some(remote_authorization),
@@ -1331,7 +1331,7 @@ impl TunnelTest {
                                     preshared_key,
                                     local_client_ice,
                                     remote_client_ice,
-                                    tunnel::messages::IceRole::Controlling,
+                                    tunnel_proto::messages::IceRole::Controlling,
                                     use_iceless,
                                     "target client".to_owned(),
                                     None,
@@ -1407,7 +1407,7 @@ impl TunnelTest {
 
                 let result = portal
                     .resolve_device_pool_domain(&domain.to_string())
-                    .ok_or(tunnel::messages::client::FailReason::NotFound);
+                    .ok_or(tunnel_proto::messages::client::FailReason::NotFound);
                 client.exec_mut(|c| {
                     c.sut
                         .handle_device_pool_domain_resolved(resource_id, domain, result);
@@ -1519,7 +1519,7 @@ fn address_from_destination(
     }
 }
 
-fn test_ingest_token() -> tunnel::messages::IngestToken {
+fn test_ingest_token() -> tunnel_proto::messages::IngestToken {
     serde_json::from_str(&format!("\"{}\"", flow_tracker::TEST_INGEST_TOKEN)).unwrap()
 }
 

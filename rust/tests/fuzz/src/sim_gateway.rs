@@ -17,7 +17,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel::GatewayState;
+use tunnel_proto::GatewayState;
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
