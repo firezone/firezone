@@ -2603,6 +2603,12 @@ defmodule PortalAPI.Client.Channel.Shared do
       # the flush's coalesce keeps the row's current value on nil, and the
       # conflict probe then runs only for real merges instead of every flush.
       firezone_id: if(client.firezone_id_merged?, do: client.firezone_id),
+      last_attested_device_serial: client.last_attested_device_serial,
+      last_attested_device_uuid: client.last_attested_device_uuid,
+      last_attested_mdm_device_id: client.last_attested_mdm_device_id,
+      last_attested_cert_serial: client.last_attested_cert_serial,
+      last_attested_cert_fingerprint: client.last_attested_cert_fingerprint,
+      last_attested_at: client.last_attested_at,
       client_token_id: client.client_token_id,
       public_key: client.public_key,
       user_agent: client.last_seen_user_agent,
