@@ -279,6 +279,13 @@ jobs:
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
+
+          # Stamp the commit SHA into the relay's placeholder before checksum and
+          # upload; the binary is otherwise SHA-independent and cache-restorable.
+          if [[ "${{ matrix.name.package }}" == "firezone-relay" ]]; then
+            mise run //rust:patch-relay-release "$PWD/${{ matrix.name.package }}" "${{ env.RESOLVED_SHA }}"
+          fi
+
           sha256sum ${{ matrix.name.package }} > ${{ matrix.name.package }}.sha256sum.txt
 
           # Used for release artifact

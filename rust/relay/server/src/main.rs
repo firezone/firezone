@@ -144,12 +144,10 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     if args.telemetry {
+        let release = VERSION
+            .expect("relay binary was not patched with a release SHA before enabling telemetry");
         telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
-        telemetry::start(
-            args.api_url.as_str(),
-            VERSION.unwrap_or("unknown"),
-            RELAY_DSN,
-        );
+        telemetry::start(args.api_url.as_str(), release, RELAY_DSN);
     }
 
     let code = match runtime.block_on(try_main(args)) {
@@ -228,7 +226,7 @@ async fn try_main(args: Args) -> Result<()> {
         let is_connected = is_connected.clone();
         http_health_check::serve_with_version(
             args.health_check.health_check_addr,
-            firezone_relay::VERSION,
+            *firezone_relay::VERSION,
             move || is_connected.load(Ordering::Relaxed),
         )
     });
