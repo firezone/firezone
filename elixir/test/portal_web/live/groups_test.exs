@@ -150,6 +150,26 @@ defmodule PortalWeb.GroupsTest do
       assert html =~ group.name
     end
 
+    test "ignores a tab switch queued while the group panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/groups")
+
+      render_click(lv, "switch_group_tab", %{"tab" => "resources"})
+
+      refute has_element?(lv, "#group-panel > div")
+    end
+
     test "shows group member list", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
       other_actor = actor_fixture(account: account)

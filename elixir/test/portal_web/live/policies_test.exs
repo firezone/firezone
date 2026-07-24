@@ -382,6 +382,28 @@ defmodule PortalWeb.PoliciesTest do
       assert_patch(lv, ~p"/#{account}/policies")
     end
 
+    test "ignores a tab switch queued while the policy panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/policies")
+
+      render_click(lv, "switch_policy_tab", %{"tab" => "authorizations"})
+
+      refute has_element?(lv, "#policy-panel > div")
+    end
+
     test "patches to policies index with flash when policy does not exist", %{
       conn: conn,
       account: account,

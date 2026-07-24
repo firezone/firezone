@@ -309,7 +309,11 @@ defmodule PortalWeb.Clients do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/clients?#{params}")}
   end
 
-  def handle_event("switch_client_tab", %{"tab" => tab}, socket) do
+  def handle_event(
+        "switch_client_tab",
+        %{"tab" => tab},
+        %{assigns: %{selected_client: %Device{} = client}} = socket
+      ) do
     params =
       socket.assigns.query_params
       |> Map.put("tab", tab)
@@ -317,8 +321,12 @@ defmodule PortalWeb.Clients do
 
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/clients/#{socket.assigns.selected_client.id}?#{params}"
+       to: ~p"/#{socket.assigns.account}/clients/#{client.id}?#{params}"
      )}
+  end
+
+  def handle_event("switch_client_tab", _params, %{assigns: %{selected_client: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do

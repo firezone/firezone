@@ -328,6 +328,26 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert html =~ service_account.name
     end
 
+    test "ignores a tab change queued while the service account panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/service_accounts")
+
+      render_click(lv, "change_tab", %{"tab" => "groups"})
+
+      refute has_element?(lv, "#actor-panel > div")
+    end
+
     test "redirects to service accounts list when ID not found", %{
       conn: conn,
       account: account,
