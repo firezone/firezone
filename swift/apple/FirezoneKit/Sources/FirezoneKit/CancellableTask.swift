@@ -14,6 +14,11 @@ public final class CancellableTask: Sendable {
     self.task = Task(operation: operation)
   }
 
+  /// Awaits the task's completion without cancelling it.
+  public func wait() async {
+    await task.value
+  }
+
   deinit {
     task.cancel()
   }
