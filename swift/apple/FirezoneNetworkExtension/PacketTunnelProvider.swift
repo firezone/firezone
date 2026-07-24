@@ -54,9 +54,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // Run the flow-log uploader for the provider-process lifetime, decoupled from
     // any connlib session, so spooled flows keep uploading while the provider is
-    // alive (across connect/disconnect cycles). iOS and macOS both run it here; on
-    // iOS the appex only lives during/around a session, so the app also nudges a
-    // drain on foreground (see `Store`).
+    // alive (across connect/disconnect cycles). iOS and macOS both run it here;
+    // the app's foreground-drain nudge launches this process when it isn't
+    // running (see `Store`), so leftover spool uploads even while disconnected.
     if let spoolDir = SharedAccess.flowLogsFolderURL?.path {
       startFlowLogUploader(spoolDir: spoolDir)
     }
@@ -291,9 +291,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // The app nudges this on foreground/launch. The process-lifetime uploader
         // (started in `init()`) already runs on the portal's interval; kick an
         // immediate best-effort pass so opening the app drains promptly without
-        // waiting for the next interval. On macOS, delivering this while disconnected
-        // also cycle-starts the provider (see `maybeCycleStart`), spinning the
-        // uploader up. Ack right away; the drain runs in the background.
+        // waiting for the next interval. Delivering this while disconnected also
+        // starts the provider (macOS via `maybeCycleStart`, iOS by launching the
+        // appex to deliver the message), spinning the uploader up. Ack right away;
+        // the drain runs in the background.
         Task { @Sendable in await Self.flushFlowLogsBestEffort() }
         completionHandler?(nil)
       }
