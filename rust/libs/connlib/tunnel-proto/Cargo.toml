@@ -5,10 +5,9 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [features]
-proptest = ["dep:proptest"]
 divan = ["dep:divan"]
-# Allows callers to bypass client-side resource filters. Only used by test
-# harnesses and fuzzers to exercise the remote filtering path.
+# Allows callers to bypass client-side resource filters. Only used by the
+# tunnel fuzzer to exercise the remote filtering path.
 malicious-behaviour = []
 
 [dependencies]
@@ -33,7 +32,6 @@ logging = { workspace = true }
 lru = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
-proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 rangemap = { workspace = true }
 ringbuffer = { workspace = true }
@@ -49,6 +47,7 @@ tracing = { workspace = true, features = ["attributes"] }
 
 [dev-dependencies]
 ip-packet = { workspace = true, features = ["proptest"] }
+proptest = { workspace = true }
 rand = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }

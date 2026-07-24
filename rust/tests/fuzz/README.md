@@ -1,46 +1,73 @@
 # Fuzzing
 
+## Targets
+
+- `ip-packet` — parses and mutates a single IP packet through `ip-packet`'s API.
+- `tunnel-proto` — drives the connlib tunnel state machine with a reference model and system-under-test harness.
+
+Every fuzz target is listed in `targets.json` and has the same name as the crate whose coverage it tracks.
+This list drives both pull-request CI and the nightly discovery matrix.
+
+## Corpora
+
+Each target's corpus is committed as one deterministic archive under `corpora/<target>.tar.gz`.
+The mise tasks unpack it into the ignored `corpus/<target>` directory before invoking `cargo-fuzz`.
+Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
+It never performs random coverage discovery.
+
+The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens one bot PR with the results.
+
+Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
+Changing the generator in `src/arb/` can therefore reinterpret existing inputs; after a substantial generator change, re-minimize and grow the corpus before updating the archive.
+
 ## Setup
 
-1. Install `cargo-fuzz`
-1. Install `cargo-llvm-cov` (if you want to see coverage statistics)
-1. Temporarily disable LTO (fuzzing won't work otherwise):
-   ```
-   export CARGO_PROFILE_RELEASE_LTO=false
-   ```
+Everything is managed through this directory's `mise.toml`: the pinned nightly toolchain, `cargo-fuzz`, and the profile overrides required by fuzz builds.
+Fuzzing tasks require Linux because `cargo-fuzz` is installed only for Linux.
 
 ## Run
 
-Runs the fuzzer for the `ip_packet` fuzz target.
-Substitute that for other targets that you want to run.
+Run a target locally; extra arguments are passed to libFuzzer:
 
+```console
+mise run //rust/tests/fuzz:fuzz ip-packet
+mise run //rust/tests/fuzz:fuzz ip-packet -fork=4
+mise run //rust/tests/fuzz:fuzz tunnel-proto -fork=4
 ```
-cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target ip_packet
+
+`tunnel-proto` automatically uses `-max_len=8192 -len_control=0` so deep state-machine runs remain reachable.
+
+## Reproducing a crash
+
+```console
+mise run //rust/tests/fuzz:replay-crashes tunnel-proto
+mise run //rust/tests/fuzz:tmin tunnel-proto artifacts/tunnel-proto/crash-<hash>
+mise run //rust/tests/fuzz:repro tunnel-proto <reduced-input> 2> repro.log
 ```
+
+Set `RUST_LOG=trace` for detailed scenario and connlib traces.
 
 ## Coverage
 
-1. Clean workspace
+Replay a committed corpus and check its uncovered-region ceiling:
 
-   ```
-   cargo +nightly llvm-cov clean --workspace
-   ```
+```console
+mise run //rust/tests/fuzz:coverage ip-packet
+mise run //rust/tests/fuzz:coverage-check ip-packet
+```
 
-1. Fuzz. See command above.
+Coverage growth passes without requiring a baseline update.
+An increase in uncovered regions fails.
+After deliberately growing and minimizing a corpus, refresh its baseline with:
 
-1. Generate coverage profile
+```console
+mise run //rust/tests/fuzz:pack-corpus tunnel-proto
+mise run //rust/tests/fuzz:coverage tunnel-proto
+mise run -q //rust/tests/fuzz:coverage-summary tunnel-proto > expected-coverage/tunnel-proto.json
+```
 
-   ```
-   cargo +nightly fuzz coverage --fuzz-dir tests/fuzz --target-dir ./target ip_packet
-   ```
+For a local browsable report:
 
-1. Copy profile data to place where `cargo-llvm-cov` can find it
-
-   ```
-   cp tests/fuzz/coverage/**/*.profraw ./target
-   ```
-
-1. Generate coverage report
-   ```
-   cargo +nightly llvm-cov report --html --release --target x86_64-unknown-linux-gnu
-   ```
+```console
+mise run //rust/tests/fuzz:coverage-report tunnel-proto
+```

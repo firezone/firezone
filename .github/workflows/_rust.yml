@@ -91,7 +91,7 @@ jobs:
       - uses: ./.github/actions/free-disk-space
       - name: "cargo test"
         shell: bash
-        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
+        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
@@ -119,79 +119,23 @@ jobs:
           parallel: true
           fail-on-error: false
 
-  tunnel_test:
-    name: tunnel-test
+  fuzz-targets:
+    name: fuzz-targets
     runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust-stable
-        id: setup-rust
-      - uses: ./.github/actions/setup-rust-sccache
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd rust
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/free-disk-space
-      - name: Tunnel proptest
-        id: proptest
-        shell: bash
-        run: cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic 2>&1 | tee proptest.log
-        env:
-          PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
-          PROPTEST_CASES: 256
-          RUST_BACKTRACE: 0
-          CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
-          TUNNEL_TEST_ENFORCE_COVERAGE: 1 # Fail the test if we don't hit all intended codepaths.
-
-      - name: Extract missing coverage patterns
-        id: missing
-        if: failure()
-        shell: bash
-        run: |
-          missing=$(sed -n '/^TUNNEL_TEST_MISSING_PATTERNS_BEGIN$/,/^TUNNEL_TEST_MISSING_PATTERNS_END$/p' proptest.log | sed '1d;$d')
-          if [ -n "$missing" ]; then
-            {
-              echo "patterns<<EOF"
-              echo "$missing"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "Missing coverage patterns:" >&2
-            echo "$missing" >&2
-          fi
-
-      - name: Harvest regression seeds for missing coverage
-        if: failure() && steps.missing.outputs.patterns != ''
-        timeout-minutes: 25
-        shell: bash
-        env:
-          PROPTEST_VERBOSE: 0
-        run: |
-          mapfile -t patterns <<< "${{ steps.missing.outputs.patterns }}"
-          cargo run -p tunnel-proptest-harvester -- "${patterns[@]}"
-      - name: Upload harvested seeds
-        if: failure() && steps.missing.outputs.patterns != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: proptest-harvest-seeds
-          path: rust/libs/connlib/tunnel/harvest-output/
-          if-no-files-found: warn
-
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: rust/lcov.info
-          format: lcov
-          flag-name: rust-tunnel-test
-          parallel: true
-          fail-on-error: false
+      - id: targets
+        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
 
   fuzz:
-    name: fuzz
+    name: fuzz-${{ matrix.fuzz-target }}
+    needs: [fuzz-targets]
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        fuzz-target: [ip_packet]
+        fuzz-target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -201,7 +145,21 @@ jobs:
           install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120
+      - uses: ./.github/actions/free-disk-space
+      - name: Replay committed corpus
+        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+      - name: Enforce uncovered-region ceiling
+        run: mise run //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
+      - name: Export lcov for Coveralls
+        run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: rust/lcov-${{ matrix.fuzz-target }}.info
+          format: lcov
+          flag-name: rust-fuzz-${{ matrix.fuzz-target }}
+          parallel: true
+          fail-on-error: false
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

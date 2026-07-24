@@ -1,4 +1,5 @@
 //! Message types that are used by both the gateway and client.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;

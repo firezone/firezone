@@ -1,11 +1,8 @@
-// A shared toolbox of proptest strategies for connlib's domain types. Different
-// tests use different subsets, so not every strategy is exercised in every
-// build.
-#![allow(dead_code)]
+// Proptest strategies for connlib's domain types, used by this crate's unit tests.
 // Strategy helpers are test-only code; `unwrap` is idiomatic here.
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 
-use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, IpStack, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
@@ -18,9 +15,7 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
-};
+use crate::client::resource::{CidrResource, DnsResource, Resource};
 use crate::messages::{Filter, PortRange};
 
 pub fn resource(
@@ -84,63 +79,6 @@ pub fn cidr_resource(
         )
 }
 
-pub fn internet_resource(
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = InternetResource> {
-    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
-        name: "Internet Resource".to_string(),
-        id,
-        sites,
-    })
-}
-
-pub fn dynamic_device_pool_resource() -> impl Strategy<Value = DynamicDevicePoolResource> {
-    (resource_id(), resource_name(), domain_name(2..4)).prop_map(|(id, name, base_domain)| {
-        DynamicDevicePoolResource {
-            id,
-            name,
-            address: format!("*.{base_domain}"),
-        }
-    })
-}
-
-/// Number of online members and synthetic ClientIds for offline members in a sampled
-/// static device pool.
-///
-/// This is a "plan" rather than a fully-realized resource because at sample-time we don't
-/// yet know the IPs of the test clients. The plan gets materialized into a real
-/// `StaticDevicePoolResource` once the tunnel state-machine test portal has
-/// assigned tunnel IPs to clients.
-#[derive(Clone, Debug)]
-pub struct StaticDevicePoolPlan {
-    pub id: ResourceId,
-    pub name: String,
-    pub filters: Vec<Filter>,
-    pub n_online_members: usize,
-    /// Synthetic [`ClientId`]s for pool members that are not part of the test's
-    /// online clients — exercises the "device unknown / not connected" path.
-    pub offline_members: Vec<ClientId>,
-}
-
-pub fn static_device_pool_resource_plan() -> impl Strategy<Value = StaticDevicePoolPlan> {
-    (
-        resource_id(),
-        resource_name(),
-        filters(),
-        0usize..=2,
-        collection::vec(client_id(), 0..=2),
-    )
-        .prop_map(|(id, name, filters, n_online_members, offline_members)| {
-            StaticDevicePoolPlan {
-                id,
-                name,
-                filters,
-                n_online_members,
-                offline_members,
-            }
-        })
-}
-
 pub fn filters() -> impl Strategy<Value = Vec<Filter>> {
     collection::vec(filter(), 0..3)
 }
@@ -193,10 +131,6 @@ pub fn gateway_id() -> impl Strategy<Value = GatewayId> + Clone {
 
 pub fn client_id() -> impl Strategy<Value = ClientId> {
     any::<u128>().prop_map(ClientId::from_u128).no_shrink()
-}
-
-pub fn relay_id() -> impl Strategy<Value = RelayId> {
-    any::<u128>().prop_map(RelayId::from_u128).no_shrink()
 }
 
 pub fn site_id() -> impl Strategy<Value = SiteId> + Clone {

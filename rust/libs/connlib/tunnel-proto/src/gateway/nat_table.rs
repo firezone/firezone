@@ -334,7 +334,7 @@ pub enum TranslateIncomingResult {
     NoNatSession,
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use ip_packet::{IpPacket, make::TcpFlags, proptest::*};

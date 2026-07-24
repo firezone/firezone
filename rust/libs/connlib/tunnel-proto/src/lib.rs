@@ -33,8 +33,8 @@ pub mod otel;
 mod p2p_control;
 mod packet_kind;
 mod peer_store;
-#[cfg(feature = "proptest")]
-pub mod proptest;
+#[cfg(test)]
+mod proptest;
 mod routing_table;
 mod unique_packet_buffer;
 mod unix_ts;
@@ -51,13 +51,8 @@ pub const IPV6_TUNNEL: Ipv6Network =
     };
 
 pub use client::dns_config::DnsMapping;
-pub use client::{
-    CidrResource, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource,
-    DynamicDevicePoolResource, IPV4_RESOURCES, IPV6_RESOURCES, InternetResource, Resource,
-    StaticDevicePoolResource,
-};
+pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 pub use dns::DnsResourceRecord;
-pub use filter_engine::FilterEngine;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
