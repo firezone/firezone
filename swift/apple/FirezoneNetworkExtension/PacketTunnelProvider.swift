@@ -51,15 +51,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
 
     migrateFirezoneId()
-
-    // Run the flow-log uploader for the provider-process lifetime, decoupled from
-    // any connlib session, so spooled flows keep uploading while the provider is
-    // alive (across connect/disconnect cycles). iOS and macOS both run it here;
-    // the app's foreground-drain nudge launches this process when it isn't
-    // running (see `Store`), so leftover spool uploads even while disconnected.
-    if let spoolDir = SharedAccess.flowLogsFolderURL?.path {
-      ensureFlowLogUploader(spoolDir: spoolDir)
-    }
   }
 
   deinit {
@@ -273,14 +264,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         exportLogs(handler)
       case .registerUploader:
-        // The app nudges this on foreground/launch: spawn the uploader if it
-        // isn't running, nudge it to upload now otherwise, so opening the app
-        // drains promptly without waiting for the next interval. Delivering this
-        // while disconnected also starts the provider (macOS via
-        // `maybeCycleStart`, iOS by launching the appex to deliver the message).
-        // Ack right away; the drain runs in the background.
-        if let spoolDir = SharedAccess.flowLogsFolderURL?.path {
-          ensureFlowLogUploader(spoolDir: spoolDir)
+        // The app nudges this on foreground/launch to drain spool left behind
+        // while disconnected; a connected session's own uploader drains on its
+        // interval. Delivering this while disconnected also starts the provider
+        // (macOS via `maybeCycleStart`, iOS by launching the appex to deliver
+        // the message). Ack right away; the drain runs in the background.
+        Task.detached(priority: .utility) { @Sendable in
+          guard let spoolDir = SharedAccess.flowLogsFolderURL?.path else { return }
+          _ = runFlowLogUpload(spoolDir: spoolDir)
         }
         completionHandler?(nil)
       }

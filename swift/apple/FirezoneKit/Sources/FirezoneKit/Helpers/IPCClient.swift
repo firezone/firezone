@@ -72,10 +72,10 @@ enum IPCClient {
     _ = try await sendProviderMessage(session: session, message: message)
   }
 
-  // Wakes the tunnel provider so its flow-log uploader can run without a connlib
-  // session. While disconnected, delivering the message starts the provider on
-  // both platforms (macOS cycle-starts it in `sendProviderMessage`, iOS launches
-  // the appex to deliver the message), which is enough to spin the uploader up.
+  // Asks the provider to run a flow-log upload pass, draining spool left behind
+  // while disconnected. Delivering the message starts the provider on both
+  // platforms (macOS cycle-starts it in `sendProviderMessage`, iOS launches the
+  // appex to deliver the message).
   @MainActor
   static func registerUploader(session: any TunnelSessionProtocol) async throws {
     let message = ProviderMessage.registerUploader
