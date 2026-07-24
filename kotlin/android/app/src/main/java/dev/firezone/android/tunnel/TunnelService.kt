@@ -53,7 +53,6 @@ import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.enforceLogSizeCap
-import uniffi.connlib.ensureFlowLogUploader
 import uniffi.connlib.isLogStreamingActive
 import uniffi.connlib.logCleanupDefaultIntervalSecs
 import uniffi.connlib.logCleanupDefaultMaxSizeMb
@@ -248,13 +247,6 @@ class TunnelService : VpnService() {
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
         startTelemetry(protectSocket)
-
-        // Run the flow-log uploader for the app-process lifetime, decoupled from any
-        // connlib session, so spooled flows keep uploading across connect/disconnect
-        // cycles while the process is alive. Idempotent across service restarts. Uses
-        // protected (tunnel-bypassing) sockets so uploads never loop through the VPN.
-        // connlib wakes it when a session ends, so disconnects drain promptly too.
-        ensureFlowLogUploader(getFlowLogsDir(), protectSocket)
     }
 
     override fun onDestroy() {
