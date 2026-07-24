@@ -33,6 +33,7 @@ pub(crate) struct StaticDevicePoolPlan {
 pub(crate) struct StubPortal {
     clients: BTreeMap<ClientId, StubClient>,
     gateways_by_site: BTreeMap<SiteId, BTreeSet<(GatewayId, Ipv4Addr, Ipv6Addr)>>,
+    regular_sites: Vec<Site>,
 
     #[debug(skip)]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
@@ -73,6 +74,7 @@ impl StubPortal {
     pub(crate) fn new(
         clients: BTreeSet<ClientId>,
         gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
+        regular_sites: Vec<Site>,
         gateway_selector: u32,
         cidr_resources: BTreeSet<client::CidrResource>,
         dns_resources: BTreeSet<client::DnsResource>,
@@ -170,6 +172,7 @@ impl StubPortal {
         Self {
             clients,
             gateways_by_site,
+            regular_sites,
             gateway_selector,
             sites_by_resource: BTreeMap::from_iter(
                 cidr_sites.chain(dns_sites).chain(internet_site),
@@ -268,6 +271,10 @@ impl StubPortal {
                 self.internet_resource.clone(),
             )))
             .collect()
+    }
+
+    pub(crate) fn regular_sites(&self) -> Vec<Site> {
+        self.regular_sites.clone()
     }
 
     pub(crate) fn dns_resources(&self) -> Vec<client::DnsResource> {
@@ -414,6 +421,42 @@ impl StubPortal {
         }
 
         tracing::error!(%rid, "Unknown resource");
+    }
+
+    pub(crate) fn replace_resource(&mut self, new_resource: client::Resource) {
+        let id = new_resource.id();
+
+        self.cidr_resources.remove(&id);
+        self.dns_resources.remove(&id);
+        self.static_device_pool_resources.remove(&id);
+        self.sites_by_resource.remove(&id);
+
+        match new_resource {
+            client::Resource::Cidr(resource) => {
+                let site = resource
+                    .sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources");
+                self.sites_by_resource.insert(id, site.id);
+                self.cidr_resources.insert(id, resource);
+            }
+            client::Resource::Dns(resource) => {
+                let site = resource
+                    .sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources");
+                self.sites_by_resource.insert(id, site.id);
+                self.dns_resources.insert(id, resource);
+            }
+            client::Resource::StaticDevicePool(resource) => {
+                self.static_device_pool_resources.insert(id, resource);
+            }
+            client::Resource::Internet(_) | client::Resource::DynamicDevicePool(_) => {
+                unreachable!("only user-editable resource types can replace one another")
+            }
+        }
     }
 
     /// Replaces the member list of an existing static device pool.

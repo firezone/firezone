@@ -171,6 +171,39 @@ impl ReferenceState {
                     })
                 }
             }
+            Transition::ChangeResourceType {
+                old_resource: _,
+                new_resource,
+            } => {
+                state.portal.replace_resource(new_resource.clone());
+
+                for client in state.clients.values_mut() {
+                    client.exec_mut(|client| {
+                        client.remove_resource(&new_resource.id());
+
+                        match new_resource {
+                            client::Resource::Dns(resource) => {
+                                client
+                                    .dns_records
+                                    .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                                client.add_dns_resource(resource.clone());
+                            }
+                            client::Resource::Cidr(resource) => {
+                                client.add_cidr_resource(resource.clone())
+                            }
+                            client::Resource::StaticDevicePool(resource) => {
+                                client.add_static_device_pool_resource(resource.clone())
+                            }
+                            client::Resource::Internet(_)
+                            | client::Resource::DynamicDevicePool(_) => {
+                                unreachable!(
+                                    "only user-editable resource types can replace one another"
+                                )
+                            }
+                        }
+                    });
+                }
+            }
             Transition::UpdateStaticDevicePool {
                 pool_id,
                 new_devices,
@@ -673,6 +706,10 @@ impl ReferenceState {
             .collect()
     }
 
+    pub(crate) fn replaceable_resources_on_any_client(&self) -> Vec<client::Resource> {
+        self.resources_with_filters_on_any_client()
+    }
+
     pub(crate) fn cidr_and_dns_resources_on_any_client(&self) -> Vec<client::Resource> {
         self.portal
             .all_resources()
@@ -735,15 +772,7 @@ impl ReferenceState {
     }
 
     pub(crate) fn regular_sites(&self) -> Vec<Site> {
-        let all_sites = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter(|r| !matches!(r, client::Resource::Internet(_)))
-            .flat_map(|r| r.sites().into_iter().cloned().collect::<Vec<_>>())
-            .collect::<BTreeSet<_>>();
-
-        Vec::from_iter(all_sites)
+        self.portal.regular_sites()
     }
 
     pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {

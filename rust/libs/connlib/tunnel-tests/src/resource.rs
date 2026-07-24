@@ -98,6 +98,16 @@ impl Resource {
         }
     }
 
+    pub(crate) fn name(&self) -> &str {
+        match self {
+            Resource::Dns(r) => &r.name,
+            Resource::Cidr(r) => &r.name,
+            Resource::Internet(r) => &r.name,
+            Resource::StaticDevicePool(r) => &r.name,
+            Resource::DynamicDevicePool(r) => &r.name,
+        }
+    }
+
     pub(crate) fn sites(&self) -> BTreeSet<&Site> {
         match self {
             Resource::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
