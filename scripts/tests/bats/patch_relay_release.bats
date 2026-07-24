@@ -20,10 +20,14 @@ setup() {
   grep -F -q "FOOTER" "$BINARY"
 }
 
-@test "rejects a sha that is not 40 characters" {
+@test "rejects a sha that is not 40 hex characters" {
   run "$PATCHER" "$BINARY" "tooshort"
   [ "$status" -ne 0 ]
   [[ "$output" == *"40-char"* ]]
+
+  # 40 characters but not hex (would be >40 bytes if multibyte) must be rejected.
+  run "$PATCHER" "$BINARY" "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+  [ "$status" -ne 0 ]
 }
 
 @test "fails when the marker is missing" {

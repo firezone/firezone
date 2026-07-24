@@ -10,12 +10,13 @@ marker="firezone-git-sha:"
   echo "error: $binary not found" >&2
   exit 1
 }
-[[ "${#sha}" -eq 40 ]] || {
-  echo "error: expected a 40-char SHA, got '$sha' (${#sha} chars)" >&2
+[[ "$sha" =~ ^[0-9a-fA-F]{40}$ ]] || {
+  echo "error: expected a 40-char hex SHA, got '$sha'" >&2
   exit 1
 }
 
-hits=$(grep -F -a -b -o "$marker" "$binary" || true)
+# LC_ALL=C keeps grep byte-oriented (offsets, not multibyte characters).
+hits=$(LC_ALL=C grep -F -a -b -o "$marker" "$binary" || true)
 count=$(printf '%s' "$hits" | grep -c . || true)
 [[ "$count" -eq 1 ]] || {
   echo "error: '$marker' must appear exactly once in $binary (found $count)" >&2
