@@ -235,6 +235,34 @@ impl TunnelTest {
                     });
                 }
             }
+            Transition::ChangeResourceType {
+                old_resource,
+                new_resource,
+            } => {
+                debug_assert_eq!(old_resource.id(), new_resource.id());
+
+                for (client_id, client) in &mut state.clients {
+                    for gateway in state.gateways.values_mut() {
+                        gateway.exec_mut(|gateway| {
+                            gateway
+                                .sut
+                                .remove_access(client_id, &old_resource.id(), now)
+                        });
+                    }
+
+                    client.exec_mut(|client| {
+                        if let client::Resource::Dns(resource) = &new_resource {
+                            client
+                                .dns_records
+                                .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                        }
+
+                        client
+                            .sut
+                            .add_resource(new_resource.clone().into_description(), now);
+                    });
+                }
+            }
             Transition::UpdateStaticDevicePool {
                 pool_id,
                 new_devices,

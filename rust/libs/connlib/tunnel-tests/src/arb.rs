@@ -541,6 +541,7 @@ fn arb_stub_portal(g: &mut Gen) -> StubPortal {
     StubPortal::new(
         clients,
         gateways_by_site,
+        regular_sites,
         gateway_selector,
         cidr_resources,
         dns_resources,
@@ -1370,6 +1371,7 @@ enum TransitionKind {
     ChangeCidrResourceAddress,
     MoveResourceToNewSite,
     ChangeFiltersOfResource,
+    ChangeResourceType,
     RemoveResource,
     ReconnectPortal,
     RestartClient,
@@ -1396,11 +1398,78 @@ fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
         .collect::<Vec<_>>()
 }
 
+fn arb_resource_with_different_type(
+    g: &mut Gen,
+    state: &ReferenceState,
+    resource: &Resource,
+) -> Resource {
+    #[derive(Clone, Copy)]
+    enum ResourceType {
+        Cidr,
+        Dns,
+        StaticDevicePool,
+    }
+
+    let resource_type = match resource {
+        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::StaticDevicePool][g.choose_index(2)],
+        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::StaticDevicePool][g.choose_index(2)],
+        Resource::StaticDevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
+        Resource::Internet(_) | Resource::DynamicDevicePool(_) => {
+            unreachable!("only user-editable resource types can replace one another")
+        }
+    };
+
+    let sites = resource.sites().into_iter().cloned().collect::<Vec<_>>();
+    let site = sites
+        .first()
+        .cloned()
+        .unwrap_or_else(|| pick_site(g, &state.regular_sites()));
+    let id = resource.id();
+    let name = resource.name().to_owned();
+    let filters = resource.filters().to_vec();
+
+    match resource_type {
+        ResourceType::Cidr => Resource::Cidr(CidrResource {
+            id,
+            address: arb_cidr_resource_address(g),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            filters,
+        }),
+        ResourceType::Dns => {
+            let base = arb_domain_name_string(g, 2, 3);
+            let address = match g.choose_index(3) {
+                0 => base,
+                1 => format!("*.{base}"),
+                _ => format!("**.{base}"),
+            };
+
+            Resource::Dns(DnsResource {
+                id,
+                address,
+                name,
+                address_description: arb_address_description(g),
+                sites: vec![site],
+                ip_stack: arb_ip_stack_kind(g),
+                filters,
+            })
+        }
+        ResourceType::StaticDevicePool => Resource::StaticDevicePool(StaticDevicePoolResource {
+            id,
+            name,
+            devices: arb_online_static_pool_members(g, state),
+            filters,
+        }),
+    }
+}
+
 fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<Transition> {
     let addable_resources = state.resources_unknown_to_all_clients();
     let cidr_resources = state.cidr_resources_on_any_client();
     let move_resources = move_resource_candidates(state);
     let filter_resources = state.resources_with_filters_on_any_client();
+    let replaceable_resources = state.replaceable_resources_on_any_client();
     let removable_resources = state.removable_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids();
     let client_ids = state.all_client_ids();
@@ -1428,6 +1497,7 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
         (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
         (!move_resources.is_empty()).then_some((K::MoveResourceToNewSite, 1)),
         (!filter_resources.is_empty()).then_some((K::ChangeFiltersOfResource, 1)),
+        (!replaceable_resources.is_empty()).then_some((K::ChangeResourceType, 2)),
         (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
         (!deauthorizable_resources.is_empty())
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
@@ -1531,6 +1601,15 @@ fn arb_transition(g: &mut Gen, state: &ReferenceState, now: Instant) -> Option<T
             Transition::ChangeFiltersOfResource {
                 resource,
                 new_filters,
+            }
+        }
+        K::ChangeResourceType => {
+            let old_resource =
+                replaceable_resources[g.choose_index(replaceable_resources.len())].clone();
+            let new_resource = arb_resource_with_different_type(g, state, &old_resource);
+            Transition::ChangeResourceType {
+                old_resource,
+                new_resource,
             }
         }
         K::RemoveResource => {
@@ -2174,37 +2253,42 @@ fn arb_static_pool_members(
     state: &ReferenceState,
     pool: &StaticDevicePoolResource,
 ) -> Vec<DevicePoolMember> {
-    let online_clients = state
+    arb_online_static_pool_members(g, state)
+        .into_iter()
+        .chain(offline_static_pool_members(state, pool))
+        .collect()
+}
+
+fn arb_online_static_pool_members(g: &mut Gen, state: &ReferenceState) -> Vec<DevicePoolMember> {
+    state
         .clients
         .iter()
-        .map(|(id, c)| {
-            let inner = c.inner();
-            (
-                *id,
-                Ipv4Network::new(inner.tunnel_ip4, 32).unwrap(),
-                Ipv6Network::new(inner.tunnel_ip6, 128).unwrap(),
-            )
+        .filter(|_| g.bool())
+        .map(|(id, client)| {
+            let client = client.inner();
+            DevicePoolMember {
+                id: *id,
+                ipv4: Ipv4Network::new(client.tunnel_ip4, 32).unwrap(),
+                ipv6: Ipv6Network::new(client.tunnel_ip6, 128).unwrap(),
+            }
         })
-        .collect::<Vec<_>>();
-    let online_ids = online_clients
+        .collect()
+}
+
+fn offline_static_pool_members(
+    state: &ReferenceState,
+    pool: &StaticDevicePoolResource,
+) -> impl Iterator<Item = DevicePoolMember> {
+    let online_ids = state
+        .clients
         .iter()
-        .map(|(id, _, _)| *id)
+        .map(|(id, _)| *id)
         .collect::<BTreeSet<_>>();
 
-    let preserved_offline = pool
-        .devices
+    pool.devices
         .iter()
-        .filter(|d| !online_ids.contains(&d.id))
+        .filter(move |d| !online_ids.contains(&d.id))
         .cloned()
-        .collect::<Vec<_>>();
-
-    // Keep any subset of the online clients.
-    online_clients
-        .into_iter()
-        .filter(|_| g.bool())
-        .map(|(id, ipv4, ipv6)| DevicePoolMember { id, ipv4, ipv6 })
-        .chain(preserved_offline)
-        .collect::<Vec<_>>()
 }
 
 fn arb_icmp_packet(

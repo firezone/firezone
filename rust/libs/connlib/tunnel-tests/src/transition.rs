@@ -36,6 +36,12 @@ pub(crate) enum Transition {
         resource: Resource,
         new_filters: Vec<Filter>,
     },
+    /// Change a backend-managed resource to another editable resource type
+    /// while retaining its ID.
+    ChangeResourceType {
+        old_resource: Resource,
+        new_resource: Resource,
+    },
     /// Replace the member list of an existing static device pool.
     ///
     /// Exercises the SUT's pool-member diff path, which short-circuits the
@@ -159,6 +165,7 @@ impl Transition {
             | Transition::MoveResourceToNewSite { .. }
             | Transition::DeauthorizeWhileGatewayIsPartitioned(_)
             | Transition::ChangeFiltersOfResource { .. }
+            | Transition::ChangeResourceType { .. }
             | Transition::UpdateStaticDevicePool { .. }
             | Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. }

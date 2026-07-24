@@ -2318,6 +2318,14 @@ impl ClientState {
         // Static device pools are diffed in-place: a single member changing
         // shouldn't churn the entire pool's routing table entries.
         if let Resource::StaticDevicePool(new_pool) = new_resource {
+            if self
+                .resources_by_id
+                .get(&new_pool.id)
+                .is_some_and(|resource| !matches!(resource, Resource::StaticDevicePool(_)))
+            {
+                self.remove_resource(new_pool.id, now);
+            }
+
             self.upsert_static_device_pool(new_pool);
             return;
         }
@@ -3045,37 +3053,6 @@ mod proptests {
         assert_eq!(
             hashset(client_state.routes()),
             expected_routes(vec![new_address])
-        );
-    }
-
-    #[test_strategy::proptest]
-    fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
-        #[strategy(dns_resource())] resource: DnsResource,
-        #[strategy(any_ip_network(8))] address: IpNetwork,
-    ) {
-        let mut client_state = ClientState::for_test();
-        client_state.upsert_resource(Resource::Dns(resource.clone()), Instant::now());
-
-        let dns_as_cidr_resource = CidrResource {
-            address,
-            id: resource.id,
-            name: resource.name,
-            address_description: resource.address_description,
-            sites: resource.sites,
-            filters: resource.filters,
-        };
-
-        client_state.upsert_resource(Resource::Cidr(dns_as_cidr_resource.clone()), Instant::now());
-
-        assert_eq!(
-            hashset(client_state.resources()),
-            hashset([ResourceView::Cidr(
-                dns_as_cidr_resource.with_status(ResourceStatus::Unknown)
-            )])
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![address])
         );
     }
 
