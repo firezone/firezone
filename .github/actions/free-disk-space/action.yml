@@ -1,6 +1,11 @@
 ---
 name: "Free disk space"
 description: "Reclaim disk space by removing pre-installed toolchains we don't use"
+inputs:
+  keep-android:
+    description: "Keep the preinstalled Android SDK and NDK (the kotlin jobs build against them)"
+    required: false
+    default: "false"
 runs:
   using: "composite"
   steps:
@@ -10,8 +15,10 @@ runs:
       run: |
         # Reclaim ~25 GB from pre-installed toolchains we don't use, so the
         # instrumented coverage builds have headroom on leaner hosted runners.
+        if [[ "${{ inputs.keep-android }}" != "true" ]]; then
+          sudo rm -rf /usr/local/lib/android
+        fi
         sudo rm -rf \
-          /usr/local/lib/android \
           /usr/share/dotnet \
           /opt/ghc \
           /usr/local/.ghcup \
