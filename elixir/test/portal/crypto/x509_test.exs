@@ -239,4 +239,100 @@ defmodule Portal.Crypto.X509Test do
       assert X509.signature_algorithm(cert) == "Ed25519"
     end
   end
+
+  describe "san_uris/1" do
+    test "returns raw URI SAN values" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())
+
+      assert X509.san_uris(cert) == [
+               "firezone://serial/C02XK1ZGJGH5",
+               "firezone://udid/7a461ff9-0be2-64a9-a418-539d9a21827b"
+             ]
+    end
+
+    test "ignores non-URI SANs" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.san_uris(cert) == []
+    end
+
+    test "returns an empty list when the extension is absent" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.san_uris(cert) == []
+    end
+  end
+
+  describe "san_dns_names/1" do
+    test "returns raw DNS SAN values" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())
+      assert X509.san_dns_names(cert) == ["UDID=7A461FF9", "host.test.invalid"]
+    end
+
+    test "ignores non-DNS SANs" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.san_dns_names(cert) == ["ca.test.invalid"]
+    end
+
+    test "returns an empty list when the extension is absent" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.san_dns_names(cert) == []
+    end
+  end
+
+  describe "client_auth_eku?/1" do
+    test "returns true when the EKU includes client authentication" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())
+      assert X509.client_auth_eku?(cert)
+    end
+
+    test "returns false when the EKU extension is absent" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ed25519_ca_der())
+      refute X509.client_auth_eku?(cert)
+    end
+  end
+
+  describe "subject_public_key/1" do
+    test "returns EC keys with their curve parameters" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())
+      assert {:ok, {{:ECPoint, point}, {:namedCurve, _oid}}} = X509.subject_public_key(cert)
+      assert is_binary(point)
+    end
+
+    test "returns RSA keys as-is" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert {:ok, {:RSAPublicKey, _modulus, _exponent}} = X509.subject_public_key(cert)
+    end
+
+    test "returns :error for non-certificate input" do
+      assert X509.subject_public_key(:not_a_cert) == :error
+    end
+  end
+
+  describe "verification_digest/1" do
+    test "selects sha384 for P-384 keys" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())
+      assert X509.verification_digest(cert) == :sha384
+    end
+
+    test "selects sha256 for P-256 keys" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ec_ca_der())
+      assert X509.verification_digest(cert) == :sha256
+    end
+
+    test "selects sha256 for RSA keys" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.verification_digest(cert) == :sha256
+    end
+  end
+
+  describe "subject_organizational_units/1" do
+    test "returns all subject OU values in order" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_p384_leaf_der())
+      assert X509.subject_organizational_units(cert) == ["Engineering", "Device Trust"]
+    end
+
+    test "returns an empty list when the subject has no OUs" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_cert_der())
+      assert X509.subject_organizational_units(cert) == []
+    end
+  end
 end

@@ -26,6 +26,10 @@ defmodule Portal.Crypto.X509 do
   @authority_info_access_oid {1, 3, 6, 1, 5, 5, 7, 1, 1}
   @ocsp_access_method_oid {1, 3, 6, 1, 5, 5, 7, 48, 1}
   @ca_issuers_access_method_oid {1, 3, 6, 1, 5, 5, 7, 48, 2}
+  @organizational_unit_oid {2, 5, 4, 11}
+  @client_auth_eku_oid {1, 3, 6, 1, 5, 5, 7, 3, 2}
+  @ec_public_key_oid {1, 2, 840, 10_045, 2, 1}
+  @p384_curve_oid {1, 3, 132, 0, 34}
 
   # Distinguished Name attribute types, ordered as commonly displayed.
   @dn_attribute_oids %{
@@ -416,6 +420,130 @@ defmodule Portal.Crypto.X509 do
     case find_extension(extensions, @subject_alt_name_oid) do
       {:Extension, @subject_alt_name_oid, _critical, names} ->
         names |> List.wrap() |> Enum.map(&format_general_name/1) |> Enum.reject(&is_nil/1)
+
+      nil ->
+        []
+    end
+  end
+
+  @doc """
+  Returns the raw values of the certificate's URI Subject Alternative Names,
+  without the `"URI:"` display prefix. Returns `[]` when the extension is
+  absent.
+  """
+  @spec san_uris(tuple()) :: [String.t()]
+  def san_uris(otp_certificate) do
+    san_general_names(otp_certificate, :uniformResourceIdentifier)
+  end
+
+  @doc """
+  Returns the raw values of the certificate's DNS Subject Alternative Names,
+  without the `"DNS:"` display prefix. Returns `[]` when the extension is
+  absent.
+  """
+  @spec san_dns_names(tuple()) :: [String.t()]
+  def san_dns_names(otp_certificate) do
+    san_general_names(otp_certificate, :dNSName)
+  end
+
+  @doc """
+  Returns true when the certificate's Extended Key Usage extension includes
+  TLS Client Authentication (`1.3.6.1.5.5.7.3.2`).
+  """
+  @spec client_auth_eku?(tuple()) :: boolean()
+  def client_auth_eku?(
+        {:OTPCertificate,
+         {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity, _subject, _spki,
+          _issuer_id, _subject_id, extensions}, _sig_alg, _sig}
+      ) do
+    case find_extension(extensions, @extended_key_usage_oid) do
+      {:Extension, @extended_key_usage_oid, _critical, oids} ->
+        @client_auth_eku_oid in List.wrap(oids)
+
+      nil ->
+        false
+    end
+  end
+
+  @doc """
+  Returns the certificate's subject public key in the shape expected by
+  `:public_key.verify/4`: EC keys are returned as `{point, curve_params}`,
+  other keys (RSA, EdDSA) as-is.
+  """
+  @spec subject_public_key(tuple()) :: {:ok, term()} | :error
+  def subject_public_key(
+        {:OTPCertificate,
+         {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity, _subject,
+          {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, alg_oid, alg_params}, key},
+          _issuer_id, _subject_id, _extensions}, _sig_alg, _sig}
+      ) do
+    case alg_oid do
+      @ec_public_key_oid -> {:ok, {key, alg_params}}
+      _other -> {:ok, key}
+    end
+  end
+
+  def subject_public_key(_other), do: :error
+
+  @doc """
+  Returns the message digest to use when verifying a signature made with the
+  certificate's subject key: `:sha384` for P-384 EC keys, `:sha256` otherwise.
+  """
+  @spec verification_digest(tuple()) :: :sha256 | :sha384
+  def verification_digest(
+        {:OTPCertificate,
+         {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity, _subject,
+          {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @ec_public_key_oid, alg_params}, _key},
+          _issuer_id, _subject_id, _extensions}, _sig_alg, _sig}
+      ) do
+    case alg_params do
+      {:namedCurve, @p384_curve_oid} -> :sha384
+      _other -> :sha256
+    end
+  end
+
+  def verification_digest(_other), do: :sha256
+
+  @doc """
+  Returns the values of the certificate subject's Organizational Unit (OU)
+  attributes. Returns `[]` when none are present.
+  """
+  @spec subject_organizational_units(tuple()) :: [String.t()]
+  def subject_organizational_units(
+        {:OTPCertificate,
+         {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity,
+          {:rdnSequence, rdns}, _spki, _issuer_id, _subject_id, _extensions}, _sig_alg, _sig}
+      ) do
+    rdns
+    |> List.flatten()
+    |> Enum.flat_map(fn
+      {:AttributeTypeAndValue, @organizational_unit_oid, value} ->
+        case decode_directory_string(value) do
+          nil -> []
+          decoded -> [decoded]
+        end
+
+      _other ->
+        []
+    end)
+  end
+
+  def subject_organizational_units(_other), do: []
+
+  defp san_general_names(
+         {:OTPCertificate,
+          {:OTPTBSCertificate, _version, _serial, _signature, _issuer, _validity, _subject, _spki,
+           _issuer_id, _subject_id, extensions}, _sig_alg, _sig},
+         type
+       ) do
+    case find_extension(extensions, @subject_alt_name_oid) do
+      {:Extension, @subject_alt_name_oid, _critical, names} ->
+        names
+        |> List.wrap()
+        |> Enum.flat_map(fn
+          {^type, value} -> [List.to_string(value)]
+          _other -> []
+        end)
 
       nil ->
         []
