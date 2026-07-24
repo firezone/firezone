@@ -1,0 +1,32 @@
+name: "Install apt packages"
+description: "Installs apt packages with retry and timeout settings applied so a slow or stalling mirror is retried instead of hanging until the job times out."
+inputs:
+  packages:
+    description: "Space-separated list of apt packages to install."
+    required: true
+  update:
+    description: "Whether to run `apt-get update` first. Set to false to reuse an index already refreshed by an earlier call in the same job."
+    required: false
+    default: "true"
+runs:
+  using: "composite"
+  steps:
+    - name: Configure apt retries and timeouts
+      shell: bash
+      run: |
+        sudo tee /etc/apt/apt.conf.d/99firezone-retries >/dev/null <<'EOF'
+        Acquire::Retries "5";
+        Acquire::http::Timeout "30";
+        Acquire::https::Timeout "30";
+        EOF
+    - name: Update package index
+      if: ${{ inputs.update == 'true' }}
+      shell: bash
+      run: sudo apt-get update
+    - name: Install packages
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        read -ra packages <<< "$PACKAGES"
+        sudo apt-get --yes install -- "${packages[@]}"

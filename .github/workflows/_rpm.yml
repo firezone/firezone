@@ -21,9 +21,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install createrepo_c
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes createrepo-c rpm
+        uses: ./.github/actions/apt-install
+        with:
+          packages: createrepo-c rpm
 
       - uses: ./.github/actions/setup-azure-cli
 
