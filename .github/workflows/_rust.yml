@@ -182,12 +182,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Fuzz ${{ matrix.fuzz-target }}
         run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120 ${{ matrix.libfuzzer-args }}
-      # On a crash, replay the offending input through the just-built binary
-      # with tracing on, so the failing scenario (one line per applied
-      # transition plus the `❌` mismatch) lands directly in this job's log
-      # rather than only in the uploaded artifact. `cargo fuzz run` propagates
-      # `RUST_LOG` too, but invoking the binary directly avoids a redundant
-      # cargo rebuild-check.
       - name: Replay crashing input with tracing
         if: failure()
         shell: bash
