@@ -59,6 +59,12 @@ defmodule PortalAPI.Sockets.LatestSession do
         device_id: attrs.device_id,
         actor_id: attrs[:actor_id],
         firezone_id: attrs[:firezone_id],
+        last_attested_device_serial: attrs[:last_attested_device_serial],
+        last_attested_device_uuid: attrs[:last_attested_device_uuid],
+        last_attested_mdm_device_id: attrs[:last_attested_mdm_device_id],
+        last_attested_cert_serial: attrs[:last_attested_cert_serial],
+        last_attested_cert_fingerprint: attrs[:last_attested_cert_fingerprint],
+        last_attested_at: attrs[:last_attested_at],
         token_id: Map.fetch!(attrs, token_field),
         public_key: attrs[:public_key],
         user_agent: attrs[:user_agent],
@@ -109,6 +115,12 @@ defmodule PortalAPI.Sockets.LatestSession do
       device_id: Ecto.UUID,
       actor_id: Ecto.UUID,
       firezone_id: :string,
+      last_attested_device_serial: :string,
+      last_attested_device_uuid: :string,
+      last_attested_mdm_device_id: :string,
+      last_attested_cert_serial: :string,
+      last_attested_cert_fingerprint: :string,
+      last_attested_at: :utc_datetime_usec,
       token_id: Ecto.UUID,
       public_key: :string,
       user_agent: :string,
@@ -204,8 +216,29 @@ defmodule PortalAPI.Sockets.LatestSession do
           # connect merges a reinstalled client (new firezone_id, same attested
           # identity) onto its existing row in memory, and this flush persists
           # the new firezone_id. Entries that carry none (gateways) keep the
-          # row's current value.
+          # row's current value. The same discipline applies to the verified
+          # device-trust fields below: identity facts only ever strengthen
+          # here, clearing them is an explicit admin action.
           firezone_id: dynamic([d, v], coalesce(v.firezone_id, d.firezone_id)),
+          last_attested_device_serial:
+            dynamic([d, v], coalesce(v.last_attested_device_serial, d.last_attested_device_serial)),
+          last_attested_device_uuid:
+            dynamic([d, v], coalesce(v.last_attested_device_uuid, d.last_attested_device_uuid)),
+          last_attested_mdm_device_id:
+            dynamic([d, v], coalesce(v.last_attested_mdm_device_id, d.last_attested_mdm_device_id)),
+          last_attested_cert_serial:
+            dynamic([d, v], coalesce(v.last_attested_cert_serial, d.last_attested_cert_serial)),
+          last_attested_cert_fingerprint:
+            dynamic(
+              [d, v],
+              coalesce(v.last_attested_cert_fingerprint, d.last_attested_cert_fingerprint)
+            ),
+          # last_attested_at records when the device last proved possession -
+          # a point-in-time fact that only ever strengthens, like the other
+          # last_attested_* columns. Whether the CURRENT session proved
+          # possession is live connection state (the `attested?` presence
+          # attribute), never row state.
+          last_attested_at: dynamic([d, v], coalesce(v.last_attested_at, d.last_attested_at)),
           public_key: dynamic([d, v], v.public_key),
           last_seen_user_agent: dynamic([d, v], v.user_agent),
           last_seen_remote_ip: dynamic([d, v], v.remote_ip),
@@ -288,22 +321,28 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # A merged firezone_id can collide with another device row of the same
-    # actor (e.g. an unattested row created before the attested merge). The
-    # colliding entry keeps its session but skips the identity change, so one
-    # poisoned entry cannot fail the whole batch; the merge retries on the
-    # device's next connect. Entries carry a firezone_id only when their
-    # connect actually adopted a new one, so in the steady state this probe
-    # has nothing to check and issues no query. The probe-then-update window
-    # is not atomic: a collision that appears in between still raises
-    # unique_violation, which the caller's rescue turns into failed entries
-    # that reconnect and retry.
+    # actor (e.g. an unattested row created before the device started
+    # attesting). The colliding entry keeps its session but skips the identity
+    # change, so one poisoned entry cannot fail the whole batch; the merge
+    # retries on the device's next connect. Entries carry a firezone_id only
+    # when their connect actually adopted a new one, so in the steady state
+    # this probe has nothing to check and issues no query. The
+    # probe-then-update window is not atomic: a collision that appears in
+    # between still raises unique_violation, which the caller's rescue turns
+    # into failed entries that reconnect and retry.
+    #
+    # NOTE (deferred, pending design decision): the intended end state is
+    # attested-row-wins with the stale unattested row absorbed/deleted, rather
+    # than skip-forever. Until that lands, a device whose attested identity
+    # displaced an older row will keep this firezone_id split until the stale
+    # row is removed; the log line below is the actionable signal.
     defp strip_conflicting_firezone_ids(rows, probe_repo) do
       probe_rows =
         for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
           Map.take(row, [:account_id, :actor_id, :device_id, :firezone_id])
         end
 
-      conflicted =
+      conflicts =
         if probe_rows == [] do
           MapSet.new()
         else
@@ -313,14 +352,19 @@ defmodule PortalAPI.Sockets.LatestSession do
               d.account_id == v.account_id and d.actor_id == v.actor_id and
                 d.firezone_id == v.firezone_id and d.id != v.device_id,
             where: d.type == :client,
-            select: v.device_id
+            select: %{device_id: v.device_id, conflicting_id: d.id, firezone_id: v.firezone_id}
           )
           |> probe(probe_repo)
         end
 
-      if MapSet.size(conflicted) > 0 do
-        Logger.info(
-          "Skipped #{MapSet.size(conflicted)} firezone_id merges during flush due to conflicting device rows"
+      conflicted = MapSet.new(conflicts, & &1.device_id)
+
+      for conflict <- conflicts do
+        Logger.warning(
+          "Skipping firezone_id merge during flush: another device row already holds this firezone_id",
+          device_id: conflict.device_id,
+          conflicting_device_id: conflict.conflicting_id,
+          firezone_id: conflict.firezone_id
         )
       end
 
