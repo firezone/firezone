@@ -1,41 +1,23 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use itertools::Itertools;
+use smallvec::SmallVec;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
-use tunnel_proto::messages::{
-    Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway,
-};
+use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway};
 
 use crate::resource::{self as client, DynamicDevicePoolResource, StaticDevicePoolResource};
-
-/// Number of online members and synthetic ClientIds for offline members in a sampled
-/// static device pool.
-///
-/// This is a "plan" rather than a fully-realized resource because at sample-time we don't
-/// yet know the IPs of the test clients. The plan gets materialized into a real
-/// `StaticDevicePoolResource` once the [`StubPortal`] has assigned tunnel IPs to clients.
-#[derive(Clone, Debug)]
-pub(crate) struct StaticDevicePoolPlan {
-    pub id: ResourceId,
-    pub name: String,
-    pub filters: Vec<Filter>,
-    pub n_online_members: usize,
-    /// Synthetic [`ClientId`]s for pool members that are not part of the test's
-    /// online clients — exercises the "device unknown / not connected" path.
-    pub offline_members: Vec<ClientId>,
-}
 
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
     clients: BTreeMap<ClientId, StubClient>,
-    gateways_by_site: BTreeMap<SiteId, BTreeSet<(GatewayId, Ipv4Addr, Ipv6Addr)>>,
-    regular_sites: Vec<Site>,
+    gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
+    regular_sites: SmallVec<[Site; 3]>,
 
     #[debug(skip)]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
@@ -74,14 +56,14 @@ struct StubClient {
 
 impl StubPortal {
     pub(crate) fn new(
-        clients: BTreeSet<ClientId>,
-        gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
-        regular_sites: Vec<Site>,
+        clients: impl IntoIterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)>,
+        gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
+        regular_sites: SmallVec<[Site; 3]>,
         gateway_selector: u32,
-        cidr_resources: BTreeSet<client::CidrResource>,
-        dns_resources: BTreeSet<client::DnsResource>,
-        device_pool_resources: BTreeSet<DynamicDevicePoolResource>,
-        static_device_pool_plans: Vec<StaticDevicePoolPlan>,
+        cidr_resources: impl IntoIterator<Item = client::CidrResource>,
+        dns_resources: impl IntoIterator<Item = client::DnsResource>,
+        device_pool_resources: impl IntoIterator<Item = DynamicDevicePoolResource>,
+        static_device_pool_resources: impl IntoIterator<Item = StaticDevicePoolResource>,
         internet_resource: client::InternetResource,
         search_domain: Option<DomainName>,
         upstream_do53: Vec<UpstreamDo53>,
@@ -96,6 +78,10 @@ impl StubPortal {
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
         let device_pool_resources = device_pool_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>();
+        let static_device_pool_resources = static_device_pool_resources
             .into_iter()
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
@@ -130,46 +116,19 @@ impl StubPortal {
                 .id,
         ));
 
-        let mut tunnel_ip4s = tunnel_ip4s();
-        let mut tunnel_ip6s = tunnel_ip6s();
-
         let clients = clients
             .into_iter()
             .enumerate()
-            .map(|(idx, id)| {
+            .map(|(idx, (id, ipv4, ipv6))| {
                 let client = StubClient {
-                    ipv4: tunnel_ip4s.next().unwrap(),
-                    ipv6: tunnel_ip6s.next().unwrap(),
+                    ipv4,
+                    ipv6,
                     device_label: format!("device{idx}"),
                 };
 
                 (id, client)
             })
             .collect();
-
-        let gateways_by_site = gateways_by_site
-            .into_iter()
-            .map(|(site, gateways)| {
-                let gateways = gateways
-                    .into_iter()
-                    .map(|gateway| {
-                        let ipv4_addr = tunnel_ip4s.next().unwrap();
-                        let ipv6_addr = tunnel_ip6s.next().unwrap();
-
-                        (gateway, ipv4_addr, ipv6_addr)
-                    })
-                    .collect();
-
-                (site, gateways)
-            })
-            .collect();
-
-        let static_device_pool_resources = realize_static_device_pool_plans(
-            static_device_pool_plans,
-            &clients,
-            &mut tunnel_ip4s,
-            &mut tunnel_ip6s,
-        );
 
         Self {
             clients,
@@ -194,15 +153,16 @@ impl StubPortal {
     /// The tunnel IPs assigned to each client, in client order.
     ///
     /// Used by the structured generator to materialize client hosts.
-    pub(crate) fn client_tunnel_ips(&self) -> Vec<(ClientId, Ipv4Addr, Ipv6Addr)> {
-        self.clients
-            .iter()
-            .map(|(id, c)| (*id, c.ipv4, c.ipv6))
-            .collect()
+    pub(crate) fn client_tunnel_ips(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)> + '_ {
+        self.clients.iter().map(|(id, c)| (*id, c.ipv4, c.ipv6))
     }
 
     /// The tunnel IPs and owning site of each gateway.
-    pub(crate) fn gateway_tunnel_ips(&self) -> Vec<(GatewayId, Ipv4Addr, Ipv6Addr, SiteId)> {
+    pub(crate) fn gateway_tunnel_ips(
+        &self,
+    ) -> impl Iterator<Item = (GatewayId, Ipv4Addr, Ipv6Addr, SiteId)> + '_ {
         self.gateways_by_site
             .iter()
             .flat_map(|(site_id, gateways)| {
@@ -210,7 +170,6 @@ impl StubPortal {
                     .iter()
                     .map(move |(gid, ipv4, ipv6)| (*gid, *ipv4, *ipv6, *site_id))
             })
-            .collect()
     }
 
     /// Toggles whether the portal hands out ICE-less flows.
@@ -275,12 +234,12 @@ impl StubPortal {
             .collect()
     }
 
-    pub(crate) fn regular_sites(&self) -> Vec<Site> {
-        self.regular_sites.clone()
+    pub(crate) fn regular_sites(&self) -> &[Site] {
+        &self.regular_sites
     }
 
-    pub(crate) fn dns_resources(&self) -> Vec<client::DnsResource> {
-        self.dns_resources.values().cloned().collect()
+    pub(crate) fn dns_resources(&self) -> impl Iterator<Item = &client::DnsResource> {
+        self.dns_resources.values()
     }
 
     pub(crate) fn search_domain(&self) -> Option<DomainName> {
@@ -505,86 +464,9 @@ impl StubPortal {
     }
 }
 
-/// Picks an element from a set by index (`index % len`), or `None` if empty.
+/// Picks an element from a slice by index (`index % len`), or `None` if empty.
 ///
-fn select_by_index<T>(set: &BTreeSet<T>, index: u32) -> Option<&T> {
-    let len = set.len();
-    if len == 0 {
-        return None;
-    }
-
-    set.iter().nth(index as usize % len)
-}
-
-/// Materializes static-device-pool plans into [`StaticDevicePoolResource`]s.
-///
-/// For each plan, picks `n_online_members` deterministic clients from the
-/// portal's known clients and pulls `n_offline_members` fresh tunnel IPs
-/// (paired with synthetic [`ClientId`]s) for members that are not part of any
-/// real test client. This way each pool exercises both the
-/// "client already connected" and "client unknown" routing paths.
-fn realize_static_device_pool_plans(
-    plans: Vec<StaticDevicePoolPlan>,
-    clients: &BTreeMap<ClientId, StubClient>,
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> BTreeMap<ResourceId, StaticDevicePoolResource> {
-    let online_pool = clients.iter().collect::<Vec<_>>();
-
-    plans
-        .into_iter()
-        .map(|plan| {
-            let StaticDevicePoolPlan {
-                id,
-                name,
-                filters,
-                n_online_members,
-                offline_members,
-            } = plan;
-
-            let online_devices =
-                online_pool
-                    .iter()
-                    .take(n_online_members)
-                    .map(|(cid, c)| DevicePoolMember {
-                        id: **cid,
-                        ipv4: Ipv4Network::new(c.ipv4, 32).unwrap(),
-                        ipv6: Ipv6Network::new(c.ipv6, 128).unwrap(),
-                    });
-
-            let offline_devices = offline_members.into_iter().map(|cid| DevicePoolMember {
-                id: cid,
-                ipv4: Ipv4Network::new(tunnel_ip4s.next().unwrap(), 32).unwrap(),
-                ipv6: Ipv6Network::new(tunnel_ip6s.next().unwrap(), 128).unwrap(),
-            });
-
-            let devices = online_devices.chain(offline_devices).collect();
-
-            let resource = StaticDevicePoolResource {
-                id,
-                name,
-                devices,
-                filters,
-            };
-
-            (id, resource)
-        })
-        .collect()
-}
-
-/// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.
-///
-/// We use the CG-NAT range for IPv4.
-/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
-fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    tunnel_proto::IPV4_TUNNEL.hosts()
-}
-
-/// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
-///
-/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
-fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    tunnel_proto::IPV6_TUNNEL
-        .subnets_with_prefix(128)
-        .map(|n| n.network_address())
+fn select_by_index<T>(values: &[T], index: u32) -> Option<&T> {
+    let len = values.len();
+    (len > 0).then(|| &values[index as usize % len])
 }

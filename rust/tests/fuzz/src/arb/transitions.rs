@@ -58,9 +58,11 @@ fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
         .cidr_and_dns_resources_on_any_client()
         .into_iter()
         .flat_map(|resource| {
-            sites.clone().into_iter().filter_map(move |site| {
-                (!resource.is_exclusively_at(&site)).then(|| (resource.clone(), site))
-            })
+            let candidate = resource.clone();
+            sites
+                .iter()
+                .filter(move |site| !candidate.is_exclusively_at(site))
+                .map(move |site| (resource.clone(), site.clone()))
         })
         .collect::<Vec<_>>()
 }
@@ -86,11 +88,11 @@ fn arb_resource_with_different_type(
         }
     };
 
-    let sites = resource.sites().into_iter().cloned().collect::<Vec<_>>();
-    let site = sites
+    let site = resource
+        .sites()
         .first()
         .cloned()
-        .unwrap_or_else(|| pick_site(g, &state.regular_sites()));
+        .unwrap_or_else(|| pick_site(g, state.regular_sites()).clone());
     let id = resource.id();
     let name = resource.name().to_owned();
     let filters = resource.filters().to_vec();
@@ -201,7 +203,6 @@ pub(super) fn generate(
         K::UpdateUpstreamSearchDomain => {
             let domains = state.portal.dns_resources();
             let candidates = domains
-                .iter()
                 .filter_map(|r| {
                     let (_, s) = r.address.split_once('.')?;
                     DomainName::vec_from_str(s).ok()

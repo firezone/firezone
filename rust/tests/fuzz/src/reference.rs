@@ -771,7 +771,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn regular_sites(&self) -> Vec<Site> {
+    pub(crate) fn regular_sites(&self) -> &[Site] {
         self.portal.regular_sites()
     }
 

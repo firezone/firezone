@@ -4,8 +4,6 @@
 //! model. The SUT only receives portal-facing [`ResourceDescription`] values,
 //! matching the production event loop and keeping the internal model private.
 
-use std::collections::BTreeSet;
-
 use connlib_model::{IpStack, ResourceId, Site};
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
@@ -108,17 +106,17 @@ impl Resource {
         }
     }
 
-    pub(crate) fn sites(&self) -> BTreeSet<&Site> {
+    pub(crate) fn sites(&self) -> &[Site] {
         match self {
-            Resource::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
-            Resource::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
-            Resource::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
-            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => BTreeSet::new(),
+            Resource::Dns(r) => &r.sites,
+            Resource::Cidr(r) => &r.sites,
+            Resource::Internet(r) => &r.sites,
+            Resource::StaticDevicePool(_) | Resource::DynamicDevicePool(_) => &[],
         }
     }
 
     pub(crate) fn is_exclusively_at(&self, site: &Site) -> bool {
-        self.sites() == BTreeSet::from([site])
+        self.sites().len() == 1 && self.sites().first() == Some(site)
     }
 
     pub(crate) fn filters(&self) -> &[Filter] {
@@ -134,7 +132,7 @@ impl Resource {
         &self,
     ) -> Result<&Site, itertools::ExactlyOneError<impl Iterator<Item = &Site> + std::fmt::Debug>>
     {
-        self.sites().into_iter().exactly_one()
+        self.sites().iter().exactly_one()
     }
 
     pub(crate) fn has_different_address(&self, other: &Resource) -> bool {

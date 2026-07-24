@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr},
     ops::RangeInclusive,
     time::Duration,
@@ -8,6 +7,7 @@ use std::{
 use arbitrary::Unstructured;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use ip_network::{Ipv4Network, Ipv6Network};
+use smallvec::SmallVec;
 
 use crate::reference::PrivateKey;
 use crate::transition::{DPort, Identifier, SPort, Seq};
@@ -60,6 +60,8 @@ pub struct Generator<'a> {
     nat_ip4: SubnetCursor<Ipv4Addr>,    // 198.51.100.0/24 (TEST-NET-2), public NAT addresses
     do53_ip4: SubnetCursor<Ipv4Addr>,   // 192.18.0.0/24 (benchmarking range, RFC2544)
     do53_ip6: SubnetCursor<Ipv6Addr>,   // 2001:db80:53:53::/64
+    tunnel_ip4: SubnetCursor<Ipv4Addr>,
+    tunnel_ip6: SubnetCursor<Ipv6Addr>,
 
     // Monotonic id counters (uniqueness by counter, not by set-dedup resampling).
     next_site: u64,
@@ -75,9 +77,9 @@ pub struct Generator<'a> {
     next_payload: u64,
 
     // Packet keys used by the simulated clients' request / reply maps.
-    icmp_packets: BTreeSet<(Seq, Identifier)>,
-    udp_packets: BTreeSet<(SPort, DPort)>,
-    tcp_connections: BTreeSet<(SPort, DPort)>,
+    icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
+    udp_packets: SmallVec<[(SPort, DPort); 20]>,
+    tcp_connections: SmallVec<[(SPort, DPort); 20]>,
 }
 
 impl<'a> Generator<'a> {
@@ -107,6 +109,8 @@ impl<'a> Generator<'a> {
                 )
                 .unwrap(),
             ),
+            tunnel_ip4: SubnetCursor::<Ipv4Addr>::over(tunnel_proto::IPV4_TUNNEL),
+            tunnel_ip6: SubnetCursor::<Ipv6Addr>::over(tunnel_proto::IPV6_TUNNEL),
             next_site: 0,
             next_client: 0,
             next_gateway: 0,
@@ -114,9 +118,9 @@ impl<'a> Generator<'a> {
             next_resource: 0,
             next_key: 0,
             next_payload: 0,
-            icmp_packets: BTreeSet::new(),
-            udp_packets: BTreeSet::new(),
-            tcp_connections: BTreeSet::new(),
+            icmp_packets: SmallVec::new(),
+            udp_packets: SmallVec::new(),
+            tcp_connections: SmallVec::new(),
         }
     }
 
@@ -204,6 +208,14 @@ impl<'a> Generator<'a> {
         self.do53_ip6.next()
     }
 
+    pub(super) fn tunnel_ip4(&mut self) -> Ipv4Addr {
+        self.tunnel_ip4.next()
+    }
+
+    pub(super) fn tunnel_ip6(&mut self) -> Ipv6Addr {
+        self.tunnel_ip6.next()
+    }
+
     pub(super) fn fresh_site_id(&mut self) -> SiteId {
         let n = self.next_site;
         self.next_site += 1;
@@ -270,7 +282,7 @@ impl<'a> Generator<'a> {
             })
             .find(|packet| !self.icmp_packets.contains(packet))
             .expect("a scenario cannot exhaust all ICMP packet identifiers");
-        self.icmp_packets.insert(packet);
+        self.icmp_packets.push(packet);
 
         packet
     }
@@ -281,7 +293,7 @@ impl<'a> Generator<'a> {
             .map(|offset| (SPort(candidate.wrapping_add(offset)), DPort(dport)))
             .find(|packet| !self.udp_packets.contains(packet))
             .expect("a scenario cannot exhaust all UDP packet identifiers");
-        self.udp_packets.insert(packet);
+        self.udp_packets.push(packet);
 
         packet
     }
@@ -295,7 +307,7 @@ impl<'a> Generator<'a> {
             })
             .find(|connection| !self.tcp_connections.contains(connection))
             .expect("a scenario cannot exhaust all TCP connection identifiers");
-        self.tcp_connections.insert(connection);
+        self.tcp_connections.push(connection);
 
         connection
     }
