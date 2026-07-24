@@ -7,9 +7,9 @@ license = { workspace = true }
 [features]
 proptest = ["dep:proptest"]
 divan = ["dep:divan"]
-# Exposes test-only internals and enables the `proptest` strategies used by
-# downstream test harnesses. Not meant for production use.
-test-util = ["proptest"]
+# Allows callers to bypass client-side resource filters. Only used by test
+# harnesses and fuzzers to exercise the remote filtering path.
+malicious-behaviour = []
 
 [dependencies]
 anyhow = { workspace = true }
