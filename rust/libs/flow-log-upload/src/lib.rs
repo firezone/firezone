@@ -11,11 +11,10 @@
 //! what it sent; submits are idempotent (the portal upserts by flow identity), so
 //! ambiguous failures retry the whole batch.
 //!
-//! Two drivers share this logic:
-//! - [`spawn`] runs a long-lived thread that uploads on the portal's interval;
-//!   [`Uploader::nudge`] wakes it early for prompt drains.
-//! - [`upload_once`] runs a single pass for callers that have no uploader thread
-//!   (the Android app-launch drain).
+//! [`spawn`] runs a long-lived thread that uploads on the portal's interval;
+//! [`Uploader::nudge`] wakes it early for prompt drains and
+//! [`Uploader::set_socket_factory`] swaps how it opens connections (e.g. to
+//! VPN-protected sockets while an Android session is up).
 //!
 //! The async fns offload all disk IO to the blocking pool: the HTTP/2 connection
 //! driver shares their runtime, so stalling it would starve the connection.
@@ -117,6 +116,7 @@ pub struct Uploader {
     thread: std::thread::JoinHandle<()>,
     nudge: Arc<tokio::sync::Notify>,
     passes: Arc<(Mutex<u64>, Condvar)>,
+    socket_factory: Arc<Mutex<Arc<dyn SocketFactory<TcpSocket>>>>,
 }
 
 impl Uploader {
@@ -131,6 +131,15 @@ impl Uploader {
     /// right after it.
     pub fn nudge(&self) {
         self.nudge.notify_one();
+    }
+
+    /// Swaps the socket factory used for subsequent passes; a pass in flight
+    /// finishes on the old one.
+    pub fn set_socket_factory(&self, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) {
+        *self
+            .socket_factory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = socket_factory;
     }
 
     /// [`Self::nudge`], then blocks until a pass completes or `timeout` elapses;
@@ -159,12 +168,14 @@ impl Uploader {
 pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> Uploader {
     let nudge = Arc::new(tokio::sync::Notify::new());
     let passes = Arc::new((Mutex::new(0_u64), Condvar::new()));
+    let socket_factory = Arc::new(Mutex::new(socket_factory));
 
     let thread = std::thread::Builder::new()
         .name("flow-log-uploader".to_owned())
         .spawn({
             let nudge = nudge.clone();
             let passes = passes.clone();
+            let socket_factory = socket_factory.clone();
 
             move || {
                 prune(&spool_root);
@@ -180,7 +191,7 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
                     }
                 };
 
-                runtime.block_on(run(&spool_root, socket_factory, &nudge, &passes));
+                runtime.block_on(run(&spool_root, &socket_factory, &nudge, &passes));
             }
         })
         .expect("Failed to spawn flow-log uploader thread");
@@ -189,33 +200,7 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
         thread,
         nudge,
         passes,
-    }
-}
-
-/// Runs a single upload pass on the caller's runtime, for platforms that drive
-/// uploads from an OS background task via FFI.
-///
-/// Returns `true` when a backlog remained, so the caller may schedule another pass
-/// sooner.
-pub async fn upload_once(
-    spool_root: &Path,
-    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-) -> bool {
-    let config = match load_upload_config(spool_root).await {
-        Ok(Some(config)) => config,
-        Ok(None) => return false,
-        Err(e) => {
-            tracing::error!("Failed to load flow-log upload config: {e:#}");
-            return false;
-        }
-    };
-
-    match upload_pending(spool_root, &config, socket_factory).await {
-        Ok(backlog) => backlog,
-        Err(e) => {
-            tracing::error!("Flow-log upload pass failed: {e:#}");
-            false
-        }
+        socket_factory,
     }
 }
 
@@ -443,24 +428,27 @@ fn ingest_endpoint(base_url: &str) -> Result<String> {
 
 async fn run(
     spool_root: &Path,
-    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    socket_factory: &Mutex<Arc<dyn SocketFactory<TcpSocket>>>,
     nudge: &tokio::sync::Notify,
     passes: &(Mutex<u64>, Condvar),
 ) {
     tracing::info!("Flow-log uploader started");
 
     loop {
+        let socket_factory = socket_factory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+
         let delay = match load_upload_config(spool_root).await {
-            Ok(Some(config)) => {
-                match upload_pending(spool_root, &config, socket_factory.clone()).await {
-                    Ok(true) => CATCHUP_POLL,
-                    Ok(false) => config.interval,
-                    Err(e) => {
-                        tracing::error!("Flow-log upload pass failed: {e:#}");
-                        config.interval
-                    }
+            Ok(Some(config)) => match upload_pending(spool_root, &config, socket_factory).await {
+                Ok(true) => CATCHUP_POLL,
+                Ok(false) => config.interval,
+                Err(e) => {
+                    tracing::error!("Flow-log upload pass failed: {e:#}");
+                    config.interval
                 }
-            }
+            },
             Ok(None) => DISABLED_POLL,
             Err(e) => {
                 tracing::error!("Failed to load flow-log upload config: {e:#}");
