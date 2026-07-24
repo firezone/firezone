@@ -186,12 +186,23 @@ jobs:
           parallel: true
           fail-on-error: false
 
+  fuzz-targets:
+    name: fuzz-targets
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: targets
+        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+
   fuzz:
-    name: fuzz
+    name: fuzz-${{ matrix.fuzz-target }}
+    needs: [fuzz-targets]
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        fuzz-target: [ip_packet]
+        fuzz-target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -201,7 +212,21 @@ jobs:
           install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120
+      - uses: ./.github/actions/free-disk-space
+      - name: Replay committed corpus
+        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+      - name: Enforce uncovered-region ceiling
+        run: mise run //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
+      - name: Export lcov for Coveralls
+        run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: rust/lcov-${{ matrix.fuzz-target }}.info
+          format: lcov
+          flag-name: rust-fuzz-${{ matrix.fuzz-target }}
+          parallel: true
+          fail-on-error: false
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
