@@ -289,6 +289,7 @@ skip = [
     "rand_core",
     "rustix",
     "serde_spanned",
+    "sha2", # workspace is on 0.11; tauri (tauri-codegen, wry) and dbus-secret-service still pull 0.10.
     "syn",
     "thiserror",
     "thiserror-impl",
