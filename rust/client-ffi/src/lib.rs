@@ -375,7 +375,7 @@ impl Session {
     }
 
     pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
-        let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
+        let (_, reload_handle, _) = LOGGER_STATE.get().context("Logger not yet initialised")?;
 
         reload_handle
             .reload(&directives)
@@ -479,6 +479,10 @@ impl Drop for Session {
         });
 
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+
+        // The event loop spooled its open flows on the way out; flush them
+        // before the OS may reap the process.
+        flush_flow_logs_on_disconnect();
     }
 }
 
@@ -514,7 +518,11 @@ fn connect(
 
     install_rustls_crypto_provider();
 
-    init_logging(&PathBuf::from(log_dir), log_filter)?;
+    let flow_logs_dir = flow_logs_dir
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from);
+
+    init_logging(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
 
     tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
@@ -551,11 +559,8 @@ fn connect(
     // foreground service, macOS System Extension) is session-scoped, so the
     // session only *writes* the spool. Uploading it is driven separately, for
     // the provider / service process lifetime plus app-triggered drains, via
-    // `start_flow_log_uploader` / `run_flow_log_upload`.
-    let flow_logs_dir = flow_logs_dir
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from);
-
+    // `ensure_flow_log_uploader` / `run_flow_log_upload`; the session nudges a
+    // flush when it drops.
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
@@ -604,11 +609,14 @@ pub fn stop_telemetry() {
     telemetry::stop();
 }
 
-static LOGGER_STATE: OnceLock<(logging::file::Handle, logging::FilterReloadHandle)> =
-    OnceLock::new();
+static LOGGER_STATE: OnceLock<(
+    logging::file::Handle,
+    logging::FilterReloadHandle,
+    Option<flow_log_writer::Guard>,
+)> = OnceLock::new();
 
-fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
-    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
+fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBuf>) -> Result<()> {
+    if let Some((_, reload_handle, _)) = LOGGER_STATE.get() {
         reload_handle
             .reload(&log_filter)
             .context("Failed to apply new log-filter")?;
@@ -618,6 +626,8 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
     let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
     let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
+    // Spools flow-log reports for the uploader, like the desktop entrypoints do.
+    let (flow_log_layer, flow_log_guard) = flow_logs_dir.map(flow_log_writer::layer).unzip();
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
@@ -628,6 +638,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
                 .with_writer(platform::MakeWriter::default())
                 .with_filter(platform_log_filter),
         )
+        .with(flow_log_layer)
         .with(sentry_layer());
 
     let reload_handle = file_reload_handle.merge(platform_reload_handle);
@@ -635,7 +646,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     logging::init(subscriber)?;
 
     LOGGER_STATE
-        .set((handle, reload_handle))
+        .set((handle, reload_handle, flow_log_guard))
         .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())
@@ -716,16 +727,17 @@ pub fn hash_device_id(id: String) -> String {
 // So the functions that run alongside an active/​tearing-down tunnel are split by
 // platform (Android variants take a `ProtectSocket`). `run_flow_log_upload` is
 // plain on every platform: it's only invoked when no tunnel is active (Android's
-// app-launch drain), where there is nothing to bypass. The work lives in the
-// shared `do_*` helpers below.
+// app-launch drain), where there is nothing to bypass.
 
-/// Starts the process-lifetime flow-log uploader thread over the spool at
-/// `spool_dir`, decoupled from any connlib session (the provider process on
-/// macOS/iOS, the foreground service on Android). Idempotent.
+/// Ensures the process-lifetime flow-log uploader thread is running over the
+/// spool at `spool_dir` and kicks a pass: a dead thread (e.g. its runtime
+/// failed to build) is respawned and uploads immediately, a live one is nudged
+/// to skip its interval. Needs no connlib session, so it also serves the
+/// app-foreground drain while disconnected.
 #[uniffi::export]
 #[cfg(target_os = "android")]
-pub fn start_flow_log_uploader(spool_dir: String, protect_socket: Arc<dyn ProtectSocket>) {
-    do_start_flow_log_uploader(
+pub fn ensure_flow_log_uploader(spool_dir: String, protect_socket: Arc<dyn ProtectSocket>) {
+    do_ensure_flow_log_uploader(
         spool_dir,
         Arc::new(protected_tcp_socket_factory(protect_socket)),
     );
@@ -733,8 +745,8 @@ pub fn start_flow_log_uploader(spool_dir: String, protect_socket: Arc<dyn Protec
 
 #[uniffi::export]
 #[cfg(not(target_os = "android"))]
-pub fn start_flow_log_uploader(spool_dir: String) {
-    do_start_flow_log_uploader(spool_dir, Arc::new(socket_factory::tcp));
+pub fn ensure_flow_log_uploader(spool_dir: String) {
+    do_ensure_flow_log_uploader(spool_dir, Arc::new(socket_factory::tcp));
 }
 
 /// Runs a single flow-log upload pass over the spool at `spool_dir`, reusing the
@@ -742,85 +754,62 @@ pub fn start_flow_log_uploader(spool_dir: String) {
 /// session. Returns `true` when a backlog remained (more than one batch pending).
 ///
 /// Uses plain (unprotected) sockets, so call it only when no tunnel is active —
-/// there is nothing to bypass then. While a tunnel is up, drain via the protected
-/// uploader thread / `run_flow_log_upload_timeboxed` instead.
+/// there is nothing to bypass then. While a tunnel is up, drain via
+/// `ensure_flow_log_uploader` instead.
 #[uniffi::export]
 pub fn run_flow_log_upload(spool_dir: String) -> bool {
-    do_run_flow_log_upload(spool_dir, Arc::new(socket_factory::tcp))
-}
+    install_rustls_crypto_provider();
 
-/// Runs a flow-log upload pass bounded to `timeout_secs`, for a best-effort final
-/// flush at disconnect: returns once the pass finishes or the timeout elapses,
-/// whichever comes first.
-#[uniffi::export]
-#[cfg(target_os = "android")]
-pub fn run_flow_log_upload_timeboxed(
-    spool_dir: String,
-    timeout_secs: u64,
-    protect_socket: Arc<dyn ProtectSocket>,
-) -> bool {
-    do_run_flow_log_upload_timeboxed(
-        spool_dir,
-        timeout_secs,
-        Arc::new(protected_tcp_socket_factory(protect_socket)),
+    block_on_upload_pass(
+        std::path::Path::new(&spool_dir),
+        Arc::new(socket_factory::tcp),
     )
 }
 
-#[uniffi::export]
-#[cfg(not(target_os = "android"))]
-pub fn run_flow_log_upload_timeboxed(spool_dir: String, timeout_secs: u64) -> bool {
-    do_run_flow_log_upload_timeboxed(spool_dir, timeout_secs, Arc::new(socket_factory::tcp))
-}
+/// The uploader thread, once a caller ensured it; sessions flush through it on
+/// disconnect.
+static UPLOADER: std::sync::Mutex<Option<flow_log_upload::Uploader>> = std::sync::Mutex::new(None);
 
-/// Starts the uploader thread; it prunes the spool on start. Idempotent while
-/// the thread is alive; a dead thread (e.g. its runtime failed to build) is
-/// restarted on the next call.
-fn do_start_flow_log_uploader(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>) {
-    static UPLOADER: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> =
-        std::sync::Mutex::new(None);
-
+fn do_ensure_flow_log_uploader(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>) {
     let mut uploader = UPLOADER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-    if uploader
-        .as_ref()
-        .is_some_and(|handle| !handle.is_finished())
-    {
+    match uploader.as_ref() {
+        Some(uploader) if !uploader.is_finished() => uploader.nudge(),
+        _ => {
+            // The uploader may run without `connect` ever being called, so ensure the
+            // rustls crypto provider its TLS needs is installed (idempotent).
+            install_rustls_crypto_provider();
+
+            *uploader = Some(flow_log_upload::spawn(PathBuf::from(spool_dir), tcp));
+        }
+    }
+}
+
+/// Flushes the spool when a session ends: connlib finalized its open flows on
+/// shutdown, and on Apple the provider process may be reaped shortly after
+/// `stopTunnel` returns, so block briefly for an upload pass. Android's app
+/// process outlives the session, so a wake-up suffices and keeps the disconnect
+/// prompt.
+fn flush_flow_logs_on_disconnect() {
+    let uploader = UPLOADER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    let Some(uploader) = uploader.as_ref() else {
+        return;
+    };
+
+    if uploader.is_finished() {
         return;
     }
 
-    // The uploader may run without `connect` ever being called, so ensure the
-    // rustls crypto provider its TLS needs is installed (idempotent).
-    install_rustls_crypto_provider();
-
-    *uploader = Some(flow_log_upload::spawn(PathBuf::from(spool_dir), tcp));
-}
-
-/// Runs a single upload pass.
-fn do_run_flow_log_upload(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>) -> bool {
-    install_rustls_crypto_provider();
-
-    block_on_upload_pass(std::path::Path::new(&spool_dir), tcp)
-}
-
-/// Runs a single upload pass bounded to `timeout_secs`; the pass keeps running on
-/// its own thread if it overruns (best-effort flush at disconnect).
-fn do_run_flow_log_upload_timeboxed(
-    spool_dir: String,
-    timeout_secs: u64,
-    tcp: Arc<dyn SocketFactory<TcpSocket>>,
-) -> bool {
-    install_rustls_crypto_provider();
-
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let backlog = block_on_upload_pass(std::path::Path::new(&spool_dir), tcp);
-        let _ = tx.send(backlog);
-    });
-
-    rx.recv_timeout(Duration::from_secs(timeout_secs))
-        .unwrap_or(false)
+    if cfg!(target_os = "android") {
+        uploader.nudge();
+    } else {
+        uploader.nudge_and_wait(Duration::from_secs(5));
+    }
 }
 
 /// Drives [`flow_log_upload::upload_once`] to completion on a fresh runtime.
