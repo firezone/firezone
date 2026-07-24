@@ -10,6 +10,9 @@ defmodule PortalAPI.EndpointTest do
     assert {"/client/v2", PortalAPI.Client.V2.Socket, _opts} =
              Enum.find(sockets, fn {path, _socket, _opts} -> path == "/client/v2" end)
 
+    assert {"/client/v3", PortalAPI.Client.V3.Socket, _opts} =
+             Enum.find(sockets, fn {path, _socket, _opts} -> path == "/client/v3" end)
+
     assert {"/gateway", PortalAPI.Gateway.Socket, _opts} =
              Enum.find(sockets, fn {path, _socket, _opts} -> path == "/gateway" end)
 
