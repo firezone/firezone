@@ -6,7 +6,10 @@ use std::{
 
 use arbitrary::Unstructured;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::{
+    Ipv4Network, Ipv6Network,
+    iterator::{Ipv4RangeIterator, Ipv6NetworkIterator},
+};
 use smallvec::SmallVec;
 
 use crate::reference::PrivateKey;
@@ -16,14 +19,14 @@ use crate::transition::{DPort, Identifier, SPort, Seq};
 ///
 /// Uniqueness is structural: the iterator never repeats, so no "network IPs must
 /// be unique" filter is ever needed.
-struct SubnetCursor<A> {
-    iter: Box<dyn Iterator<Item = A>>,
+struct Ipv4Cursor {
+    iter: Ipv4RangeIterator,
 }
 
-impl SubnetCursor<Ipv4Addr> {
+impl Ipv4Cursor {
     fn over(net: Ipv4Network) -> Self {
         Self {
-            iter: Box::new(net.hosts()),
+            iter: Ipv4RangeIterator::hosts(net),
         }
     }
 
@@ -36,15 +39,22 @@ impl SubnetCursor<Ipv4Addr> {
     }
 }
 
-impl SubnetCursor<Ipv6Addr> {
+struct Ipv6Cursor {
+    iter: Ipv6NetworkIterator,
+}
+
+impl Ipv6Cursor {
     fn over(net: Ipv6Network) -> Self {
         Self {
-            iter: Box::new(net.subnets_with_prefix(128).map(|n| n.network_address())),
+            iter: net.subnets_with_prefix(128),
         }
     }
 
     fn next(&mut self) -> Ipv6Addr {
-        self.iter.next().expect("socket subnet (v6) exhausted")
+        self.iter
+            .next()
+            .expect("socket subnet (v6) exhausted")
+            .network_address()
     }
 }
 
@@ -55,13 +65,13 @@ pub struct Generator<'a> {
 
     // Disjoint socket-IP allocators (host routing IPs, distinct from connlib's
     // reserved ranges and from each other).
-    socket_ip4: SubnetCursor<Ipv4Addr>, // 203.0.113.0/24 (TEST-NET-3), today's host_ip4s
-    socket_ip6: SubnetCursor<Ipv6Addr>, // 2001:db80:1010:1010::/64
-    nat_ip4: SubnetCursor<Ipv4Addr>,    // 198.51.100.0/24 (TEST-NET-2), public NAT addresses
-    do53_ip4: SubnetCursor<Ipv4Addr>,   // 192.18.0.0/24 (benchmarking range, RFC2544)
-    do53_ip6: SubnetCursor<Ipv6Addr>,   // 2001:db80:53:53::/64
-    tunnel_ip4: SubnetCursor<Ipv4Addr>,
-    tunnel_ip6: SubnetCursor<Ipv6Addr>,
+    socket_ip4: Ipv4Cursor, // 203.0.113.0/24 (TEST-NET-3), today's host_ip4s
+    socket_ip6: Ipv6Cursor, // 2001:db80:1010:1010::/64
+    nat_ip4: Ipv4Cursor,    // 198.51.100.0/24 (TEST-NET-2), public NAT addresses
+    do53_ip4: Ipv4Cursor,   // 192.18.0.0/24 (benchmarking range, RFC2544)
+    do53_ip6: Ipv6Cursor,   // 2001:db80:53:53::/64
+    tunnel_ip4: Ipv4Cursor,
+    tunnel_ip6: Ipv6Cursor,
 
     // Monotonic id counters (uniqueness by counter, not by set-dedup resampling).
     next_site: u64,
@@ -86,31 +96,25 @@ impl<'a> Generator<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         Self {
             input: Unstructured::new(data),
-            socket_ip4: SubnetCursor::<Ipv4Addr>::over(
-                "203.0.113.0/24".parse::<Ipv4Network>().unwrap(),
-            ),
-            socket_ip6: SubnetCursor::<Ipv6Addr>::over(
+            socket_ip4: Ipv4Cursor::over("203.0.113.0/24".parse::<Ipv4Network>().unwrap()),
+            socket_ip6: Ipv6Cursor::over(
                 Ipv6Network::new_truncate(
                     Ipv6Addr::new(0x2001, 0xDB80, 0x1010, 0x1010, 0, 0, 0, 0),
                     64,
                 )
                 .unwrap(),
             ),
-            nat_ip4: SubnetCursor::<Ipv4Addr>::over(
-                "198.51.100.0/24".parse::<Ipv4Network>().unwrap(),
-            ),
-            do53_ip4: SubnetCursor::<Ipv4Addr>::over(
-                "192.18.0.0/24".parse::<Ipv4Network>().unwrap(),
-            ),
-            do53_ip6: SubnetCursor::<Ipv6Addr>::over(
+            nat_ip4: Ipv4Cursor::over("198.51.100.0/24".parse::<Ipv4Network>().unwrap()),
+            do53_ip4: Ipv4Cursor::over("192.18.0.0/24".parse::<Ipv4Network>().unwrap()),
+            do53_ip6: Ipv6Cursor::over(
                 Ipv6Network::new_truncate(
                     Ipv6Addr::new(0x2001, 0xDB80, 0x53, 0x53, 0, 0, 0, 0),
                     64,
                 )
                 .unwrap(),
             ),
-            tunnel_ip4: SubnetCursor::<Ipv4Addr>::over(tunnel_proto::IPV4_TUNNEL),
-            tunnel_ip6: SubnetCursor::<Ipv6Addr>::over(tunnel_proto::IPV6_TUNNEL),
+            tunnel_ip4: Ipv4Cursor::over(tunnel_proto::IPV4_TUNNEL),
+            tunnel_ip6: Ipv6Cursor::over(tunnel_proto::IPV6_TUNNEL),
             next_site: 0,
             next_client: 0,
             next_gateway: 0,

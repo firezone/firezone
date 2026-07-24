@@ -5,6 +5,7 @@ use std::{
 
 use connlib_model::Site;
 use dns_types::DomainName;
+use smallvec::SmallVec;
 
 use super::context::Generator;
 use super::topology::{
@@ -184,12 +185,12 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>();
+    .collect::<SmallVec<[_; 23]>>();
 
-    // 2. Weighted pick over the legal list.
+    // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal)?;
 
-    // 3. Generate the chosen arm's payload from the following bytes.
+    // Generate only the chosen arm's payload from the following bytes.
     let transition = match kind {
         K::UpdateSystemDnsServers => Transition::UpdateSystemDnsServers {
             servers: arb_system_dns_servers(g),
@@ -217,8 +218,7 @@ pub(super) fn generate(
             Transition::UpdateUpstreamSearchDomain(chosen)
         }
         K::RoamClient => {
-            let ids = state.all_client_ids();
-            let client_id = ids[g.choose_index(ids.len())];
+            let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
             // Mirror `transition::roam_client`: both windows in 0..3000ms.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
@@ -236,9 +236,10 @@ pub(super) fn generate(
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
             // Reboot the *existing* relays with fresh credentials (same ids).
-            let ids = state.relays.keys().copied().collect::<Vec<_>>();
-            let relays = ids
-                .into_iter()
+            let relays = state
+                .relays
+                .keys()
+                .copied()
                 .map(|id| {
                     let seed = g.u64();
                     let latency = g.latency(50);
