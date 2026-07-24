@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Stamp a 40-char commit SHA into a built relay binary's release placeholder"
+set -euo pipefail
+
+binary="${1:?usage: mise run //rust:patch-relay-release <binary> <sha>}"
+sha="${2:?usage: mise run //rust:patch-relay-release <binary> <sha>}"
+marker="firezone-git-sha:"
+
+[[ -f "$binary" ]] || {
+  echo "error: $binary not found" >&2
+  exit 1
+}
+[[ "${#sha}" -eq 40 ]] || {
+  echo "error: expected a 40-char SHA, got '$sha' (${#sha} chars)" >&2
+  exit 1
+}
+
+hits=$(grep -F -a -b -o "$marker" "$binary" || true)
+count=$(printf '%s' "$hits" | grep -c . || true)
+[[ "$count" -eq 1 ]] || {
+  echo "error: '$marker' must appear exactly once in $binary (found $count)" >&2
+  exit 1
+}
+
+offset=$(printf '%s' "$hits" | cut -d: -f1)
+printf '%s' "$sha" | dd of="$binary" bs=1 seek=$((offset + ${#marker})) conv=notrunc status=none
+
+echo "Patched $binary with release $sha"
