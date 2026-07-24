@@ -91,7 +91,6 @@ impl GatewayState {
         self.flow_tracker.set_enabled(enabled);
     }
 
-    #[cfg(feature = "test-util")]
     pub fn tunnel_ip_config(&self) -> Option<IpConfig> {
         self.tun_ip_config
     }

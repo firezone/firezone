@@ -20,31 +20,21 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-#[cfg(not(feature = "test-util"))]
 mod client;
-#[cfg(feature = "test-util")]
-pub mod client;
 mod conn_track;
 pub mod dns;
 mod expiring_map;
-#[cfg(not(feature = "test-util"))]
 mod filter_engine;
-#[cfg(feature = "test-util")]
-pub mod filter_engine;
 mod gateway;
-#[cfg(all(test, not(feature = "test-util")))]
+#[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
-#[cfg(feature = "test-util")]
-pub mod malicious_behaviour;
 pub mod messages;
 pub mod otel;
 mod p2p_control;
 mod packet_kind;
 mod peer_store;
 mod portal_connection;
-#[cfg(all(test, feature = "proptest", not(feature = "test-util")))]
-mod proptest;
-#[cfg(feature = "test-util")]
+#[cfg(feature = "proptest")]
 pub mod proptest;
 mod routing_table;
 mod unique_packet_buffer;
@@ -61,10 +51,17 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Err(_) => unreachable!(),
     };
 
-pub use client::ClientState;
 pub use client::dns_config::DnsMapping;
+pub use client::{
+    CidrResource, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource,
+    DynamicDevicePoolResource, IPV4_RESOURCES, IPV6_RESOURCES, InternetResource, Resource,
+    StaticDevicePoolResource,
+};
 pub use dns::DnsResourceRecord;
+pub use filter_engine::FilterEngine;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+#[cfg(feature = "malicious-behaviour")]
+pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;
 
 // TODO: Evaluate moving the data types shared by `tunnel-proto`, `tunnel`, and

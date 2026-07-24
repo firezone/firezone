@@ -11,9 +11,10 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-#[cfg(any(test, feature = "test-util"))]
-pub use resource::{CidrResource, DnsResource, DynamicDevicePoolResource};
-pub use resource::{InternetResource, Resource, StaticDevicePoolResource};
+pub use resource::{
+    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
+    StaticDevicePoolResource,
+};
 
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
@@ -233,12 +234,10 @@ impl ClientState {
         }
     }
 
-    #[cfg(feature = "test-util")]
     pub fn tunnel_ip_config(&self) -> Option<crate::IpConfig> {
         Some(self.tun_config.current()?.ip)
     }
 
-    #[cfg(feature = "test-util")]
     pub fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
             IpAddr::V4(_) => self.tunnel_ip_config()?.v4.into(),
@@ -2676,7 +2675,7 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
         return true;
     }
 
-    #[cfg(any(test, feature = "test-util"))]
+    #[cfg(any(test, feature = "malicious-behaviour"))]
     if crate::malicious_behaviour::ignore_resource_filter() {
         tracing::debug!("Malicious client: ignoring resource filter");
         return true;
