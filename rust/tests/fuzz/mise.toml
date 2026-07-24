@@ -45,6 +45,42 @@ depends = ["install-toolchain"]
 raw = true
 run = 'RUST_LOG="${RUST_LOG:-debug}" cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target {{arg(name="target")}} {{arg(name="testcase")}}'
 
+[tasks.replay-crashes]
+description = "Replay all crash artifacts for a fuzz target through its existing binary with tracing"
+usage = 'arg "<target>"'
+raw = true
+run = '''
+target="$usage_target"
+bin="../../target/x86_64-unknown-linux-gnu/release/$target"
+found=false
+
+for artifact in \
+  "artifacts/$target"/crash-* \
+  "artifacts/$target"/timeout-* \
+  "artifacts/$target"/oom-* \
+  "artifacts/$target"/leak-* \
+  "artifacts/$target"/slow-unit-*
+do
+  [ -e "$artifact" ] || continue
+
+  if [ "$found" = false ]; then
+    if [ ! -x "$bin" ]; then
+      echo "Fuzz target binary does not exist or is not executable: $bin" >&2
+      exit 1
+    fi
+    found=true
+  fi
+
+  echo "::group::Scenario for ${artifact##*/}"
+  RUST_LOG="${RUST_LOG:-debug}" "$bin" "$artifact" || true
+  echo "::endgroup::"
+done
+
+if [ "$found" = false ]; then
+  echo "No crash artifact was written; nothing to replay."
+fi
+'''
+
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
 depends = ["install-toolchain"]

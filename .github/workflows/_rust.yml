@@ -184,20 +184,7 @@ jobs:
         run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120 ${{ matrix.libfuzzer-args }}
       - name: Replay crashing input with tracing
         if: failure()
-        shell: bash
-        run: |
-          shopt -s nullglob
-          artifacts=(tests/fuzz/artifacts/${{ matrix.fuzz-target }}/{crash,timeout,oom,leak,slow-unit}-*)
-          if [ ${#artifacts[@]} -eq 0 ]; then
-            echo "No crash artifact was written; nothing to replay."
-            exit 0
-          fi
-          bin=target/x86_64-unknown-linux-gnu/release/${{ matrix.fuzz-target }}
-          for f in "${artifacts[@]}"; do
-            echo "::group::Scenario for $(basename "$f")"
-            RUST_LOG=debug "$bin" "$f" || true
-            echo "::endgroup::"
-          done
+        run: mise run //rust/tests/fuzz:replay-crashes ${{ matrix.fuzz-target }}
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

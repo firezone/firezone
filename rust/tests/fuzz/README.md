@@ -49,6 +49,13 @@ mise run //rust/tests/fuzz:fuzz tunnel -fork=4 -max_len=8192 -len_control=0
 
 A crash writes the offending input to `artifacts/tunnel/`. To triage it:
 
+1. Replay every failure artifact from the preceding fuzz run through the
+   already-built binary with tracing:
+
+   ```
+   mise run //rust/tests/fuzz:replay-crashes tunnel
+   ```
+
 1. Reduce it (libFuzzer test-case minimization; the positional decoder shrinks
    cleanly since dropping trailing bytes drops trailing transitions):
 
