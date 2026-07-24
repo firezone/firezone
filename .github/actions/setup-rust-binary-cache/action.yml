@@ -1,0 +1,25 @@
+---
+name: "Setup Rust binary cache"
+description: "Restores a built binary keyed on the hash of the Rust build inputs, so unchanged sources skip the build entirely and rebuild (via sccache) otherwise."
+inputs:
+  path:
+    description: "Path to the built binary, relative to the workspace."
+    required: true
+  key:
+    description: "Stable key prefix identifying the binary (e.g. package-target-profile)."
+    required: true
+outputs:
+  cache-hit:
+    description: "'true' when the exact binary was restored and the build can be skipped."
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: "composite"
+  steps:
+    # The binary is a pure function of these inputs. The commit SHA is patched in
+    # after the build (see the relay patch task), so it is deliberately excluded.
+    # `wintun/` holds the DLL embedded into the Windows client via `include_bytes!`.
+    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      id: cache
+      with:
+        path: ${{ inputs.path }}
+        key: v1-binary-${{ inputs.key }}-${{ hashFiles('rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/.cargo/config.toml', 'rust/libs/bin-shared/wintun/**') }}

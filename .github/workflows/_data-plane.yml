@@ -130,27 +130,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RESOLVED_SHA }}
-          fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.target }}
-      - uses: ./.github/actions/setup-rust-target-workspace-cache
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
         with:
-          key: ${{ matrix.package }}-${{ inputs.stage }}-${{ inputs.profile }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
+          key: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
       - name: Build binaries
         shell: bash
         run: |
           set -xe
 
-          if [[ "${{ inputs.profile }}" == "release" ]]; then
-            PROFILE="--release"
-          else
-            PROFILE=""
+          if [[ "${{ steps.binary-cache.outputs.cache-hit }}" != "true" ]]; then
+            if [[ "${{ inputs.profile }}" == "release" ]]; then
+              PROFILE="--release"
+            else
+              PROFILE=""
+            fi
+
+            cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
           fi
 
-          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
-          mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+          cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - uses: ./.github/actions/setup-azure-sign-tool
         if: inputs.profile == 'release'
       - name: Sign the binary
@@ -238,7 +241,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RESOLVED_SHA }}
-          fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
       - uses: ./.github/actions/ghcr-docker-login
         id: login
         with:
@@ -249,33 +251,36 @@ jobs:
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-target-workspace-cache
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
         with:
-          key: ${{ matrix.name.package }}-${{ inputs.stage }}-${{ inputs.profile }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }}
+          key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //rust:install-ebpf-toolchain
-        if: matrix.name.package == 'firezone-relay'
+        if: matrix.name.package == 'firezone-relay' && steps.binary-cache.outputs.cache-hit != 'true'
       - name: Build binaries
         run: |
           set -xe
 
-          if [[ "${{ inputs.profile }}" == "release" ]]; then
-            PROFILE="--release"
-          else
-            PROFILE=""
-            # Build the debug images with `line-tables-only` debug info: keeps
-            # backtraces but roughly halves the binaries, so the images pull
-            # faster/more reliably from ghcr and are smaller in the test-image
-            # artifact. Local `cargo build` is unaffected (keeps full debug).
-            export CARGO_PROFILE_DEV_DEBUG=line-tables-only
-          fi
+          if [[ "${{ steps.binary-cache.outputs.cache-hit }}" != "true" ]]; then
+            if [[ "${{ inputs.profile }}" == "release" ]]; then
+              PROFILE="--release"
+            else
+              PROFILE=""
+              # Build the debug images with `line-tables-only` debug info: keeps
+              # backtraces but roughly halves the binaries, so the images pull
+              # faster/more reliably from ghcr and are smaller in the test-image
+              # artifact. Local `cargo build` is unaffected (keeps full debug).
+              export CARGO_PROFILE_DEV_DEBUG=line-tables-only
+            fi
 
-          cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
+            cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
+          fi
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
