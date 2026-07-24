@@ -6,7 +6,7 @@
 - `tunnel` — drives the connlib tunnel state machine. Each input is decoded
   positionally through `arbitrary::Unstructured` into one run of the
   reference-model / system-under-test harness (see
-  `tunnel_tests::run_fuzz_case_structured`).
+  `fuzz::run_fuzz_case_structured`).
 
 ## Corpus
 

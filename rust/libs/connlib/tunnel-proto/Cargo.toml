@@ -6,8 +6,8 @@ license = { workspace = true }
 
 [features]
 divan = ["dep:divan"]
-# Allows callers to bypass client-side resource filters. Only used by test
-# harnesses and fuzzers to exercise the remote filtering path.
+# Allows callers to bypass client-side resource filters. Only used by the
+# tunnel fuzzer to exercise the remote filtering path.
 malicious-behaviour = []
 
 [dependencies]

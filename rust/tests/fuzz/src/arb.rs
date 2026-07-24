@@ -2279,11 +2279,7 @@ fn offline_static_pool_members(
     state: &ReferenceState,
     pool: &StaticDevicePoolResource,
 ) -> impl Iterator<Item = DevicePoolMember> {
-    let online_ids = state
-        .clients
-        .iter()
-        .map(|(id, _)| *id)
-        .collect::<BTreeSet<_>>();
+    let online_ids = state.clients.keys().copied().collect::<BTreeSet<_>>();
 
     pool.devices
         .iter()

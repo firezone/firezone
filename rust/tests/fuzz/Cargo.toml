@@ -3,6 +3,7 @@ name = "fuzz"
 version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
+publish = false
 
 [package.metadata]
 cargo-fuzz = true
@@ -22,7 +23,31 @@ doc = false
 bench = false
 
 [dependencies]
+anyhow = { workspace = true }
 arbitrary = { workspace = true, features = ["derive"] }
+bufferpool = { workspace = true }
+chrono = { workspace = true }
+connlib-model = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
+dns-over-tcp = { workspace = true }
+dns-types = { workspace = true }
+firezone-relay = { workspace = true }
+flow-tracker = { workspace = true }
+hex = { workspace = true }
 ip-packet = { workspace = true, features = ["arbitrary"] }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+itertools = { workspace = true, features = ["use_std"] }
+l3-tcp = { workspace = true }
 libfuzzer-sys = { workspace = true }
-tunnel-tests = { workspace = true }
+rand = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+snownet = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tunnel = { workspace = true, features = ["malicious-behaviour"] }
+
+[lints]
+workspace = true

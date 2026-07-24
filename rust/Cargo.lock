@@ -2860,10 +2860,31 @@ dependencies = [
 name = "fuzz"
 version = "0.1.0"
 dependencies = [
+ "anyhow-ext",
  "arbitrary",
+ "bufferpool",
+ "chrono",
+ "connlib-model",
+ "derive_more",
+ "dns-over-tcp",
+ "dns-types",
+ "firezone-relay",
+ "flow-tracker",
+ "hex",
  "ip-packet",
+ "ip_network",
+ "ip_network_table",
+ "itertools",
+ "l3-tcp",
  "libfuzzer-sys",
- "tunnel-tests",
+ "rand 0.10.2",
+ "secrecy",
+ "serde_json",
+ "sha2",
+ "snownet",
+ "tracing",
+ "tracing-subscriber",
+ "tunnel",
 ]
 
 [[package]]
@@ -8496,36 +8517,6 @@ dependencies = [
  "test-strategy",
  "thiserror 2.0.19",
  "tracing",
-]
-
-[[package]]
-name = "tunnel-tests"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "arbitrary",
- "bufferpool",
- "chrono",
- "connlib-model",
- "derive_more",
- "dns-over-tcp",
- "dns-types",
- "firezone-relay",
- "flow-tracker",
- "hex",
- "ip-packet",
- "ip_network",
- "ip_network_table",
- "itertools",
- "l3-tcp",
- "rand 0.10.2",
- "secrecy",
- "serde_json",
- "sha2",
- "snownet",
- "tracing",
- "tracing-subscriber",
- "tunnel",
 ]
 
 [[package]]
