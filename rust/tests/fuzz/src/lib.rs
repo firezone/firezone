@@ -1,10 +1,9 @@
-//! Shared fuzz harness for connlib's tunnel state machine.
+//! Fuzz harness for connlib's tunnel state machine.
 //!
-//! Extracted from the `tunnel` crate so the reference model and
-//! system-under-test wrapper can drive the fuzzer. Because
-//! the harness is consumed selectively by the fuzz entry point, not every item
-//! is reachable in a plain library build; and, like the test code it grew out
-//! of, it leans on `unwrap` and stdout.
+//! The reference model and system-under-test wrapper live with their only
+//! consumer while remaining a library so their focused unit tests stay
+//! runnable. Like the test code they grew out of, they lean on `unwrap` and
+//! stdout.
 #![allow(dead_code)]
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
@@ -63,7 +62,7 @@ fn init_fuzz_subscriber() -> tracing::subscriber::DefaultGuard {
 
 fn log_file_filter() -> EnvFilter {
     let default_filter =
-        "debug,tunnel=trace,tunnel_tests=debug,ip_packet=trace,path_agent=trace".to_owned();
+        "debug,tunnel=trace,fuzz=debug,ip_packet=trace,path_agent=trace".to_owned();
     let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
 
     EnvFilter::new([default_filter, env_filter].join(","))

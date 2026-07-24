@@ -31,7 +31,6 @@ members = [
     "libs/connlib/tun",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
-    "libs/connlib/tunnel-tests",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
@@ -240,7 +239,6 @@ tun = { path = "libs/connlib/tun" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
-tunnel-tests = { path = "libs/connlib/tunnel-tests" }
 uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"

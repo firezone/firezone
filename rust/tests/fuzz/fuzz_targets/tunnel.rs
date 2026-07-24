@@ -6,10 +6,10 @@
 //! harness. The bytes are decoded positionally through
 //! `arbitrary::Unstructured` so that libFuzzer mutations and minimization map
 //! to individual scenario decisions. See
-//! [`tunnel_tests::run_fuzz_case_structured`].
+//! [`fuzz::run_fuzz_case_structured`].
 
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    tunnel_tests::run_fuzz_case_structured(data);
+    fuzz::run_fuzz_case_structured(data);
 });
