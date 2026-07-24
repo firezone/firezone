@@ -226,23 +226,28 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Portal(Some(event)) => {
-                match event.context("Connection to portal failed")? {
-                    PortalEvent::Message(msg) => self.handle_portal_message(msg).await?,
-                    PortalEvent::Connected => {
-                        if let Some(tunnel) = self.tunnel.as_mut() {
-                            tunnel.state_mut().set_portal_connected(true);
-                        }
-                    }
-                    PortalEvent::Disconnected => {
-                        if let Some(tunnel) = self.tunnel.as_mut() {
-                            tunnel.state_mut().set_portal_connected(false);
-                        }
-                    }
+            CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
+                self.handle_portal_message(msg).await?;
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(Some(Ok(PortalEvent::Connected))) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().set_portal_connected(true);
                 }
 
                 Ok(ControlFlow::Continue(()))
             }
+            CombinedEvent::Portal(Some(Ok(PortalEvent::Disconnected))) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().set_portal_connected(false);
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(Some(Err(e))) => Err(DisconnectError(
+                anyhow::Error::new(e).context("Connection to portal failed"),
+            )),
             CombinedEvent::Portal(None) => Err(DisconnectError(anyhow::Error::msg(
                 "portal task exited unexpectedly",
             ))),

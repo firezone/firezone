@@ -152,19 +152,21 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Portal(Some(Ok(event))) => {
-                match event {
-                    PortalEvent::Message(msg) => self.handle_portal_message(msg).await?,
-                    PortalEvent::Connected => {
-                        if let Some(tunnel) = self.tunnel.as_mut() {
-                            tunnel.state_mut().set_portal_connected(true);
-                        }
-                    }
-                    PortalEvent::Disconnected => {
-                        if let Some(tunnel) = self.tunnel.as_mut() {
-                            tunnel.state_mut().set_portal_connected(false);
-                        }
-                    }
+            CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
+                self.handle_portal_message(msg).await?;
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(Some(Ok(PortalEvent::Connected))) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().set_portal_connected(true);
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(Some(Ok(PortalEvent::Disconnected))) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().set_portal_connected(false);
                 }
 
                 Ok(ControlFlow::Continue(()))
