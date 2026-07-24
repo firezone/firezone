@@ -174,7 +174,6 @@ impl SimGateway {
     pub(crate) fn deploy_new_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = SocketAddr>,
-        now: Instant,
     ) {
         self.udp_dns_server_resources.clear();
         self.tcp_dns_server_resources.clear();
@@ -199,7 +198,7 @@ impl SimGateway {
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
-                .insert(server, TcpDnsServerResource::new(server, now));
+                .insert(server, TcpDnsServerResource::new(server));
         }
     }
 
@@ -268,7 +267,7 @@ impl SimGateway {
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
-                server.handle_input(packet);
+                server.handle_input(packet, now);
                 return None;
             }
         }

@@ -132,8 +132,7 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway
-                .exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, flux_capacitor.now()))
+            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
         }
 
         let mut this = Self {
@@ -418,7 +417,7 @@ impl TunnelTest {
                 for gateway in state.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers, now))
+                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
