@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
 
 use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
@@ -107,14 +103,6 @@ impl Client {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
-    }
-
-    pub fn _poll_timeout(&mut self) -> Option<Instant> {
-        let now = l3_tcp::now(self.created_at, self.last_now);
-
-        let poll_in = self.interface.poll_delay(now, &self.sockets)?;
-
-        Some(self.last_now + Duration::from(poll_in))
     }
 
     pub fn iter_sockets(&self) -> impl Iterator<Item = &Socket<'_>> {
