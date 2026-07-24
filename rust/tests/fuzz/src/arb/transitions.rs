@@ -220,9 +220,10 @@ pub(super) fn generate(
         K::RoamClient => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let (ip4, ip6) = arb_socket_ip_stack(g);
-            // Mirror `transition::roam_client`: both windows in 0..3000ms.
+            // The portal reconnect takes at least a TCP + TLS + WebSocket
+            // handshake, and commonly outlasts the TURN re-handshake.
             let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
-            let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
+            let portal_window = Duration::from_millis(g.count(100, 9_999) as u64);
             Transition::RoamClient {
                 client_id,
                 ip4,

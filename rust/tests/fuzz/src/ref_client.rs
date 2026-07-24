@@ -681,7 +681,16 @@ impl RefClient {
                     .unwrap_or(PacketRoute::Drop);
             }
 
-            return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
+            let Some(gateway) = gateway_by_ip(ip) else {
+                return PacketRoute::Drop;
+            };
+
+            return self
+                .connected_resources()
+                .filter_map(&gateway_by_resource)
+                .any(|connected| connected == gateway)
+                .then_some(PacketRoute::Gateway(gateway))
+                .unwrap_or(PacketRoute::Drop);
         }
 
         // Resource selection is the one deliberate classifier in the oracle.

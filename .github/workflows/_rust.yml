@@ -119,68 +119,47 @@ jobs:
           parallel: true
           fail-on-error: false
 
-  tunnel_test:
-    name: tunnel-test
+  fuzz-targets:
+    name: fuzz-targets
     runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust-sccache
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd rust/tests/fuzz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/free-disk-space
-      - name: Replay committed corpus under coverage instrumentation
-        run: mise run //rust/tests/fuzz:coverage tunnel
-      # The llvm-cov task runs with cwd rust/tests/fuzz, so the profdata and
-      # binary paths are relative to that directory while the lcov.info
-      # redirect below lands in the step's cwd (rust/).
-      # The replay is deterministic, so the snapshot defines the maximum number
-      # of uncovered regions. Coverage growth passes without requiring a
-      # snapshot update; adding uncovered regions or losing coverage fails.
-      - name: Enforce tunnel-proto uncovered-region ceiling
-        run: |
-          measured=$(mise run -q //rust/tests/fuzz:llvm-cov -- export -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel | jq '[.data[].files[] | select(.filename | contains("libs/connlib/tunnel-proto/src/")) | .summary.regions] | {covered: (map(.covered) | add), total: (map(.count) | add)}')
-          expected=$(cat tests/fuzz/expected-coverage.json)
-          echo "measured: $(echo "$measured" | jq -c .)"
-          echo "expected: $(echo "$expected" | jq -c .)"
-          jq -e -n --argjson m "$measured" --argjson e "$expected" '($m.total - $m.covered) <= ($e.total - $e.covered)' > /dev/null || {
-            echo "::error::tunnel-proto has more uncovered regions than rust/tests/fuzz/expected-coverage.json allows. If this change is intended, update the snapshot to the measured value above and justify the regression; growing the corpus back is better."
-            exit 1
-          }
-      - name: Export lcov for Coveralls
-        run: mise run -q //rust/tests/fuzz:llvm-cov -- export -format=lcov -instr-profile=coverage/tunnel/coverage.profdata ../../target/x86_64-unknown-linux-gnu/release/tunnel > lcov.info
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: rust/lcov.info
-          format: lcov
-          flag-name: rust-tunnel-test
-          parallel: true
-          fail-on-error: false
+      - id: targets
+        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
 
   fuzz:
-    name: fuzz
+    name: fuzz-${{ matrix.fuzz-target }}
+    needs: [fuzz-targets]
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        fuzz-target: [ip_packet, tunnel]
+        fuzz-target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: ./.github/actions/free-disk-space
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Fuzz ${{ matrix.fuzz-target }}
-        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -max_total_time=120
-      - name: Replay crashing input with tracing
-        if: failure()
-        run: mise run //rust/tests/fuzz:replay-crashes ${{ matrix.fuzz-target }}
+      - uses: ./.github/actions/free-disk-space
+      - name: Replay committed corpus
+        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+      - name: Enforce uncovered-region ceiling
+        run: mise run //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
+      - name: Export lcov for Coveralls
+        run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
+      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: rust/lcov-${{ matrix.fuzz-target }}.info
+          format: lcov
+          flag-name: rust-fuzz-${{ matrix.fuzz-target }}
+          parallel: true
+          fail-on-error: false
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
