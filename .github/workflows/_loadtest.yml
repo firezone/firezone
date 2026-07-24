@@ -57,9 +57,9 @@ jobs:
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
+        uses: ./.github/actions/apt-install
+        with:
+          packages: musl-tools
 
       - name: Install Azure CLI (macOS)
         if: matrix.os == 'macos'
