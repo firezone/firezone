@@ -67,6 +67,10 @@ pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use unroutable_packet::UnroutablePacket;
 
+// TODO: Evaluate moving the data types shared by `tunnel-proto`, `tunnel`, and
+// their consumers into `connlib-model` so this crate can expose only the
+// state-machine API.
+
 #[derive(Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
