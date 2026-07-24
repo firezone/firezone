@@ -58,7 +58,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // the app's foreground-drain nudge launches this process when it isn't
     // running (see `Store`), so leftover spool uploads even while disconnected.
     if let spoolDir = SharedAccess.flowLogsFolderURL?.path {
-      startFlowLogUploader(spoolDir: spoolDir)
+      ensureFlowLogUploader(spoolDir: spoolDir)
     }
   }
 
@@ -216,23 +216,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let adapter = self.adapter
     Task { @Sendable in
       await adapter?.stop()
-      await Self.flushFlowLogsBestEffort()
       completionHandler()
     }
-  }
-
-  /// Best-effort final flow-log upload when the tunnel disconnects.
-  ///
-  /// `adapter.stop()` has just finalized any open flows into the spool. The
-  /// process-lifetime uploader runs on the portal's interval, but once we're
-  /// disconnected our lifetime isn't guaranteed (especially the iOS appex), so we
-  /// kick a final, timeboxed pass and proceed regardless of whether it finished.
-  private static func flushFlowLogsBestEffort() async {
-    guard let spoolDir = SharedAccess.flowLogsFolderURL?.path else { return }
-
-    await Task.detached(priority: .utility) {
-      _ = runFlowLogUploadTimeboxed(spoolDir: spoolDir, timeoutSecs: 5)
-    }.value
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
@@ -288,14 +273,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         exportLogs(handler)
       case .registerUploader:
-        // The app nudges this on foreground/launch. The process-lifetime uploader
-        // (started in `init()`) already runs on the portal's interval; kick an
-        // immediate best-effort pass so opening the app drains promptly without
-        // waiting for the next interval. Delivering this while disconnected also
-        // starts the provider (macOS via `maybeCycleStart`, iOS by launching the
-        // appex to deliver the message), spinning the uploader up. Ack right away;
-        // the drain runs in the background.
-        Task { @Sendable in await Self.flushFlowLogsBestEffort() }
+        // The app nudges this on foreground/launch: spawn the uploader if it
+        // isn't running, nudge it to upload now otherwise, so opening the app
+        // drains promptly without waiting for the next interval. Delivering this
+        // while disconnected also starts the provider (macOS via
+        // `maybeCycleStart`, iOS by launching the appex to deliver the message).
+        // Ack right away; the drain runs in the background.
+        if let spoolDir = SharedAccess.flowLogsFolderURL?.path {
+          ensureFlowLogUploader(spoolDir: spoolDir)
+        }
         completionHandler?(nil)
       }
     } catch {
