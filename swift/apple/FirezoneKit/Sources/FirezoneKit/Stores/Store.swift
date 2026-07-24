@@ -654,6 +654,11 @@ public final class Store: ObservableObject {
   private func drainFlowLogUploader() {
     Task {
       guard let session = try? manager().session() else { return }
+
+      // While the session is up (or coming up / going down), its own uploader
+      // owns the spool; the nudge exists for spool stranded while disconnected.
+      guard session.status == .disconnected else { return }
+
       do {
         try await IPCClient.registerUploader(session: session)
       } catch {
