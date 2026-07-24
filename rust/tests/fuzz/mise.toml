@@ -33,8 +33,10 @@ arg "[libfuzzer_args]…" var=#true
 '''
 raw = true
 run = '''
+set -euo pipefail
+
 target="$usage_target"
-./scripts/unpack-corpus.sh "$target"
+mise run -q //rust/tests/fuzz:unpack-corpus "$target"
 
 if [ -n "$usage_libfuzzer_args" ]; then
   # `usage` joins variadic arguments as a shell-escaped string.
@@ -54,14 +56,57 @@ cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../..
 description = "Minimize the corpus of a fuzz target"
 depends = ["install-toolchain"]
 run = '''
+set -euo pipefail
+
 target={{arg(name="target")}}
-./scripts/unpack-corpus.sh "$target"
+mise run -q //rust/tests/fuzz:unpack-corpus "$target"
 ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=0" cargo fuzz cmin --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target"
 '''
 
 [tasks.pack-corpus]
 description = "Pack a fuzz target's corpus into its deterministic archive"
-run = './scripts/pack-corpus.sh {{arg(name="target")}}'
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+corpus="corpus/$target"
+archive="corpora/$target.tar.gz"
+
+mkdir -p corpora
+temporary="$(mktemp "corpora/.$target.XXXXXX")"
+trap 'rm -f "$temporary"' EXIT
+
+tar \
+  --sort=name \
+  --mtime=@0 \
+  --owner=0 \
+  --group=0 \
+  --numeric-owner \
+  --format=ustar \
+  -cf - \
+  -C "$corpus" . |
+  gzip -n > "$temporary"
+
+mv "$temporary" "$archive"
+chmod 0644 "$archive"
+'''
+
+[tasks.unpack-corpus]
+description = "Unpack a fuzz target's committed corpus"
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+archive="corpora/$target.tar.gz"
+corpus="corpus/$target"
+
+mkdir -p "$corpus"
+tar -xzf "$archive" -C "$corpus"
+'''
 
 [tasks.coverage]
 description = "Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
@@ -69,26 +114,85 @@ depends = ["install-toolchain"]
 usage = 'arg "<target>"'
 raw = true
 run = '''
-./scripts/unpack-corpus.sh "$usage_target"
+set -euo pipefail
+
+mise run -q //rust/tests/fuzz:unpack-corpus "$usage_target"
 ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=0" cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
 [tasks.coverage-summary]
 description = "Print region coverage for the crate with the same name as the fuzz target"
 depends = ["install-toolchain"]
-run = './scripts/coverage-summary.sh {{arg(name="crate")}}'
+usage = 'arg "<crate>"'
+raw = true
+run = '''
+set -euo pipefail
+
+crate="$usage_crate"
+profile="coverage/$crate/coverage.profdata"
+binary="../../target/x86_64-unknown-linux-gnu/release/$crate"
+llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+manifest="$(
+  cargo metadata --format-version=1 --no-deps |
+    jq -er --arg crate "$crate" '.packages[] | select(.name == $crate) | .manifest_path'
+)"
+crate_dir="${manifest%/Cargo.toml}/"
+
+"$llvm_cov" export -instr-profile="$profile" "$binary" |
+  jq -e --arg crate_dir "$crate_dir" '
+    [.data[].files[]
+      | select(.filename | startswith($crate_dir))
+      | .summary.regions
+    ]
+    | if length == 0 then
+        error("coverage profile contains no files for " + $crate_dir)
+      else
+        {
+          covered: (map(.covered) | add),
+          total: (map(.count) | add)
+        }
+      end
+  '
+'''
 
 [tasks.coverage-check]
 description = "Fail if a crate exceeds its committed uncovered-region ceiling"
-depends = ["install-toolchain"]
-run = './scripts/coverage-check.sh {{arg(name="crate")}}'
+usage = 'arg "<crate>"'
+raw = true
+run = '''
+set -euo pipefail
+
+crate="$usage_crate"
+expected_file="expected-coverage/$crate.json"
+measured="$(mise run -q //rust/tests/fuzz:coverage-summary "$crate")"
+expected="$(<"$expected_file")"
+measured_uncovered="$(jq '.total - .covered' <<<"$measured")"
+expected_uncovered="$(jq '.total - .covered' <<<"$expected")"
+measured_percent="$(jq '100 * .covered / .total' <<<"$measured")"
+expected_percent="$(jq '100 * .covered / .total' <<<"$expected")"
+
+printf 'measured: %s (%.2f%% covered, %d uncovered)\n' \
+  "$(jq -c . <<<"$measured")" "$measured_percent" "$measured_uncovered"
+printf 'expected: %s (%.2f%% covered, %d uncovered)\n' \
+  "$(jq -c . <<<"$expected")" "$expected_percent" "$expected_uncovered"
+
+if (( measured_uncovered <= expected_uncovered )); then
+  exit 0
+fi
+
+echo "error: $crate has $measured_uncovered uncovered regions; $expected_file allows $expected_uncovered" >&2
+exit 1
+'''
 
 [tasks.coverage-snapshot]
 description = "Refresh expected-coverage/<crate>.json from an existing coverage profile"
-depends = ["install-toolchain"]
+usage = 'arg "<crate>"'
+raw = true
 run = '''
+set -euo pipefail
+
 mkdir -p expected-coverage
-./scripts/coverage-summary.sh {{arg(name="crate")}} > expected-coverage/{{arg(name="crate")}}.json
+mise run -q //rust/tests/fuzz:coverage-summary "$usage_crate" > "expected-coverage/$usage_crate.json"
 '''
 
 [tasks.lcov]
