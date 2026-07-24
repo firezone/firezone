@@ -70,6 +70,8 @@ jobs:
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
         with:
@@ -139,9 +141,9 @@ jobs:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
           lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust-stable
-      - uses: ./.github/actions/setup-rust-target-dependency-cache
+      - uses: ./.github/actions/setup-rust-sccache
         with:
-          save-if: ${{ github.event_name == 'merge_group' || github.ref == 'refs/heads/main' }}
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
