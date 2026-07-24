@@ -187,6 +187,25 @@ set -euo pipefail
 cargo fuzz coverage --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$usage_target"
 '''
 
+[tasks.coverage-report]
+description = "Replay a target's corpus and generate a browsable HTML coverage report"
+shell = "bash -c"
+depends = [{ task = "coverage", args = ["{{usage.target}}"] }]
+usage = 'arg "<target>"'
+raw = true
+run = '''
+set -euo pipefail
+
+target="$usage_target"
+profile="coverage/$target/coverage.profdata"
+binary="../../target/x86_64-unknown-linux-gnu/release/$target"
+report_dir="coverage/$target/html"
+llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+
+"$llvm_cov" show --format=html --output-dir="$report_dir" --instr-profile="$profile" "$binary"
+echo "Coverage report: $PWD/$report_dir/index.html"
+'''
+
 [tasks.coverage-summary]
 description = "Print region coverage for the crate with the same name as the fuzz target"
 shell = "bash -c"
