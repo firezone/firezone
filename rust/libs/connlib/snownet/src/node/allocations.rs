@@ -48,10 +48,21 @@ where
         Self::new(&mut StdRng::seed_from_u64(0))
     }
 
-    pub(crate) fn clear(&mut self) {
-        for (_, allocation) in std::mem::take(&mut self.inner) {
-            self.previous_relays_by_ip
-                .extend(server_addresses(&allocation));
+    /// Restarts every allocation in place, keeping the portal-issued credentials but
+    /// re-running the TURN handshake from our new socket (see [`Allocation::restart`]).
+    ///
+    /// Used on a network reset: the credentials outlive the reset, so we re-allocate
+    /// immediately instead of waiting for the portal to re-deliver the relay list.
+    pub(crate) fn restart(&mut self, now: Instant) {
+        let ids = self.inner.keys().copied().collect::<SmallVec<[RId; 2]>>();
+
+        for id in ids {
+            let mut seed = [0u8; 32];
+            self.rng.fill_bytes(&mut seed);
+
+            if let Some(allocation) = self.inner.get_mut(&id) {
+                allocation.restart(now, seed);
+            }
         }
     }
 
@@ -375,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_remembers_address() {
+    fn restart_keeps_allocation_and_re_handshakes() {
         let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
@@ -385,13 +396,18 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
         );
+        // Drain the initial handshake so a fresh one is observable after the restart.
+        while allocations.poll_transmit().is_some() {}
 
-        allocations.clear();
+        allocations.restart(Instant::now());
 
+        // The allocation is kept (still Connected on the same server), not dropped, ...
         assert!(matches!(
             allocations.get_mut_by_server(SERVER_V4),
-            MutAllocationRef::Disconnected
+            MutAllocationRef::Connected(..)
         ));
+        // ... and it re-runs the TURN handshake from scratch.
+        assert!(allocations.poll_transmit().is_some());
     }
 
     #[test]

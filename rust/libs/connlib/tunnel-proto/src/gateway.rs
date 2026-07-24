@@ -7,6 +7,7 @@ use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
 use crate::peer_store::PeerStore;
+use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
@@ -49,6 +50,9 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: snownet::TransmitBuffer,
+
+    /// Our connection to the portal, holding back ICE candidates while it is down.
+    portal: PortalConnection<ClientId>,
 }
 
 #[derive(Debug)]
@@ -69,10 +73,11 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
-    pub(crate) fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
+    pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
             node: Node::new(seed, now, unix_ts),
+            portal: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
@@ -86,12 +91,11 @@ impl GatewayState {
         self.flow_tracker.set_enabled(enabled);
     }
 
-    #[cfg(all(test, feature = "proptest"))]
-    pub(crate) fn tunnel_ip_config(&self) -> Option<IpConfig> {
+    pub fn tunnel_ip_config(&self) -> Option<IpConfig> {
         self.tun_ip_config
     }
 
-    pub(crate) fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
 
@@ -104,7 +108,7 @@ impl GatewayState {
     }
 
     /// Handles packets received on the TUN device.
-    pub(crate) fn handle_tun_input(
+    pub fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -146,7 +150,7 @@ impl GatewayState {
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
-    pub(crate) fn handle_network_input(
+    pub fn handle_network_input(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -470,10 +474,23 @@ impl GatewayState {
 
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(_) | snownet::Event::ConnectionClosed(_) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     // We purposely don't clear the peer-state here.
                     // The Client might re-establish the connection but if it hasn't cleared its local state too,
                     // it will consider all its access authorizations to be still valid.
+                    self.portal.forget(&id);
+                }
+                snownet::Event::NewIceCandidate {
+                    connection,
+                    candidate,
+                } if !self.portal.is_connected() => {
+                    self.portal.hold_added(connection, candidate.into());
+                }
+                snownet::Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } if !self.portal.is_connected() => {
+                    self.portal.hold_removed(connection, candidate.into());
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -517,13 +534,13 @@ impl GatewayState {
         }
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .poll_transmit()
             .or_else(|| self.node.poll_transmit())
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
+    pub fn poll_event(&mut self) -> Option<GatewayEvent> {
         if let Some(ev) = self.buffered_events.pop_front() {
             return Some(ev);
         }
@@ -535,6 +552,44 @@ impl GatewayState {
         }
 
         None
+    }
+
+    /// Records whether we currently have a live connection to the portal.
+    ///
+    /// While disconnected, ICE candidate changes are held back. On the disconnected ->
+    /// connected edge, the held changes are flushed to their clients, one batch per
+    /// connection.
+    pub fn set_portal_connected(&mut self, connected: bool) {
+        if !connected {
+            self.portal.disconnect();
+            return;
+        }
+
+        let held = self.portal.connect();
+
+        for (conn_id, candidates) in held.added {
+            if candidates.is_empty() {
+                continue;
+            }
+
+            self.buffered_events
+                .push_back(GatewayEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                });
+        }
+
+        for (conn_id, candidates) in held.removed {
+            if candidates.is_empty() {
+                continue;
+            }
+
+            self.buffered_events
+                .push_back(GatewayEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                });
+        }
     }
 
     pub fn update_relays(

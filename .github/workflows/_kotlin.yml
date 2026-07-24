@@ -18,6 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Check formatting
         run: ./gradlew spotlessCheck
       # Lint pulls a connlib cargo build (the `main` source set includes the
@@ -75,7 +77,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
+      - uses: ./.github/actions/free-disk-space
+        with:
+          keep-android: "true"
       - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd kotlin/android
@@ -174,7 +181,12 @@ jobs:
     name: build-debug
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk-space
+        with:
+          keep-android: "true"
       - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build debug APK
         run: |
           ./gradlew assembleDebug

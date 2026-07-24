@@ -266,6 +266,36 @@ impl Allocation {
         allocation
     }
 
+    /// Restarts this allocation from scratch, keeping the portal-issued credentials.
+    ///
+    /// A network reset rebinds our sockets to a new local address. That invalidates the
+    /// relay-side allocation - which is keyed by our 3-tuple - along with its nonce and
+    /// every gathered candidate, so we re-run the STUN/TURN handshake from the new socket.
+    /// The username/password/realm, however, are minted by the portal per session and stay
+    /// valid, so we keep them and re-allocate immediately instead of waiting for the portal
+    /// to re-issue them.
+    pub(crate) fn restart(&mut self, now: Instant, seed: [u8; 32]) {
+        let Some(Credentials {
+            username,
+            password,
+            realm,
+            ..
+        }) = self.credentials.clone()
+        else {
+            return;
+        };
+
+        *self = Self::new(
+            self.server,
+            username,
+            password,
+            realm,
+            now,
+            self.buffer_pool.clone(),
+            seed,
+        );
+    }
+
     pub fn host_and_server_reflexive_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
         [
             self.ip4_host_candidate.clone(),

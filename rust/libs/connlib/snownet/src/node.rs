@@ -220,17 +220,17 @@ where
     ///
     /// # Implementation note
     ///
-    /// This also clears all [`Allocation`]s.
-    /// An [`Allocation`] on a TURN server is identified by the client's 3-tuple (IP, port, protocol).
-    /// Thus, clearing the [`Allocation`]'s state here without closing it means we won't be able to make a new one until:
-    /// - it times out
-    /// - we change our IP or port
-    ///
-    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
+    /// This restarts all [`Allocation`]s (see [`Allocation::restart`]): we keep the
+    /// portal-issued credentials but re-run the TURN handshake from scratch, so relay
+    /// connectivity recovers without waiting for the portal to re-deliver the relay list.
+    /// An [`Allocation`] is identified by the client's 3-tuple (IP, port, protocol), so
+    /// re-handshaking from the same 3-tuple would collide with the relay's still-live
+    /// allocation. `snownet` cannot control which IP / port we are binding to, thus upper
+    /// layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
     pub fn reset(&mut self, now: Instant) {
         self.last_now = now;
 
-        self.allocations.clear();
+        self.allocations.restart(now);
         self.buffered_transmits.clear();
         self.pending_events.clear();
         self.inflight_stun_requests.clear();
