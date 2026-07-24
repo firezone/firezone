@@ -1,46 +1,53 @@
 # Fuzzing
 
+## Targets
+
+- `ip-packet` — parses and mutates a single IP packet through `ip-packet`'s API.
+
+Every fuzz target is listed in `targets.json` and has the same name as the
+crate whose coverage it tracks. This list drives both pull-request CI and the
+nightly discovery matrix.
+
+## Corpora
+
+Each target's corpus is committed as one deterministic archive under
+`corpora/<target>.tar.gz`. The mise tasks unpack it into the ignored
+`corpus/<target>` directory before invoking `cargo-fuzz`. Pull-request CI only
+replays these inputs, making fuzz regression and coverage checks deterministic.
+It never performs random coverage discovery.
+
+The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json`
+on `main`, minimizes and repacks the grown corpora, refreshes their coverage
+snapshots, and opens one bot PR with the results.
+
 ## Setup
 
-1. Install `cargo-fuzz`
-1. Install `cargo-llvm-cov` (if you want to see coverage statistics)
-1. Temporarily disable LTO (fuzzing won't work otherwise):
-   ```
-   export CARGO_PROFILE_RELEASE_LTO=false
-   ```
+Everything is managed through this directory's `mise.toml`: the pinned nightly
+toolchain, `cargo-fuzz`, and the profile overrides required by fuzz builds.
 
 ## Run
 
-Runs the fuzzer for the `ip_packet` fuzz target.
-Substitute that for other targets that you want to run.
+Run a target locally; extra arguments are passed to libFuzzer:
 
-```
-cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target ip_packet
+```console
+mise run //rust/tests/fuzz:fuzz ip-packet
+mise run //rust/tests/fuzz:fuzz ip-packet -fork=4
 ```
 
 ## Coverage
 
-1. Clean workspace
+Replay a committed corpus and check its uncovered-region ceiling:
 
-   ```
-   cargo +nightly llvm-cov clean --workspace
-   ```
+```console
+mise run //rust/tests/fuzz:coverage ip-packet
+mise run //rust/tests/fuzz:coverage-check ip-packet
+```
 
-1. Fuzz. See command above.
+Coverage growth passes without requiring a snapshot update. An increase in
+uncovered regions fails. After deliberately growing and minimizing a corpus,
+refresh its snapshot with:
 
-1. Generate coverage profile
-
-   ```
-   cargo +nightly fuzz coverage --fuzz-dir tests/fuzz --target-dir ./target ip_packet
-   ```
-
-1. Copy profile data to place where `cargo-llvm-cov` can find it
-
-   ```
-   cp tests/fuzz/coverage/**/*.profraw ./target
-   ```
-
-1. Generate coverage report
-   ```
-   cargo +nightly llvm-cov report --html --release --target x86_64-unknown-linux-gnu
-   ```
+```console
+mise run //rust/tests/fuzz:pack-corpus ip-packet
+mise run //rust/tests/fuzz:coverage-snapshot ip-packet
+```
