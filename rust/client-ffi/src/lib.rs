@@ -566,11 +566,15 @@ fn connect(
     // The uploader thread lives and dies with the session: its interval only
     // makes sense while flows are being produced, and a resident thread in an
     // idle app process would poll and dial for nothing. It uses the session's
-    // tunnel-bypassing socket factory; out-of-session spool is drained by the
-    // one-shot `run_flow_log_upload` instead.
-    let uploader = flow_logs_dir
-        .clone()
-        .map(|dir| flow_log_upload::spawn(dir, tcp_socket_factory.clone()));
+    // tunnel-bypassing socket factory, and registers itself so `drain_flow_logs`
+    // nudges it instead of spawning a second drain.
+    let uploader = flow_logs_dir.clone().map(|dir| {
+        let uploader = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
+
+        *lock_uploader() = Some(uploader.clone());
+
+        uploader
+    });
 
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
@@ -732,34 +736,52 @@ pub fn hash_device_id(id: String) -> String {
     telemetry::hash_device_id(id)
 }
 
-/// Runs a single flow-log upload pass over the spool at `spool_dir` and
-/// returns whether a backlog remained (more than one batch pending). For
-/// draining spool left behind while no session is running (app launch on
-/// Android, the app-foreground nudge on Apple); the interval uploader lives
-/// inside the session, so out of session there is nothing else draining.
+/// Drains the flow-log spool at `spool_dir`. Call whenever a prompt upload is
+/// wanted, e.g. on app foreground or launch.
 ///
-/// Uses plain sockets: without a session there is no tunnel of ours to bypass
-/// on Android, and Apple's NetworkExtension sockets are always excluded from
-/// its tunnel.
+/// A live session's uploader is nudged to upload now; the caller returns
+/// immediately, since that thread sticks around to see the upload through.
+/// Without one, a one-shot pass runs over plain sockets (no session means no
+/// tunnel of ours to bypass) and the call blocks until it completes, bounded to
+/// 10 seconds; the pass finishes in the background if it overruns.
 #[uniffi::export]
-pub fn run_flow_log_upload(spool_dir: String) -> bool {
+pub fn drain_flow_logs(spool_dir: String) {
     install_rustls_crypto_provider();
 
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            tracing::error!("Failed to build flow-log upload runtime: {e:#}");
-            return false;
+    let one_shot = {
+        let mut uploader = lock_uploader();
+
+        match uploader.as_ref() {
+            Some(uploader) if !uploader.is_finished() => {
+                uploader.nudge();
+                None
+            }
+            _ => {
+                let one_shot =
+                    flow_log_upload::spawn(PathBuf::from(spool_dir), Arc::new(socket_factory::tcp));
+
+                *uploader = Some(one_shot.clone());
+
+                Some(one_shot)
+            }
         }
     };
 
-    runtime.block_on(flow_log_upload::upload_once(
-        std::path::Path::new(&spool_dir),
-        Arc::new(socket_factory::tcp),
-    ))
+    // Outside the registry lock, so a concurrent `connect` is never blocked on
+    // our bounded wait.
+    if let Some(one_shot) = one_shot {
+        one_shot.stop(Some(Duration::from_secs(10)));
+    }
+}
+
+/// The one live uploader thread, if any: the session's while one exists, else
+/// the latest one-shot. Serializes drains: at most one thread uploads at a time.
+static UPLOADER: std::sync::Mutex<Option<flow_log_upload::Uploader>> = std::sync::Mutex::new(None);
+
+fn lock_uploader() -> std::sync::MutexGuard<'static, Option<flow_log_upload::Uploader>> {
+    UPLOADER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Returns whether log streaming is currently active.
