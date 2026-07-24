@@ -35,6 +35,6 @@ xcodebuild build \
     -configuration "${CONFIGURATION}" \
     -sdk macosx \
     -destination "platform=${PLATFORM},arch=${ARCH}" \
-    RUST_TARGET_DIR="${RUST_TARGET_DIR}" \
+    CONNLIB_TARGET_DIR="${RUST_TARGET_DIR}" \
     GIT_SHA="${GIT_SHA}" \
     ONLY_ACTIVE_ARCH=YES
