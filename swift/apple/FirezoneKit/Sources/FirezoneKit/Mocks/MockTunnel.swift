@@ -80,7 +80,7 @@
           responseHandler(nil)
         }
       case .setInternetResourceEnabled, .signOut, .clearLogs, .getLogFolderSize, .exportLogs,
-        .getEncodedFirezoneId, .registerUploader:
+        .getEncodedFirezoneId, .drainFlowLogs:
         responseHandler(nil)
       }
     }

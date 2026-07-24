@@ -263,7 +263,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
         exportLogs(handler)
-      case .registerUploader:
+      case .drainFlowLogs:
         // The app nudges this on foreground/launch. `drainFlowLogs` pokes a
         // connected session's uploader, or runs a bounded one-shot pass while
         // disconnected. Delivering this while disconnected also starts the

@@ -76,8 +76,8 @@ enum IPCClient {
   // starts the provider if it isn't running (macOS cycle-starts it in
   // `sendProviderMessage`, iOS launches the appex to deliver the message).
   @MainActor
-  static func registerUploader(session: any TunnelSessionProtocol) async throws {
-    let message = ProviderMessage.registerUploader
+  static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
+    let message = ProviderMessage.drainFlowLogs
     _ = try await sendProviderMessage(session: session, message: message)
   }
 
