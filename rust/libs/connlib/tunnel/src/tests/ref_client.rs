@@ -130,6 +130,11 @@ pub struct RefClient {
     /// connection.
     #[debug(skip)]
     gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
+
+    /// Per peer Client, the instants at which this client sent a packet on that
+    /// connection.
+    #[debug(skip)]
+    client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 }
 
 impl RefClient {
@@ -314,6 +319,7 @@ impl RefClient {
         // (buffered, then sent) rather than hitting a dead WireGuard session, so the
         // idle history that drives the re-key tolerance must start fresh.
         self.gateway_send_times.clear();
+        self.client_send_times.clear();
 
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
@@ -560,6 +566,10 @@ impl RefClient {
                     .entry(remote_id)
                     .or_default()
                     .insert(payload, packet_id);
+                self.client_send_times
+                    .entry(remote_id)
+                    .or_default()
+                    .insert(now);
                 return;
             }
         }
@@ -1237,6 +1247,18 @@ impl RefClient {
             .copied()
     }
 
+    pub(crate) fn last_packet_sent_to_client_before(
+        &self,
+        client: ClientId,
+        at: Instant,
+    ) -> Option<Instant> {
+        self.client_send_times
+            .get(&client)?
+            .range(..at)
+            .next_back()
+            .copied()
+    }
+
     /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
     pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
         let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?
@@ -1440,6 +1462,7 @@ fn ref_client(
                     site_status: Default::default(),
                     connection_resets: Default::default(),
                     gateway_send_times: Default::default(),
+                    client_send_times: Default::default(),
                 }
             },
         )

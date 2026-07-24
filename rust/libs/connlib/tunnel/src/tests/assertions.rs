@@ -261,6 +261,8 @@ fn assert_packets_properties<T, U>(
                 // one packet without a reply (see `MIN_IDLE_FOR_REKEY_DROP`). Tolerate
                 // it when the previous packet on this connection was sent at
                 // least `MIN_IDLE_FOR_REKEY_DROP` earlier.
+                //
+                // TODO: Delete once ICEless is the default.
                 if ref_client
                     .last_packet_sent_to_gateway_before(*gateway, *sent_at)
                     .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
@@ -390,6 +392,20 @@ fn assert_packets_properties<T, U>(
                 // If the request was made after we reset our connections, missing a reply is okay.
                 if dst_ref_client.has_reset_connections_within_ice_timeout(*sent_at) {
                     tracing::debug!(target: "assertions", %dst_client_id, "Destination client reset its connections and packet got lost");
+                    num_expected_handshakes -= 1;
+                    continue;
+                }
+
+                // A client→client connection idle long enough for its WireGuard session
+                // to enter the re-key dead window drops this one packet without a reply
+                // (see `MIN_IDLE_FOR_REKEY_DROP`), exactly like the client→gateway case above.
+                //
+                // TODO: Delete once ICEless is the default.
+                if src_ref_client
+                    .last_packet_sent_to_client_before(*dst_client_id, *sent_at)
+                    .is_some_and(|prev| sent_at.duration_since(prev) >= MIN_IDLE_FOR_REKEY_DROP)
+                {
+                    tracing::debug!(target: "assertions", %dst_client_id, "Tolerating {packet_protocol} packet dropped in the WireGuard re-key window");
                     num_expected_handshakes -= 1;
                     continue;
                 }
