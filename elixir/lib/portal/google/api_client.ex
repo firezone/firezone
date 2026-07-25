@@ -299,6 +299,8 @@ defmodule Portal.Google.APIClient do
     {:ok, %{token: access_token, expires_in: expires_in}}
   end
 
+  # Keep final OAuth errors untagged because both credential paths share this
+  # exchange; treating them as federation failures would trigger a key fallback.
   defp access_token_response({:ok, %Req.Response{} = response}), do: {:error, response}
   defp access_token_response({:error, _reason} = error), do: error
 

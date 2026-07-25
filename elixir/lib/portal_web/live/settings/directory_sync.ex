@@ -1781,17 +1781,17 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
-    body["error_description"] ||
+    google_error_message(body) ||
       "HTTP 401 error during verification. Ensure all scopes are granted for the service account."
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: 403, body: body}}) do
-    get_in(body, ["error", "message"]) ||
+    google_error_message(body) ||
       "HTTP 403 error during verification. Ensure the service account has admin privileges and the admin SDK API is enabled."
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: 404, body: body}}) do
-    error_message = get_in(body, ["error", "message"])
+    error_message = google_error_message(body)
 
     if error_message do
       "Resource not found: #{error_message}"
@@ -1811,8 +1811,19 @@ defmodule PortalWeb.Settings.DirectorySync do
     "Transport error while attempting to connect to Google.  We're looking into this"
   end
 
+  defp parse_google_verification_error({:error, {stage, reason}})
+       when stage in [:workload_identity_token_exchange, :service_account_sign_jwt] do
+    parse_google_verification_error({:error, reason})
+  end
+
   defp parse_google_verification_error({:error, %Req.Response{} = response}) do
     parse_google_verification_error({:ok, response})
+  end
+
+  defp parse_google_verification_error(
+         {:error, :incomplete_workload_identity_configuration}
+       ) do
+    "Google Workspace workload identity configuration is incomplete. GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_WORKLOAD_IDENTITY_PROVIDER, and GOOGLE_WORKLOAD_IDENTITY_AUDIENCE must be configured together. Please contact your administrator."
   end
 
   defp parse_google_verification_error({:error, :service_account_not_configured}) do
@@ -1832,6 +1843,16 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     "Unknown error during verification. Please try again. If the problem persists, contact support."
   end
+
+  defp google_error_message(body) when is_map(body) do
+    body["error_description"] ||
+      case body["error"] do
+        %{"message" => message} when is_binary(message) -> message
+        _ -> nil
+      end
+  end
+
+  defp google_error_message(_body), do: nil
 
   # Standard HTTP errors - delegate to ErrorCodes
   defp parse_okta_verification_error({:error, %Req.Response{status: status, body: body}})
