@@ -721,6 +721,9 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   defconfig(:google_service_account_key, :string, default: nil, sensitive: true)
+  defconfig(:google_workload_identity_provider, :string, default: nil)
+  defconfig(:google_workload_identity_audience, :string, default: nil)
+  defconfig(:google_service_account_email, :string, default: nil)
 
   ##############################################
   ## Google / Entra / Okta authentication

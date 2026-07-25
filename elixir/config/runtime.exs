@@ -174,7 +174,9 @@ if config_env() == :prod do
 
   config :portal, Portal.Google.APIClient,
     service_account_key: env_var_to_config!(:google_service_account_key),
-    token_endpoint: "https://oauth2.googleapis.com/token",
+    service_account_email: env_var_to_config!(:google_service_account_email),
+    workload_identity_provider: env_var_to_config!(:google_workload_identity_provider),
+    workload_identity_audience: env_var_to_config!(:google_workload_identity_audience),
     endpoint: "https://www.googleapis.com"
 
   config :portal, Portal.Google.AuthProvider,
