@@ -18,7 +18,7 @@
 "github:rust-fuzz/cargo-fuzz" = { version = "0.13.2", os = ["linux"], version_prefix = "" }
 
 [env]
-RUSTUP_TOOLCHAIN = "nightly-2026-03-30"
+RUSTUP_TOOLCHAIN = "nightly-2026-07-25"
 # LTO conflicts with the libFuzzer instrumentation.
 CARGO_PROFILE_RELEASE_LTO = "false"
 # The workspace profile trades compile time for smaller binaries

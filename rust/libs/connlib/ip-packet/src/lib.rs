@@ -35,7 +35,7 @@ use ingot::ip::{
     ValidLowRentV6Eh,
 };
 use ingot::tcp::{TcpRef, ValidTcp};
-use ingot::types::{HeaderLen as _, HeaderParse as _, NextLayer as _};
+use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
 use std::sync::LazyLock;
@@ -1032,10 +1032,15 @@ impl IpPacket {
     }
 
     pub fn ecn(&self) -> Ecn {
-        match self.version {
-            IpVersion::V4 => self.ipv4_header_unchecked().ecn().into(),
-            IpVersion::V6 => self.ipv6_header_unchecked().ecn().into(),
-        }
+        // Read the bits straight from the header: this is called for every packet and
+        // parsing the header to reach them would, for IPv6, also walk the extension
+        // headers. Masking to two bits keeps the conversion below infallible.
+        let codepoint = match self.version {
+            IpVersion::V4 => self.buf[1] & 0b11,
+            IpVersion::V6 => (self.buf[1] >> 4) & 0b11,
+        };
+
+        ingot::ip::Ecn::from_network(codepoint).into()
     }
 
     pub fn ipv4_header(&self) -> Option<Ipv4HeaderSlice<'_>> {
