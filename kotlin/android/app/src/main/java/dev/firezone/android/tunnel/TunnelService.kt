@@ -131,7 +131,14 @@ class TunnelService : VpnService() {
         fun getService(): TunnelService = this@TunnelService
     }
 
-    override fun onBind(intent: Intent): IBinder = binder
+    // The system binds with `SERVICE_INTERFACE` to obtain `VpnService`'s own binder, which is what
+    // it transacts on to dispatch `onRevoke`. Only the SessionActivity's bind gets `LocalBinder`.
+    override fun onBind(intent: Intent): IBinder? =
+        if (intent.action == VpnService.SERVICE_INTERFACE) {
+            super.onBind(intent)
+        } else {
+            binder
+        }
 
     private val protectSocket: ProtectSocket =
         object : ProtectSocket {
