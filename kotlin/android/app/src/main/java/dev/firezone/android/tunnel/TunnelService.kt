@@ -246,12 +246,14 @@ class TunnelService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        activeService = this
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
         startTelemetry(protectSocket)
     }
 
     override fun onDestroy() {
+        activeService = null
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
@@ -789,6 +791,18 @@ class TunnelService : VpnService() {
 
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+
+        @Volatile
+        private var activeService: TunnelService? = null
+
+        // protect() marks a socket to bypass our VPN. Without a running service our
+        // VPN cannot be up, so the no-op is the correct bypass then too.
+        val protectSocketCallback: ProtectSocket =
+            object : ProtectSocket {
+                override fun protectSocket(fd: Int) {
+                    activeService?.protect(fd)
+                }
+            }
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")

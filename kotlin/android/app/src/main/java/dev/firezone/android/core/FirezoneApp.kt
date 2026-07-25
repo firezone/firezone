@@ -9,6 +9,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
+import dev.firezone.android.tunnel.TunnelService
 import uniffi.connlib.drainFlowLogs
 import kotlin.concurrent.thread
 
@@ -38,7 +39,9 @@ class FirezoneApp : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
-                    thread(isDaemon = true) { drainFlowLogs(flowLogsDir) }
+                    thread(isDaemon = true) {
+                        drainFlowLogs(flowLogsDir, TunnelService.protectSocketCallback)
+                    }
                 }
             },
         )
