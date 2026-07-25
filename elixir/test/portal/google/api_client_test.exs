@@ -2,7 +2,8 @@ defmodule Portal.Google.APIClientTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
 
-  alias Portal.Google.{APIClient, Credentials}
+  alias Portal.Google.APIClient
+  alias Portal.TokenCache
 
   @test_domain "example.com"
   @test_access_token "test_access_token_123"
@@ -56,7 +57,7 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{"error" => "not mocked"})
       end)
 
-      server = start_supervised!(Credentials)
+      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
       Req.Test.allow(APIClient, self(), server)
       Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
 
@@ -144,7 +145,7 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "caches a service-account-key access token" do
-      server = start_supervised!(Credentials)
+      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
       Req.Test.allow(APIClient, self(), server)
 
       Req.Test.expect(APIClient, fn conn ->
@@ -186,6 +187,23 @@ defmodule Portal.Google.APIClientTest do
     end
 
     test "returns a tagged error when Google rejects the workload identity token exchange" do
+      configure_workload_identity()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      server = start_supervised!({TokenCache, name: Portal.Google.TokenCache})
+      Req.Test.allow(APIClient, self(), server)
+      Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
       Req.Test.expect(APIClient, fn conn ->
         conn
         |> Plug.Conn.put_status(403)
@@ -195,10 +213,7 @@ defmodule Portal.Google.APIClientTest do
       assert {:error,
               {:workload_identity_token_exchange,
                %Req.Response{status: 403, body: %{"error" => "permission_denied"}}}} =
-               APIClient.exchange_azure_token(
-                 "azure-managed-identity-token",
-                 @workload_identity_provider
-               )
+               APIClient.get_access_token("admin@example.com")
     end
 
     test "falls back to the key when workload identity federation fails during migration" do

@@ -1,7 +1,7 @@
 defmodule Portal.Google.APIClient do
   require Logger
 
-  alias Portal.Google.Credentials
+  alias Portal.TokenCache
 
   @jwt_bearer_grant_type "urn:ietf:params:oauth:grant-type:jwt-bearer"
   @token_exchange_grant_type "urn:ietf:params:oauth:grant-type:token-exchange"
@@ -21,6 +21,7 @@ defmodule Portal.Google.APIClient do
     :workload_identity_token_exchange,
     :service_account_sign_jwt
   ]
+  @token_cache Portal.Google.TokenCache
 
   @doc """
   Gets a delegated Google Workspace access token using deployment credentials.
@@ -55,17 +56,9 @@ defmodule Portal.Google.APIClient do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     cache_key = workspace_cache_key(impersonation_email, {:service_account_key, key})
 
-    Credentials.fetch(cache_key, fn ->
+    TokenCache.fetch(@token_cache, cache_key, fn ->
       fetch_key_access_token(impersonation_email, key, config)
     end)
-  end
-
-  @doc """
-  Exchanges an Azure managed-identity assertion for a Google federated access token.
-  """
-  def exchange_azure_token(azure_token, workload_identity_provider) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    exchange_azure_token(azure_token, workload_identity_provider, config)
   end
 
   defp get_federated_access_token(impersonation_email, config, workload_identity_config) do
@@ -74,7 +67,7 @@ defmodule Portal.Google.APIClient do
        workload_identity_config.audience}
 
     with {:ok, federated_token} <-
-           Credentials.fetch(federated_cache_key, fn ->
+           TokenCache.fetch(@token_cache, federated_cache_key, fn ->
              fetch_federated_token(workload_identity_config, config)
            end) do
       cache_key =
@@ -83,7 +76,7 @@ defmodule Portal.Google.APIClient do
           {:federated, workload_identity_config}
         )
 
-      Credentials.fetch(cache_key, fn ->
+      TokenCache.fetch(@token_cache, cache_key, fn ->
         fetch_federated_access_token(
           impersonation_email,
           workload_identity_config.service_account_email,

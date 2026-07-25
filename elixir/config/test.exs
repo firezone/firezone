@@ -214,7 +214,7 @@ config :portal, Portal.Google.APIClient,
     plug: {Req.Test, Portal.Google.APIClient}
   ]
 
-config :portal, Portal.Google.Credentials, enabled: false
+config :portal, Portal.TokenCache, enabled: false
 
 # Auth provider configs with Req.Test for OIDC mocking
 config :portal, Portal.Google.AuthProvider,

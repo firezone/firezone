@@ -35,9 +35,9 @@ defmodule Portal.Application do
   end
 
   defp children do
-    # Must start before the repos: they fetch Entra access tokens from it
-    # when connecting with DATABASE_ENTRA_AUTH enabled
-    base_children = managed_identity() ++ google_credentials() ++ [
+    # Must start before the repos: they may fetch cached Entra access tokens
+    # when connecting with DATABASE_ENTRA_AUTH enabled.
+    base_children = token_caches() ++ [
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
@@ -141,24 +141,25 @@ defmodule Portal.Application do
     end
   end
 
-  defp managed_identity do
-    if Portal.Config.env_var_to_config!(:database_entra_auth) ||
-         present?(Portal.Config.env_var_to_config!(:google_workload_identity_audience)) do
-      [Portal.Azure.ManagedIdentity]
+  defp token_caches do
+    config = Application.fetch_env!(:portal, Portal.TokenCache)
+
+    if config[:enabled] do
+      [
+        token_cache(Portal.Azure.TokenCache),
+        token_cache(Portal.Google.TokenCache)
+      ]
     else
       []
     end
   end
 
-  defp google_credentials do
-    if Application.fetch_env!(:portal, Portal.Google.Credentials)[:enabled] do
-      [Portal.Google.Credentials]
-    else
-      []
-    end
+  defp token_cache(name) do
+    %{
+      id: name,
+      start: {Portal.TokenCache, :start_link, [[name: name]]}
+    }
   end
-
-  defp present?(value), do: is_binary(value) and value != ""
 
   defp telemetry do
     config = Application.fetch_env!(:portal, Portal.Telemetry)

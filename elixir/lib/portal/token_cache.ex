@@ -1,9 +1,9 @@
-defmodule Portal.Google.Credentials do
+defmodule Portal.TokenCache do
   @moduledoc """
-  Caches Google access tokens until five minutes before expiration.
+  Caches access tokens until five minutes before expiration.
 
   Fetches are serialized in the GenServer so concurrent callers for the same
-  token do not stampede Google's token endpoints.
+  token do not stampede identity-provider endpoints.
   """
   use GenServer
 
@@ -17,15 +17,12 @@ defmodule Portal.Google.Credentials do
   @doc """
   Returns a cached token or calls `fetch_fun` to obtain one.
 
-  The fetch function must return `{:ok, %{token: token, expires_in: seconds}}`
-  or `{:error, reason}`. When the cache process is not running, the token is
+  The fetch function must return a token with either a relative lifetime:
+  `{:ok, %{token: token, expires_in: seconds}}`, or an absolute expiration:
+  `{:ok, %{token: token, expires_at: unix_seconds}}`. It may instead return
+  `{:error, reason}`. When the cache process is not running, the token is
   fetched directly without caching.
   """
-  def fetch(cache_key, fetch_fun) when is_function(fetch_fun, 0) do
-    fetch(__MODULE__, cache_key, fetch_fun)
-  end
-
-  @doc false
   def fetch(server, cache_key, fetch_fun) when is_function(fetch_fun, 0) do
     case GenServer.whereis(server) do
       nil -> fetch_without_cache(fetch_fun)
@@ -60,8 +57,11 @@ defmodule Portal.Google.Credentials do
   defp fetch_token(fetch_fun) do
     case fetch_fun.() do
       {:ok, %{token: token, expires_in: expires_in}} ->
-        expires_at = System.system_time(:second) + expires_in(expires_in)
+        expires_at = System.system_time(:second) + seconds(expires_in)
         {:ok, token, expires_at}
+
+      {:ok, %{token: token, expires_at: expires_at}} ->
+        {:ok, token, seconds(expires_at)}
 
       {:error, _reason} = error ->
         error
@@ -87,6 +87,6 @@ defmodule Portal.Google.Credentials do
     end
   end
 
-  defp expires_in(seconds) when is_integer(seconds), do: seconds
-  defp expires_in(seconds) when is_binary(seconds), do: String.to_integer(seconds)
+  defp seconds(value) when is_integer(value), do: value
+  defp seconds(value) when is_binary(value), do: String.to_integer(value)
 end

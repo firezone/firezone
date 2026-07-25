@@ -259,7 +259,7 @@ config :portal, Portal.Google.APIClient,
     retry: :transient
   ]
 
-config :portal, Portal.Google.Credentials, enabled: true
+config :portal, Portal.TokenCache, enabled: true
 
 config :portal, Portal.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console
