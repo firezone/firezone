@@ -10,4 +10,4 @@ runs:
     - name: Install AzureSignTool
       if: ${{ runner.os == 'Windows' }}
       shell: bash
-      run: dotnet tool install --global AzureSignTool
+      run: dotnet tool install --global --version 7.0.1 AzureSignTool
