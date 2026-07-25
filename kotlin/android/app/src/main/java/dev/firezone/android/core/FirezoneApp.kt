@@ -35,7 +35,7 @@ class FirezoneApp : Application() {
         // launch): pokes the session's uploader while connected, or runs a bounded
         // one-shot pass to sweep up spool a previous session left behind. Off the
         // main thread because the one-shot case blocks for up to ten seconds.
-        val flowLogsDir = filesDir.absolutePath + "/flow_logs"
+        val flowLogsDir = TunnelService.flowLogsDir(this)
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
