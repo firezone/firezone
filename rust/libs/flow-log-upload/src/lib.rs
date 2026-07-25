@@ -12,11 +12,10 @@
 //! ambiguous failures retry the whole batch.
 //!
 //! [`spawn`] runs a thread that uploads on the portal's interval, for as long
-//! as flows are being produced: the process lifetime on the gateway and desktop
-//! clients, the session lifetime on mobile. The thread is driven by messages:
-//! [`Uploader::nudge`] skips the current interval for a prompt drain, and
-//! [`Uploader::stop`] ends the thread once queued work is done; spawning and
-//! stopping right away yields a one-shot drain.
+//! as flows are being produced: process lifetime on the gateway and desktop
+//! clients, session lifetime on mobile. [`Uploader::nudge`] skips the current
+//! interval; [`Uploader::stop`] ends the thread; spawning and stopping right
+//! away yields a one-shot drain.
 //!
 //! The async fns offload all disk IO to the blocking pool: the HTTP/2 connection
 //! driver shares their runtime, so stalling it would starve the connection.
@@ -127,18 +126,14 @@ enum Command {
 }
 
 impl Uploader {
-    /// Wakes the uploader to run a pass now instead of waiting out its
-    /// interval; returns whether the thread was alive to see it. A nudge
-    /// during a running pass is handled right after it.
+    /// Wakes the uploader to run a pass now; returns whether the thread was
+    /// alive to see it.
     pub fn nudge(&self) -> bool {
         self.commands.send(Command::Upload).is_ok()
     }
 
-    /// Stops the thread once it has worked off everything already queued, e.g.
-    /// a preceding [`Self::nudge`]'s pass.
-    ///
-    /// With `flush`, blocks until the thread acknowledges or the timeout
-    /// elapses; returns whether it acknowledged.
+    /// Stops the thread once already-queued work (e.g. a nudge's pass) is done.
+    /// With `flush`, blocks until it acknowledges or the timeout elapses.
     pub fn stop(&self, flush: Option<Duration>) -> bool {
         let (done, acked) = mpsc::channel();
 
@@ -154,10 +149,8 @@ impl Uploader {
     }
 }
 
-/// Spawns the uploader thread with an immediate first pass queued.
-///
-/// Prunes stale spool directories on start and re-reads the persisted config
-/// each pass. Runs until the process exits, or until [`Uploader::stop`].
+/// Spawns the uploader thread with an immediate first pass queued; it prunes
+/// the spool on start and re-reads the persisted config each pass.
 pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> Uploader {
     let (commands, inbox) = mpsc::channel();
 
@@ -168,8 +161,7 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
         .name("flow-log-uploader".to_owned())
         .spawn({
             // The thread holds a sender too, so dropping the handle detaches
-            // the thread instead of stopping it (gateway and desktop clients
-            // drop it right away and rely on the process lifetime).
+            // rather than stops it (gateway and desktop drop it right away).
             let keep_alive = uploader.clone();
 
             move || {

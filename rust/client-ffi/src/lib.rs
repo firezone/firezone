@@ -481,18 +481,12 @@ impl Drop for Session {
 
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
 
-        // The event loop spooled its open flows on the way out; run one final
-        // upload pass, then let the uploader thread exit. Apple blocks briefly
-        // because the provider process may be reaped right after `stopTunnel`;
-        // Android's app process outlives the session, so waiting would only
-        // delay the disconnect.
+        // The event loop spooled its open flows on the way out; flush them.
         if let Some(uploader) = self.uploader.take() {
-            // Android's app process outlives the session; not waiting keeps
-            // the disconnect prompt.
+            // The app process outlives the session; don't delay the disconnect.
             #[cfg(target_os = "android")]
             let flush = None;
-            // The provider process may be reaped right after `stopTunnel`;
-            // block until the flush lands.
+            // The provider may be reaped right after `stopTunnel`; wait.
             #[cfg(not(target_os = "android"))]
             let flush = Some(FLOW_LOG_DRAIN_TIMEOUT);
 
@@ -571,11 +565,8 @@ fn connect(
         },
         tcp_socket_factory.clone(),
     );
-    // The uploader thread lives and dies with the session: its interval only
-    // makes sense while flows are being produced, and a resident thread in an
-    // idle app process would poll and dial for nothing. It uses the session's
-    // tunnel-bypassing socket factory, and registers itself so `drain_flow_logs`
-    // nudges it instead of spawning a second drain.
+    // The uploader lives and dies with the session (idle, it would only poll
+    // and dial); registered so `drain_flow_logs` nudges it instead of racing it.
     let uploader = flow_logs_dir.clone().map(|dir| {
         let uploader = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
 
@@ -744,19 +735,12 @@ pub fn hash_device_id(id: String) -> String {
     telemetry::hash_device_id(id)
 }
 
-/// Drains the flow-log spool at `spool_dir`. Call whenever a prompt upload is
-/// wanted, e.g. on app foreground or launch.
+/// Drains the flow-log spool at `spool_dir`, e.g. on app foreground or launch.
 ///
-/// A live session's uploader is nudged to upload now; the caller returns
-/// immediately, since that thread sticks around to see the upload through.
-/// Without one, a one-shot pass runs and the call blocks until it completes,
-/// bounded to [`FLOW_LOG_DRAIN_TIMEOUT`]; the pass finishes in the background
-/// if it overruns.
-///
-/// Sockets always use the platform's tunnel bypass, so a drain can never loop
-/// uploads through a tunnel: Apple's NetworkExtension sockets are excluded
-/// from its tunnel, and on Android the `ProtectSocket` callback `protect()`s
-/// each socket.
+/// Nudges a live session's uploader and returns; without one, runs a one-shot
+/// pass, blocking for it up to [`FLOW_LOG_DRAIN_TIMEOUT`]. Sockets always use
+/// the platform's tunnel bypass (Apple's NE sockets are excluded, Android
+/// `protect()`s each one), so a drain can never loop through a tunnel.
 #[uniffi::export]
 #[cfg(target_os = "android")]
 pub fn drain_flow_logs(spool_dir: String, protect_socket: Arc<dyn ProtectSocket>) {
@@ -787,18 +771,16 @@ fn do_drain_flow_logs(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>)
     *uploader = Some(one_shot.clone());
     drop(uploader);
 
-    // Outside the registry lock, so a concurrent `connect` is never blocked on
-    // our bounded wait.
+    // Wait outside the registry lock so a concurrent `connect` isn't blocked.
     one_shot.stop(Some(FLOW_LOG_DRAIN_TIMEOUT));
 }
 
-/// Longest we block for a flow-log drain: the one-shot in [`drain_flow_logs`]
-/// and the final flush when a session drops. Well within the 15-30s the OS
-/// grants `stopTunnel` on Apple.
+/// Longest a drain blocks (one-shot and session-drop flush); well within the
+/// 15-30s the OS grants `stopTunnel` on Apple.
 const FLOW_LOG_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The one live uploader thread, if any: the session's while one exists, else
-/// the latest one-shot. Serializes drains: at most one thread uploads at a time.
+/// The one live uploader thread: the session's, else the latest one-shot.
+/// Serializes drains.
 static UPLOADER: std::sync::Mutex<Option<flow_log_upload::Uploader>> = std::sync::Mutex::new(None);
 
 fn lock_uploader() -> std::sync::MutexGuard<'static, Option<flow_log_upload::Uploader>> {

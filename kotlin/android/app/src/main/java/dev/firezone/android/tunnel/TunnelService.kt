@@ -543,9 +543,8 @@ class TunnelService : VpnService() {
         return logDir
     }
 
-    // Spool directory for flow logs the tunnel writes and the uploader drains. Under
-    // `filesDir` (persistent, unlike `cacheDir`) and outside the log directory so an
-    // exported log bundle never sweeps it up.
+    // Under `filesDir` (persistent) and outside the log directory so exported
+    // log bundles never sweep the spool up.
     private fun getFlowLogsDir(): String {
         val flowLogsDir = filesDir.absolutePath + "/flow_logs"
         Files.createDirectories(Paths.get(flowLogsDir))
