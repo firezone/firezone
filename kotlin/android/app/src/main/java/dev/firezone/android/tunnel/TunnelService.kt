@@ -135,13 +135,6 @@ class TunnelService : VpnService() {
             binder
         }
 
-    private val protectSocket: ProtectSocket =
-        object : ProtectSocket {
-            override fun protectSocket(fd: Int) {
-                protect(fd)
-            }
-        }
-
     private fun buildVpnService() {
         fun handleApplications(
             appRestrictions: Bundle,
@@ -248,7 +241,7 @@ class TunnelService : VpnService() {
         super.onCreate()
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
-        startTelemetry(protectSocket)
+        startTelemetry(protectSocketCallback)
     }
 
     override fun onDestroy() {
@@ -344,7 +337,7 @@ class TunnelService : VpnService() {
                             logFilter = config.logFilter,
                             flowLogsDir = flowLogsDir(this@TunnelService),
                             isInternetResourceActive = resourceState.isEnabled(),
-                            protectSocket = protectSocket,
+                            protectSocket = protectSocketCallback,
                             deviceInfo = deviceInfo,
                         ).use { session ->
                             startNetworkMonitoring()
@@ -792,7 +785,8 @@ class TunnelService : VpnService() {
 
         // protect() reads no service state: it marks the socket via netd, gated on
         // Firezone being the user's chosen VPN app. A bare instance therefore works
-        // without a running service, so drains can always protect their sockets.
+        // with or without a running service, so this one callback serves the
+        // session, telemetry, and flow-log drains alike.
         private object SocketProtector : VpnService()
 
         val protectSocketCallback: ProtectSocket =
