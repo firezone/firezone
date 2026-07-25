@@ -487,8 +487,16 @@ impl Drop for Session {
         // Android's app process outlives the session, so waiting would only
         // delay the disconnect.
         if let Some(uploader) = self.uploader.take() {
-            let flush = (!cfg!(target_os = "android")).then_some(FLOW_LOG_DRAIN_TIMEOUT);
+            // Android's app process outlives the session; not waiting keeps
+            // the disconnect prompt.
+            #[cfg(target_os = "android")]
+            let flush = None;
+            // The provider process may be reaped right after `stopTunnel`;
+            // block until the flush lands.
+            #[cfg(not(target_os = "android"))]
+            let flush = Some(FLOW_LOG_DRAIN_TIMEOUT);
 
+            uploader.nudge();
             uploader.stop(flush);
         }
     }
@@ -741,37 +749,47 @@ pub fn hash_device_id(id: String) -> String {
 ///
 /// A live session's uploader is nudged to upload now; the caller returns
 /// immediately, since that thread sticks around to see the upload through.
-/// Without one, a one-shot pass runs over plain sockets (no session means no
-/// tunnel of ours to bypass) and the call blocks until it completes, bounded to
-/// 10 seconds; the pass finishes in the background if it overruns.
+/// Without one, a one-shot pass runs and the call blocks until it completes,
+/// bounded to [`FLOW_LOG_DRAIN_TIMEOUT`]; the pass finishes in the background
+/// if it overruns.
+///
+/// Sockets always use the platform's tunnel bypass, so a drain can never loop
+/// uploads through a tunnel: Apple's NetworkExtension sockets are excluded
+/// from its tunnel, and on Android the `ProtectSocket` callback `protect()`s
+/// each socket.
 #[uniffi::export]
+#[cfg(target_os = "android")]
+pub fn drain_flow_logs(spool_dir: String, protect_socket: Arc<dyn ProtectSocket>) {
+    do_drain_flow_logs(
+        spool_dir,
+        Arc::new(protected_tcp_socket_factory(protect_socket)),
+    );
+}
+
+#[uniffi::export]
+#[cfg(not(target_os = "android"))]
 pub fn drain_flow_logs(spool_dir: String) {
+    do_drain_flow_logs(spool_dir, Arc::new(socket_factory::tcp));
+}
+
+fn do_drain_flow_logs(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>) {
     install_rustls_crypto_provider();
 
-    let one_shot = {
-        let mut uploader = lock_uploader();
+    let mut uploader = lock_uploader();
 
-        match uploader.as_ref() {
-            Some(uploader) if !uploader.is_finished() => {
-                uploader.nudge();
-                None
-            }
-            _ => {
-                let one_shot =
-                    flow_log_upload::spawn(PathBuf::from(spool_dir), Arc::new(socket_factory::tcp));
+    if let Some(uploader) = uploader.as_ref()
+        && uploader.nudge()
+    {
+        return;
+    }
 
-                *uploader = Some(one_shot.clone());
-
-                Some(one_shot)
-            }
-        }
-    };
+    let one_shot = flow_log_upload::spawn(PathBuf::from(spool_dir), tcp);
+    *uploader = Some(one_shot.clone());
+    drop(uploader);
 
     // Outside the registry lock, so a concurrent `connect` is never blocked on
     // our bounded wait.
-    if let Some(one_shot) = one_shot {
-        one_shot.stop(Some(FLOW_LOG_DRAIN_TIMEOUT));
-    }
+    one_shot.stop(Some(FLOW_LOG_DRAIN_TIMEOUT));
 }
 
 /// Longest we block for a flow-log drain: the one-shot in [`drain_flow_logs`]
