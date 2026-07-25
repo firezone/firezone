@@ -1032,17 +1032,9 @@ impl IpPacket {
     }
 
     pub fn ecn(&self) -> Ecn {
-        let bits = match self.version {
-            IpVersion::V4 => self.buf[1] & 0b11,
-            IpVersion::V6 => (self.buf[1] >> 4) & 0b11,
-        };
-
-        match bits {
-            0b00 => Ecn::NonEct,
-            0b01 => Ecn::Ect1,
-            0b10 => Ecn::Ect0,
-            0b11 => Ecn::Ce,
-            _ => unreachable!(),
+        match self.version {
+            IpVersion::V4 => self.ipv4_header_unchecked().ecn().into(),
+            IpVersion::V6 => self.ipv6_header_unchecked().ecn().into(),
         }
     }
 
@@ -1165,6 +1157,19 @@ pub enum Ecn {
     Ect1 = 0b01,
     Ect0 = 0b10,
     Ce = 0b11,
+}
+
+impl From<ingot::ip::Ecn> for Ecn {
+    fn from(value: ingot::ip::Ecn) -> Self {
+        // `ingot`'s variants are named after the codepoint's ordinal, not after the
+        // ECT level: `Capable0` is codepoint `0b01`, which RFC 3168 calls ECT(1).
+        match value {
+            ingot::ip::Ecn::NotCapable => Self::NonEct,
+            ingot::ip::Ecn::Capable0 => Self::Ect1,
+            ingot::ip::Ecn::Capable1 => Self::Ect0,
+            ingot::ip::Ecn::CongestionExperienced => Self::Ce,
+        }
+    }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
