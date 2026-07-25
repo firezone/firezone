@@ -239,12 +239,14 @@ class TunnelService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        activeService = this
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
         startTelemetry(protectSocketCallback)
     }
 
     override fun onDestroy() {
+        activeService = null
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
@@ -783,16 +785,16 @@ class TunnelService : VpnService() {
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
-        // protect() reads no service state: it marks the socket via netd, gated on
-        // Firezone being the user's chosen VPN app. A bare instance therefore works
-        // with or without a running service, so this one callback serves the
-        // session, telemetry, and flow-log drains alike.
-        private object SocketProtector : VpnService()
+        @Volatile
+        private var activeService: TunnelService? = null
 
+        // Protects through the one live service; the session, telemetry, and
+        // flow-log drains all share it. Without a running service our VPN cannot
+        // be up, so the no-op is the correct bypass then too.
         val protectSocketCallback: ProtectSocket =
             object : ProtectSocket {
                 override fun protectSocket(fd: Int) {
-                    SocketProtector.protect(fd)
+                    activeService?.protect(fd)
                 }
             }
 
