@@ -250,8 +250,9 @@ public final class Store: ObservableObject {
     }
 
     observeForegroundForFlowLogDrain()
-    // Nudge a drain on launch too, not just on subsequent foregrounds.
-    drainFlowLogs()
+    // Nudge a drain on launch too, not just on subsequent foregrounds; not
+    // awaited so startup never waits on the IPC round-trip.
+    Task { await drainFlowLogs() }
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: session.status)
@@ -645,20 +646,18 @@ public final class Store: ObservableObject {
 
     NotificationCenter.default.publisher(for: didBecomeActive)
       .sink { [weak self] _ in
-        Task { @MainActor in self?.drainFlowLogs() }
+        Task { @MainActor in await self?.drainFlowLogs() }
       }
       .store(in: &cancellables)
   }
 
   /// Nudges the provider to run a best-effort flow-log upload pass.
-  private func drainFlowLogs() {
-    Task {
-      guard let session = try? manager().session() else { return }
-      do {
-        try await IPCClient.drainFlowLogs(session: session)
-      } catch {
-        Log.debug("Failed to nudge flow-log uploader: \(error)")
-      }
+  private func drainFlowLogs() async {
+    guard let session = try? manager().session() else { return }
+    do {
+      try await IPCClient.drainFlowLogs(session: session)
+    } catch {
+      Log.debug("Failed to nudge flow-log uploader: \(error)")
     }
   }
 

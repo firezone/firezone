@@ -298,8 +298,9 @@ actor Adapter {
 
     // Wait for the event loop to drop the session: connlib finalizes open flows
     // into the spool and blocks briefly to upload them, which must finish before
-    // stopTunnel's completionHandler lets the OS reap this process.
-    await eventLoopTask?.wait()
+    // stopTunnel's completionHandler lets the OS reap this process. Capped so a
+    // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
+    await eventLoopTask?.wait(timeout: .seconds(15))
   }
 
   /// Get the current state in the completionHandler, only returning

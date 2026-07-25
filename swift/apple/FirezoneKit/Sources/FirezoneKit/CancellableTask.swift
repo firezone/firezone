@@ -14,9 +14,26 @@ public final class CancellableTask: Sendable {
     self.task = Task(operation: operation)
   }
 
-  /// Awaits the task's completion without cancelling it.
-  public func wait() async {
-    await task.value
+  /// Awaits the task's completion without cancelling it, giving up once
+  /// `timeout` elapses.
+  ///
+  /// Built on a stream raced by two tasks because awaiting a non-throwing
+  /// task's `value` never returns early on cancellation.
+  public func wait(timeout: Duration) async {
+    let task = self.task
+
+    let events = AsyncStream<Void> { continuation in
+      Task {
+        await task.value
+        continuation.finish()
+      }
+      Task {
+        try? await Task.sleep(for: timeout)
+        continuation.finish()
+      }
+    }
+
+    for await _ in events {}
   }
 
   deinit {
