@@ -102,24 +102,17 @@ defmodule Portal.Google.Sync do
 
   defp get_access_token!(directory) do
     Logger.debug("Getting access token", google_directory_id: directory.id)
-    key = service_account_key(directory)
 
-    case Google.APIClient.get_access_token(directory.impersonation_email, key) do
-      {:ok, %{body: %{"access_token" => access_token}}} ->
+    case get_access_token(directory) do
+      {:ok, access_token} ->
         Logger.debug("Successfully obtained access token", google_directory_id: directory.id)
         access_token
 
-      {:ok, response} ->
-        Logger.debug("Invalid access token response",
-          google_directory_id: directory.id,
-          status: response.status,
-          body: inspect(response.body)
-        )
-
+      {:error, :service_account_not_configured} ->
         raise Google.SyncError,
-          error: response,
+          error: "service account key is not configured",
           directory_id: directory.id,
-          step: :get_access_token
+          step: :service_account_key
 
       {:error, error} ->
         Logger.debug("Failed to get access token",
@@ -134,24 +127,13 @@ defmodule Portal.Google.Sync do
     end
   end
 
-  defp service_account_key(directory) do
+  defp get_access_token(directory) do
     case directory.legacy_service_account_key do
       key when is_map(key) and map_size(key) > 0 ->
-        key
+        Google.APIClient.get_access_token(directory.impersonation_email, key)
 
       _ ->
-        config = Portal.Config.fetch_env!(:portal, Google.APIClient)
-
-        case config[:service_account_key] do
-          key when is_binary(key) ->
-            JSON.decode!(key)
-
-          _ ->
-            raise Google.SyncError,
-              error: "service account key is not configured",
-              directory_id: directory.id,
-              step: :service_account_key
-        end
+        Google.APIClient.get_access_token(directory.impersonation_email)
     end
   end
 

@@ -37,7 +37,7 @@ defmodule Portal.Application do
   defp children do
     # Must start before the repos: they fetch Entra access tokens from it
     # when connecting with DATABASE_ENTRA_AUTH enabled
-    base_children = managed_identity() ++ [
+    base_children = managed_identity() ++ google_credentials() ++ [
       # Core services
       Portal.Repo,
       Portal.Repo.Replica,
@@ -142,12 +142,23 @@ defmodule Portal.Application do
   end
 
   defp managed_identity do
-    if Portal.Config.env_var_to_config!(:database_entra_auth) do
+    if Portal.Config.env_var_to_config!(:database_entra_auth) ||
+         present?(Portal.Config.env_var_to_config!(:google_workload_identity_audience)) do
       [Portal.Azure.ManagedIdentity]
     else
       []
     end
   end
+
+  defp google_credentials do
+    if Application.fetch_env!(:portal, Portal.Google.Credentials)[:enabled] do
+      [Portal.Google.Credentials]
+    else
+      []
+    end
+  end
+
+  defp present?(value), do: is_binary(value) and value != ""
 
   defp telemetry do
     config = Application.fetch_env!(:portal, Portal.Telemetry)

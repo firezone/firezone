@@ -245,6 +245,11 @@ config :portal, Portal.Entra.APIClient,
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
+  service_account_email: System.get_env("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
+  workload_identity_provider: System.get_env("GOOGLE_WORKLOAD_IDENTITY_PROVIDER"),
+  workload_identity_audience: System.get_env("GOOGLE_WORKLOAD_IDENTITY_AUDIENCE"),
+  sts_endpoint: "https://sts.googleapis.com/v1/token",
+  iam_credentials_endpoint: "https://iamcredentials.googleapis.com",
   token_endpoint: "https://oauth2.googleapis.com/token",
   req_opts: [
     # 1 minute
@@ -253,6 +258,8 @@ config :portal, Portal.Google.APIClient,
     # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
     retry: :transient
   ]
+
+config :portal, Portal.Google.Credentials, enabled: true
 
 config :portal, Portal.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console

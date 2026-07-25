@@ -1648,20 +1648,14 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp start_verification(%{assigns: %{type: "google"}} = socket) do
     changeset = socket.assigns.form.source
     impersonation_email = get_field(changeset, :impersonation_email)
-    config = Portal.Config.fetch_env!(:portal, Google.APIClient)
 
     result =
-      with key_json when is_binary(key_json) <- config[:service_account_key],
-           key = JSON.decode!(key_json),
-           {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
-             Google.APIClient.get_access_token(impersonation_email, key),
+      with {:ok, access_token} <-
+             Google.APIClient.get_access_token(impersonation_email),
            {:ok, %Req.Response{status: 200, body: body}} <-
              Google.APIClient.get_customer(access_token),
            :ok <- Google.APIClient.test_connection(access_token, body["customerDomain"]) do
         {:ok, body["customerDomain"]}
-      else
-        nil -> {:error, :service_account_not_configured}
-        other -> other
       end
 
     case result do
@@ -1817,8 +1811,12 @@ defmodule PortalWeb.Settings.DirectorySync do
     "Transport error while attempting to connect to Google.  We're looking into this"
   end
 
+  defp parse_google_verification_error({:error, %Req.Response{} = response}) do
+    parse_google_verification_error({:ok, response})
+  end
+
   defp parse_google_verification_error({:error, :service_account_not_configured}) do
-    "No service account key is configured for this deployment. Please contact your administrator."
+    "No Google Workspace credentials are configured for this deployment. Please contact your administrator."
   end
 
   defp parse_google_verification_error({:error, reason}) when is_exception(reason) do

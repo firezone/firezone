@@ -1,11 +1,14 @@
 defmodule Portal.Google.APIClientTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import ExUnit.CaptureLog
 
-  alias Portal.Google.APIClient
+  alias Portal.Google.{APIClient, Credentials}
 
   @test_domain "example.com"
   @test_access_token "test_access_token_123"
+  @workload_identity_provider "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/azure-portal/providers/workspace-sync-staging"
+  @workload_identity_audience "api://tenant-id/google-workspace-sync-staging"
+  @service_account_email "directory-sync@project.iam.gserviceaccount.com"
   @test_private_key """
   -----BEGIN RSA PRIVATE KEY-----
   MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MaC6dCT6LsOpNkYe
@@ -44,6 +47,200 @@ defmodule Portal.Google.APIClientTest do
     :ok
   end
 
+  describe "federated access tokens" do
+    test "caches federated and delegated access tokens independently" do
+      configure_workload_identity()
+      test_pid = self()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      server = start_supervised!(Credentials)
+      Req.Test.allow(APIClient, self(), server)
+      Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        params = URI.decode_query(conn.query_string)
+        assert params["resource"] == @workload_identity_audience
+
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, 5, fn conn ->
+        case conn.request_path do
+          "/v1/token" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            send(test_pid, {:sts_request, URI.decode_query(body)})
+
+            Req.Test.json(conn, %{
+              "access_token" => "federated-google-token",
+              "expires_in" => 3600,
+              "token_type" => "Bearer"
+            })
+
+          "/v1/projects/-/serviceAccounts/" <>
+              @service_account_email <> ":signJwt" ->
+            assert_authorization_header(conn, "federated-google-token")
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            %{"payload" => payload} = JSON.decode!(body)
+            send(test_pid, {:sign_jwt_request, JSON.decode!(payload)})
+
+            Req.Test.json(conn, %{"signedJwt" => "google-signed-jwt"})
+
+          "/token" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            send(test_pid, {:workspace_token_request, URI.decode_query(body)})
+
+            Req.Test.json(conn, %{
+              "access_token" => "workspace-access-token",
+              "expires_in" => 3600,
+              "token_type" => "Bearer"
+            })
+        end
+      end)
+
+      assert APIClient.get_access_token("admin@example.com") ==
+               {:ok, "workspace-access-token"}
+
+      assert APIClient.get_access_token("admin@example.com") ==
+               {:ok, "workspace-access-token"}
+
+      assert APIClient.get_access_token("another-admin@example.com") ==
+               {:ok, "workspace-access-token"}
+
+      assert_receive {:sts_request, sts_params}
+      assert sts_params["audience"] == @workload_identity_provider
+      assert sts_params["grant_type"] == "urn:ietf:params:oauth:grant-type:token-exchange"
+
+      assert sts_params["requested_token_type"] ==
+               "urn:ietf:params:oauth:token-type:access_token"
+
+      assert sts_params["scope"] == "https://www.googleapis.com/auth/cloud-platform"
+      assert sts_params["subject_token"] == "azure-managed-identity-token"
+      assert sts_params["subject_token_type"] == "urn:ietf:params:oauth:token-type:jwt"
+
+      assert_receive {:sign_jwt_request, claims}
+      assert claims["iss"] == @service_account_email
+      assert claims["sub"] == "admin@example.com"
+      assert claims["aud"] == "https://oauth2.googleapis.com/token"
+      assert claims["exp"] - claims["iat"] == 3600
+
+      assert MapSet.new(String.split(claims["scope"])) ==
+               MapSet.new([
+                 "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.group.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.user.readonly"
+               ])
+
+      assert_receive {:workspace_token_request, workspace_params}
+      assert workspace_params["grant_type"] == "urn:ietf:params:oauth:grant-type:jwt-bearer"
+      assert workspace_params["assertion"] == "google-signed-jwt"
+      refute_receive {:sts_request, _sts_params}
+    end
+
+    test "caches a service-account-key access token" do
+      server = start_supervised!(Credentials)
+      Req.Test.allow(APIClient, self(), server)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/token"
+        Req.Test.json(conn, %{
+          "access_token" => "key-backed-access-token",
+          "expires_in" => 3600
+        })
+      end)
+
+      key = %{
+        "client_email" => @service_account_email,
+        "private_key" => @test_private_key
+      }
+
+      assert {:ok, "key-backed-access-token"} =
+               APIClient.get_access_token("admin@example.com", key)
+
+      assert {:ok, "key-backed-access-token"} =
+               APIClient.get_access_token("admin@example.com", key)
+    end
+
+    test "does not fall back to a key when workload identity configuration is incomplete" do
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        workload_identity_provider: @workload_identity_provider,
+        workload_identity_audience: nil,
+        service_account_email: nil,
+        service_account_key:
+          JSON.encode!(%{
+            "client_email" => @service_account_email,
+            "private_key" => @test_private_key
+          })
+      )
+
+      assert {:error, :incomplete_workload_identity_configuration} =
+               APIClient.get_access_token("admin@example.com")
+    end
+
+    test "returns a tagged error when Google rejects the workload identity token exchange" do
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "permission_denied"})
+      end)
+
+      assert {:error,
+              {:workload_identity_token_exchange,
+               %Req.Response{status: 403, body: %{"error" => "permission_denied"}}}} =
+               APIClient.exchange_azure_token(
+                 "azure-managed-identity-token",
+                 @workload_identity_provider
+               )
+    end
+
+    test "falls back to the key when workload identity federation fails during migration" do
+      configure_workload_identity()
+
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        service_account_key:
+          JSON.encode!(%{
+            "client_email" => @service_account_email,
+            "private_key" => @test_private_key
+          })
+      )
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        case conn.request_path do
+          "/v1/token" ->
+            conn
+            |> Plug.Conn.put_status(403)
+            |> Req.Test.json(%{"error" => "permission_denied"})
+
+          "/token" ->
+            Req.Test.json(conn, %{
+              "access_token" => "fallback-access-token",
+              "expires_in" => 3600
+            })
+        end
+      end)
+
+      assert {:ok, "fallback-access-token"} =
+               APIClient.get_access_token("admin@example.com")
+    end
+  end
+
   describe "get_access_token/2" do
     test "exchanges JWT for access token" do
       test_pid = self()
@@ -67,10 +264,8 @@ defmodule Portal.Google.APIClientTest do
         "private_key" => @test_private_key
       }
 
-      assert {:ok, %Req.Response{status: 200, body: body}} =
+      assert {:ok, "returned_access_token"} =
                APIClient.get_access_token("admin@example.com", key)
-
-      assert body["access_token"] == "returned_access_token"
 
       assert_receive {:token_request, request_body, conn}
       assert {"content-type", "application/x-www-form-urlencoded"} in conn.req_headers
@@ -1210,6 +1405,16 @@ defmodule Portal.Google.APIClientTest do
     attrs
     |> Map.put_new("suspended", false)
     |> Map.put_new("archived", false)
+  end
+
+  defp configure_workload_identity do
+    Portal.Config.put_env_override(
+      :portal,
+      APIClient,
+      workload_identity_provider: @workload_identity_provider,
+      workload_identity_audience: @workload_identity_audience,
+      service_account_email: @service_account_email
+    )
   end
 
   defp assert_authorization_header(conn, expected_token) do
