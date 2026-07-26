@@ -31,6 +31,17 @@ defmodule PortalAPI.RedirectToRestApiUrlTest do
       assert result == conn
     end
 
+    test "passes flow-log ingestion requests through on the dedicated host" do
+      Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
+
+      conn = conn(:post, "https://flow-api.firezone.dev/ingestion/flow_logs", "")
+
+      result = call(conn)
+
+      refute result.halted
+      assert result == conn
+    end
+
     test "permanent-redirects requests on any other host preserving path and query" do
       Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
 
