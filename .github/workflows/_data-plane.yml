@@ -155,16 +155,16 @@ jobs:
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - uses: ./.github/actions/setup-azure-sign-tool
-        if: inputs.profile == 'release'
+        if: ${{ inputs.profile == 'release' }}
+        with:
+          client-id: ${{ vars.AZURE_CODESIGNING_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_CODESIGNING_TENANT_ID }}
       - name: Sign the binary
-        if: inputs.profile == 'release'
+        if: ${{ inputs.profile == 'release' }}
         shell: bash
         env:
-          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+          AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
+          AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
         run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}

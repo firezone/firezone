@@ -1,8 +1,31 @@
 name: "Setup AzureSignTool"
-description: "Installs the AzureSignTool"
+description: "Prepares Azure authentication and installs AzureSignTool"
+inputs:
+  client-id:
+    description: "Client ID of the Azure code-signing identity"
+    required: true
+  tenant-id:
+    description: "Azure tenant ID"
+    required: true
 runs:
   using: "composite"
   steps:
+    - name: Azure login for code signing (OIDC)
+      if: ${{ runner.os == 'Windows' }}
+      uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        allow-no-subscriptions: true
+    # GitHub's OIDC assertion expires before longer builds reach code signing.
+    # Prime Azure CLI's token cache while the assertion is still fresh.
+    - name: Prime Azure Key Vault access token
+      if: ${{ runner.os == 'Windows' }}
+      shell: bash
+      run: >-
+        az account get-access-token
+        --resource https://vault.azure.net
+        --output none
     - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       if: ${{ runner.os == 'Windows' }}
       with:
@@ -10,4 +33,4 @@ runs:
     - name: Install AzureSignTool
       if: ${{ runner.os == 'Windows' }}
       shell: bash
-      run: dotnet tool install --global AzureSignTool
+      run: dotnet tool install --global --version 7.0.1 AzureSignTool
