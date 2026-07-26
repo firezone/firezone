@@ -51,6 +51,8 @@ const DISABLED_POLL: Duration = Duration::from_secs(30);
 /// Total time spent retrying one batch on transient failures before deferring it
 /// to the next pass.
 const MAX_UPLOAD_RETRY: Duration = Duration::from_secs(5 * 60);
+/// Prevent a broken or malicious endpoint from trapping an upload in a redirect loop.
+const MAX_REDIRECTS: usize = 5;
 const INGEST_PATH: &str = "/ingestion/flow_logs";
 const CONFIG_FILE: &str = "upload.json";
 const START_SUFFIX: &str = ".start.json";
@@ -477,6 +479,58 @@ async fn connect(
         .context("Failed to connect to ingest host")
 }
 
+/// An ingest connection and its current endpoint.
+///
+/// [`HttpClient`] is tied to one host, so following a cross-host redirect must
+/// also replace the underlying connection.
+struct IngestClient {
+    http: HttpClient,
+    url: String,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+}
+
+impl IngestClient {
+    async fn connect(
+        url: String,
+        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    ) -> Result<Self> {
+        let http = connect(&url, socket_factory.clone()).await?;
+
+        Ok(Self {
+            http,
+            url,
+            socket_factory,
+        })
+    }
+
+    fn is_closed(&self) -> bool {
+        self.http.is_closed()
+    }
+
+    async fn follow_redirect(&mut self, response: &http::Response<Bytes>) -> Result<()> {
+        let redirected_url = redirect_url(&self.url, response)?;
+        let current_host = Url::parse(&self.url)
+            .context("Invalid current ingest URL")?
+            .host_str()
+            .context("Current ingest URL has no host")?
+            .to_owned();
+        let redirected_host = Url::parse(&redirected_url)
+            .context("Invalid redirected ingest URL")?
+            .host_str()
+            .context("Redirected ingest URL has no host")?
+            .to_owned();
+
+        if redirected_host != current_host {
+            self.http = connect(&redirected_url, self.socket_factory.clone()).await?;
+        }
+
+        tracing::info!(from = %self.url, to = %redirected_url, "Following flow-log upload redirect");
+        self.url = redirected_url;
+
+        Ok(())
+    }
+}
+
 /// One flow to upload: the record to send and the files to delete once it lands.
 struct Pending {
     payload: serde_json::Value,
@@ -504,7 +558,7 @@ async fn upload_pending(
     }
 
     // Routine while the device is offline or roaming; try again next pass.
-    let client = match connect(&url, socket_factory).await {
+    let mut client = match IngestClient::connect(url, socket_factory).await {
         Ok(client) => client,
         Err(e) => {
             tracing::info!("Failed to open flow-log ingest connection: {e:#}");
@@ -532,7 +586,7 @@ async fn upload_pending(
             return Ok(true);
         }
 
-        match upload_authz_batch(&client, &dir, &url, config.batch_size).await {
+        match upload_authz_batch(&mut client, &dir, config.batch_size).await {
             Ok(more) => backlog |= more,
             // One broken directory must not block the others.
             Err(e) => tracing::warn!(?dir, "Failed to upload flow-log batch: {e:#}"),
@@ -574,9 +628,8 @@ fn read_dir_or_empty(dir: &Path) -> Result<Vec<PathBuf>> {
 /// Uploads one batch from one authorization's spool. Returns whether more than one
 /// batch was pending (a backlog).
 async fn upload_authz_batch(
-    client: &HttpClient,
+    client: &mut IngestClient,
     dir: &Path,
-    url: &str,
     batch_size: usize,
 ) -> Result<bool> {
     let collected = {
@@ -589,7 +642,7 @@ async fn upload_authz_batch(
         return Ok(false);
     };
 
-    submit(client, url, &token, &batch).await?;
+    submit(client, &token, &batch).await?;
 
     Ok(backlog)
 }
@@ -716,7 +769,7 @@ fn read_report(path: &Path) -> Result<Option<serde_json::Value>> {
 
 /// Submits one batch with response-specific handling. Idempotent, so transient
 /// failures retry the whole batch.
-async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) -> Result<()> {
+async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<()> {
     if batch.is_empty() {
         return Ok(());
     }
@@ -729,9 +782,10 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
     let body = Bytes::from(body);
 
     let mut backoff = upload_backoff();
+    let mut redirects = 0;
 
     loop {
-        let response = match send(client, url, token, body.clone()).await {
+        let response = match send(client, token, body.clone()).await {
             Ok(response) => response,
             Err(e) => {
                 tracing::info!("Flow-log upload request failed: {e:#}");
@@ -751,7 +805,7 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
                 return Ok(());
             }
             ResponseAction::Partition => {
-                return partition(client, url, token, batch).await;
+                return partition(client, token, batch).await;
             }
             ResponseAction::RateLimited => {
                 let wait = retry_after(&response).unwrap_or(CATCHUP_POLL);
@@ -764,6 +818,14 @@ async fn submit(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) 
                 if !sleep_backoff(&mut backoff).await {
                     return Ok(());
                 }
+            }
+            ResponseAction::Redirect => {
+                anyhow::ensure!(
+                    redirects < MAX_REDIRECTS,
+                    "Flow-log upload exceeded {MAX_REDIRECTS} redirects"
+                );
+                client.follow_redirect(&response).await?;
+                redirects += 1;
             }
             ResponseAction::Drop => {
                 let body = body_string(&response);
@@ -786,6 +848,8 @@ enum ResponseAction {
     RateLimited,
     /// Transient failure (408 / 5xx); back off, then retry the same batch.
     Retry,
+    /// Permanently redirected (308); reconnect if needed and replay the POST.
+    Redirect,
     /// Permanently rejected (422 / other 4xx); log and drop the batch. The portal
     /// upserts by flow identity, so a dropped batch is never a partial write.
     Drop,
@@ -798,25 +862,51 @@ fn classify_response(status: StatusCode) -> ResponseAction {
         StatusCode::TOO_MANY_REQUESTS => ResponseAction::RateLimited,
         StatusCode::REQUEST_TIMEOUT => ResponseAction::Retry,
         s if s.is_server_error() => ResponseAction::Retry,
+        StatusCode::PERMANENT_REDIRECT => ResponseAction::Redirect,
         _ => ResponseAction::Drop,
     }
 }
 
-async fn send(
-    client: &HttpClient,
-    url: &str,
-    token: &str,
-    body: Bytes,
-) -> Result<http::Response<Bytes>> {
+async fn send(client: &IngestClient, token: &str, body: Bytes) -> Result<http::Response<Bytes>> {
     let request = http::Request::builder()
         .method(http::Method::POST)
-        .uri(url)
+        .uri(&client.url)
         .header(header::AUTHORIZATION, format!("Bearer {token}"))
         .header(header::CONTENT_TYPE, "application/json")
         .body(body)
         .context("Failed to build flow-log request")?;
 
-    client.send_request(request)?.await
+    client.http.send_request(request)?.await
+}
+
+fn redirect_url(current_url: &str, response: &http::Response<Bytes>) -> Result<String> {
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .context("Flow-log upload redirect has no Location header")?
+        .to_str()
+        .context("Flow-log upload redirect has an invalid Location header")?;
+    let mut redirected = Url::parse(current_url)
+        .context("Invalid current ingest URL")?
+        .join(location)
+        .context("Invalid flow-log upload redirect URL")?;
+
+    anyhow::ensure!(
+        redirected.scheme() == "https",
+        "Flow-log upload redirect must use HTTPS"
+    );
+    anyhow::ensure!(
+        redirected.port_or_known_default() == Some(443),
+        "Flow-log upload redirect must use port 443"
+    );
+    anyhow::ensure!(
+        redirected.username().is_empty() && redirected.password().is_none(),
+        "Flow-log upload redirect must not contain credentials"
+    );
+
+    redirected.set_fragment(None);
+
+    Ok(redirected.to_string())
 }
 
 fn body_string(response: &http::Response<Bytes>) -> String {
@@ -824,7 +914,7 @@ fn body_string(response: &http::Response<Bytes>) -> String {
 }
 
 /// Splits an over-sized batch in half and submits each.
-async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending]) -> Result<()> {
+async fn partition(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Result<()> {
     if batch.len() <= 1 {
         tracing::error!("A single flow exceeds the upload size limit; dropping");
         delete_all(batch).await;
@@ -832,8 +922,8 @@ async fn partition(client: &HttpClient, url: &str, token: &str, batch: &[Pending
     }
 
     let mid = batch.len() / 2;
-    Box::pin(submit(client, url, token, &batch[..mid])).await?;
-    Box::pin(submit(client, url, token, &batch[mid..])).await?;
+    Box::pin(submit(client, token, &batch[..mid])).await?;
+    Box::pin(submit(client, token, &batch[mid..])).await?;
 
     Ok(())
 }
@@ -1152,10 +1242,70 @@ mod tests {
         assert_eq!(classify_response(StatusCode::REQUEST_TIMEOUT), Retry);
         assert_eq!(classify_response(StatusCode::INTERNAL_SERVER_ERROR), Retry);
         assert_eq!(classify_response(StatusCode::SERVICE_UNAVAILABLE), Retry);
+        assert_eq!(classify_response(StatusCode::PERMANENT_REDIRECT), Redirect);
         assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Drop);
         assert_eq!(classify_response(StatusCode::BAD_REQUEST), Drop);
         assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Drop);
         assert_eq!(classify_response(StatusCode::FORBIDDEN), Drop);
+    }
+
+    #[test]
+    fn redirect_url_resolves_absolute_and_relative_locations() {
+        let absolute = http::Response::builder()
+            .header(
+                header::LOCATION,
+                "https://rest-api.firezone.dev/ingestion/flow_logs",
+            )
+            .body(Bytes::new())
+            .unwrap();
+        assert_eq!(
+            redirect_url(
+                "https://flow-api.firezone.dev/ingestion/flow_logs",
+                &absolute
+            )
+            .unwrap(),
+            "https://rest-api.firezone.dev/ingestion/flow_logs"
+        );
+
+        let relative = http::Response::builder()
+            .header(header::LOCATION, "/v2/flow_logs")
+            .body(Bytes::new())
+            .unwrap();
+        assert_eq!(
+            redirect_url(
+                "https://flow-api.firezone.dev/ingestion/flow_logs",
+                &relative
+            )
+            .unwrap(),
+            "https://flow-api.firezone.dev/v2/flow_logs"
+        );
+    }
+
+    #[test]
+    fn redirect_url_rejects_missing_or_insecure_locations() {
+        let missing = http::Response::builder().body(Bytes::new()).unwrap();
+        assert!(
+            redirect_url(
+                "https://flow-api.firezone.dev/ingestion/flow_logs",
+                &missing
+            )
+            .is_err()
+        );
+
+        let insecure = http::Response::builder()
+            .header(
+                header::LOCATION,
+                "http://rest-api.firezone.dev/ingestion/flow_logs",
+            )
+            .body(Bytes::new())
+            .unwrap();
+        assert!(
+            redirect_url(
+                "https://flow-api.firezone.dev/ingestion/flow_logs",
+                &insecure
+            )
+            .is_err()
+        );
     }
 
     #[test]
