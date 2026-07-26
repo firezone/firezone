@@ -61,6 +61,7 @@ updates:
       - "/.github/actions/setup-android"
       - "/.github/actions/setup-azure-cli"
       - "/.github/actions/setup-azure-sign-tool"
+      - "/.github/actions/setup-buildx"
       - "/.github/actions/setup-docker"
       - "/.github/actions/setup-elixir"
       - "/.github/actions/setup-gpg"
