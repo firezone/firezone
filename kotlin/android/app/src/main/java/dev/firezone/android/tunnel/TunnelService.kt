@@ -135,13 +135,6 @@ class TunnelService : VpnService() {
             binder
         }
 
-    private val protectSocket: ProtectSocket =
-        object : ProtectSocket {
-            override fun protectSocket(fd: Int) {
-                protect(fd)
-            }
-        }
-
     private fun buildVpnService() {
         fun handleApplications(
             appRestrictions: Bundle,
@@ -246,12 +239,14 @@ class TunnelService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        activeService = this
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
-        startTelemetry(protectSocket)
+        startTelemetry(protectSocketCallback)
     }
 
     override fun onDestroy() {
+        activeService = null
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
@@ -344,7 +339,7 @@ class TunnelService : VpnService() {
                             logFilter = config.logFilter,
                             flowLogsDir = flowLogsDir(this@TunnelService),
                             isInternetResourceActive = resourceState.isEnabled(),
-                            protectSocket = protectSocket,
+                            protectSocket = protectSocketCallback,
                             deviceInfo = deviceInfo,
                         ).use { session ->
                             startNetworkMonitoring()
@@ -789,6 +784,19 @@ class TunnelService : VpnService() {
 
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+
+        @Volatile
+        private var activeService: TunnelService? = null
+
+        // Protects through the one live service; the session, telemetry, and
+        // flow-log drains all share it. Without a running service our VPN cannot
+        // be up, so the no-op is the correct bypass then too.
+        val protectSocketCallback: ProtectSocket =
+            object : ProtectSocket {
+                override fun protectSocket(fd: Int) {
+                    activeService?.protect(fd)
+                }
+            }
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
