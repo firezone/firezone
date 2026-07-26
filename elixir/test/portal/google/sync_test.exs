@@ -876,8 +876,17 @@ defmodule Portal.Google.SyncTest do
       assert Repo.all(Portal.Membership) == []
     end
 
-    test "uses legacy service account key when present" do
+    test "uses legacy service account key when present even with workload identity configured" do
       account = account_fixture()
+
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        workload_identity_provider:
+          "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
+        workload_identity_audience: "api://tenant/google-workspace-sync-staging",
+        service_account_email: "directory-sync@project.iam.gserviceaccount.com"
+      )
 
       legacy_key = %{
         "type" => "service_account",

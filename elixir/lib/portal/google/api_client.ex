@@ -1,32 +1,126 @@
 defmodule Portal.Google.APIClient do
   require Logger
 
-  def get_access_token(impersonation_email, key) do
+  alias Portal.TokenCache
+
+  @jwt_bearer_grant_type "urn:ietf:params:oauth:grant-type:jwt-bearer"
+  @token_exchange_grant_type "urn:ietf:params:oauth:grant-type:token-exchange"
+  @access_token_type "urn:ietf:params:oauth:token-type:access_token"
+  @jwt_token_type "urn:ietf:params:oauth:token-type:jwt"
+  @cloud_platform_scope "https://www.googleapis.com/auth/cloud-platform"
+  @workspace_scope ~w[
+    https://www.googleapis.com/auth/admin.directory.customer.readonly
+    https://www.googleapis.com/auth/admin.directory.orgunit.readonly
+    https://www.googleapis.com/auth/admin.directory.group.readonly
+    https://www.googleapis.com/auth/admin.directory.user.readonly
+  ]
+                   |> Enum.join(" ")
+
+  @federation_failure_stages [
+    :managed_identity,
+    :workload_identity_token_exchange,
+    :service_account_sign_jwt
+  ]
+  @token_cache Portal.Google.TokenCache
+
+  @doc """
+  Gets a delegated Google Workspace access token using deployment credentials.
+
+  Workload identity federation is preferred when fully configured. A deployment
+  service account key is used when federation is not configured and remains a
+  temporary fallback for federation-stage failures until the key is removed.
+  """
+  def get_access_token(impersonation_email) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
-    token_endpoint = config[:token_endpoint]
-    iss = key["client_email"]
-    private_key = key["private_key"]
 
-    unix_timestamp = :os.system_time(:seconds)
+    case workload_identity_config(config) do
+      {:ok, workload_identity_config} ->
+        impersonation_email
+        |> get_federated_access_token(config, workload_identity_config)
+        |> maybe_fallback_to_service_account_key(impersonation_email, config)
+
+      :not_configured ->
+        get_access_token_with_configured_key(impersonation_email, config)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Gets a delegated Google Workspace access token using a service account key.
+
+  This path is retained for directories with a customer-specific legacy key.
+  """
+  def get_access_token(impersonation_email, key) when is_map(key) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    cache_key = workspace_cache_key(impersonation_email, {:service_account_key, key})
+
+    TokenCache.fetch(@token_cache, cache_key, fn ->
+      fetch_key_access_token(impersonation_email, key, config)
+    end)
+  end
+
+  defp get_federated_access_token(impersonation_email, config, workload_identity_config) do
+    federated_cache_key =
+      {:federated_access_token, workload_identity_config.provider,
+       workload_identity_config.audience}
+
+    with {:ok, federated_token} <-
+           TokenCache.fetch(@token_cache, federated_cache_key, fn ->
+             fetch_federated_token(workload_identity_config, config)
+           end) do
+      cache_key =
+        workspace_cache_key(
+          impersonation_email,
+          {:federated, workload_identity_config}
+        )
+
+      TokenCache.fetch(@token_cache, cache_key, fn ->
+        fetch_federated_access_token(
+          impersonation_email,
+          workload_identity_config.service_account_email,
+          federated_token,
+          config
+        )
+      end)
+    end
+  end
+
+  defp fetch_federated_token(workload_identity_config, config) do
+    with {:ok, azure_token} <-
+           managed_identity_token(workload_identity_config.audience) do
+      exchange_azure_token(
+        azure_token,
+        workload_identity_config.provider,
+        config
+      )
+    end
+  end
+
+  defp fetch_federated_access_token(
+         impersonation_email,
+         service_account_email,
+         federated_token,
+         config
+       ) do
+    claims = claim_set(impersonation_email, service_account_email, config[:token_endpoint])
+
+    with {:ok, signed_jwt} <-
+           sign_jwt(claims, service_account_email, federated_token, config) do
+      signed_jwt
+      |> exchange_signed_jwt(config)
+      |> access_token_response()
+    end
+  end
+
+  defp fetch_key_access_token(impersonation_email, key, config) do
     jws = %{"alg" => "RS256", "typ" => "JWT"}
-    jwk = JOSE.JWK.from_pem(private_key)
-
-    scope = ~w[
-      https://www.googleapis.com/auth/admin.directory.customer.readonly
-      https://www.googleapis.com/auth/admin.directory.orgunit.readonly
-      https://www.googleapis.com/auth/admin.directory.group.readonly
-      https://www.googleapis.com/auth/admin.directory.user.readonly
-    ] |> Enum.join(" ")
+    jwk = JOSE.JWK.from_pem(key["private_key"])
 
     claim_set =
-      %{
-        "iss" => iss,
-        "scope" => scope,
-        "aud" => token_endpoint,
-        "sub" => impersonation_email,
-        "exp" => unix_timestamp + 3600,
-        "iat" => unix_timestamp
-      }
+      impersonation_email
+      |> claim_set(key["client_email"], config[:token_endpoint])
       |> JSON.encode!()
 
     jwt =
@@ -34,21 +128,195 @@ defmodule Portal.Google.APIClient do
       |> JOSE.JWS.compact()
       |> elem(1)
 
+    jwt
+    |> exchange_signed_jwt(config)
+    |> access_token_response()
+  end
+
+  defp exchange_azure_token(azure_token, workload_identity_provider, config) do
     payload =
       URI.encode_query(%{
-        "grant_type" => "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "audience" => workload_identity_provider,
+        "grant_type" => @token_exchange_grant_type,
+        "requested_token_type" => @access_token_type,
+        "scope" => @cloud_platform_scope,
+        "subject_token" => azure_token,
+        "subject_token_type" => @jwt_token_type
+      })
+
+    case Req.post(
+           config[:sts_endpoint],
+           [
+             headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+             body: payload
+           ] ++ (config[:req_opts] || [])
+         ) do
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{"access_token" => access_token, "expires_in" => expires_in}
+       }} ->
+        {:ok, %{token: access_token, expires_in: expires_in}}
+
+      {:ok, %Req.Response{} = response} ->
+        {:error, {:workload_identity_token_exchange, response}}
+
+      {:error, reason} ->
+        {:error, {:workload_identity_token_exchange, reason}}
+    end
+  end
+
+  defp managed_identity_token(audience) do
+    {:ok, Portal.Azure.ManagedIdentity.access_token!(audience)}
+  rescue
+    exception -> {:error, {:managed_identity, exception}}
+  end
+
+  defp maybe_fallback_to_service_account_key(
+         {:error, {stage, _reason}} = error,
+         impersonation_email,
+         config
+       )
+       when stage in @federation_failure_stages do
+    case config[:service_account_key] do
+      key when is_binary(key) and key != "" ->
+        Logger.warning("Google workload identity federation failed; using service account key",
+          stage: stage
+        )
+
+        get_access_token(impersonation_email, JSON.decode!(key))
+
+      _ ->
+        error
+    end
+  end
+
+  defp maybe_fallback_to_service_account_key(result, _impersonation_email, _config), do: result
+
+  defp get_access_token_with_configured_key(impersonation_email, config) do
+    case config[:service_account_key] do
+      key when is_binary(key) and key != "" ->
+        get_access_token(impersonation_email, JSON.decode!(key))
+
+      _ ->
+        {:error, :service_account_not_configured}
+    end
+  end
+
+  defp workload_identity_config(config) do
+    values = [
+      config[:workload_identity_provider],
+      config[:workload_identity_audience],
+      config[:service_account_email]
+    ]
+
+    cond do
+      Enum.all?(values, &blank?/1) ->
+        :not_configured
+
+      Enum.all?(values, &present?/1) ->
+        {:ok,
+         %{
+           provider: config[:workload_identity_provider],
+           audience: config[:workload_identity_audience],
+           service_account_email: config[:service_account_email]
+         }}
+
+      true ->
+        {:error, :incomplete_workload_identity_configuration}
+    end
+  end
+
+  defp blank?(value), do: is_nil(value) or value == ""
+  defp present?(value), do: is_binary(value) and value != ""
+
+  defp sign_jwt(claims, service_account_email, access_token, config) do
+    endpoint =
+      "#{config[:iam_credentials_endpoint]}/v1/projects/-/serviceAccounts/" <>
+        "#{URI.encode(service_account_email)}:signJwt"
+
+    case Req.post(
+           endpoint,
+           [
+             headers: [{"Authorization", "Bearer #{access_token}"}],
+             json: %{"payload" => JSON.encode!(claims)}
+           ] ++ (config[:req_opts] || [])
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"signedJwt" => signed_jwt}}} ->
+        {:ok, signed_jwt}
+
+      {:ok, %Req.Response{} = response} ->
+        {:error, {:service_account_sign_jwt, response}}
+
+      {:error, reason} ->
+        {:error, {:service_account_sign_jwt, reason}}
+    end
+  end
+
+  defp claim_set(impersonation_email, service_account_email, token_endpoint) do
+    unix_timestamp = :os.system_time(:seconds)
+
+    %{
+      "iss" => service_account_email,
+      "scope" => @workspace_scope,
+      "aud" => token_endpoint,
+      "sub" => impersonation_email,
+      "exp" => unix_timestamp + 3600,
+      "iat" => unix_timestamp
+    }
+  end
+
+  defp exchange_signed_jwt(jwt, config) do
+    payload =
+      URI.encode_query(%{
+        "grant_type" => @jwt_bearer_grant_type,
         "assertion" => jwt
       })
 
-    req_opts = config[:req_opts] || []
-
     Req.post(
-      token_endpoint,
+      config[:token_endpoint],
       [
         headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
         body: payload
-      ] ++ req_opts
+      ] ++ (config[:req_opts] || [])
     )
+  end
+
+  defp access_token_response(
+         {:ok,
+          %Req.Response{
+            status: 200,
+            body: %{"access_token" => access_token, "expires_in" => expires_in}
+          }}
+       ) do
+    {:ok, %{token: access_token, expires_in: expires_in}}
+  end
+
+  # Keep final OAuth errors untagged because both credential paths share this
+  # exchange; treating them as federation failures would trigger a key fallback.
+  defp access_token_response({:ok, %Req.Response{} = response}), do: {:error, response}
+  defp access_token_response({:error, _reason} = error), do: error
+
+  defp workspace_cache_key(impersonation_email, {:federated, config}) do
+    {
+      :workspace_access_token,
+      :federated,
+      config.provider,
+      config.audience,
+      config.service_account_email,
+      impersonation_email
+    }
+  end
+
+  defp workspace_cache_key(impersonation_email, {:service_account_key, key}) do
+    key_id =
+      key["private_key_id"] ||
+        (:sha256
+         |> :crypto.hash(key["private_key"] || inspect(key))
+         |> Base.encode16(case: :lower))
+
+    {:workspace_access_token, :service_account_key, key["client_email"], key_id,
+     impersonation_email}
   end
 
   def get_customer(access_token) do

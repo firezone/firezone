@@ -7,6 +7,9 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
   import Portal.GoogleDirectoryFixtures
   import Portal.OktaDirectoryFixtures
 
+  alias Portal.Azure.ManagedIdentity
+  alias Portal.Google.APIClient
+
   setup do
     account = account_fixture(features: %{idp_sync: true})
     actor = admin_actor_fixture(account: account)
@@ -218,6 +221,110 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Name"
       assert html =~ "Impersonation Email"
       assert html =~ "Verify Now"
+    end
+
+    test "shows a friendly error for incomplete Google workload identity configuration", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        workload_identity_provider: "provider",
+        workload_identity_audience: nil,
+        service_account_email: nil,
+        service_account_key: nil
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "admin@example.com"
+        }
+      )
+      |> render_change()
+
+      lv
+      |> element("button[phx-click='start_verification']")
+      |> render_click()
+
+      html = render(lv)
+
+      assert html =~ "Google Workspace workload identity configuration is incomplete."
+      assert html =~ "GOOGLE_WORKLOAD_IDENTITY_AUDIENCE"
+      refute html =~ ":incomplete_workload_identity_configuration"
+    end
+
+    test "unwraps Google federation responses into friendly verification errors", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        workload_identity_provider: "provider",
+        workload_identity_audience: "audience",
+        service_account_email: "sync@example.iam.gserviceaccount.com",
+        service_account_key: nil
+      )
+
+      Req.Test.stub(ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+
+      Req.Test.expect(ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{
+          "error" => "permission_denied",
+          "error_description" => "Google denied the federated token exchange."
+        })
+      end)
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "admin@example.com"
+        }
+      )
+      |> render_change()
+
+      lv
+      |> element("button[phx-click='start_verification']")
+      |> render_click()
+
+      html = render(lv)
+
+      assert html =~ "Google denied the federated token exchange."
+      refute html =~ ":workload_identity_token_exchange"
     end
 
     test "generates an okta keypair and closes the panel", %{

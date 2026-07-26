@@ -815,6 +815,26 @@ defmodule PortalWeb.ResourcesTest do
       assert_patch(lv, ~p"/#{account}/resources")
     end
 
+    test "ignores a tab switch queued while the resource panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/resources")
+
+      render_click(lv, "switch_resource_tab", %{"tab" => "authorizations"})
+
+      refute has_element?(lv, "#resource-panel > div")
+    end
+
     test "patches to resources index with flash when resource does not exist", %{
       conn: conn,
       account: account,

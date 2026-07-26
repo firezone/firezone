@@ -344,6 +344,26 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ other_actor.name
     end
 
+    test "ignores a tab change queued while the actor panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/actors")
+
+      render_click(lv, "change_tab", %{"tab" => "groups"})
+
+      refute has_element?(lv, "#actor-panel > div")
+    end
+
     test "shows identities tab content", %{conn: conn, account: account, actor: actor} do
       other_actor = actor_fixture(account: account)
 

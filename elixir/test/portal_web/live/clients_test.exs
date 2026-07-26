@@ -200,6 +200,26 @@ defmodule PortalWeb.ClientsTest do
       assert_patch(lv, ~p"/#{account}/clients")
     end
 
+    test "ignores a tab switch queued while the client panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients/#{client.id}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/clients")
+
+      render_click(lv, "switch_client_tab", %{"tab" => "authorizations"})
+
+      refute has_element?(lv, "#client-panel > div")
+    end
+
     test "marks only older client versions as outdated" do
       older_html =
         render_component(&PortalWeb.Clients.Components.version/1,
