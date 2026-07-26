@@ -196,7 +196,7 @@ defmodule PortalAPI.PolicyController do
       policy
       |> changeset(attrs)
       |> populate_group_idp_id(subject)
-      |> Policy.disable_flow_log_uploads_for_internet_resource(subject)
+      |> Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
       |> Safe.scoped(subject)
       |> Safe.update()
     end
@@ -233,7 +233,7 @@ defmodule PortalAPI.PolicyController do
       changeset =
         create_changeset(attrs, subject)
         |> populate_group_idp_id(subject)
-        |> Policy.disable_flow_log_uploads_for_internet_resource(subject)
+        |> Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()

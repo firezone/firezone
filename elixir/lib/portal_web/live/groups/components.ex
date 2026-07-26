@@ -762,7 +762,10 @@ defmodule PortalWeb.Groups.Components do
             </div>
           </div>
           <div :if={@flow_logs_feature_enabled?} class="border-t border-border pt-4">
-            <.flow_log_uploads_toggle form={@grant_resource_form} />
+            <.flow_log_uploads_toggle
+              form={@grant_resource_form}
+              internet_resource?={Enum.any?(selected_resources, &(&1.type == :internet))}
+            />
           </div>
         </div>
       </div>

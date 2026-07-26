@@ -502,6 +502,7 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp = json_response(conn, 201)
       assert resp["data"]["resource_id"] == resource.id
       assert resp["data"]["group_id"] == group.id
+      assert resp["data"]["flow_log_uploads_enabled"] == false
     end
 
     test "creates a policy with flow log uploads disabled", %{
@@ -547,7 +548,7 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp["data"]["flow_log_uploads_enabled"] == true
     end
 
-    test "forces flow_log_uploads_enabled off for an internet resource policy", %{conn: conn} do
+    test "allows flow_log_uploads_enabled for an internet resource policy", %{conn: conn} do
       account = account_fixture(features: %{internet_resource: true})
       actor = api_client_fixture(account: account)
       resource = internet_resource_fixture(account: account)
@@ -566,7 +567,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> post("/policies", policy: attrs)
 
       assert resp = json_response(conn, 201)
-      assert resp["data"]["flow_log_uploads_enabled"] == false
+      assert resp["data"]["flow_log_uploads_enabled"] == true
     end
   end
 
@@ -633,7 +634,7 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp["data"]["flow_log_uploads_enabled"] == true
     end
 
-    test "forces flow_log_uploads_enabled off when enabling it on an internet resource policy", %{
+    test "enables flow_log_uploads_enabled on an internet resource policy", %{
       conn: conn
     } do
       account = account_fixture(features: %{internet_resource: true})
@@ -648,7 +649,25 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put("/policies/#{policy.id}", policy: %{"flow_log_uploads_enabled" => true})
 
       assert resp = json_response(conn, 200)
-      assert resp["data"]["flow_log_uploads_enabled"] == false
+      assert resp["data"]["flow_log_uploads_enabled"] == true
+    end
+
+    test "preserves enabled flow logs when an internet resource_id is unchanged", %{conn: conn} do
+      account = account_fixture(features: %{internet_resource: true})
+      actor = api_client_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      policy = policy_fixture(account: account, resource: resource, flow_log_uploads_enabled: true)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}",
+          policy: %{"resource_id" => resource.id, "description" => "updated"}
+        )
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["flow_log_uploads_enabled"] == true
     end
 
     test "disables flow log uploads when moving a policy onto the internet resource", %{conn: conn} do
@@ -665,6 +684,28 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert resp = json_response(conn, 200)
       assert resp["data"]["flow_log_uploads_enabled"] == false
+    end
+
+    test "keeps flow log uploads enabled when explicitly enabled while moving a policy onto the internet resource",
+         %{conn: conn} do
+      account = account_fixture(features: %{internet_resource: true})
+      actor = api_client_fixture(account: account)
+      internet_resource = internet_resource_fixture(account: account)
+      policy = policy_fixture(account: account, flow_log_uploads_enabled: true)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}",
+          policy: %{
+            "resource_id" => internet_resource.id,
+            "flow_log_uploads_enabled" => true
+          }
+        )
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["flow_log_uploads_enabled"] == true
     end
 
     test "preserves conditions when conditions are omitted", %{

@@ -1698,10 +1698,13 @@ defmodule PortalWeb.Resources.Components do
             <% end %>
           </div>
           <div
-            :if={@resource.type != :internet and @flow_logs_feature_enabled?}
+            :if={@flow_logs_feature_enabled?}
             class="border-t border-border pt-4"
           >
-            <.flow_log_uploads_toggle form={@grant_form} />
+            <.flow_log_uploads_toggle
+              form={@grant_form}
+              internet_resource?={@resource.type == :internet}
+            />
           </div>
         </div>
       </div>
@@ -2033,9 +2036,9 @@ defmodule PortalWeb.Resources.Components do
   def format_filter(%{protocol: protocol, ports: ports}),
     do: "#{String.upcase("#{protocol}")}: #{Enum.join(ports, ", ")}"
 
-  @spec to_grant_form() :: Phoenix.HTML.Form.t()
-  def to_grant_form do
-    %Portal.Policy{}
+  @spec to_grant_form(Portal.Resource.t()) :: Phoenix.HTML.Form.t()
+  def to_grant_form(resource) do
+    %Portal.Policy{flow_log_uploads_enabled: resource.type != :internet}
     |> Ecto.Changeset.change()
     |> to_form(as: :policy)
   end

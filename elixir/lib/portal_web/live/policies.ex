@@ -647,7 +647,10 @@ defmodule PortalWeb.Policies do
       changeset =
         change_policy(policy, params)
         |> validate_internet_resource_allowed(socket.assigns.subject)
-        |> Policy.disable_flow_log_uploads_for_internet_resource(socket.assigns.subject)
+        |> Policy.default_flow_log_uploads_for_internet_resource(
+          params,
+          socket.assigns.subject
+        )
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -860,6 +863,7 @@ defmodule PortalWeb.Policies do
 
     {:noreply,
      socket
+     |> maybe_default_flow_log_uploads(resource)
      |> merge_state(:policy_panel, selected_resource: resource)
      |> merge_state(:policy_conditions, active_conditions: filtered)}
   end
@@ -870,6 +874,26 @@ defmodule PortalWeb.Policies do
 
   def on_panel_resource_change({_id, _name, resource}) do
     send(self(), {:panel_change_resource, resource})
+  end
+
+  defp maybe_default_flow_log_uploads(socket, resource) do
+    previous_resource = socket.assigns.policy_panel.selected_resource
+    resource_changed? = is_nil(previous_resource) or previous_resource.id != resource.id
+
+    should_default? =
+      resource_changed? and
+        (socket.assigns.live_action == :new or resource.type == :internet)
+
+    if should_default? do
+      merge_state(socket, :policy_panel,
+        form:
+          socket.assigns.policy_panel.form.source
+          |> put_change(:flow_log_uploads_enabled, resource.type != :internet)
+          |> to_form()
+      )
+    else
+      socket
+    end
   end
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
@@ -885,7 +909,7 @@ defmodule PortalWeb.Policies do
     attrs
     |> new_policy(subject)
     |> validate_internet_resource_allowed(subject)
-    |> Policy.disable_flow_log_uploads_for_internet_resource(subject)
+    |> Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
     |> Database.insert_policy(subject)
   end
 

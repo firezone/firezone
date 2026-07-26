@@ -286,7 +286,7 @@ defmodule PortalWeb.PoliciesTest do
       refute html =~ "Flow log reporting"
     end
 
-    test "forces flow log reporting off for Internet Resource policies", %{conn: conn} do
+    test "defaults flow log reporting off for Internet Resource policies", %{conn: conn} do
       enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
@@ -297,6 +297,67 @@ defmodule PortalWeb.PoliciesTest do
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
+
+      lv
+      |> form("[phx-change='change_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: internet_resource.id
+        }
+      )
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: internet_resource.id
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: internet_resource.id)
+      assert policy.flow_log_uploads_enabled == false
+    end
+
+    test "allows flow log reporting for Internet Resource policies and shows a volume warning",
+         %{conn: conn} do
+      enable_feature(:flow_logs)
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      internet_resource = internet_resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      lv
+      |> form("[phx-change='change_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: internet_resource.id
+        }
+      )
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-change='change_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: internet_resource.id,
+            flow_log_uploads_enabled: true
+          }
+        )
+        |> render_change()
+
+      assert html =~
+               "Enabling flow log collection for the internet resource can result in substantial log volume."
 
       html =
         lv
@@ -312,7 +373,7 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "created successfully"
 
       policy = Repo.get_by!(Policy, group_id: group.id, resource_id: internet_resource.id)
-      assert policy.flow_log_uploads_enabled == false
+      assert policy.flow_log_uploads_enabled == true
     end
   end
 
@@ -497,7 +558,7 @@ defmodule PortalWeb.PoliciesTest do
       refute html =~ ~s(phx-click="remove_condition")
     end
 
-    test "hides flow log reporting checkbox when editing an Internet Resource policy", %{
+    test "shows flow log reporting checkbox when editing an Internet Resource policy", %{
       conn: conn
     } do
       enable_feature(:flow_logs)
@@ -512,8 +573,10 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert html =~ "Flow log uploads are not available for the Internet Resource."
-      refute html =~ "policy[flow_log_uploads_enabled]"
+      assert html =~ "Flow log reporting"
+      assert html =~ "policy[flow_log_uploads_enabled]"
+      assert html =~
+               "Enabling flow log collection for the internet resource can result in substantial log volume."
     end
 
     test "warns when changing flow log reporting on an existing policy", %{
@@ -561,6 +624,15 @@ defmodule PortalWeb.PoliciesTest do
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      lv
+      |> form("[phx-change='change_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: internet_resource.id
+        }
+      )
+      |> render_change()
 
       html =
         lv

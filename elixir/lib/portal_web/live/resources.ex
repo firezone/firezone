@@ -18,7 +18,7 @@ defmodule PortalWeb.Resources do
       resource_status_badge: 1,
       resource_type_label: 1,
       type_badge_class: 1,
-      to_grant_form: 0
+      to_grant_form: 1
     ]
 
   alias Portal.Changes.Change
@@ -895,7 +895,7 @@ defmodule PortalWeb.Resources do
          base_resource_grant(socket,
            available_groups: available,
            providers: providers,
-           grant_form: to_grant_form()
+           grant_form: to_grant_form(resource)
          )
      )
      |> assign(resource_ui: base_resource_ui())}
@@ -1761,7 +1761,7 @@ defmodule PortalWeb.Resources do
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
-        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
+        |> Portal.Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()
