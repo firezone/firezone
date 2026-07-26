@@ -1,8 +1,17 @@
 name: "Setup AzureSignTool"
-description: "Installs the AzureSignTool"
+description: "Prepares Azure authentication and installs AzureSignTool"
 runs:
   using: "composite"
   steps:
+    # GitHub's OIDC assertion expires before longer builds reach code signing.
+    # Prime Azure CLI's token cache while the assertion is still fresh.
+    - name: Prime Azure Key Vault access token
+      if: ${{ runner.os == 'Windows' }}
+      shell: bash
+      run: >-
+        az account get-access-token
+        --resource https://vault.azure.net
+        --output none
     - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       if: ${{ runner.os == 'Windows' }}
       with:
