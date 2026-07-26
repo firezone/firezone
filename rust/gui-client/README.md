@@ -67,10 +67,10 @@ stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
 
 ## Signing the Windows MSI in GitHub CI
 
-Windows release artifacts built from `main` are signed in GitHub CI with
-AzureSignTool and an HSM-backed certificate in Azure Key Vault. GitHub obtains
-an Entra token through workload identity federation; there is no client secret
-to create or rotate.
+Windows release artifacts, including pull-request builds, are signed in GitHub
+CI with AzureSignTool and an HSM-backed certificate in Azure Key Vault. GitHub
+obtains an Entra token through workload identity federation; there is no client
+secret to create or rotate.
 
 The Entra `CodeSigning` application, its GitHub OIDC credential, and the Key
 Vault are managed in the
