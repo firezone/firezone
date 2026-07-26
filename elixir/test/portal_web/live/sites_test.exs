@@ -158,6 +158,26 @@ defmodule PortalWeb.SitesTest do
       assert_patch(lv, ~p"/#{account}/sites")
     end
 
+    test "ignores a tab switch queued while the site panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/sites")
+
+      render_click(lv, "switch_panel_tab", %{"tab" => "resources"})
+
+      refute has_element?(lv, "#site-panel > div")
+    end
+
     test "switches to resources tab, opens add resource panel, and closes it", %{
       conn: conn,
       account: account,

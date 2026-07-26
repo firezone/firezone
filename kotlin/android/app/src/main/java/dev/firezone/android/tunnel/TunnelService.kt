@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.tunnel
 
-import DisconnectMonitor
 import NetworkMonitor
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
@@ -76,8 +75,8 @@ class TunnelService : VpnService() {
     @Inject
     internal lateinit var moshi: Moshi
 
-    var tunnelIpv4Address: String? = null
-    var tunnelIpv6Address: String? = null
+    private var tunnelIpv4Address: String? = null
+    private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
@@ -88,10 +87,6 @@ class TunnelService : VpnService() {
 
     // For reacting to changes to the network
     private var networkCallback: NetworkMonitor? = null
-
-    // For reacting to disconnects of our VPN service, for example when the user disconnects
-    // the VPN from the system settings or MDM disconnects us.
-    private var disconnectCallback: DisconnectMonitor? = null
 
     private var logCleanupJob: Job? = null
     private var featureFlagPollJob: Job? = null
@@ -131,13 +126,13 @@ class TunnelService : VpnService() {
         fun getService(): TunnelService = this@TunnelService
     }
 
-    override fun onBind(intent: Intent): IBinder = binder
-
-    private val protectSocket: ProtectSocket =
-        object : ProtectSocket {
-            override fun protectSocket(fd: Int) {
-                protect(fd)
-            }
+    // The system binds with `SERVICE_INTERFACE` to obtain `VpnService`'s own binder, which is what
+    // it transacts on to dispatch `onRevoke`. Only the SessionActivity's bind gets `LocalBinder`.
+    override fun onBind(intent: Intent): IBinder? =
+        if (intent.action == VpnService.SERVICE_INTERFACE) {
+            super.onBind(intent)
+        } else {
+            binder
         }
 
     private fun buildVpnService() {
@@ -244,12 +239,14 @@ class TunnelService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        activeService = this
         registerReceiver(restrictionsReceiver, restrictionsFilter)
 
-        startTelemetry(protectSocket)
+        startTelemetry(protectSocketCallback)
     }
 
     override fun onDestroy() {
+        activeService = null
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
 
@@ -340,12 +337,12 @@ class TunnelService : VpnService() {
                             deviceName = getDeviceName(),
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
+                            flowLogsDir = flowLogsDir(this@TunnelService),
                             isInternetResourceActive = resourceState.isEnabled(),
-                            protectSocket = protectSocket,
+                            protectSocket = protectSocketCallback,
                             deviceInfo = deviceInfo,
                         ).use { session ->
                             startNetworkMonitoring()
-                            startDisconnectMonitoring()
                             startLogCleanup()
                             startFeatureFlagPoll()
 
@@ -366,7 +363,6 @@ class TunnelService : VpnService() {
                     tunnelState = State.DOWN
 
                     stopNetworkMonitoring()
-                    stopDisconnectMonitoring()
                     stopFeatureFlagPoll()
 
                     // Stop the foreground notification
@@ -393,18 +389,6 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun startDisconnectMonitoring() {
-        disconnectCallback = DisconnectMonitor(this)
-        val networkRequest = NetworkRequest.Builder()
-        val connectivityManager =
-            getSystemService(ConnectivityManager::class.java) as ConnectivityManager
-        // Listens for changes for *all* networks
-        connectivityManager.requestNetwork(
-            networkRequest.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
-            disconnectCallback!!,
-        )
-    }
-
     private fun startNetworkMonitoring() {
         networkCallback = NetworkMonitor(this)
         val networkRequest = NetworkRequest.Builder()
@@ -424,16 +408,6 @@ class TunnelService : VpnService() {
             connectivityManager.unregisterNetworkCallback(it)
 
             networkCallback = null
-        }
-    }
-
-    private fun stopDisconnectMonitoring() {
-        disconnectCallback?.let {
-            val connectivityManager =
-                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
-            connectivityManager.unregisterNetworkCallback(it)
-
-            disconnectCallback = null
         }
     }
 
@@ -800,8 +774,29 @@ class TunnelService : VpnService() {
         private const val TAG: String = "TunnelService"
         private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
 
+        // Under `filesDir` (persistent) and outside the log directory so exported
+        // log bundles never sweep the spool up.
+        fun flowLogsDir(context: Context): String {
+            val flowLogsDir = context.filesDir.absolutePath + "/flow_logs"
+            Files.createDirectories(Paths.get(flowLogsDir))
+            return flowLogsDir
+        }
+
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+
+        @Volatile
+        private var activeService: TunnelService? = null
+
+        // Protects through the one live service; the session, telemetry, and
+        // flow-log drains all share it. Without a running service our VPN cannot
+        // be up, so the no-op is the correct bypass then too.
+        val protectSocketCallback: ProtectSocket =
+            object : ProtectSocket {
+                override fun protectSocket(fd: Int) {
+                    activeService?.protect(fd)
+                }
+            }
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")

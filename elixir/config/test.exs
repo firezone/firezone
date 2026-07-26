@@ -209,12 +209,12 @@ config :portal, Portal.ComponentVersions,
   ]
 
 config :portal, Portal.Google.APIClient,
-  endpoint: "https://admin.googleapis.com",
-  token_endpoint: "https://oauth2.googleapis.com/token",
   req_opts: [
     retry: false,
     plug: {Req.Test, Portal.Google.APIClient}
   ]
+
+config :portal, Portal.TokenCache, enabled: false
 
 # Auth provider configs with Req.Test for OIDC mocking
 config :portal, Portal.Google.AuthProvider,
