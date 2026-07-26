@@ -402,10 +402,11 @@ mod tests {
 
     /// Binds a TCP listener and a UDP socket to the same loopback port.
     ///
-    /// On Windows, TCP and UDP have independent excluded-port ranges (Hyper-V /
-    /// WinNAT reserve blocks of the ephemeral range, and the runners differ for
-    /// each protocol), so a port the OS hands out for TCP may be forbidden for
-    /// UDP, yielding `WSAEACCES` (10013). Retry until a port binds for both.
+    /// A port the OS hands out for TCP may be unusable for UDP, so retry until
+    /// one binds for both. Windows reserves blocks of the ephemeral range per
+    /// protocol (Hyper-V / WinNAT), yielding `WSAEACCES` (`PermissionDenied`);
+    /// on macOS the TCP port can already be held by a concurrent test's UDP
+    /// socket, yielding `EADDRINUSE` (`AddrInUse`). Both mean "try another port".
     async fn bind_tcp_and_udp() -> (tokio::net::TcpListener, tokio::net::UdpSocket, SocketAddr) {
         loop {
             let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -413,6 +414,7 @@ mod tests {
             match tokio::net::UdpSocket::bind(addr).await {
                 Ok(udp) => return (tcp, udp, addr),
                 Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
                 Err(e) => panic!("Failed to bind UDP socket: {e}"),
             }
         }
