@@ -647,7 +647,10 @@ defmodule PortalWeb.Policies do
       changeset =
         change_policy(policy, params)
         |> validate_internet_resource_allowed(socket.assigns.subject)
-        |> Policy.default_flow_log_uploads_for_internet_resource(socket.assigns.subject)
+        |> Policy.default_flow_log_uploads_for_internet_resource(
+          params,
+          socket.assigns.subject
+        )
 
       case Database.update_policy(changeset, socket.assigns.subject) do
         {:ok, updated} ->
@@ -882,7 +885,7 @@ defmodule PortalWeb.Policies do
         (socket.assigns.live_action == :new or resource.type == :internet)
 
     if should_default? do
-      enabled? = resource.type != :internet
+      enabled? = Policy.flow_log_uploads_enabled_by_default?(resource)
 
       merge_state(socket, :policy_panel,
         form:
@@ -908,7 +911,7 @@ defmodule PortalWeb.Policies do
     attrs
     |> new_policy(subject)
     |> validate_internet_resource_allowed(subject)
-    |> Policy.default_flow_log_uploads_for_internet_resource(subject)
+    |> Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
     |> Database.insert_policy(subject)
   end
 

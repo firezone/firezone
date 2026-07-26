@@ -68,37 +68,38 @@ defmodule Portal.Policy do
   @doc """
   Defaults `flow_log_uploads_enabled` to false for Internet Resource policies.
 
-  The schema and database default remain true for all other resources. An
-  explicit value is always honored, including when a policy is created for or
-  moved onto the Internet Resource.
+  The raw attributes are needed to distinguish an omitted value from an
+  explicit value equal to the schema default, which `cast/4` intentionally
+  excludes from the changes. `fetch_change/2` limits the resource lookup and
+  defaulting to policy creation or an actual resource change.
   """
   def default_flow_log_uploads_for_internet_resource(
         %Ecto.Changeset{} = changeset,
+        %{"flow_log_uploads_enabled" => _value},
+        %Authentication.Subject{}
+      ) do
+    changeset
+  end
+
+  def default_flow_log_uploads_for_internet_resource(
+        %Ecto.Changeset{} = changeset,
+        _attrs,
         %Authentication.Subject{} = subject
       ) do
-    resource_id = get_field(changeset, :resource_id)
-
-    needs_default? =
-      not flow_log_uploads_provided?(changeset) and
-        not is_nil(resource_id) and
-        (new_record?(changeset) or Map.has_key?(changeset.changes, :resource_id))
-
-    if needs_default? and Database.internet_resource?(resource_id, subject) do
+    with {:ok, resource_id} <- fetch_change(changeset, :resource_id),
+         %Portal.Resource{} = resource <- Database.fetch_resource(resource_id, subject),
+         false <- flow_log_uploads_enabled_by_default?(resource) do
       put_change(changeset, :flow_log_uploads_enabled, false)
     else
-      changeset
+      _ -> changeset
     end
   end
 
-  defp flow_log_uploads_provided?(%Ecto.Changeset{params: nil}), do: false
-
-  defp flow_log_uploads_provided?(%Ecto.Changeset{params: params}) do
-    Map.has_key?(params, "flow_log_uploads_enabled") or
-      Map.has_key?(params, :flow_log_uploads_enabled)
-  end
-
-  defp new_record?(%Ecto.Changeset{data: %{__meta__: %{state: :built}}}), do: true
-  defp new_record?(%Ecto.Changeset{}), do: false
+  @doc """
+  Returns whether flow log uploads are enabled by default for a resource.
+  """
+  def flow_log_uploads_enabled_by_default?(%Portal.Resource{type: :internet}), do: false
+  def flow_log_uploads_enabled_by_default?(%Portal.Resource{}), do: true
 
   # A policy may carry at most one condition per property. Each operator accepts
   # a list of values, so multiple conditions on the same property are always
@@ -125,15 +126,12 @@ defmodule Portal.Policy do
     alias Portal.Policy
     alias Portal.Safe
 
-    @spec internet_resource?(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: boolean()
-    def internet_resource?(resource_id, subject) do
+    @spec fetch_resource(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            Portal.Resource.t() | nil
+    def fetch_resource(resource_id, subject) do
       from(r in Portal.Resource, where: r.id == ^resource_id)
       |> Safe.scoped(subject, :replica)
       |> Safe.one(fallback_to_primary: true)
-      |> case do
-        %Portal.Resource{type: :internet} -> true
-        _ -> false
-      end
     end
 
     @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()

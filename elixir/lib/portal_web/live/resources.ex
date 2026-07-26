@@ -1761,7 +1761,7 @@ defmodule PortalWeb.Resources do
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
-        |> Portal.Policy.default_flow_log_uploads_for_internet_resource(subject)
+        |> Portal.Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()
