@@ -413,14 +413,8 @@ mod tests {
             let addr = tcp.local_addr().unwrap();
             match tokio::net::UdpSocket::bind(addr).await {
                 Ok(udp) => return (tcp, udp, addr),
-                Err(e)
-                    if matches!(
-                        e.kind(),
-                        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::AddrInUse
-                    ) =>
-                {
-                    continue;
-                }
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
                 Err(e) => panic!("Failed to bind UDP socket: {e}"),
             }
         }
