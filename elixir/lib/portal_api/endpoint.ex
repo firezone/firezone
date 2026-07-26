@@ -87,6 +87,9 @@ defmodule PortalAPI.Endpoint do
 
   plug Sentry.PlugContext
 
+  # Ingestion has its own configured hostname and is not part of the REST API.
+  def redirect_to_rest_api_url(%Plug.Conn{path_info: ["ingestion" | _]} = conn, _opts), do: conn
+
   def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
     case Portal.Config.get_env(:portal, :rest_api_url) do
       nil -> conn
