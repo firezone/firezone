@@ -760,7 +760,7 @@ enum ResponseAction {
     RateLimited,
     /// Transient failure (408 / 5xx); back off, then retry the same batch.
     Retry,
-    /// Permanently redirected (308); reconnect if needed and replay the POST.
+    /// Redirected (301 / 302 / 307 / 308); reconnect if needed and replay the POST.
     Redirect,
     /// Permanently rejected (422 / other 4xx); log and drop the batch. The portal
     /// upserts by flow identity, so a dropped batch is never a partial write.
@@ -774,7 +774,11 @@ fn classify_response(status: StatusCode) -> ResponseAction {
         StatusCode::TOO_MANY_REQUESTS => ResponseAction::RateLimited,
         StatusCode::REQUEST_TIMEOUT => ResponseAction::Retry,
         s if s.is_server_error() => ResponseAction::Retry,
-        StatusCode::PERMANENT_REDIRECT => ResponseAction::Redirect,
+        // 303 is absent: it mandates a GET, which cannot carry the batch.
+        StatusCode::MOVED_PERMANENTLY
+        | StatusCode::FOUND
+        | StatusCode::TEMPORARY_REDIRECT
+        | StatusCode::PERMANENT_REDIRECT => ResponseAction::Redirect,
         _ => ResponseAction::Drop,
     }
 }
@@ -1087,7 +1091,11 @@ mod tests {
         assert_eq!(classify_response(StatusCode::REQUEST_TIMEOUT), Retry);
         assert_eq!(classify_response(StatusCode::INTERNAL_SERVER_ERROR), Retry);
         assert_eq!(classify_response(StatusCode::SERVICE_UNAVAILABLE), Retry);
+        assert_eq!(classify_response(StatusCode::MOVED_PERMANENTLY), Redirect);
+        assert_eq!(classify_response(StatusCode::FOUND), Redirect);
+        assert_eq!(classify_response(StatusCode::TEMPORARY_REDIRECT), Redirect);
         assert_eq!(classify_response(StatusCode::PERMANENT_REDIRECT), Redirect);
+        assert_eq!(classify_response(StatusCode::SEE_OTHER), Drop);
         assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Drop);
         assert_eq!(classify_response(StatusCode::BAD_REQUEST), Drop);
         assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Drop);
