@@ -739,6 +739,10 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
                 }
             }
             ResponseAction::Redirect => client.follow_redirect(&response).await?,
+            ResponseAction::Defer => {
+                tracing::warn!(%status, "Flow-log upload redirected somewhere we cannot follow");
+                return Ok(()); // the files remain on disk
+            }
             ResponseAction::Drop => {
                 let body = body_string(&response);
                 tracing::info!(%status, %body, "Flow-log upload rejected; dropping batch");
@@ -762,6 +766,10 @@ enum ResponseAction {
     Retry,
     /// Redirected (301 / 302 / 307 / 308); reconnect if needed and replay the POST.
     Redirect,
+    /// A redirect we cannot follow (303 and other 3xx); keep the batch on disk.
+    /// The portal never stored it, and replaying the POST would only be redirected
+    /// again, so a later pass tries afresh.
+    Defer,
     /// Permanently rejected (422 / other 4xx); log and drop the batch. The portal
     /// upserts by flow identity, so a dropped batch is never a partial write.
     Drop,
@@ -779,6 +787,7 @@ fn classify_response(status: StatusCode) -> ResponseAction {
         | StatusCode::FOUND
         | StatusCode::TEMPORARY_REDIRECT
         | StatusCode::PERMANENT_REDIRECT => ResponseAction::Redirect,
+        s if s.is_redirection() => ResponseAction::Defer,
         _ => ResponseAction::Drop,
     }
 }
@@ -1095,7 +1104,8 @@ mod tests {
         assert_eq!(classify_response(StatusCode::FOUND), Redirect);
         assert_eq!(classify_response(StatusCode::TEMPORARY_REDIRECT), Redirect);
         assert_eq!(classify_response(StatusCode::PERMANENT_REDIRECT), Redirect);
-        assert_eq!(classify_response(StatusCode::SEE_OTHER), Drop);
+        assert_eq!(classify_response(StatusCode::SEE_OTHER), Defer);
+        assert_eq!(classify_response(StatusCode::NOT_MODIFIED), Defer);
         assert_eq!(classify_response(StatusCode::UNPROCESSABLE_ENTITY), Drop);
         assert_eq!(classify_response(StatusCode::BAD_REQUEST), Drop);
         assert_eq!(classify_response(StatusCode::UNAUTHORIZED), Drop);
