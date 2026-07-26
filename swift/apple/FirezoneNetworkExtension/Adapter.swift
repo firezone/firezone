@@ -296,8 +296,11 @@ actor Adapter {
     featureFlagPollTask = nil
     Log.setStreamingActive(false)
 
-    // Tasks will finish naturally after disconnect command is processed
-    // No need to cancel them here - they'll clean up via their defer blocks
+    // Wait for the event loop to drop the session: connlib finalizes open flows
+    // into the spool and blocks briefly to upload them, which must finish before
+    // stopTunnel's completionHandler lets the OS reap this process. Capped so a
+    // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
+    await eventLoopTask?.wait(timeout: .seconds(15))
   }
 
   /// Get the current state in the completionHandler, only returning
