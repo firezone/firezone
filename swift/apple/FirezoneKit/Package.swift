@@ -13,7 +13,7 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-system", exact: "1.7.5"),
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.21.0"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.22.0"),
   ],
   targets: [
     .target(
