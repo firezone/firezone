@@ -126,6 +126,7 @@ jobs:
       # mark:next-gui-version
       FIREZONE_GUI_VERSION: 1.5.16
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
+      SYMBOLS_SCRIPT: ../../scripts/build/tauri-symbols-${{ matrix.os }}.sh
       TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
       TARGET_DIR: ../target
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
@@ -229,8 +230,8 @@ jobs:
 
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
-        run: |
-          sentry-cli debug-files upload --log-level info --project gui-client --include-sources ../target
+        shell: bash
+        run: ${{ env.SYMBOLS_SCRIPT }}
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
