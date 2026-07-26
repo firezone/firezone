@@ -66,32 +66,35 @@ defmodule Portal.Policy do
   end
 
   @doc """
-  Forces `flow_log_uploads_enabled` off on policies for the Internet Resource.
+  Defaults `flow_log_uploads_enabled` to false for Internet Resource policies.
 
-  Flow logs attribute traffic to a specific resource; for the Internet Resource
-  that would mean uploading logs for every destination the client talks to, so
-  it is not supported. The flag is coerced to false rather than rejected: it
-  defaults to true, so rejecting would break every write that never set it.
-  Hits the database only when the flag would end up enabled on an insert or on
-  an update that changes the flag or the resource.
+  The schema and database default remain true for all other resources. An
+  explicit value is always honored, including when a policy is created for or
+  moved onto the Internet Resource.
   """
-  def disable_flow_log_uploads_for_internet_resource(
+  def default_flow_log_uploads_for_internet_resource(
         %Ecto.Changeset{} = changeset,
         %Authentication.Subject{} = subject
       ) do
     resource_id = get_field(changeset, :resource_id)
 
-    needs_check? =
-      get_field(changeset, :flow_log_uploads_enabled) == true and not is_nil(resource_id) and
-        (new_record?(changeset) or
-           Map.has_key?(changeset.changes, :flow_log_uploads_enabled) or
-           Map.has_key?(changeset.changes, :resource_id))
+    needs_default? =
+      not flow_log_uploads_provided?(changeset) and
+        not is_nil(resource_id) and
+        (new_record?(changeset) or Map.has_key?(changeset.changes, :resource_id))
 
-    if needs_check? and Database.internet_resource?(resource_id, subject) do
+    if needs_default? and Database.internet_resource?(resource_id, subject) do
       put_change(changeset, :flow_log_uploads_enabled, false)
     else
       changeset
     end
+  end
+
+  defp flow_log_uploads_provided?(%Ecto.Changeset{params: nil}), do: false
+
+  defp flow_log_uploads_provided?(%Ecto.Changeset{params: params}) do
+    Map.has_key?(params, "flow_log_uploads_enabled") or
+      Map.has_key?(params, :flow_log_uploads_enabled)
   end
 
   defp new_record?(%Ecto.Changeset{data: %{__meta__: %{state: :built}}}), do: true

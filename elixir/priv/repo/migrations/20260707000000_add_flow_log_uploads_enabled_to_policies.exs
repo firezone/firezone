@@ -6,8 +6,8 @@ defmodule Portal.Repo.Migrations.AddFlowLogUploadsEnabledToPolicies do
       add(:flow_log_uploads_enabled, :boolean, null: false, default: true)
     end
 
-    # Flow log uploads are never allowed for the Internet Resource, so existing
-    # internet policies must not pick up the enabled-by-default value.
+    # Internet Resource policies default to disabled, so existing policies must
+    # not pick up the enabled-by-default value used by all other resources.
     execute("""
     UPDATE policies
     SET flow_log_uploads_enabled = FALSE

@@ -353,7 +353,15 @@ defmodule PortalWeb.Groups do
 
     {:noreply,
      socket
-     |> merge_state(:group_resources, grant_selected_resource_ids: updated)
+     |> merge_state(:group_resources,
+       grant_selected_resource_ids: updated,
+       grant_resource_form:
+         to_grant_resource_form(
+           Enum.any?(socket.assigns.group_resources.available_resources, fn resource ->
+             resource.id in updated and resource.type == :internet
+           end)
+         )
+     )
      |> merge_state(:grant_conditions, active_conditions: active)}
   end
 
@@ -1253,8 +1261,8 @@ defmodule PortalWeb.Groups do
   end
 
   @spec to_grant_resource_form() :: Phoenix.HTML.Form.t()
-  defp to_grant_resource_form do
-    %Portal.Policy{}
+  defp to_grant_resource_form(internet_resource_selected? \\ false) do
+    %Portal.Policy{flow_log_uploads_enabled: not internet_resource_selected?}
     |> Ecto.Changeset.change()
     |> to_form(as: :policy)
   end
@@ -1723,7 +1731,7 @@ defmodule PortalWeb.Groups do
         |> Portal.Policy.changeset()
         |> put_change(:account_id, subject.account.id)
         |> populate_group_idp_id(subject)
-        |> Portal.Policy.disable_flow_log_uploads_for_internet_resource(subject)
+        |> Portal.Policy.default_flow_log_uploads_for_internet_resource(subject)
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()

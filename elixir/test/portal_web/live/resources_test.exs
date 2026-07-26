@@ -564,6 +564,49 @@ defmodule PortalWeb.ResourcesTest do
       assert policy.flow_log_uploads_enabled == false
     end
 
+    test "defaults Internet Resource flow logs off and allows enabling them", %{conn: conn} do
+      enable_feature(:flow_logs)
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+      default_group = group_fixture(account: account)
+      enabled_group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+      assert html =~ "Flow log reporting"
+
+      assert html =~
+               "Enabling flow log collection for the internet resource can result in substantial log volume."
+
+      render_click(lv, "toggle_grant_group", %{"group_id" => default_group.id})
+
+      lv
+      |> form("#grant-form")
+      |> render_submit()
+
+      default_policy =
+        Repo.get_by!(Policy, resource_id: resource.id, group_id: default_group.id)
+
+      assert default_policy.flow_log_uploads_enabled == false
+
+      render_click(lv, "open_grant_form")
+      render_click(lv, "toggle_grant_group", %{"group_id" => enabled_group.id})
+
+      lv
+      |> form("#grant-form", policy: %{flow_log_uploads_enabled: true})
+      |> render_submit()
+
+      enabled_policy =
+        Repo.get_by!(Policy, resource_id: resource.id, group_id: enabled_group.id)
+
+      assert enabled_policy.flow_log_uploads_enabled == true
+    end
+
     test "shows blurred upgrade state in grant access form for starter accounts without policy conditions",
          %{conn: conn} do
       account =

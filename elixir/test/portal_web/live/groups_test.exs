@@ -248,6 +248,35 @@ defmodule PortalWeb.GroupsTest do
       assert policy.flow_log_uploads_enabled == false
     end
 
+    test "defaults flow log reporting off when granting access to the Internet Resource",
+         %{conn: conn} do
+      enable_feature(:flow_logs)
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      render_click(lv, "open_grant_resource_form")
+
+      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      assert html =~ "Flow log reporting"
+
+      assert html =~
+               "Enabling flow log collection for the internet resource can result in substantial log volume."
+
+      lv
+      |> form("#grant-resource-form")
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == false
+    end
+
     test "grants access to multiple resources at once", %{
       conn: conn,
       account: account,

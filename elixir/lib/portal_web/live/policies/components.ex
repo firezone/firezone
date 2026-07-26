@@ -495,19 +495,16 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_flow_log_uploads_field(assigns) do
     ~H"""
-    <div :if={@flow_logs_feature_enabled? and not internet_resource?(@panel_selected_resource)}>
-      <.flow_log_uploads_toggle form={@panel_form} />
+    <div :if={@flow_logs_feature_enabled?}>
+      <.flow_log_uploads_toggle
+        form={@panel_form}
+        internet_resource?={internet_resource?(@panel_selected_resource)}
+      />
       <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
         Changing this setting expires all active connections created by this Policy;
         users may experience a few seconds of interrupted connectivity.
       </p>
     </div>
-    <p
-      :if={@flow_logs_feature_enabled? and internet_resource?(@panel_selected_resource)}
-      class="text-xs text-subtle"
-    >
-      Flow log uploads are not available for the Internet Resource.
-    </p>
     """
   end
 
@@ -521,39 +518,61 @@ defmodule PortalWeb.Policies.Components do
 
   @doc """
   The flow-log reporting toggle shared by every form that creates or edits a
-  policy. On by default (uploads default to on); posts the schema field
-  directly. Callers gate it behind the `flow_logs` feature flag, which each
-  LiveView checks once at mount.
+  policy. Callers initialize the form with the appropriate resource-specific
+  default and gate the component behind the `flow_logs` feature flag.
   """
   attr :form, :any, required: true
+  attr :internet_resource?, :boolean, default: false
 
   def flow_log_uploads_toggle(assigns) do
+    assigns =
+      assigns
+      |> assign(:checked?, flow_log_uploads_checked?(assigns.form))
+      |> assign(
+        :internet_resource_warning_id,
+        "#{assigns.form[:flow_log_uploads_enabled].id}-internet-resource-warning"
+      )
+
     ~H"""
-    <div class="flex items-center justify-between py-1">
-      <div>
-        <p class="text-sm font-medium text-body">Flow log reporting</p>
-        <p class="text-[11px] text-subtle">
-          Report flow logs for connections created by this Policy
-        </p>
+    <div>
+      <div class="flex items-center justify-between py-1">
+        <div>
+          <p class="text-sm font-medium text-body">Flow log reporting</p>
+          <p class="text-[11px] text-subtle">
+            Report flow logs for connections created by this Policy
+          </p>
+        </div>
+        <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
+        <.toggle
+          id={@form[:flow_log_uploads_enabled].id}
+          name={@form[:flow_log_uploads_enabled].name}
+          value="true"
+          checked={@checked?}
+          phx-click={
+            @internet_resource? &&
+              JS.toggle_class("hidden", to: "##{@internet_resource_warning_id}")
+          }
+        />
       </div>
-      <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
-      <.toggle
-        id={@form[:flow_log_uploads_enabled].id}
-        name={@form[:flow_log_uploads_enabled].name}
-        value="true"
-        checked={flow_log_uploads_checked?(@form)}
-      />
+      <p
+        :if={@internet_resource?}
+        id={@internet_resource_warning_id}
+        class={[
+          "mt-1 items-start gap-1 text-[11px] text-warning",
+          if(@checked?, do: "flex", else: "hidden")
+        ]}
+      >
+        <.icon name="ri-error-warning-line" class="mt-px h-3.5 w-3.5 shrink-0" />
+        <span>
+          Enabling flow log collection for the internet resource can result in substantial log volume.
+        </span>
+      </p>
     </div>
     """
   end
 
-  # A map-backed form (the grant panels before first submit) has no value for
-  # the field; absent means the schema default, which is enabled.
   defp flow_log_uploads_checked?(form) do
-    case form[:flow_log_uploads_enabled].value do
-      nil -> true
-      value -> Phoenix.HTML.Form.normalize_value("checkbox", value)
-    end
+    Phoenix.HTML.Form.normalize_value("checkbox", form[:flow_log_uploads_enabled].value)
   end
 
   defp internet_resource?(%{type: :internet}), do: true
