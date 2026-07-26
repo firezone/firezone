@@ -249,10 +249,10 @@ public final class Store: ObservableObject {
       }
     }
 
-    observeForegroundForFlowLogDrain()
-    // Nudge a drain on launch too, not just on subsequent foregrounds; not
-    // awaited so startup never waits on the IPC round-trip.
-    Task { await drainFlowLogs() }
+    #if os(iOS)
+      observeForegroundForFlowLogDrain()
+      Task { await drainFlowLogs() }
+    #endif
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: session.status)
@@ -324,6 +324,10 @@ public final class Store: ObservableObject {
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
+        #if os(macOS)
+          Log.debug("Startup: drainFlowLogsOnLaunch")
+          await drainFlowLogsOnLaunch()
+        #endif
         Log.debug("Startup: setupTunnelObservers")
         try await setupTunnelObservers()
         Log.debug("Startup: maybeAutoConnect")
@@ -629,27 +633,15 @@ public final class Store: ObservableObject {
     Log.setStreamingActive(false)
   }
 
-  /// Subscribes to app-foreground events to nudge a best-effort flow-log drain.
-  ///
-  /// The provider pokes a connected session's uploader, or runs a bounded
-  /// one-shot pass while disconnected, when the user opening the app may be the
-  /// only chance to upload. Delivering the message while disconnected also
-  /// starts the provider on both platforms (macOS via an explicit cycle-start,
-  /// iOS by launching the appex to deliver it). Best effort: nothing happens
-  /// once the app quits.
-  private func observeForegroundForFlowLogDrain() {
-    #if os(iOS)
-      let didBecomeActive = UIApplication.didBecomeActiveNotification
-    #elseif os(macOS)
-      let didBecomeActive = NSApplication.didBecomeActiveNotification
-    #endif
-
-    NotificationCenter.default.publisher(for: didBecomeActive)
-      .sink { [weak self] _ in
-        Task { @MainActor in await self?.drainFlowLogs() }
-      }
-      .store(in: &cancellables)
-  }
+  #if os(iOS)
+    private func observeForegroundForFlowLogDrain() {
+      NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+        .sink { [weak self] _ in
+          Task { @MainActor in await self?.drainFlowLogs() }
+        }
+        .store(in: &cancellables)
+    }
+  #endif
 
   /// Nudges the provider to run a best-effort flow-log upload pass.
   private func drainFlowLogs() async {
@@ -660,6 +652,18 @@ public final class Store: ObservableObject {
       Log.debug("Failed to nudge flow-log uploader: \(error)")
     }
   }
+
+  #if os(macOS)
+    // `vpnStatus == nil` means no Sign In button yet, so the cycle start can't race one.
+    private func drainFlowLogsOnLaunch() async {
+      guard vpnStatus == nil,
+        let session = try? manager().session(),
+        session.status == .disconnected
+      else { return }
+
+      await drainFlowLogs()
+    }
+  #endif
 
   private func pollStateOnce() async throws {
     guard let session = try self.manager().session() else { return }
