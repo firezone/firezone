@@ -55,8 +55,10 @@ updates:
     directories:
       - "/.github/workflows"
       # Dependabot doesn't look in these by default
+      - "/.github/actions/apt-install"
       - "/.github/actions/create-sentry-release"
       - "/.github/actions/restore-mtime"
+      - "/.github/actions/free-disk-space"
       - "/.github/actions/ghcr-docker-login"
       - "/.github/actions/setup-android"
       - "/.github/actions/setup-azure-cli"
@@ -65,6 +67,7 @@ updates:
       - "/.github/actions/setup-docker"
       - "/.github/actions/setup-elixir"
       - "/.github/actions/setup-gpg"
+      - "/.github/actions/setup-mise"
       - "/.github/actions/setup-musl"
       - "/.github/actions/setup-node"
       - "/.github/actions/setup-postgres"
