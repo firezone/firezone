@@ -791,12 +791,7 @@ class TunnelService : VpnService() {
         // Protects through the one live service; the session, telemetry, and
         // flow-log drains all share it. Without a running service our VPN cannot
         // be up, so the no-op is the correct bypass then too.
-        val protectSocketCallback: ProtectSocket =
-            object : ProtectSocket {
-                override fun protectSocket(fd: Int) {
-                    activeService?.protect(fd)
-                }
-            }
+        val protectSocketCallback: ProtectSocket = VpnProtectSocket { fd -> activeService?.protect(fd) }
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
