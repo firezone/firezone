@@ -83,6 +83,19 @@ public struct SharedAccess {
     return nil
   }
 
+  // Under Application Support (persistent) and outside the log folder so
+  // exported log bundles never sweep the spool up.
+  public static var flowLogsFolderURL: URL? {
+    if let url = applicationSupportFolderURL?.appendingPathComponent("flow_logs") {
+      guard ensureDirectoryExists(at: url.path) else {
+        return nil
+      }
+      return url
+    }
+    NSLog("Can't access applicationSupportFolderURL to create flowLogsFolderURL")
+    return nil
+  }
+
   public static var providerStopReasonURL: URL {
     baseFolderURL.appendingPathComponent("reason")
   }

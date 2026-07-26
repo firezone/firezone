@@ -342,6 +342,7 @@ class TunnelService : VpnService() {
                             deviceName = getDeviceName(),
                             logDir = getLogDir(),
                             logFilter = config.logFilter,
+                            flowLogsDir = flowLogsDir(this@TunnelService),
                             isInternetResourceActive = resourceState.isEnabled(),
                             protectSocket = protectSocket,
                             deviceInfo = deviceInfo,
@@ -777,6 +778,14 @@ class TunnelService : VpnService() {
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
         private const val FEATURE_FLAG_POLL_INTERVAL_MS: Long = 5_000
+
+        // Under `filesDir` (persistent) and outside the log directory so exported
+        // log bundles never sweep the spool up.
+        fun flowLogsDir(context: Context): String {
+            val flowLogsDir = context.filesDir.absolutePath + "/flow_logs"
+            Files.createDirectories(Paths.get(flowLogsDir))
+            return flowLogsDir
+        }
 
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
