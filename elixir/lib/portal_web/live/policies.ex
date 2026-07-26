@@ -885,12 +885,10 @@ defmodule PortalWeb.Policies do
         (socket.assigns.live_action == :new or resource.type == :internet)
 
     if should_default? do
-      enabled? = Policy.flow_log_uploads_enabled_by_default?(resource)
-
       merge_state(socket, :policy_panel,
         form:
           socket.assigns.policy_panel.form.source
-          |> put_change(:flow_log_uploads_enabled, enabled?)
+          |> put_change(:flow_log_uploads_enabled, resource.type != :internet)
           |> to_form()
       )
     else

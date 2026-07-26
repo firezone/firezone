@@ -2038,9 +2038,7 @@ defmodule PortalWeb.Resources.Components do
 
   @spec to_grant_form(Portal.Resource.t()) :: Phoenix.HTML.Form.t()
   def to_grant_form(resource) do
-    %Portal.Policy{
-      flow_log_uploads_enabled: Portal.Policy.flow_log_uploads_enabled_by_default?(resource)
-    }
+    %Portal.Policy{flow_log_uploads_enabled: resource.type != :internet}
     |> Ecto.Changeset.change()
     |> to_form(as: :policy)
   end

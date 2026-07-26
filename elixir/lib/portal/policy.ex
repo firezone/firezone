@@ -87,19 +87,12 @@ defmodule Portal.Policy do
         %Authentication.Subject{} = subject
       ) do
     with {:ok, resource_id} <- fetch_change(changeset, :resource_id),
-         %Portal.Resource{} = resource <- Database.fetch_resource(resource_id, subject),
-         false <- flow_log_uploads_enabled_by_default?(resource) do
+         %Portal.Resource{type: :internet} <- Database.fetch_resource(resource_id, subject) do
       put_change(changeset, :flow_log_uploads_enabled, false)
     else
       _ -> changeset
     end
   end
-
-  @doc """
-  Returns whether flow log uploads are enabled by default for a resource.
-  """
-  def flow_log_uploads_enabled_by_default?(%Portal.Resource{type: :internet}), do: false
-  def flow_log_uploads_enabled_by_default?(%Portal.Resource{}), do: true
 
   # A policy may carry at most one condition per property. Each operator accepts
   # a list of values, so multiple conditions on the same property are always

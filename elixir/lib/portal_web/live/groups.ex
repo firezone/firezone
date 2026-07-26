@@ -354,7 +354,7 @@ defmodule PortalWeb.Groups do
     flow_log_uploads_enabled? =
       socket.assigns.group_resources.available_resources
       |> Enum.filter(&(&1.id in updated))
-      |> Enum.all?(&Portal.Policy.flow_log_uploads_enabled_by_default?/1)
+      |> Enum.all?(&(&1.type != :internet))
 
     {:noreply,
      socket
