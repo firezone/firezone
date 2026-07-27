@@ -51,9 +51,8 @@ impl RoutingLoopPreventionFailed {
 
     /// Returns whether `error` carries a [`RoutingLoopPreventionFailed`].
     ///
-    /// `io::Error` omits a custom error from its own `source` chain and only exposes that
-    /// error's source, so walking sources never finds this: it has to be read back out of
-    /// the `io::Error` directly.
+    /// For a bare [`io::Error`]; once one is wrapped in an [`anyhow::Error`], `any_is`
+    /// finds it.
     pub fn is_cause_of(error: &io::Error) -> bool {
         error
             .get_ref()
@@ -1101,11 +1100,7 @@ mod tests {
         )))
         .context("Failed to bind UDP socket on 0.0.0.0:1234");
 
-        assert!(
-            error
-                .any_downcast_ref::<io::Error>()
-                .is_some_and(RoutingLoopPreventionFailed::is_cause_of)
-        );
+        assert!(error.any_is::<RoutingLoopPreventionFailed>());
     }
 
     #[test]
