@@ -518,15 +518,18 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  # Cached resources must carry a resolved site: the client view renders it and
-  # has no clause for nil. `to_cache/1` only carries one over when the source
-  # resource has its site association loaded, which a struct rebuilt from the
-  # WAL never does, so every cache writer fed by a change broadcast has to
-  # resolve it here rather than take what `to_cache/1` produced.
+  # Cached gateway-backed resources must carry a resolved site: the client view
+  # renders it and has no clause for nil. `to_cache/1` only carries one over
+  # when the source resource has its site association loaded, which a struct
+  # rebuilt from the WAL never does, so every cache writer fed by a change
+  # broadcast has to resolve it here rather than take what `to_cache/1` produced.
   #
-  # A nil site is still a legitimate outcome (the site was deleted, leaving
-  # `ON DELETE SET NULL` behind, or hydration failed to load it).
-  # `adapted_resources/3` drops those before anything renders them.
+  # Nil is the steady state for device pools, which connect without a gateway
+  # and have their site_id forced to nil by `Portal.Resource.changeset/1`;
+  # `adapted_resources/3` keeps those and their render clauses never ask for a
+  # site. For every other type nil means the site was deleted (`ON DELETE SET
+  # NULL`) or hydration missed it, and `adapted_resources/3` drops the resource
+  # before anything renders it.
   #
   # Returns whether the site changed as well, because older clients cannot
   # handle a resource moving between sites and need a delete/create instead.
