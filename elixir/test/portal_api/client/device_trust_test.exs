@@ -69,6 +69,17 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
     end
 
+    test "rejects a leaf whose key usage omits digitalSignature", %{
+      account: account,
+      nonce: nonce
+    } do
+      trust_anchor_fixture(account: account, certs: [key_usage_ca_der()])
+      anchors = DeviceTrust.fetch_enabled_anchors(account.id)
+      entry = response_entry(:no_digital_signature, nonce)
+
+      assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)
+    end
+
     test "rejects a leaf that does not chain to an anchor", %{nonce: nonce, anchors: anchors} do
       entry = response_entry(:untrusted, nonce)
       assert {:error, :verification_failed} = DeviceTrust.verify_response([entry], nonce, anchors)

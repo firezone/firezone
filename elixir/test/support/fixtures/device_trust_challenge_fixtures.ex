@@ -12,12 +12,16 @@ defmodule Portal.DeviceTrustChallengeFixtures do
   def intermediate_pem, do: read("intermediate.pem")
   def intermediate_der, do: read("intermediate.der")
   def untrusted_ca_pem, do: read("untrusted_ca.pem")
+  def key_usage_ca_pem, do: read("key_usage_ca.pem")
+  def key_usage_ca_der, do: read("key_usage_ca.der")
 
   @doc """
   Returns `{leaf_der, private_key}` for the named leaf, where `private_key`
   is decoded and ready for `:public_key.sign/3`.
 
-  Known leaves: `:rsa`, `:ec`, `:via_intermediate`, `:no_eku`, `:untrusted`.
+  Known leaves: `:rsa`, `:ec`, `:via_intermediate`, `:no_eku`, `:untrusted`,
+  and `:no_digital_signature` (keyAgreement-only, chains to the
+  `key_usage_ca` anchor).
   """
   def leaf(name) do
     {der_file, key_file} =
@@ -27,6 +31,7 @@ defmodule Portal.DeviceTrustChallengeFixtures do
         :via_intermediate -> {"leaf_via_intermediate.der", "leaf_via_intermediate.key"}
         :no_eku -> {"leaf_no_eku.der", "leaf_no_eku.key"}
         :untrusted -> {"leaf_untrusted.der", "leaf_untrusted.key"}
+        :no_digital_signature -> {"leaf_no_digital_signature.der", "leaf_no_digital_signature.key"}
       end
 
     {read(der_file), private_key(key_file)}

@@ -5,8 +5,9 @@ defmodule PortalAPI.Client.DeviceTrust do
   After a v3 channel join on a gated account, the portal pushes a 32-byte
   nonce; the client answers with one or more MDM-provisioned certificates and
   a signature over the nonce. A response entry is trusted when its leaf allows
-  TLS client authentication, is within its validity window, chains to one of
-  the account's trust anchors, and its key verifies the signature.
+  TLS client authentication, permits digital signatures (Key Usage absent or
+  including `digitalSignature`), is within its validity window, chains to one
+  of the account's trust anchors, and its key verifies the signature.
 
   Verified leaves yield device identifiers extracted from typed
   `firezone://<idtype>/<value>` URI SANs (with fallbacks for common MDM
@@ -156,6 +157,9 @@ defmodule PortalAPI.Client.DeviceTrust do
       cond do
         not X509.client_auth_eku?(leaf_otp) ->
           {:error, :missing_client_auth_eku}
+
+        not X509.digital_signature_allowed?(leaf_otp) ->
+          {:error, :missing_digital_signature_key_usage}
 
         not within_validity_window?(leaf_otp) ->
           {:error, :outside_validity_window}
