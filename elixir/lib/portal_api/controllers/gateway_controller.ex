@@ -23,8 +23,8 @@ defmodule PortalAPI.GatewayController do
       limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to the Gateway with this exact name", type: :string],
-      ipv4: [in: :query, description: "Filter to the Gateway with this exact IPv4 address", type: :string],
-      ipv6: [in: :query, description: "Filter to the Gateway with this exact IPv6 address", type: :string]
+      ipv4: [in: :query, description: "Filter to the Gateway with this exact tunnel IPv4 address", type: :string],
+      ipv6: [in: :query, description: "Filter to the Gateway with this exact tunnel IPv6 address", type: :string]
     ],
     responses:
       [ok: {"Gateway Response", "application/json", PortalAPI.Schemas.Gateway.ListResponse}] ++
@@ -295,13 +295,13 @@ defmodule PortalAPI.GatewayController do
         %Portal.Repo.Filter{
           name: :ipv4,
           title: "IPv4",
-          type: :string,
+          type: {:string, :ip},
           fun: &filter_by_ipv4/2
         },
         %Portal.Repo.Filter{
           name: :ipv6,
           title: "IPv6",
-          type: :string,
+          type: {:string, :ip},
           fun: &filter_by_ipv6/2
         }
       ]

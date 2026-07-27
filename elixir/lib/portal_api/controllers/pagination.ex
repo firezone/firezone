@@ -1,5 +1,4 @@
 defmodule PortalAPI.Pagination do
-  alias LoggerJSON.Formatter.Metadata
   alias Portal.Repo.Paginator.Metadata
 
   @spec params_to_list_opts(map()) :: {:ok, keyword()} | {:error, :bad_request, reason: String.t()}

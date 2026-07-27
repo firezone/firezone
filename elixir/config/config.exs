@@ -444,11 +444,6 @@ config :portal,
 
 config :portal, relays_presence_debounce_timeout_ms: 1_000
 
-# Legacy (unversioned) API routes were superseded by /v1 and are served with
-# Deprecation/Sunset headers until this date. Override with LEGACY_API_SUNSET_DATE.
-config :portal, PortalAPI.Plugs.LegacyDeprecation,
-  sunset_at: ~D[2027-01-01]
-
 config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
   capacity: 200

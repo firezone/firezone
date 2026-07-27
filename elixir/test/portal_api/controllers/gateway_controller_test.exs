@@ -258,6 +258,26 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"data" => [data]} = json_response(conn, 200)
       assert data["id"] == gateway.id
     end
+
+    test "rejects a malformed ipv4 filter value", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv4: "not-an-ip")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed ipv6 filter value", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/sites/#{site.id}/gateways", ipv6: "not-an-ip")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
   end
 
   describe "show/2" do

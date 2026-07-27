@@ -42,6 +42,20 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"data" => %{"id" => _id, "token" => _token}} = json_response(conn, 201)
     end
 
+    test "sets Deprecation and Sunset headers", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateway_tokens")
+
+      assert get_resp_header(conn, "deprecation") == ["true"]
+      assert [sunset] = get_resp_header(conn, "sunset")
+      assert sunset =~ ~r/^\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/
+    end
+
     test "returns not found when site does not exist", %{conn: conn, actor: actor} do
       conn =
         conn

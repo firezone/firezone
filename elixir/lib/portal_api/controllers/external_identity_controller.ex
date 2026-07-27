@@ -6,7 +6,7 @@ defmodule PortalAPI.ExternalIdentityController do
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
-  tags ["ExternalIdentities"]
+  tags ["External Identities"]
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,

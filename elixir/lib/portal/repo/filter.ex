@@ -32,7 +32,7 @@ defmodule Portal.Repo.Filter do
   @type datetime_type :: :date | :time | :datetime
   @type binary_type ::
           :string
-          | {:string, :email | :phone_number | :uuid | :uuid_or_blank | :websearch | :websearch_wide | :protocol_port | :select}
+          | {:string, :email | :ip | :phone_number | :uuid | :uuid_or_blank | :websearch | :websearch_wide | :protocol_port | :select}
   @type range_type :: {:range, numeric_type() | datetime_type()}
   @type type ::
           :boolean
@@ -262,6 +262,12 @@ defmodule Portal.Repo.Filter do
   end
 
   defp value_type_valid?({:string, :uuid_or_blank}, _value), do: false
+
+  defp value_type_valid?({:string, :ip}, value) when is_binary(value) do
+    match?({:ok, _}, Portal.Types.IP.cast(value))
+  end
+
+  defp value_type_valid?({:string, :ip}, _value), do: false
   defp value_type_valid?(:string, value), do: is_binary(value)
   defp value_type_valid?(:boolean, value), do: is_boolean(value)
   defp value_type_valid?(:integer, value), do: is_integer(value)
