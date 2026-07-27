@@ -30,6 +30,7 @@ defmodule Portal.Crypto.X509 do
   @client_auth_eku_oid {1, 3, 6, 1, 5, 5, 7, 3, 2}
   @ec_public_key_oid {1, 2, 840, 10_045, 2, 1}
   @p384_curve_oid {1, 3, 132, 0, 34}
+  @rsa_encryption_oid {1, 2, 840, 113_549, 1, 1, 1}
 
   # Distinguished Name attribute types, ordered as commonly displayed.
   @dn_attribute_oids %{
@@ -468,7 +469,8 @@ defmodule Portal.Crypto.X509 do
   @doc """
   Returns the certificate's subject public key in the shape expected by
   `:public_key.verify/4`: EC keys are returned as `{point, curve_params}`,
-  other keys (RSA, EdDSA) as-is.
+  RSA keys as-is. EdDSA (Ed25519/Ed448) and other key algorithms are not
+  supported and return `:error`.
   """
   @spec subject_public_key(tuple()) :: {:ok, term()} | :error
   def subject_public_key(
@@ -479,7 +481,8 @@ defmodule Portal.Crypto.X509 do
       ) do
     case alg_oid do
       @ec_public_key_oid -> {:ok, {key, alg_params}}
-      _other -> {:ok, key}
+      @rsa_encryption_oid -> {:ok, key}
+      _other -> :error
     end
   end
 

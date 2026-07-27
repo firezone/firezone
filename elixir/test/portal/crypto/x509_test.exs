@@ -302,6 +302,11 @@ defmodule Portal.Crypto.X509Test do
       assert {:ok, {:RSAPublicKey, _modulus, _exponent}} = X509.subject_public_key(cert)
     end
 
+    test "returns :error for unsupported EdDSA keys" do
+      assert {:ok, cert} = X509.decode_der_certificate(sample_ed25519_ca_der())
+      assert X509.subject_public_key(cert) == :error
+    end
+
     test "returns :error for non-certificate input" do
       assert X509.subject_public_key(:not_a_cert) == :error
     end
