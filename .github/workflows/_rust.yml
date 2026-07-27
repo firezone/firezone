@@ -153,7 +153,7 @@ jobs:
       - name: Replay committed corpus
         run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
       - name: Enforce uncovered-region ceiling
-        run: mise run //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
+        run: mise run -q //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
       - name: Export lcov for Coveralls
         run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
       - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6

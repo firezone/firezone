@@ -223,7 +223,6 @@ echo "Coverage report: $PWD/$report_dir/index.html"
 [tasks.coverage-summary]
 description = "Print region coverage for the crate with the same name as the fuzz target"
 shell = "bash -c"
-depends = ["install-toolchain"]
 usage = 'arg "<crate>"'
 raw = true
 run = '''
@@ -233,6 +232,12 @@ crate="$usage_crate"
 profile="coverage/$crate/coverage.profdata"
 binary="../../target/x86_64-unknown-linux-gnu/release/$crate"
 llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
+
+if [ ! -f "$profile" ]; then
+  echo "error: coverage profile is missing; run mise run //rust/tests/fuzz:coverage $crate first" >&2
+  exit 1
+fi
+
 manifest="$(
   cargo metadata --format-version=1 --no-deps |
     jq -er --arg crate "$crate" '.packages[] | select(.name == $crate) | .manifest_path'
